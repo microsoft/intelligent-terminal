@@ -150,6 +150,8 @@ system.cannot_resume_phantom_via_flag: "Nedá sa obnoviť relácia %{agent} %{se
 system.cannot_resume_phantom_via_load: "Nedá sa obnoviť relácia %{agent} %{session_id}: bola spustená, ale nikdy nenazbierala žiadnu konverzáciu, takže %{agent} by načítanie odmietol. Riadok sa odstraňuje."
 system.fallback.this_agent: "tento agent"
 system.fallback.connected_agent: "pripojený agent"
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # {Locked="/passthrough"}
+system.passthrough_disabled: "Pass-through mode disabled."  # {Locked="/passthrough"}
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nenašli sa žiadne okná."
@@ -205,6 +207,7 @@ system.choice_execution_failed: "Voľba %{choice} zlyhala: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
 system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}

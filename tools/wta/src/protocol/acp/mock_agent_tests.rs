@@ -555,6 +555,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         pane_context: None,
         submitted_at_unix_s: 0.0,
         is_autofix,
+        passthrough_mode: false,
     }
 }
 

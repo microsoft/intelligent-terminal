@@ -142,6 +142,8 @@ system.cannot_resume_phantom_via_flag: "Não é possível retomar a sessão de %
 system.cannot_resume_phantom_via_load: "Não é possível retomar a sessão de %{agent} %{session_id}: ela foi iniciada, mas nunca acumulou conversa, então %{agent} rejeitaria o carregamento. Removendo a linha."
 system.fallback.this_agent: "este agente"
 system.fallback.connected_agent: "o agente conectado"
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # {Locked="/passthrough"}
+system.passthrough_disabled: "Pass-through mode disabled."  # {Locked="/passthrough"}
 
 # ── Saída da CLI em tempo de execução (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nenhuma janela encontrada."
@@ -205,6 +207,7 @@ system.choice_execution_failed: "Falha na opção %{choice}: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Escolha o modelo para este painel (/model <id> para trocar diretamente)"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 model_picker.title: "Selecionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "O agente conectado não anunciou nenhum modelo selecionável."
 system.model_set: "Modelo para este painel definido como %{model}."  # {Locked="%{model}"}

@@ -142,6 +142,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} seanssi %{session_id} ei saa j�
 system.cannot_resume_phantom_via_load: "%{agent} seanssi %{session_id} ei saa jätkata: see käivitati, kuid vestlust ei kogunenud, seega lükkaks %{agent} laadimise tagasi. Rida eemaldatakse."
 system.fallback.this_agent: "see agent"
 system.fallback.connected_agent: "ühendatud agent"
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # {Locked="/passthrough"}
+system.passthrough_disabled: "Pass-through mode disabled."  # {Locked="/passthrough"}
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aknaid ei leitud."
@@ -205,6 +207,7 @@ system.choice_execution_failed: "Valik %{choice} nurjus: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}

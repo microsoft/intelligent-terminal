@@ -142,6 +142,8 @@ system.cannot_resume_phantom_via_flag: "No es pot reprendre la sessió de %{agen
 system.cannot_resume_phantom_via_load: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la càrrega. S’elimina la fila."
 system.fallback.this_agent: "aquest agent"
 system.fallback.connected_agent: "l’agent connectat"
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # {Locked="/passthrough"}
+system.passthrough_disabled: "Pass-through mode disabled."  # {Locked="/passthrough"}
 
 # ── Sortida de CLI en temps d'execució (src/main.rs) ────────────────────────────────────
 output.no_windows: "No s'han trobat finestres."
@@ -205,6 +207,7 @@ system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Trieu el model per a aquest tauler (/model <id> per canviar directament)"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
 system.model_set: "El model d’aquest tauler s’ha establert a %{model}."  # {Locked="%{model}"}

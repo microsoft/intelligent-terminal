@@ -170,6 +170,8 @@ system.cannot_resume_phantom_via_flag: "Չի կարող վերսկսվել %{age
 system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ը կմերժեր բեռնումը։ Հեռացվում է տողը։"
 system.fallback.this_agent: "այս agent-ը"
 system.fallback.connected_agent: "միացված agent-ը"
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # {Locked="/passthrough"}
+system.passthrough_disabled: "Pass-through mode disabled."  # {Locked="/passthrough"}
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "Պատուհաններ չեն գտնվել։"
@@ -223,6 +225,7 @@ system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվ
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}

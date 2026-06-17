@@ -93,6 +93,7 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
@@ -202,6 +203,8 @@ system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session
 system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."  # Same case as cannot_resume_phantom_via_flag but via ACP loadSession (Shift+Enter path).
 system.fallback.this_agent: "this agent"  # Fallback noun used inside the cannot_resume_* messages above when the source agent is unknown (e.g. a custom agent).
 system.fallback.connected_agent: "the connected agent"  # Fallback noun used inside cannot_resume_no_load_session when the connected agent display name is empty.
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # Shown when /passthrough turns on pass-through mode for this tab.
+system.passthrough_disabled: "Pass-through mode disabled."  # Shown when /passthrough turns off pass-through mode for this tab.
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Choice %{choice} failed: %{error}"  # Shown when a recommendation card's choice fails to execute. %{choice} = numeric choice index, %{error} = error message string from the underlying failure.

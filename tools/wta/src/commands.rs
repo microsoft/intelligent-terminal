@@ -45,6 +45,14 @@ pub enum CommandKind {
     /// the life of the pane but is reset by a global `acpModel` settings
     /// change — see `App::apply_global_acp_model`.
     Model,
+    /// Toggle pass-through mode for this tab.
+    ///
+    /// When enabled, the agent pane's own accumulated output is included in
+    /// the context sent to the agent on each turn, in addition to the
+    /// external terminal panes. This lets the agent read what has been
+    /// displayed in its own pane. Toggled off with a second `/passthrough`.
+    /// Persists per-tab for the life of the pane.
+    Passthrough,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,6 +131,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
         takes_args: true,
+    },
+    CommandSpec {
+        name: "passthrough",
+        summary_key: "commands.passthrough.summary",
+        kind: CommandKind::Passthrough,
+        takes_args: false,
     },
 ];
 
@@ -353,6 +367,17 @@ mod tests {
         let h = matches("HE");
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].name, "help");
+    }
+
+    #[test]
+    fn passthrough_parses() {
+        let p = parse("/passthrough").unwrap();
+        assert_eq!(p.kind, CommandKind::Passthrough);
+        assert_eq!(p.rest, "");
+        assert!(!lookup("passthrough").unwrap().takes_args);
+        // `p` prefix matches /passthrough.
+        let p_matches: Vec<&str> = matches("p").into_iter().map(|c| c.name).collect();
+        assert!(p_matches.contains(&"passthrough"));
     }
 
     #[test]

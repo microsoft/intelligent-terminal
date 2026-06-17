@@ -93,6 +93,10 @@ pub struct PromptSubmission {
     /// as a User message (the client already shows the error line), and
     /// the planner uses it to pick the auto-fix prompt template.
     pub is_autofix: bool,
+    /// When `true`, the agent pane's own accumulated output is appended to
+    /// the context as a `### Agent Pane Output` section. Set by the
+    /// `/passthrough` slash command on the originating tab.
+    pub passthrough_mode: bool,
 }
 
 /// User-initiated cancel of an in-flight prompt. The App emits one of
@@ -240,6 +244,7 @@ impl PromptSubmission {
             pane_context,
             submitted_at_unix_s: now_unix_s(),
             is_autofix,
+            passthrough_mode: false,
         }
     }
 
@@ -1241,6 +1246,7 @@ async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
+    passthrough_mode: bool,
 ) -> (String, String, String, Option<String>) {
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
@@ -1388,6 +1394,34 @@ async fn build_prompt_text(
                 {
                     runtime_sections.push(format!("### Terminal Output\n```\n{}\n```", content));
                 }
+            }
+        }
+    }
+
+    // Pass-through mode: include the agent pane's own accumulated output so
+    // the agent can read what has been displayed in its own pane. Uses the
+    // pane_context.pane_id, which is always the agent pane's session id.
+    if passthrough_mode && wt_connected {
+        if let Some(agent_pane_id) = pane_context.and_then(|ctx| ctx.pane_id.as_deref()) {
+            let passthrough_started = std::time::Instant::now();
+            if let Some(content) = read_pane_last_message(
+                shell_mgr,
+                agent_pane_id,
+                50,
+                ACTIVE_PANE_CONTEXT_MAX_CHARS,
+            )
+            .await
+            {
+                runtime_sections.push(format!(
+                    "### Agent Pane Output\n```\n{}\n```",
+                    content
+                ));
+                tracing::debug!(
+                    target: "acp.terminal_context",
+                    agent_pane_id,
+                    dt_ms = passthrough_started.elapsed().as_millis() as u64,
+                    "passthrough_mode_pane_read"
+                );
             }
         }
     }
@@ -4234,6 +4268,7 @@ async fn dispatch_prompt_body(
         &shell_mgr_task,
         wt_connected,
         prompt.pane_context.as_ref(),
+        prompt.passthrough_mode,
     )
     .await;
     // A manual `/fix` resolved its working pane in build_prompt_text (it had no
