@@ -115,8 +115,8 @@ namespace Microsoft::Terminal::ShellIntegration
 
     // WSL.
     inline std::wstring WslUncPath(std::wstring_view distName, std::string_view posixPath) { return Wsl::UncPath(distName, posixPath); }
-    inline InstallResult InstallWslBash(const std::wstring& distName) { return Wsl::Install(distName); }
-    inline InstallResult UninstallWslBash(const std::wstring& distName) { return Wsl::Uninstall(distName); }
+    inline InstallResult InstallWslBash(const std::wstring& launchCommandline) { return Wsl::Install(launchCommandline); }
+    inline InstallResult UninstallWslBash(const std::wstring& launchCommandline) { return Wsl::Uninstall(launchCommandline); }
 
     // Re-expose per-flavor details under the top-level `details::` namespace
     // so existing tests that reference `details::QueryExecutionPolicy(...)`
