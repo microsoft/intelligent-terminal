@@ -102,7 +102,11 @@ pub fn load_all() -> Vec<AgentSession> {
     out.extend(take_n(load_gemini_indexed(&home, &agent_pane_index), MAX_PER_CLI));
     out.extend(take_n(load_codex_indexed(&home, &agent_pane_index), MAX_PER_CLI));
 
-    tracing::info!(
+    // Single low-overhead timing line for this scan. Kept at debug: the
+    // two callers (`App::ensure_history_loaded`, master startup) already
+    // emit an info-level scan-complete with `elapsed_ms`, so info here
+    // would just duplicate that on every scan in release builds.
+    tracing::debug!(
         target: "history_loader",
         total_ms = scan_started.elapsed().as_secs_f64() * 1000.0,
         rows = out.len(),
@@ -2466,13 +2470,13 @@ mod tests {
         let mut index = HashSet::new();
         index.insert("class-a".to_string());
 
-        let cands = vec![
+        let candidates = vec![
             mk("old", 100),
             mk("class-a", 999), // newest, but Class A → must be dropped
             mk("new", 300),
             mk("mid", 200),
         ];
-        let top = select_top_candidates(cands, &index, 2);
+        let top = select_top_candidates(candidates, &index, 2);
         // Class A dropped, remaining sorted newest-first, truncated to 2.
         assert_eq!(
             top.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
@@ -2482,7 +2486,7 @@ mod tests {
 
     #[test]
     fn load_copilot_indexed_skips_agent_pane_sessions() {
-        let home = tmp_root("copilot-classa");
+        let home = tmp_root("copilot-class-a");
         let base = home.join(".copilot").join("session-state");
         for sid in ["shell-1", "agent-pane-1"] {
             let d = base.join(sid);
