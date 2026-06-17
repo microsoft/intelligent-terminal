@@ -2875,6 +2875,11 @@ impl App {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
+        // WSL rows can only resume via the CLI `--resume` flag *inside*
+        // the distro. ACP `session/load` (the Shift target for Class B
+        // dead rows) can't rehydrate a Linux session into a host agent
+        // pane, so collapse Shift to Enter — both route to ResumeCliFlag.
+        let shift = shift && !s.location.is_wsl();
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
         // Claude / Codex / Copilot / Gemini (all four CLIs accept some
@@ -3104,7 +3109,9 @@ impl App {
         // artefacts at startup, *then* validate the `--resume`
         // argument and exit with an error — leaving phantom artefacts
         // behind for the next session-load to surface again.
-        if !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key) {
+        if !s.location.is_wsl()
+            && !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key)
+        {
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
@@ -3135,7 +3142,17 @@ impl App {
         }
 
         let key = s.key.clone();
-        let commandline = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        // WSL rows run the distro's own CLI inside the distro; set the
+        // Linux cwd via `--cd` when the stored cwd is an absolute Linux
+        // path (Claude path-decoded / Copilot workspace.yaml cwd).
+        let commandline = match &s.location {
+            crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
+                Some(cwd) => format!("wsl -d \"{distro}\" --cd \"{cwd}\" -- {resume_invocation}"),
+                None => format!("wsl -d \"{distro}\" -- {resume_invocation}"),
+            },
+            crate::agent_sessions::SessionLocation::Host => resume_invocation.clone(),
+        };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
         // working directory (e.g. Claude looks under
@@ -3171,7 +3188,13 @@ impl App {
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
         // Drop stale cwd so wtcli falls back to the profile default
         // rather than failing CreateProcessW with ERROR_DIRECTORY.
-        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        // WSL rows use `wsl --cd` inside the distro command; passing
+        // the Linux path as a Windows `-d` flag to wtcli would fail.
+        let valid_cwd = if s.location.is_wsl() {
+            None
+        } else {
+            crate::cwd_util::validate_starting_directory(&s.cwd)
+        };
         if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
             tracing::warn!(
                 target: "agents_view",
@@ -7967,6 +7990,15 @@ impl App {
         }
         self.current_tab_mut().selection_visible_pending = false;
     }
+}
+
+/// Return the cwd to hand to `wsl --cd` — only when it's an absolute
+/// Linux path (starts with `/`). A Windows path or empty cwd yields
+/// `None`, so WSL falls back to the distro's `$HOME`.
+fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
+    let s = cwd.to_string_lossy();
+    let s = s.trim();
+    s.starts_with('/').then(|| s.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -15202,5 +15234,46 @@ mod tests {
     fn known_cli_id_returns_none_for_unknown_variant() {
         use crate::agent_sessions::CliSource;
         assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    }
+
+    #[test]
+    fn enter_on_wsl_history_row_resumes_inside_distro() {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let row = crate::agent_sessions::AgentSession {
+            key:              "abc-123".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "t".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u/proj"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
+            location:         SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        };
+        let mut app = test_app();
+        app.agent_sessions.merge_historical(vec![row]);
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_list_state.select(Some(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let cmd = app
+            .last_dispatched_command_for_test()
+            .expect("a command was dispatched");
+        assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
+        let argv = cmd.argv.join(" ");
+        assert!(
+            argv.contains("wsl -d \"Ubuntu\" --cd \"/home/u/proj\" -- copilot --resume abc-123"),
+            "expected in-distro resume; argv: {argv}"
+        );
+        // WSL rows must not also pass the Windows `-d <cwd>` flag.
+        assert!(!argv.contains(" -d /home"), "WSL row must not pass Windows -d cwd");
     }
 }
