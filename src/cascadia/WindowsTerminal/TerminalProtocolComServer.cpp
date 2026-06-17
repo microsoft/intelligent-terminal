@@ -118,11 +118,20 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
 {
-    // Stop + join this subscriber's delivery thread BEFORE _removeInstance so
-    // the worker (which dereferences `this`) cannot outlive the object. The
-    // join also runs before the queue/mutex/condvar members destruct, since
-    // member teardown happens only after the destructor body returns.
-    _stopWorker();
+    // Signal the delivery worker to exit; do NOT join. The detached worker owns
+    // its own reference to the shared _DeliveryState and never touches `this`,
+    // so the object can be destroyed immediately without waiting on a slow
+    // OnEvent (and without risking a re-entrancy deadlock). The worker frees the
+    // state when it returns.
+    std::shared_ptr<_DeliveryState> d;
+    {
+        std::lock_guard lock{ _deliveryMutex };
+        d = _delivery;
+    }
+    if (d)
+    {
+        d->queue.stop();
+    }
     _removeInstance();
 }
 
@@ -368,63 +377,39 @@ void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eve
 
 void TerminalProtocolComServer::_enqueueEvent(const std::string& eventJson)
 {
-    // Hand the event to this subscriber's bounded queue and return. The queue
-    // applies the subscribe-gate (drops while inactive) and drop-oldest
-    // back-pressure; the producer never blocks. The dedicated worker thread
-    // performs the actual cross-process OnEvent. See BoundedDispatchQueue.
-    _deliveryQueue.try_push(eventJson);
-}
-
-void TerminalProtocolComServer::_startWorkerIfNeeded()
-{
-    std::lock_guard lock{ _workerMutex };
-    if (_worker.joinable())
+    // Hand the event to the current subscriber's bounded queue and return. The
+    // queue applies the subscribe-gate (drops while inactive) and drop-oldest
+    // back-pressure; the producer never blocks. The detached worker performs the
+    // actual cross-process OnEvent. Hold the shared_ptr across the push so a
+    // concurrent Unsubscribe swap can't free the state from under us.
+    std::shared_ptr<_DeliveryState> d;
     {
-        // Already running from a prior Subscribe; it picks up the new _sinkRef
-        // on its next iteration (read under _callbackMutex).
-        return;
+        std::lock_guard lock{ _deliveryMutex };
+        d = _delivery;
     }
-    _worker = std::thread([this]() { _workerLoop(); });
+    d->queue.try_push(eventJson);
 }
 
-void TerminalProtocolComServer::_stopWorker() noexcept
-{
-    std::lock_guard lock{ _workerMutex };
-    _deliveryQueue.stop();
-    if (_worker.joinable())
-    {
-        // NOTE: if the worker is currently blocked inside a stuck OnEvent (a
-        // subscriber that is alive but permanently not draining), this join
-        // waits for that call to return. It never blocks the UI thread — the
-        // UI thread only ever enqueues. A future hardening could add an
-        // OnEvent cancel/timeout (ICancelMethodCalls) to bound this wait.
-        _worker.join();
-    }
-}
-
-void TerminalProtocolComServer::_workerLoop()
+void TerminalProtocolComServer::_runDeliveryWorker(std::shared_ptr<_DeliveryState> state)
 {
     // Resolve the agile sink reference and call OnEvent on THIS dedicated MTA
-    // thread, so the synchronous cross-process call never runs on the producer
-    // (UI/STA or COM MTA) thread. MTA init is required so the agile reference's
-    // Resolve hands back a proxy valid on this thread.
+    // thread, so the synchronous cross-process call never runs on a producer
+    // (UI/STA or COM MTA) thread. MTA init is required so Resolve hands back a
+    // proxy valid on this thread. The worker owns `state`; when wait_pop returns
+    // false (stop()) the loop exits and the last reference is released here.
     auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
 
     std::string eventJson;
-    while (_deliveryQueue.wait_pop(eventJson))
+    while (state->queue.wait_pop(eventJson))
     {
-        // Snapshot the agile ref under the callback lock, then resolve + call
-        // outside it so Unsubscribe can swap/clear the sink without waiting on
-        // a long OnEvent.
         ComPtr<IAgileReference> ref;
         {
-            std::lock_guard lock{ _callbackMutex };
-            ref = _sinkRef;
+            std::lock_guard lock{ state->mutex };
+            ref = state->sinkRef;
         }
         if (!ref)
         {
-            // Not subscribed (yet / anymore) — drop this event and idle until
-            // the next Subscribe or until _stopWorker tears the thread down.
+            // Not subscribed (yet / anymore) — drop and keep waiting.
             continue;
         }
 
@@ -441,19 +426,24 @@ void TerminalProtocolComServer::_workerLoop()
         ComPtr<ITerminalProtocolEventSink> sink;
         if (FAILED(ref->Resolve(IID_PPV_ARGS(&sink))) || !sink)
         {
+            // The sink can no longer be resolved — treat as a disconnect (same
+            // as an OnEvent failure): close the gate and clear the sink so
+            // producers stop enqueuing and we stop churning for a dead client.
+            state->queue.set_active(false);
+            std::lock_guard lock{ state->mutex };
+            state->sinkRef.Reset();
             continue;
         }
 
         if (FAILED(sink->OnEvent(eventBstr.get())))
         {
-            // Client disconnected. Clear our sink AND close the queue gate so
+            // Client disconnected — close the gate and clear the sink so
             // producers stop enqueuing (and we stop popping/dropping) work for a
-            // dead subscriber — that churn would otherwise continue until COM
-            // rundown destroys the instance. The now-idle worker parks in
-            // wait_pop until _stopWorker tears it down on Unsubscribe/destruction.
-            _deliveryQueue.set_active(false);
-            std::lock_guard lock{ _callbackMutex };
-            _sinkRef.Reset();
+            // dead subscriber. The now-idle worker parks in wait_pop until the
+            // instance's teardown calls stop().
+            state->queue.set_active(false);
+            std::lock_guard lock{ state->mutex };
+            state->sinkRef.Reset();
         }
     }
 }
@@ -967,27 +957,36 @@ try
     ComPtr<IAgileReference> ref;
     RETURN_IF_FAILED(::RoGetAgileReference(AGILEREFERENCE_DEFAULT, __uuidof(ITerminalProtocolEventSink), sink, &ref));
 
+    std::shared_ptr<_DeliveryState> d;
     {
-        std::lock_guard lock{ _callbackMutex };
-        _sinkRef = ref;
+        std::lock_guard lock{ _deliveryMutex };
+        d = _delivery;
+    }
+    {
+        std::lock_guard lock{ d->mutex };
+        d->sinkRef = ref;
     }
 
-    // Spin up this subscriber's dedicated delivery thread so OnEvent never runs
-    // on the producer thread (no-op if already running from a prior Subscribe).
-    // set_active() opens the queue's subscribe-gate and clears any prior stop.
-    // It must precede _startWorkerIfNeeded so a re-subscribed instance clears the
-    // stop flag before the fresh worker starts (else wait_pop returns false at
-    // once); if thread creation throws, roll the gate back so producers don't
-    // enqueue undeliverable work for a subscriber with no worker.
-    _deliveryQueue.set_active(true);
-    try
+    // Open the subscribe-gate, then start the detached delivery worker once for
+    // this state so OnEvent never runs on the producer thread. If thread
+    // creation throws, roll the gate back so producers don't enqueue
+    // undeliverable work for a subscriber with no worker.
+    d->queue.set_active(true);
     {
-        _startWorkerIfNeeded();
-    }
-    catch (...)
-    {
-        _deliveryQueue.set_active(false);
-        throw;
+        std::lock_guard lock{ d->mutex };
+        if (!d->workerStarted)
+        {
+            try
+            {
+                std::thread(&TerminalProtocolComServer::_runDeliveryWorker, d).detach();
+            }
+            catch (...)
+            {
+                d->queue.set_active(false);
+                throw;
+            }
+            d->workerStarted = true;
+        }
     }
 
     // Ensure page events are wired up (one-time global init).
@@ -998,18 +997,23 @@ CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
 {
-    // Close the subscribe-gate first so nothing new is enqueued during teardown.
-    _deliveryQueue.set_active(false);
+    // Non-blocking teardown: swap in a fresh state for any future Subscribe,
+    // then signal the old worker to stop. We never join — a worker blocked in a
+    // slow OnEvent, or a client re-entering Unsubscribe from within its own
+    // OnEvent handler, must not stall or deadlock this call. The detached worker
+    // owns its reference to `old` and frees it when it returns.
+    std::shared_ptr<_DeliveryState> old;
     {
-        std::lock_guard lock{ _callbackMutex };
-        _sinkRef.Reset();
+        std::lock_guard lock{ _deliveryMutex };
+        old = _delivery;
+        _delivery = std::make_shared<_DeliveryState>(s_maxQueuedEvents);
     }
-
-    // Tear down the delivery thread (stop() wakes wait_pop and drops backlog).
-    // Unsubscribe is driven by the client, which is therefore actively
-    // draining — the worker's in-flight OnEvent (if any) returns promptly, so
-    // the join is quick.
-    _stopWorker();
+    old->queue.set_active(false);
+    {
+        std::lock_guard lock{ old->mutex };
+        old->sinkRef.Reset();
+    }
+    old->queue.stop();
     return S_OK;
 }
 
