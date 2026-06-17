@@ -2112,7 +2112,7 @@ namespace winrt::TerminalApp::implementation
                     body.Inlines().Append(Documents::LineBreak{});
 
                     Documents::Hyperlink link;
-                    link.NavigateUri(winrt::Windows::Foundation::Uri{ L"https://aka.ms/intelligent-terminal-dependency#4-powershell-shell-integration" });
+                    link.NavigateUri(winrt::Windows::Foundation::Uri{ L"https://aka.ms/intelligent-terminal-dependency#41-powershell" });
                     Documents::Run linkRun;
                     linkRun.Text(RS_(L"FreOverlay_ErrorHelpLink"));
                     link.Inlines().Append(linkRun);

@@ -2575,13 +2575,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Автоматичне виявлення помилок</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Дозвольте Intelligent Terminal отримати доступ до оболонки та автоматично виявляти помилки. Доступно в PowerShell і Windows PowerShell.</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>Дозвольте Інтелектуальному Терміналу отримати доступ до оболонки та автоматично виявляти помилки. Доступно в PowerShell, bash і WSL bash. </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>Переглянути всі підтримувані оболонки</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>Автоматична пропозиція виправлень</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Дозвольте Intelligent Terminal надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
+    <value>Дозвольте Інтелектуальному Терміналу надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
   </data>
 </root>

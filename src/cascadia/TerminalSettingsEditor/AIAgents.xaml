@@ -203,10 +203,22 @@
                             <TextBlock x:Uid="AIAgents_AutoErrorDetectionTitle"
                                        FontWeight="SemiBold"
                                        TextWrapping="Wrap" />
-                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionCaption"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap" />
+                            <!--  Caption hosts an inline Hyperlink to the full
+                                  supported-shells list, so it is built from
+                                  Run + Hyperlink populated in code-behind (RS_)
+                                  rather than a single x:Uid (x:Uid on inline Run
+                                  is not honored in this codebase). The muted
+                                  "secondary" foreground is applied only to the
+                                  prefix Run so the Hyperlink keeps its full theme
+                                  accent contrast (matches the page-subtitle
+                                  pattern above).  -->
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="Wrap">
+                                <Run x:Name="AutoErrorDetectionCaptionPrefix"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration">
+                                    <Run x:Name="AutoErrorDetectionCaptionLink" />
+                                </Hyperlink>
+                            </TextBlock>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1"
                                       MinWidth="0"
