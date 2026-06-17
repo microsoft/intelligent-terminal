@@ -118,7 +118,28 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
 {
+    // Remove this instance from the global fan-out set FIRST. This preserves the
+    // global lock order: s_NotifyEventToComClients takes s_instancesMutex before
+    // _enqueueEvent takes _deliveryMutex, so destruction must not take
+    // _deliveryMutex before _removeInstance takes s_instancesMutex.
+    //
+    // Once removed, no new fan-out can enqueue into this instance. Then signal
+    // the delivery worker to exit; do NOT join. The detached worker owns its own
+    // reference to the shared _DeliveryState and never touches `this`, so the
+    // object can be destroyed immediately without waiting on a slow OnEvent (and
+    // without risking a re-entrancy deadlock). The worker frees the state when it
+    // returns.
     _removeInstance();
+
+    std::shared_ptr<_DeliveryState> d;
+    {
+        std::lock_guard lock{ _deliveryMutex };
+        d = _delivery;
+    }
+    if (d)
+    {
+        d->queue.stop();
+    }
 }
 
 void TerminalProtocolComServer::_addInstance()
@@ -345,60 +366,109 @@ void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
 
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
 {
-    wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
-    if (!eventBstr)
+    // Enqueue the event into every connected subscriber's bounded queue and
+    // return immediately. Each subscriber's dedicated worker thread performs
+    // the synchronous cross-process OnEvent OFF this (producer) thread, so a
+    // slow or blocked subscriber can no longer stall the terminal UI thread,
+    // and subscribers are isolated from one another. See issue #239.
+    //
+    // Instance members are touched only under s_instancesMutex; _removeInstance
+    // takes the same lock, so an instance cannot be erased mid-iteration. This
+    // matches the locking discipline of the previous (synchronous) fan-out.
+    std::lock_guard lock{ s_instancesMutex };
+    for (auto* instance : s_instances)
     {
-        // OOM allocating the event payload — skip this delivery rather than
-        // calling OnEvent with a null BSTR, which would break the documented
-        // JSON-string event contract.
-        return;
+        instance->_enqueueEvent(eventJson);
     }
+}
 
-    // Snapshot the agile sink references under lock, then invoke outside the
-    // lock to avoid deadlocks if a callback reenters the server (e.g. via
-    // SendEvent).
-    std::vector<ComPtr<IAgileReference>> sinks;
+void TerminalProtocolComServer::_enqueueEvent(const std::string& eventJson)
+{
+    // Hand the event to the current subscriber's bounded queue and return. The
+    // queue applies the subscribe-gate (drops while inactive) and drop-oldest
+    // back-pressure; the producer never blocks. The detached worker performs the
+    // actual cross-process OnEvent. Hold the shared_ptr across the push so a
+    // concurrent Unsubscribe swap can't free the state from under us.
+    std::shared_ptr<_DeliveryState> d;
     {
-        std::lock_guard lock{ s_instancesMutex };
-        for (auto* instance : s_instances)
-        {
-            std::lock_guard cbLock{ instance->_callbackMutex };
-            if (instance->_sinkRef)
-                sinks.push_back(instance->_sinkRef);
-        }
+        std::lock_guard lock{ _deliveryMutex };
+        d = _delivery;
     }
+    d->queue.try_push(eventJson);
+}
 
-    // TODO: event fan-out runs on the UI/STA thread (ProtocolVtSequenceReceived
-    // is raised there), and each OnEvent below is a SYNCHRONOUS cross-process
-    // call. A slow or blocked subscriber (e.g. wtcli's stdout pipe full because
-    // wta isn't draining it) therefore stalls the terminal UI thread, and the
-    // cost is serial across all subscribers. For high event volume this should
-    // be moved off the UI thread — queue events and drain them on a dedicated
-    // background MTA thread (mind ordering, back-pressure, and subscriber
-    // add/remove thread-safety), and/or give OnEvent a timeout. Tracked as
-    // follow-up; not addressed in the WinRT->classic-COM migration.
-    for (auto& ref : sinks)
+void TerminalProtocolComServer::_runDeliveryWorker(std::shared_ptr<_DeliveryState> state)
+{
+    // Resolve the agile sink reference and call OnEvent on THIS dedicated MTA
+    // thread, so the synchronous cross-process call never runs on a producer
+    // (UI/STA or COM MTA) thread. MTA init is required so Resolve hands back a
+    // proxy valid on this thread. The worker owns `state`; when wait_pop returns
+    // false (stop()) the loop exits and the last reference is released here.
+    //
+    // This worker is DETACHED: an exception escaping the thread function would
+    // call std::terminate and crash the whole process. Everything therefore runs
+    // under a catch-all — a per-event catch drops one bad event and keeps the
+    // worker alive; the outer catch handles a CoInitializeEx / wait_pop failure
+    // by exiting cleanly.
+    try
     {
-        // Resolve the agile reference to a sink proxy valid on THIS thread,
-        // then call it — this is the cross-apartment-safe callback path.
-        ComPtr<ITerminalProtocolEventSink> sink;
-        if (FAILED(ref->Resolve(IID_PPV_ARGS(&sink))) || !sink)
-            continue;
+        auto coInit = wil::CoInitializeEx(COINIT_MULTITHREADED);
 
-        if (FAILED(sink->OnEvent(eventBstr.get())))
+        std::string eventJson;
+        while (state->queue.wait_pop(eventJson))
         {
-            // Client disconnected — clear the matching sink reference.
-            std::lock_guard lock{ s_instancesMutex };
-            for (auto* instance : s_instances)
+            try
             {
-                std::lock_guard cbLock{ instance->_callbackMutex };
-                if (instance->_sinkRef.Get() == ref.Get())
+                ComPtr<IAgileReference> ref;
                 {
-                    instance->_sinkRef.Reset();
-                    break;
+                    std::lock_guard lock{ state->mutex };
+                    ref = state->sinkRef;
+                }
+                if (!ref)
+                {
+                    // Not subscribed (yet / anymore) — drop and keep waiting.
+                    continue;
+                }
+
+                wil::unique_bstr eventBstr{ ::SysAllocString(winrt::to_hstring(eventJson).c_str()) };
+                if (!eventBstr)
+                {
+                    // OOM allocating the payload — skip rather than call OnEvent
+                    // with a null BSTR, which would break the event contract.
+                    continue;
+                }
+
+                // Resolve the agile reference to a sink proxy valid on THIS
+                // thread, then call it (cross-apartment-safe callback path).
+                // Short-circuit so OnEvent is never called on a null sink.
+                ComPtr<ITerminalProtocolEventSink> sink;
+                if (FAILED(ref->Resolve(IID_PPV_ARGS(&sink))) || !sink || FAILED(sink->OnEvent(eventBstr.get())))
+                {
+                    // The sink can no longer be resolved, or the client
+                    // disconnected — treat as a disconnect: close the gate and
+                    // clear the sink so producers stop enqueuing (and we stop
+                    // churning) for a dead client. BUT only if this is STILL the
+                    // sink we just used: a concurrent re-Subscribe may have
+                    // swapped in a new sink while this delivery (using the old
+                    // `ref`) was in flight, and we must not clobber it.
+                    std::lock_guard lock{ state->mutex };
+                    if (state->sinkRef.Get() == ref.Get())
+                    {
+                        state->sinkRef.Reset();
+                        state->queue.set_active(false);
+                    }
                 }
             }
+            catch (...)
+            {
+                // Never let an exception escape a detached worker. Drop this
+                // event and keep delivering.
+            }
         }
+    }
+    catch (...)
+    {
+        // CoInitializeEx / wait_pop failure — exit the worker without crashing.
     }
 }
 
@@ -911,9 +981,36 @@ try
     ComPtr<IAgileReference> ref;
     RETURN_IF_FAILED(::RoGetAgileReference(AGILEREFERENCE_DEFAULT, __uuidof(ITerminalProtocolEventSink), sink, &ref));
 
+    std::shared_ptr<_DeliveryState> d;
     {
-        std::lock_guard lock{ _callbackMutex };
-        _sinkRef = ref;
+        std::lock_guard lock{ _deliveryMutex };
+        d = _delivery;
+    }
+    {
+        std::lock_guard lock{ d->mutex };
+        d->sinkRef = ref;
+    }
+
+    // Open the subscribe-gate, then start the detached delivery worker once for
+    // this state so OnEvent never runs on the producer thread. If thread
+    // creation throws, roll the gate back so producers don't enqueue
+    // undeliverable work for a subscriber with no worker.
+    d->queue.set_active(true);
+    {
+        std::lock_guard lock{ d->mutex };
+        if (!d->workerStarted)
+        {
+            try
+            {
+                std::thread(&TerminalProtocolComServer::_runDeliveryWorker, d).detach();
+            }
+            catch (...)
+            {
+                d->queue.set_active(false);
+                throw;
+            }
+            d->workerStarted = true;
+        }
     }
 
     // Ensure page events are wired up (one-time global init).
@@ -923,11 +1020,33 @@ try
 CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
+try
 {
-    std::lock_guard lock{ _callbackMutex };
-    _sinkRef.Reset();
+    // Allocate the fresh replacement state BEFORE taking the lock so a throwing
+    // allocation is caught by CATCH_RETURN (escaping a COM method would crash
+    // the process) and never leaves _delivery half-swapped under the lock.
+    auto fresh = std::make_shared<_DeliveryState>(s_maxQueuedEvents);
+
+    // Non-blocking teardown: swap in the fresh state for any future Subscribe,
+    // then signal the old worker to stop. We never join — a worker blocked in a
+    // slow OnEvent, or a client re-entering Unsubscribe from within its own
+    // OnEvent handler, must not stall or deadlock this call. The detached worker
+    // owns its reference to `old` and frees it when it returns.
+    std::shared_ptr<_DeliveryState> old;
+    {
+        std::lock_guard lock{ _deliveryMutex };
+        old = _delivery;
+        _delivery = std::move(fresh);
+    }
+    old->queue.set_active(false);
+    {
+        std::lock_guard lock{ old->mutex };
+        old->sinkRef.Reset();
+    }
+    old->queue.stop();
     return S_OK;
 }
+CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::SendEvent(BSTR eventJson)
 try
