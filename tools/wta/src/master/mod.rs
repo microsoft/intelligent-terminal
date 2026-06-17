@@ -3709,13 +3709,13 @@ mod tests {
         // by resolve_agent_selection (which requires is_known_id), so keeping
         // them would produce an inert allowlist that misleads policy debugging.
         assert_eq!(
-            normalize_allowed_agent_ids(&["custom:mything".to_string(), "unknown".to_string()]),
+            normalize_allowed_agent_ids(&["custom:myapp".to_string(), "unknown".to_string()]),
             None,
             "all-unknown entries collapse to no-allowlist, not block-all"
         );
         // Unknown ids mixed with a real id: only the real id survives.
         let mixed = normalize_allowed_agent_ids(&[
-            "custom:mything".to_string(),
+            "custom:myapp".to_string(),
             "claude".to_string(),
         ])
         .expect("one real id survives");
