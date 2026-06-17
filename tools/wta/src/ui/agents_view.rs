@@ -496,6 +496,12 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 /// is live, and historical rows benefit because their badge area is
 /// empty.
 fn origin_prefix_for(s: &AgentSession) -> Option<String> {
+    // WSL rows get a distro tag (e.g. "Ubuntu ") so the user can tell
+    // in-distro sessions from host ones. WSL rows are never AgentPane,
+    // so this branch is exclusive with the one below.
+    if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
+        return Some(format!("{distro} "));
+    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -890,5 +896,28 @@ mod tests {
         };
         assert_eq!(cli_suffix_for(&s, true),  "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());
+    }
+
+    #[test]
+    fn origin_prefix_shows_distro_for_wsl_rows() {
+        let s = AgentSession {
+            key:              "abc".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "hi".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
+            location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        };
+        assert_eq!(origin_prefix_for(&s).as_deref(), Some("Ubuntu "));
     }
 }
