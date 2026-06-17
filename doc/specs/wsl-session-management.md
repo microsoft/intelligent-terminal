@@ -157,6 +157,18 @@ pub enum SessionLocation {
   construction site is updated to set `Host` explicitly — `AgentSession` has no
   `Default` impl because of its `SystemTime` fields, so each literal must name
   the new field).
+- **`SessionInfo::location` is the cross-process carrier.** The agent-pane
+  `/sessions` view does **not** render from the helper's `AgentSession`
+  registry — it renders and dispatches from a `snapshot: Vec<SessionInfo>` the
+  helper fetches from `wta-master` via `sessions/list` (`SessionInfo` is the
+  serde wire type; `session_info_to_agent_session` reconstructs rows for the
+  view). So `location` must also live on `SessionInfo` (with `#[serde(default)]`
+  → `Host` for back-compat) and be copied in both `agent_session_to_session_info`
+  (master scan → registry) and `session_info_to_agent_session` (snapshot →
+  view). Without this the distro stamp is silently flattened to `Host` at the
+  master→helper boundary, killing both the distro tag and WSL resume in the real
+  (snapshot-fed) view — the registry path is only a pre-snapshot fallback. This
+  was the root-cause gap caught in final review.
 - `discover::Discovered` likewise gains a `location` (defaults to `Host`, used
   only if/when the watcher is extended later; for the historical MVP only
   `load_all` stamps it).
@@ -322,3 +334,10 @@ async reactor / UI thread).
 - Multi-Linux-user enumeration.
 - Composite `(location, key)` registry keying (only if a real host/WSL key
   collision is ever observed — see "Data model").
+- **Scan WSL on master only.** `load_all` runs on both master and the helper;
+  once `SessionInfo` carries `location`, the helper's open `/sessions` view is
+  fed entirely by master's snapshot, so the helper's own per-process WSL scan
+  (one `wsl -l` + a `wsl … | tar` round-trip per running distro, once per helper
+  via the cached `ensure_history_loaded`) is redundant work. A follow-up can gate
+  the WSL branch to the master caller (the host scan is already duplicated the
+  same way, so this is a pure optimization, not a correctness fix).
