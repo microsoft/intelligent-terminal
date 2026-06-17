@@ -12,6 +12,7 @@
 
 /// Decode the UTF-16LE output of `wsl -l --running -q` into distro names.
 /// Strips NULs/CR, trims, drops the `*` default marker and blank lines.
+#[allow(dead_code)] // Called by `running_distros()` in the scan-orchestration task.
 pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
     let u16s: Vec<u16> = utf16le
         .chunks_exact(2)
