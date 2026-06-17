@@ -150,12 +150,14 @@ pub enum SessionOrigin {
 /// back into the distro. Defaults to `Host`; only the WSL history
 /// scanner stamps `Wsl`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)] // Wired up by the WSL session scanner / display / resume tasks.
 pub enum SessionLocation {
     #[default]
     Host,
     Wsl { distro: String },
 }
 
+#[allow(dead_code)] // Wired up by the WSL session scanner / display / resume tasks.
 impl SessionLocation {
     /// True for in-distro sessions.
     pub fn is_wsl(&self) -> bool {
@@ -450,6 +452,7 @@ impl AgentSessionRegistry {
                     origin:            SessionOrigin::default(),
                     location:          SessionLocation::Host,
                 });
+                // If we're rebinding to a different pane, drop the old pane's mapping first.
                 if let Some(old_pane) = entry.pane_session_id.take() {
                     if old_pane != pane_session_id {
                         self.active_by_pane.remove(&old_pane);
@@ -1322,6 +1325,7 @@ impl AgentSessionRegistry {
             origin:            SessionOrigin::default(),
             location:          SessionLocation::Host,
         });
+        // Stagger last_activity_at so the order in the UI matches the
         // narrative (working newest, historical oldest).
         let stagger = |secs: u64| now - Duration::from_secs(secs);
         if let Some(s) = self.sessions.get_mut("demo-copilot-working")  { s.last_activity_at = stagger(2); }
