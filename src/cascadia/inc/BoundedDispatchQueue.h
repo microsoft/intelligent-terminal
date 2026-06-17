@@ -54,10 +54,15 @@ namespace Microsoft::Terminal
         BoundedDispatchQueue& operator=(const BoundedDispatchQueue&) = delete;
 
         // Producer side. Returns true if the item was queued, false if it was
-        // dropped because the queue is inactive or stopped. When the queue is
-        // already at capacity the OLDEST item is evicted (and dropped_count is
-        // incremented) to make room; the push still succeeds. Never blocks.
-        bool try_push(T item)
+        // dropped because the queue is inactive/stopped OR because copying the
+        // item failed (allocation failure). When the queue is already at
+        // capacity the OLDEST item is evicted (and dropped_count is incremented)
+        // to make room; the push still succeeds. Never blocks and NEVER throws:
+        // the item is taken by const-reference and the (potentially allocating)
+        // copy is performed inside a try/catch under the lock, so an allocation
+        // failure becomes a rejected push instead of an exception escaping onto
+        // the producer thread (which, for VT events, is the UI/STA thread).
+        bool try_push(const T& item)
         {
             {
                 std::lock_guard lock{ _mutex };
@@ -65,12 +70,23 @@ namespace Microsoft::Terminal
                 {
                     return false;
                 }
-                if (_queue.size() >= _maxItems)
+                try
+                {
+                    // push_back has the strong exception guarantee: on failure
+                    // the deque is unchanged, so we can simply reject the push.
+                    _queue.push_back(item);
+                }
+                catch (...)
+                {
+                    return false;
+                }
+                // Trim AFTER the successful push so a throwing copy never leaves
+                // us having evicted an item for an event we failed to enqueue.
+                while (_queue.size() > _maxItems)
                 {
                     _queue.pop_front();
                     ++_droppedCount;
                 }
-                _queue.push_back(std::move(item));
             }
             _cv.notify_one();
             return true;

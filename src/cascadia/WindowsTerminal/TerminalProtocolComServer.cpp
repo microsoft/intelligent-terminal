@@ -1013,8 +1013,14 @@ try
 CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
+try
 {
-    // Non-blocking teardown: swap in a fresh state for any future Subscribe,
+    // Allocate the fresh replacement state BEFORE taking the lock so a throwing
+    // allocation is caught by CATCH_RETURN (escaping a COM method would crash
+    // the process) and never leaves _delivery half-swapped under the lock.
+    auto fresh = std::make_shared<_DeliveryState>(s_maxQueuedEvents);
+
+    // Non-blocking teardown: swap in the fresh state for any future Subscribe,
     // then signal the old worker to stop. We never join — a worker blocked in a
     // slow OnEvent, or a client re-entering Unsubscribe from within its own
     // OnEvent handler, must not stall or deadlock this call. The detached worker
@@ -1023,7 +1029,7 @@ STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
     {
         std::lock_guard lock{ _deliveryMutex };
         old = _delivery;
-        _delivery = std::make_shared<_DeliveryState>(s_maxQueuedEvents);
+        _delivery = std::move(fresh);
     }
     old->queue.set_active(false);
     {
@@ -1033,6 +1039,7 @@ STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
     old->queue.stop();
     return S_OK;
 }
+CATCH_RETURN()
 
 STDMETHODIMP TerminalProtocolComServer::SendEvent(BSTR eventJson)
 try
