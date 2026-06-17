@@ -131,7 +131,7 @@ pmr
 QUERYENDSESSION
 rcx
 REGCLS
-RemoteSigned
+remotesigned
 RETURNCMD
 rfind
 ROOTOWNER
