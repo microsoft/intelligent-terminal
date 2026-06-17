@@ -93,6 +93,7 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate

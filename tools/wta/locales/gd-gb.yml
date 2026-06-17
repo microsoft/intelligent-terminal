@@ -204,6 +204,7 @@ system.choice_execution_failed: "Dh’fhàillig roghainn %{choice}: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
 system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}

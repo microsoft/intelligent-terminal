@@ -205,6 +205,7 @@ system.choice_execution_failed: "ตัวเลือก %{choice} ล้มเ
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "เลือกโมเดลสำหรับแผงนี้ (/model <id> เพื่อสลับโดยตรง)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}

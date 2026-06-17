@@ -45,6 +45,12 @@ pub enum CommandKind {
     /// the life of the pane but is reset by a global `acpModel` settings
     /// change — see `App::apply_global_acp_model`.
     Model,
+    /// Save or list named workspace snapshots of the current agent session.
+    ///
+    /// `/workspace save [name]` — captures session key, CLI source, and
+    /// working directory into a named slot (defaults to `"default"`).
+    /// `/workspace list` — shows all saved workspace names.
+    Workspace,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +128,13 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+        takes_args: true,
+    },
+    CommandSpec {
+        name: "workspace",
+        summary_key: "commands.workspace.summary",
+        // `/workspace save [name]` saves; `/workspace list` lists.
+        kind: CommandKind::Workspace,
         takes_args: true,
     },
 ];

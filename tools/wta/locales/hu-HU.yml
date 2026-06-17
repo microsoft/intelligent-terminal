@@ -204,6 +204,7 @@ system.choice_execution_failed: "A(z) %{choice}. választás sikertelen: %{error
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}

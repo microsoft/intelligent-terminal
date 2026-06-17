@@ -206,6 +206,7 @@ system.choice_execution_failed: "પસંદગી %{choice} નિષ્ફળ
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "આ પેન માટે મોડેલ પસંદ કરો (સીધું બદલવા /model <id>)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "મોડેલ પસંદ કરો (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "જોડાયેલ એજન્ટે કોઈ પસંદ કરી શકાય તેવા મોડેલ જાહેર કર્યા નથી."
 system.model_set: "આ પેન માટેનું મોડેલ %{model} પર સેટ કર્યું."  # {Locked="%{model}"}

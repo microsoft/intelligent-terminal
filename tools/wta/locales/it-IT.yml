@@ -205,6 +205,7 @@ system.choice_execution_failed: "Scelta %{choice} non riuscita: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Scegli il modello per questo riquadro (/model <id> per cambiare direttamente)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
 system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}

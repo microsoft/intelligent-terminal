@@ -44,3 +44,6 @@ which = "7"
 uuid = { version = "1", features = ["v4"] }
 rust-i18n = "3"
 sys-locale = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

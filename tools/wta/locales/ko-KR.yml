@@ -200,6 +200,7 @@ system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}

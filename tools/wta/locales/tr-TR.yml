@@ -205,6 +205,7 @@ system.choice_execution_failed: "%{choice} seçimi başarısız oldu: %{error}"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
 system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}

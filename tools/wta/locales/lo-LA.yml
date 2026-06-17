@@ -205,6 +205,7 @@ system.choice_execution_failed: "ຕົວເລືອກ %{choice} ລົ້ມ
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ເລືອກແບບຈຳລອງສຳລັບ pane ນີ້ (/model <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."
 system.model_set: "ແບບຈຳລອງສຳລັບ pane ນີ້ຖືກຕັ້ງເປັນ %{model}."  # {Locked="%{model}"}
