@@ -2175,7 +2175,7 @@ pub(crate) fn session_info_to_agent_session(
         attention_reason: info.attention_reason.clone(),
         log_path: None,
         origin,
-        location: crate::agent_sessions::SessionLocation::Host,
+        location: info.location.clone(),
     }
 }
 
@@ -11232,6 +11232,45 @@ mod tests {
         let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].key, "shell-key");
+    }
+
+    /// The PRODUCTION snapshot path (master pushed `sessions/list` response
+    /// into `agents_view.snapshot`) must preserve the `Wsl` location in every
+    /// `AgentSession` produced by `agents_rows_for_tab`.
+    ///
+    /// This is the regression test that would have caught the original bug:
+    /// `session_info_to_agent_session` hardcoded `location: Host`, so WSL
+    /// rows crossing the master→helper boundary silently lost their distro
+    /// stamp.  The fix carries `location` through `SessionInfo`; this test
+    /// guards that fix forever.
+    #[test]
+    fn agents_rows_snapshot_preserves_wsl_location() {
+        use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+        let mut app = test_app();
+        // Use `All` to bypass the MVP ShellOnly filter — we want to confirm
+        // location preservation regardless of origin filtering.
+        app.sessions_origin_filter = OriginFilter::All;
+
+        let mut info = session_info_for_test("wsl-1");
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 1, "expected one row; got: {rows:?}");
+        assert!(
+            rows[0].location.is_wsl(),
+            "snapshot path must preserve WSL location; got: {:?}",
+            rows[0].location
+        );
+        assert_eq!(
+            rows[0].location,
+            SessionLocation::Wsl { distro: "Ubuntu".into() },
+            "distro name must round-trip through session_info_to_agent_session"
+        );
     }
 
     /// `resolve_sessions_origin_filter` reads the `WTA_SESSIONS_SHOW_AGENT_PANE`

@@ -149,15 +149,19 @@ pub enum SessionOrigin {
 /// `$HOME`. Used for the `/sessions` row prefix and to route resume
 /// back into the distro. Defaults to `Host`; only the WSL history
 /// scanner stamps `Wsl`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[allow(dead_code)] // Wired up by the WSL session scanner / display / resume tasks.
+///
+/// Serde-serializable so `SessionInfo` can carry it across the
+/// master→helper `sessions/list` wire boundary (the `/sessions` view
+/// renders from master's `SessionInfo` snapshot, not the helper's
+/// `AgentSession` registry).  `#[serde(default)]` on the `SessionInfo`
+/// field ensures that older peers without the field deserialize as `Host`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SessionLocation {
     #[default]
     Host,
     Wsl { distro: String },
 }
 
-#[allow(dead_code)] // Wired up by the WSL session scanner / display / resume tasks.
 impl SessionLocation {
     /// True for in-distro sessions.
     pub fn is_wsl(&self) -> bool {
@@ -165,6 +169,9 @@ impl SessionLocation {
     }
 
     /// The distro name for `Wsl`, else `None`.
+    ///
+    /// Public accessor; currently exercised only by tests.
+    #[allow(dead_code)]
     pub fn distro(&self) -> Option<&str> {
         match self {
             SessionLocation::Wsl { distro } => Some(distro.as_str()),
