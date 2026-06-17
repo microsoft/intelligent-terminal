@@ -2871,13 +2871,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Rilevamento automatico degli errori</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Consenti a Intelligent Terminal di accedere alla shell e rilevare automaticamente gli errori. Disponibile in PowerShell e Windows PowerShell.</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>Consenti a Terminale Intelligente di accedere alla shell e rilevare automaticamente gli errori. Disponibile in PowerShell, bash e WSL bash. </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>Visualizza tutte le shell supportate</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>Suggerimento automatico degli errori</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Consenti a Intelligent Terminal di inviare gli errori all'agente per suggerire automaticamente le correzioni.</value>
+    <value>Consenti a Terminale Intelligente di inviare gli errori all'agente per suggerire automaticamente le correzioni.</value>
   </data>
 </root>
