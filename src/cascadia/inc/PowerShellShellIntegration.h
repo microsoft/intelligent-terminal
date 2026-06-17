@@ -213,11 +213,19 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // Save again, the Terminal picks up the new policy.
     inline bool ExecutionPolicyBlocksShellIntegration(Target target) noexcept
     {
-        // pwsh.exe is optional. If it isn't installed QueryExecutionPolicy
-        // returns "" which doesn't match any blocking policy → not blocked,
-        // and the install attempt for that profile dir will succeed
-        // harmlessly — it sits inert until they install PowerShell 7.
         const auto exe = target == Target::Pwsh ? L"pwsh.exe" : L"powershell.exe";
+        // If the host binary isn't on PATH, we can't (and shouldn't) probe
+        // its policy. Return false so a missing optional host (e.g. pwsh.exe
+        // on machines without PowerShell 7) doesn't false-positive as
+        // "EP blocked". QueryExecutionPolicy would return "" for a missing
+        // host, and the allow-list predicate treats "" as blocking — correct
+        // for a PRESENT host whose policy probe failed in packaged-app
+        // context, but wrong for a genuinely absent host.
+        wchar_t buf[MAX_PATH]{};
+        if (SearchPathW(nullptr, exe, nullptr, MAX_PATH, buf, nullptr) == 0)
+        {
+            return false;
+        }
         return details::PolicyNameBlocksUnsignedScripts(details::QueryExecutionPolicy(exe));
     }
 
