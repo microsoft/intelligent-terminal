@@ -1622,10 +1622,14 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // up the historicals; helpers that open session management view later will see them on
     // the next `sessions/list` call.
     let inner_for_history = Arc::clone(&inner);
+    // The session view only shows the current agent's CLI, so seed the
+    // registry with just that CLI's history. `None` (custom / unrecognized
+    // agent) scans all four, matching the view's all-CLI behavior.
+    let history_cli = inner.cli_source.clone();
     tokio::task::spawn_local(async move {
         let scan_started = std::time::Instant::now();
-        let sessions = match tokio::task::spawn_blocking(|| {
-            crate::history_loader::load_all()
+        let sessions = match tokio::task::spawn_blocking(move || {
+            crate::history_loader::load_for_cli(history_cli.as_ref())
         })
         .await
         {

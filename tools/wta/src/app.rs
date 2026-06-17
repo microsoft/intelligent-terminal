@@ -1275,13 +1275,6 @@ pub enum AppEvent {
     /// Posting via the main loop keeps `agent_sessions` access single-threaded
     /// and lets `tracing::*` calls emit on a stable thread.
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
-    /// Historical agent sessions scanned off the main thread by a
-    /// `spawn_blocking` task wrapping `history_loader::load_all()`. Posted
-    /// instead of running the scan inline so a large `~/.copilot/session-state`
-    /// (hundreds of dirs, each with an `events.jsonl` to sniff) doesn't block
-    /// the LocalSet — which would otherwise stall the ACP client loop,
-    /// the first frame, and therefore the user-visible "connecting" state.
-    HistoricalSessionsLoaded(Vec<crate::agent_sessions::AgentSession>),
     /// Initial bootstrap of the alive-session mirror from master, in
     /// response to the helper's startup `session/list` request. The
     /// payload replaces any existing entries and flips `alive_loaded`
@@ -1300,18 +1293,10 @@ pub enum AppEvent {
     AliveSessionRemoved(agent_client_protocol::SessionId),
     /// Apply an "upgrade Historical/Ended → Live" join between the
     /// historical-row registry (`agent_sessions`) and the alive-session
-    /// mirror. Posted from either of two places:
-    ///
-    ///   * `AliveSnapshotLoaded` (master's bootstrap reply) — the
-    ///     handler converts each `SessionInfo` into a `(sid, pane)`
-    ///     pair, dispatches `AliveJoinUpgrade`, and lets the main
-    ///     loop apply it serialized w.r.t. other agent-sessions
-    ///     mutations.
-    ///   * `HistoricalSessionsLoaded` (background `history_loader::load_all`)
-    ///     — the handler spawns a one-shot async task to snapshot the
-    ///     current alive registry and posts this event so the join can
-    ///     happen even when the on-disk scan finishes after the alive
-    ///     bootstrap.
+    /// mirror. Posted from `AliveSnapshotLoaded` (master's bootstrap
+    /// reply): the handler converts each `SessionInfo` into a `(sid, pane)`
+    /// pair, dispatches `AliveJoinUpgrade`, and lets the main loop apply it
+    /// serialized w.r.t. other agent-sessions mutations.
     ///
     /// See [`crate::agent_sessions::AgentSessionRegistry::apply_alive_session_join`].
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
@@ -1982,12 +1967,6 @@ pub struct App {
     /// session list itself is global; only the *picker view* (open state
     /// + selected row) lives per-tab on `TabSession`.
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
-    /// Tracks the lazy load of historical sessions. Flipped to Loading
-    /// on first session management-view open; flipped to Loaded when
-    /// `HistoricalSessionsLoaded` arrives. The agents_view reads this to
-    /// render a "Loading..." row instead of an empty list during the
-    /// scan.
-    pub history_load_state: HistoryLoadState,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
     /// session management view's Shift+Enter handler to short-circuit
@@ -2103,31 +2082,9 @@ pub struct AgentsViewState {
     pub latest_request_id: Option<u64>,
 }
 
-/// Lazy-load tracking for the historical `agent_sessions` registry.
-///
-/// `history_loader::load_all()` scans `~/.copilot/session-state`,
-/// `~/.claude/projects`, `~/.gemini/tmp` and reads `events.jsonl`
-/// from each Copilot session to sniff the wta-internal autofix
-/// fingerprint. On a populated machine that's hundreds of file
-/// opens — observed ~10 seconds.
-///
-/// Doing that eagerly on every wta spawn (including every model
-/// switch, which kills the old wta and starts a new one) is wasted
-/// work — the data is only consumed by the agent session view. We
-/// defer the scan to the first Ctrl+Shift+/ press and cache the result for
-/// the rest of this wta's lifetime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HistoryLoadState {
-    NotStarted,
-    Loading,
-    Loaded,
-}
-
-impl Default for HistoryLoadState {
-    fn default() -> Self {
-        HistoryLoadState::NotStarted
-    }
-}
+// (Historical-session load-state tracking was removed: the helper no longer
+// scans on-disk history; the session view renders from master's `session/list`
+// snapshot. See doc/specs/per-cli-history-filtering.md.)
 
 /// Reverse of `CliSource::from_agent_id` — yields the lowercase CLI id
 /// used by the command-synthesis template and dispatch routing.
@@ -2242,7 +2199,6 @@ impl App {
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
-            history_load_state: HistoryLoadState::NotStarted,
             agent_supports_load_session: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
             install_request_tx: None,
@@ -3662,45 +3618,6 @@ impl App {
         self.event_tx = Some(tx);
     }
 
-    /// First-call: spawn a blocking task to scan `~/.copilot`, `~/.claude`,
-    /// `~/.gemini` for historical agent sessions and merge the result into
-    /// `agent_sessions` via `AppEvent::HistoricalSessionsLoaded`. Subsequent
-    /// calls are no-ops — the registry is cached for this wta's lifetime.
-    ///
-    /// Called eagerly from `run_acp_app` right after `set_event_tx` so the
-    /// scan starts overlapping with ACP startup and is usually done by the
-    /// time the user first opens the agent session view. Also called defensively
-    /// from the `/sessions` toggle in case startup raced ahead of
-    /// `set_event_tx` (Setup/FRE mode — `event_tx` not yet wired, so the
-    /// eager call early-returns and the Ctrl+Shift+/ press picks it up).
-    ///
-    /// Pre-eager-load this was strictly lazy because each wta restart
-    /// (model switch, new agent pane) re-pays the ~10s scan. The eager
-    /// kick is gated to the ACP TUI mode for the same reason — short-lived
-    /// modes (`delegate`, `mcp`, CLI helpers) never call this.
-    pub fn ensure_history_loaded(&mut self) {
-        if self.history_load_state != HistoryLoadState::NotStarted {
-            return;
-        }
-        let Some(tx) = self.event_tx.clone() else {
-            // No event channel yet — Setup mode at startup. The first Ctrl+Shift+/
-            // press post-FRE will retry. Safe to leave state as NotStarted.
-            return;
-        };
-        self.history_load_state = HistoryLoadState::Loading;
-        tokio::task::spawn_blocking(move || {
-            let scan_started = std::time::Instant::now();
-            let sessions = crate::history_loader::load_all();
-            tracing::info!(
-                target: "history_loader",
-                count = sessions.len(),
-                elapsed_ms = scan_started.elapsed().as_millis() as u64,
-                "background history scan complete (lazy)"
-            );
-            let _ = tx.send(AppEvent::HistoricalSessionsLoaded(sessions));
-        });
-    }
-
     fn spawn_login(&self, agent_id: &str, login_command: &str) {
         if let Some(ref tx) = self.event_tx {
             let tx = tx.clone();
@@ -4356,7 +4273,6 @@ impl App {
             AppEvent::LoginComplete { .. } => "login_complete",
             AppEvent::PreflightComplete(_) => "preflight_complete",
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
-            AppEvent::HistoricalSessionsLoaded(_) => "historical_sessions_loaded",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
             AppEvent::AliveSessionAdded(_) => "alive_session_added",
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
@@ -4402,11 +4318,11 @@ impl App {
                 }
                 // Setup-mode spinner: ticks while we're showing the wizard
                 // (e.g. spinning during a `winget install` background job).
-                // Also advance while the agents-view history scan is in
-                // flight so the "Loading" shimmer keeps animating.
+                // Also advance while the agents view waits on its first
+                // session/list snapshot so the "Loading" shimmer keeps animating.
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
-                    || self.history_load_state == HistoryLoadState::Loading
+                    || self.agents_view_awaiting_snapshot()
                     // Keep the connecting indicator animating during the
                     // pipe-connect → ACP init → session/new handshake so a cold
                     // start (which can run tens of seconds) doesn't look frozen
@@ -4976,55 +4892,6 @@ impl App {
                     crate::app::prune_phantom_session_if_ended(&mut self.agent_sessions, &k);
                 }
             }
-            AppEvent::HistoricalSessionsLoaded(sessions) => {
-                tracing::info!(
-                    target: "history_loader",
-                    count = sessions.len(),
-                    "historical sessions merged from background scan"
-                );
-                self.agent_sessions.merge_historical(sessions);
-                self.history_load_state = HistoryLoadState::Loaded;
-
-                // B-9: kick off an async snapshot of the alive mirror and
-                // post `AliveJoinUpgrade` so rows whose ACP session_id is
-                // still alive (e.g. this WTA process attached to an
-                // existing master in another WT window and never saw the
-                // SessionStarted hook) get upgraded Historical → Live.
-                // Skip until alive_loaded so we don't run the join over
-                // an empty registry on cold startup — the AliveSnapshotLoaded
-                // handler will fire its own join when bootstrap returns.
-                if self.alive_loaded.load(std::sync::atomic::Ordering::Relaxed) {
-                    if let Some(tx) = self.event_tx.clone() {
-                        let reg = std::sync::Arc::clone(&self.alive);
-                        tokio::task::spawn_local(async move {
-                            let items = reg.snapshot().await;
-                            let tuples: Vec<(String, Option<String>)> = items
-                                .into_iter()
-                                .map(|i| (i.session_id.0.to_string(), i.pane_session_id))
-                                .collect();
-                            let _ = tx.send(AppEvent::AliveJoinUpgrade(tuples));
-                        });
-                    }
-                }
-
-                // If the user is already on the agent session view (e.g. they were
-                // dropped there by --initial-view sessions, or they pressed
-                // Ctrl+Shift+/ before the scan finished) and nothing
-                // is selected yet, seed selection on row 0 so Enter
-                // activates immediately. Mirrors the session management enter-Agents path.
-                if self.current_tab().current_view == View::Agents
-                    && self.current_tab().agents_list_state.selected().is_none()
-                    && !self
-                        .agent_sessions
-                        .iter_sorted_with_filters(
-                            self.current_cli_filter().as_ref(),
-                            self.sessions_origin_filter,
-                        )
-                        .is_empty()
-                {
-                    self.current_tab_mut().agents_list_state.select(Some(0));
-                }
-            }
             AppEvent::AliveSnapshotLoaded(items) => {
                 let count = items.len();
                 tracing::info!(
@@ -5577,14 +5444,6 @@ impl App {
                                 if self.show_welcome_hint {
                                     self.show_welcome_hint = false;
                                     set_welcome_shown_in_state();
-                                }
-                                let entering_agents = self
-                                    .tab_sessions
-                                    .get(&target_tab)
-                                    .map(|t| t.current_view != View::Agents)
-                                    .unwrap_or(true);
-                                if entering_agents {
-                                    self.ensure_history_loaded();
                                 }
                                 self.open_agents_view_for_tab(target_tab.clone());
                             }
@@ -6146,10 +6005,6 @@ impl App {
             AppEvent::RevealTick => self.has_reveal_backlog(),
             AppEvent::AgentMessageChunk { .. } => true,
             AppEvent::DebugPipeMessage(_) => self.show_debug_panel,
-            // History only affects the agent session view; chat doesn't read it.
-            // A redraw is cheap enough that we don't bother gating on which
-            // view is showing — pay the one frame.
-            AppEvent::HistoricalSessionsLoaded(_) => true,
             _ => true,
         }
     }
@@ -6918,11 +6773,29 @@ impl App {
         self.current_tab_mut().scroll_to_bottom();
     }
 
+    /// True while the open agents view is waiting on its first `session/list`
+    /// reply from master — the placeholder snapshot is still the empty Vec
+    /// primed by `open_agents_view_for_tab` and a refetch is in flight. Drives
+    /// the loading-shimmer animation while the first snapshot is in flight.
+    fn agents_view_awaiting_snapshot(&self) -> bool {
+        let tab = self.current_tab();
+        if tab.current_view != View::Agents {
+            return false;
+        }
+        tab.agents_view.refetch_in_flight
+            && tab
+                .agents_view
+                .snapshot
+                .as_deref()
+                .map(|s| s.is_empty())
+                .unwrap_or(false)
+    }
+
     fn has_activity_indicator(&self) -> bool {
         if self.mode == AppMode::Setup || self.mode == AppMode::Auth {
             return true; // spinner always ticks in setup/auth mode
         }
-        if self.history_load_state == HistoryLoadState::Loading {
+        if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
         let tab = self.current_tab();
@@ -7303,10 +7176,6 @@ impl App {
         // Per-tab — only flips the active tab's view state.
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
-        // session management path also kicks the lazy history scan here. Without this,
-        // /sessions left the registry empty and rendered a blank view
-        // forever (state stuck at NotStarted, no Loading row, no rows).
-        self.ensure_history_loaded();
         self.project_active_tab_state();
     }
 
@@ -11403,6 +11272,36 @@ mod tests {
             app.current_tab().agents_view.refetch_in_flight,
             "stale failure must not clear the fresh in-flight gate"
         );
+    }
+
+    /// The loading-shimmer signal: true only while the agents view is open
+    /// and waiting on its first `session/list` reply (empty placeholder
+    /// snapshot + in-flight refetch). Replaces the removed on-disk-scan
+    /// `HistoryLoadState::Loading` signal.
+    #[test]
+    fn agents_view_awaiting_snapshot_tracks_first_session_list() {
+        let (mut app, _master_rx) = test_app_with_master_rx();
+        // Chat view → never awaiting (the shimmer is agents-view only).
+        assert!(!app.agents_view_awaiting_snapshot());
+
+        // Opening the agents view primes an empty placeholder snapshot and an
+        // in-flight refetch — exactly the loading-shimmer window.
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        assert!(
+            app.agents_view_awaiting_snapshot(),
+            "awaiting the first session/list snapshot right after open"
+        );
+
+        // A non-empty snapshot (master replied with rows) ends the awaiting
+        // state even while a follow-up refetch is in flight.
+        app.current_tab_mut().agents_view.snapshot = Some(vec![session_info_for_test("a")]);
+        assert!(!app.agents_view_awaiting_snapshot());
+
+        // An empty reply with the refetch finished is the genuine empty
+        // state, not loading.
+        app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+        assert!(!app.agents_view_awaiting_snapshot());
     }
 
     fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {

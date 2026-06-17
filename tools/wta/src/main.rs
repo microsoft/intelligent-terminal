@@ -2679,10 +2679,8 @@ async fn run_acp_app(
             // Apply --initial-view: if `sessions`, jump straight into the
             // agent session view (mirrors the Chat→Agents toggle). Wired to
             // WT's Ctrl+Shift+/ binding via `--initial-view sessions` on
-            // the wta cmdline. Must run after set_agent_event_tx so that
-            // ensure_history_loaded()'s event_tx clone is populated —
-            // otherwise the lazy scan would early-return and the Agents
-            // list would never populate.
+            // the wta cmdline. `open_agents_view_for_tab` fires the
+            // `session/list` refetch to master that populates the view.
             //
             // Skip in setup mode: --setup takes the FRE path and the user
             // shouldn't be dropped into an empty session list.
@@ -2693,7 +2691,6 @@ async fn run_acp_app(
                     .clone()
                     .unwrap_or_else(|| app::DEFAULT_TAB_ID.to_string());
                 app_state.open_agents_view_for_tab(tab_id);
-                app_state.ensure_history_loaded();
             }
 
             // Project the initial active-tab state to C++ once, after the
@@ -2713,18 +2710,10 @@ async fn run_acp_app(
                 app_state.project_active_tab_state();
             }
 
-            // NOTE: historical agent sessions used to be loaded here via
-            // `history_loader::load_all()` (later as a `spawn_blocking`).
-            // That work is now deferred — the registry is scanned lazily
-            // on the first Ctrl+Shift+/ press via `App::ensure_history_loaded()`.
-            //
-            // Why: load_all() is hundreds of file opens (one per Copilot
-            // session-state dir, reading events.jsonl for the autofix
-            // fingerprint). On a populated machine it's ~10s of disk I/O.
-            // Every wta spawn — including every model switch in the agent
-            // pane — paid that cost, even though the data is only ever
-            // consumed by the agent session view. Lazy-loading on Ctrl+Shift+/ keeps the
-            // model-switch path free of this overhead entirely.
+            // NOTE: the helper no longer scans on-disk history at all. The
+            // session view renders from master's `session/list` snapshot, and
+            // master performs the single CLI-filtered scan at its startup.
+            // See doc/specs/per-cli-history-filtering.md.
 
             // Enter setup mode if --setup <reason> was passed.
             tracing::info!("cli.setup = {:?}", cli.setup);
@@ -2764,17 +2753,10 @@ async fn run_acp_app(
 
             app_state.set_event_tx(event_tx.clone());
 
-            // Kick the historical-session scan immediately on agent-pane
-            // startup so the sessions view is populated by the time the
-            // user opens it. The scan runs on a `spawn_blocking` thread and
-            // posts `HistoricalSessionsLoaded` back, so it never blocks the
-            // LocalSet or the first frame. Subsequent `ensure_history_loaded`
-            // calls (from `/sessions`) short-circuit on `Loading`/`Loaded`.
-            //
-            // Only the ACP TUI path reaches here — `wta delegate`, `wta mcp`,
-            // and CLI subcommands never construct an App that wires
-            // `event_tx`, so they don't pay this cost.
-            app_state.ensure_history_loaded();
+            // The helper does not scan on-disk history: master performs the
+            // single (CLI-filtered) scan and the session view renders from
+            // its `session/list` snapshot. See
+            // doc/specs/per-cli-history-filtering.md.
 
             if let Some((pane_id, _tab_id, window_id)) = pane_identity {
                 app_state.pane_id = Some(pane_id);

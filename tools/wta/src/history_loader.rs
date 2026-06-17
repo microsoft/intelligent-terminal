@@ -82,7 +82,27 @@ const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 /// case (treated as phantom — conservative but safe).
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
-pub fn load_all() -> Vec<AgentSession> {
+/// Decide which per-CLI loaders to run for a given filter.
+///
+/// The session management view only ever shows the current agent's CLI, so
+/// callers that know their CLI pass it to avoid scanning (and parsing) the
+/// other three CLIs' transcripts. `None` — or a custom / unrecognized agent
+/// (`CliSource::Unknown`) — scans everything, matching the view, which shows
+/// all CLIs when `current_cli_filter()` is `None`.
+fn cli_scan_flags(cli_filter: Option<&CliSource>) -> (bool, bool, bool, bool) {
+    match cli_filter {
+        Some(CliSource::Copilot) => (true, false, false, false),
+        Some(CliSource::Claude) => (false, true, false, false),
+        Some(CliSource::Gemini) => (false, false, true, false),
+        Some(CliSource::Codex) => (false, false, false, true),
+        None | Some(CliSource::Unknown(_)) => (true, true, true, true),
+    }
+}
+
+/// Scan on-disk session history, restricted to a single CLI when
+/// `cli_filter` is `Some(known)`. See [`cli_scan_flags`] for the dispatch
+/// rules (custom / unknown agents scan all four).
+pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     let scan_started = std::time::Instant::now();
     let mut out = Vec::new();
     let Some(home) = home_dir() else { return out };
@@ -97,17 +117,26 @@ pub fn load_all() -> Vec<AgentSession> {
     let agent_pane_index = crate::agent_pane_origin::load_default_set();
 
     // Each loader already caps at MAX_PER_CLI; take_n is a defensive no-op.
-    out.extend(take_n(load_copilot_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    out.extend(take_n(load_claude_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    out.extend(take_n(load_gemini_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    out.extend(take_n(load_codex_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    let (cop, cla, gem, cod) = cli_scan_flags(cli_filter);
+    if cop {
+        out.extend(take_n(load_copilot_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    }
+    if cla {
+        out.extend(take_n(load_claude_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    }
+    if gem {
+        out.extend(take_n(load_gemini_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    }
+    if cod {
+        out.extend(take_n(load_codex_indexed(&home, &agent_pane_index), MAX_PER_CLI));
+    }
 
     // Single low-overhead timing line for this scan. Kept at debug: the
-    // two callers (`App::ensure_history_loaded`, master startup) already
-    // emit an info-level scan-complete with `elapsed_ms`, so info here
-    // would just duplicate that on every scan in release builds.
+    // master startup caller already emits an info-level scan-complete with
+    // `elapsed_ms`, so info here would just duplicate that in release builds.
     tracing::debug!(
         target: "history_loader",
+        cli = ?cli_filter,
         total_ms = scan_started.elapsed().as_secs_f64() * 1000.0,
         rows = out.len(),
         "history scan complete"
@@ -2481,6 +2510,26 @@ mod tests {
         assert_eq!(
             top.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
             ["new", "mid"]
+        );
+    }
+
+    #[test]
+    fn cli_scan_flags_selects_one_loader_per_known_cli() {
+        assert_eq!(cli_scan_flags(Some(&CliSource::Copilot)), (true, false, false, false));
+        assert_eq!(cli_scan_flags(Some(&CliSource::Claude)), (false, true, false, false));
+        assert_eq!(cli_scan_flags(Some(&CliSource::Gemini)), (false, false, true, false));
+        assert_eq!(cli_scan_flags(Some(&CliSource::Codex)), (false, false, false, true));
+    }
+
+    #[test]
+    fn cli_scan_flags_scans_all_for_none_or_custom_agent() {
+        // None (no resolvable CLI) and a custom/unknown agent both scan all
+        // four — matching the view, which shows every CLI when the
+        // current_cli_filter() is None.
+        assert_eq!(cli_scan_flags(None), (true, true, true, true));
+        assert_eq!(
+            cli_scan_flags(Some(&CliSource::Unknown("custom:my-agent".to_string()))),
+            (true, true, true, true)
         );
     }
 

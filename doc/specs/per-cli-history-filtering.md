@@ -103,9 +103,11 @@ Dispatch on the filter:
 | `Some(Copilot)` / `Claude` / `Gemini` / `Codex` | that one CLI's loader |
 | `None` or `Some(Unknown(_))` (custom / unrecognized agent) | all four (current behavior) |
 
-`load_all()` is retained as a thin wrapper `load_for_cli(None)` for tests and
-the "scan everything" path. The two-phase scan internals (per-CLI cap by
-mtime, Class A skip) are unchanged.
+The "scan everything" path is `load_for_cli(None)`, reached via master when
+the agent is custom / unrecognized. The dispatch decision lives in a small
+testable helper, `cli_scan_flags`. (The old unparameterized `load_all()` is
+removed — every caller now passes a filter.) The two-phase scan internals
+(per-CLI cap by mtime, Class A skip) are unchanged.
 
 Master passes its already-resolved CLI:
 
@@ -124,8 +126,12 @@ The helper no longer scans history. Remove:
   (`main.rs` ACP TUI path) and the lazy calls from the `/sessions` open path,
 - `ensure_history_loaded` itself,
 - the `AppEvent::HistoricalSessionsLoaded` variant, its handler, and the
-  `merge_historical` call site. If `merge_historical` becomes unused, remove
-  it too (avoid dead-code warnings); keep it if a test still exercises it.
+  `merge_historical` call site. `merge_historical` is now used only by registry
+  tests (seeding Historical rows to exercise the still-live alive-join logic),
+  so it is gated `#[cfg(test)]`. The `HistoryLoadState` enum / field and the
+  unparameterized `load_all()` are removed; the loading-shimmer animation now
+  keys off `App::agents_view_awaiting_snapshot()` (open agents view + empty
+  placeholder snapshot + in-flight refetch) instead of the old scan state.
 
 The helper's `agent_sessions` registry continues to exist and is populated by
 live `apply(...)` events (SessionStarted hooks, new_session, pane events) and
@@ -188,15 +194,16 @@ cover it.
 
 ## Testing
 
-- `load_for_cli(Some(CliSource::Copilot))` returns only Copilot rows;
+- `cli_scan_flags(Some(CliSource::Copilot))` selects only the Copilot loader;
   `Some(Gemini)` only Gemini.
-- `load_for_cli(None)` equals `load_all()` (all four).
-- `load_for_cli(Some(CliSource::Unknown("custom:x".into())))` scans all four.
-- Helper-side: with an empty local registry, the agents view renders from the
-  master snapshot; Enter / delete / resume on snapshot rows still dispatch;
-  selection seeds on snapshot arrival.
+- `cli_scan_flags(None)` and `Some(CliSource::Unknown("custom:x"))` select all
+  four (the custom / unrecognized-agent path).
+- Helper-side: `App::agents_view_awaiting_snapshot()` is true only while the
+  agents view is open and waiting on its first `session/list` reply; the
+  existing snapshot tests already exercise the (now always empty) local
+  registry rendering from the master snapshot.
 - Existing two-phase / per-loader history tests are unaffected (they call
-  `load_copilot` etc. directly or `load_all`).
+  `load_copilot` etc. directly).
 
 ## Out of scope
 
