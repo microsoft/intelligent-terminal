@@ -103,6 +103,13 @@ pub struct ChoiceExecution {
     pub choice: RecommendationChoice,
     /// When true, Send actions paste text without a trailing Enter (insert-only).
     pub insert_only: bool,
+    /// ACP session id of the tab that dispatched this choice. When `Some`,
+    /// the executor will capture terminal output after a `Send` action and
+    /// emit `AppEvent::CommandOutputReady` so the agent sees what happened
+    /// and can continue in a follow-up turn (multi-turn command execution).
+    /// `None` when no session is available (autofix fallback path); no
+    /// follow-up turn is emitted in that case.
+    pub session_id: Option<String>,
 }
 
 pub fn default_supported_delegate_agents() -> Vec<SupportedDelegateAgent> {
@@ -329,7 +336,7 @@ pub async fn run_recommendation_executor(
 ) {
     while let Some(exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
-        match execute_choice(&exec.choice, exec.insert_only, &shell_mgr, &delegate_agents, &event_tx).await {
+        match execute_choice(&exec.choice, exec.insert_only, exec.session_id.as_deref(), &shell_mgr, &delegate_agents, &event_tx).await {
             Ok(()) => {}
             Err(err) => {
                 let err_str = format!("{:#}", err);
@@ -349,6 +356,7 @@ pub async fn run_recommendation_executor(
 async fn execute_choice(
     choice: &RecommendationChoice,
     insert_only: bool,
+    session_id: Option<&str>,
     shell_mgr: &ShellManager,
     delegate_agents: &[DelegateAgentRuntime],
     event_tx: &mpsc::UnboundedSender<AppEvent>,
@@ -401,6 +409,24 @@ async fn execute_choice(
                             "send focus skipped parent={} error={}",
                             parent, err
                         ));
+                    }
+                    // Multi-turn feedback loop: after sending a command, wait
+                    // briefly for it to complete then capture pane output and
+                    // route it back to the agent as a follow-up turn. The agent
+                    // can then read what happened and continue problem-solving.
+                    // Only fires when a session_id is available (i.e. a user-
+                    // visible planner/autofix turn, not the lightweight autofix
+                    // fallback path). Best-effort — any failure is logged and
+                    // silently ignored so it never blocks normal execution.
+                    if let Some(sid) = session_id {
+                        capture_and_feed_output(
+                            sid,
+                            parent,
+                            input,
+                            shell_mgr,
+                            event_tx,
+                        )
+                        .await;
                     }
                 }
             }
@@ -557,6 +583,93 @@ async fn execute_choice(
     }
 
     Ok(())
+}
+
+/// Wait briefly for a shell command to complete, then capture recent pane
+/// output and emit `AppEvent::CommandOutputReady` so the agent can see
+/// what happened and continue in a follow-up turn.
+///
+/// Timing: we sleep 1.5 s as a "command probably finished" heuristic.
+/// Shell-integration OSC 133 markers let us capture the exact
+/// command-plus-output block when available; otherwise we fall back to
+/// reading the last 30 lines of the pane buffer.
+///
+/// Best-effort: any failure is logged and silently swallowed — this must
+/// never break normal command execution.
+async fn capture_and_feed_output(
+    session_id: &str,
+    pane_id: &str,
+    command: &str,
+    shell_mgr: &ShellManager,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+) {
+    // Give the command a moment to finish before we read the pane.
+    sleep(Duration::from_millis(1500)).await;
+
+    let output = read_pane_last_command_output(shell_mgr, pane_id).await;
+
+    coordinator_log(&format!(
+        "capture_and_feed_output session={} pane={} command_chars={} output_present={}",
+        session_id,
+        pane_id,
+        command.chars().count(),
+        output.is_some(),
+    ));
+
+    let output = match output {
+        Some(o) if !o.trim().is_empty() => o,
+        _ => {
+            coordinator_log(&format!(
+                "capture_and_feed_output: no output captured for pane {}, skipping follow-up",
+                pane_id
+            ));
+            return;
+        }
+    };
+
+    let _ = event_tx.send(AppEvent::CommandOutputReady {
+        session_id: session_id.to_string(),
+        pane_id: pane_id.to_string(),
+        command: command.to_string(),
+        output,
+    });
+}
+
+/// Read the most recent command output from a pane.
+/// Prefers shell-integration OSC 133 marks; falls back to the last 30 lines.
+async fn read_pane_last_command_output(
+    shell_mgr: &ShellManager,
+    pane_id: &str,
+) -> Option<String> {
+    const MAX_CHARS: usize = 4000;
+
+    // Try shell-integration first (OSC 133 marks give us the exact last command+output).
+    if let Ok(value) = shell_mgr.wt_read_last_prompt(pane_id).await {
+        let has_marks = value
+            .get("has_marks")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if has_marks {
+            if let Some(content) = value.get("content").and_then(|c| c.as_str()) {
+                if !content.is_empty() {
+                    return Some(truncate_for_log(content, MAX_CHARS));
+                }
+            }
+        }
+    }
+
+    // Fallback: read recent lines from the pane buffer.
+    shell_mgr
+        .wt_read_pane_output(pane_id, Some(30))
+        .await
+        .ok()
+        .and_then(|value| {
+            value
+                .get("content")
+                .and_then(|content| content.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|content| truncate_for_log(content, MAX_CHARS))
+        })
 }
 
 fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
