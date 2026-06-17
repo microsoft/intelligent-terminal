@@ -103,17 +103,27 @@ needed files out as a `tar`:
    to stdout (so the bytes flow back through the `wsl.exe` pipe), paths kept
    relative via `-C $HOME` so the extracted tree mirrors a real `$HOME`.
 
-On the Windows side, `wta` extracts that stream (Rust `tar` crate) into a
-**temporary home directory** that mirrors the distro layout
-(`<tmp>/.copilot/session-state/...`, `<tmp>/.claude/projects/...`, …), then calls
-the **existing** `load_copilot(<tmp>)` / `load_claude(<tmp>)` / … verbatim and
-stamps `location = Wsl { distro }` on each returned row.
+On the Windows side, `wta` pipes that `tar` stream straight into the **Windows
+system `tar.exe`** (`%SystemRoot%\System32\tar.exe` — bsdtar/libarchive, present
+on Windows 10 1803+ and Windows 11; verified `bsdtar 3.8.4` on the dev machine),
+extracting into a **temporary home directory** that mirrors the distro layout
+(`<tmp>/.copilot/session-state/...`, `<tmp>/.claude/projects/...`, …). It then
+calls the **existing** `load_copilot(<tmp>)` / `load_claude(<tmp>)` / … verbatim
+and stamps `location = Wsl { distro }` on each returned row.
 
+- **No new Rust dependency:** extraction uses the system `tar.exe`, so we avoid
+  pulling in a `tar` crate (which would force a `cgmanifest.json` / `NOTICE.md`
+  regeneration per `tools/wta/AGENTS.md`). If `tar.exe` is somehow absent, the
+  distro is skipped with a logged warning (feature degrades, never crashes).
 - **Zero parser changes:** because the parsers take a `home: &Path`, pointing
   them at the temp dir reuses *all* tested title/phantom/sort/cap logic.
 - **mtime fidelity:** Gemini and Claude derive `last_activity` from **file
-  mtime**, so the extraction MUST preserve mtimes. GNU `tar` records them and the
-  Rust `tar` crate restores them on `unpack` by default — verify in tests.
+  mtime**, so the extraction MUST preserve mtimes. GNU `tar` records them and
+  bsdtar restores them on extract by default — verified end-to-end on the dev
+  machine (extracted files kept their distro mtimes).
+- **Fast:** the full round-trip (in-distro `find`/`sort`/`tar` → pipe → Windows
+  `tar.exe -x` of 100 files) measured **~0.3 s warm** on the dev machine (vs.
+  3.6 s warm for the file-by-file UNC approach).
 - **Time-boxed:** the spawn is bounded by a timeout so a wedged distro/9P can
   never hang the scan; on timeout the distro contributes nothing (logged).
 
@@ -144,15 +154,26 @@ pub enum SessionLocation {
 ```
 
 - New field `AgentSession::location` (defaults to `Host`; every existing
-  construction site stays valid via `..Default::default()` or an explicit
-  `Host`).
-- `discover::Discovered` likewise gains an optional location (used only if/when
-  the watcher is extended later; for the historical MVP only `load_all` stamps
-  it).
-- **Identity / dedup is `(location, key)`-keyed.** A host session and a WSL
-  session can in principle share a UUID; they must not collide in the registry.
-  Audit `AgentSessionRegistry` insert/dedup and the agent-pane-origin join to key
-  on `(location, key)` (host-only callers keep `Host` and are unaffected).
+  construction site is updated to set `Host` explicitly — `AgentSession` has no
+  `Default` impl because of its `SystemTime` fields, so each literal must name
+  the new field).
+- `discover::Discovered` likewise gains a `location` (defaults to `Host`, used
+  only if/when the watcher is extended later; for the historical MVP only
+  `load_all` stamps it).
+- **The registry stays keyed by the raw session `key`; `location` is metadata.**
+  `AgentSessionRegistry.sessions` is a `HashMap<AgentKey, AgentSession>`
+  (`agent_sessions.rs:319`) and `merge_historical` already drops any loaded row
+  whose `key` is already present ("live registry wins",
+  `agent_sessions.rs:1134`). We deliberately **keep `key` = the raw CLI session
+  id** (not a `wsl:<distro>:` namespaced string) because `dispatch_resume` passes
+  `s.key` directly to `<cli> --resume <key>` — namespacing would force a strip
+  step on every resume. A host/WSL key collision is astronomically unlikely
+  (random UUIDs for Copilot/Claude/Codex; timestamped file-stems for Gemini; the
+  two filesystems are disjoint CLI installs), and on the off chance one occurs
+  the existing host-wins rule simply drops the WSL row — acceptable for MVP. The
+  agent-pane-origin join matches on raw `key` too, and a WSL key is never in the
+  host-only agent-pane index, so WSL rows correctly stay `origin = Unknown`.
+  Composite `(location, key)` keying is a future hardening, not MVP work.
 
 ## Display (the "where did this come from" prefix)
 
@@ -251,12 +272,17 @@ async reactor / UI thread).
 
 - **`wsl` module:** unit-test `running_distros()` parsing against captured
   UTF-16LE `wsl -l --running -q` bytes (default-marker `*`, NULs, CRLF, empty).
-- **Hybrid extraction:** unit-test that a `tar` stream of a synthetic distro
-  `$HOME` extracts into a temp dir on which the **existing** parsers produce the
-  same rows as a native host scan of the same layout — and that **mtimes are
+- **Hybrid extraction:** unit-test the **selection + path-derivation** logic that
+  turns a `find` listing into the per-CLI file set to bundle, and the **stamping**
+  step that runs the existing parsers over a temp `home` and sets
+  `location = Wsl{distro}` on every row. The `tar.exe` extraction itself is
+  validated by feeding a pre-built tar fixture (no `wsl.exe` needed); assert
+  parsers produce the same rows as a native host scan **and that mtimes are
   preserved** (drives Gemini/Claude `last_activity` + sort order).
-- **`location` plumbing:** registry dedup keeps a host `key` and a WSL `key` with
-  the same UUID as **distinct** rows.
+- **`location` plumbing:** a row loaded from the WSL path carries
+  `location = Wsl{distro}`; host rows carry `Host`. (Dedup is host-wins by raw
+  `key` via the existing `merge_historical`; no new dedup test needed beyond the
+  existing `merge_historical_inserts_only_new_keys`.)
 - **Display:** `origin_prefix_for` emits the distro tag for `Wsl` rows and the
   title-cap budgeting still right-aligns the timestamp (extend existing
   `agents_view` render tests).
@@ -294,3 +320,5 @@ async reactor / UI thread).
 - WSL-aware resumability probe (in-distro) to restore the phantom guard.
 - Stopped-distro opt-in scan.
 - Multi-Linux-user enumeration.
+- Composite `(location, key)` registry keying (only if a real host/WSL key
+  collision is ever observed — see "Data model").
