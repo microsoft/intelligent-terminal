@@ -68,6 +68,10 @@ use std::time::SystemTime;
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource};
 
+/// Per-CLI discovery-phase acquisition cap: at most this many newest
+/// candidates survive `select_top_candidates` into the expensive content
+/// parse. It bounds phase-2 IO, so it is a pre-filter threshold — not a
+/// guaranteed post-filter row count. See `select_top_candidates`.
 const MAX_PER_CLI: usize = 50;
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
@@ -525,6 +529,15 @@ struct Candidate {
 /// keep at most `n`. This is the cheap pre-filter that lets the expensive
 /// content parse touch only the most-recent `n` shell-pane sessions per
 /// CLI instead of every file on disk.
+///
+/// `n` is a *discovery-phase acquisition cap*, not a guaranteed result
+/// count. The caller's phase-2 content filter — which drops phantom
+/// sessions that hold no real turn — runs *after* this truncation, so the
+/// final row count can be fewer than `n` when some of the newest `n`
+/// candidates turn out to be phantoms. That is intentional: keeping the
+/// truncation ahead of the content read bounds phase-2 at `n` content
+/// reads per CLI. We deliberately do not back-fill from older candidates
+/// to top the result back up to `n`.
 fn select_top_candidates(
     mut candidates: Vec<Candidate>,
     agent_pane_index: &HashSet<String>,
@@ -1823,10 +1836,13 @@ mod tests {
         assert_eq!(s.title, "Refactor parser");
         assert_eq!(s.cwd, PathBuf::from("C:\\Users\\me\\proj"));
         assert_eq!(s.status, AgentStatus::Historical);
-        // `load_copilot` itself never consults the agent-pane index — the
-        // join is layered on top by `load_all`. So scanner output should
-        // always default to Unknown regardless of any index that may exist
-        // in the host's real %LOCALAPPDATA%.
+        // `load_copilot` is the index-free test shim
+        // (`load_copilot_indexed(.., &empty_index)`): the loader never
+        // consults the agent-pane index itself. The real scan threads the
+        // index through `select_top_candidates`, which *skips* Class A
+        // candidates up front rather than stamping origin afterward. So
+        // scanner output here always defaults to Unknown regardless of any
+        // index that may exist in the host's real %LOCALAPPDATA%.
         assert_eq!(s.origin, crate::agent_sessions::SessionOrigin::Unknown);
         let _ = fs::remove_dir_all(&home);
     }

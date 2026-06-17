@@ -29,7 +29,7 @@ Three facts make most of that work wasteful:
    `CliSource::from_agent_id(current_agent_id)`), so 3 of the 4 CLIs scanned
    are never shown.
 2. The view renders from **master's snapshot** (a `session/list` reply
-   refetched every time the view opens), **not** from the helper's local
+   issued fresh every time the view opens), **not** from the helper's local
    registry. The helper's local scan result is shadowed.
 3. Switching the agent in Settings **restarts** master + all helpers, so a
    fresh process re-scans automatically — no runtime "agent switched" signal
@@ -105,7 +105,7 @@ Dispatch on the filter:
 
 The "scan everything" path is `load_for_cli(None)`, reached via master when
 the agent is custom / unrecognized. The dispatch decision lives in a small
-testable helper, `cli_scan_flags`. (The old unparameterized `load_all()` is
+testable helper, `cli_scan_flags`. (The old unconditional `load_all()` is
 removed — every caller now passes a filter.) The two-phase scan internals
 (per-CLI cap by mtime, Class A skip) are unchanged.
 
@@ -129,7 +129,7 @@ The helper no longer scans history. Remove:
   `merge_historical` call site. `merge_historical` is now used only by registry
   tests (seeding Historical rows to exercise the still-live alive-join logic),
   so it is gated `#[cfg(test)]`. The `HistoryLoadState` enum / field and the
-  unparameterized `load_all()` are removed; the loading-shimmer animation now
+  unconditional `load_all()` are removed; the loading-shimmer animation now
   keys off `App::agents_view_awaiting_snapshot()` (open agents view + empty
   placeholder snapshot + in-flight refetch) instead of the old scan state.
 
