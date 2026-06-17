@@ -2871,13 +2871,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>自動錯誤偵測</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>允許 Intelligent Terminal 存取您的 shell 並自動偵測錯誤。適用於 PowerShell 和 Windows PowerShell。</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>允許 智慧終端機 存取您的 shell 並自動偵測錯誤。適用於 PowerShell、bash 和 WSL bash。 </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>檢視所有支援的 shell</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>自動錯誤建議</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>允許 Intelligent Terminal 將錯誤傳送給您的代理程式以自動建議修正。</value>
+    <value>允許 智慧終端機 將錯誤傳送給您的代理程式以自動建議修正。</value>
   </data>
 </root>

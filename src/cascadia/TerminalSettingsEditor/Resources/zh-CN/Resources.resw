@@ -2931,13 +2931,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>自动错误检测</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>允许 Intelligent Terminal 访问你的 shell 并自动检测错误。适用于 PowerShell 和 Windows PowerShell。</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>允许智能终端访问你的 shell 并自动检测错误。适用于 PowerShell、bash 和 WSL bash。 </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>查看所有受支持的 shell</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>自动错误建议</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>允许 Intelligent Terminal 将错误发送给你的代理以自动建议修复。</value>
+    <value>允许智能终端将错误发送给你的代理以自动建议修复。</value>
   </data>
 </root>

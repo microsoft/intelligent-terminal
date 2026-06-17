@@ -2871,13 +2871,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>エラーの自動検出</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Intelligent Terminal にシェルへのアクセスを許可し、エラーを自動的に検出します。PowerShell および Windows PowerShell で利用できます。</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>インテリジェント ターミナルにシェルへのアクセスを許可し、エラーを自動的に検出します。PowerShell、bash、WSL bash で利用できます。 </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>サポートされているすべてのシェルを表示</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>エラーの自動提案</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Intelligent Terminal がエラーをエージェントに送信して、修正を自動的に提案することを許可します。</value>
+    <value>インテリジェント ターミナルがエラーをエージェントに送信して、修正を自動的に提案することを許可します。</value>
   </data>
 </root>
