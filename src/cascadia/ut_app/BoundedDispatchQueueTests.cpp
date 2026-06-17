@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <set>
 #include <string>
 #include <thread>
@@ -183,46 +184,62 @@ namespace TerminalAppUnitTests
     }
 
     // A consumer blocked in wait_pop on an empty queue is released by stop()
-    // and returns false. Timing-independent: even if stop() runs before the
-    // consumer reaches wait_pop, the stopped predicate is already satisfied.
+    // and returns false. The handshake proves the consumer reached the
+    // wait_pop call, and the pre-stop assertion catches an early-return bug.
     void BoundedDispatchQueueTests::WaitPopUnblocksOnStop()
     {
         BoundedDispatchQueue<std::string> q{ 10 };
         q.set_active(true);
 
-        std::atomic<bool> finished{ false };
+        std::promise<void> aboutToWait;
+        auto aboutToWaitFuture = aboutToWait.get_future();
+        std::promise<void> finished;
+        auto finishedFuture = finished.get_future();
         bool popResult = true;
         std::thread consumer([&]() {
             std::string out;
+            aboutToWait.set_value();
             popResult = q.wait_pop(out);
-            finished.store(true);
+            finished.set_value();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        aboutToWaitFuture.wait();
+        VERIFY_ARE_EQUAL(std::future_status::timeout, finishedFuture.wait_for(std::chrono::milliseconds{ 0 }), L"consumer must still be blocked before stop()");
+
         q.stop();
         consumer.join();
 
-        VERIFY_IS_TRUE(finished.load());
+        VERIFY_ARE_EQUAL(std::future_status::ready, finishedFuture.wait_for(std::chrono::milliseconds{ 0 }));
         VERIFY_IS_FALSE(popResult, L"a stopped queue must release a blocked consumer with false");
     }
 
     // A consumer blocked in wait_pop on an empty queue is released by a push
-    // and receives the item. Timing-independent for the same reason.
+    // and receives the item. The handshake proves the consumer reached the
+    // wait_pop call, and the pre-push assertion catches an early-return bug.
     void BoundedDispatchQueueTests::WaitPopUnblocksOnPush()
     {
         BoundedDispatchQueue<std::string> q{ 10 };
         q.set_active(true);
 
+        std::promise<void> aboutToWait;
+        auto aboutToWaitFuture = aboutToWait.get_future();
+        std::promise<void> finished;
+        auto finishedFuture = finished.get_future();
         std::string got;
         bool popResult = false;
         std::thread consumer([&]() {
+            aboutToWait.set_value();
             popResult = q.wait_pop(got);
+            finished.set_value();
         });
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        aboutToWaitFuture.wait();
+        VERIFY_ARE_EQUAL(std::future_status::timeout, finishedFuture.wait_for(std::chrono::milliseconds{ 0 }), L"consumer must still be blocked before push()");
+
         VERIFY_IS_TRUE(q.try_push("hello"));
         consumer.join();
 
+        VERIFY_ARE_EQUAL(std::future_status::ready, finishedFuture.wait_for(std::chrono::milliseconds{ 0 }));
         VERIFY_IS_TRUE(popResult);
         VERIFY_ARE_EQUAL(std::string{ "hello" }, got);
     }
