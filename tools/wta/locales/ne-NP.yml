@@ -206,6 +206,7 @@ system.choice_execution_failed: "छनोट %{choice} असफल भयो: 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "यो पेनका लागि मोडेल छान्नुहोस् (सिधै बदल्न /model <id>)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
 system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}

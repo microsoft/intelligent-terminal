@@ -273,3 +273,27 @@ fn slash_model_direct_switch_sets_override() {
         "a direct /model <id> switch must not leave the picker open"
     );
 }
+
+#[test]
+fn slash_workspace_list_when_no_snapshots_shows_system_message() {
+    let mut app = test_app();
+    // No pane_id set, no session registered — list falls through to the
+    // snapshot store (empty in test env) and emits a system message.
+    run_slash_args(&mut app, "workspace", "list");
+    let last = app.current_tab().messages.last().unwrap();
+    assert!(
+        matches!(last, ChatMessage::System(_)),
+        "/workspace list must emit a System message, got {last:?}"
+    );
+}
+
+#[test]
+fn slash_workspace_unknown_subcommand_shows_usage() {
+    let mut app = test_app();
+    run_slash_args(&mut app, "workspace", "foobar");
+    let last = app.current_tab().messages.last().unwrap();
+    assert!(
+        matches!(last, ChatMessage::System(_)),
+        "/workspace <unknown> must emit a usage System message, got {last:?}"
+    );
+}

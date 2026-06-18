@@ -1327,6 +1327,22 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    /// Terminal command output captured after an agent-approved `Send`
+    /// action executes. Emitted by the coordinator's recommendation executor
+    /// once the command has had time to run. Routes to
+    /// `handle_command_output_ready` which submits a follow-up turn so the
+    /// agent sees what happened and can continue problem-solving
+    /// (multi-turn command execution, issue #203).
+    CommandOutputReady {
+        /// ACP session id — routes the follow-up to the right tab.
+        session_id: String,
+        /// WT pane where the command ran.
+        pane_id: String,
+        /// Command text that was sent (for inclusion in the follow-up prompt).
+        command: String,
+        /// Captured pane output (possibly truncated).
+        output: String,
+    },
 }
 
 // --- Per-tab session storage ---
@@ -2572,6 +2588,86 @@ impl App {
                 let tab = self.current_tab_mut();
                 tab.messages.push(ChatMessage::System(
                     t!("system.model_unknown", model = arg.as_str()).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    /// `/workspace <sub> [name]` — save or list named workspace snapshots.
+    ///
+    /// Sub-commands:
+    ///   * `save [name]` — captures the current session's key, CLI source,
+    ///     and working directory into a named slot (defaults to `"default"`).
+    ///   * `list` (or bare `/workspace`) — shows all saved workspace names.
+    fn cmd_workspace(&mut self, args: String) {
+        let mut parts = args.trim().splitn(2, ' ');
+        let sub = parts.next().unwrap_or("").trim();
+        let name_arg = parts.next().unwrap_or("").trim();
+        let name = if name_arg.is_empty() { "default" } else { name_arg };
+
+        match sub {
+            "save" => {
+                // Look up the live agent session for this pane via pane_session_id.
+                let session_info = self
+                    .pane_id
+                    .as_deref()
+                    .and_then(|pid| self.agent_sessions.key_for_pane(pid))
+                    .and_then(|key| self.agent_sessions.get(&key))
+                    .map(|s| (s.key.clone(), s.cli_source.clone(), s.cwd.clone()));
+
+                let Some((session_key, cli_source, cwd)) = session_info else {
+                    let tab = self.current_tab_mut();
+                    tab.messages.push(ChatMessage::System(
+                        "No active agent session to save.".to_string(),
+                    ));
+                    tab.scroll_to_bottom();
+                    return;
+                };
+
+                match crate::workspace_snapshot::save(name, session_key, cli_source, cwd) {
+                    Ok(snap) => {
+                        let short_key = &snap.session_key[..snap.session_key.len().min(8)];
+                        let msg = format!(
+                            "Workspace '{}' saved (session: {}).",
+                            snap.name, short_key
+                        );
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(msg));
+                        tab.scroll_to_bottom();
+                    }
+                    Err(e) => {
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(e));
+                        tab.scroll_to_bottom();
+                    }
+                }
+            }
+            "list" | "" => {
+                match crate::workspace_snapshot::list() {
+                    Ok(names) if names.is_empty() => {
+                        let tab = self.current_tab_mut();
+                        tab.messages
+                            .push(ChatMessage::System("No saved workspaces.".to_string()));
+                        tab.scroll_to_bottom();
+                    }
+                    Ok(names) => {
+                        let msg = format!("Saved workspaces: {}", names.join(", "));
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(msg));
+                        tab.scroll_to_bottom();
+                    }
+                    Err(e) => {
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(e));
+                        tab.scroll_to_bottom();
+                    }
+                }
+            }
+            _ => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    "Usage: /workspace save [name] | /workspace list".to_string(),
                 ));
                 tab.scroll_to_bottom();
             }
@@ -4281,6 +4377,7 @@ impl App {
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
+            AppEvent::CommandOutputReady { .. } => "command_output_ready",
             AppEvent::RevealTick => "reveal_tick",
         }
     }
@@ -4993,6 +5090,14 @@ impl App {
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::CommandOutputReady {
+                session_id,
+                pane_id,
+                command,
+                output,
+            } => {
+                self.handle_command_output_ready(session_id, pane_id, command, output);
             }
             AppEvent::WtEvent {
                 method,
@@ -6980,6 +7085,7 @@ impl App {
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Workspace => self.cmd_workspace(cmd.rest),
         }
     }
 
@@ -8249,6 +8355,7 @@ impl App {
             .send(crate::coordinator::ChoiceExecution {
                 choice,
                 insert_only,
+                session_id: Some(session_id.to_string()),
             });
         if armed_pane.is_some() {
             self.emit_autofix_state_cleared(&target_tab);
@@ -8285,6 +8392,53 @@ impl App {
         // card had pinned. The C++ side falls back to source-of-agent.
         let target_tab = self.tab_for_session(session_id);
         self.recompute_chip_override(&target_tab);
+    }
+
+    /// Handle resolved command output for multi-turn agent execution
+    /// (issue #203). Called from the `CommandOutputReady` event when the
+    /// coordinator's recommendation executor has captured what a terminal
+    /// command produced after an agent-approved `Send` action. Assembles a
+    /// concise follow-up prompt with the command and output so the agent can
+    /// observe what happened and continue problem-solving.
+    ///
+    /// The turn is submitted to the same tab/session that originated the
+    /// `Send` action. If the session has no tab (e.g. it was torn down in
+    /// the ~3 s delay), the event is dropped silently.
+    fn handle_command_output_ready(
+        &mut self,
+        session_id: String,
+        _pane_id: String,
+        command: String,
+        output: String,
+    ) {
+        let target_tab_id = self.tab_for_session(&session_id);
+        tracing::debug!(
+            target: "multi_turn",
+            session_id = %session_id,
+            command_chars = command.len(),
+            output_chars = output.len(),
+            "command_output_ready: submitting follow-up turn"
+        );
+        let text = if command.is_empty() {
+            format!(
+                "The terminal command finished. Here is the output:\n```\n{output}\n```\n\
+                 Please review the result and continue."
+            )
+        } else {
+            format!(
+                "The command `{command}` finished. Here is the output:\n```\n{output}\n```\n\
+                 Please review the result and continue."
+            )
+        };
+        let prompt = PromptSubmission::new(text.clone(), None);
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            autofix: None,
+        };
+        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        let _ = self.prompt_tx.send(prompt);
     }
 
     /// User pressed Esc — cancel the in-flight turn. Bumps

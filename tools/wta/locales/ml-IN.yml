@@ -206,6 +206,7 @@ system.choice_execution_failed: "തിരഞ്ഞെടുപ്പ് %{choic
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
+commands.workspace.summary: "Save or restore agent session workspaces (/workspace save|list)"  # {Locked="/workspace","save|list"}
 model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}
