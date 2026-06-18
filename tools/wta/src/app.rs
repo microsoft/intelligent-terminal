@@ -1928,10 +1928,12 @@ pub struct App {
     /// (`AgentFailure::TransportLost` — master died/crashed/was killed). The
     /// helper has no in-process reconnect, so every slash command except
     /// `/restart` would only fail against the dead pipe. While this is set the
-    /// command popup greys out and refuses every command but `/restart` — the
-    /// one recovery that routes via `wtcli publish` → C++ `SharedWta::Restart`
-    /// (a path that doesn't touch the dead pipe). Cleared when a fresh
-    /// connection reaches `Connected` (e.g. the post-sign-in reconnect).
+    /// command popup is filtered down to just `/restart` (other commands are
+    /// hidden, not greyed), and typing/Entering any other command is refused
+    /// with the reconnect hint. `/restart` is the one recovery that routes via
+    /// `wtcli publish` → C++ `SharedWta::Restart` (a path that doesn't touch
+    /// the dead pipe). Cleared when a fresh connection reaches `Connected`
+    /// (e.g. the post-sign-in reconnect).
     pub transport_lost: bool,
     // Debug panel
     pub debug_messages: Vec<DebugMessage>,
@@ -6610,21 +6612,13 @@ impl App {
                 self.current_tab_mut().clear_input();
             }
             KeyCode::Up if self.command_popup_visible() => {
-                // When degraded, only /restart is selectable (the render
-                // highlights it directly), so arrow nav is inert.
-                if !self.transport_lost {
-                    self.current_tab_mut().command_popup_up();
-                }
+                self.current_tab_mut().command_popup_up();
             }
             KeyCode::Down if self.command_popup_visible() => {
-                if !self.transport_lost {
-                    self.current_tab_mut().command_popup_down();
-                }
+                self.current_tab_mut().command_popup_down();
             }
             KeyCode::Tab if self.command_popup_visible() => {
-                if !self.transport_lost {
-                    self.current_tab_mut().accept_command_popup_completion();
-                }
+                self.current_tab_mut().accept_command_popup_completion();
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 // Input editing only acts when the input is the live caret
@@ -6870,7 +6864,7 @@ impl App {
 
     /// Visible popup state for the renderer. Returns `None` when the
     /// popup should not be drawn this frame. Reads from the active tab.
-    pub fn command_popup_state(&self) -> Option<crate::ui::PopupState> {
+    pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
         let tab = self.current_tab();
         if tab.command_popup_candidates.is_empty() {
             return None;
@@ -6880,18 +6874,23 @@ impl App {
         // them). Collapse the candidate list to /restart if it's among the
         // prefix matches; otherwise show nothing (the typed prefix excludes
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
-        let candidates: Vec<&'static crate::commands::CommandSpec> = if self.transport_lost {
-            tab.command_popup_candidates
-                .iter()
-                .copied()
-                .filter(|s| s.kind == crate::commands::CommandKind::Restart)
-                .collect()
-        } else {
-            tab.command_popup_candidates.clone()
-        };
-        if candidates.is_empty() {
-            return None;
-        }
+        // Normal path borrows the tab's list (no per-frame allocation on the
+        // render hot path); only the degraded filter allocates.
+        let candidates: std::borrow::Cow<'_, [&'static crate::commands::CommandSpec]> =
+            if self.transport_lost {
+                let filtered: Vec<&'static crate::commands::CommandSpec> = tab
+                    .command_popup_candidates
+                    .iter()
+                    .copied()
+                    .filter(|s| s.kind == crate::commands::CommandKind::Restart)
+                    .collect();
+                if filtered.is_empty() {
+                    return None;
+                }
+                std::borrow::Cow::Owned(filtered)
+            } else {
+                std::borrow::Cow::Borrowed(tab.command_popup_candidates.as_slice())
+            };
         Some(crate::ui::PopupState {
             candidates,
             selected: tab.command_popup_selected,
@@ -6925,8 +6924,28 @@ impl App {
         Some(name)
     }
 
+    /// Whether the command popup is *effectively* visible — i.e. actually
+    /// rendered. This is the same condition `command_popup_state()` uses to
+    /// decide whether to draw, so key handlers gate on the real on-screen
+    /// state: in degraded mode the candidate list is filtered to `/restart`,
+    /// so when the typed prefix excludes it (e.g. `/new`) nothing is drawn and
+    /// this returns false — the Up/Down/Tab/Enter arms then fall through to
+    /// their normal behavior instead of swallowing the key against an
+    /// invisible popup.
     fn command_popup_visible(&self) -> bool {
-        self.current_tab().command_popup_visible()
+        if !self.current_tab().command_popup_visible() {
+            return false;
+        }
+        if self.transport_lost {
+            // Only /restart is offered; if the prefix excludes it the popup
+            // isn't drawn.
+            return self
+                .current_tab()
+                .command_popup_candidates
+                .iter()
+                .any(|s| s.kind == crate::commands::CommandKind::Restart);
+        }
+        true
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not

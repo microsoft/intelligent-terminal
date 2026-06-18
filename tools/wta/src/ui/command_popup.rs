@@ -5,6 +5,8 @@
 //! a filtered list of `CommandSpec`s. `/help` opens a centered overlay that
 //! lists every command with full descriptions.
 
+use std::borrow::Cow;
+
 use ratatui::prelude::*;
 use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
@@ -17,12 +19,13 @@ const POPUP_MAX_VISIBLE: usize = 6;
 
 /// Per-frame state captured from the [`App`] so callers don't need to know
 /// the popup internals.
-pub struct PopupState {
-    /// The commands to show. Owned (cheap — `&'static` refs) because the App
-    /// filters it per-frame: when the transport to wta-master is lost it
-    /// collapses to just `/restart` (the only runnable command), so the popup
-    /// simply *doesn't show the other commands* rather than greying them.
-    pub candidates: Vec<&'static CommandSpec>,
+pub struct PopupState<'a> {
+    /// The commands to show. Borrowed in the normal case (the candidates
+    /// already live on `TabSession`, so no per-frame allocation on the render
+    /// hot path); owned only when the App has to filter — in the degraded
+    /// (transport-lost) case it collapses to just `/restart` (the popup simply
+    /// *doesn't show the other commands* rather than greying them).
+    pub candidates: Cow<'a, [&'static CommandSpec]>,
     pub selected: usize,
     /// Effective model for the active pane (per-pane `/model` override, else
     /// the global one). Appended to the `/model` row so the user sees what
@@ -35,7 +38,7 @@ pub struct PopupState {
 /// enough room above, fall back to anchoring just below.
 ///
 /// No-op when `state.candidates` is empty.
-pub fn render_popup(frame: &mut Frame, state: PopupState, input_area: Rect) {
+pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) {
     if state.candidates.is_empty() {
         return;
     }

@@ -345,3 +345,64 @@ fn degraded_still_allows_restart() {
         "/restart must clear the process-level session id even while degraded"
     );
 }
+
+// ---- Degraded popup effective-visibility (key-swallow regression) ----
+
+/// Type `text` char-by-char through the real input path so the command popup
+/// candidates refresh exactly as they do live.
+fn type_input(app: &mut App, text: &str) {
+    for ch in text.chars() {
+        app.current_tab_mut().insert_input_char(ch);
+    }
+}
+
+#[test]
+fn degraded_popup_hidden_when_prefix_excludes_restart() {
+    // Regression: in degraded mode the popup is filtered to /restart only.
+    // When the typed prefix can't match /restart (e.g. "/ne"), nothing is
+    // drawn — and command_popup_visible() must report false so Up/Down/Tab
+    // fall through to their normal handling instead of being swallowed against
+    // an invisible popup.
+    let mut app = test_app();
+    app.transport_lost = true;
+    type_input(&mut app, "/ne"); // matches /new, NOT /restart
+
+    assert!(
+        app.command_popup_state().is_none(),
+        "degraded popup must not render when the prefix excludes /restart"
+    );
+    assert!(
+        !app.command_popup_visible(),
+        "command_popup_visible() must be false when the degraded popup isn't drawn, \
+         so arrow/Tab keys aren't swallowed"
+    );
+}
+
+#[test]
+fn degraded_popup_visible_when_prefix_matches_restart() {
+    let mut app = test_app();
+    app.transport_lost = true;
+    type_input(&mut app, "/r"); // matches /restart
+
+    assert!(
+        app.command_popup_state().is_some(),
+        "degraded popup must render when /restart is a prefix match"
+    );
+    assert!(
+        app.command_popup_visible(),
+        "command_popup_visible() must be true when /restart is shown"
+    );
+}
+
+#[test]
+fn connected_popup_visible_for_any_prefix() {
+    // Sanity: when connected the popup behaves normally — "/ne" shows /new.
+    let mut app = test_app();
+    assert!(!app.transport_lost);
+    type_input(&mut app, "/ne");
+
+    assert!(
+        app.command_popup_visible(),
+        "a healthy connection must keep the normal popup behavior"
+    );
+}
