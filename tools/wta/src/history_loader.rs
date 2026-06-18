@@ -8,7 +8,7 @@
 //   Copilot:  ~/.copilot/session-state/<UUID>/{workspace.yaml,events.jsonl}
 //             - session id   = directory name
 //             - cwd          = workspace.yaml `cwd:` field
-//             - title        = workspace.yaml `summary:` (fallback `name:`)
+//             - title        = workspace.yaml `name:` (legacy fallback `summary:`)
 //             - last_activity= events.jsonl mtime (fallback workspace.yaml mtime)
 //             - in-use marker= inuse.<PID>.lock files (skip those)
 //
@@ -159,7 +159,7 @@ pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
 /// Best-effort title lookup for a single live session. Reads the same
 /// per-CLI on-disk artefacts that `load_all` scans, but only for the
 /// specific `key`. Used to upgrade synthetic titles (cwd basename) into
-/// real ones (workspace.yaml summary / first user prompt) once the CLI
+/// real ones (workspace.yaml name / first user prompt) once the CLI
 /// has had a chance to write that data — typically a few seconds after
 /// the first hook event arrives. Returns `None` if no usable title is
 /// on disk (caller keeps whatever synthetic title it had).
@@ -191,8 +191,11 @@ fn copilot_title_for_key(home: &Path, key: &str) -> Option<String> {
     let dir = home.join(".copilot").join("session-state").join(key);
     let workspace = dir.join("workspace.yaml");
     let yaml = fs::read_to_string(&workspace).ok()?;
-    parse_simple_yaml(&yaml, "summary").filter(|s| !s.is_empty())
-        .or_else(|| parse_simple_yaml(&yaml, "name").filter(|s| !s.is_empty()))
+    // Copilot writes the session title to `name`. `summary` is a removed
+    // legacy field kept only as a fallback for very old sessions that may
+    // still carry it; current workspace.yaml files have only `name`.
+    parse_simple_yaml(&yaml, "name").filter(|s| !s.is_empty())
+        .or_else(|| parse_simple_yaml(&yaml, "summary").filter(|s| !s.is_empty()))
 }
 
 fn claude_title_for_key(home: &Path, key: &str) -> Option<String> {
@@ -634,9 +637,12 @@ fn load_copilot_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<
         let cwd = parse_simple_yaml(&yaml, "cwd")
             .map(PathBuf::from)
             .unwrap_or_default();
-        let title = parse_simple_yaml(&yaml, "summary")
+        // Copilot writes the session title to `name`; `summary` is a removed
+        // legacy field kept only as a fallback for very old sessions. Fall
+        // back to a short id when neither is present yet.
+        let title = parse_simple_yaml(&yaml, "name")
             .filter(|s| !s.is_empty())
-            .or_else(|| parse_simple_yaml(&yaml, "name").filter(|s| !s.is_empty()))
+            .or_else(|| parse_simple_yaml(&yaml, "summary").filter(|s| !s.is_empty()))
             .unwrap_or_else(|| short_id(&c.id, "copilot"));
 
         out.push(AgentSession {
