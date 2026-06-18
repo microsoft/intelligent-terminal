@@ -1797,6 +1797,16 @@ namespace winrt::TerminalApp::implementation
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
 
+        // If master is degraded (died unexpectedly, not yet recovered via
+        // /restart), AcquirePane opened this pane without respawning master.
+        // Tell the helper so it comes up directly in the disconnected view
+        // (only /restart available) instead of spinning on the dead pipe.
+        if (shared.IsDegraded())
+        {
+            helperCmd.append(L" --assume-master-down");
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: master degraded — helper starts disconnected (--assume-master-down)");
+        }
+
         // The helper-side cmdline mirrors the per-pane subset of the
         // legacy spawn's cmdline. The master already owns --agent /
         // --acp-model / --delegate-* / --no-autofix / --language as
@@ -2768,16 +2778,6 @@ namespace winrt::TerminalApp::implementation
         if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView))
         {
             _agentPaneLog("_OpenOrReuseAgentPane: _AutoCreateHiddenAgentPaneShared failed");
-            // If the master died unexpectedly, AcquirePane deliberately
-            // refuses to silently respawn (so we don't bring up a lone
-            // fresh master the orphaned helpers can't see). Tell the user
-            // to recover the whole stack with /restart instead of silently
-            // doing nothing.
-            if (winrt::TerminalApp::implementation::SharedWta::Instance().IsDegraded())
-            {
-                _agentPaneLog("_OpenOrReuseAgentPane: master degraded — prompting user to /restart");
-                _ShowControlNoticeDialog(RS_(L"AgentConnectionLostTitle"), RS_(L"AgentConnectionLostMessage"));
-            }
             return;
         }
         emitAgentPaneOpened();

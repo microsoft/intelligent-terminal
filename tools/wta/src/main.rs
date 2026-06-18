@@ -235,6 +235,17 @@ struct Cli {
     #[arg(long, hide = true)]
     start_stashed: bool,
 
+    /// Degraded-open mode: the helper is being spawned for a pane the user
+    /// opened *while wta-master is known to be down* (it died unexpectedly and
+    /// hasn't been recovered via /restart — see C++ `SharedWta::IsDegraded`).
+    /// Rather than the helper retrying the dead master pipe for ~75s and
+    /// showing a spinner, it comes up immediately in the disconnected state
+    /// (the same transport-lost view an orphaned pane shows), so the user can
+    /// /restart right there instead of hunting for another pane. Hidden — only
+    /// WT's degraded-open path should set it.
+    #[arg(long, hide = true)]
+    assume_master_down: bool,
+
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
     info: bool,
@@ -2339,7 +2350,36 @@ async fn run_acp_app(
             // to. If the user is mid-FRE the initial handshake fails with
             // `Authentication required` and `try_start_acp` re-spawns this task
             // post-login.
-            {
+            if cli.assume_master_down {
+                // Degraded open: master is known down, so don't even try the
+                // (dead) pipe — go straight to the disconnected view that an
+                // orphaned pane shows, where /restart is the one available
+                // command. /restart routes via wtcli→COM (not the dead pipe),
+                // so it recovers the whole stack from right here.
+                tracing::info!(
+                    target: "helper",
+                    "assume-master-down: starting in disconnected state (master is degraded)"
+                );
+                let _ = event_tx.send(app::AppEvent::AgentError {
+                    session_id: None,
+                    failure: protocol::acp::failure::AgentFailure::TransportLost,
+                    message: t!("connection.lost").into_owned(),
+                });
+                // The prompt/cancel/etc. receivers are intentionally dropped:
+                // there's no master to forward to. They get re-created when
+                // /restart respawns the stack and reopens this pane fresh.
+                drop((
+                    prompt_rx,
+                    cancel_rx,
+                    new_session_rx,
+                    load_session_rx,
+                    drop_session_rx,
+                    rename_session_rx,
+                    restart_rx,
+                    session_hook_rx,
+                    master_ext_rx,
+                ));
+            } else {
                 let pipe_name = connect_master_pipe.clone();
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);

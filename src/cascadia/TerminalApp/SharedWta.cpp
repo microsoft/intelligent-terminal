@@ -84,20 +84,16 @@ namespace winrt::TerminalApp::implementation
 
         std::lock_guard lock{ _mtx };
 
-        if (!_process.is_valid())
+        // Degraded latch: the master died unexpectedly and hasn't been
+        // recovered via /restart yet. Open the pane WITHOUT respawning master,
+        // so it comes up in the disconnected state (the caller passes
+        // `--assume-master-down` to the helper). The user then recovers the
+        // whole stack with /restart from that disconnected pane — no silent
+        // respawn, and no hunting for another pane. `_masterPipeName` is still
+        // the stable name from the spawn that just died, so the helper inherits
+        // it (and ignores it under the flag).
+        if (!_process.is_valid() && !_degraded)
         {
-            // Degraded latch: the master died unexpectedly while panes
-            // were live and hasn't been recovered via /restart yet.
-            // Refuse to silently respawn here — a lone fresh master would
-            // be invisible to the already-orphaned helpers (split-brain),
-            // and the user would see one tab magically reconnect while the
-            // rest stay dead. Keep the whole stack uniformly down until an
-            // explicit /restart (which clears this latch). The caller
-            // surfaces a "connection lost — run /restart" hint.
-            if (_degraded)
-            {
-                return false;
-            }
             if (!_SpawnLocked(wtaPath, extraArgs))
             {
                 return false;

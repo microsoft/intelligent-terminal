@@ -1237,12 +1237,4 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell の実行ポリシーがスクリプトをブロックしています。エラー検出はオフになりました。</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
-  <data name="AgentConnectionLostTitle" xml:space="preserve">
-    <value>エージェントが切断されました</value>
-    <comment>Title of the notice dialog shown when the shared agent background service has stopped and the agent panes can no longer reach it. Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
-  </data>
-  <data name="AgentConnectionLostMessage" xml:space="preserve">
-    <value>エージェントのバックグラウンド サービスが予期せず停止しました。既存のエージェント ペインで /restart を実行して、すべてのエージェントに再接続してください。</value>
-    <comment>Body of the notice dialog shown when the shared agent background service has stopped. Tells the user how to recover. {Locked="/restart"} Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
-  </data>
 </root>
