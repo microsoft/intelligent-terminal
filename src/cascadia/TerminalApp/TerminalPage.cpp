@@ -4523,10 +4523,32 @@ namespace winrt::TerminalApp::implementation
             // AcquirePane, which lazily spawns when _process is invalid.
         }
 
-        // Reopen the active tab's pane immediately so the user sees
-        // continuity. Tabs that had a pane but aren't active need to be
-        // toggled open again by the user — same UX as _RebuildAgentStack.
-        _OpenOrReuseAgentPane(false, L"RestartAgent");
+        // Reconnect EVERY tab that had an agent pane, not just the active one
+        // — a /restart recovers the whole stack, so a user who restarts from
+        // one pane shouldn't have to re-toggle every other tab's pane by hand.
+        // The active tab is reopened visible (continuity); the rest are
+        // re-warmed stashed, so their helpers reconnect to the fresh master in
+        // the background and the panes restore as soon as the user switches to
+        // them. Recovery sessions aren't resumed (master is brand new with an
+        // empty registry), so chat history starts fresh — same as before.
+        const auto activeTab = _GetFocusedTabImpl();
+        for (const auto& tabImpl : tabsThatHadAgentPane)
+        {
+            const bool isActive = activeTab && activeTab == tabImpl;
+            if (isActive)
+            {
+                // Active tab: reopen visible via the normal path.
+                _OpenOrReuseAgentPane(false, L"RestartAgent");
+            }
+            else
+            {
+                // Background tab: re-warm a stashed helper so it reconnects
+                // now and the pane restores when the user switches over.
+                _AutoCreateHiddenAgentPaneShared(tabImpl,
+                                                 /*intoSessionsView*/ false,
+                                                 /*autoStash*/ true);
+            }
+        }
     }
 
     // Inbound event from WTA: {method:"restart_agent_pane",

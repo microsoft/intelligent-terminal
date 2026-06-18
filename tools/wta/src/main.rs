@@ -2365,9 +2365,37 @@ async fn run_acp_app(
                     failure: protocol::acp::failure::AgentFailure::TransportLost,
                     message: t!("connection.lost").into_owned(),
                 });
-                // The prompt/cancel/etc. receivers are intentionally dropped:
-                // there's no master to forward to. They get re-created when
-                // /restart respawns the stack and reopens this pane fresh.
+                // Keep the /restart path alive even with no master: /restart
+                // doesn't talk to master, it asks the C++ side (via wtcli->COM)
+                // to force-restart the whole agent stack — which respawns
+                // master and reconnects EVERY pane. So we must keep consuming
+                // `restart_rx` and forward it as a `restart_agent_stack` event.
+                // The other receivers (prompt/new_session/…) genuinely have no
+                // master to reach, so they're dropped; they're re-created when
+                // /restart reopens this pane fresh.
+                {
+                    let mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
+                        protocol::acp::client::RestartRequest,
+                    > = restart_rx;
+                    tokio::task::spawn_local(async move {
+                        while let Some(req) = restart_rx.recv().await {
+                            tracing::info!(
+                                target: "helper",
+                                new_agent = ?req.agent_cmd,
+                                "restart requested while disconnected — asking WT to force-restart the agent stack"
+                            );
+                            let evt = serde_json::json!({
+                                "type": "event",
+                                "method": "restart_agent_stack",
+                                "params": {},
+                            });
+                            crate::app::send_wt_protocol_event(evt.to_string());
+                        }
+                    });
+                }
+                // The remaining receivers have no master to forward to. They
+                // get re-created when /restart respawns the stack and reopens
+                // this pane fresh.
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -2375,7 +2403,6 @@ async fn run_acp_app(
                     load_session_rx,
                     drop_session_rx,
                     rename_session_rx,
-                    restart_rx,
                     session_hook_rx,
                     master_ext_rx,
                 ));
