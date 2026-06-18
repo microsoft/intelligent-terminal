@@ -72,6 +72,7 @@ commands.help.summary: "Prikaži ovaj popis naredbi"
 commands.clear.summary: "Očisti povijest razgovora (zadržava sesiju)"
 commands.new.summary: "Pokreni novu sesiju ACP (odbacuje povijest)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Ponovno pokreni agenta"
 commands.stop.summary: "Otkaži upit u tijeku"
 commands.sessions.summary: "Otvori birač prethodnih sesija (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

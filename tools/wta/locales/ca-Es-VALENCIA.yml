@@ -196,6 +196,7 @@ commands.help.summary: "Mostra aquesta llista d'ordres"
 commands.clear.summary: "Esborra l'historial de desplaçament del xat (manté la sessió)"
 commands.new.summary: "Inicia una sessió ACP nova (descarta l'historial)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnostica el terminal actiu i suggereix una correcció (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Reinicia l'agent"
 commands.stop.summary: "Cancel·la la sol·licitud en curs"
 commands.sessions.summary: "Obre el selector de sessions històriques (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

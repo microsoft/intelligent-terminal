@@ -72,6 +72,7 @@ commands.help.summary: "Zobraziť tento zoznam príkazov"
 commands.clear.summary: "Vymazať históriu chatu (relácia zostane zachovaná)"
 commands.new.summary: "Spustiť novú reláciu ACP (zahodí históriu)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnostikovať aktívny terminál a navrhnúť opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Reštartovať agenta"
 commands.stop.summary: "Zrušiť prebiehajúcu výzvu"
 commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

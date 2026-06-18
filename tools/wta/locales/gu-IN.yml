@@ -75,6 +75,7 @@ commands.help.summary: "આ કમાન્ડ સૂચિ બતાવો"
 commands.clear.summary: "ચેટ સ્ક્રોલબેક સાફ કરો (સત્ર જાળવે છે)"
 commands.new.summary: "નવું ACP સત્ર શરૂ કરો (ઇતિહાસ કાઢી નાખે છે)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "એજન્ટ ફરી શરૂ કરો"
 commands.stop.summary: "ચાલુ પ્રોમ્પ્ટ રદ કરો"
 commands.sessions.summary: "ઐતિહાસિક સત્રોનું પિકર ખોલો (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

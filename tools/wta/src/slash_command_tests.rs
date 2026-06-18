@@ -273,3 +273,23 @@ fn slash_model_direct_switch_sets_override() {
         "a direct /model <id> switch must not leave the picker open"
     );
 }
+
+#[test]
+fn slash_explain_when_idle_submits_explain_turn() {
+    let mut app = test_app();
+    assert!(app.current_tab().turn.is_idle());
+    run_slash(&mut app, "explain");
+    assert!(app.current_tab().turn.is_in_flight());
+}
+
+#[test]
+fn slash_explain_while_busy_does_not_resubmit() {
+    let mut app = test_app();
+    run_slash(&mut app, "explain");
+    assert!(app.current_tab().turn.is_in_flight());
+    let msgs_before = app.current_tab().messages.len();
+    run_slash(&mut app, "explain");
+    // Should add a "busy" system message, not submit another turn
+    assert!(app.current_tab().messages.len() > msgs_before);
+    assert!(app.current_tab().turn.is_in_flight());
+}

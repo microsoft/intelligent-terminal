@@ -75,6 +75,7 @@ commands.help.summary: "यह कमांड सूची दिखाएँ"
 commands.clear.summary: "चैट स्क्रॉलबैक साफ़ करें (सत्र बनाए रखता है)"
 commands.new.summary: "नया ACP सत्र शुरू करें (इतिहास हटाता है)"  # {Locked="ACP"}
 commands.fix.summary: "सक्रिय टर्मिनल का निदान करें और सुधार सुझाएँ (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "एजेंट पुनः आरंभ करें"
 commands.stop.summary: "चल रहे प्रॉम्प्ट को रद्द करें"
 commands.sessions.summary: "ऐतिहासिक सत्र पिकर खोलें (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

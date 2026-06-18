@@ -195,6 +195,7 @@ commands.help.summary: "Afișați această listă de comenzi"
 commands.clear.summary: "Goliți istoricul derulant al chatului (păstrează sesiunea)"
 commands.new.summary: "Porniți o sesiune ACP nouă (elimină istoricul)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnosticați terminalul activ și sugerați o remediere (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Reporniți agentul"
 commands.stop.summary: "Anulați promptul în curs"
 commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

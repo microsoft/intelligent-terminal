@@ -75,6 +75,7 @@ commands.help.summary: "یہ کمانڈ فہرست دکھائیں"
 commands.clear.summary: "چیٹ اسکرول بیک صاف کریں (سیشن برقرار رکھتا ہے)"
 commands.new.summary: "نیا ACP سیشن شروع کریں (ہسٹری حذف کرتا ہے)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "ایجنٹ کو دوبارہ شروع کریں"
 commands.stop.summary: "جاری پرامپٹ منسوخ کریں"
 commands.sessions.summary: "تاریخی سیشنز کا انتخاب کار کھولیں (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

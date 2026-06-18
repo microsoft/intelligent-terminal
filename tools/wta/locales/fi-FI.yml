@@ -196,6 +196,7 @@ commands.help.summary: "Näytä tämä komentoluettelo"
 commands.clear.summary: "Tyhjennä keskustelun vierityshistoria (säilyttää istunnon)"
 commands.new.summary: "Aloita uusi ACP-istunto (poistaa historian)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnosoi aktiivinen pääte ja ehdota korjausta (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Käynnistä agentti uudelleen"
 commands.stop.summary: "Peruuta käynnissä oleva kehote"
 commands.sessions.summary: "Avaa aiempien istuntojen valitsin (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

@@ -75,6 +75,7 @@ commands.help.summary: "إظهار قائمة الأوامر هذه"
 commands.clear.summary: "مسح سجل تمرير الدردشة (مع الاحتفاظ بالجلسة)"
 commands.new.summary: "بدء جلسة ACP جديدة (حذف السجل)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "إعادة تشغيل عامل الذكاء الاصطناعي"
 commands.stop.summary: "إلغاء الأمر قيد التنفيذ"
 commands.sessions.summary: "فتح منتقي الجلسات التاريخية (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

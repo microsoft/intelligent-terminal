@@ -196,6 +196,7 @@ commands.help.summary: "Hiển thị danh sách lệnh này"
 commands.clear.summary: "Xóa phần cuộn lại của cuộc trò chuyện (giữ phiên)"
 commands.new.summary: "Bắt đầu phiên ACP mới (bỏ lịch sử)"  # {Locked="ACP"}
 commands.fix.summary: "Chẩn đoán terminal đang hoạt động và đề xuất cách khắc phục (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Khởi động lại tác nhân"
 commands.stop.summary: "Hủy prompt đang chạy"
 commands.sessions.summary: "Mở bộ chọn phiên lịch sử (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

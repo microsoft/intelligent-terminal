@@ -75,6 +75,7 @@ commands.help.summary: "Bu əmr siyahısını göstər"
 commands.clear.summary: "Söhbət sürüşmə tarixçəsini təmizlə (sessiyanı saxlayır)"
 commands.new.summary: "Təzə ACP sessiyası başlat (tarixçəni silir)"  # {Locked="ACP"}
 commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.explain.summary: "Explain the current terminal output (/explain <hint>)"  # {Locked="/explain","<hint>"}
 commands.restart.summary: "Agenti yenidən başlat"
 commands.stop.summary: "İcra olunan sorğunu ləğv et"
 commands.sessions.summary: "Tarixi sessiyalar seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

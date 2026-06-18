@@ -45,6 +45,11 @@ pub enum CommandKind {
     /// the life of the pane but is reset by a global `acpModel` settings
     /// change — see `App::apply_global_acp_model`.
     Model,
+    /// Explain the current terminal output or a recent error.
+    ///
+    /// Submits the pane context to the agent with an "explain this" prompt.
+    /// Any text after `/explain` is passed as extra context for the explanation.
+    Explain,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +127,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+        takes_args: true,
+    },
+    CommandSpec {
+        name: "explain",
+        summary_key: "commands.explain.summary",
+        kind: CommandKind::Explain,
         takes_args: true,
     },
 ];
