@@ -86,6 +86,14 @@ const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 /// case (treated as phantom — conservative but safe).
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
+/// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
+/// / non-JSONL transcript that is one giant line with no newline can't pull
+/// an unbounded amount into memory during the *cheap* phase. A real header
+/// line is a single small JSON object; a read that hits this cap without a
+/// newline yields truncated text that fails the downstream JSON parse, so
+/// the candidate is skipped (treated as unparseable).
+const HEADER_LINE_BYTES_CAP: u64 = 64 * 1024;
+
 /// Decide which per-CLI loaders to run for a given filter.
 ///
 /// The session management view only ever shows the current agent's CLI, so
@@ -554,15 +562,18 @@ fn select_top_candidates(
 /// discovery phase to pull a session id / header out of Gemini and Codex
 /// transcripts without reading the whole (potentially multi-MB) file.
 fn read_first_line(path: &Path) -> Option<String> {
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Read};
     let file = fs::File::open(path).ok()?;
-    let mut reader = BufReader::new(file);
+    // Bound the read so a corrupt / non-JSONL file that is one giant line
+    // with no newline can't slurp unbounded bytes during the cheap
+    // discovery phase. See `HEADER_LINE_BYTES_CAP`.
+    let mut reader = BufReader::new(file.take(HEADER_LINE_BYTES_CAP));
     let mut line = String::new();
     loop {
         line.clear();
         let n = reader.read_line(&mut line).ok()?;
         if n == 0 {
-            return None; // EOF with no non-empty line
+            return None; // EOF (or cap reached) with no non-empty line
         }
         if !line.trim().is_empty() {
             return Some(line);
@@ -2577,6 +2588,25 @@ mod tests {
         let empty = home.join("empty.jsonl");
         write_file(&empty, "");
         assert!(read_first_line(&empty).is_none());
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_first_line_caps_oversize_unterminated_line() {
+        // A corrupt / non-JSONL file that is one giant line with no newline
+        // must not be slurped whole: the read is bounded at
+        // HEADER_LINE_BYTES_CAP, so we get back at most the cap (the
+        // truncated text then fails the downstream JSON header parse).
+        let home = tmp_root("first-line-cap");
+        let p = home.join("giant.jsonl");
+        let giant = "x".repeat(HEADER_LINE_BYTES_CAP as usize + 4096);
+        write_file(&p, &giant);
+        let got = read_first_line(&p).expect("returns the bounded prefix");
+        assert!(
+            got.len() <= HEADER_LINE_BYTES_CAP as usize,
+            "read_first_line must cap the read, got {} bytes",
+            got.len()
+        );
         let _ = fs::remove_dir_all(&home);
     }
 
