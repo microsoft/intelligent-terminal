@@ -12488,6 +12488,95 @@ mod tests {
         assert_eq!(n, 1, "identical connection.lost must not duplicate");
     }
 
+    /// The degraded latch (`App::transport_lost`) drives the slash-command
+    /// greying. It must arm on a transport loss and stay armed (the helper has
+    /// no in-process reconnect), so the popup keeps refusing everything but
+    /// /restart until recovery.
+    #[test]
+    fn transport_lost_latch_arms_on_transport_loss() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        assert!(!app.transport_lost, "fresh app is not degraded");
+
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
+            message: t!("connection.lost").into_owned(),
+        });
+
+        assert!(
+            app.transport_lost,
+            "a transport loss must arm the degraded latch"
+        );
+    }
+
+    /// A non-transport failure (a one-off protocol error) must NOT arm the
+    /// latch — the session is still alive, so commands stay enabled.
+    #[test]
+    fn protocol_error_does_not_arm_degraded_latch() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+                code: -32603,
+                message: "bad params".to_string(),
+            },
+            message: "protocol error".to_string(),
+        });
+
+        assert!(
+            !app.transport_lost,
+            "a non-transport protocol error must not degrade the pane"
+        );
+    }
+
+    /// An auth failure routes to sign-in, not the dead-transport path, so it
+    /// must not arm the degraded latch (otherwise the post-sign-in pane would
+    /// wrongly grey out its commands).
+    #[test]
+    fn auth_failure_does_not_arm_degraded_latch() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+                message: "authentication required".to_string(),
+            },
+            message: "authentication required".to_string(),
+        });
+
+        assert!(
+            !app.transport_lost,
+            "an auth failure must not arm the degraded latch"
+        );
+    }
+
+    /// A fresh connection (e.g. the post-sign-in reconnect that goes back
+    /// through master) must clear the latch so commands re-enable.
+    #[test]
+    fn agent_connected_clears_degraded_latch() {
+        let mut app = test_app();
+        app.transport_lost = true;
+
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Copilot".to_string(),
+            model: None,
+            version: None,
+            session_id: "sid-fresh".to_string(),
+            available_models: Vec::new(),
+            current_model_id: None,
+            load_session_supported: true,
+        });
+
+        assert!(
+            !app.transport_lost,
+            "reaching Connected must clear the degraded latch"
+        );
+    }
+
     /// Auth failures must reach the sign-in screen, not get flattened to a dead
     /// `connection.lost`. Classification is typed (`AgentFailure::AuthRequired`),
     /// done once at the helper boundary, so the handler routes purely on the

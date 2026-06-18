@@ -79,18 +79,38 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     // selectable — highlight it wherever it sits in the filtered list, and if
     // it isn't listed at all (e.g. the user typed "/new") highlight nothing so
     // there's no runnable target.
-    let selected = if state.transport_lost {
-        state
-            .candidates
+    let mut list_state = ListState::default();
+    list_state.select(popup_highlight(
+        state.candidates,
+        state.selected,
+        state.transport_lost,
+    ));
+
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+/// Which row the command popup highlights.
+///
+/// Normally the user's cursor index (clamped into range). When the transport
+/// to master is lost, only `/restart` is selectable, so highlight it wherever
+/// it sits in the filtered list — or `None` if it isn't listed (e.g. the user
+/// typed `/new`), so the popup offers no runnable target. `None` for an empty
+/// list. Pure so it can be unit-tested without a render frame.
+pub(crate) fn popup_highlight(
+    candidates: &[&'static CommandSpec],
+    selected: usize,
+    transport_lost: bool,
+) -> Option<usize> {
+    if candidates.is_empty() {
+        return None;
+    }
+    if transport_lost {
+        candidates
             .iter()
             .position(|s| s.kind == CommandKind::Restart)
     } else {
-        Some(state.selected.min(state.candidates.len() - 1))
-    };
-    let mut list_state = ListState::default();
-    list_state.select(selected);
-
-    frame.render_stateful_widget(list, area, &mut list_state);
+        Some(selected.min(candidates.len() - 1))
+    }
 }
 
 /// Render the `/help` overlay — a centered modal listing every command.
@@ -133,4 +153,48 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
     let paragraph =
         Paragraph::new(lines).block(popup::block(t!("commands.help_title").into_owned()));
     frame.render_widget(paragraph, modal);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::popup_highlight;
+    use crate::commands;
+
+    fn spec(name: &str) -> &'static commands::CommandSpec {
+        commands::lookup(name).expect("registered command")
+    }
+
+    #[test]
+    fn highlight_follows_cursor_when_connected() {
+        let cands = vec![spec("help"), spec("new"), spec("restart")];
+        assert_eq!(popup_highlight(&cands, 1, false), Some(1));
+    }
+
+    #[test]
+    fn highlight_clamps_out_of_range_cursor() {
+        let cands = vec![spec("help"), spec("new")];
+        assert_eq!(popup_highlight(&cands, 9, false), Some(1));
+    }
+
+    #[test]
+    fn degraded_highlights_restart_wherever_it_sits() {
+        // restart is last here; degraded must jump the highlight onto it
+        // regardless of the stored cursor index.
+        let cands = vec![spec("help"), spec("new"), spec("restart")];
+        assert_eq!(popup_highlight(&cands, 0, true), Some(2));
+    }
+
+    #[test]
+    fn degraded_highlights_nothing_when_restart_absent() {
+        // e.g. the user typed "/new" — restart isn't in the filtered list, so
+        // there must be no runnable target highlighted.
+        let cands = vec![spec("new")];
+        assert_eq!(popup_highlight(&cands, 0, true), None);
+    }
+
+    #[test]
+    fn empty_candidates_highlight_nothing() {
+        assert_eq!(popup_highlight(&[], 0, false), None);
+        assert_eq!(popup_highlight(&[], 0, true), None);
+    }
 }
