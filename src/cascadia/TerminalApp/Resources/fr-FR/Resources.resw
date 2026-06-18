@@ -1229,4 +1229,12 @@
     <value>⚠ La stratégie d'exécution de PowerShell bloque les scripts. Détection des erreurs désactivée.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="AgentConnectionLostTitle" xml:space="preserve">
+    <value>Agent IA déconnecté</value>
+    <comment>Title of the notice dialog shown when the shared agent background service has stopped and the agent panes can no longer reach it. Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentConnectionLostMessage" xml:space="preserve">
+    <value>Le service d’agent en arrière-plan s’est arrêté de manière inattendue. Exécutez /restart dans un volet d’agent existant pour reconnecter tous les agents.</value>
+    <comment>Body of the notice dialog shown when the shared agent background service has stopped. Tells the user how to recover. {Locked="/restart"} Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
 </root>

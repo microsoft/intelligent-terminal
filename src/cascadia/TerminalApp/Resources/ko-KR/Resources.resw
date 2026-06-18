@@ -1268,4 +1268,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell 실행 정책이 스크립트를 차단하고 있습니다. 오류 감지가 꺼졌습니다.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="AgentConnectionLostTitle" xml:space="preserve">
+    <value>에이전트 연결 끊김</value>
+    <comment>Title of the notice dialog shown when the shared agent background service has stopped and the agent panes can no longer reach it. Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentConnectionLostMessage" xml:space="preserve">
+    <value>에이전트 백그라운드 서비스가 예기치 않게 중지되었습니다. 기존 에이전트 창에서 /restart 명령을 실행하여 모든 에이전트를 다시 연결하세요.</value>
+    <comment>Body of the notice dialog shown when the shared agent background service has stopped. Tells the user how to recover. {Locked="/restart"} Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
 </root>

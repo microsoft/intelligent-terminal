@@ -2768,6 +2768,16 @@ namespace winrt::TerminalApp::implementation
         if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView))
         {
             _agentPaneLog("_OpenOrReuseAgentPane: _AutoCreateHiddenAgentPaneShared failed");
+            // If the master died unexpectedly, AcquirePane deliberately
+            // refuses to silently respawn (so we don't bring up a lone
+            // fresh master the orphaned helpers can't see). Tell the user
+            // to recover the whole stack with /restart instead of silently
+            // doing nothing.
+            if (winrt::TerminalApp::implementation::SharedWta::Instance().IsDegraded())
+            {
+                _agentPaneLog("_OpenOrReuseAgentPane: master degraded — prompting user to /restart");
+                _ShowControlNoticeDialog(RS_(L"AgentConnectionLostTitle"), RS_(L"AgentConnectionLostMessage"));
+            }
             return;
         }
         emitAgentPaneOpened();

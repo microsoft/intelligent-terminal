@@ -1270,4 +1270,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell 执行策略正在阻止脚本。错误检测已关闭。</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="AgentConnectionLostTitle" xml:space="preserve">
+    <value>智能体已断开连接</value>
+    <comment>Title of the notice dialog shown when the shared agent background service has stopped and the agent panes can no longer reach it. Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentConnectionLostMessage" xml:space="preserve">
+    <value>智能体后台服务意外停止。请在现有智能体窗格中运行 /restart，以重新连接所有智能体。</value>
+    <comment>Body of the notice dialog shown when the shared agent background service has stopped. Tells the user how to recover. {Locked="/restart"} Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
 </root>

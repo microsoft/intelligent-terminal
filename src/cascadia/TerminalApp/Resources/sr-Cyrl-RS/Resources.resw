@@ -1282,4 +1282,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell политика извршавања блокира скрипте. Откривање грешака је искључено.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="AgentConnectionLostTitle" xml:space="preserve">
+    <value>ВИ агент је прекинуо везу</value>
+    <comment>Title of the notice dialog shown when the shared agent background service has stopped and the agent panes can no longer reach it. Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
+  <data name="AgentConnectionLostMessage" xml:space="preserve">
+    <value>Позадинска услуга ВИ агента се неочекивано зауставила. Покрените /restart у постојећем панелу ВИ агента да бисте поново повезали све агенте.</value>
+    <comment>Body of the notice dialog shown when the shared agent background service has stopped. Tells the user how to recover. {Locked="/restart"} Here "agent" refers to an AI agent (e.g. Copilot, Claude), not a proxy or human agent.</comment>
+  </data>
 </root>
