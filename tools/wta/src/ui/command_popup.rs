@@ -52,17 +52,21 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .map(|spec| {
             // Degraded transport: every command but /restart is unrunnable
             // (they'd hit the dead pipe), so grey them out to signal disabled.
-            let disabled = state.transport_lost && spec.kind != CommandKind::Restart;
-            let name_style = if disabled { theme::DIM } else { theme::INPUT_TEXT };
+            let disabled = is_row_disabled(spec.kind, state.transport_lost);
+            // A disabled row is greyed in full (name + summary) so it clearly
+            // reads as unavailable; an enabled row keeps the default name colour
+            // with a muted summary.
+            let name_style = if disabled { theme::COMMAND_DISABLED } else { theme::INPUT_TEXT };
+            let summary_style = if disabled { theme::COMMAND_DISABLED } else { theme::DIM };
             let mut spans = vec![
                 Span::styled(format!(" /{:<8} ", spec.name), name_style),
-                Span::styled(spec.summary(), theme::DIM),
+                Span::styled(spec.summary(), summary_style),
             ];
             // The `/model` row shows the pane's current model so the user can
             // see what they're on before opening the picker.
             if spec.name == "model" {
                 if let Some(model) = state.current_model.as_deref() {
-                    spans.push(Span::styled("  → ", theme::DIM));
+                    spans.push(Span::styled("  → ", summary_style));
                     spans.push(Span::styled(model, name_style));
                 }
             }
@@ -113,6 +117,13 @@ pub(crate) fn popup_highlight(
     }
 }
 
+/// Whether a popup row is disabled (greyed + non-selectable). While the
+/// transport to master is lost, every command but `/restart` is unrunnable, so
+/// it's disabled. Pure so the styling rule is unit-testable.
+pub(crate) fn is_row_disabled(kind: CommandKind, transport_lost: bool) -> bool {
+    transport_lost && kind != CommandKind::Restart
+}
+
 /// Render the `/help` overlay — a centered modal listing every command.
 /// No-op when `app.help_overlay_visible` is false.
 pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
@@ -157,8 +168,9 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::popup_highlight;
-    use crate::commands;
+    use super::{is_row_disabled, popup_highlight};
+    use crate::commands::{self, CommandKind};
+    use crate::theme;
 
     fn spec(name: &str) -> &'static commands::CommandSpec {
         commands::lookup(name).expect("registered command")
@@ -196,5 +208,31 @@ mod tests {
     fn empty_candidates_highlight_nothing() {
         assert_eq!(popup_highlight(&[], 0, false), None);
         assert_eq!(popup_highlight(&[], 0, true), None);
+    }
+
+    #[test]
+    fn no_row_is_disabled_while_connected() {
+        // Nothing is greyed when the transport is healthy.
+        assert!(!is_row_disabled(CommandKind::New, false));
+        assert!(!is_row_disabled(CommandKind::Restart, false));
+    }
+
+    #[test]
+    fn degraded_disables_everything_but_restart() {
+        assert!(is_row_disabled(CommandKind::New, true));
+        assert!(is_row_disabled(CommandKind::Help, true));
+        assert!(is_row_disabled(CommandKind::Model, true));
+        // /restart stays enabled — it's the recovery command.
+        assert!(!is_row_disabled(CommandKind::Restart, true));
+    }
+
+    #[test]
+    fn disabled_style_is_visually_distinct() {
+        // Regression guard for the bug where disabled rows reused `DIM`
+        // (DarkGray), which renders near-black on the light theme and so
+        // didn't read as greyed. The disabled colour must differ from both the
+        // enabled name colour and the muted-summary colour.
+        assert_ne!(theme::COMMAND_DISABLED, theme::INPUT_TEXT);
+        assert_ne!(theme::COMMAND_DISABLED, theme::DIM);
     }
 }
