@@ -10,7 +10,7 @@ use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use super::popup;
 use crate::app::App;
-use crate::commands::{CommandSpec, REGISTRY};
+use crate::commands::{CommandKind, CommandSpec, REGISTRY};
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 6;
@@ -25,6 +25,11 @@ pub struct PopupState<'a> {
     /// they're currently on while typing the command. `None` when no model
     /// is known yet.
     pub current_model: Option<String>,
+    /// True when the helper's transport to wta-master is lost. The popup then
+    /// greys out every command except `/restart` and only lets `/restart` be
+    /// selected/run — it's the sole command that can recover the dead
+    /// connection. Mirrors `App::transport_lost`.
+    pub transport_lost: bool,
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -45,8 +50,12 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .candidates
         .iter()
         .map(|spec| {
+            // Degraded transport: every command but /restart is unrunnable
+            // (they'd hit the dead pipe), so grey them out to signal disabled.
+            let disabled = state.transport_lost && spec.kind != CommandKind::Restart;
+            let name_style = if disabled { theme::DIM } else { theme::INPUT_TEXT };
             let mut spans = vec![
-                Span::styled(format!(" /{:<8} ", spec.name), theme::INPUT_TEXT),
+                Span::styled(format!(" /{:<8} ", spec.name), name_style),
                 Span::styled(spec.summary(), theme::DIM),
             ];
             // The `/model` row shows the pane's current model so the user can
@@ -54,7 +63,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
             if spec.name == "model" {
                 if let Some(model) = state.current_model.as_deref() {
                     spans.push(Span::styled("  → ", theme::DIM));
-                    spans.push(Span::styled(model, theme::INPUT_TEXT));
+                    spans.push(Span::styled(model, name_style));
                 }
             }
             ListItem::new(Line::from(spans))
@@ -66,8 +75,20 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .highlight_style(theme::SELECTED)
         .highlight_symbol("> ");
 
+    // Selection: normally the user's cursor. When degraded, only /restart is
+    // selectable — highlight it wherever it sits in the filtered list, and if
+    // it isn't listed at all (e.g. the user typed "/new") highlight nothing so
+    // there's no runnable target.
+    let selected = if state.transport_lost {
+        state
+            .candidates
+            .iter()
+            .position(|s| s.kind == CommandKind::Restart)
+    } else {
+        Some(state.selected.min(state.candidates.len() - 1))
+    };
     let mut list_state = ListState::default();
-    list_state.select(Some(state.selected.min(state.candidates.len() - 1)));
+    list_state.select(selected);
 
     frame.render_stateful_widget(list, area, &mut list_state);
 }

@@ -1924,6 +1924,15 @@ pub struct App {
     // state (the command-completion candidates as the user types `/he…`)
     // lives on `TabSession`.
     pub help_overlay_visible: bool,
+    /// True once the helper's ACP transport to wta-master is lost
+    /// (`AgentFailure::TransportLost` — master died/crashed/was killed). The
+    /// helper has no in-process reconnect, so every slash command except
+    /// `/restart` would only fail against the dead pipe. While this is set the
+    /// command popup greys out and refuses every command but `/restart` — the
+    /// one recovery that routes via `wtcli publish` → C++ `SharedWta::Restart`
+    /// (a path that doesn't touch the dead pipe). Cleared when a fresh
+    /// connection reaches `Connected` (e.g. the post-sign-in reconnect).
+    pub transport_lost: bool,
     // Debug panel
     pub debug_messages: Vec<DebugMessage>,
     pub show_debug_panel: bool,
@@ -2186,6 +2195,7 @@ impl App {
             master_request_tx,
             debug_capture_enabled,
             help_overlay_visible: false,
+            transport_lost: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
             debug_scroll: 0,
@@ -4381,6 +4391,9 @@ impl App {
                 self.current_model_id = current_model_id.clone();
                 self.agent_supports_load_session = load_session_supported;
                 self.state = ConnectionState::Connected;
+                // A live connection cancels the degraded latch (e.g. the
+                // post-sign-in reconnect that goes back through master).
+                self.transport_lost = false;
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
                 if self.mode == AppMode::Setup {
@@ -4544,6 +4557,17 @@ impl App {
                 // show nothing and leave the state untouched.
                 if failure.is_cancelled() {
                     return;
+                }
+
+                // The transport to master is gone — latch the degraded state
+                // so the slash-command popup greys out everything but
+                // /restart (the only command that can recover without the
+                // dead pipe). Cleared on the next Connected.
+                if matches!(
+                    failure,
+                    crate::protocol::acp::failure::AgentFailure::TransportLost
+                ) {
+                    self.transport_lost = true;
                 }
 
                 let is_auth_error = failure.is_auth();
@@ -6586,13 +6610,21 @@ impl App {
                 self.current_tab_mut().clear_input();
             }
             KeyCode::Up if self.command_popup_visible() => {
-                self.current_tab_mut().command_popup_up();
+                // When degraded, only /restart is selectable (the render
+                // highlights it directly), so arrow nav is inert.
+                if !self.transport_lost {
+                    self.current_tab_mut().command_popup_up();
+                }
             }
             KeyCode::Down if self.command_popup_visible() => {
-                self.current_tab_mut().command_popup_down();
+                if !self.transport_lost {
+                    self.current_tab_mut().command_popup_down();
+                }
             }
             KeyCode::Tab if self.command_popup_visible() => {
-                self.current_tab_mut().accept_command_popup_completion();
+                if !self.transport_lost {
+                    self.current_tab_mut().accept_command_popup_completion();
+                }
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 // Input editing only acts when the input is the live caret
@@ -6847,6 +6879,7 @@ impl App {
                 candidates: &tab.command_popup_candidates,
                 selected: tab.command_popup_selected,
                 current_model: self.current_model_display(),
+                transport_lost: self.transport_lost,
             })
         }
     }
@@ -6922,14 +6955,35 @@ impl App {
         //    `/he` → /help) and never submits the raw text as a prompt, so
         //    this arm is always consumed even if there is no selection.
         if self.command_popup_visible() {
-            if let Some(spec) = self.current_tab().selected_command_spec() {
-                let parsed = ParsedCommand {
-                    kind: spec.kind,
-                    spec,
-                    rest: String::new(),
-                };
-                self.current_tab_mut().clear_input();
-                self.handle_slash_command(parsed);
+            // When the transport to master is lost, only /restart is runnable
+            // (everything else would hit the dead pipe). Pick the /restart
+            // spec if it's in the filtered candidate list; otherwise there's
+            // nothing to run, so consume Enter and show the reconnect hint.
+            let spec = if self.transport_lost {
+                self.current_tab()
+                    .command_popup_candidates
+                    .iter()
+                    .copied()
+                    .find(|s| s.kind == CommandKind::Restart)
+            } else {
+                self.current_tab().selected_command_spec()
+            };
+            match spec {
+                Some(spec) => {
+                    let parsed = ParsedCommand {
+                        kind: spec.kind,
+                        spec,
+                        rest: String::new(),
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                }
+                None => {
+                    self.current_tab_mut().clear_input();
+                    if self.transport_lost {
+                        self.push_degraded_command_hint();
+                    }
+                }
             }
             return true;
         }
@@ -6940,6 +6994,13 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
+                // Degraded: a typed command other than /restart can't run
+                // against the dead pipe — swallow it with the reconnect hint.
+                if self.transport_lost && cmd.kind != CommandKind::Restart {
+                    self.current_tab_mut().clear_input();
+                    self.push_degraded_command_hint();
+                    return true;
+                }
                 self.current_tab_mut().clear_input();
                 self.handle_slash_command(cmd);
                 true
@@ -6957,6 +7018,15 @@ impl App {
         }
     }
 
+    /// Append the localized "connection to the agent was lost — /restart to
+    /// reconnect" line to the active tab. Shown when the user invokes any
+    /// slash command other than /restart while the transport to master is
+    /// down (reuses the existing `connection.lost` string).
+    fn push_degraded_command_hint(&mut self) {
+        let msg = t!("connection.lost").into_owned();
+        self.current_tab_mut().messages.push(ChatMessage::System(msg));
+    }
+
     /// Dispatch a parsed slash-command. The Enter handler is responsible
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
@@ -6967,6 +7037,16 @@ impl App {
             in_flight,
             "dispatch"
         );
+
+        // Transport to master is lost — only /restart can recover (it routes
+        // via wtcli→COM, not the dead pipe). Refuse everything else with the
+        // reconnect hint so a command can never silently fail against a dead
+        // connection. This is the defensive backstop; the Enter handler and
+        // greyed popup already steer the user here.
+        if self.transport_lost && cmd.kind != CommandKind::Restart {
+            self.push_degraded_command_hint();
+            return;
+        }
 
         // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
         // single command can be read and unit-tested in isolation. `in_flight`

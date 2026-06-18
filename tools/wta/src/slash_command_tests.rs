@@ -273,3 +273,75 @@ fn slash_model_direct_switch_sets_override() {
         "a direct /model <id> switch must not leave the picker open"
     );
 }
+
+// ---- Degraded (transport-lost) gating: only /restart runs ----
+
+#[test]
+fn degraded_blocks_non_restart_command() {
+    let mut app = test_app();
+    app.transport_lost = true;
+    app.current_tab_mut().session_id = Some("sid-1".into());
+
+    run_slash(&mut app, "new");
+
+    // /new must NOT have reset the session — it was refused before dispatch
+    // because every command but /restart would hit the dead master pipe.
+    assert_eq!(
+        app.current_tab().session_id,
+        Some("sid-1".into()),
+        "while the transport is lost, /new must be refused, not run"
+    );
+    // ...and the user is steered to /restart (the locked token is present in
+    // every locale, so this holds regardless of the active language).
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::System(msg)) => assert!(
+            msg.contains("/restart"),
+            "the degraded hint must point the user at /restart, got: {msg}"
+        ),
+        other => panic!("expected a System hint, got {other:?}"),
+    }
+}
+
+#[test]
+fn degraded_blocks_model_command_too() {
+    let mut app = test_app();
+    app.transport_lost = true;
+    app.available_models = vec![AcpModelInfo {
+        id: "fast".into(),
+        name: "Fast".into(),
+        description: None,
+    }];
+
+    run_slash(&mut app, "model");
+
+    assert!(
+        !app.current_tab().model_picker_open,
+        "/model must be refused while the transport is lost"
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
+}
+
+#[test]
+fn degraded_still_allows_restart() {
+    let mut app = test_app();
+    app.transport_lost = true;
+    app.state = ConnectionState::Connected;
+    app.session_id = "live-sid".to_string();
+    app.current_tab_mut().session_id = Some("tab-sid".into());
+
+    run_slash(&mut app, "restart");
+
+    // /restart is the one command exempt from the degraded guard — it ran and
+    // moved the connection into Connecting while the stack respawns.
+    assert!(
+        matches!(app.state, ConnectionState::Connecting(_)),
+        "/restart must run even while degraded — it recovers the dead transport"
+    );
+    assert!(
+        app.session_id.is_empty(),
+        "/restart must clear the process-level session id even while degraded"
+    );
+}
