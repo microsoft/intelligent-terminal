@@ -1414,8 +1414,9 @@ async fn build_prompt_text(
                                         "near_matches_resolved"
                                     );
                                     runtime_sections.push(format!(
-                                        "### Near Matches\n`{}` was not found on PATH. \
-                                         Closest commands that DO exist on this machine: {}",
+                                        "### Near Matches\n`{}` was not found as a command \
+                                         in this shell. Closest commands that DO exist on \
+                                         this machine: {}",
                                         token,
                                         matches.join(", ")
                                     ));

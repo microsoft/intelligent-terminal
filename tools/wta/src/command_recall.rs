@@ -78,8 +78,15 @@ pub fn extract_command_token(content: &str) -> Option<String> {
 /// the input unchanged when it has no such extension.
 pub fn strip_exe_ext(name: &str) -> &str {
     for ext in EXE_EXTS {
-        if name.len() > ext.len() && name[name.len() - ext.len()..].eq_ignore_ascii_case(ext) {
-            return &name[..name.len() - ext.len()];
+        if name.len() <= ext.len() {
+            continue;
+        }
+        let split = name.len() - ext.len();
+        // `get` guards the slice boundary: a non-ASCII command name
+        // (functions/aliases can be Unicode) could put `split` mid-char,
+        // and direct byte slicing would panic and crash prompt assembly.
+        if name.get(split..).is_some_and(|tail| tail.eq_ignore_ascii_case(ext)) {
+            return &name[..split];
         }
     }
     name
@@ -88,8 +95,11 @@ pub fn strip_exe_ext(name: &str) -> &str {
 /// True when `token` matches a known command `name` (case-insensitive, after
 /// extension stripping). Used as the existence gate: a hit means the failure
 /// wasn't a not-found, so no near-matches should be injected.
+///
+/// The token is extension-stripped too, so an explicitly-typed extension
+/// (`deploy-it.ps1`) still matches the stripped candidate (`deploy-it`).
 pub fn command_exists(token: &str, names: &[String]) -> bool {
-    let t = token.to_ascii_lowercase();
+    let t = strip_exe_ext(token).to_ascii_lowercase();
     names.iter().any(|n| strip_exe_ext(n).eq_ignore_ascii_case(&t))
 }
 
@@ -98,7 +108,9 @@ pub fn command_exists(token: &str, names: &[String]) -> bool {
 /// nearest first, ties broken alphabetically. Anything beyond an adaptive
 /// distance threshold is dropped so a wild typo doesn't surface noise.
 pub fn rank_near_matches(token: &str, names: &[String], max: usize) -> Vec<String> {
-    let t = token.to_ascii_lowercase();
+    // Strip the token's own extension so a typed `deploit.ps1` ranks against
+    // the stripped candidates on equal footing.
+    let t = strip_exe_ext(token).to_ascii_lowercase();
     // Tolerate more edits for longer tokens, but cap at 3 so a long random
     // string doesn't pull in unrelated commands.
     let threshold = (t.chars().count() / 3 + 1).min(3);
@@ -171,10 +183,10 @@ pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec
     }
 }
 
-/// Enumerate the shell's command names (applications, external scripts,
-/// functions, aliases) in one `-NoProfile` subprocess. Cmdlets are
-/// intentionally excluded — they roughly double the enumerate time and the
-/// issue is about PATH scripts/programs.
+/// Enumerate the shell's command names (cmdlets, applications, external
+/// scripts, functions, aliases) in one `-NoProfile` subprocess. Cmdlets are
+/// included so the existence gate doesn't misclassify a failing cmdlet
+/// invocation (e.g. `Get-Item` with a missing path) as a not-found command.
 async fn enumerate_powershell_commands(shell_exe: &str) -> Option<Vec<String>> {
     let exe = if shell_exe.trim().is_empty() {
         "powershell.exe"
@@ -187,7 +199,7 @@ async fn enumerate_powershell_commands(shell_exe: &str) -> Option<Vec<String>> {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "Get-Command -CommandType Application,ExternalScript,Function,Alias | \
+        "Get-Command -CommandType Cmdlet,Application,ExternalScript,Function,Alias | \
          Select-Object -ExpandProperty Name",
     ])
     .stdin(std::process::Stdio::null())
@@ -268,6 +280,37 @@ mod tests {
         assert_eq!(strip_exe_ext("git"), "git"); // no extension
         assert_eq!(strip_exe_ext("a.exe"), "a");
         assert_eq!(strip_exe_ext(".exe"), ".exe"); // not longer than the ext
+    }
+
+    #[test]
+    fn strip_exe_ext_does_not_panic_on_non_ascii_boundary() {
+        // A multi-byte char can place `len - ext.len()` mid-character; the
+        // boundary-checked slice must return the name unchanged, not panic.
+        assert_eq!(strip_exe_ext("€€"), "€€");
+        assert_eq!(strip_exe_ext("café"), "café");
+        // A real extension after a non-ASCII prefix still strips cleanly.
+        assert_eq!(strip_exe_ext("café.exe"), "café");
+    }
+
+    #[test]
+    fn command_exists_when_token_carries_explicit_extension() {
+        // User typed the extension explicitly; the gate must still match the
+        // stripped candidate so it isn't misreported as not-found.
+        let cmds = names(&["deploy-it.ps1", "git.exe"]);
+        assert!(command_exists("deploy-it.ps1", &cmds));
+        assert!(command_exists("GIT.EXE", &cmds));
+    }
+
+    #[test]
+    fn rank_strips_token_extension_before_ranking() {
+        // `deploit.ps1` should rank against `deploy-it` as if the extension
+        // weren't typed — distance is measured on the base names.
+        let cmds = names(&["deploy-it.ps1", "deploy.exe", "git.exe"]);
+        let got = rank_near_matches("deploit.ps1", &cmds, 5);
+        assert!(
+            got.contains(&"deploy-it".to_string()),
+            "expected deploy-it among near-matches, got {got:?}"
+        );
     }
 
     #[test]
