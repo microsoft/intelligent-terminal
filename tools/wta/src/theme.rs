@@ -18,12 +18,6 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
-// Greyed-out / disabled popup row (e.g. slash commands that can't run while
-// the transport to master is lost). A fixed mid-grey RGB rather than the
-// palette `DarkGray` (which renders near-black on the light/cream theme, so it
-// wouldn't read as "disabled") — mid-grey contrasts against both the dark
-// default text on a light background and light text on a dark background.
-pub const COMMAND_DISABLED: Style = Style::new().fg(Color::Rgb(140, 140, 140));
 pub const SELECTED: Style = Style::new()
     .fg(Color::Black)
     .bg(Color::Yellow)

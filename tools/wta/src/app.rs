@@ -6870,18 +6870,33 @@ impl App {
 
     /// Visible popup state for the renderer. Returns `None` when the
     /// popup should not be drawn this frame. Reads from the active tab.
-    pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
+    pub fn command_popup_state(&self) -> Option<crate::ui::PopupState> {
         let tab = self.current_tab();
         if tab.command_popup_candidates.is_empty() {
-            None
-        } else {
-            Some(crate::ui::PopupState {
-                candidates: &tab.command_popup_candidates,
-                selected: tab.command_popup_selected,
-                current_model: self.current_model_display(),
-                transport_lost: self.transport_lost,
-            })
+            return None;
         }
+        // When the transport to master is lost, only /restart can run — so the
+        // popup simply doesn't show the other commands (rather than greying
+        // them). Collapse the candidate list to /restart if it's among the
+        // prefix matches; otherwise show nothing (the typed prefix excludes
+        // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
+        let candidates: Vec<&'static crate::commands::CommandSpec> = if self.transport_lost {
+            tab.command_popup_candidates
+                .iter()
+                .copied()
+                .filter(|s| s.kind == crate::commands::CommandKind::Restart)
+                .collect()
+        } else {
+            tab.command_popup_candidates.clone()
+        };
+        if candidates.is_empty() {
+            return None;
+        }
+        Some(crate::ui::PopupState {
+            candidates,
+            selected: tab.command_popup_selected,
+            current_model: self.current_model_display(),
+        })
     }
 
     /// Display label for the active pane's effective model — its per-pane
