@@ -692,7 +692,7 @@ fn build_delegate_launch_commandline(
     // not the PATH-resolved exe (which may be a quoted path containing spaces
     // that a naive whitespace split would mangle into `"C:\Program`).
     // `resolve_agent_id_from_cmd` tokenizes correctly and also recognizes
-    // adapter launches (e.g. `npx -y @zed-industries/claude-code-acp` -> claude).
+    // adapter launches (e.g. `npx -y @agentclientprotocol/claude-agent-acp` -> claude).
     // Using the same raw command line that `delegate_with_context` inspects to
     // decide whether to pin a session id keeps that decision and the flag we
     // append here in agreement -- otherwise we could register a born-bound id
@@ -1274,7 +1274,7 @@ mod tests {
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
         // Regression for the agent-identification bug behind PR review: an
-        // adapter-style launch ("npx -y @zed-industries/claude-code-acp" ->
+        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp" ->
         // claude) must still be recognized as a pinnable agent. The old
         // `split_whitespace().next()` + lookup_profile saw "npx" ->
         // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
@@ -1283,7 +1283,7 @@ mod tests {
             id: "claude".to_string(),
             name: "Claude".to_string(),
             description: "Launches claude as a delegate agent.".to_string(),
-            commandline: "npx -y @zed-industries/claude-code-acp".to_string(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp".to_string(),
             prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
             model: None,
         };

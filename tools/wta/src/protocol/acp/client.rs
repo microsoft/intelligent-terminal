@@ -22,6 +22,15 @@ use crate::shell::{ShellManager, TerminalConfig};
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
 
+// Form A mock-ACP-agent harness + scenario tests (in-process, deterministic).
+// Lives as a sibling file so it stays out of this large module, but is a child
+// of `client` so it can reach the private `WtaClient` / `ClientState`.
+// `pub(crate)` so app-module tests can borrow `connect_mock_agent` and assert
+// on App state.
+#[cfg(test)]
+#[path = "mock_agent_tests.rs"]
+pub(crate) mod mock_agent_tests;
+
 /// Which prompt template was last shipped on a given ACP session.
 /// Used by [`TemplateMemo`] to decide whether the next turn needs to
 /// re-include the (~10k char) template body or can ride on the
@@ -2219,21 +2228,8 @@ async fn handle_load_failure(
                 Some(pane_session_id.as_str())
             };
             crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
-            let (available_models, current_model_id) = match &resp.models {
-                Some(state) => {
-                    let models: Vec<crate::app::AcpModelInfo> = state
-                        .available_models
-                        .iter()
-                        .map(|m| crate::app::AcpModelInfo {
-                            id: m.model_id.0.to_string(),
-                            name: m.name.clone(),
-                            description: m.description.clone(),
-                        })
-                        .collect();
-                    (models, Some(state.current_model_id.0.to_string()))
-                }
-                None => (Vec::new(), None),
-            };
+            let (available_models, current_model_id) =
+                crate::protocol::acp::model_select::models_from_new_session(&resp);
             let _ = event_tx.send(AppEvent::SessionAttached {
                 tab_id,
                 session_id: new_sid.to_string(),
@@ -2587,21 +2583,8 @@ pub async fn run_acp_client_over_pipe(
                 crate::agent_pane_origin::append_default(session_id.0.as_ref(), pane_for_index);
             }
 
-            let (available_models, current_model_id) = match &session.models {
-                Some(state) => {
-                    let models: Vec<crate::app::AcpModelInfo> = state
-                        .available_models
-                        .iter()
-                        .map(|m| crate::app::AcpModelInfo {
-                            id: m.model_id.0.to_string(),
-                            name: m.name.clone(),
-                            description: m.description.clone(),
-                        })
-                        .collect();
-                    (models, Some(state.current_model_id.0.to_string()))
-                }
-                None => (Vec::new(), None),
-            };
+            let (available_models, current_model_id) =
+                crate::protocol::acp::model_select::models_from_new_session(&session);
             (session_id, available_models, current_model_id, true)
         };
 
@@ -2619,14 +2602,15 @@ pub async fn run_acp_client_over_pipe(
                 "Setting ACP session model to {} (over pipe)",
                 requested_model
             ));
-            conn.set_session_model(acp::SetSessionModelRequest::new(
+            crate::protocol::acp::model_select::apply_session_model(
+                &conn,
                 session_id.clone(),
                 requested_model.clone(),
-            ))
+            )
             .await
             .map_err(|e| {
                 anyhow::anyhow!(
-                    "set_session_model failed for requested model {}: {}",
+                    "failed to set requested model {}: {}",
                     requested_model,
                     e
                 )
@@ -2859,21 +2843,8 @@ pub async fn run_acp_client_over_pipe(
                         );
                         crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
                     }
-                    let (per_tab_models, per_tab_current) = match &new_session.models {
-                        Some(state) => {
-                            let models: Vec<crate::app::AcpModelInfo> = state
-                                .available_models
-                                .iter()
-                                .map(|m| crate::app::AcpModelInfo {
-                                    id: m.model_id.0.to_string(),
-                                    name: m.name.clone(),
-                                    description: m.description.clone(),
-                                })
-                                .collect();
-                            (models, Some(state.current_model_id.0.to_string()))
-                        }
-                        None => (Vec::new(), None),
-                    };
+                    let (per_tab_models, per_tab_current) =
+                        crate::protocol::acp::model_select::models_from_new_session(&new_session);
 
                     {
                         let mut g = tab_to_session_for_new.lock().await;
@@ -3407,7 +3378,7 @@ async fn run_inner(
             anyhow::anyhow!(
                 "ACP initialize timed out after {} s — '{}' did not respond. \
                  First-run npx adapters download ~5MB; check network. \
-                 Built-in ACP agents: copilot, claude (via @zed-industries/claude-code-acp), \
+                 Built-in ACP agents: copilot, claude (via @agentclientprotocol/claude-agent-acp), \
                  codex (via @zed-industries/codex-acp), gemini.",
                 init_timeout_secs,
                 agent_label
@@ -3457,31 +3428,13 @@ async fn run_inner(
     // Capture the agent's advertised model list. Settings UI rebuilds its
     // ComboBox from the `agent_status` event payload, where this gets
     // forwarded by App::publish_agent_status.
-    let (available_models, current_model_id) = match &session.models {
-        Some(state) => {
-            startup_probe.log(&format!(
-                "Session models: agent advertised {} model(s), current={}",
-                state.available_models.len(),
-                state.current_model_id.0,
-            ));
-            let models: Vec<crate::app::AcpModelInfo> = state
-                .available_models
-                .iter()
-                .map(|m| crate::app::AcpModelInfo {
-                    id: m.model_id.0.to_string(),
-                    name: m.name.clone(),
-                    description: m.description.clone(),
-                })
-                .collect();
-            (models, Some(state.current_model_id.0.to_string()))
-        }
-        None => {
-            startup_probe.log(
-                "Session models: agent did not advertise any models (NewSessionResponse.models is None)",
-            );
-            (Vec::new(), None)
-        }
-    };
+    let (available_models, current_model_id) =
+        crate::protocol::acp::model_select::models_from_new_session(&session);
+    startup_probe.log(&format!(
+        "Session models: {} model(s) advertised, current={}",
+        available_models.len(),
+        current_model_id.as_deref().unwrap_or("<none>"),
+    ));
 
     // Resolve the model to apply: explicit `--acp-model` flag wins (used by
     // adapters like claude/codex via npx that can't carry --model on the
@@ -3496,14 +3449,15 @@ async fn run_inner(
             requested_model
         )));
         startup_probe.log(&format!("Setting ACP session model to {}", requested_model));
-        conn.set_session_model(acp::SetSessionModelRequest::new(
+        crate::protocol::acp::model_select::apply_session_model(
+            &conn,
             session_id.clone(),
             requested_model.clone(),
-        ))
+        )
         .await
         .map_err(|e| {
             anyhow::anyhow!(
-                "set_session_model failed for requested model {}: {}",
+                "failed to set requested model {}: {}",
                 requested_model,
                 e
             )
@@ -3702,21 +3656,8 @@ async fn run_inner(
                         );
                         crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
                     }
-                    let (per_tab_models, per_tab_current) = match &new_session.models {
-                        Some(state) => {
-                            let models: Vec<crate::app::AcpModelInfo> = state
-                                .available_models
-                                .iter()
-                                .map(|m| crate::app::AcpModelInfo {
-                                    id: m.model_id.0.to_string(),
-                                    name: m.name.clone(),
-                                    description: m.description.clone(),
-                                })
-                                .collect();
-                            (models, Some(state.current_model_id.0.to_string()))
-                        }
-                        None => (Vec::new(), None),
-                    };
+                    let (per_tab_models, per_tab_current) =
+                        crate::protocol::acp::model_select::models_from_new_session(&new_session);
 
                     {
                         let mut g = tab_to_session_for_new.lock().await;
@@ -4100,12 +4041,12 @@ fn dispatch_master_ext_request(
                     }
                 }
                 for sid in sessions {
-                    match conn
-                        .set_session_model(acp::SetSessionModelRequest::new(
-                            sid.clone(),
-                            model.clone(),
-                        ))
-                        .await
+                    match crate::protocol::acp::model_select::apply_session_model(
+                        &conn,
+                        sid.clone(),
+                        model.clone(),
+                    )
+                    .await
                     {
                         Ok(_) => tracing::info!(
                             target: "acp",
@@ -4118,7 +4059,7 @@ fn dispatch_master_ext_request(
                             session_id = %sid.0,
                             model = %model,
                             error = ?err,
-                            "set_session_model hot-update failed"
+                            "model hot-update failed"
                         ),
                     }
                 }
@@ -4672,6 +4613,157 @@ mod tests {
             Err(err) => panic!("expected AgentError, got channel error: {err}"),
         }
         assert!(event_rx.try_recv().is_err());
+    }
+
+    // ── Pure string/timing helpers ──────────────────────────────────────────
+
+    #[test]
+    fn prompt_preview_escapes_newlines_and_normalizes_crlf() {
+        assert_eq!(super::prompt_preview("a\r\nb\rc\nd"), "a\\nb\\nc\\nd");
+    }
+
+    #[test]
+    fn prompt_preview_truncates_past_80_chars_with_ellipsis() {
+        let long: String = std::iter::repeat('x').take(100).collect();
+        let out = super::prompt_preview(&long);
+        assert_eq!(out.chars().count(), 83, "80 chars + \"...\"");
+        assert!(out.ends_with("..."));
+        // Exactly 80 chars must NOT get an ellipsis.
+        let exact: String = std::iter::repeat('y').take(80).collect();
+        let out80 = super::prompt_preview(&exact);
+        assert_eq!(out80, exact);
+        assert!(!out80.ends_with("..."));
+    }
+
+    #[test]
+    fn prompt_preview_is_char_safe_with_multibyte() {
+        let long: String = std::iter::repeat('é').take(100).collect();
+        let out = super::prompt_preview(&long);
+        // Must not panic and must cut on a char boundary at 80 + "...".
+        assert_eq!(out.chars().count(), 83);
+    }
+
+    #[test]
+    fn format_elapsed_formats_positive_delta_and_handles_invalid() {
+        assert_eq!(super::format_elapsed(Some(1.0), Some(2.5)), "1.500s");
+        assert_eq!(super::format_elapsed(Some(2.0), Some(2.0)), "0.000s");
+        // end < start, or any missing endpoint → "n/a".
+        assert_eq!(super::format_elapsed(Some(2.0), Some(1.0)), "n/a");
+        assert_eq!(super::format_elapsed(None, Some(1.0)), "n/a");
+        assert_eq!(super::format_elapsed(Some(1.0), None), "n/a");
+        assert_eq!(super::format_elapsed(None, None), "n/a");
+    }
+
+    #[test]
+    fn first_visible_text_gap_prefers_first_event_then_transport() {
+        // first_event present → measured from it, labeled "first_event".
+        let (gap, label) = super::first_visible_text_gap(Some(1.0), Some(0.5), Some(1.4));
+        assert_eq!(label, "first_event");
+        assert_eq!(gap, "0.400s");
+        // No first_event but transport read present → from transport.
+        let (gap, label) = super::first_visible_text_gap(None, Some(0.5), Some(1.5));
+        assert_eq!(label, "first_transport_read");
+        assert_eq!(gap, "1.000s");
+        // Neither present → n/a.
+        let (gap, label) = super::first_visible_text_gap(None, None, Some(1.5));
+        assert_eq!(label, "n/a");
+        assert_eq!(gap, "n/a");
+    }
+
+    #[test]
+    fn final_timing_note_composes_both_phases() {
+        let note = super::final_timing_note(1.0, Some(1.2), Some(1.5), 2.0);
+        assert_eq!(
+            note,
+            "submit->context_ready 0.200s | prompt_sent->options_shown 0.500s"
+        );
+    }
+
+    // ── humanize ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn humanize_model_name_special_cases_and_joins() {
+        assert_eq!(super::humanize_model_name("gpt-4o"), "GPT 4o");
+        assert_eq!(super::humanize_model_name("claude-opus-4.5"), "Claude Opus 4.5");
+        // Unknown tokens are title-cased generically. The humanizer is
+        // brand-agnostic, so it does NOT preserve OpenAI's lowercase "o1"
+        // styling — this documents the generic behavior / known limitation
+        // rather than endorsing "O1" as the canonical brand name.
+        assert_eq!(super::humanize_model_name("o1-mini"), "O1 Mini");
+    }
+
+    #[test]
+    fn humanize_model_name_tolerates_empty_and_delimiter_only() {
+        // Empty / delimiter-only input falls back to the raw string rather
+        // than producing an empty label.
+        assert_eq!(super::humanize_model_name(""), "");
+        assert_eq!(super::humanize_model_name("---"), "---");
+        // Doubled / leading / trailing delimiters collapse, no blank tokens.
+        assert_eq!(super::humanize_model_name("-gpt--4o-"), "GPT 4o");
+    }
+
+    #[test]
+    fn humanize_identifier_keeps_pure_numeric_tokens_verbatim() {
+        assert_eq!(super::humanize_identifier("4.5"), "4.5");
+        assert_eq!(super::humanize_identifier("20241022"), "20241022");
+        assert_eq!(super::humanize_identifier("gpt"), "GPT");
+        assert_eq!(super::humanize_identifier("sonnet"), "Sonnet");
+    }
+
+    // ── truncate / snippet / session_short ──────────────────────────────────
+
+    #[test]
+    fn truncate_for_prompt_appends_marker_only_when_over_budget() {
+        assert_eq!(super::truncate_for_prompt("hello", 10), "hello");
+        assert_eq!(super::truncate_for_prompt("hello", 5), "hello");
+        assert_eq!(super::truncate_for_prompt("hello", 3), "hel\n...<truncated>");
+    }
+
+    #[test]
+    fn truncate_for_prompt_is_char_safe() {
+        let s: String = std::iter::repeat('é').take(10).collect();
+        // 5-char budget must cut on a char boundary, no panic.
+        let out = super::truncate_for_prompt(&s, 5);
+        assert!(out.starts_with("ééééé"));
+        assert!(out.ends_with("...<truncated>"));
+    }
+
+    #[test]
+    fn snippet_takes_head_or_tail() {
+        assert_eq!(super::snippet("hello world", 5, true), "hello");
+        assert_eq!(super::snippet("hello world", 5, false), "world");
+        // Budget larger than the text returns the whole thing either way.
+        assert_eq!(super::snippet("hi", 5, true), "hi");
+        assert_eq!(super::snippet("hi", 5, false), "hi");
+        // Newlines are escaped for single-line logging.
+        assert_eq!(super::snippet("a\nb", 5, true), "a\\nb");
+    }
+
+    #[test]
+    fn session_short_returns_last_eight_chars() {
+        assert_eq!(super::session_short("0123456789abcdef"), "89abcdef");
+        // Shorter than 8 → whole string.
+        assert_eq!(super::session_short("abc"), "abc");
+    }
+
+    // ── json_str_or_num ─────────────────────────────────────────────────────
+
+    #[test]
+    fn json_str_or_num_accepts_strings_and_numbers_only() {
+        use serde_json::json;
+        let s = json!("hello");
+        let n = json!(42);
+        let f = json!(1.5);
+        let b = json!(true);
+        let null = json!(null);
+        let arr = json!([1, 2]);
+        assert_eq!(super::json_str_or_num(Some(&s)).as_deref(), Some("hello"));
+        assert_eq!(super::json_str_or_num(Some(&n)).as_deref(), Some("42"));
+        assert_eq!(super::json_str_or_num(Some(&f)).as_deref(), Some("1.5"));
+        assert_eq!(super::json_str_or_num(Some(&b)), None);
+        assert_eq!(super::json_str_or_num(Some(&null)), None);
+        assert_eq!(super::json_str_or_num(Some(&arr)), None);
+        assert_eq!(super::json_str_or_num(None), None);
     }
 
     /// Test the helper's mirror of master's session-broadcast feed.

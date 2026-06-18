@@ -40,6 +40,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestMoveTabArgs);
         TEST_METHOD(TestGetKeyBindingForAction);
         TEST_METHOD(KeybindingsWithoutVkey);
+        TEST_METHOD(DefaultAgentKeybindings);
+        TEST_METHOD(AgentActionsParse);
     };
 
     void KeyBindingsTests::KeyChords()
@@ -768,6 +770,73 @@ namespace SettingsModelUnitTests
 
             const auto& kbd{ actionMap->GetKeyBindingForAction(L"Test.CmdPal") };
             VerifyKeyChordEquality({ VirtualKeyModifiers::Control | VirtualKeyModifiers::Shift, static_cast<int32_t>('P'), 0 }, kbd);
+        }
+    }
+
+    void KeyBindingsTests::DefaultAgentKeybindings()
+    {
+        // Pin the default agent shortcut bindings shipped in defaults.json so a
+        // future edit that drops or remaps one of these surfaces here rather
+        // than as a silent regression. Chords are built with the same
+        // KeyChordSerialization parser defaults.json goes through, and we assert
+        // the resolved command's stable ID.
+        const auto settings{ CascadiaSettings::LoadDefaults() };
+        const auto actionMap{ settings.ActionMap() };
+
+        auto verifyBinding = [&](std::wstring_view keys, std::wstring_view expectedId) {
+            const auto chord{ KeyChordSerialization::FromString(winrt::hstring{ keys }) };
+            VERIFY_IS_NOT_NULL(chord, NoThrowString().Format(L"chord must parse: %.*s", static_cast<int>(keys.size()), keys.data()));
+            const auto& cmd{ actionMap.GetActionByKeyChord(chord) };
+            VERIFY_IS_NOT_NULL(cmd, NoThrowString().Format(L"a default command must be bound to %.*s", static_cast<int>(keys.size()), keys.data()));
+            VERIFY_ARE_EQUAL(winrt::hstring{ expectedId }, cmd.ID());
+        };
+
+        verifyBinding(L"ctrl+shift+period", L"Terminal.OpenAgentPane");
+        verifyBinding(L"ctrl+shift+i", L"Terminal.FocusAgentPane");
+        verifyBinding(L"ctrl+shift+/", L"Terminal.OpenAgentSessions");
+        verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
+        verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
+    }
+
+    void KeyBindingsTests::AgentActionsParse()
+    {
+        // The agent command keywords must each parse to their ShortcutAction,
+        // and the delegate-palette command must parse to a commandPalette action
+        // carrying the AgentDelegation launch mode. This pins the JSON command
+        // surface the FRE / Settings / command-palette entry points rely on
+        // (the "Command action works" checklist items), independent of which
+        // keys happen to be bound to them.
+        const std::string bindingsString{ R"([
+            { "keys": ["ctrl+a"], "id": "Test.OpenAgentPane",       "command": "openAgentPane" },
+            { "keys": ["ctrl+b"], "id": "Test.FocusAgentPane",      "command": "focusAgentPane" },
+            { "keys": ["ctrl+d"], "id": "Test.OpenAgentSessions",   "command": "openAgentSessions" },
+            { "keys": ["ctrl+e"], "id": "Test.OpenBackgroundAgent", "command": "openBackgroundAgent" },
+            { "keys": ["ctrl+g"], "id": "Test.AgentDelegation",     "command": { "action": "commandPalette", "launchMode": "agentDelegation" } }
+        ])" };
+
+        const auto json = VerifyParseSucceeded(bindingsString);
+        auto actionMap = winrt::make_self<implementation::ActionMap>();
+        actionMap->LayerJson(json, OriginTag::None);
+        VERIFY_ARE_EQUAL(5u, actionMap->_KeyMap.size());
+
+        // Look up by stable action ID — this tests the command-keyword → action
+        // parse directly, without depending on KeyChord hashing internals.
+        auto actionFor = [&](std::wstring_view id) {
+            const auto cmd = actionMap->GetActionByID(winrt::hstring{ id });
+            VERIFY_IS_NOT_NULL(cmd, NoThrowString().Format(L"action %.*s must parse and register", static_cast<int>(id.size()), id.data()));
+            return cmd.ActionAndArgs();
+        };
+
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenAgentPane, actionFor(L"Test.OpenAgentPane").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::FocusAgentPane, actionFor(L"Test.FocusAgentPane").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenAgentSessions, actionFor(L"Test.OpenAgentSessions").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::OpenBackgroundAgent, actionFor(L"Test.OpenBackgroundAgent").Action());
+
+        {
+            auto actionAndArgs = actionFor(L"Test.AgentDelegation");
+            VERIFY_ARE_EQUAL(ShortcutAction::ToggleCommandPalette, actionAndArgs.Action());
+            const auto& realArgs = actionAndArgs.Args().as<ToggleCommandPaletteArgs>();
+            VERIFY_ARE_EQUAL(realArgs.LaunchMode(), CommandPaletteLaunchMode::AgentDelegation);
         }
     }
 

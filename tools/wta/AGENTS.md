@@ -113,7 +113,7 @@ WTA generates an MCP config file at startup pointing to `wta mcp` and injects it
 Claude and Codex are launched through ACP adapters:
 
 ```
-wta --agent "npx -y @zed-industries/claude-code-acp"
+wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
 wta --agent "npx -y @zed-industries/codex-acp"
 ```
 
@@ -190,6 +190,25 @@ For normal local WTA development, always produce the binary at `tools/wta/target
   - `Get-Process wta -ErrorAction SilentlyContinue | Stop-Process -Force`
   - `cargo build --manifest-path tools/wta/Cargo.toml`
 - Do not switch to an alternate `--target-dir` just to work around a locked `wta.exe` unless that is explicitly the task. The default expectation is to refresh `tools/wta/target/debug/wta.exe`.
+
+## Test Rule
+
+For any WTA change that is covered by — or should be covered by — unit tests,
+**run the WTA test suite locally before committing/pushing.** `cargo build` and
+the C++ F5 / `bcz` flow do **not** compile or run the `#[cfg(test)]` code, so a
+green build says nothing about the tests.
+
+- Kill any live `wta.exe` first (same as the Build Rule), then run from the repo
+  root so the manifest's toolchain pin doesn't force the unavailable channel:
+  - `cargo test --manifest-path tools/wta/Cargo.toml`
+- All tests must pass before you push. CI runs the same `cargo test` and fails
+  the build on any failure
+  (`build/pipelines/templates-v2/job-build-project.yml`), so a local run just
+  catches it earlier.
+- Run the suite even when the change "looks trivial" — especially for tested
+  logic like `protocol/acp/client.rs`, `ui/chat.rs`, and permission handling.
+  The mock-ACP (`protocol/acp/mock_agent_tests.rs`) and render harnesses guard
+  real behavior and have caught real regressions.
 
 ## Key Crates
 
@@ -325,8 +344,51 @@ and `liveness()` derive from it (see `agent_sessions.rs`).
   immediately, even if master's `session_removed` notification
   hasn't landed yet.
 
-* **Class B** is driven entirely by hooks + WT pane events
-  (`SessionStarted` / `SessionStopped` / `PaneClosed`).
+* **Class B** is tracked by a **hybrid** of three producers (full design:
+  [`doc/specs/hybrid-agent-session-tracking.md`](../../doc/specs/hybrid-agent-session-tracking.md)):
+  a real PowerShell **hook** owns a session outright; #266 **born-bound**
+  (delegate `?<prompt>` / `/sessions` resume) owns only its pane binding; and a
+  file/process **watcher** is the fallback — it surfaces user-typed sessions and
+  supplies **status** for born-bound sessions that have no hook. The master keeps
+  two disjoint sets, `hook_owned` and `born_bound`, so the three never
+  double-track (`master/mod.rs`: `apply_watcher_event` / `handle_session_hook`).
+
+### Status (Working / Idle / Attention) from the log
+
+When a Class-B session has no hook, the watcher derives status from the CLI's
+transcript (`session_watcher/classify_*.rs` -> `ToolStarting` = Working /
+`ToolCompleted` = Idle / `Notification` = Attention):
+
+* **Claude** — turn-based, keyed on `stop_reason` (a `user` record -> Working;
+  assistant `stop_reason:tool_use` -> Working, `AskUserQuestion` -> Attention;
+  `end_turn` -> Idle). Claude re-writes the same message id while streaming, so
+  keying on content would flicker — `stop_reason` is stable.
+* **Copilot / Codex** — turn-based over their append-only logs. Working is
+  bracketed by the turn boundary (`assistant.turn_start`/`turn_end` for Copilot,
+  `event_msg/task_started`/`task_complete` for Codex), not by the brief tool
+  windows; a user-input tool *or* an explicit permission/escalation record
+  (`permission.requested` / sandbox `require_escalated`) -> Attention.
+* **Gemini — Working-only (turn-based Idle deferred)**: Gemini's
+  `session-*.jsonl` is an append log (single-message records + `$set` ops),
+  read by byte offset like the others. `classify_record` **skips every `$set`
+  op** (crucially the start/resume `$set:messages` snapshot, so a resume can't
+  replay history) and maps each activity record to Working: a `user` record
+  (prompt or `functionResponse`), a `gemini` text record, or a `gemini` with
+  `toolCalls` (`ask_user` -> Attention). It **never emits Idle** — Gemini writes
+  no turn-completion signal and a completed `toolCall` doesn't mean the turn
+  ended, so a row stays Working until `PaneClosed`. A clean turn-based Idle is
+  deferred (needs a turn-end marker Gemini doesn't write).
+* **Limitation (permission / ask-for-input)**:
+  * **Claude** — no permission marker (only `permissionMode`), so a permission
+    prompt (`Bash`/`Edit` in default mode) is indistinguishable from a running
+    tool -> **Working** (only the explicit `AskUserQuestion` tool is Attention).
+  * **Gemini** — the transcript is written **post-completion** (every on-disk
+    `toolCall` is `status:success` with its result, and `ask_user` already holds
+    the answer), so the wait window shows **Working**; the `ask_user` ->
+    Attention mapping is kept but is typically superseded by the following result
+    record. Reliable wait-state Attention needs hooks.
+  * **Copilot / Codex** *do* surface permission waits as Attention via
+    `permission.requested` / `require_escalated`.
 
 ### Cold-startup race
 

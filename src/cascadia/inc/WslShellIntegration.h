@@ -27,6 +27,7 @@
 
 #include "ShellIntegrationCommon.h"
 #include "BashShellIntegration.h"
+#include "ShellIntegrationProfileGate.h"
 
 namespace Microsoft::Terminal::ShellIntegration::Wsl
 {
@@ -107,27 +108,170 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
             return true;
         }
 
-        // Spawn `wsl.exe -d <distName> -e bash -c 'echo $HOME'` and
-        // return the trimmed POSIX home dir (e.g. "/home/yeelam"), or
-        // "" on any failure (no WSL, distro stopped + can't auto-start,
-        // bash missing, timeout, garbled output).
-        //
-        // An empty return is treated as a probe FAILURE by the caller
-        // (WslBashFlavor ctor sets _valid=false and _errorMessage to
-        // "Could not probe $HOME inside WSL distro"), which surfaces
-        // in the post-install error dialog. The dialog body labels it
-        // per-distro (e.g. "WSL bash (Ubuntu): Could not probe $HOME
-        // inside WSL distro") so users can tell which distro failed.
-        //
-        // `WSL_UTF8=1` forces wsl.exe to relay bash stdout as UTF-8
-        // instead of UTF-16LE (the legacy conhost behavior), so we can
-        // read raw bytes without an encoding probe.
-        //
-        // Bounded at 30s wall-clock to absorb cold-start (the first
-        // wsl.exe invocation in a session spins up the WSL2 VM).
-        inline std::string QueryWslHomeRaw(std::wstring_view distName) noexcept
+        // Result of probing a WSL profile for its identity.
+        struct WslIdentity
         {
-            if (!IsSafeDistroName(distName))
+            std::wstring name; // $WSL_DISTRO_NAME reported by the distro
+            std::string home;  // $HOME reported by the distro (POSIX path)
+            bool valid() const noexcept { return !name.empty() && !home.empty(); }
+        };
+
+        // Return the portion of a profile commandline we should append our own
+        // identity probe to. We must drop any command/operands the profile
+        // already specifies, or the appended probe collides and fails.
+        //
+        //   * wsl.exe: KEEP the launcher + its distro-selection options
+        //     (`-d` / `--distribution` / `--distribution-id` / `-u` / …) and
+        //     cut at the command terminator (`-e` / `--exec` / `--`). Probe is
+        //     then appended as `-e sh -c "…"`.
+        //   * bash.exe: KEEP ONLY the launcher token and drop ALL its args
+        //     (`~`, `-l`, `-c "…"`, …). bash treats the first non-option
+        //     operand (e.g. `~`) as the script and ignores a later `-c`, so we
+        //     replace the whole arg tail with our own `-c "…"`. bash.exe is the
+        //     System32 WSL default-distro launcher and has no distro-selection
+        //     options to preserve.
+        //
+        // Token-aware (whitespace-delimited, quote-respecting) so it tolerates
+        // tabs / multiple spaces and a `--` at end-of-string, and only matches
+        // a WHOLE token (never inside `--distribution-id` or a distro name).
+        inline std::wstring_view StripExecTail(std::wstring_view cmd, bool isBash) noexcept
+        {
+            const auto isWs = [](wchar_t c) noexcept { return c == L' ' || c == L'\t'; };
+            // Advance `i` past one token starting at the current position
+            // (quote-aware); returns [tokStart, i).
+            size_t i = 0;
+            const auto nextToken = [&]() noexcept -> std::wstring_view {
+                while (i < cmd.size() && isWs(cmd[i]))
+                {
+                    ++i;
+                }
+                const size_t tokStart = i;
+                if (i < cmd.size() && cmd[i] == L'"')
+                {
+                    ++i;
+                    while (i < cmd.size() && cmd[i] != L'"')
+                    {
+                        ++i;
+                    }
+                    if (i < cmd.size())
+                    {
+                        ++i; // consume closing quote
+                    }
+                }
+                else
+                {
+                    while (i < cmd.size() && !isWs(cmd[i]))
+                    {
+                        ++i;
+                    }
+                }
+                return cmd.substr(tokStart, i - tokStart);
+            };
+
+            // bash.exe: keep only the launcher token.
+            (void)nextToken();
+            if (isBash)
+            {
+                return cmd.substr(0, i);
+            }
+
+            // wsl.exe: keep distro-selection options; cut at the first command
+            // terminator token.
+            while (i < cmd.size())
+            {
+                const size_t tokStart = i;
+                const std::wstring_view tok = nextToken();
+                if (tok == L"-e" || tok == L"--exec" || tok == L"--")
+                {
+                    size_t cut = tokStart;
+                    while (cut > 0 && isWs(cmd[cut - 1]))
+                    {
+                        --cut;
+                    }
+                    return cmd.substr(0, cut);
+                }
+            }
+            return cmd;
+        }
+
+        // If the launch token is a BARE `wsl(.exe)` / `bash(.exe)` (no path,
+        // unquoted), qualify it to the OS copy under `<WindowsDir>\System32`.
+        // Our identity probe runs automatically (settings reconcile / FRE), so
+        // a bare token passed to `CreateProcessW(nullptr, …)` — whose search
+        // order includes the CURRENT DIRECTORY — could otherwise auto-run a
+        // planted same-named binary. Mirrors WslDistroGenerator's GH#11096
+        // hardening. A token that already carries a path (or is quoted, i.e.
+        // user-qualified) is returned unchanged.
+        inline std::wstring QualifyBareLauncher(std::wstring_view selection)
+        {
+            namespace SI = ::Microsoft::Terminal::ShellIntegration;
+            size_t start = 0;
+            while (start < selection.size() && (selection[start] == L' ' || selection[start] == L'\t'))
+            {
+                ++start;
+            }
+            // A quoted launcher is taken as-is (it's an explicit path).
+            if (start >= selection.size() || selection[start] == L'"')
+            {
+                return std::wstring{ selection };
+            }
+            size_t end = start;
+            while (end < selection.size() && selection[end] != L' ' && selection[end] != L'\t')
+            {
+                ++end;
+            }
+            const std::wstring_view tok = selection.substr(start, end - start);
+            for (const auto c : tok)
+            {
+                if (c == L'\\' || c == L'/' || c == L':')
+                {
+                    return std::wstring{ selection }; // already has a path
+                }
+            }
+            std::wstring leaf;
+            if (SI::details::EqualsCi(tok, L"wsl") || SI::details::EqualsCi(tok, L"wsl.exe"))
+            {
+                leaf = L"wsl.exe";
+            }
+            else if (SI::details::EqualsCi(tok, L"bash") || SI::details::EqualsCi(tok, L"bash.exe"))
+            {
+                leaf = L"bash.exe";
+            }
+            else
+            {
+                return std::wstring{ selection };
+            }
+            std::wstring out = SI::details::WindowsDir();
+            out += L"\\System32\\";
+            out += leaf;
+            out.append(selection.substr(end)); // preserve the option tail
+            return out;
+        }
+
+        // Run the profile's launch commandline (distro SELECTION only — see
+        // StripExecTail) with a probe appended, and read back the distro's own
+        // `$WSL_DISTRO_NAME` and `$HOME`. We NEVER parse the distro out of the
+        // commandline — the profile already selects it (`-d <name>`,
+        // `--distribution-id {GUID}`, or the default distro for bare `wsl.exe`
+        // / System32 `bash.exe`), so we reuse the command and let the running
+        // distro identify itself. This makes Source / `--distribution-id` /
+        // renamed profiles all "just work" with one code path.
+        //
+        // The shell-invocation suffix differs by launcher:
+        //   * `wsl.exe …` -> ` -e sh -c "echo $WSL_DISTRO_NAME; echo $HOME"`
+        //     (wsl.exe is a launcher, not a shell — it must be given a shell
+        //     to run; bare `-c` is rejected by wsl.exe).
+        //   * `bash.exe`  -> ` -c "echo $WSL_DISTRO_NAME; echo $HOME"`
+        //     (bash.exe IS the shell; `-c` is its own flag, `-e`/`-d` are
+        //     rejected).
+        //
+        // Returns an invalid (empty) WslIdentity on any failure (no WSL,
+        // distro stopped + can't auto-start, timeout, garbled / unsafe
+        // output). `WSL_UTF8=1` forces wsl.exe to relay stdout as UTF-8.
+        // Bounded at 30s wall-clock to absorb WSL2 cold-start.
+        inline WslIdentity QueryWslIdentityRaw(std::wstring_view launchCommandline) noexcept
+        {
+            if (launchCommandline.empty())
             {
                 return {};
             }
@@ -155,17 +299,49 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 si.hStdError = writeEnd.get();
                 si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
 
-                std::wstring sysDir;
-                if (FAILED(wil::GetSystemDirectoryW<std::wstring>(sysDir)))
+                // Build the probe commandline: the profile's distro SELECTION
+                // (launcher + `-d`/`--distribution-id`/… options, with any
+                // command the profile already specifies stripped — see
+                // StripExecTail) plus OUR identity probe. Stripping first means
+                // a profile like `wsl.exe -d Ubuntu -e fish` or `bash.exe -c
+                // "..."` doesn't get a colliding second `-e`/`-c` that would
+                // corrupt parsing and fail the probe. The flag depends on
+                // whether the launcher is itself a shell (bash.exe -> `-c`) or
+                // a launcher (wsl.exe -> `-e sh -c`).
+                //
+                // No IsSafeDistroName guard on the INPUT here: we don't build a
+                // distro selector from user-editable text (the old injection
+                // vector) — we reuse the profile's own options (which the user
+                // already runs) and only validate the distro identity the probe
+                // REPORTS, before using it to build the \\wsl$ path below.
+                const bool isBash =
+                    ::Microsoft::Terminal::ShellIntegration::details::CommandlineHasExeToken(launchCommandline, L"bash");
+                std::wstring cmdLine{ QualifyBareLauncher(StripExecTail(launchCommandline, isBash)) };
+                if (isBash)
                 {
-                    return {};
+                    cmdLine += L" -c \"echo $WSL_DISTRO_NAME; echo $HOME\"";
+                }
+                else
+                {
+                    cmdLine += L" -e sh -c \"echo $WSL_DISTRO_NAME; echo $HOME\"";
                 }
 
-                std::wstring cmdLine{ L"\"" };
-                cmdLine += sysDir;
-                cmdLine += L"\\wsl.exe\" -d ";
-                cmdLine.append(distName);
-                cmdLine += L" -e bash -c \"echo $HOME\"";
+                // Expand %VAR% in the launcher path. CreateProcessW does NOT
+                // expand environment variables, but Windows Terminal expands
+                // them when it launches a profile, so a profile commandline
+                // such as `%SystemRoot%\System32\wsl.exe -d Ubuntu` must
+                // resolve here too (matching how it actually runs). The probe
+                // suffix uses shell `$VAR` syntax, which Expand… leaves alone.
+                if (const DWORD needed = ExpandEnvironmentStringsW(cmdLine.c_str(), nullptr, 0); needed > 1)
+                {
+                    std::wstring expanded(needed, L'\0');
+                    const DWORD wrote = ExpandEnvironmentStringsW(cmdLine.c_str(), expanded.data(), needed);
+                    if (wrote != 0 && wrote <= needed)
+                    {
+                        expanded.resize(wrote - 1); // drop trailing NUL
+                        cmdLine = std::move(expanded);
+                    }
+                }
 
                 // Pass WSL_UTF8=1 via a child-only environment block
                 // instead of mutating the process-wide environment.
@@ -291,16 +467,41 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 {
                     raw.pop_back();
                 }
+                // The probe prints two lines: `$WSL_DISTRO_NAME` then `$HOME`.
+                // Any WSL cold-start banner precedes them, so take the LAST
+                // two non-empty lines: home is the last line, name the one
+                // before it.
+                std::string home = raw;
+                std::string nameUtf8;
                 if (const auto lastLf = raw.find_last_of('\n'); lastLf != std::string::npos)
                 {
-                    raw.erase(0, lastLf + 1);
+                    home = raw.substr(lastLf + 1);
+                    std::string before = raw.substr(0, lastLf);
+                    while (!before.empty() &&
+                           (before.back() == '\n' || before.back() == '\r' ||
+                            before.back() == ' ' || before.back() == '\t'))
+                    {
+                        before.pop_back();
+                    }
+                    const auto lf2 = before.find_last_of('\n');
+                    nameUtf8 = (lf2 != std::string::npos) ? before.substr(lf2 + 1) : before;
                 }
 
-                if (!IsSafeHome(raw))
+                if (!IsSafeHome(home))
                 {
                     return {};
                 }
-                return raw;
+                // Distro names are ASCII (IsSafeDistroName enforces it), so a
+                // byte-wise widen is correct here.
+                const std::wstring nameW{ nameUtf8.begin(), nameUtf8.end() };
+                if (!IsSafeDistroName(nameW))
+                {
+                    return {};
+                }
+                WslIdentity id;
+                id.name = nameW;
+                id.home = std::move(home);
+                return id;
             }
             catch (...)
             {
@@ -308,66 +509,61 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
             }
         }
 
-        // Per-process cache of distName → $HOME, populated lazily on
-        // first access. Each distro pays the cold-start cost at most
-        // once per process per successful probe. Only successful (non-
-        // empty) probes are cached: a failed probe (distro stopped,
-        // transient WSL startup race, or `$HOME` not readable) is NOT
-        // memoized, so a fresh Install/Uninstall call from the user
-        // (e.g. via Settings UI or FRE retry) re-probes from scratch
-        // — the user can recover from transient failures without
-        // restarting Windows Terminal. Reconcile runs only on settings
-        // changes, not in a tight loop, so this won't thrash on a
-        // legitimately stopped distro.
-        // Mutex protects only the cache MAP read/write — the probe
-        // itself runs unlocked (see double-checked locking below).
-        // Two concurrent callers for the same distro can therefore
-        // both spawn wsl.exe; this is intentional. Serializing the
-        // probe would block all callers (including for OTHER distros)
-        // for up to 30s on a cold-start, which is worse than the rare
-        // duplicate spawn. The second writer's cache insert is
-        // dropped (it sees the first writer's entry on the re-check).
-        inline std::string GetWslHomeCached(std::wstring_view distName)
+        // Per-process cache of launch-commandline → WslIdentity, populated
+        // lazily on first access. Each distinct profile command pays the
+        // cold-start cost at most once per process per successful probe.
+        // Only successful probes are cached: a failed probe (distro stopped,
+        // transient WSL startup race, unreadable identity) is NOT memoized,
+        // so a fresh Install/Uninstall call from the user (Settings UI / FRE
+        // retry) re-probes from scratch.
+        // Mutex protects only the cache MAP read/write — the probe itself
+        // runs unlocked (double-checked locking below). Two concurrent
+        // callers for the same command can both spawn; that's intentional
+        // (serializing across the up-to-30s cold-start would block unrelated
+        // callers). The second writer's insert is dropped on the re-check.
+        inline WslIdentity GetWslIdentityCached(std::wstring_view launchCommandline, bool allowProbe = true)
         {
             static std::mutex cacheMu;
-            static std::map<std::wstring, std::string, std::less<>> cache;
+            static std::map<std::wstring, WslIdentity, std::less<>> cache;
 
-            // Double-checked lookup: hold the mutex only across the
-            // cache touches, NOT across the up-to-30s QueryWslHomeRaw
-            // probe. Holding it across the probe would serialize all
-            // callers (even for different distros) and block unrelated
-            // work for the full cold-start window.
             {
                 std::lock_guard<std::mutex> g{ cacheMu };
-                if (const auto it = cache.find(distName); it != cache.end())
+                if (const auto it = cache.find(launchCommandline); it != cache.end())
                 {
                     return it->second;
                 }
             }
-            // Probe without the lock. Two concurrent callers for the
-            // same distro might both probe — the duplicate work is
-            // acceptable (rare, and the cost is bounded) and avoids
-            // the cross-distro serialization above.
-            auto home = QueryWslHomeRaw(distName);
+            // Cache-only peek (allowProbe=false): used to read back a distro
+            // identity already resolved by a prior Install, without paying
+            // (or risking) another cold-start probe.
+            if (!allowProbe)
+            {
+                return {};
+            }
+            // Probe without the lock (see comment above).
+            auto id = QueryWslIdentityRaw(launchCommandline);
             {
                 std::lock_guard<std::mutex> g{ cacheMu };
-                // Re-check: another thread may have populated this
-                // entry while we were probing. Their result wins
-                // (it's equally valid and already inserted).
-                if (const auto it = cache.find(distName); it != cache.end())
+                if (const auto it = cache.find(launchCommandline); it != cache.end())
                 {
                     return it->second;
                 }
-                // Only cache successful probes. Failed probes (empty)
-                // are re-attempted on the next call — see the comment
-                // above for why this is the right trade-off.
-                if (!home.empty())
+                if (id.valid())
                 {
-                    cache.emplace(std::wstring{ distName }, home);
+                    cache.emplace(std::wstring{ launchCommandline }, id);
                 }
             }
-            return home;
+            return id;
         }
+    }
+
+    // Returns the distro name a prior Install/Uninstall already resolved for
+    // this commandline, or empty if none is cached (never triggers a probe).
+    // Used for human-readable labels (e.g. error dialogs) so we surface the
+    // actual `$WSL_DISTRO_NAME` instead of the raw launch commandline.
+    inline std::wstring ProbedDistroName(std::wstring_view launchCommandline)
+    {
+        return details::GetWslIdentityCached(launchCommandline, /*allowProbe*/ false).name;
     }
 
     // Build a Win32 UNC path for an arbitrary POSIX path inside a WSL
@@ -395,48 +591,49 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         return out;
     }
 
-    // Concrete IShellFlavor for per-distro WSL bash. The constructor
-    // does the up-front validation (distro-name allow-list + $HOME
-    // probe) and stashes any error message; callers check Valid()
-    // before handing the instance to the orchestrator.
+    // Concrete IShellFlavor for a WSL bash profile. The constructor probes
+    // the distro IDENTITY by running the profile's exact launch commandline
+    // (`launchCommandline`) with an appended `$WSL_DISTRO_NAME` / `$HOME`
+    // probe — it does NOT parse the distro out of the command. Callers check
+    // Valid() before handing the instance to the orchestrator.
     //
-    // Reuses BashFlavor for every IShellFlavor method — once the UNC
-    // paths are resolved the install/uninstall flow IS native bash
-    // operating over the \\wsl$\ mount.
+    // Reuses BashFlavor for every IShellFlavor method — once the UNC paths
+    // are resolved the install/uninstall flow IS native bash operating over
+    // the \\wsl$\ mount.
     //
-    // Construction can block up to 30s on first use of a cold distro
-    // (the $HOME probe spins up the WSL2 VM). Subsequent constructions
-    // for the same distro hit the per-process cache.
+    // Construction can block up to 30s on first use of a cold distro (the
+    // probe spins up the WSL2 VM). Subsequent constructions for the same
+    // commandline hit the per-process cache.
     class WslBashFlavor : public Bash::BashFlavor
     {
     public:
-        explicit WslBashFlavor(std::wstring distName) :
-            // Initialize the BashFlavor base with empty paths first,
-            // then patch them in the body once we've validated +
-            // probed. Empty paths are harmless: the orchestrator only
-            // runs after we check Valid() below.
+        explicit WslBashFlavor(std::wstring launchCommandline) :
+            // Initialize the BashFlavor base with empty paths first, then
+            // patch them in the body once we've probed. Empty paths are
+            // harmless: the orchestrator only runs after we check Valid().
             Bash::BashFlavor{ {}, {} }
         {
-            if (!details::IsSafeDistroName(distName))
+            if (launchCommandline.empty())
             {
-                _errorMessage = L"WSL distro name rejected (unsafe characters)";
+                _errorMessage = L"WSL profile commandline is empty";
                 return;
             }
-            _distName = std::move(distName);
-            const auto home = details::GetWslHomeCached(_distName);
-            if (home.empty())
+            const auto id = details::GetWslIdentityCached(launchCommandline);
+            if (!id.valid())
             {
-                _errorMessage = L"Could not probe $HOME inside WSL distro";
+                _errorMessage = L"Could not probe WSL distro identity ($WSL_DISTRO_NAME / $HOME)";
                 return;
             }
-            _profilePath = UncPath(_distName, home + "/.bashrc");
-            _scriptDir = std::filesystem::path{ UncPath(_distName, home + "/.intelligent-terminal") };
+            // id.name / id.home were already validated by the probe
+            // (IsSafeDistroName / IsSafeHome) before being returned.
+            _distName = id.name;
+            _profilePath = UncPath(_distName, id.home + "/.bashrc");
+            _scriptDir = std::filesystem::path{ UncPath(_distName, id.home + "/.intelligent-terminal") };
             _valid = true;
         }
 
         bool Valid() const noexcept { return _valid; }
         std::wstring_view ErrorMessage() const noexcept { return _errorMessage; }
-        std::wstring_view DistName() const noexcept { return _distName; }
 
         std::wstring          ProfilePath() const override          { return _profilePath; }
         std::filesystem::path ScriptDir() const override            { return _scriptDir; }
@@ -451,14 +648,17 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         bool _valid{ false };
     };
 
-    // Install bash shell integration into a WSL distro.
+    // Install bash shell integration into the WSL distro a profile launches.
+    // `launchCommandline` is the profile's exact commandline (e.g.
+    // `C:\Windows\system32\wsl.exe --distribution-id {GUID}`,
+    // `wsl.exe -d Ubuntu`, or `C:\Windows\System32\bash.exe`).
     //
-    // Synchronous — call from a background thread. The first call for
-    // each distro can block up to 30s on a cold-start; subsequent calls
+    // Synchronous — call from a background thread. The first call for each
+    // commandline can block up to 30s on a cold-start; subsequent calls
     // return immediately from the cache.
-    inline InstallResult Install(const std::wstring& distName)
+    inline InstallResult Install(const std::wstring& launchCommandline)
     {
-        WslBashFlavor flavor{ distName };
+        WslBashFlavor flavor{ launchCommandline };
         if (!flavor.Valid())
         {
             return { false, false, std::wstring{ flavor.ErrorMessage() } };
@@ -466,13 +666,9 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         return orchestrator::Install(flavor);
     }
 
-    inline InstallResult Uninstall(const std::wstring& distName)
+    inline InstallResult Uninstall(const std::wstring& launchCommandline)
     {
-        if (!details::IsSafeDistroName(distName))
-        {
-            return { false, false, L"WSL distro name rejected (unsafe characters)" };
-        }
-        WslBashFlavor flavor{ distName };
+        WslBashFlavor flavor{ launchCommandline };
         if (!flavor.Valid())
         {
             // If we can't reach the distro there's nothing to remove —

@@ -3,13 +3,16 @@
 
 #pragma once
 
+#include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <wrl/implements.h>
 #include <wrl/client.h>
 
 #include "ITerminalProtocol.h"
+#include "../inc/BoundedDispatchQueue.h"
 
 // Per-brand CLSIDs — same pattern as CTerminalHandoff. Reused unchanged from the
 // previous WinRT/MBM server, so WT_COM_CLSID discovery on the client is identical.
@@ -74,11 +77,47 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
 private:
     bool _authenticated = false;
 
-    // Per-instance event sink, stored as an agile reference so it can be
-    // resolved + called from any apartment (set via Subscribe, cleared via
-    // Unsubscribe).
-    std::mutex _callbackMutex;
-    Microsoft::WRL::ComPtr<IAgileReference> _sinkRef;
+    // ── Per-subscriber asynchronous event delivery (issue #239) ──
+    //
+    // Each connected client (= one instance) owns a bounded FIFO queue drained
+    // by a dedicated MTA worker thread. The producer (s_NotifyEventToComClients,
+    // raised on the UI/STA thread for VT events and on a COM MTA thread for
+    // SendEvent broadcasts) only ever ENQUEUES and returns immediately. The
+    // worker resolves the agile sink reference and makes the SYNCHRONOUS
+    // cross-process OnEvent call on its own thread — so a slow or blocked
+    // subscriber (e.g. wtcli's stdout pipe full because wta isn't draining it)
+    // can no longer stall the terminal UI thread, and subscribers are isolated
+    // from one another (one stuck client only backs up its own bounded queue).
+    //
+    // The queue + sink live in a ref-counted _DeliveryState shared between the
+    // instance and a DETACHED worker thread. Teardown (Unsubscribe/destructor)
+    // only signals stop() and drops the instance's reference — it NEVER joins.
+    // This is deliberate: joining could deadlock if a subscriber re-enters the
+    // server (e.g. calls Unsubscribe) from inside its own OnEvent handler, and
+    // would otherwise block on a stuck OnEvent. The detached worker holds its
+    // own reference, touches only the shared state (never `this`), and frees the
+    // state when it returns — so the COM object can be destroyed immediately.
+    //
+    // The bounded-queue / back-pressure / subscribe-gate logic lives in the
+    // dependency-free Microsoft::Terminal::BoundedDispatchQueue (unit-tested in
+    // ut_app); only the COM resolve + OnEvent + thread shell lives here.
+    static constexpr size_t s_maxQueuedEvents = 4096;
+
+    struct _DeliveryState
+    {
+        explicit _DeliveryState(size_t cap) :
+            queue{ cap } {}
+        Microsoft::Terminal::BoundedDispatchQueue<std::string> queue;
+        std::mutex mutex; // guards sinkRef + workerStarted
+        Microsoft::WRL::ComPtr<IAgileReference> sinkRef;
+        bool workerStarted{ false };
+    };
+
+    std::mutex _deliveryMutex; // guards the _delivery shared_ptr swap
+    std::shared_ptr<_DeliveryState> _delivery{ std::make_shared<_DeliveryState>(s_maxQueuedEvents) };
+
+    void _enqueueEvent(const std::string& eventJson);
+    static void _runDeliveryWorker(std::shared_ptr<_DeliveryState> state);
 
     // Static tracking of live COM instances for event delivery.
     static std::mutex s_instancesMutex;

@@ -433,11 +433,44 @@ pub struct PermOption {
     pub kind: String,
 }
 
+impl PermOption {
+    /// True if this is an "allow" option. Case-insensitive because `kind`
+    /// is the ACP `PermissionOptionKind` rendered via `format!("{:?}", …)`,
+    /// which yields PascalCase variants like `AllowOnce` / `AllowAlways`.
+    /// Matching the leading `allow` prefix here keeps the `y`/`n` quick-keys
+    /// and the `[Y]`/`[N]` button labels in sync with the real wire values.
+    /// Prefix-checked (not lowercased) to stay allocation-free on the render /
+    /// key-handling hot path.
+    pub fn is_allow(&self) -> bool {
+        self.kind.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("allow"))
+    }
+
+    /// True if this is a "reject" option. Allocation-free, case-insensitive —
+    /// see [`PermOption::is_allow`].
+    pub fn is_reject(&self) -> bool {
+        self.kind.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("reject"))
+    }
+}
+
 pub struct PermissionState {
     pub description: String,
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
+}
+
+impl PermissionState {
+    /// Index of the first "allow" option, used by the `y` quick-key and the
+    /// `[Y]` button label.
+    pub fn allow_index(&self) -> Option<usize> {
+        self.options.iter().position(PermOption::is_allow)
+    }
+
+    /// Index of the first "reject" option, used by the `n` quick-key and the
+    /// `[N]` button label.
+    pub fn reject_index(&self) -> Option<usize> {
+        self.options.iter().position(PermOption::is_reject)
+    }
 }
 
 // --- WT Event Notification ---
@@ -677,11 +710,22 @@ where
             key,
             tool_name: "prompt".to_string(),
         },
-        "agent.tool.completed"
-        | "agent.tool.finished"
-        | "agent.tool.failed"
-        | "agent.stop"
-        | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
+        // Tool completion does NOT end the turn. Copilot and Gemini fire a
+        // `tool.finished` per tool — often several per turn, in parallel
+        // batches — but the agent keeps working (thinking, streaming text,
+        // running the next tool) until it emits `agent.stop`. Mapping each
+        // `tool.finished` to `ToolCompleted` made multi-tool turns flicker to
+        // Idle and, worse, sit at Idle during the agent's between-tool thinking
+        // (Copilot fires only one `prompt.submit` + one `agent.stop` per user
+        // request, with many tool pairs in between). So ignore tool completions
+        // here and let `agent.stop` own the turn-end → Idle, mirroring the
+        // watcher's turn-based `classify_copilot` / `classify_codex`, which also
+        // ignore `tool.execution_complete`. Claude/Codex don't emit `tool.*`
+        // hook events at all, so this only affects Copilot/Gemini.
+        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
+            return reg.take_dirty();
+        }
+        "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
         "agent.notification" => SessionEvent::Notification {
             key,
             message: payload
@@ -6483,7 +6527,7 @@ impl App {
                 }
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     // Quick allow: find first allow option
-                    if let Some(idx) = perm.options.iter().position(|o| o.kind.contains("allow")) {
+                    if let Some(idx) = perm.allow_index() {
                         let option_id = perm.options[idx].id.clone();
                         if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                             if let Some(responder) = perm.responder {
@@ -6496,7 +6540,7 @@ impl App {
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') => {
                     // Quick deny: find first reject option
-                    if let Some(idx) = perm.options.iter().position(|o| o.kind.contains("reject")) {
+                    if let Some(idx) = perm.reject_index() {
                         let option_id = perm.options[idx].id.clone();
                         if let Some(perm) = self.current_tab_mut().permission.pop_front() {
                             if let Some(responder) = perm.responder {
@@ -6527,9 +6571,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
             {
                 if self.current_tab_mut().selected_recommendation > 0 {
                     self.current_tab_mut().selected_recommendation -= 1;
@@ -6541,9 +6583,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
             {
                 let choices_len = self
                     .current_tab()
@@ -6583,8 +6623,7 @@ impl App {
                 self.current_tab_mut().chat_scroll.by(-1);
             }
             KeyCode::Right | KeyCode::Tab
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+                if self.current_tab().turn.recommendations().is_some() =>
             {
                 // Cycle button focus forward within the selected card.
                 // Send: 0=Run, 1=Insert. OpenAndSend has only index 0.
@@ -6613,9 +6652,8 @@ impl App {
                 // effect. Lets the user back out of the history nav cleanly.
                 self.current_tab_mut().selected_completed_turn_idx = None;
             }
-            KeyCode::Left
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Left | KeyCode::BackTab
+                if self.current_tab().turn.recommendations().is_some() =>
             {
                 // Cycle button focus backward.
                 let button_count = self.button_count_for_selected();
@@ -6775,6 +6813,41 @@ impl App {
                 self.current_tab_mut().toggle_selected_completed_turn();
             }
             KeyCode::Enter => {
+                if self.current_tab().turn.recommendations().is_some() {
+                    // Card is visible — it owns focus even when the input box
+                    // already has draft text. Keep the draft intact and route
+                    // Enter to the selected card action instead of submitting
+                    // or slash-parsing the input.
+                    if self.state == ConnectionState::Connected {
+                        let session_id = self.current_tab().session_id.clone();
+                        if let Some(session_id) = session_id {
+                            let label_choice = self
+                                .selected_recommendation_choice()
+                                .map(|c| c.choice)
+                                .unwrap_or(0);
+                            let insert_only = self.current_tab().selected_button == 1
+                                && self
+                                    .selected_recommendation_choice()
+                                    .map(|c| self.is_send_choice(c))
+                                    .unwrap_or(false);
+                            tracing::info!(
+                                target: "autofix",
+                                choice = label_choice,
+                                insert_only,
+                                "Executing choice",
+                            );
+                            let label = if insert_only {
+                                "Inserting"
+                            } else {
+                                "Executing"
+                            };
+                            self.push_execution_info(format!("{} choice {}.", label, label_choice));
+                            self.turn_execute_card(&session_id);
+                        }
+                    }
+                    return;
+                }
+
                 // Slash-command intercept (popup selection, known command, or
                 // unknown-command warning). Runs before the prompt path so
                 // commands like /stop work even mid-flight, and /help / /clear
@@ -6786,41 +6859,7 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if self.current_tab().input.is_empty()
-                    && self.state == ConnectionState::Connected
-                    && self.current_tab().turn.recommendations().is_some()
-                {
-                    // Card is visible — Enter executes the selected choice.
-                    // `turn_execute_card` dispatches the choice to the
-                    // coordinator, transitions the state machine to
-                    // `Surfaced{Empty, end_pending preserved}`, and emits
-                    // the autofix-cleared bottom-bar event when applicable.
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(session_id) = session_id {
-                        let label_choice = self
-                            .selected_recommendation_choice()
-                            .map(|c| c.choice)
-                            .unwrap_or(0);
-                        let insert_only = self.current_tab().selected_button == 1
-                            && self
-                                .selected_recommendation_choice()
-                                .map(|c| self.is_send_choice(c))
-                                .unwrap_or(false);
-                        tracing::info!(
-                            target: "autofix",
-                            choice = label_choice,
-                            insert_only,
-                            "Executing choice",
-                        );
-                        let label = if insert_only {
-                            "Inserting"
-                        } else {
-                            "Executing"
-                        };
-                        self.push_execution_info(format!("{} choice {}.", label, label_choice));
-                        self.turn_execute_card(&session_id);
-                    }
-                } else if !self.current_tab().input.is_empty()
+                if !self.current_tab().input.is_empty()
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -9323,6 +9362,13 @@ fn prev_word_boundary(input: &str, cursor_pos: usize) -> usize {
 #[path = "slash_command_tests.rs"]
 mod slash_command_tests;
 
+// Autofix-trigger reducer tests. Same `#[path]` child-of-`app` pattern as
+// slash_command_tests so they can reach `App`'s private dispatch methods and
+// the `pub(super)` autofix state fields.
+#[cfg(test)]
+#[path = "autofix_tests.rs"]
+mod autofix_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -9472,6 +9518,70 @@ mod tests {
                 SessionEvent::Notification { key, .. } if key.starts_with("pane:")
             )),
             "no synthetic-key Notification should leak to master",
+        );
+    }
+
+    /// Turn-based hook status (multi-tool turn bug): Copilot/Gemini fire a
+    /// `tool.finished` per tool — several per turn, in parallel batches — but
+    /// the agent keeps working until `agent.stop`. A `tool.finished` must NOT
+    /// demote the row to Idle (only `agent.stop` ends the turn); otherwise a
+    /// multi-tool turn flickers to (and sits at) Idle while the agent is busy.
+    #[test]
+    fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
+        use crate::agent_sessions::{
+            AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
+        };
+        let mut reg = AgentSessionRegistry::new();
+        let pane = "11111111-1111-1111-1111-111111111111";
+        let sid = "copilot-sid";
+        reg.apply(SessionEvent::SessionStarted {
+            key: sid.into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane.into(),
+            cwd: std::path::PathBuf::from("/work"),
+            title: "copilot".into(),
+        });
+        reg.take_dirty();
+
+        let route = |reg: &mut AgentSessionRegistry, event: &str| {
+            let params = json!({
+                "event": event,
+                "cli_source": "copilot",
+                "agent_session_id": sid,
+                "payload": { "tool_name": "read_file" }
+            });
+            route_agent_event_to_registry_with_hook_sink(reg, pane, &params, |_| {});
+        };
+
+        // User prompt → Working (turn start).
+        route(&mut reg, "agent.prompt.submit");
+        assert_eq!(reg.get(&sid.to_string()).unwrap().status, AgentStatus::Working);
+
+        // A parallel batch: three starts, then three finishes.
+        route(&mut reg, "agent.tool.starting");
+        route(&mut reg, "agent.tool.starting");
+        route(&mut reg, "agent.tool.starting");
+        assert_eq!(reg.get(&sid.to_string()).unwrap().status, AgentStatus::Working);
+        route(&mut reg, "agent.tool.finished");
+        assert_eq!(
+            reg.get(&sid.to_string()).unwrap().status,
+            AgentStatus::Working,
+            "first tool.finished must NOT demote while siblings run / the turn continues",
+        );
+        route(&mut reg, "agent.tool.finished");
+        route(&mut reg, "agent.tool.finished");
+        assert_eq!(
+            reg.get(&sid.to_string()).unwrap().status,
+            AgentStatus::Working,
+            "tool completions never end the turn",
+        );
+
+        // Only agent.stop ends the turn → Idle.
+        route(&mut reg, "agent.stop");
+        assert_eq!(
+            reg.get(&sid.to_string()).unwrap().status,
+            AgentStatus::Idle,
+            "agent.stop owns the turn-end → Idle",
         );
     }
 
@@ -13119,6 +13229,1020 @@ mod tests {
         app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
     }
 
+    /// Form A end-to-end (mock-acp-agent spec, "option 2"): the mock + real
+    /// `WtaClient` harness lives in the acp module (it needs the private
+    /// `WtaClient`), but this App-state assertion lives here where `App`
+    /// internals are reachable. We drive a prompt through the **real** ACP
+    /// client against the deterministic mock, pump the resulting `AppEvent`s
+    /// into a **real** `App`, and assert the streamed reply is what the chat
+    /// view would show — i.e. what the chat should display is covered without a
+    /// real terminal, real WT, or an LLM.
+    #[tokio::test]
+    async fn mock_agent_reply_streams_into_app_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                // Borrow the acp-module harness: deterministic mock wired to a
+                // real WtaClient over an in-memory duplex.
+                let (conn, mut event_rx, _seen) = connect_mock_agent();
+                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                    .await
+                    .expect("initialize failed");
+                let session = conn
+                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .await
+                    .expect("new_session failed");
+                conn.prompt(acp::PromptRequest::new(
+                    session.session_id.clone(),
+                    vec!["hello".into()],
+                ))
+                .await
+                .expect("prompt failed");
+
+                // Real App with an in-flight turn so streamed chunks are accepted
+                // (the AgentMessageChunk handler drops chunks on an idle turn).
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "hello");
+
+                // Pump the AppEvents the real WtaClient produced into the real
+                // App until the agent message chunk has been applied (bounded so
+                // a wiring bug fails fast instead of hanging).
+                let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        match event_rx.recv().await {
+                            Some(ev) => {
+                                let is_chunk = matches!(ev, AppEvent::AgentMessageChunk { .. });
+                                app.handle_event(ev);
+                                if is_chunk {
+                                    break;
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                })
+                .await;
+                assert!(pumped.is_ok(), "timed out waiting for the agent message chunk");
+
+                // "What the chat shows" while streaming: the mock's reply is in
+                // the active tab's streaming buffer.
+                assert!(
+                    app.current_tab()
+                        .pending_agent_response
+                        .contains("MOCK_OK:hello"),
+                    "mock reply must stream into the App chat buffer; got {:?}",
+                    app.current_tab().pending_agent_response
+                );
+            })
+            .await;
+    }
+
+    /// Drive a prompt through the real ACP client against a mock that requests
+    /// permission, pump the `PermissionRequest` into a real `App`, then simulate
+    /// the user's key choice and assert the chosen option round-trips back to
+    /// the agent. `expected_keys` is the key sequence the user presses; `want`
+    /// is the option id the mock must end up recording.
+    async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+
+        let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
+        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+            .await
+            .expect("initialize failed");
+        let session = conn
+            .new_session(acp::NewSessionRequest::new("/test"))
+            .await
+            .expect("new_session failed");
+        conn.prompt(acp::PromptRequest::new(
+            session.session_id.clone(),
+            vec!["do it".into()],
+        ))
+        .await
+        .expect("prompt failed");
+
+        // Real App with an in-flight turn so the permission request is accepted.
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "do it");
+
+        // Pump events until the PermissionRequest is applied to the App.
+        let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match event_rx.recv().await {
+                    Some(ev) => {
+                        let is_perm = matches!(ev, AppEvent::PermissionRequest { .. });
+                        app.handle_event(ev);
+                        if is_perm {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+        })
+        .await;
+        assert!(pumped.is_ok(), "timed out waiting for the permission request");
+
+        // Display assertion: the permission card is queued with allow/reject,
+        // allow selected by default.
+        {
+            let perm = app
+                .current_tab()
+                .permission
+                .front()
+                .expect("a permission request must be queued for display");
+            assert_eq!(perm.options.len(), 2, "expected allow + reject options");
+            assert_eq!(perm.options[0].id, "allow-once");
+            assert_eq!(perm.options[1].id, "reject-once");
+            assert_eq!(perm.selected, 0, "allow must be selected by default");
+        }
+
+        // Simulate the user's key choice (e.g. Enter = allow, Right then Enter = reject).
+        for key in expected_keys {
+            app.handle_key(KeyEvent::from(*key));
+        }
+
+        // The choice must round-trip back to the agent.
+        let resolved = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if let Some(v) = outcome.lock().unwrap().clone() {
+                    break v;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("timed out waiting for the permission outcome to reach the agent");
+        assert_eq!(resolved, want, "the agent must receive the user's choice");
+
+        // The card is cleared once resolved.
+        assert!(
+            app.current_tab().permission.is_empty(),
+            "the permission card must clear after the user resolves it"
+        );
+    }
+
+    /// Permission allow round-trip: Enter on the default-selected option (allow)
+    /// surfaces the card, then sends `allow-once` back to the agent.
+    #[tokio::test]
+    async fn permission_allow_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(&[KeyCode::Enter], "allow-once"))
+            .await;
+    }
+
+    /// Permission reject round-trip: Right moves selection to reject, Enter
+    /// sends `reject-once` back to the agent.
+    #[tokio::test]
+    async fn permission_reject_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(
+                &[KeyCode::Right, KeyCode::Enter],
+                "reject-once",
+            ))
+            .await;
+    }
+
+    /// Regression (#permission-quick-keys): the `y` quick-key must resolve to
+    /// the allow option even though the wire `kind` is PascalCase (`AllowOnce`)
+    /// while the matcher searches for the lowercase substring `allow`. Before
+    /// the case-insensitive fix this keypress was a silent no-op and the agent
+    /// never received a response — this scenario would time out.
+    #[tokio::test]
+    async fn permission_quick_allow_key_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(
+                &[KeyCode::Char('y')],
+                "allow-once",
+            ))
+            .await;
+    }
+
+    /// Regression (#permission-quick-keys): the `n` quick-key must resolve to
+    /// the reject option. See [`permission_quick_allow_key_round_trips_to_agent`].
+    #[tokio::test]
+    async fn permission_quick_reject_key_round_trips_to_agent() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(run_permission_scenario(
+                &[KeyCode::Char('n')],
+                "reject-once",
+            ))
+            .await;
+    }
+
+    /// The `kind` string is the ACP `PermissionOptionKind` rendered via
+    /// `format!("{:?}", …)`, i.e. PascalCase (`AllowOnce`, `RejectAlways`).
+    /// `PermOption::is_allow`/`is_reject` must match those case-insensitively
+    /// so the `y`/`n` quick-keys and the `[Y]`/`[N]` button labels both fire.
+    #[test]
+    fn perm_option_kind_matching_is_case_insensitive() {
+        let opt = |kind: &str| PermOption {
+            id: "id".into(),
+            name: "name".into(),
+            kind: kind.into(),
+        };
+        for k in ["AllowOnce", "AllowAlways", "allow_once"] {
+            assert!(opt(k).is_allow(), "{k:?} must be recognized as allow");
+            assert!(!opt(k).is_reject(), "{k:?} must not be reject");
+        }
+        for k in ["RejectOnce", "RejectAlways", "reject_once"] {
+            assert!(opt(k).is_reject(), "{k:?} must be recognized as reject");
+            assert!(!opt(k).is_allow(), "{k:?} must not be allow");
+        }
+
+        // PermissionState index helpers pick the first matching option.
+        let perm = PermissionState {
+            description: String::new(),
+            options: vec![opt("AllowOnce"), opt("RejectOnce")],
+            selected: 0,
+            responder: None,
+        };
+        assert_eq!(perm.allow_index(), Some(0));
+        assert_eq!(perm.reject_index(), Some(1));
+    }
+
+    /// Tool-call card: when the mock proposes a command (a `ToolCall`
+    /// notification), the real `WtaClient` turns it into `AppEvent::ToolCall`
+    /// and the real `App` surfaces a tool-call card in the chat — the display
+    /// state the insert/run affordance hangs off.
+    #[tokio::test]
+    async fn tool_call_surfaces_card_in_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
+                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                    .await
+                    .expect("initialize failed");
+                let session = conn
+                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .await
+                    .expect("new_session failed");
+                conn.prompt(acp::PromptRequest::new(
+                    session.session_id.clone(),
+                    vec!["run it".into()],
+                ))
+                .await
+                .expect("prompt failed");
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "run it");
+
+                let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        match event_rx.recv().await {
+                            Some(ev) => {
+                                let is_tool = matches!(ev, AppEvent::ToolCall { .. });
+                                app.handle_event(ev);
+                                if is_tool {
+                                    break;
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                })
+                .await;
+                assert!(pumped.is_ok(), "timed out waiting for the tool call");
+
+                // Display assertion: the proposed command shows as a tool-call card.
+                let has_card = app.current_tab().messages.iter().any(|m| {
+                    matches!(m, ChatMessage::ToolCall { title, .. } if title == "Run: echo hi")
+                });
+                assert!(
+                    has_card,
+                    "a tool-call card must surface in the chat; got {:?}",
+                    app.current_tab().messages
+                );
+            })
+            .await;
+    }
+
+    /// Pump `AppEvent`s into a real `App` until `pred` matches (inclusive), with
+    /// a timeout so a wiring bug fails fast instead of hanging.
+    async fn pump_until(
+        app: &mut App,
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+        pred: impl Fn(&AppEvent) -> bool,
+    ) {
+        let r = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await {
+                    Some(ev) => {
+                        let stop = pred(&ev);
+                        app.handle_event(ev);
+                        if stop {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+        })
+        .await;
+        assert!(r.is_ok(), "timed out pumping events");
+    }
+
+    /// Drive initialize → new_session → prompt against the harness connection,
+    /// leaving an in-flight turn whose streamed notifications the caller pumps
+    /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
+    /// owns the `App`.
+    async fn app_after_prompt(
+        conn: &agent_client_protocol::ClientSideConnection,
+    ) {
+        use agent_client_protocol as acp;
+        use agent_client_protocol::Agent as _;
+        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+            .await
+            .expect("initialize failed");
+        let session = conn
+            .new_session(acp::NewSessionRequest::new("/test"))
+            .await
+            .expect("new_session failed");
+        conn.prompt(acp::PromptRequest::new(
+            session.session_id.clone(),
+            vec!["go".into()],
+        ))
+        .await
+        .expect("prompt failed");
+    }
+
+    /// Streaming: a reply split across two `AgentMessageChunk`s must coalesce
+    /// into one contiguous streaming buffer in the chat.
+    #[tokio::test]
+    async fn streaming_two_chunks_coalesce_in_app_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_streaming_two_chunks;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_streaming_two_chunks();
+                app_after_prompt(&conn).await;
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "go");
+
+                // Two chunks arrive; pump each.
+                pump_until(&mut app, &mut event_rx, |ev| {
+                    matches!(ev, AppEvent::AgentMessageChunk { .. })
+                })
+                .await;
+                pump_until(&mut app, &mut event_rx, |ev| {
+                    matches!(ev, AppEvent::AgentMessageChunk { .. })
+                })
+                .await;
+
+                assert_eq!(
+                    app.current_tab().pending_agent_response,
+                    "MOCK_OK",
+                    "streamed chunks must coalesce into one contiguous reply"
+                );
+            })
+            .await;
+    }
+
+    /// Tool-call lifecycle: a `ToolCallUpdate(Completed)` after the initial
+    /// `ToolCall` must update the card's status in-place (not duplicate it).
+    #[tokio::test]
+    async fn tool_call_completion_updates_card_status() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_completing_tool;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_completing_tool();
+                app_after_prompt(&conn).await;
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "go");
+
+                pump_until(&mut app, &mut event_rx, |ev| {
+                    matches!(ev, AppEvent::ToolCallUpdate { .. })
+                })
+                .await;
+
+                let cards: Vec<_> = app
+                    .current_tab()
+                    .messages
+                    .iter()
+                    .filter_map(|m| match m {
+                        ChatMessage::ToolCall { id, status, .. } => Some((id.clone(), status.clone())),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(cards.len(), 1, "the update must edit in place, not add a card");
+                assert_eq!(cards[0].0, "mock-tool-1");
+                assert_eq!(cards[0].1, "Completed", "card status must reflect the update");
+            })
+            .await;
+    }
+
+    /// Plan: a `Plan` notification must surface as a plan card with its entries.
+    #[tokio::test]
+    async fn plan_surfaces_card_in_chat() {
+        use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_plan;
+
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (conn, mut event_rx) = connect_mock_agent_proposing_plan();
+                app_after_prompt(&conn).await;
+
+                let mut app = test_app();
+                submit_test_prompt(&mut app, "go");
+
+                pump_until(&mut app, &mut event_rx, |ev| matches!(ev, AppEvent::Plan { .. })).await;
+
+                let plan = app.current_tab().messages.iter().find_map(|m| match m {
+                    ChatMessage::Plan(entries) => Some(entries.clone()),
+                    _ => None,
+                });
+                let entries = plan.expect("a plan card must surface in the chat");
+                assert_eq!(entries.len(), 2);
+                assert_eq!(entries[0].content, "Step one");
+                assert_eq!(entries[0].status, PlanEntryStatus::InProgress);
+                assert_eq!(entries[1].content, "Step two");
+            })
+            .await;
+    }
+
+    /// Render a driven `App` to a ratatui `TestBackend` and return the visible
+    /// buffer as text (rows joined by `\n`). Lets scenarios assert on what is
+    /// actually painted, not just on `App` state.
+    fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
+        use ratatui::{backend::TestBackend, Terminal};
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        terminal
+            .draw(|frame| crate::ui::render(frame, app))
+            .expect("render must not panic");
+        let buf = terminal.backend().buffer();
+        let w = buf.area.width as usize;
+        let mut out = String::new();
+        for (i, cell) in buf.content.iter().enumerate() {
+            if i > 0 && i % w == 0 {
+                out.push('\n');
+            }
+            out.push_str(cell.symbol());
+        }
+        out
+    }
+
+    /// Render: a committed agent message must actually appear in the painted
+    /// chat view (not just in `App` state). Lifts `ui/chat.rs` coverage.
+    #[test]
+    fn render_chat_shows_agent_message() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::Agent("VISIBLE_REPLY_XYZ".into()));
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("VISIBLE_REPLY_XYZ"),
+            "the chat view must paint the agent message; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a queued permission request must paint its description and the
+    /// allow/reject option labels. Lifts `ui/permission.rs` coverage.
+    #[test]
+    fn render_permission_card_shows_options() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().permission.push_back(PermissionState {
+            description: "Run: echo PERM_XYZ".into(),
+            options: vec![
+                PermOption {
+                    id: "allow-once".into(),
+                    name: "Allow once".into(),
+                    kind: "AllowOnce".into(),
+                },
+                PermOption {
+                    id: "reject-once".into(),
+                    name: "Reject".into(),
+                    kind: "RejectOnce".into(),
+                },
+            ],
+            selected: 0,
+            responder: None,
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("PERM_XYZ"),
+            "the permission card must paint its description; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("Allow once"),
+            "the permission card must paint the allow option; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a tool-call card must paint its title in the chat. Lifts the
+    /// tool-call branch of `ui/chat.rs`.
+    #[test]
+    fn render_tool_call_card_in_chat() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().messages.push(ChatMessage::ToolCall {
+            id: "mock-tool-1".into(),
+            title: "Run: echo TOOL_XYZ".into(),
+            status: "Pending".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("TOOL_XYZ"),
+            "the tool-call card must paint its title; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the `/help` overlay must list the slash commands. Lifts
+    /// `ui/command_popup.rs`.
+    #[test]
+    fn render_help_overlay_lists_commands() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.help_overlay_visible = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("/restart"),
+            "the help overlay must list slash commands; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the `/model` picker must list the advertised models. Lifts
+    /// `ui/model_popup.rs`.
+    #[test]
+    fn render_model_picker_lists_models() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.available_models = vec![
+            AcpModelInfo {
+                id: "pick-1".into(),
+                name: "PickModelXYZ".into(),
+                description: None,
+            },
+            AcpModelInfo {
+                id: "pick-2".into(),
+                name: "OtherModel".into(),
+                description: None,
+            },
+        ];
+        app.current_tab_mut().model_picker_open = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("PickModelXYZ"),
+            "the model picker must list the advertised models; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the setup/first-run screen must paint its title and subtitle.
+    /// Lifts `ui/setup.rs` (reached only via `AppMode::Setup`).
+    #[test]
+    fn render_setup_screen_shows_title() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::FirstRun,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:qwen"),
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options: Vec::new(),
+            title: "SETUP_TITLE_XYZ".into(),
+            subtitle: "SETUP_SUBTITLE_XYZ".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("SETUP_TITLE_XYZ"),
+            "the setup screen must paint its title; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("SETUP_SUBTITLE_XYZ"),
+            "the setup screen must paint its subtitle; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the auth/sign-in screen must paint the selected agent name.
+    /// Lifts `ui/auth.rs` (reached only via `AppMode::Auth`).
+    #[test]
+    fn render_auth_screen_shows_agent_name() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "SELECTED_AGENT_NAME_XYZ".into(),
+            auth_hint: String::new(),
+            login_command: String::new(),
+            checking: true,
+            status_message: String::new(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("SELECTED_AGENT_NAME_XYZ"),
+            "the auth screen must paint the selected agent name; rendered:\n{text}"
+        );
+    }
+
+    /// Render: the sessions (agents) view must paint its footer keybinding
+    /// hint. Lifts `ui/agents_view.rs` (reached via `View::Agents`).
+    #[test]
+    fn render_sessions_view_shows_footer_hint() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().current_view = View::Agents;
+
+        let text = render_to_text(&mut app, 80, 24);
+        let expected = t!("agents.footer_hint").into_owned();
+        // Assert on a stable leading token of the localized hint so the test
+        // doesn't break on translation wording while still proving the view
+        // painted its chrome.
+        let probe: String = expected.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "the sessions view must paint its footer hint ({expected:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: the auth screen's sign-in card branch (`checking == false`)
+    /// must paint the connect prompt and a Copilot-specific sign-in button.
+    /// Covers the `else` arm of `ui/auth.rs` (lines 62-122).
+    #[test]
+    fn render_auth_sign_in_card() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: String::new(),
+            checking: false,
+            status_message: String::new(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        let connect = t!("auth.card_connect", name = "GitHub Copilot").into_owned();
+        let probe: String = connect.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "the auth sign-in card must paint the connect prompt ({connect:?}); rendered:\n{text}"
+        );
+        let button = t!("auth.button_sign_in_github").into_owned();
+        let button_probe: String = button.chars().take(6).collect();
+        assert!(
+            !button_probe.trim().is_empty() && text.contains(&button_probe),
+            "the auth sign-in card must paint the GitHub sign-in button ({button:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: the auth screen while checking with a non-empty status message
+    /// must paint that message (the `waiting_for_authorization` branch). Covers
+    /// `ui/auth.rs` lines 44-60.
+    #[test]
+    fn render_auth_checking_with_status_message() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: String::new(),
+            checking: true,
+            status_message: "AUTH_STATUS_XYZ".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("AUTH_STATUS_XYZ"),
+            "the auth screen must paint the status message while waiting; rendered:\n{text}"
+        );
+    }
+
+    fn agent_status_for_test(id: &str, display: &str, cli_found: bool) -> crate::agent_check::AgentStatus {
+        crate::agent_check::AgentStatus {
+            id: id.into(),
+            display_name: display.into(),
+            cli_found,
+            cli_path: None,
+            has_credential: false,
+            install_hint: String::new(),
+            auth_hint: String::new(),
+        }
+    }
+
+    /// Render: a setup screen with a full options list while a winget install
+    /// is in progress must paint each option label and the install spinner row.
+    /// Covers the `SetupOption` match arms + the install-progress block in
+    /// `ui/setup.rs`.
+    #[test]
+    fn render_setup_options_while_installing() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentMissing,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:x"),
+            install_in_progress: true,
+            install_log: vec!["WINGET_LOG_XYZ".into()],
+            install_error: None,
+            options: vec![
+                SetupOption::SelectAgent {
+                    agent: agent_status_for_test("copilot", "GitHub Copilot", false),
+                },
+                SetupOption::Install {
+                    agent_id: "copilot".into(),
+                    display_name: "GitHub Copilot".into(),
+                },
+                SetupOption::SignIn {
+                    agent_id: "copilot".into(),
+                    display_name: "GitHub Copilot".into(),
+                },
+                SetupOption::SwitchAgent {
+                    agent: agent_status_for_test("gemini", "Gemini", true),
+                },
+                SetupOption::Retry,
+            ],
+            title: "INSTALLING_TITLE_XYZ".into(),
+            subtitle: "sub".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("INSTALLING_TITLE_XYZ"),
+            "the setup screen must paint its title; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("WINGET_LOG_XYZ"),
+            "the install-in-progress block must paint the winget log tail; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a setup screen carrying an install error must paint the error
+    /// message. Covers the `install_error` branch in `ui/setup.rs` (line 186+).
+    #[test]
+    fn render_setup_install_error() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentError,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:x"),
+            install_in_progress: false,
+            install_log: vec!["log-a".into(), "log-b".into()],
+            install_error: Some("INSTALL_ERR_XYZ".into()),
+            options: vec![SetupOption::Retry],
+            title: "err".into(),
+            subtitle: "sub".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("INSTALL_ERR_XYZ"),
+            "the setup screen must paint the install error; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a setup screen with a completed-info log (no install running,
+    /// no error) must paint the info line. Covers the info-log block in
+    /// `ui/setup.rs` (lines 75-85).
+    #[test]
+    fn render_setup_info_log() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::FirstRun,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("custom:x"),
+            install_in_progress: false,
+            install_log: vec!["INFO_LOG_XYZ".into()],
+            install_error: None,
+            options: vec![SetupOption::SelectAgent {
+                agent: agent_status_for_test("copilot", "GitHub Copilot", true),
+            }],
+            title: "info".into(),
+            subtitle: "sub".into(),
+        });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("INFO_LOG_XYZ"),
+            "the setup screen must paint the completed-info log line; rendered:\n{text}"
+        );
+    }
+
+    /// Render: a surfaced recommendation card with a `Send` action must paint
+    /// the action's command body (the card shows the command, not the choice
+    /// `title` field, which only surfaces for action-less choices) plus the
+    /// run-command button. Lifts `ui/recommendations.rs` (reached only when
+    /// `turn.recommendations()` is Some).
+    #[test]
+    fn render_recommendation_card_shows_command() {
+        use crate::coordinator::{RecommendationChoice, RecommendationSet, RecommendedAction};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().turn = TurnState::Surfaced {
+            prompt: SubmittedPrompt {
+                id: 1,
+                text: "fix it".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
+            },
+            outcome: TurnOutcome::Recommendation(RecommendationSet {
+                recommended_choice: Some(0),
+                choices: vec![RecommendationChoice {
+                    choice: 0,
+                    title: "Run the fix".into(),
+                    rationale: "because reasons".into(),
+                    actions: vec![RecommendedAction::Send {
+                        parent: String::new(),
+                        input: "echo REC_CMD_XYZ".into(),
+                    }],
+                }],
+            }),
+            end_pending: false,
+        };
+
+        let text = render_to_text(&mut app, 80, 40);
+        assert!(
+            text.contains("REC_CMD_XYZ"),
+            "the recommendation card must paint its command body; rendered:\n{text}"
+        );
+        let run_btn = t!("recommendations.button_run_command").into_owned();
+        let probe: String = run_btn.chars().take(4).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "the recommendation card must paint the run-command button ({run_btn:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: every `ChatMessage` variant must paint without panicking and
+    /// surface its distinguishing text. Lifts the `build_message_lines` /
+    /// `message_height` match arms in `ui/chat.rs` (User/System/Plan/Error/
+    /// AgentEvent/Disclaimer were previously unexercised).
+    #[test]
+    fn render_chat_all_message_variants() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        {
+            let tab = app.current_tab_mut();
+            tab.messages.push(ChatMessage::User("USER_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::Agent("AGENT_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::System("SYSTEM_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::Error("ERROR_MSG_XYZ".into()));
+            tab.messages
+                .push(ChatMessage::AgentEvent("AGENT_EVENT_MSG_XYZ".into()));
+            tab.messages.push(ChatMessage::Plan(vec![
+                PlanEntry {
+                    content: "PLAN_DONE_XYZ".into(),
+                    status: PlanEntryStatus::Completed,
+                },
+                PlanEntry {
+                    content: "PLAN_DOING_XYZ".into(),
+                    status: PlanEntryStatus::InProgress,
+                },
+                PlanEntry {
+                    content: "PLAN_TODO_XYZ".into(),
+                    status: PlanEntryStatus::Pending,
+                },
+            ]));
+            tab.messages.push(ChatMessage::Disclaimer);
+        }
+
+        let text = render_to_text(&mut app, 80, 40);
+        for needle in [
+            "USER_MSG_XYZ",
+            "AGENT_MSG_XYZ",
+            "SYSTEM_MSG_XYZ",
+            "ERROR_MSG_XYZ",
+            "AGENT_EVENT_MSG_XYZ",
+            "PLAN_DONE_XYZ",
+            "PLAN_DOING_XYZ",
+            "PLAN_TODO_XYZ",
+        ] {
+            assert!(
+                text.contains(needle),
+                "chat must paint {needle:?}; rendered:\n{text}"
+            );
+        }
+    }
+
+    /// Render: an expanded completed turn with a trailing marker must paint
+    /// its prompt header, its detail rows, and the marker. Lifts
+    /// `build_completed_turn_lines` in `ui/chat.rs`.
+    #[test]
+    fn render_chat_completed_turn_expanded_with_marker() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: "TURN_PROMPT_XYZ".into(),
+            details: vec![ChatMessage::Agent("TURN_DETAIL_XYZ".into())],
+            expanded: true,
+            trailing_marker: Some("TURN_MARKER_XYZ".into()),
+        });
+
+        let text = render_to_text(&mut app, 80, 40);
+        for needle in ["TURN_PROMPT_XYZ", "TURN_DETAIL_XYZ", "TURN_MARKER_XYZ"] {
+            assert!(
+                text.contains(needle),
+                "expanded completed turn must paint {needle:?}; rendered:\n{text}"
+            );
+        }
+    }
+
+    /// Render: while the helper is still connecting, the chat must paint the
+    /// animated "Connecting…" activity line. Lifts the `Connecting` branch of
+    /// `build_activity_line` in `ui/chat.rs`.
+    #[test]
+    fn render_chat_connecting_activity_line() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connecting("starting".into());
+
+        let text = render_to_text(&mut app, 80, 24);
+        let label = t!("connection.connecting_activity").into_owned();
+        let probe: String = label.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "chat must paint the connecting activity line ({label:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: the first-run welcome hint must paint its title when connected
+    /// and `show_welcome_hint` is set. Lifts the welcome branch of
+    /// `ui/chat.rs` + `ui/layout.rs`.
+    #[test]
+    fn render_chat_welcome_hint() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        let title = t!("chat.welcome_title").into_owned();
+        let probe: String = title.chars().take(6).collect();
+        assert!(
+            !probe.trim().is_empty() && text.contains(&probe),
+            "chat must paint the welcome title ({title:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: when the pane is too short for a full permission card, the
+    /// compact one-row fallback must paint the description and the `[Y/N]`
+    /// hint. Lifts `render_compact` in `ui/permission.rs`. The compact path
+    /// is gated on `terminal_rows - 3 < CARD_MIN_SIZE`.
+    #[test]
+    fn render_permission_compact_shows_hint() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.terminal_rows = 7; // ceiling = 4 < CARD_MIN_SIZE(5) → compact fallback
+        app.current_tab_mut().permission.push_back(PermissionState {
+            description: "Run: echo PERM_COMPACT_XYZ".into(),
+            options: vec![
+                PermOption {
+                    id: "allow-once".into(),
+                    name: "Allow once".into(),
+                    kind: "AllowOnce".into(),
+                },
+                PermOption {
+                    id: "reject-once".into(),
+                    name: "Reject".into(),
+                    kind: "RejectOnce".into(),
+                },
+            ],
+            selected: 0,
+            responder: None,
+        });
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("PERM_COMPACT_XYZ"),
+            "the compact permission row must paint its description; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("Y/N"),
+            "the compact permission row must paint the [Y/N] hint; rendered:\n{text}"
+        );
+    }
+
     fn submit_autofix_prompt(app: &mut App, pane: &str) {
         let gen = {
             let tab = app.tab_mut(DEFAULT_TAB_ID);
@@ -13740,6 +14864,77 @@ mod tests {
             app.current_tab().chat_scroll.offset,
             3,
             "non-empty input must NOT trigger the chat-scroll fallback",
+        );
+    }
+
+    #[test]
+    fn recommendation_card_keeps_focus_when_input_has_draft() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        stage_surfaced_recommendation(
+            &mut app,
+            vec![send_choice("pane-A", "ls"), send_choice("pane-B", "pwd")],
+            0,
+            None,
+        );
+        app.current_tab_mut().input = "draft".into();
+        app.current_tab_mut().cursor_pos = "draft".len();
+        app.current_tab_mut().chat_scroll.offset = 7;
+
+        assert!(
+            !app.current_tab().input_has_nav_focus(),
+            "a visible card owns focus even when the input keeps draft text",
+        );
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_recommendation, 1);
+        assert_eq!(app.current_tab().input, "draft");
+        assert_eq!(
+            app.current_tab().chat_scroll.offset,
+            7,
+            "card navigation must not fall through to chat scrolling",
+        );
+
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_recommendation, 0);
+
+        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_button, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_button, 0);
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(
+            app.current_tab().input,
+            "draft",
+            "typing stays locked while the card owns focus",
+        );
+    }
+
+    #[test]
+    fn recommendation_card_enter_wins_over_draft_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+        stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+        app.current_tab_mut().input = "/help".into();
+        app.current_tab_mut().cursor_pos = "/help".len();
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            app.current_tab().input,
+            "/help",
+            "executing the card must preserve the user's draft",
+        );
+        assert!(
+            app.current_tab().turn.recommendations().is_none(),
+            "Enter should execute the visible card, not submit or slash-parse the draft",
+        );
+        assert!(
+            !app.help_overlay_visible,
+            "draft slash commands must not run while a recommendation card owns focus",
         );
     }
 

@@ -194,21 +194,8 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
         .map_err(|_| anyhow!("new_session timed out after 10s during probe"))?
         .map_err(|e| anyhow!("new_session failed: {}", e))?;
 
-    let (available_models, current_model_id) = match &session_resp.models {
-        Some(state) => {
-            let models: Vec<AcpModelInfo> = state
-                .available_models
-                .iter()
-                .map(|m| AcpModelInfo {
-                    id: m.model_id.0.to_string(),
-                    name: m.name.clone(),
-                    description: m.description.clone(),
-                })
-                .collect();
-            (models, Some(state.current_model_id.0.to_string()))
-        }
-        None => (Vec::new(), None),
-    };
+    let (available_models, current_model_id) =
+        crate::protocol::acp::model_select::models_from_new_session(&session_resp);
 
     drop(spawned.child);
 
