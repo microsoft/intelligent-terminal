@@ -37,6 +37,11 @@ Three facts make most of that work wasteful:
 
 ## Background: how the session view gets its data
 
+> This section describes the data flow **before** this change, to establish
+> why the helper's local scan is redundant. The Design section below removes
+> the helper scan; afterward the helper's local registry holds only live
+> rows (no `load_all`).
+
 There are two stores in a helper:
 
 | Store | Populated by | Role |
@@ -108,6 +113,13 @@ the agent is custom / unrecognized. The dispatch decision lives in a small
 testable helper, `cli_scan_flags`. (The old unconditional `load_all()` is
 removed — every caller now passes a filter.) The two-phase scan internals
 (per-CLI cap by mtime, Class A skip) are unchanged.
+
+`MAX_PER_CLI` (= 50) is a *discovery-phase acquisition cap*, not a
+guaranteed post-filter row count: the cheap phase keeps the newest 50
+candidates, then the expensive phase drops any phantoms among them, so a
+CLI can finish with fewer than 50 rows. This is intentional — it bounds
+phase-2 content reads at 50 per CLI, and we deliberately do not back-fill
+from older candidates to refill to 50.
 
 Master passes its already-resolved CLI:
 
