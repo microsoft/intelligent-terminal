@@ -64,67 +64,36 @@ impl SpecialistSource {
             Self::Codex => 4,
         }
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SpecialistRootPattern {
-    ExactFile,
-    FileSuffix(&'static str),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SpecialistRootFormat {
-    Markdown,
-    TodoUnsupported,
+    /// Map an agent CLI id (`AgentProfile::id`, e.g. `"copilot"`) to the
+    /// specialist source whose `.<cli>/agents` directories belong to it.
+    /// Returns `None` for unknown / custom agents that have no `.x/agents`
+    /// convention.
+    pub(crate) fn from_agent_id(id: &str) -> Option<Self> {
+        match id {
+            "copilot" => Some(Self::Copilot),
+            "claude" => Some(Self::Claude),
+            "gemini" => Some(Self::Gemini),
+            "codex" => Some(Self::Codex),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SpecialistRoot {
     source: SpecialistSource,
+    /// Directory scanned (recursively, up to `max_depth`) for `*.md` files.
     path: PathBuf,
-    pattern: SpecialistRootPattern,
     max_depth: usize,
-    format: SpecialistRootFormat,
 }
 
 impl SpecialistRoot {
-    fn markdown_dir(
-        source: SpecialistSource,
-        path: PathBuf,
-        suffix: &'static str,
-        max_depth: usize,
-    ) -> Self {
+    fn agents_dir(source: SpecialistSource, path: PathBuf, max_depth: usize) -> Self {
         Self {
             source,
             path,
-            pattern: SpecialistRootPattern::FileSuffix(suffix),
             max_depth,
-            format: SpecialistRootFormat::Markdown,
-        }
-    }
-
-    fn markdown_file(source: SpecialistSource, path: PathBuf) -> Self {
-        Self {
-            source,
-            path,
-            pattern: SpecialistRootPattern::ExactFile,
-            max_depth: 0,
-            format: SpecialistRootFormat::Markdown,
-        }
-    }
-
-    fn unsupported_dir(
-        source: SpecialistSource,
-        path: PathBuf,
-        suffix: &'static str,
-        max_depth: usize,
-    ) -> Self {
-        Self {
-            source,
-            path,
-            pattern: SpecialistRootPattern::FileSuffix(suffix),
-            max_depth,
-            format: SpecialistRootFormat::TodoUnsupported,
         }
     }
 }
@@ -168,6 +137,22 @@ pub(crate) fn discover_specialists(cwd: &Path) -> Vec<SpecialistEntry> {
         runtime_prompt_root().as_deref(),
     );
     discover_specialists_from_roots(&roots, runtime_prompt_root().as_deref())
+}
+
+/// Keep only WTA specialists plus those belonging to the active agent CLI.
+/// The agent pane runs a single CLI, so its `/as` list is scoped to that
+/// agent's `.<cli>/agents` files. An unknown / custom agent (`active == None`)
+/// has no `.x/agents` convention, so only WTA specialists remain.
+///
+/// Pure (no env / IO) so it is unit-testable in isolation.
+pub(crate) fn scope_specialists_to_agent(
+    specialists: Vec<SpecialistEntry>,
+    active: Option<SpecialistSource>,
+) -> Vec<SpecialistEntry> {
+    specialists
+        .into_iter()
+        .filter(|entry| entry.source == SpecialistSource::Wta || Some(entry.source) == active)
+        .collect()
 }
 
 pub(crate) fn load_specialist_by_path(path: &Path) -> Option<PlannerPromptTemplate> {
@@ -302,88 +287,56 @@ fn list_specialists_from_root(prompt_root: Option<&Path>) -> Vec<String> {
     specialists
 }
 
-/// Single source of truth for specialist discovery locations. When the
-/// authoritative CLI research lands, edit these placeholder roots/patterns
-/// here rather than chasing scattered path literals through the scanner.
+/// Single source of truth for specialist discovery locations.
+///
+/// Every supported agent CLI follows the same convention: agent definition
+/// files live in `.<cli>/agents/**/*.md` at the repo level and
+/// `~/.<cli>/agents/**/*.md` at the user level. The `**/*.md` glob also
+/// matches Copilot's `*.agent.md` files (they still end in `.md`). WTA's own
+/// runtime `prompts/` directory is treated the same way.
 fn specialist_roots(
     cwd: &Path,
     repo_root: Option<&Path>,
     home_dir: Option<&Path>,
     prompt_root: Option<&Path>,
 ) -> Vec<SpecialistRoot> {
+    /// `(source, dot-directory)` for each CLI's `agents` folder.
+    const CLI_AGENT_DIRS: &[(SpecialistSource, &str)] = &[
+        (SpecialistSource::Copilot, ".copilot"),
+        (SpecialistSource::Claude, ".claude"),
+        (SpecialistSource::Gemini, ".gemini"),
+        (SpecialistSource::Codex, ".codex"),
+    ];
+
     let mut roots = Vec::new();
 
-    // Verified against primary sources (official docs / on-machine reality).
-    // Gemini's custom commands are TOML (`.gemini/commands/*.toml`), not
-    // markdown agent files; its only markdown instruction file is `GEMINI.md`,
-    // so that is what we surface. Claude scans recursively. Codex / the
-    // AGENTS.md open standard use a single repo-root `AGENTS.md` file (also
-    // read natively by Copilot CLI).
+    // Repo-level: `<repo>/.<cli>/agents/**/*.md`.
     if let Some(repo_root) = repo_root {
-        roots.push(SpecialistRoot::markdown_dir(
-            SpecialistSource::Claude,
-            repo_root.join(".claude").join("agents"),
-            ".md",
-            SPECIALIST_SCAN_DEPTH,
-        ));
-        roots.push(SpecialistRoot::markdown_file(
-            SpecialistSource::Gemini,
-            repo_root.join("GEMINI.md"),
-        ));
-        // Gemini's reusable commands are TOML (`prompt = "..."`), not markdown.
-        // Discovered but not yet parsed — recorded so the table stays the full
-        // source of truth for what exists in the ecosystem.
-        roots.push(SpecialistRoot::unsupported_dir(
-            SpecialistSource::Gemini,
-            repo_root.join(".gemini").join("commands"),
-            ".toml",
-            SPECIALIST_SCAN_DEPTH,
-        ));
-        roots.push(SpecialistRoot::markdown_file(
-            SpecialistSource::Codex,
-            repo_root.join("AGENTS.md"),
-        ));
+        for (source, dir) in CLI_AGENT_DIRS {
+            roots.push(SpecialistRoot::agents_dir(
+                *source,
+                repo_root.join(dir).join("agents"),
+                SPECIALIST_SCAN_DEPTH,
+            ));
+        }
     }
 
+    // User-level: `~/.<cli>/agents/**/*.md`.
     if let Some(home_dir) = home_dir {
-        // Machine-verified: the standalone GitHub Copilot CLI stores custom
-        // agents as `~/.copilot/agents/*.agent.md` (this is undocumented in the
-        // GitHub cloud docs but is the real on-disk format the CLI uses).
-        roots.push(SpecialistRoot::markdown_dir(
-            SpecialistSource::Copilot,
-            home_dir.join(".copilot").join("agents"),
-            ".agent.md",
-            SPECIALIST_SCAN_DEPTH,
-        ));
-        roots.push(SpecialistRoot::markdown_dir(
-            SpecialistSource::Claude,
-            home_dir.join(".claude").join("agents"),
-            ".md",
-            SPECIALIST_SCAN_DEPTH,
-        ));
-        roots.push(SpecialistRoot::markdown_file(
-            SpecialistSource::Gemini,
-            home_dir.join(".gemini").join("GEMINI.md"),
-        ));
-        roots.push(SpecialistRoot::unsupported_dir(
-            SpecialistSource::Gemini,
-            home_dir.join(".gemini").join("commands"),
-            ".toml",
-            SPECIALIST_SCAN_DEPTH,
-        ));
-        // Codex user-global instruction file is `~/.codex/AGENTS.md`
-        // (there is no `~/.codex/prompts/` directory).
-        roots.push(SpecialistRoot::markdown_file(
-            SpecialistSource::Codex,
-            home_dir.join(".codex").join("AGENTS.md"),
-        ));
+        for (source, dir) in CLI_AGENT_DIRS {
+            roots.push(SpecialistRoot::agents_dir(
+                *source,
+                home_dir.join(dir).join("agents"),
+                SPECIALIST_SCAN_DEPTH,
+            ));
+        }
     }
 
+    // WTA's own runtime prompts directory.
     if let Some(prompt_root) = prompt_root {
-        roots.push(SpecialistRoot::markdown_dir(
+        roots.push(SpecialistRoot::agents_dir(
             SpecialistSource::Wta,
             prompt_root.to_path_buf(),
-            ".md",
             0,
         ));
     }
@@ -424,23 +377,10 @@ fn discover_specialists_from_roots(
 
 fn scan_specialist_root(specialists: &mut Vec<SpecialistEntry>, root: &SpecialistRoot) {
     if root.source == SpecialistSource::Wta {
-        if let SpecialistRootPattern::FileSuffix(_) = root.pattern {
-            let _ = seed_prompt_files(&root.path, EMBEDDED_DEFAULT_PROMPT);
-        }
+        let _ = seed_prompt_files(&root.path, EMBEDDED_DEFAULT_PROMPT);
     }
 
-    if root.format == SpecialistRootFormat::TodoUnsupported {
-        return;
-    }
-
-    match root.pattern {
-        SpecialistRootPattern::ExactFile => {
-            push_specialist_file_if_allowed(specialists, root.source, &root.path, None);
-        }
-        SpecialistRootPattern::FileSuffix(suffix) => {
-            scan_specialist_dir(specialists, root.source, &root.path, suffix, root.max_depth);
-        }
-    }
+    scan_specialist_dir(specialists, root.source, &root.path, ".md", root.max_depth);
 }
 
 fn scan_specialist_dir(
@@ -726,14 +666,24 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_specialists_from_roots, list_specialists_from_root,
+        discover_specialists_from_roots, find_git_repo_root, list_specialists_from_root,
         load_planner_prompt_template_from_root, load_specialist_by_path, merge_runtime_sections,
-        specialist_roots, SpecialistRootFormat, SpecialistRootPattern, SpecialistSource,
-        DEFAULT_SPECIALIST_NAME, DEFAULT_PROMPT_FILE_NAME, RUNTIME_CONTEXT_MARKER,
-        SPECIALIST_SCAN_DEPTH, USER_PROMPT_FILE_NAME,
+        scope_specialists_to_agent, specialist_display_name_for_selection,
+        specialist_display_name_from_path, specialist_path_from_selection, specialist_roots,
+        strip_specialist_extension, SpecialistEntry, SpecialistSource, DEFAULT_SPECIALIST_NAME,
+        DEFAULT_PROMPT_FILE_NAME, RUNTIME_CONTEXT_MARKER, SPECIALIST_SCAN_DEPTH,
+        USER_PROMPT_FILE_NAME,
     };
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+
+    fn entry(source: SpecialistSource, name: &str) -> SpecialistEntry {
+        SpecialistEntry {
+            display_name: name.to_string(),
+            path: PathBuf::from(format!("{name}.md")),
+            source,
+        }
+    }
 
     fn temp_prompt_root(test_name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
@@ -921,7 +871,7 @@ mod tests {
     }
 
     #[test]
-    fn specialist_roots_centralize_verified_locations() {
+    fn specialist_roots_centralize_uniform_agents_dirs() {
         let repo_root = temp_prompt_root("roots-repo");
         let home_root = temp_prompt_root("roots-home");
         let prompt_root = repo_root.join("wta-prompts");
@@ -930,90 +880,55 @@ mod tests {
         let roots = specialist_roots(&cwd, Some(&repo_root), Some(&home_root), Some(&prompt_root));
         let summary = roots
             .iter()
-            .map(|root| {
-                (
-                    root.source,
-                    root.path.clone(),
-                    root.pattern,
-                    root.max_depth,
-                    root.format,
-                )
-            })
+            .map(|root| (root.source, root.path.clone(), root.max_depth))
             .collect::<Vec<_>>();
 
         assert_eq!(
             summary,
             vec![
+                // Repo-level: `<repo>/.<cli>/agents` for every CLI.
+                (
+                    SpecialistSource::Copilot,
+                    repo_root.join(".copilot").join("agents"),
+                    SPECIALIST_SCAN_DEPTH,
+                ),
                 (
                     SpecialistSource::Claude,
                     repo_root.join(".claude").join("agents"),
-                    SpecialistRootPattern::FileSuffix(".md"),
                     SPECIALIST_SCAN_DEPTH,
-                    SpecialistRootFormat::Markdown,
                 ),
                 (
                     SpecialistSource::Gemini,
-                    repo_root.join("GEMINI.md"),
-                    SpecialistRootPattern::ExactFile,
-                    0,
-                    SpecialistRootFormat::Markdown,
-                ),
-                (
-                    SpecialistSource::Gemini,
-                    repo_root.join(".gemini").join("commands"),
-                    SpecialistRootPattern::FileSuffix(".toml"),
+                    repo_root.join(".gemini").join("agents"),
                     SPECIALIST_SCAN_DEPTH,
-                    SpecialistRootFormat::TodoUnsupported,
                 ),
                 (
                     SpecialistSource::Codex,
-                    repo_root.join("AGENTS.md"),
-                    SpecialistRootPattern::ExactFile,
-                    0,
-                    SpecialistRootFormat::Markdown,
+                    repo_root.join(".codex").join("agents"),
+                    SPECIALIST_SCAN_DEPTH,
                 ),
+                // User-level: `~/.<cli>/agents` for every CLI.
                 (
                     SpecialistSource::Copilot,
                     home_root.join(".copilot").join("agents"),
-                    SpecialistRootPattern::FileSuffix(".agent.md"),
                     SPECIALIST_SCAN_DEPTH,
-                    SpecialistRootFormat::Markdown,
                 ),
                 (
                     SpecialistSource::Claude,
                     home_root.join(".claude").join("agents"),
-                    SpecialistRootPattern::FileSuffix(".md"),
                     SPECIALIST_SCAN_DEPTH,
-                    SpecialistRootFormat::Markdown,
                 ),
                 (
                     SpecialistSource::Gemini,
-                    home_root.join(".gemini").join("GEMINI.md"),
-                    SpecialistRootPattern::ExactFile,
-                    0,
-                    SpecialistRootFormat::Markdown,
-                ),
-                (
-                    SpecialistSource::Gemini,
-                    home_root.join(".gemini").join("commands"),
-                    SpecialistRootPattern::FileSuffix(".toml"),
+                    home_root.join(".gemini").join("agents"),
                     SPECIALIST_SCAN_DEPTH,
-                    SpecialistRootFormat::TodoUnsupported,
                 ),
                 (
                     SpecialistSource::Codex,
-                    home_root.join(".codex").join("AGENTS.md"),
-                    SpecialistRootPattern::ExactFile,
-                    0,
-                    SpecialistRootFormat::Markdown,
+                    home_root.join(".codex").join("agents"),
+                    SPECIALIST_SCAN_DEPTH,
                 ),
-                (
-                    SpecialistSource::Wta,
-                    prompt_root,
-                    SpecialistRootPattern::FileSuffix(".md"),
-                    0,
-                    SpecialistRootFormat::Markdown,
-                ),
+                (SpecialistSource::Wta, prompt_root, 0),
             ]
         );
     }
@@ -1027,15 +942,17 @@ mod tests {
 
         fs::create_dir_all(repo_root.join(".git")).unwrap();
         fs::create_dir_all(repo_root.join(".claude").join("agents")).unwrap();
-        fs::create_dir_all(repo_root.join(".gemini").join("commands")).unwrap();
+        fs::create_dir_all(repo_root.join(".codex").join("agents")).unwrap();
         fs::create_dir_all(home_root.join(".copilot").join("agents")).unwrap();
         fs::create_dir_all(home_root.join(".claude").join("agents")).unwrap();
-        fs::create_dir_all(home_root.join(".gemini")).unwrap();
-        fs::create_dir_all(home_root.join(".codex")).unwrap();
+        fs::create_dir_all(home_root.join(".gemini").join("agents")).unwrap();
+        fs::create_dir_all(home_root.join(".codex").join("agents")).unwrap();
         fs::create_dir_all(&nested_cwd).unwrap();
         fs::create_dir_all(&prompt_root).unwrap();
 
         fs::write(prompt_root.join("devops.md"), "devops").unwrap();
+        // Copilot's `.agent.md` files still end in `.md`, so the uniform
+        // `**/*.md` scan picks them up.
         fs::write(
             home_root.join(".copilot").join("agents").join("user.agent.md"),
             "# User\nhome guidance",
@@ -1056,22 +973,18 @@ mod tests {
             "# Claude User\nhome guidance",
         )
         .unwrap();
-        // Gemini's markdown context file (GEMINI.md) surfaces; its TOML command
-        // files are intentionally TODO and must not surface.
-        fs::write(repo_root.join("GEMINI.md"), "# Gemini\nrepo guidance").unwrap();
         fs::write(
-            repo_root.join(".gemini").join("commands").join("gemini-repo.toml"),
-            "name = 'repo'",
+            home_root.join(".gemini").join("agents").join("gemini-user.md"),
+            "# Gemini User\nhome guidance",
         )
         .unwrap();
         fs::write(
-            home_root.join(".gemini").join("commands").join("gemini-user.toml"),
-            "name = 'user'",
+            repo_root.join(".codex").join("agents").join("codex-repo.md"),
+            "# Codex Repo\nrepo guidance",
         )
         .unwrap();
-        fs::write(repo_root.join("AGENTS.md"), "# Codex Repo\nrepo guidance").unwrap();
         fs::write(
-            home_root.join(".codex").join("AGENTS.md"),
+            home_root.join(".codex").join("agents").join("codex-user.md"),
             "# Codex User\nhome guidance",
         )
         .unwrap();
@@ -1092,8 +1005,9 @@ mod tests {
                 (SpecialistSource::Copilot, "user".to_string()),
                 (SpecialistSource::Claude, "reviewer".to_string()),
                 (SpecialistSource::Claude, "user-claude".to_string()),
-                (SpecialistSource::Gemini, "GEMINI".to_string()),
-                (SpecialistSource::Codex, "AGENTS".to_string()),
+                (SpecialistSource::Gemini, "gemini-user".to_string()),
+                (SpecialistSource::Codex, "codex-repo".to_string()),
+                (SpecialistSource::Codex, "codex-user".to_string()),
             ]
         );
 
@@ -1105,21 +1019,115 @@ mod tests {
             reviewer.path,
             repo_root.join(".claude").join("agents").join("reviewer.md")
         );
-        // Codex repo AGENTS.md takes precedence over the user-level one.
-        let codex = specialists
+        // Copilot's `.agent.md` file is discovered via the uniform scan; its
+        // display name strips the full `.agent.md` extension.
+        let copilot = specialists
             .iter()
-            .find(|entry| entry.source == SpecialistSource::Codex)
-            .expect("expected codex specialist");
-        assert_eq!(codex.path, repo_root.join("AGENTS.md"));
-        // Gemini's GEMINI.md surfaces; its `.toml` command files never do.
-        assert!(
-            specialists
-                .iter()
-                .all(|entry| !entry.display_name.starts_with("gemini-")),
-            "Gemini `.toml` command files are TODO and must not surface as specialists yet"
+            .find(|entry| entry.source == SpecialistSource::Copilot)
+            .expect("expected copilot specialist");
+        assert_eq!(
+            copilot.path,
+            home_root.join(".copilot").join("agents").join("user.agent.md")
         );
 
         let _ = fs::remove_dir_all(repo_root);
         let _ = fs::remove_dir_all(home_root);
+    }
+
+    #[test]
+    fn scope_specialists_keeps_wta_and_active_agent_only() {
+        let all = vec![
+            entry(SpecialistSource::Wta, "terminal-agent"),
+            entry(SpecialistSource::Copilot, "cop"),
+            entry(SpecialistSource::Claude, "cla"),
+            entry(SpecialistSource::Gemini, "gem"),
+            entry(SpecialistSource::Codex, "cdx"),
+        ];
+
+        let scoped = scope_specialists_to_agent(all.clone(), Some(SpecialistSource::Claude));
+        let names: Vec<_> = scoped.iter().map(|e| e.display_name.as_str()).collect();
+        assert_eq!(names, vec!["terminal-agent", "cla"]);
+
+        // Unknown / custom agent → WTA only.
+        let wta_only = scope_specialists_to_agent(all, None);
+        let names: Vec<_> = wta_only.iter().map(|e| e.display_name.as_str()).collect();
+        assert_eq!(names, vec!["terminal-agent"]);
+    }
+
+    #[test]
+    fn from_agent_id_maps_known_clis_only() {
+        assert_eq!(
+            SpecialistSource::from_agent_id("copilot"),
+            Some(SpecialistSource::Copilot)
+        );
+        assert_eq!(
+            SpecialistSource::from_agent_id("claude"),
+            Some(SpecialistSource::Claude)
+        );
+        assert_eq!(
+            SpecialistSource::from_agent_id("gemini"),
+            Some(SpecialistSource::Gemini)
+        );
+        assert_eq!(
+            SpecialistSource::from_agent_id("codex"),
+            Some(SpecialistSource::Codex)
+        );
+        assert_eq!(SpecialistSource::from_agent_id("custom:foo"), None);
+        assert_eq!(SpecialistSource::from_agent_id(""), None);
+    }
+
+    #[test]
+    fn strip_specialist_extension_handles_known_suffixes() {
+        assert_eq!(strip_specialist_extension("devops.md"), "devops");
+        assert_eq!(strip_specialist_extension("user.agent.md"), "user");
+        assert_eq!(strip_specialist_extension("plain"), "plain");
+    }
+
+    #[test]
+    fn display_name_from_path_uses_file_stem() {
+        assert_eq!(
+            specialist_display_name_from_path(Path::new("/a/b/AGENTS.md")),
+            "AGENTS"
+        );
+        assert_eq!(
+            specialist_display_name_from_path(Path::new("/a/b/review.agent.md")),
+            "review"
+        );
+    }
+
+    #[test]
+    fn selection_distinguishes_path_from_bare_name() {
+        // A bare name resolves to itself (extension stripped); a path-like
+        // selection resolves to the file stem of the path.
+        assert_eq!(specialist_display_name_for_selection("devops"), "devops");
+        assert_eq!(specialist_display_name_for_selection("devops.md"), "devops");
+        assert!(specialist_path_from_selection(Some("devops")).is_none());
+        assert_eq!(
+            specialist_path_from_selection(Some("/repo/.claude/agents/x.md")),
+            Some(PathBuf::from("/repo/.claude/agents/x.md"))
+        );
+        assert_eq!(
+            specialist_display_name_for_selection("/repo/.claude/agents/x.md"),
+            "x"
+        );
+    }
+
+    #[test]
+    fn find_git_repo_root_walks_up_to_dot_git() {
+        let repo_root = temp_prompt_root("git-root");
+        let nested = repo_root.join("a").join("b").join("c");
+        fs::create_dir_all(&nested).unwrap();
+        fs::create_dir_all(repo_root.join(".git")).unwrap();
+
+        assert_eq!(find_git_repo_root(&nested).as_deref(), Some(repo_root.as_path()));
+
+        // No `.git` anywhere up the chain → None.
+        let orphan = temp_prompt_root("git-orphan");
+        let orphan_nested = orphan.join("x");
+        fs::create_dir_all(&orphan_nested).unwrap();
+        assert!(find_git_repo_root(&orphan_nested).is_none());
+
+        let _ = fs::remove_dir_all(repo_root);
+        let _ = fs::remove_dir_all(orphan);
     }
 }

@@ -2664,7 +2664,12 @@ impl App {
     /// for this tab. Switching takes effect on the next prompt and forces a
     /// fresh ACP session so the new system prompt lands on a clean conversation.
     fn cmd_persona(&mut self, arg: String, in_flight: bool) {
-        let personas = self
+        // The agent pane runs one CLI; scope discovery to that agent's
+        // `.<cli>/agents` dirs (plus WTA's own prompts). An unknown / custom
+        // agent has no `.x/agents` convention, so only WTA specialists show.
+        let active_source =
+            crate::protocol::acp::prompt::SpecialistSource::from_agent_id(&self.current_agent_id);
+        let discovered = self
             .active_specialist_cwd()
             .map(crate::protocol::acp::prompt::discover_specialists)
             .unwrap_or_else(|| {
@@ -2677,6 +2682,8 @@ impl App {
                     })
                     .collect()
             });
+        let personas =
+            crate::protocol::acp::prompt::scope_specialists_to_agent(discovered, active_source);
         let arg = arg.trim().to_string();
 
         if arg.is_empty() {

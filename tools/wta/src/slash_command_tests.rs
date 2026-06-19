@@ -314,32 +314,36 @@ fn slash_as_lists_discovered_specialists_grouped_by_source() {
     let nested_cwd = repo_root.join("src").join("nested");
     fs::create_dir_all(repo_root.join(".git")).unwrap();
     fs::create_dir_all(repo_root.join(".claude").join("agents")).unwrap();
+    // A different CLI's agents dir must NOT show while the pane runs Claude.
+    fs::create_dir_all(repo_root.join(".codex").join("agents")).unwrap();
     fs::create_dir_all(&nested_cwd).unwrap();
     fs::write(
         repo_root.join(".claude").join("agents").join("claude-dev.md"),
         "# Claude",
     )
     .unwrap();
-    fs::write(repo_root.join("AGENTS.md"), "# Codex").unwrap();
+    fs::write(
+        repo_root.join(".codex").join("agents").join("codex-only.md"),
+        "# Codex",
+    )
+    .unwrap();
 
     let mut app = test_app();
+    app.current_agent_id = "claude".to_string();
     app.source_cwd = Some(nested_cwd.to_string_lossy().into_owned());
 
     run_slash(&mut app, "as");
 
     match app.current_tab().messages.last() {
         Some(ChatMessage::System(msg)) => {
-            // Assert only on sources this test controls via the temp repo root.
-            // Copilot/Gemini specialists live under the user home directory,
-            // which the test does not (and cannot deterministically) override —
-            // `discover_specialists` reads the real home — so they are not
-            // asserted here.
+            // Active agent is Claude → only Custom (WTA) + Claude groups show.
             assert!(msg.contains("  Custom:"), "got: {msg}");
             assert!(msg.contains("  Claude:"), "got: {msg}");
-            assert!(msg.contains("  Codex:"), "got: {msg}");
             assert!(msg.contains("• terminal-agent"), "got: {msg}");
             assert!(msg.contains("• claude-dev"), "got: {msg}");
-            assert!(msg.contains("• AGENTS"), "got: {msg}");
+            // The other CLI's agents are scoped out.
+            assert!(!msg.contains("  Codex:"), "got: {msg}");
+            assert!(!msg.contains("• codex-only"), "got: {msg}");
         }
         other => panic!("expected specialist list message, got {other:?}"),
     }
@@ -349,20 +353,34 @@ fn slash_as_lists_discovered_specialists_grouped_by_source() {
 
 #[test]
 fn slash_as_switches_active_specialist_and_marks_session_reset() {
+    let repo_root = temp_repo_root("persona-reset");
+    fs::create_dir_all(repo_root.join(".git")).unwrap();
+    let claude_dir = repo_root.join(".claude").join("agents");
+    fs::create_dir_all(&claude_dir).unwrap();
+    let security_path = claude_dir.join("security.md");
+    fs::write(&security_path, "# Security").unwrap();
+
     let mut app = test_app();
+    app.current_agent_id = "claude".to_string();
+    app.source_cwd = Some(repo_root.to_string_lossy().into_owned());
     app.current_tab_mut()
         .messages
         .push(ChatMessage::System("stale".into()));
 
     run_slash_args(&mut app, "as", "security");
 
-    assert_eq!(app.current_tab().active_persona.as_deref(), Some("security"));
+    assert_eq!(
+        app.current_tab().active_persona.as_deref(),
+        Some(security_path.to_string_lossy().as_ref())
+    );
     assert!(app.current_tab().needs_new_session);
     assert_eq!(app.current_tab().messages.len(), 1);
     match app.current_tab().messages.last() {
         Some(ChatMessage::System(msg)) => assert!(msg.contains("security")),
         other => panic!("expected switch confirmation, got {other:?}"),
     }
+
+    let _ = fs::remove_dir_all(repo_root);
 }
 
 #[test]
@@ -375,6 +393,7 @@ fn slash_as_switches_discovered_specialist_by_path() {
     fs::write(&claude_path, "# Claude").unwrap();
 
     let mut app = test_app();
+    app.current_agent_id = "claude".to_string();
     app.source_cwd = Some(repo_root.to_string_lossy().into_owned());
     app.current_tab_mut()
         .messages
