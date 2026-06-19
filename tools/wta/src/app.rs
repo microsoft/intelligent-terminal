@@ -5,6 +5,7 @@ use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::io;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -1485,7 +1486,8 @@ pub struct TabSession {
     #[allow(dead_code)]
     pub session_id: Option<String>,
     /// Active Agent Specialist for this tab. `None` means the default
-    /// `terminal-agent.md`; a custom specialist stores its stem name.
+    /// `terminal-agent.md`; WTA custom prompts store their stem name, while
+    /// repo-discovered prompts store the full source path.
     pub active_persona: Option<String>,
     /// Set by `/as` when the user changes the Agent Specialist. The next
     /// submitted turn must start a fresh ACP session so the new system prompt
@@ -2598,10 +2600,47 @@ impl App {
         }
     }
 
-    fn active_persona_name<'a>(&self, tab: &'a TabSession) -> &'a str {
-        tab.active_persona
-            .as_deref()
-            .unwrap_or(crate::protocol::acp::prompt::DEFAULT_SPECIALIST_NAME)
+    fn active_specialist_cwd(&self) -> Option<&Path> {
+        self.source_cwd.as_deref().map(Path::new)
+    }
+
+    fn active_persona_matches_entry(
+        active: Option<&str>,
+        entry: &crate::protocol::acp::prompt::SpecialistEntry,
+    ) -> bool {
+        use crate::protocol::acp::prompt::{DEFAULT_SPECIALIST_NAME, SpecialistSource};
+
+        match active {
+            None => {
+                entry.source == SpecialistSource::Wta
+                    && entry.display_name.eq_ignore_ascii_case(DEFAULT_SPECIALIST_NAME)
+            }
+            Some(active) if entry.source == SpecialistSource::Wta => Self::canonical_persona_name(active)
+                .as_deref()
+                .unwrap_or(DEFAULT_SPECIALIST_NAME)
+                .eq_ignore_ascii_case(&entry.display_name),
+            Some(active) => Path::new(active) == entry.path.as_path(),
+        }
+    }
+
+    fn persona_source_label(source: crate::protocol::acp::prompt::SpecialistSource) -> String {
+        match source {
+            crate::protocol::acp::prompt::SpecialistSource::Wta => {
+                t!("system.persona_source_custom").into_owned()
+            }
+            crate::protocol::acp::prompt::SpecialistSource::Copilot => {
+                t!("system.persona_source_copilot").into_owned()
+            }
+            crate::protocol::acp::prompt::SpecialistSource::Claude => {
+                t!("system.persona_source_claude").into_owned()
+            }
+            crate::protocol::acp::prompt::SpecialistSource::Gemini => {
+                t!("system.persona_source_gemini").into_owned()
+            }
+            crate::protocol::acp::prompt::SpecialistSource::Codex => {
+                t!("system.persona_source_codex").into_owned()
+            }
+        }
     }
 
     fn canonical_persona_name(name: &str) -> Option<String> {
@@ -2609,7 +2648,11 @@ impl App {
         if trimmed.is_empty() {
             return None;
         }
-        let stem = trimmed.strip_suffix(".md").unwrap_or(trimmed);
+        let stem = trimmed
+            .strip_suffix(".agent.md")
+            .or_else(|| trimmed.strip_suffix(".toml"))
+            .or_else(|| trimmed.strip_suffix(".md"))
+            .unwrap_or(trimmed);
         if stem.eq_ignore_ascii_case(crate::protocol::acp::prompt::DEFAULT_SPECIALIST_NAME) {
             None
         } else {
@@ -2621,22 +2664,37 @@ impl App {
     /// for this tab. Switching takes effect on the next prompt and forces a
     /// fresh ACP session so the new system prompt lands on a clean conversation.
     fn cmd_persona(&mut self, arg: String, in_flight: bool) {
-        let personas = crate::protocol::acp::prompt::list_specialists();
+        let personas = self
+            .active_specialist_cwd()
+            .map(crate::protocol::acp::prompt::discover_specialists)
+            .unwrap_or_else(|| {
+                crate::protocol::acp::prompt::list_specialists()
+                    .into_iter()
+                    .map(|display_name| crate::protocol::acp::prompt::SpecialistEntry {
+                        display_name,
+                        path: Path::new("").to_path_buf(),
+                        source: crate::protocol::acp::prompt::SpecialistSource::Wta,
+                    })
+                    .collect()
+            });
         let arg = arg.trim().to_string();
 
         if arg.is_empty() {
-            let active = self.active_persona_name(self.current_tab()).to_string();
+            let active = self.current_tab().active_persona.as_deref();
             let mut lines = vec![t!("system.persona_list_header").into_owned()];
+            let mut current_source = None;
             for persona in personas {
-                if persona == active {
-                    lines.push(format!(
-                        "• {} {}",
-                        persona,
-                        t!("system.persona_active_suffix")
-                    ));
-                } else {
-                    lines.push(format!("• {persona}"));
+                if current_source != Some(persona.source) {
+                    lines.push(String::new());
+                    lines.push(format!("  {}:", Self::persona_source_label(persona.source)));
+                    current_source = Some(persona.source);
                 }
+                let active_suffix = if Self::active_persona_matches_entry(active, &persona) {
+                    format!(" {}", t!("system.persona_active_suffix"))
+                } else {
+                    String::new()
+                };
+                lines.push(format!("  • {}{}", persona.display_name, active_suffix));
             }
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(lines.join("\n")));
@@ -2644,13 +2702,14 @@ impl App {
             return;
         }
 
-        let requested_display = arg
-            .strip_suffix(".md")
-            .unwrap_or(arg.as_str())
-            .to_string();
+        let requested_display =
+            crate::protocol::acp::prompt::specialist_display_name_for_selection(&arg);
         let matched = personas
             .iter()
-            .find(|persona| persona.eq_ignore_ascii_case(&requested_display))
+            .find(|persona| {
+                persona.display_name.eq_ignore_ascii_case(&requested_display)
+                    || persona.path.to_string_lossy().eq_ignore_ascii_case(arg.as_str())
+            })
             .cloned();
 
         let Some(selected) = matched else {
@@ -2659,7 +2718,11 @@ impl App {
                 t!(
                     "system.persona_unknown",
                     persona = requested_display.as_str(),
-                    available = personas.join(", ")
+                    available = personas
+                        .iter()
+                        .map(|persona| persona.display_name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )
                 .into_owned(),
             ));
@@ -2667,11 +2730,14 @@ impl App {
             return;
         };
 
-        let active = self.active_persona_name(self.current_tab()).to_string();
-        if selected == active {
+        if Self::active_persona_matches_entry(self.current_tab().active_persona.as_deref(), &selected) {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(
-                t!("system.persona_already_active", persona = selected.as_str()).into_owned(),
+                t!(
+                    "system.persona_already_active",
+                    persona = selected.display_name.as_str()
+                )
+                .into_owned(),
             ));
             tab.scroll_to_bottom();
             return;
@@ -2686,14 +2752,23 @@ impl App {
         }
 
         let tab = self.current_tab_mut();
-        tab.active_persona = Self::canonical_persona_name(&selected);
+        tab.active_persona = match selected.source {
+            crate::protocol::acp::prompt::SpecialistSource::Wta => {
+                Self::canonical_persona_name(&selected.display_name)
+            }
+            _ => Some(selected.path.to_string_lossy().into_owned()),
+        };
         tab.needs_new_session = true;
         tab.clear_chat_history();
         tab.completed_turns.clear();
         tab.selected_completed_turn_idx = None;
         tab.session_id = None;
         tab.messages.push(ChatMessage::System(
-            t!("system.persona_switched", persona = selected.as_str()).into_owned(),
+            t!(
+                "system.persona_switched",
+                persona = selected.display_name.as_str()
+            )
+            .into_owned(),
         ));
         tab.scroll_to_bottom();
     }

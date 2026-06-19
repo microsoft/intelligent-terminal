@@ -8,6 +8,8 @@
 
 use super::tests::test_app;
 use super::*;
+use std::fs;
+use std::path::PathBuf;
 
 /// Dispatch a zero-arg slash command by name through the real
 /// `handle_slash_command` path, the way the Enter handler does.
@@ -138,6 +140,16 @@ fn run_slash_args(app: &mut App, name: &str, rest: &str) {
         spec,
         rest: rest.to_string(),
     });
+}
+
+fn temp_repo_root(test_name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "wta-slash-tests-{}-{}",
+        test_name,
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    root
 }
 
 #[test]
@@ -297,6 +309,45 @@ fn slash_as_lists_available_specialists() {
 }
 
 #[test]
+fn slash_as_lists_discovered_specialists_grouped_by_source() {
+    let repo_root = temp_repo_root("persona-groups");
+    let nested_cwd = repo_root.join("src").join("nested");
+    fs::create_dir_all(repo_root.join(".git")).unwrap();
+    fs::create_dir_all(repo_root.join(".claude").join("agents")).unwrap();
+    fs::create_dir_all(&nested_cwd).unwrap();
+    fs::write(
+        repo_root.join(".claude").join("agents").join("claude-dev.md"),
+        "# Claude",
+    )
+    .unwrap();
+    fs::write(repo_root.join("AGENTS.md"), "# Codex").unwrap();
+
+    let mut app = test_app();
+    app.source_cwd = Some(nested_cwd.to_string_lossy().into_owned());
+
+    run_slash(&mut app, "as");
+
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::System(msg)) => {
+            // Assert only on sources this test controls via the temp repo root.
+            // Copilot/Gemini specialists live under the user home directory,
+            // which the test does not (and cannot deterministically) override —
+            // `discover_specialists` reads the real home — so they are not
+            // asserted here.
+            assert!(msg.contains("  Custom:"), "got: {msg}");
+            assert!(msg.contains("  Claude:"), "got: {msg}");
+            assert!(msg.contains("  Codex:"), "got: {msg}");
+            assert!(msg.contains("• terminal-agent"), "got: {msg}");
+            assert!(msg.contains("• claude-dev"), "got: {msg}");
+            assert!(msg.contains("• AGENTS"), "got: {msg}");
+        }
+        other => panic!("expected specialist list message, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(repo_root);
+}
+
+#[test]
 fn slash_as_switches_active_specialist_and_marks_session_reset() {
     let mut app = test_app();
     app.current_tab_mut()
@@ -312,6 +363,35 @@ fn slash_as_switches_active_specialist_and_marks_session_reset() {
         Some(ChatMessage::System(msg)) => assert!(msg.contains("security")),
         other => panic!("expected switch confirmation, got {other:?}"),
     }
+}
+
+#[test]
+fn slash_as_switches_discovered_specialist_by_path() {
+    let repo_root = temp_repo_root("persona-path");
+    fs::create_dir_all(repo_root.join(".git")).unwrap();
+    let claude_dir = repo_root.join(".claude").join("agents");
+    fs::create_dir_all(&claude_dir).unwrap();
+    let claude_path = claude_dir.join("reviewer.md");
+    fs::write(&claude_path, "# Claude").unwrap();
+
+    let mut app = test_app();
+    app.source_cwd = Some(repo_root.to_string_lossy().into_owned());
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::System("stale".into()));
+
+    run_slash_args(&mut app, "as", "reviewer");
+
+    let expected = claude_path.to_string_lossy().into_owned();
+    assert_eq!(app.current_tab().active_persona.as_deref(), Some(expected.as_str()));
+    assert!(app.current_tab().needs_new_session);
+    assert_eq!(app.current_tab().messages.len(), 1);
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::System(msg)) => assert!(msg.contains("reviewer")),
+        other => panic!("expected switch confirmation, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(repo_root);
 }
 
 // ---- Degraded (transport-lost) gating: only /restart runs ----

@@ -4,6 +4,11 @@ use std::path::{Path, PathBuf};
 pub(crate) const RUNTIME_CONTEXT_MARKER: &str = "<!-- WTA_RUNTIME_CONTEXT -->";
 pub(crate) const DEFAULT_SPECIALIST_NAME: &str = "terminal-agent";
 
+/// Max recursion depth when scanning an agent-definition directory. Claude's
+/// `.claude/agents/` is documented as recursive (subdirs are organizational;
+/// identity comes from the file, not the path), so we descend a bounded depth.
+const SPECIALIST_SCAN_DEPTH: usize = 8;
+
 const USER_PROMPT_FILE_NAME: &str = "terminal-agent.md";
 const DEFAULT_PROMPT_FILE_NAME: &str = "terminal-agent.default.md";
 const EMBEDDED_DEFAULT_PROMPT: &str = include_str!(concat!(
@@ -25,6 +30,105 @@ pub(crate) struct PlannerPromptTemplate {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SpecialistEntry {
+    /// Display name shown in `/as` (for example `CLAUDE` or `devops`).
+    pub display_name: String,
+    /// Full path to the discovered specialist file.
+    pub path: PathBuf,
+    /// Where this specialist came from.
+    pub source: SpecialistSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpecialistSource {
+    /// From WTA's runtime `prompts/` directory.
+    Wta,
+    /// From Copilot CLI agent files.
+    Copilot,
+    /// From Claude Code agent files.
+    Claude,
+    /// From Gemini CLI agent files.
+    Gemini,
+    /// From Codex CLI prompt files.
+    Codex,
+}
+
+impl SpecialistSource {
+    fn sort_rank(self) -> u8 {
+        match self {
+            Self::Wta => 0,
+            Self::Copilot => 1,
+            Self::Claude => 2,
+            Self::Gemini => 3,
+            Self::Codex => 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpecialistRootPattern {
+    ExactFile,
+    FileSuffix(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpecialistRootFormat {
+    Markdown,
+    TodoUnsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SpecialistRoot {
+    source: SpecialistSource,
+    path: PathBuf,
+    pattern: SpecialistRootPattern,
+    max_depth: usize,
+    format: SpecialistRootFormat,
+}
+
+impl SpecialistRoot {
+    fn markdown_dir(
+        source: SpecialistSource,
+        path: PathBuf,
+        suffix: &'static str,
+        max_depth: usize,
+    ) -> Self {
+        Self {
+            source,
+            path,
+            pattern: SpecialistRootPattern::FileSuffix(suffix),
+            max_depth,
+            format: SpecialistRootFormat::Markdown,
+        }
+    }
+
+    fn markdown_file(source: SpecialistSource, path: PathBuf) -> Self {
+        Self {
+            source,
+            path,
+            pattern: SpecialistRootPattern::ExactFile,
+            max_depth: 0,
+            format: SpecialistRootFormat::Markdown,
+        }
+    }
+
+    fn unsupported_dir(
+        source: SpecialistSource,
+        path: PathBuf,
+        suffix: &'static str,
+        max_depth: usize,
+    ) -> Self {
+        Self {
+            source,
+            path,
+            pattern: SpecialistRootPattern::FileSuffix(suffix),
+            max_depth,
+            format: SpecialistRootFormat::TodoUnsupported,
+        }
+    }
+}
+
 pub(crate) fn load_autofix_prompt_template() -> PlannerPromptTemplate {
     load_autofix_prompt_template_from_root(
         runtime_prompt_root().as_deref(),
@@ -37,6 +141,12 @@ pub(crate) fn load_planner_prompt_template() -> PlannerPromptTemplate {
 }
 
 pub(crate) fn load_planner_prompt_template_named(name: Option<&str>) -> PlannerPromptTemplate {
+    if let Some(path) = specialist_path_from_selection(name) {
+        if let Some(template) = load_specialist_by_path(&path) {
+            return template;
+        }
+    }
+
     load_planner_prompt_template_from_root(
         runtime_prompt_root().as_deref(),
         EMBEDDED_DEFAULT_PROMPT,
@@ -46,6 +156,37 @@ pub(crate) fn load_planner_prompt_template_named(name: Option<&str>) -> PlannerP
 
 pub(crate) fn list_specialists() -> Vec<String> {
     list_specialists_from_root(runtime_prompt_root().as_deref())
+}
+
+pub(crate) fn discover_specialists(cwd: &Path) -> Vec<SpecialistEntry> {
+    let repo_root = find_git_repo_root(cwd);
+    let home_dir = home_dir();
+    let roots = specialist_roots(
+        cwd,
+        repo_root.as_deref(),
+        home_dir.as_deref(),
+        runtime_prompt_root().as_deref(),
+    );
+    discover_specialists_from_roots(&roots, runtime_prompt_root().as_deref())
+}
+
+pub(crate) fn load_specialist_by_path(path: &Path) -> Option<PlannerPromptTemplate> {
+    let content = fs::read_to_string(path).ok()?;
+    Some(PlannerPromptTemplate {
+        display_name: extract_prompt_display_name(&content),
+        content,
+        source_label: format!("specialist:{}", path.display()),
+    })
+}
+
+pub(crate) fn specialist_display_name_for_selection(selection: &str) -> String {
+    if let Some(path) = specialist_path_from_selection(Some(selection)) {
+        return specialist_display_name_from_path(&path);
+    }
+
+    normalize_specialist_name(selection)
+        .unwrap_or(selection.trim())
+        .to_string()
 }
 
 pub(crate) fn merge_runtime_sections(template: &str, runtime_sections: &[String]) -> String {
@@ -149,42 +290,271 @@ fn load_planner_prompt_template_from_root(
 }
 
 fn list_specialists_from_root(prompt_root: Option<&Path>) -> Vec<String> {
-    let mut specialists = Vec::new();
+    let roots = specialist_roots(Path::new("."), None, None, prompt_root);
+    let mut specialists = discover_specialists_from_roots(&roots, prompt_root)
+        .into_iter()
+        .filter(|entry| entry.source == SpecialistSource::Wta)
+        .map(|entry| entry.display_name)
+        .collect::<Vec<_>>();
+
+    specialists.sort_by(|left, right| compare_specialist_names(left, right));
+    specialists.dedup();
+    specialists
+}
+
+/// Single source of truth for specialist discovery locations. When the
+/// authoritative CLI research lands, edit these placeholder roots/patterns
+/// here rather than chasing scattered path literals through the scanner.
+fn specialist_roots(
+    cwd: &Path,
+    repo_root: Option<&Path>,
+    home_dir: Option<&Path>,
+    prompt_root: Option<&Path>,
+) -> Vec<SpecialistRoot> {
+    let mut roots = Vec::new();
+
+    // Verified against primary sources (official docs / on-machine reality).
+    // Gemini's custom commands are TOML (`.gemini/commands/*.toml`), not
+    // markdown agent files; its only markdown instruction file is `GEMINI.md`,
+    // so that is what we surface. Claude scans recursively. Codex / the
+    // AGENTS.md open standard use a single repo-root `AGENTS.md` file (also
+    // read natively by Copilot CLI).
+    if let Some(repo_root) = repo_root {
+        roots.push(SpecialistRoot::markdown_dir(
+            SpecialistSource::Claude,
+            repo_root.join(".claude").join("agents"),
+            ".md",
+            SPECIALIST_SCAN_DEPTH,
+        ));
+        roots.push(SpecialistRoot::markdown_file(
+            SpecialistSource::Gemini,
+            repo_root.join("GEMINI.md"),
+        ));
+        // Gemini's reusable commands are TOML (`prompt = "..."`), not markdown.
+        // Discovered but not yet parsed — recorded so the table stays the full
+        // source of truth for what exists in the ecosystem.
+        roots.push(SpecialistRoot::unsupported_dir(
+            SpecialistSource::Gemini,
+            repo_root.join(".gemini").join("commands"),
+            ".toml",
+            SPECIALIST_SCAN_DEPTH,
+        ));
+        roots.push(SpecialistRoot::markdown_file(
+            SpecialistSource::Codex,
+            repo_root.join("AGENTS.md"),
+        ));
+    }
+
+    if let Some(home_dir) = home_dir {
+        // Machine-verified: the standalone GitHub Copilot CLI stores custom
+        // agents as `~/.copilot/agents/*.agent.md` (this is undocumented in the
+        // GitHub cloud docs but is the real on-disk format the CLI uses).
+        roots.push(SpecialistRoot::markdown_dir(
+            SpecialistSource::Copilot,
+            home_dir.join(".copilot").join("agents"),
+            ".agent.md",
+            SPECIALIST_SCAN_DEPTH,
+        ));
+        roots.push(SpecialistRoot::markdown_dir(
+            SpecialistSource::Claude,
+            home_dir.join(".claude").join("agents"),
+            ".md",
+            SPECIALIST_SCAN_DEPTH,
+        ));
+        roots.push(SpecialistRoot::markdown_file(
+            SpecialistSource::Gemini,
+            home_dir.join(".gemini").join("GEMINI.md"),
+        ));
+        roots.push(SpecialistRoot::unsupported_dir(
+            SpecialistSource::Gemini,
+            home_dir.join(".gemini").join("commands"),
+            ".toml",
+            SPECIALIST_SCAN_DEPTH,
+        ));
+        // Codex user-global instruction file is `~/.codex/AGENTS.md`
+        // (there is no `~/.codex/prompts/` directory).
+        roots.push(SpecialistRoot::markdown_file(
+            SpecialistSource::Codex,
+            home_dir.join(".codex").join("AGENTS.md"),
+        ));
+    }
 
     if let Some(prompt_root) = prompt_root {
-        let _ = seed_prompt_files(prompt_root, EMBEDDED_DEFAULT_PROMPT);
+        roots.push(SpecialistRoot::markdown_dir(
+            SpecialistSource::Wta,
+            prompt_root.to_path_buf(),
+            ".md",
+            0,
+        ));
+    }
 
-        if let Ok(entries) = fs::read_dir(prompt_root) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
+    let _ = cwd;
+    roots
+}
 
-                let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-                    continue;
-                };
-                if !file_name.ends_with(".md")
-                    || file_name.ends_with(".default.md")
-                    || file_name.starts_with("auto-fix")
-                {
-                    continue;
-                }
+fn discover_specialists_from_roots(
+    roots: &[SpecialistRoot],
+    prompt_root: Option<&Path>,
+) -> Vec<SpecialistEntry> {
+    let mut specialists = Vec::new();
 
-                if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
-                    specialists.push(stem.to_string());
-                }
-            }
+    for root in roots {
+        scan_specialist_root(&mut specialists, root);
+    }
+
+    ensure_default_wta_specialist(&mut specialists, prompt_root);
+
+    specialists.sort_by(|left, right| {
+        left.source
+            .sort_rank()
+            .cmp(&right.source.sort_rank())
+            .then_with(|| {
+                wta_default_rank(&left.display_name, left.source)
+                    .cmp(&wta_default_rank(&right.display_name, right.source))
+            })
+            .then_with(|| {
+                left.display_name
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name.to_ascii_lowercase())
+            })
+            .then_with(|| left.display_name.cmp(&right.display_name))
+    });
+    specialists
+}
+
+fn scan_specialist_root(specialists: &mut Vec<SpecialistEntry>, root: &SpecialistRoot) {
+    if root.source == SpecialistSource::Wta {
+        if let SpecialistRootPattern::FileSuffix(_) = root.pattern {
+            let _ = seed_prompt_files(&root.path, EMBEDDED_DEFAULT_PROMPT);
         }
     }
 
-    if !specialists.iter().any(|name| name == DEFAULT_SPECIALIST_NAME) {
-        specialists.push(DEFAULT_SPECIALIST_NAME.to_string());
+    if root.format == SpecialistRootFormat::TodoUnsupported {
+        return;
     }
 
-    specialists.sort_unstable();
-    specialists.dedup();
-    specialists
+    match root.pattern {
+        SpecialistRootPattern::ExactFile => {
+            push_specialist_file_if_allowed(specialists, root.source, &root.path, None);
+        }
+        SpecialistRootPattern::FileSuffix(suffix) => {
+            scan_specialist_dir(specialists, root.source, &root.path, suffix, root.max_depth);
+        }
+    }
+}
+
+fn scan_specialist_dir(
+    specialists: &mut Vec<SpecialistEntry>,
+    source: SpecialistSource,
+    dir: &Path,
+    suffix: &str,
+    remaining_depth: usize,
+) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if remaining_depth > 0 {
+                scan_specialist_dir(specialists, source, &path, suffix, remaining_depth - 1);
+            }
+            continue;
+        }
+
+        push_specialist_file_if_allowed(specialists, source, &path, Some(suffix));
+    }
+}
+
+fn push_specialist_file_if_allowed(
+    specialists: &mut Vec<SpecialistEntry>,
+    source: SpecialistSource,
+    path: &Path,
+    suffix: Option<&str>,
+) {
+    if path.is_dir() || !path.is_file() {
+        return;
+    }
+
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return;
+    };
+    if let Some(suffix) = suffix {
+        if !file_name.ends_with(suffix) {
+            return;
+        }
+    }
+    if should_skip_specialist_file(source, file_name) {
+        return;
+    }
+
+    let display_name = specialist_display_name_from_path(path);
+    if specialists.iter().any(|entry| {
+        entry.source == source && entry.display_name.eq_ignore_ascii_case(&display_name)
+    }) {
+        return;
+    }
+
+    specialists.push(SpecialistEntry {
+        display_name,
+        path: path.to_path_buf(),
+        source,
+    });
+}
+
+fn should_skip_specialist_file(source: SpecialistSource, file_name: &str) -> bool {
+    source == SpecialistSource::Wta
+        && (!file_name.ends_with(".md")
+            || file_name.ends_with(".default.md")
+            || file_name.starts_with("auto-fix"))
+}
+
+fn ensure_default_wta_specialist(
+    specialists: &mut Vec<SpecialistEntry>,
+    prompt_root: Option<&Path>,
+) {
+    if specialists.iter().any(|entry| {
+        entry.source == SpecialistSource::Wta
+            && entry
+                .display_name
+                .eq_ignore_ascii_case(DEFAULT_SPECIALIST_NAME)
+    }) {
+        return;
+    }
+
+    let default_path = prompt_root
+        .map(|root| root.join(USER_PROMPT_FILE_NAME))
+        .unwrap_or_else(|| PathBuf::from(USER_PROMPT_FILE_NAME));
+    specialists.push(SpecialistEntry {
+        display_name: DEFAULT_SPECIALIST_NAME.to_string(),
+        path: default_path,
+        source: SpecialistSource::Wta,
+    });
+}
+
+fn specialist_display_name_from_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(strip_specialist_extension)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+fn compare_specialist_names(left: &str, right: &str) -> std::cmp::Ordering {
+    wta_default_rank(left, SpecialistSource::Wta)
+        .cmp(&wta_default_rank(right, SpecialistSource::Wta))
+        .then_with(|| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()))
+        .then_with(|| left.cmp(right))
+}
+
+fn wta_default_rank(name: &str, source: SpecialistSource) -> u8 {
+    if source == SpecialistSource::Wta && name.eq_ignore_ascii_case(DEFAULT_SPECIALIST_NAME) {
+        0
+    } else {
+        1
+    }
 }
 
 fn named_specialist_path(prompt_root: &Path, name: Option<&str>) -> Option<PathBuf> {
@@ -200,7 +570,57 @@ fn normalize_specialist_name(name: &str) -> Option<&str> {
     if trimmed.is_empty() || trimmed.contains(['\\', '/']) {
         return None;
     }
-    Some(trimmed.strip_suffix(".md").unwrap_or(trimmed))
+    Some(strip_specialist_extension(trimmed))
+}
+
+fn specialist_path_from_selection(name: Option<&str>) -> Option<PathBuf> {
+    let trimmed = name?.trim();
+    if trimmed.is_empty() || !trimmed.contains(['\\', '/']) {
+        return None;
+    }
+    Some(PathBuf::from(trimmed))
+}
+
+fn strip_specialist_extension(name: &str) -> &str {
+    name.strip_suffix(".agent.md")
+        .or_else(|| name.strip_suffix(".toml"))
+        .or_else(|| name.strip_suffix(".md"))
+        .unwrap_or(name)
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            let drive = std::env::var_os("HOMEDRIVE")?;
+            let path = std::env::var_os("HOMEPATH")?;
+            if drive.is_empty() || path.is_empty() {
+                None
+            } else {
+                let mut home = PathBuf::from(drive);
+                home.push(PathBuf::from(path));
+                Some(home)
+            }
+        })
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+}
+
+fn find_git_repo_root(cwd: &Path) -> Option<PathBuf> {
+    let mut current = if cwd.is_file() { cwd.parent()? } else { cwd };
+
+    for _ in 0..=10 {
+        if current.join(".git").exists() {
+            return Some(current.to_path_buf());
+        }
+        current = current.parent()?;
+    }
+
+    None
 }
 
 fn extract_prompt_display_name(content: &str) -> String {
@@ -306,9 +726,11 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        list_specialists_from_root, load_planner_prompt_template_from_root, merge_runtime_sections,
+        discover_specialists_from_roots, list_specialists_from_root,
+        load_planner_prompt_template_from_root, load_specialist_by_path, merge_runtime_sections,
+        specialist_roots, SpecialistRootFormat, SpecialistRootPattern, SpecialistSource,
         DEFAULT_SPECIALIST_NAME, DEFAULT_PROMPT_FILE_NAME, RUNTIME_CONTEXT_MARKER,
-        USER_PROMPT_FILE_NAME,
+        SPECIALIST_SCAN_DEPTH, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -477,5 +899,227 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn load_specialist_by_path_reads_markdown_and_uses_specialist_source_label() {
+        let prompt_root = temp_prompt_root("load-specialist-path");
+        fs::create_dir_all(&prompt_root).unwrap();
+        let specialist_path = prompt_root.join("CLAUDE.md");
+        fs::write(&specialist_path, "# Claude\nUse Claude rules").unwrap();
+
+        let template = load_specialist_by_path(&specialist_path).unwrap();
+
+        assert_eq!(template.display_name, "Claude");
+        assert_eq!(template.content, "# Claude\nUse Claude rules");
+        assert_eq!(
+            template.source_label,
+            format!("specialist:{}", specialist_path.display())
+        );
+
+        let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn specialist_roots_centralize_verified_locations() {
+        let repo_root = temp_prompt_root("roots-repo");
+        let home_root = temp_prompt_root("roots-home");
+        let prompt_root = repo_root.join("wta-prompts");
+        let cwd = repo_root.join("src");
+
+        let roots = specialist_roots(&cwd, Some(&repo_root), Some(&home_root), Some(&prompt_root));
+        let summary = roots
+            .iter()
+            .map(|root| {
+                (
+                    root.source,
+                    root.path.clone(),
+                    root.pattern,
+                    root.max_depth,
+                    root.format,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            summary,
+            vec![
+                (
+                    SpecialistSource::Claude,
+                    repo_root.join(".claude").join("agents"),
+                    SpecialistRootPattern::FileSuffix(".md"),
+                    SPECIALIST_SCAN_DEPTH,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Gemini,
+                    repo_root.join("GEMINI.md"),
+                    SpecialistRootPattern::ExactFile,
+                    0,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Gemini,
+                    repo_root.join(".gemini").join("commands"),
+                    SpecialistRootPattern::FileSuffix(".toml"),
+                    SPECIALIST_SCAN_DEPTH,
+                    SpecialistRootFormat::TodoUnsupported,
+                ),
+                (
+                    SpecialistSource::Codex,
+                    repo_root.join("AGENTS.md"),
+                    SpecialistRootPattern::ExactFile,
+                    0,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Copilot,
+                    home_root.join(".copilot").join("agents"),
+                    SpecialistRootPattern::FileSuffix(".agent.md"),
+                    SPECIALIST_SCAN_DEPTH,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Claude,
+                    home_root.join(".claude").join("agents"),
+                    SpecialistRootPattern::FileSuffix(".md"),
+                    SPECIALIST_SCAN_DEPTH,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Gemini,
+                    home_root.join(".gemini").join("GEMINI.md"),
+                    SpecialistRootPattern::ExactFile,
+                    0,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Gemini,
+                    home_root.join(".gemini").join("commands"),
+                    SpecialistRootPattern::FileSuffix(".toml"),
+                    SPECIALIST_SCAN_DEPTH,
+                    SpecialistRootFormat::TodoUnsupported,
+                ),
+                (
+                    SpecialistSource::Codex,
+                    home_root.join(".codex").join("AGENTS.md"),
+                    SpecialistRootPattern::ExactFile,
+                    0,
+                    SpecialistRootFormat::Markdown,
+                ),
+                (
+                    SpecialistSource::Wta,
+                    prompt_root,
+                    SpecialistRootPattern::FileSuffix(".md"),
+                    0,
+                    SpecialistRootFormat::Markdown,
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn discover_specialists_scans_correct_locations_and_preserves_precedence() {
+        let repo_root = temp_prompt_root("cwd-discovery");
+        let home_root = temp_prompt_root("home-discovery");
+        let prompt_root = repo_root.join("wta-prompts");
+        let nested_cwd = repo_root.join("src").join("nested");
+
+        fs::create_dir_all(repo_root.join(".git")).unwrap();
+        fs::create_dir_all(repo_root.join(".claude").join("agents")).unwrap();
+        fs::create_dir_all(repo_root.join(".gemini").join("commands")).unwrap();
+        fs::create_dir_all(home_root.join(".copilot").join("agents")).unwrap();
+        fs::create_dir_all(home_root.join(".claude").join("agents")).unwrap();
+        fs::create_dir_all(home_root.join(".gemini")).unwrap();
+        fs::create_dir_all(home_root.join(".codex")).unwrap();
+        fs::create_dir_all(&nested_cwd).unwrap();
+        fs::create_dir_all(&prompt_root).unwrap();
+
+        fs::write(prompt_root.join("devops.md"), "devops").unwrap();
+        fs::write(
+            home_root.join(".copilot").join("agents").join("user.agent.md"),
+            "# User\nhome guidance",
+        )
+        .unwrap();
+        fs::write(
+            repo_root.join(".claude").join("agents").join("reviewer.md"),
+            "# Reviewer\nrepo guidance",
+        )
+        .unwrap();
+        fs::write(
+            home_root.join(".claude").join("agents").join("reviewer.md"),
+            "# Reviewer User\nhome guidance",
+        )
+        .unwrap();
+        fs::write(
+            home_root.join(".claude").join("agents").join("user-claude.md"),
+            "# Claude User\nhome guidance",
+        )
+        .unwrap();
+        // Gemini's markdown context file (GEMINI.md) surfaces; its TOML command
+        // files are intentionally TODO and must not surface.
+        fs::write(repo_root.join("GEMINI.md"), "# Gemini\nrepo guidance").unwrap();
+        fs::write(
+            repo_root.join(".gemini").join("commands").join("gemini-repo.toml"),
+            "name = 'repo'",
+        )
+        .unwrap();
+        fs::write(
+            home_root.join(".gemini").join("commands").join("gemini-user.toml"),
+            "name = 'user'",
+        )
+        .unwrap();
+        fs::write(repo_root.join("AGENTS.md"), "# Codex Repo\nrepo guidance").unwrap();
+        fs::write(
+            home_root.join(".codex").join("AGENTS.md"),
+            "# Codex User\nhome guidance",
+        )
+        .unwrap();
+
+        let roots = specialist_roots(&nested_cwd, Some(&repo_root), Some(&home_root), Some(&prompt_root));
+        let specialists = discover_specialists_from_roots(&roots, Some(&prompt_root));
+
+        let summary = specialists
+            .iter()
+            .map(|entry| (entry.source, entry.display_name.clone()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            summary,
+            vec![
+                (SpecialistSource::Wta, DEFAULT_SPECIALIST_NAME.to_string()),
+                (SpecialistSource::Wta, "devops".to_string()),
+                (SpecialistSource::Copilot, "user".to_string()),
+                (SpecialistSource::Claude, "reviewer".to_string()),
+                (SpecialistSource::Claude, "user-claude".to_string()),
+                (SpecialistSource::Gemini, "GEMINI".to_string()),
+                (SpecialistSource::Codex, "AGENTS".to_string()),
+            ]
+        );
+
+        let reviewer = specialists
+            .iter()
+            .find(|entry| entry.source == SpecialistSource::Claude && entry.display_name == "reviewer")
+            .expect("expected repo claude specialist");
+        assert_eq!(
+            reviewer.path,
+            repo_root.join(".claude").join("agents").join("reviewer.md")
+        );
+        // Codex repo AGENTS.md takes precedence over the user-level one.
+        let codex = specialists
+            .iter()
+            .find(|entry| entry.source == SpecialistSource::Codex)
+            .expect("expected codex specialist");
+        assert_eq!(codex.path, repo_root.join("AGENTS.md"));
+        // Gemini's GEMINI.md surfaces; its `.toml` command files never do.
+        assert!(
+            specialists
+                .iter()
+                .all(|entry| !entry.display_name.starts_with("gemini-")),
+            "Gemini `.toml` command files are TODO and must not surface as specialists yet"
+        );
+
+        let _ = fs::remove_dir_all(repo_root);
+        let _ = fs::remove_dir_all(home_root);
     }
 }

@@ -102,6 +102,8 @@ pub struct PromptSubmission {
     pub text: String,
     pub pane_context: Option<PaneContext>,
     pub submitted_at_unix_s: f64,
+    /// Active specialist selection for this turn: either a WTA prompt stem
+    /// like `devops` or a full discovered-file path like `C:\repo\CLAUDE.md`.
     pub persona_name: Option<String>,
     pub force_new_session: bool,
     /// True when this prompt was synthesized by the auto-fix flow rather
@@ -1126,6 +1128,7 @@ async fn build_prompt_text(
     let planner_template = if is_autofix {
         prompt::load_autofix_prompt_template()
     } else {
+        // `persona_name` may be a WTA prompt stem or a discovered file path.
         prompt::load_planner_prompt_template_named(persona_name)
     };
     prompt_timing_log(

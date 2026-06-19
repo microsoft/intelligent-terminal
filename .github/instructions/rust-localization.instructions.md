@@ -50,7 +50,7 @@ Place at the very top of the file, before any section headers. These define cons
 ```yaml
 # ── File-level locks ─────────────────────────────────────────────────────────
 # {Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name
-# "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
+# "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini, Codex), not a human representative or proxy
 
 # ── Setup screen titles ─────────────────────────────────────────────────────
 setup.title.first_run: "Welcome to Intelligent Terminal!"

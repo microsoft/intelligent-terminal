@@ -205,7 +205,7 @@ Terms that should always be locked:
 | ACP | Technical acronym (Agent Control Protocol) |
 | PATH | Environment variable |
 | PowerShell | Product name |
-| Copilot, Claude, Gemini | Brand names |
+| Copilot, Claude, Gemini, Codex | Brand names |
 | JSON, YAML, XML | Technical formats |
 
 ### Translator guidance comments
