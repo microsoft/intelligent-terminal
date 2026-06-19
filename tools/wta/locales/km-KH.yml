@@ -227,3 +227,14 @@ model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Ent
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}
+commands.as.summary: "Switch Agent Specialist — load a different .md prompt for this pane (/as <name>)"  # {Locked="/as","<name>",".md"} - Slash command shown in the command popup; "Agent Specialist" is the user-facing name for switchable prompt .md files.
+system.persona_list_header: "Available Agent Specialists:"  # Header line shown after the user runs /as with no arguments; each specialist is a .md prompt file.
+system.persona_active_suffix: "(active)"  # Suffix on the currently selected specialist in the /as list.
+system.persona_switched: "Agent Specialist set to %{persona}. The next prompt will start a fresh session."  # Confirmation after /as <name> switches the prompt for the current pane. %{persona} is a prompt file stem such as "security".
+system.persona_already_active: "%{persona} is already active on this pane."  # Shown when /as <name> matches the pane's current specialist. %{persona} is a prompt file stem such as "terminal-agent".
+system.persona_unknown: "Unknown specialist %{persona}. Available: %{available}"  # Error after /as <name> names a prompt file that does not exist. %{available} is a comma-separated list of prompt file stems.
+system.persona_source_custom: "Custom"  # Group heading in `/as` for WTA's own runtime `prompts/*.md` specialists.
+system.persona_source_copilot: "Copilot"  # Group heading in `/as` for GitHub Copilot CLI `.copilot/agents/**/*.md` specialists (repo + `~/.copilot/agents`).
+system.persona_source_claude: "Claude"  # Group heading in `/as` for Claude Code `.claude/agents/**/*.md` specialists (repo + `~/.claude/agents`).
+system.persona_source_gemini: "Gemini"  # Group heading in `/as` for Gemini CLI `.gemini/agents/**/*.md` specialists (repo + `~/.gemini/agents`).
+system.persona_source_codex: "Codex"  # Group heading in `/as` for Codex CLI `.codex/agents/**/*.md` specialists (repo + `~/.codex/agents`).
