@@ -667,12 +667,12 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 mod tests {
     use super::{
         discover_specialists_from_roots, find_git_repo_root, list_specialists_from_root,
-        load_planner_prompt_template_from_root, load_specialist_by_path, merge_runtime_sections,
-        scope_specialists_to_agent, specialist_display_name_for_selection,
-        specialist_display_name_from_path, specialist_path_from_selection, specialist_roots,
-        strip_specialist_extension, SpecialistEntry, SpecialistSource, DEFAULT_SPECIALIST_NAME,
-        DEFAULT_PROMPT_FILE_NAME, RUNTIME_CONTEXT_MARKER, SPECIALIST_SCAN_DEPTH,
-        USER_PROMPT_FILE_NAME,
+        load_planner_prompt_template_from_root, load_planner_prompt_template_named,
+        load_specialist_by_path, merge_runtime_sections, scope_specialists_to_agent,
+        specialist_display_name_for_selection, specialist_display_name_from_path,
+        specialist_path_from_selection, specialist_roots, strip_specialist_extension,
+        SpecialistEntry, SpecialistSource, DEFAULT_SPECIALIST_NAME, DEFAULT_PROMPT_FILE_NAME,
+        RUNTIME_CONTEXT_MARKER, SPECIALIST_SCAN_DEPTH, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -792,6 +792,31 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn named_loader_loads_discovered_specialist_by_absolute_path() {
+        // A discovered specialist is selected by full path (contains a path
+        // separator). It must be read directly via load_specialist_by_path,
+        // NOT routed through the WTA-prompt-root name resolver (which rejects
+        // slashes) — otherwise it would silently fall back to the default.
+        let dir = temp_prompt_root("named-by-path");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("reviewer.md");
+        fs::write(&file, "# Reviewer\nYou are a strict reviewer.").unwrap();
+
+        let selection = file.to_string_lossy().into_owned();
+        let template = load_planner_prompt_template_named(Some(&selection));
+
+        assert_eq!(template.content, "# Reviewer\nYou are a strict reviewer.");
+        assert_eq!(template.display_name, "Reviewer");
+        assert!(
+            template.source_label.starts_with("specialist:"),
+            "expected a path-loaded specialist, got source_label={}",
+            template.source_label
+        );
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
