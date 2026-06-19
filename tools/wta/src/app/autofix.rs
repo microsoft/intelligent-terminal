@@ -252,7 +252,19 @@ impl App {
             tab.autofix.armed_at = Some(std::time::Instant::now());
         }
 
-        let prompt = PromptSubmission::new_autofix(prompt_text, Some(pane_context));
+        let (active_persona, force_new_session) = {
+            let tab = self.tab_mut(&target_tab_id);
+            let active_persona = tab.active_persona.clone();
+            let force_new_session = tab.needs_new_session;
+            tab.needs_new_session = false;
+            (active_persona, force_new_session)
+        };
+        let prompt = PromptSubmission::new_autofix(
+            prompt_text,
+            Some(pane_context),
+            active_persona,
+            force_new_session,
+        );
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),

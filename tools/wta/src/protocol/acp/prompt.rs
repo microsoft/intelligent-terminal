@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) const RUNTIME_CONTEXT_MARKER: &str = "<!-- WTA_RUNTIME_CONTEXT -->";
+pub(crate) const DEFAULT_SPECIALIST_NAME: &str = "terminal-agent";
 
 const USER_PROMPT_FILE_NAME: &str = "terminal-agent.md";
 const DEFAULT_PROMPT_FILE_NAME: &str = "terminal-agent.default.md";
@@ -32,10 +33,19 @@ pub(crate) fn load_autofix_prompt_template() -> PlannerPromptTemplate {
 }
 
 pub(crate) fn load_planner_prompt_template() -> PlannerPromptTemplate {
+    load_planner_prompt_template_named(None)
+}
+
+pub(crate) fn load_planner_prompt_template_named(name: Option<&str>) -> PlannerPromptTemplate {
     load_planner_prompt_template_from_root(
         runtime_prompt_root().as_deref(),
         EMBEDDED_DEFAULT_PROMPT,
+        name,
     )
+}
+
+pub(crate) fn list_specialists() -> Vec<String> {
+    list_specialists_from_root(runtime_prompt_root().as_deref())
 }
 
 pub(crate) fn merge_runtime_sections(template: &str, runtime_sections: &[String]) -> String {
@@ -97,9 +107,20 @@ fn load_autofix_prompt_template_from_root(
 fn load_planner_prompt_template_from_root(
     prompt_root: Option<&Path>,
     embedded_default_prompt: &str,
+    name: Option<&str>,
 ) -> PlannerPromptTemplate {
     if let Some(prompt_root) = prompt_root {
         let _ = seed_prompt_files(prompt_root, embedded_default_prompt);
+
+        if let Some(named_user_path) = named_specialist_path(prompt_root, name) {
+            if let Ok(content) = fs::read_to_string(&named_user_path) {
+                return PlannerPromptTemplate {
+                    display_name: extract_prompt_display_name(&content),
+                    content,
+                    source_label: format!("user:{}", named_user_path.display()),
+                };
+            }
+        }
 
         let user_path = prompt_root.join(USER_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&user_path) {
@@ -125,6 +146,61 @@ fn load_planner_prompt_template_from_root(
         content: embedded_default_prompt.to_string(),
         source_label: "embedded".to_string(),
     }
+}
+
+fn list_specialists_from_root(prompt_root: Option<&Path>) -> Vec<String> {
+    let mut specialists = Vec::new();
+
+    if let Some(prompt_root) = prompt_root {
+        let _ = seed_prompt_files(prompt_root, EMBEDDED_DEFAULT_PROMPT);
+
+        if let Ok(entries) = fs::read_dir(prompt_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                    continue;
+                };
+                if !file_name.ends_with(".md")
+                    || file_name.ends_with(".default.md")
+                    || file_name.starts_with("auto-fix")
+                {
+                    continue;
+                }
+
+                if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
+                    specialists.push(stem.to_string());
+                }
+            }
+        }
+    }
+
+    if !specialists.iter().any(|name| name == DEFAULT_SPECIALIST_NAME) {
+        specialists.push(DEFAULT_SPECIALIST_NAME.to_string());
+    }
+
+    specialists.sort_unstable();
+    specialists.dedup();
+    specialists
+}
+
+fn named_specialist_path(prompt_root: &Path, name: Option<&str>) -> Option<PathBuf> {
+    let name = normalize_specialist_name(name?)?;
+    if name == DEFAULT_SPECIALIST_NAME {
+        return None;
+    }
+    Some(prompt_root.join(format!("{name}.md")))
+}
+
+fn normalize_specialist_name(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed.contains(['\\', '/']) {
+        return None;
+    }
+    Some(trimmed.strip_suffix(".md").unwrap_or(trimmed))
 }
 
 fn extract_prompt_display_name(content: &str) -> String {
@@ -230,8 +306,9 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_planner_prompt_template_from_root, merge_runtime_sections, DEFAULT_PROMPT_FILE_NAME,
-        RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
+        list_specialists_from_root, load_planner_prompt_template_from_root, merge_runtime_sections,
+        DEFAULT_SPECIALIST_NAME, DEFAULT_PROMPT_FILE_NAME, RUNTIME_CONTEXT_MARKER,
+        USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -271,7 +348,7 @@ mod tests {
         fs::create_dir_all(&prompt_root).unwrap();
         fs::write(prompt_root.join(USER_PROMPT_FILE_NAME), "user prompt").unwrap();
 
-        let template = load_planner_prompt_template_from_root(Some(&prompt_root), embedded);
+        let template = load_planner_prompt_template_from_root(Some(&prompt_root), embedded, None);
 
         assert_eq!(template.content, "user prompt");
         assert!(template.source_label.starts_with("user:"));
@@ -285,7 +362,7 @@ mod tests {
 
     #[test]
     fn loader_falls_back_to_embedded_without_prompt_root() {
-        let template = load_planner_prompt_template_from_root(None, "embedded prompt");
+        let template = load_planner_prompt_template_from_root(None, "embedded prompt", None);
 
         assert_eq!(template.content, "embedded prompt");
         assert_eq!(template.source_label, "embedded");
@@ -301,7 +378,7 @@ mod tests {
         fs::write(prompt_root.join(DEFAULT_PROMPT_FILE_NAME), previous_default).unwrap();
         fs::write(prompt_root.join(USER_PROMPT_FILE_NAME), previous_default).unwrap();
 
-        let template = load_planner_prompt_template_from_root(Some(&prompt_root), embedded);
+        let template = load_planner_prompt_template_from_root(Some(&prompt_root), embedded, None);
 
         assert_eq!(template.content, embedded);
         assert_eq!(
@@ -330,7 +407,7 @@ mod tests {
         )
         .unwrap();
 
-        let template = load_planner_prompt_template_from_root(Some(&prompt_root), embedded);
+        let template = load_planner_prompt_template_from_root(Some(&prompt_root), embedded, None);
 
         assert_eq!(template.content, "custom user prompt");
         assert_eq!(
@@ -340,6 +417,63 @@ mod tests {
         assert_eq!(
             fs::read_to_string(prompt_root.join(USER_PROMPT_FILE_NAME)).unwrap(),
             "custom user prompt"
+        );
+
+        let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn named_loader_prefers_matching_specialist_file() {
+        let prompt_root = temp_prompt_root("named-specialist");
+        fs::create_dir_all(&prompt_root).unwrap();
+        fs::write(prompt_root.join("devops.md"), "# DevOps\ncustom").unwrap();
+
+        let template =
+            load_planner_prompt_template_from_root(Some(&prompt_root), "embedded prompt", Some("devops"));
+
+        assert_eq!(template.display_name, "DevOps");
+        assert_eq!(template.content, "# DevOps\ncustom");
+        assert!(template.source_label.ends_with("devops.md"));
+
+        let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn named_loader_falls_back_to_default_when_specialist_missing() {
+        let prompt_root = temp_prompt_root("named-fallback");
+        fs::create_dir_all(&prompt_root).unwrap();
+        fs::write(prompt_root.join(USER_PROMPT_FILE_NAME), "default user prompt").unwrap();
+
+        let template = load_planner_prompt_template_from_root(
+            Some(&prompt_root),
+            "embedded prompt",
+            Some("missing"),
+        );
+
+        assert_eq!(template.content, "default user prompt");
+        assert!(template.source_label.starts_with("user:"));
+
+        let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn list_specialists_excludes_defaults_and_autofix_files() {
+        let prompt_root = temp_prompt_root("list-specialists");
+        fs::create_dir_all(&prompt_root).unwrap();
+        fs::write(prompt_root.join("devops.md"), "devops").unwrap();
+        fs::write(prompt_root.join("security.md"), "security").unwrap();
+        fs::write(prompt_root.join("security.default.md"), "ignored").unwrap();
+        fs::write(prompt_root.join("auto-fix-custom.md"), "ignored").unwrap();
+
+        let specialists = list_specialists_from_root(Some(&prompt_root));
+
+        assert_eq!(
+            specialists,
+            vec![
+                DEFAULT_SPECIALIST_NAME.to_string(),
+                "devops".to_string(),
+                "security".to_string()
+            ]
         );
 
         let _ = fs::remove_dir_all(prompt_root);

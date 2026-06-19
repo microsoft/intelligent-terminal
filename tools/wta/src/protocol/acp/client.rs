@@ -59,8 +59,14 @@ impl std::fmt::Display for TemplateKind {
 /// Cleanup is driven by the session lifecycle: `forget()` runs
 /// whenever a SessionId is dropped (via `/new` or `drop_session_rx`),
 /// keeping the map bounded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TemplateSelection {
+    kind: TemplateKind,
+    persona_name: Option<String>,
+}
+
 #[derive(Clone, Default)]
-struct TemplateMemo(Arc<tokio::sync::Mutex<HashMap<String, TemplateKind>>>);
+struct TemplateMemo(Arc<tokio::sync::Mutex<HashMap<String, TemplateSelection>>>);
 
 impl TemplateMemo {
     /// Records `kind` as the latest template for this session and
@@ -68,9 +74,20 @@ impl TemplateMemo {
     /// turn. Autofix always ships (its template *is* the prompt body);
     /// planner ships on the first turn or when the previous turn used
     /// the other kind.
-    async fn should_ship(&self, session_id: &str, kind: TemplateKind) -> bool {
-        let prev = self.0.lock().await.insert(session_id.to_string(), kind);
-        kind == TemplateKind::Autofix || prev != Some(kind)
+    async fn should_ship(
+        &self,
+        session_id: &str,
+        kind: TemplateKind,
+        persona_name: Option<&str>,
+    ) -> bool {
+        let selection = TemplateSelection {
+            kind,
+            persona_name: (kind == TemplateKind::Planner)
+                .then(|| persona_name.map(str::to_string))
+                .flatten(),
+        };
+        let prev = self.0.lock().await.insert(session_id.to_string(), selection.clone());
+        kind == TemplateKind::Autofix || prev != Some(selection)
     }
 
     /// Drops the memo entry for a session that's going away.
@@ -85,6 +102,8 @@ pub struct PromptSubmission {
     pub text: String,
     pub pane_context: Option<PaneContext>,
     pub submitted_at_unix_s: f64,
+    pub persona_name: Option<String>,
+    pub force_new_session: bool,
     /// True when this prompt was synthesized by the auto-fix flow rather
     /// than typed by a human. The host uses this to skip broadcasting it
     /// as a User message (the client already shows the error line), and
@@ -210,21 +229,39 @@ pub struct RenameSessionRequest {
 }
 
 impl PromptSubmission {
-    pub fn new(text: String, pane_context: Option<PaneContext>) -> Self {
-        Self::new_with_kind(text, pane_context, false)
+    pub fn new(
+        text: String,
+        pane_context: Option<PaneContext>,
+        persona_name: Option<String>,
+        force_new_session: bool,
+    ) -> Self {
+        Self::new_with_kind(text, pane_context, persona_name, force_new_session, false)
     }
 
-    pub fn new_autofix(text: String, pane_context: Option<PaneContext>) -> Self {
-        Self::new_with_kind(text, pane_context, true)
+    pub fn new_autofix(
+        text: String,
+        pane_context: Option<PaneContext>,
+        persona_name: Option<String>,
+        force_new_session: bool,
+    ) -> Self {
+        Self::new_with_kind(text, pane_context, persona_name, force_new_session, true)
     }
 
-    fn new_with_kind(text: String, pane_context: Option<PaneContext>, is_autofix: bool) -> Self {
+    fn new_with_kind(
+        text: String,
+        pane_context: Option<PaneContext>,
+        persona_name: Option<String>,
+        force_new_session: bool,
+        is_autofix: bool,
+    ) -> Self {
         static NEXT_PROMPT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
             id: NEXT_PROMPT_ID.fetch_add(1, Ordering::Relaxed),
             text,
             pane_context,
             submitted_at_unix_s: now_unix_s(),
+            persona_name,
+            force_new_session,
             is_autofix,
         }
     }
@@ -1072,6 +1109,7 @@ async fn build_prompt_text(
     user_text: &str,
     is_autofix: bool,
     include_template: bool,
+    persona_name: Option<&str>,
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
@@ -1088,7 +1126,7 @@ async fn build_prompt_text(
     let planner_template = if is_autofix {
         prompt::load_autofix_prompt_template()
     } else {
-        prompt::load_planner_prompt_template()
+        prompt::load_planner_prompt_template_named(persona_name)
     };
     prompt_timing_log(
         prompt_id,
@@ -3198,7 +3236,78 @@ async fn dispatch_prompt_body(
     // Resolve (or lazily create) the ACP session for this tab.
     let prompt_session_id = {
         let mut g = tab_to_session_task.lock().await;
-        if let Some(sid) = g.get(&tab_key_task) {
+        if prompt.force_new_session {
+            let old_sid = g.remove(&tab_key_task);
+            drop(g);
+            if let Some(old_sid) = old_sid {
+                let old_sid_str = old_sid.to_string();
+                template_memo.forget(&old_sid_str).await;
+                if let Some(sig) = cancel_signals_task.lock().unwrap().remove(&old_sid_str) {
+                    let _ = sig.send(());
+                }
+                let _ = conn_task
+                    .cancel(acp::CancelNotification::new(old_sid))
+                    .await;
+            }
+            let mut g = tab_to_session_task.lock().await;
+            if let Some(sid) = g.get(&tab_key_task) {
+                sid.clone()
+            } else {
+                let cwd = prompt
+                    .pane_context
+                    .as_ref()
+                    .and_then(|c| c.cwd.clone())
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                let new_session_started = std::time::Instant::now();
+                let new_session_result = conn_task
+                    .new_session(acp::NewSessionRequest::new(cwd))
+                    .await;
+                log_acp_new_session_result(
+                    "ForceNewSessionOnPrompt",
+                    new_session_started,
+                    &new_session_result,
+                );
+                let new_session = match new_session_result {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let _ = event_tx_task.send(AppEvent::AgentError {
+                            session_id: None,
+                            failure: AgentFailure::from_acp_error(&e),
+                            message: format!("new_session failed for tab {}: {}", tab_key_task, e),
+                        });
+                        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                        return;
+                    }
+                };
+                let new_sid = new_session.session_id.clone();
+                if is_agent_pane {
+                    let pane_session_id = std::env::var("WT_SESSION").unwrap_or_default();
+                    let pane_for_index = if pane_session_id.is_empty() {
+                        None
+                    } else {
+                        Some(pane_session_id.as_str())
+                    };
+                    tracing::info!(
+                        target: "agent_pane_origin",
+                        session_id = %new_sid,
+                        pane_session_id = %pane_session_id,
+                        "recording agent-pane session origin (force_new_session_on_prompt)",
+                    );
+                    crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
+                }
+                let (per_tab_models, per_tab_current) =
+                    crate::protocol::acp::model_select::models_from_new_session(&new_session);
+                let _ = event_tx_task.send(AppEvent::SessionAttached {
+                    tab_id: tab_key_task.clone(),
+                    session_id: new_sid.to_string(),
+                    available_models: per_tab_models,
+                    current_model_id: per_tab_current,
+                });
+                g.insert(tab_key_task.clone(), new_sid.clone());
+                new_sid
+            }
+        } else if let Some(sid) = g.get(&tab_key_task) {
             sid.clone()
         } else {
             let cwd = prompt
@@ -3277,7 +3386,7 @@ async fn dispatch_prompt_body(
         TemplateKind::Planner
     };
     let include_template = template_memo
-        .should_ship(&prompt_session_id_str, kind)
+        .should_ship(&prompt_session_id_str, kind, prompt.persona_name.as_deref())
         .await;
 
     prompt_timing_task.activate(&prompt_session_id_str, &prompt);
@@ -3287,6 +3396,7 @@ async fn dispatch_prompt_body(
         &prompt.text,
         prompt.is_autofix,
         include_template,
+        prompt.persona_name.as_deref(),
         &shell_mgr_task,
         wt_connected,
         prompt.pane_context.as_ref(),
@@ -3879,7 +3989,8 @@ mod tests {
         let mgr = crate::shell::ShellManager::new();
         let expected = super::prompt::load_planner_prompt_template();
         let (prompt, _source, display_name, fix_pane) =
-            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
+            super::build_prompt_text(1, 0.0, "list files", false, true, None, &mgr, false, None)
+                .await;
         assert_eq!(display_name, expected.display_name);
         assert!(
             prompt.contains("### Supported Delegate Agents"),
@@ -3900,7 +4011,8 @@ mod tests {
         let planner = super::prompt::load_planner_prompt_template();
         let autofix = super::prompt::load_autofix_prompt_template();
         let (prompt, _s, display_name, fix_pane) =
-            super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
+            super::build_prompt_text(2, 0.0, "fix the build", true, true, None, &mgr, false, None)
+                .await;
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
             display_name, planner.display_name,
@@ -3923,7 +4035,7 @@ mod tests {
     async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
         let mgr = crate::shell::ShellManager::new();
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
+            super::build_prompt_text(3, 0.0, "   ", true, true, None, &mgr, false, None).await;
         assert!(
             !prompt.contains("## User Request"),
             "blank autofix hint must not add a User Request section"
@@ -3942,7 +4054,7 @@ mod tests {
             "test precondition: planner template body is non-empty"
         );
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
+            super::build_prompt_text(4, 0.0, "hi", false, false, None, &mgr, false, None).await;
         assert!(
             !prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
@@ -3963,7 +4075,7 @@ mod tests {
             "is_agent_pane": false,
         }));
         let (prompt, _s, _d, fix_pane) =
-            super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
+            super::build_prompt_text(5, 0.0, "", true, true, None, &mgr, true, None).await;
         assert_eq!(
             fix_pane.as_deref(),
             Some("work-pane"),
@@ -3990,10 +4102,29 @@ mod tests {
             ..Default::default()
         };
         let (_p, _s, _d, fix_pane) =
-            super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
+            super::build_prompt_text(6, 0.0, "", true, true, None, &mgr, true, Some(&ctx)).await;
         assert!(
             fix_pane.is_none(),
             "error-triggered autofix carries its source; resolved_fix_pane stays None"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_memo_reships_when_persona_changes() {
+        let memo = super::TemplateMemo::default();
+
+        assert!(
+            memo.should_ship("sid", super::TemplateKind::Planner, Some("devops"))
+                .await
+        );
+        assert!(
+            !memo
+                .should_ship("sid", super::TemplateKind::Planner, Some("devops"))
+                .await
+        );
+        assert!(
+            memo.should_ship("sid", super::TemplateKind::Planner, Some("security"))
+                .await
         );
     }
 

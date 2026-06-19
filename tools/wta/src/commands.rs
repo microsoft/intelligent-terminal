@@ -37,6 +37,8 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    /// Switch the Agent Specialist (`.md` prompt file) for this pane.
+    As,
     /// Pick the ACP model for *this* agent pane.
     ///
     /// Bare `/model` opens an interactive picker listing the models the
@@ -116,6 +118,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
         takes_args: false,
+    },
+    CommandSpec {
+        name: "as",
+        summary_key: "commands.as.summary",
+        kind: CommandKind::As,
+        takes_args: true,
     },
     CommandSpec {
         name: "model",
@@ -297,6 +305,18 @@ mod tests {
         assert_eq!(hinted.rest, "the path looks wrong");
         // takes_args is advertised so Tab-completion leaves a trailing space.
         assert!(lookup("fix").unwrap().takes_args);
+    }
+
+    #[test]
+    fn as_parses_with_optional_name() {
+        let bare = parse("/as").unwrap();
+        assert_eq!(bare.kind, CommandKind::As);
+        assert_eq!(bare.rest, "");
+
+        let named = parse("/as security").unwrap();
+        assert_eq!(named.kind, CommandKind::As);
+        assert_eq!(named.rest, "security");
+        assert!(lookup("as").unwrap().takes_args);
     }
 
     #[test]

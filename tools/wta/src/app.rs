@@ -1484,6 +1484,13 @@ pub struct TabSession {
     // Filled in Milestone 2 once each tab has its own ACP SessionId.
     #[allow(dead_code)]
     pub session_id: Option<String>,
+    /// Active Agent Specialist for this tab. `None` means the default
+    /// `terminal-agent.md`; a custom specialist stores its stem name.
+    pub active_persona: Option<String>,
+    /// Set by `/as` when the user changes the Agent Specialist. The next
+    /// submitted turn must start a fresh ACP session so the new system prompt
+    /// takes effect on a clean conversation history.
+    pub needs_new_session: bool,
 
     /// Per-pane ACP model override, set by the `/model` picker. `None` means
     /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
@@ -1894,6 +1901,7 @@ pub struct App {
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
+    #[allow(dead_code)]
     pub prompt_name: Option<String>,
     pub session_id: String,
     #[allow(dead_code)]
@@ -2588,6 +2596,106 @@ impl App {
                 tab.scroll_to_bottom();
             }
         }
+    }
+
+    fn active_persona_name<'a>(&self, tab: &'a TabSession) -> &'a str {
+        tab.active_persona
+            .as_deref()
+            .unwrap_or(crate::protocol::acp::prompt::DEFAULT_SPECIALIST_NAME)
+    }
+
+    fn canonical_persona_name(name: &str) -> Option<String> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let stem = trimmed.strip_suffix(".md").unwrap_or(trimmed);
+        if stem.eq_ignore_ascii_case(crate::protocol::acp::prompt::DEFAULT_SPECIALIST_NAME) {
+            None
+        } else {
+            Some(stem.to_string())
+        }
+    }
+
+    /// `/as [name]` — list Agent Specialists or switch the active specialist
+    /// for this tab. Switching takes effect on the next prompt and forces a
+    /// fresh ACP session so the new system prompt lands on a clean conversation.
+    fn cmd_persona(&mut self, arg: String, in_flight: bool) {
+        let personas = crate::protocol::acp::prompt::list_specialists();
+        let arg = arg.trim().to_string();
+
+        if arg.is_empty() {
+            let active = self.active_persona_name(self.current_tab()).to_string();
+            let mut lines = vec![t!("system.persona_list_header").into_owned()];
+            for persona in personas {
+                if persona == active {
+                    lines.push(format!(
+                        "• {} {}",
+                        persona,
+                        t!("system.persona_active_suffix")
+                    ));
+                } else {
+                    lines.push(format!("• {persona}"));
+                }
+            }
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(lines.join("\n")));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        let requested_display = arg
+            .strip_suffix(".md")
+            .unwrap_or(arg.as_str())
+            .to_string();
+        let matched = personas
+            .iter()
+            .find(|persona| persona.eq_ignore_ascii_case(&requested_display))
+            .cloned();
+
+        let Some(selected) = matched else {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!(
+                    "system.persona_unknown",
+                    persona = requested_display.as_str(),
+                    available = personas.join(", ")
+                )
+                .into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        };
+
+        let active = self.active_persona_name(self.current_tab()).to_string();
+        if selected == active {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.persona_already_active", persona = selected.as_str()).into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        let tab = self.current_tab_mut();
+        tab.active_persona = Self::canonical_persona_name(&selected);
+        tab.needs_new_session = true;
+        tab.clear_chat_history();
+        tab.completed_turns.clear();
+        tab.selected_completed_turn_idx = None;
+        tab.session_id = None;
+        tab.messages.push(ChatMessage::System(
+            t!("system.persona_switched", persona = selected.as_str()).into_owned(),
+        ));
+        tab.scroll_to_bottom();
     }
 
     /// Open the picker on the active tab, pre-selecting the model the pane is
@@ -6720,7 +6828,14 @@ impl App {
                         cwd: None,
                         source_pane_id: None,
                     };
-                    let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+                    let active_persona = self.current_tab().active_persona.clone();
+                    let force_new_session = self.current_tab().needs_new_session;
+                    let prompt = PromptSubmission::new(
+                        text.clone(),
+                        Some(pane_context),
+                        active_persona,
+                        force_new_session,
+                    );
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,
@@ -6738,6 +6853,7 @@ impl App {
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);
+                    self.current_tab_mut().needs_new_session = false;
                     let _ = self.prompt_tx.send(prompt);
                 }
             }
@@ -7092,6 +7208,7 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::As => self.cmd_persona(cmd.rest, in_flight),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
         }
@@ -7159,6 +7276,7 @@ impl App {
         tab.completed_turns.clear();
         tab.selected_completed_turn_idx = None;
         tab.session_id = None;
+        tab.needs_new_session = false;
         tab.scroll_to_bottom();
     }
 
@@ -7214,7 +7332,12 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
-        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context));
+        let prompt = PromptSubmission::new_autofix(
+            hint.clone(),
+            Some(pane_context),
+            self.current_tab().active_persona.clone(),
+            self.current_tab().needs_new_session,
+        );
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -7236,6 +7359,7 @@ impl App {
             "dispatching /fix",
         );
         self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        self.current_tab_mut().needs_new_session = false;
         let _ = self.prompt_tx.send(prompt);
     }
 

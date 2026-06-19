@@ -594,6 +594,8 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         text: text.to_string(),
         pane_context: None,
         submitted_at_unix_s: 0.0,
+        persona_name: None,
+        force_new_session: false,
         is_autofix,
     }
 }

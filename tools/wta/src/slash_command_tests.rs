@@ -35,6 +35,13 @@ fn classify_known_command() {
         }
         other => panic!("expected Command, got {other:?}"),
     }
+    match commands::classify("/as security") {
+        ParseOutcome::Command(c) => {
+            assert_eq!(c.kind, CommandKind::As);
+            assert_eq!(c.rest, "security");
+        }
+        other => panic!("expected Command, got {other:?}"),
+    }
 }
 
 #[test]
@@ -272,6 +279,39 @@ fn slash_model_direct_switch_sets_override() {
         !app.current_tab().model_picker_open,
         "a direct /model <id> switch must not leave the picker open"
     );
+}
+
+#[test]
+fn slash_as_lists_available_specialists() {
+    let mut app = test_app();
+
+    run_slash(&mut app, "as");
+
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::System(msg)) => {
+            assert!(msg.contains("terminal-agent"));
+            assert!(msg.contains("active"));
+        }
+        other => panic!("expected specialist list message, got {other:?}"),
+    }
+}
+
+#[test]
+fn slash_as_switches_active_specialist_and_marks_session_reset() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::System("stale".into()));
+
+    run_slash_args(&mut app, "as", "security");
+
+    assert_eq!(app.current_tab().active_persona.as_deref(), Some("security"));
+    assert!(app.current_tab().needs_new_session);
+    assert_eq!(app.current_tab().messages.len(), 1);
+    match app.current_tab().messages.last() {
+        Some(ChatMessage::System(msg)) => assert!(msg.contains("security")),
+        other => panic!("expected switch confirmation, got {other:?}"),
+    }
 }
 
 // ---- Degraded (transport-lost) gating: only /restart runs ----

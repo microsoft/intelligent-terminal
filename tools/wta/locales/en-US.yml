@@ -92,6 +92,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.as.summary: "Switch Agent Specialist — load a different .md prompt for this pane (/as <name>)"  # {Locked="/as","<name>",".md"} - Slash command shown in the command popup; "Agent Specialist" is the user-facing name for switchable prompt .md files.
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
@@ -194,6 +195,11 @@ system.agent_busy: "Agent is busy on this tab — wait for the current prompt to
 system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.
+system.persona_list_header: "Available Agent Specialists:"  # Header line shown after the user runs /as with no arguments; each specialist is a .md prompt file.
+system.persona_active_suffix: "(active)"  # Suffix on the currently selected specialist in the /as list.
+system.persona_switched: "Agent Specialist set to %{persona}. The next prompt will start a fresh session."  # Confirmation after /as <name> switches the prompt for the current pane. %{persona} is a prompt file stem such as "security".
+system.persona_already_active: "%{persona} is already active on this pane."  # Shown when /as <name> matches the pane's current specialist. %{persona} is a prompt file stem such as "terminal-agent".
+system.persona_unknown: "Unknown specialist %{persona}. Available: %{available}"  # Error after /as <name> names a prompt file that does not exist. %{available} is a comma-separated list of prompt file stems.
 system.cannot_focus_session: "Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment."  # Shown when Enter on a Session-management row says Live but no terminal pane is bound yet (cold-startup race). %{session_id} is an opaque id.
 system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead."  # Shown when Shift+Enter tries to resume a session in a new agent pane but the connected agent did not advertise the ACP `loadSession` capability. %{agent} is the agent display name (e.g. "Copilot"). {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
 system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead."  # Shown when Enter tries to resume a session via the agent's own --resume flag, but that agent's CLI has no resume flag (e.g. Codex). %{agent} is the agent display name. {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
