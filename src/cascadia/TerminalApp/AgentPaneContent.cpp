@@ -86,13 +86,20 @@ namespace winrt::TerminalApp::implementation
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
+        // Materialize the GPO-filtered list once: FilteredAcpAgents() returns
+        // a freshly-built std::vector (policy evaluation + allocation) on every
+        // call, so reusing one snapshot avoids the duplicated work and the
+        // risk of the current-id lookup and the flyout disagreeing if the
+        // underlying set changed between two calls.
+        const auto agents = Reg::FilteredAcpAgents();
+
         // Resolve the current agent's stable id from the last-reported name.
         // Comparing by id (not display name) avoids false misses caused by
         // localization or casing differences.
         winrt::hstring currentAgentId{};
         if (!_agentName.empty())
         {
-            for (const auto& a : Reg::FilteredAcpAgents())
+            for (const auto& a : agents)
             {
                 const std::wstring_view dn{ a.displayName };
                 if (dn.size() == _agentName.size() &&
@@ -108,7 +115,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         MenuFlyout flyout{};
-        for (const auto& agent : Reg::FilteredAcpAgents())
+        for (const auto& agent : agents)
         {
             const winrt::hstring agentId{ agent.id };
             const winrt::hstring displayName{ agent.displayName };

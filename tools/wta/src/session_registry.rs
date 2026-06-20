@@ -67,12 +67,23 @@ pub struct WtaMeta {
 }
 
 impl WtaMeta {
+    /// `true` when no field carries a meaningful value. A field counts as
+    /// empty when it is `None` **or** holds a whitespace-only string — the
+    /// same trim-based notion of emptiness that `extract_wta_meta` /
+    /// `inject_wta_meta` use when dropping fields on the wire. Without the
+    /// trim check a `Some("   ")` would make `is_empty()` return `false`
+    /// while `inject_wta_meta` still serialized nothing, leaving the two
+    /// views of "empty" inconsistent (and `inject_wta_meta`'s early-out
+    /// keyed off a value the wire never reflects).
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none()
-            && self.agent_cmd.is_none()
-            && self.agent_id.is_none()
-            && self.model.is_none()
-            && self.owner_tab_id.is_none()
+        fn blank(field: &Option<String>) -> bool {
+            field.as_deref().map_or(true, |s| s.trim().is_empty())
+        }
+        blank(&self.pane_session_id)
+            && blank(&self.agent_cmd)
+            && blank(&self.agent_id)
+            && blank(&self.model)
+            && blank(&self.owner_tab_id)
     }
 }
 
@@ -2753,6 +2764,37 @@ mod tests {
         let parsed = extract_wta_meta(&mut meta2);
         assert_eq!(parsed.agent_id.as_deref(), Some("claude"), "real id kept");
         assert_eq!(parsed.model, None, "blank model dropped on inject");
+    }
+
+    #[test]
+    fn is_empty_treats_whitespace_only_fields_as_empty() {
+        // `is_empty()` must use the same trim-based notion of emptiness as
+        // `extract_wta_meta` / `inject_wta_meta`. A `Some("   ")` is dropped on
+        // the wire, so it must also count as empty here — otherwise the two
+        // views of "empty" disagree and `inject_wta_meta`'s `is_empty()`
+        // early-out keys off a value the wire never reflects.
+        assert!(WtaMeta::default().is_empty(), "all-None is empty");
+        assert!(
+            WtaMeta {
+                pane_session_id: Some("  ".to_string()),
+                agent_cmd: Some(String::new()),
+                agent_id: Some("\t".to_string()),
+                model: Some(" ".to_string()),
+                owner_tab_id: Some("\n".to_string()),
+            }
+            .is_empty(),
+            "all-whitespace fields ⇒ empty"
+        );
+        // A single real value flips it back to non-empty.
+        assert!(
+            !WtaMeta {
+                agent_id: Some("claude".to_string()),
+                model: Some("   ".to_string()),
+                ..Default::default()
+            }
+            .is_empty(),
+            "one real field ⇒ not empty"
+        );
     }
 
     // ── apply_ext_notification ──────────────────────────────────────

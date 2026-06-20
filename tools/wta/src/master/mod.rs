@@ -215,12 +215,12 @@ struct MasterStateInner {
     pub(crate) default_agent_cmd: String,
     pub(crate) default_agent_id: Option<String>,
     /// Allowlist of agent ids a helper may select over the pipe, from the
-    /// host's GPO-filtered set (`--allowed-agent-ids`). `None` = no host
-    /// allowlist supplied (manual runs / older hosts): any *known* agent
-    /// id is accepted. `Some(set)` = only ids in `set` are honored; any
-    /// other id falls back to the trusted default. Either way the master
-    /// reconstructs the command from the id and never spawns a string
-    /// taken off the pipe.
+    /// host's GPO-filtered set (`--allowed-agent-ids`). `None` = the flag was
+    /// absent (manual runs / older hosts): any *known* agent id is accepted.
+    /// `Some(set)` = the flag was supplied, honored fail-closed: only ids in
+    /// `set` are honored; any other id (and *every* id when `set` is empty)
+    /// falls back to the trusted default. Either way the master reconstructs
+    /// the command from the id and never spawns a string taken off the pipe.
     pub(crate) allowed_agent_ids: Option<std::collections::HashSet<String>>,
     /// Per-helper crash-recovery metadata, keyed by `HelperId`.
     ///
@@ -1734,9 +1734,10 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // no longer owns a single eager agent CLI. `cli.agent` / `cli.agent_id`
     // become the fallback default for helpers that don't declare one.
     // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
-    // select. An empty / all-blank argv means "no allowlist; accept any
-    // known id" (`None`) — see `normalize_allowed_agent_ids` for why that
-    // must NOT collapse to `Some(empty_set)` (a silent block-all).
+    // select. An *absent* flag means "no allowlist; accept any known id"
+    // (`None`); a *present* flag is honored fail-closed even when it filters
+    // down to nothing (`Some(empty_set)` ⇒ block all) — see
+    // `normalize_allowed_agent_ids` for the absent-vs-present-empty split.
     let allowed_agent_ids = normalize_allowed_agent_ids(&cli.allowed_agent_ids);
     tracing::info!(
         target: "master",
@@ -1980,32 +1981,46 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 }
 
 /// Normalize the host-supplied `--allowed-agent-ids` argv into the
-/// allowlist [`resolve_agent_selection`] consumes: trim + lowercase each
-/// entry, drop blanks, drop unknown/custom ids (the allowlist is
-/// "known ids only" — unknown/custom entries would be silently inert
-/// because [`resolve_agent_selection`] additionally requires
-/// [`agent_registry::is_known_id`], so keeping them just misleads
-/// debugging of policy issues), then collapse an empty result to `None`
-/// ("no allowlist supplied; accept any known id") rather than
-/// `Some(empty_set)`.
+/// allowlist [`resolve_agent_selection`] consumes, keying the result on
+/// whether the host supplied the flag **at all**:
 ///
-/// The collapse is load-bearing: with clap `value_delimiter = ','` an
-/// empty `--allowed-agent-ids ""` parses to `[""]` — a non-empty argv
-/// carrying zero real ids. Returning `Some({})` there would make
-/// [`resolve_agent_selection`] refuse EVERY id (a silent block-all);
-/// `None` correctly means "no host policy".
+/// * **Flag absent** (clap produced an empty argv) ⇒ `None`: "no host
+///   policy" — manual runs / older hosts. [`resolve_agent_selection`]
+///   then accepts any *known* agent id.
+/// * **Flag present** (any argv, even `--allowed-agent-ids ""`) ⇒
+///   `Some(set)`: the host expressed a policy, so honor it **fail-closed**.
+///   Each entry is trimmed + lowercased; blanks and unknown/custom ids are
+///   dropped (the allowlist is "known ids only" — [`resolve_agent_selection`]
+///   additionally requires [`agent_registry::is_known_id`], so keeping inert
+///   entries would just mislead policy debugging). The surviving set may be
+///   **empty**, which blocks every helper-selected id (all tabs fall back to
+///   the trusted default) — *not* a silent widening back to "accept any
+///   known id".
+///
+/// Distinguishing absence from a present-but-empty value matters because the
+/// safe default for a policy boundary is fail-closed: a host that supplies an
+/// empty/all-filtered list (e.g. GPO filtered everything out) should block,
+/// not implicitly allow. This does not regress real launches — Terminal's
+/// `pushFlagValue` skips empty values, so it never puts `--allowed-agent-ids ""`
+/// on the wire; the present-but-empty case is reachable only by an explicit
+/// manual invocation, where fail-closed is exactly what we want.
 fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashSet<String>> {
+    // Flag entirely absent ⇒ no host policy. (clap's `Vec<String>` is empty
+    // when `--allowed-agent-ids` was not passed; `--allowed-agent-ids ""`
+    // instead yields `[""]`, a non-empty argv, which is treated as "present".)
+    if raw.is_empty() {
+        return None;
+    }
     let set: std::collections::HashSet<String> = raw
         .iter()
         .map(|s| s.trim().to_ascii_lowercase())
         .filter(|s| !s.is_empty())
         .filter(|s| crate::agent_registry::is_known_id(s))
         .collect();
-    if set.is_empty() {
-        None
-    } else {
-        Some(set)
-    }
+    // The flag WAS supplied — return `Some` even when the set is empty, so the
+    // policy is honored fail-closed (block all) rather than collapsing back to
+    // the no-policy `None`.
+    Some(set)
 }
 
 /// Decide which agent command the master will spawn for a helper, given
@@ -3678,22 +3693,33 @@ mod tests {
     }
 
     #[test]
-    fn empty_or_blank_allowed_ids_argv_is_no_allowlist_not_block_all() {
-        // clap `value_delimiter = ','` turns `--allowed-agent-ids ""` into
-        // `[""]`: a non-empty argv carrying zero real ids. It MUST normalize
-        // to `None` ("no host allowlist; accept any known id"), never
-        // `Some({})` — the latter makes `resolve_agent_selection` refuse
-        // every id and silently fall back to the default for ALL tabs.
-        assert_eq!(normalize_allowed_agent_ids(&[]), None, "no argv");
+    fn allowed_ids_absent_is_no_policy_present_but_empty_is_block_all() {
+        // The flag being *absent* (clap yields `[]`) is the only "no host
+        // policy" case → `None` → accept any known id.
+        assert_eq!(normalize_allowed_agent_ids(&[]), None, "no argv ⇒ no policy");
+
+        // The flag being *present* but filtering down to nothing is honored
+        // fail-closed → `Some({})` → block every helper-selected id (all tabs
+        // fall back to the trusted default). clap `value_delimiter = ','`
+        // turns `--allowed-agent-ids ""` into `[""]`: a present argv with zero
+        // real ids. It must NOT widen back to `None`.
         assert_eq!(
             normalize_allowed_agent_ids(&[String::new()]),
-            None,
-            "single empty string"
+            Some(std::collections::HashSet::new()),
+            "present-but-empty ⇒ block all, not no-policy"
         );
         assert_eq!(
             normalize_allowed_agent_ids(&["   ".to_string(), "\t".to_string()]),
-            None,
-            "all-whitespace entries"
+            Some(std::collections::HashSet::new()),
+            "present all-whitespace ⇒ block all"
+        );
+        // Unknown/custom ids can never be honored by resolve_agent_selection
+        // (which requires is_known_id), so they're dropped — but the flag was
+        // still supplied, so an all-unknown list blocks rather than widening.
+        assert_eq!(
+            normalize_allowed_agent_ids(&["custom:myapp".to_string(), "unknown".to_string()]),
+            Some(std::collections::HashSet::new()),
+            "present all-unknown ⇒ block all, not no-policy"
         );
 
         // Real known ids survive — trimmed + lowercased, blanks dropped.
@@ -3704,15 +3730,6 @@ mod tests {
         ])
         .expect("non-empty allowlist");
         assert_eq!(set, allow_set(&["gemini", "copilot"]));
-
-        // Unknown/custom ids are silently dropped: they can never be honored
-        // by resolve_agent_selection (which requires is_known_id), so keeping
-        // them would produce an inert allowlist that misleads policy debugging.
-        assert_eq!(
-            normalize_allowed_agent_ids(&["custom:myapp".to_string(), "unknown".to_string()]),
-            None,
-            "all-unknown entries collapse to no-allowlist, not block-all"
-        );
         // Unknown ids mixed with a real id: only the real id survives.
         let mixed = normalize_allowed_agent_ids(&[
             "custom:myapp".to_string(),
@@ -3721,18 +3738,24 @@ mod tests {
         .expect("one real id survives");
         assert_eq!(mixed, allow_set(&["claude"]));
 
-        // End-to-end: a surviving allowlist still blocks a known-but-unlisted
-        // id, while an empty one (→ None) honors any known id.
-        let listed = normalize_allowed_agent_ids(&["gemini".to_string()]);
-        let (cmd, id) = resolve(listed.as_ref(), Some("copilot"), None);
-        assert_eq!(cmd, DEFAULT_CMD, "unlisted id is refused");
-        assert_eq!(id.as_deref(), Some("copilot"));
+        // End-to-end through resolve_agent_selection:
+        //  - absent (None) ⇒ a known id is honored (reconstructed);
+        //  - a surviving allowlist blocks a known-but-unlisted id;
+        //  - present-but-empty blocks EVERY id (fail-closed).
         let (cmd, _) = resolve(None, Some("copilot"), None);
         assert_eq!(
             cmd,
             crate::agent_registry::build_acp_command("copilot", None),
             "no allowlist ⇒ known id honored (reconstructed)"
         );
+        let listed = normalize_allowed_agent_ids(&["gemini".to_string()]);
+        let (cmd, id) = resolve(listed.as_ref(), Some("copilot"), None);
+        assert_eq!(cmd, DEFAULT_CMD, "unlisted id is refused");
+        assert_eq!(id.as_deref(), Some("copilot"));
+        let blocked = normalize_allowed_agent_ids(&[String::new()]);
+        let (cmd, id) = resolve(blocked.as_ref(), Some("gemini"), None);
+        assert_eq!(cmd, DEFAULT_CMD, "present-but-empty blocks even a known id");
+        assert_eq!(id.as_deref(), Some("copilot"));
     }
 
     #[test]
