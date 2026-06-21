@@ -18,6 +18,12 @@ if not defined MSBUILD (
     echo Could not locate MSBuild. Install the "MSBuild" VS component, or set the MSBUILD env var to your MSBuild.exe path.
     exit /b 1
 )
+rem Strip any surrounding/literal quotes a caller may have baked into the
+rem MSBUILD env var (e.g. set MSBUILD="C:\...\MSBuild.exe"). A path can't
+rem contain a double-quote, so dropping them all is safe — and it stops the
+rem existence check and the quoted call sites below from seeing doubled
+rem quotes (`""C:\...""`), which would spuriously fail.
+set MSBUILD=%MSBUILD:"=%
 if not exist "%MSBUILD%" (
     echo MSBUILD points to a missing file: "%MSBUILD%"
     exit /b 1
