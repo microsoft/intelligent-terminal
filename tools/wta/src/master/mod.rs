@@ -1996,11 +1996,15 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 ///
 /// Distinguishing absence from a present-but-empty value matters because the
 /// safe default for a policy boundary is fail-closed: a host that supplies an
-/// empty/all-filtered list (e.g. GPO filtered everything out) should block,
-/// not implicitly allow. This does not regress real launches — Terminal's
-/// `pushFlagValue` skips empty values, so it never puts `--allowed-agent-ids ""`
-/// on the wire; the present-but-empty case is reachable only by an explicit
-/// manual invocation, where fail-closed is exactly what we want.
+/// empty/all-filtered list (e.g. GPO filtered every built-in agent out) should
+/// block, not implicitly allow. This is reached in real launches: when an
+/// `AllowedAgents` policy filters the built-in ACP set to empty, Terminal
+/// (`TerminalPage::_BuildSharedWtaExtraArgs`) intentionally emits the combined
+/// token `--allowed-agent-ids=` (clap parses it to `[""]`) so the master stays
+/// fail-closed instead of reading an absent flag as "no policy". It is also
+/// reachable from an explicit manual invocation. (Terminal sends the value
+/// attached via `=` rather than as its own argv token because the command-line
+/// builder drops empty args.)
 fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashSet<String>> {
     // Flag entirely absent ⇒ no host policy. (clap's `Vec<String>` is empty
     // when `--allowed-agent-ids` was not passed; `--allowed-agent-ids ""`
