@@ -1782,7 +1782,28 @@ namespace winrt::TerminalApp::implementation
                 }
                 allowedIds.append(agent.id);
             }
-            pushFlagValue(L"--allowed-agent-ids", allowedIds);
+            // Always communicate the policy — even when it filters to nothing.
+            // FilteredAcpAgents() is empty ONLY when an AllowedAgents GPO policy
+            // is active and blocks every built-in ACP agent (with no policy the
+            // list is the full built-in set). Omitting the flag would read on
+            // the master as "no host policy" (absent => accept any known id),
+            // letting a peer/compromised helper request a blocked built-in id —
+            // a policy bypass. So when the set is empty we still pass the flag,
+            // fail-closed, and the master blocks every helper-selected id.
+            //
+            // An empty value can't survive as its own argv token (SharedWta's
+            // command-line builder, like pushFlagValue, drops empty args), so we
+            // attach it with '=': `--allowed-agent-ids=` is one non-empty token
+            // that clap parses to [""] — present-but-empty => block all. See
+            // master::normalize_allowed_agent_ids and its round-trip unit test.
+            if (allowedIds.empty())
+            {
+                extraArgs.emplace_back(L"--allowed-agent-ids=");
+            }
+            else
+            {
+                pushFlagValue(L"--allowed-agent-ids", allowedIds);
+            }
         }
         if (!globals.EffectiveAutoFixEnabled())
         {

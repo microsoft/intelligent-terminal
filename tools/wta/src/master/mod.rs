@@ -3755,6 +3755,37 @@ mod tests {
     }
 
     #[test]
+    fn host_empty_allowlist_flag_round_trips_as_block_all() {
+        // The host (TerminalPage) must signal "AllowedAgents policy active but
+        // it blocks every built-in ACP agent" so the master stays fail-closed.
+        // It can't send an empty value as its own argv token — the command-line
+        // builder drops empty args — so it emits the combined `--allowed-agent-ids=`
+        // token. Verify clap turns that into a PRESENT-but-empty list (`[""]`),
+        // which normalizes to block-all, and NOT into an absent flag (which
+        // would mean "no policy / accept any known id" — the bypass we're closing).
+        use clap::Parser;
+        let cli = crate::Cli::try_parse_from(["wta", "--allowed-agent-ids="])
+            .expect("--allowed-agent-ids= parses");
+        assert_eq!(
+            cli.allowed_agent_ids,
+            vec![String::new()],
+            "combined empty value is present-but-empty, not absent"
+        );
+        assert_eq!(
+            normalize_allowed_agent_ids(&cli.allowed_agent_ids),
+            Some(std::collections::HashSet::new()),
+            "present-but-empty ⇒ block all (fail-closed)"
+        );
+        // And the flag entirely absent stays "no host policy".
+        let cli_absent = crate::Cli::try_parse_from(["wta"]).expect("parses");
+        assert_eq!(
+            normalize_allowed_agent_ids(&cli_absent.allowed_agent_ids),
+            None,
+            "absent flag ⇒ no policy"
+        );
+    }
+
+    #[test]
     fn gpo_allowlist_blocks_known_but_unlisted_ids() {
         let allowed = allow_set(&["gemini"]);
         // gemini is listed ⇒ honored.
