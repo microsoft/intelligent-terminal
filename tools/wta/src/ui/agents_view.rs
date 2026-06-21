@@ -11,7 +11,6 @@ use unicode_width::UnicodeWidthStr;
 use crate::agent_sessions::{
     AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
 };
-use crate::app::HistoryLoadState;
 use crate::session_registry::SessionInfo;
 use crate::ui::shimmer;
 
@@ -33,7 +32,6 @@ pub fn render(
     reg: &AgentSessionRegistry,
     snapshot: Option<&[SessionInfo]>,
     list_state: &mut ListState,
-    history_load_state: HistoryLoadState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
     // MVP origin filter — `ShellOnly` by default, see
@@ -174,29 +172,19 @@ pub fn render(
         )).collect::<Vec<_>>(),
         area_w = area.width,
         area_h = area.height,
-        load_state = ?history_load_state,
         "rendering agents view"
     );
 
-    // While the lazy history scan is in flight, replace the whole list
-    // with a single shimmer-styled loading row. Showing live rows alongside
-    // a dim "loading…" hint led users to think the list was complete (only
-    // the 1 live session) and dismiss the view before the scan finished.
-    //
-    // Two distinct "we don't have any rows to show yet" sources trigger
-    // the shimmer:
-    //   * Legacy `!using_snapshot` path: registry-driven render with the
-    //     on-disk history scan still in progress (pre-PR-#73 behaviour,
-    //     kept for completeness — `using_snapshot` is now always true
-    //     when the view is open).
-    //   * Snapshot path: session management view was just opened, master hasn't yet replied
-    //     to our `session/list` refetch, and the placeholder snapshot
-    //     is still the empty Vec primed by `open_agents_view_for_tab`.
-    //     Without this branch the user sees a blank list (no shimmer,
-    //     no rows) and can't tell loading from "really empty".
+    // While the view is waiting on its first `session/list` snapshot from
+    // master, replace the whole list with a single shimmer-styled loading
+    // row. Showing live rows alongside a dim "loading…" hint led users to
+    // think the list was complete and dismiss the view before the snapshot
+    // arrived. The session view was just opened, master hasn't yet replied
+    // to our `session/list` refetch, and the placeholder snapshot is still
+    // the empty Vec primed by `open_agents_view_for_tab`; without this the
+    // user sees a blank list and can't tell loading from "really empty".
     let snapshot_loading = awaiting_first_snapshot && sorted.is_empty();
-    let legacy_loading = !using_snapshot && history_load_state == HistoryLoadState::Loading;
-    if snapshot_loading || legacy_loading {
+    if snapshot_loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();

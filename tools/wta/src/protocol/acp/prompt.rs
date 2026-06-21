@@ -158,10 +158,13 @@ fn seed_autofix_prompt_files(
 
     write_if_changed(&default_path, embedded_default_prompt)?;
 
-    if !user_path.exists() {
-        fs::write(&user_path, embedded_default_prompt)?;
-    } else if previous_default.as_deref() == existing_user.as_deref() {
-        fs::write(&user_path, embedded_default_prompt)?;
+    // (Re)seed the user file only when it is absent or still matches the
+    // previous embedded default (i.e. the user hasn't customized it). Use
+    // `write_if_changed` so an unchanged file is never rewritten — this avoids
+    // needless disk churn on every prompt load and, because the write is
+    // atomic, keeps concurrent readers from observing a truncated file.
+    if existing_user.is_none() || previous_default.as_deref() == existing_user.as_deref() {
+        write_if_changed(&user_path, embedded_default_prompt)?;
     }
 
     Ok(())
@@ -177,19 +180,50 @@ fn seed_prompt_files(prompt_root: &Path, embedded_default_prompt: &str) -> std::
 
     write_if_changed(&default_path, embedded_default_prompt)?;
 
-    if !user_path.exists() {
-        fs::write(&user_path, embedded_default_prompt)?;
-    } else if previous_default.as_deref() == existing_user.as_deref() {
-        fs::write(&user_path, embedded_default_prompt)?;
+    // See the note in `seed_autofix_prompt_files`: only (re)seed an absent or
+    // still-default user file, and route through `write_if_changed` so an
+    // unchanged file is never rewritten and concurrent readers never see a
+    // truncated file.
+    if existing_user.is_none() || previous_default.as_deref() == existing_user.as_deref() {
+        write_if_changed(&user_path, embedded_default_prompt)?;
     }
 
     Ok(())
 }
 
+/// Counter for unique temp-file names in [`write_atomic`]. Process-wide so
+/// concurrent writers (e.g. many tests loading prompts at once) never collide
+/// on the same staging path.
+static NEXT_TMP_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn write_if_changed(path: &Path, content: &str) -> std::io::Result<()> {
-    match fs::read_to_string(path) {
-        Ok(existing) if existing == content => Ok(()),
-        _ => fs::write(path, content),
+    if let Ok(existing) = fs::read_to_string(path) {
+        if existing == content {
+            return Ok(());
+        }
+    }
+    write_atomic(path, content)
+}
+
+/// Write `content` to `path` atomically: stage into a uniquely-named temp file
+/// in the same directory, then `rename` it over the destination. On both
+/// Windows and Unix `rename` replaces the destination in a single operation, so
+/// a concurrent reader always observes either the old or the new complete file
+/// — never a half-truncated one. The shared runtime prompt root is read and
+/// seeded from many threads (notably the test suite), where a plain in-place
+/// `fs::write` truncates first and races readers down to an empty string.
+fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path.file_name().and_then(|n| n.to_str()).unwrap_or("prompt");
+    let unique = NEXT_TMP_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dir.join(format!(".{}.{}.{}.tmp", stem, std::process::id(), unique));
+    fs::write(&tmp, content)?;
+    match fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            Err(e)
+        }
     }
 }
 

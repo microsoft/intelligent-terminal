@@ -1402,8 +1402,7 @@ pub async fn apply_ext_notification(
         // and never mutate the registry. A future master may broadcast
         // notifications we don't recognise — silently ignoring them
         // keeps the helper forward-compatible.
-        WtaExtNotification::SessionsChanged
-        | WtaExtNotification::Unknown
+        WtaExtNotification::Unknown
         | WtaExtNotification::MalformedParams { .. } => {}
     }
     parsed
