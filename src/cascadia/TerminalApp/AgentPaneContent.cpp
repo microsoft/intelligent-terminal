@@ -93,6 +93,15 @@ namespace winrt::TerminalApp::implementation
         // underlying set changed between two calls.
         const auto agents = Reg::FilteredAcpAgents();
 
+        // Nothing to switch between — e.g. GPO's AllowedAgents filtered every
+        // built-in ACP agent out (custom agents may still be allowed globally
+        // but aren't offered here). Don't pop an empty flyout; the agent-bar
+        // button is simply inert in that configuration.
+        if (agents.empty())
+        {
+            return;
+        }
+
         // Resolve the current agent's stable id from the last-reported name.
         // The status `name` is the agent's self-reported product name, which
         // often carries a suffix the registry brand name doesn't — e.g.
