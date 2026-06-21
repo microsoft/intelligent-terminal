@@ -283,9 +283,6 @@ type AgentCmdKey = String;
 /// talk to it. Shared (`Arc`) across every helper currently bound to
 /// this agent.
 struct AgentCli {
-    /// Pool key (the agent command line) — lets the reaper remove the
-    /// right entry from `MasterStateInner::agents` when this CLI dies.
-    key: AgentCmdKey,
     /// Master is the ACP *client* of this CLI. Every helper request for
     /// a session owned by this agent forwards onto this connection.
     conn: Arc<acp::ClientSideConnection>,
@@ -2281,7 +2278,6 @@ async fn spawn_one_agent(
     );
 
     Ok(Arc::new(AgentCli {
-        key: key.clone(),
         conn,
         cached_init_resp: init_resp,
         cli_source,
@@ -3867,7 +3863,6 @@ mod tests {
                 // the timeout path.
                 let agent = OnceLock::new();
                 let _ = agent.set(Arc::new(AgentCli {
-                    key: "test-agent".to_string(),
                     conn: client_connection_to_pending_new_session_agent(),
                     cached_init_resp: acp::InitializeResponse::new(acp::ProtocolVersion::V1),
                     cli_source: None,
