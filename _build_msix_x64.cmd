@@ -6,8 +6,13 @@ rem   1. honor an externally supplied MSBUILD env var (CI / custom installs);
 rem   2. otherwise locate it via vswhere, which works across Community /
 rem      Professional / Enterprise / Build Tools and non-default install drives.
 rem The value is stored UNQUOTED and quoted at each call site below.
+rem Guard the vswhere call with `if exist`: on minimal/custom installs that
+rem lack vswhere.exe, calling it would print a confusing error and leave
+rem MSBUILD unset; skipping it lets the clear message below handle the case.
 if not defined MSBUILD (
-    for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe`) do set "MSBUILD=%%i"
+    if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
+        for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe`) do set "MSBUILD=%%i"
+    )
 )
 if not defined MSBUILD (
     echo Could not locate MSBuild. Install the "MSBuild" VS component, or set the MSBUILD env var to your MSBuild.exe path.
