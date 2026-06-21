@@ -160,9 +160,12 @@ struct Cli {
     /// reconstructs a helper's requested agent command from its declared
     /// `agent_id` ONLY when that id is in this set — never executing a
     /// command string sent over the pipe. An id outside the set (or a
-    /// custom/unknown id) falls back to `--agent` / `--agent-id`. Empty /
-    /// absent means "no host allowlist" (manual runs, older hosts): the
-    /// master then accepts any *known* agent id. Hidden; helper ignores it.
+    /// custom/unknown id) falls back to `--agent` / `--agent-id`. An *absent*
+    /// flag means "no host allowlist" (manual runs, older hosts): the master
+    /// accepts any *known* agent id. A *present* flag is honored fail-closed —
+    /// even when it filters down to nothing, every helper-selected id is then
+    /// blocked (all panes fall back to the default) rather than widening back
+    /// to accept-any. Hidden; helper ignores it.
     #[arg(long, hide = true, value_name = "IDS", value_delimiter = ',')]
     allowed_agent_ids: Vec<String>,
 

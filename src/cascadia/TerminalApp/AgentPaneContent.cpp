@@ -94,19 +94,33 @@ namespace winrt::TerminalApp::implementation
         const auto agents = Reg::FilteredAcpAgents();
 
         // Resolve the current agent's stable id from the last-reported name.
-        // Comparing by id (not display name) avoids false misses caused by
-        // localization or casing differences.
+        // The status `name` is the agent's self-reported product name, which
+        // often carries a suffix the registry brand name doesn't — e.g.
+        // "Claude Code"/"Gemini CLI" vs the registry's "Claude"/"Gemini". An
+        // exact full-length compare would miss every suffixed name and leave
+        // no item checked, so match on a case-insensitive word-boundary prefix
+        // in either direction (handles both a longer status name and a longer
+        // display name). The display names don't prefix one another, so this
+        // can't mark the wrong agent.
+        const auto eqCI = [](std::wstring_view a, std::wstring_view b) {
+            return a.size() == b.size() &&
+                   std::equal(a.begin(), a.end(), b.begin(), [](wchar_t x, wchar_t y) {
+                       return std::towlower(x) == std::towlower(y);
+                   });
+        };
+        const auto startsWithWord = [&eqCI](std::wstring_view whole, std::wstring_view prefix) {
+            return !prefix.empty() && prefix.size() <= whole.size() &&
+                   eqCI(whole.substr(0, prefix.size()), prefix) &&
+                   (whole.size() == prefix.size() || std::iswspace(whole[prefix.size()]));
+        };
         winrt::hstring currentAgentId{};
         if (!_agentName.empty())
         {
+            const std::wstring_view name{ _agentName };
             for (const auto& a : agents)
             {
                 const std::wstring_view dn{ a.displayName };
-                if (dn.size() == _agentName.size() &&
-                    std::equal(dn.begin(), dn.end(), _agentName.begin(),
-                               [](wchar_t x, wchar_t y) {
-                                   return std::towlower(x) == std::towlower(y);
-                               }))
+                if (startsWithWord(name, dn) || startsWithWord(dn, name))
                 {
                     currentAgentId = winrt::hstring{ a.id };
                     break;
