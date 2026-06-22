@@ -73,6 +73,26 @@ Invoke-Pester test/e2e/selftests              # everything (30 tests)
 
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
+
+## Reports (with precise per-failure diagnostics)
+
+`Invoke-ItE2EReport.ps1` wraps Pester and writes a report dir (`-OutDir`):
+
+```powershell
+pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
+pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
+```
+
+Outputs:
+- `results.xml` — **NUnit XML** for CI test reporting (Azure DevOps / GitHub).
+- `summary.md` — one block per **failed** test with the **exact error**, **file:line**, and
+  any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
+- Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
+
+Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
+`Assert-Pane: pane <id> never matched /git status/ within 12s. Screenshot: <path>` or
+`Assert-AI FAILED: '<claim>' -> <reason> (confidence=0.7)` — and Pester records the exact
+`Should` line and `file:line`.
 (`selftests/ItE2E.Unit.Tests.ps1`, incl. a regression test for output truncation).
 
 ## Authoring a test
