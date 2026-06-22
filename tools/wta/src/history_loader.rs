@@ -127,20 +127,6 @@ fn retain_wsl_cli(rows: &mut Vec<AgentSession>, cli_filter: Option<&CliSource>) 
     }
 }
 
-/// Scan **stopped** WSL distros (booting each — slow). For the async
-/// second-phase load so the initial session list (host + running) renders
-/// immediately, then refreshes once stopped distros finish. Returns `[]`
-/// when WSL session scanning is disabled. Filtered to `cli_filter` exactly
-/// like the running-distro pass in [`load_for_cli`].
-pub fn load_stopped_wsl_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
-    if !wsl_sessions_enabled() {
-        return Vec::new();
-    }
-    let mut rows = crate::wsl::scan_stopped_distros();
-    retain_wsl_cli(&mut rows, cli_filter);
-    rows
-}
-
 /// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
 /// / non-JSONL transcript that is one giant line with no newline can't pull
 /// an unbounded amount into memory during the *cheap* phase. A real header
@@ -176,8 +162,8 @@ pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     // WSL historical sessions (in-distro, **running** distros only — fast,
     // no VM boot). Scanned before the host-home early return because they
     // live in the distro's own `$HOME`, independent of the Windows profile.
-    // Stopped distros are loaded by a separate async pass
-    // ([`load_stopped_wsl_for_cli`]) so they don't block this initial list.
+    // Stopped (non-running) distros are intentionally skipped: reading one
+    // boots its WSL VM, which is too costly to do just to build a list.
     if wsl_sessions_enabled() {
         let mut wsl_rows = crate::wsl::scan_running_distros();
         retain_wsl_cli(&mut wsl_rows, cli_filter);
@@ -3107,14 +3093,5 @@ mod tests {
         let mut unknown = base();
         retain_wsl_cli(&mut unknown, Some(&CliSource::Unknown(String::new())));
         assert_eq!(unknown.len(), 2, "Unknown (custom agent) keeps all CLIs");
-    }
-
-    #[test]
-    fn load_stopped_wsl_disabled_is_empty_without_spawning() {
-        let _g = WSL_ENV_LOCK.lock().unwrap();
-        // Disabled => returns [] before any `wsl.exe` spawn (no distro boot).
-        std::env::set_var("WTA_WSL_SESSIONS", "0");
-        assert!(load_stopped_wsl_for_cli(None).is_empty());
-        std::env::remove_var("WTA_WSL_SESSIONS");
     }
 }
