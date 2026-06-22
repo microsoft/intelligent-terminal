@@ -26,6 +26,9 @@ if (-not $Check) {
     if (-not $haveWinapp) {
         Write-Host "Installing Microsoft.winappcli via winget..." -ForegroundColor Cyan
         winget install --id Microsoft.winappcli --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+        # winget is a native exe: $ErrorActionPreference='Stop' does NOT trap its non-zero
+        # exit, so check it explicitly or later "winapp not found" errors are confusing.
+        if ($LASTEXITCODE -ne 0) { throw "winget install Microsoft.winappcli failed (exit $LASTEXITCODE). Is the winget source reachable?" }
     }
     if (-not $pester) {
         Write-Host "Installing Pester 5..." -ForegroundColor Cyan

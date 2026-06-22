@@ -88,7 +88,6 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
             # Select the live session row and resume it; the pane returns to a chat view.
             Open-SessionList -App $script:app | Out-Null
             Resume-Session -App $script:app | Out-Null
-            Start-Sleep -Seconds 2
             # After Enter the session view is dismissed (back to a chat/agent view).
             $backToChat = Test-Until -TimeoutSec 12 -Condition {
                 -not (Test-SessionListShown -App $script:app -TimeoutSec 1)

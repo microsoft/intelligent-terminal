@@ -93,10 +93,13 @@ function Start-WtEventListener {
                 try { $obj = $EventArgs.Data | ConvertFrom-Json -Depth 64; [void]$Event.MessageData.Add($obj) } catch { }
             }
         }
-        $reg = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $handler -MessageData $events
+        # Explicit, unique SourceIdentifier so Stop-WtEventListener can unregister
+        # deterministically (don't rely on the auto-generated job name).
+        $sourceId = "ItE2E.WtEventListener.$([guid]::NewGuid())"
+        $reg = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $handler -MessageData $events -SourceIdentifier $sourceId
         [void]$p.Start(); $p.BeginOutputReadLine(); $p.BeginErrorReadLine()
         Write-ItLog -Level INFO -Message "Event listener started (filter='$EventFilter' session='$SessionId')."
-        [pscustomobject]@{ Process = $p; Events = $events; Reg = $reg; App = $App }
+        [pscustomobject]@{ Process = $p; Events = $events; Reg = $reg; SourceId = $sourceId; App = $App }
     }
 }
 
@@ -134,7 +137,9 @@ function Stop-WtEventListener {
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$Listener)
     process {
         try { if (-not $Listener.Process.HasExited) { $Listener.Process.Kill($true) } } catch { }
-        try { Unregister-Event -SourceIdentifier $Listener.Reg.Name -ErrorAction SilentlyContinue } catch { }
+        # Prefer the explicit SourceIdentifier we assigned; fall back to the job name.
+        $sid = if ($Listener.PSObject.Properties.Name -contains 'SourceId' -and $Listener.SourceId) { $Listener.SourceId } else { $Listener.Reg.Name }
+        try { if ($sid) { Unregister-Event -SourceIdentifier $sid -ErrorAction SilentlyContinue } } catch { }
         try { $Listener.Process.Dispose() } catch { }
     }
 }

@@ -73,7 +73,7 @@ Invoke-Pester test/e2e/selftests              # everything (30 tests)
 
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
-
+in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
 ## Reports (HTML + precise per-failure diagnostics)
 
 `Invoke-ItE2EReport.ps1` wraps Pester and, by default, writes the report to the **fixed

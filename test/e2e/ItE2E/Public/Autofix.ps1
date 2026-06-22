@@ -3,8 +3,11 @@
 # Observable signals on the `wtcli listen` stream (envelope is always
 # {method,params,type:"event"} — the event NAME is `.method`, not `.type`):
 #   * the failure trigger:  method=vt_sequence, params.sequence ~ "osc:133;D;<nonzero>"
-#   * the autofix request:  method=agent_event, params.event="agent.prompt.submit",
-#                           params.payload.initial_prompt ~ "A command failed. Diagnose..."
+#   * the autofix request:  method=agent_event whose params.payload.initial_prompt ~
+#                           "A command failed. Diagnose..." — this rides on
+#                           params.event="agent.session.start" (NOT "agent.prompt.submit",
+#                           which may not carry the prompt). Wait-Autofix matches on the
+#                           initial_prompt text and does not require a specific params.event.
 # (This build emits NO dedicated `autofix_state` event; detect via the above.)
 
 function Invoke-FailingCommand {
