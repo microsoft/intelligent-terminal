@@ -1421,18 +1421,19 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
         return out;
     }
     out.push_str(&format!(
-        "{:<24} {:<10} {:<10} {:<10} {:<20} {:<20} {}\n",
-        "SESSION", "STATUS", "CLI", "ORIGIN", "PANE", "UPDATED", "TITLE"
+        "{:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
+        "SESSION", "STATUS", "CLI", "ORIGIN", "LOCATION", "PANE", "UPDATED", "TITLE"
     ));
     for session in sessions {
         let sid = session.session_id.to_string();
         let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
         out.push_str(&format!(
-            "{:<24} {:<10} {:<10} {:<10} {:<20} {:<20} {}\n",
+            "{:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
             short_sid,
             status_label(session.status.as_ref()),
             cli_source_label(session.cli_source.as_ref()),
             origin_label(session.origin.as_ref()),
+            location_label(&session.location),
             session.pane_session_id.as_deref().unwrap_or("-"),
             session.updated_at.as_deref().unwrap_or("-"),
             session.title.as_deref().unwrap_or("-"),
@@ -1466,6 +1467,16 @@ fn origin_label(origin: Option<&agent_sessions::SessionOrigin>) -> &'static str 
         Some(agent_sessions::SessionOrigin::AgentPane) => "AgentPane",
         Some(agent_sessions::SessionOrigin::Unknown)   => "Shell",
         None                                           => "-",
+    }
+}
+
+/// Render a `SessionLocation` for the `wta sessions list` table: `host`
+/// for Windows-profile sessions, `wsl:<distro>` for sessions discovered
+/// inside a WSL distro.
+fn location_label(location: &agent_sessions::SessionLocation) -> String {
+    match location {
+        agent_sessions::SessionLocation::Host => "host".to_string(),
+        agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
     }
 }
 

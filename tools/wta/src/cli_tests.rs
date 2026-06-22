@@ -159,6 +159,25 @@ fn sessions_table_renders_origin_labels() {
     assert!(out.contains("AgentPane"), "agent-pane origin label present: {out}");
 }
 
+#[test]
+fn sessions_table_renders_location_labels() {
+    let mut host = session_registry::SessionInfo::new(
+        agent_client_protocol::SessionId::new("sid-host"),
+        std::path::PathBuf::from("C:\\repo"),
+    );
+    host.location = agent_sessions::SessionLocation::Host;
+    let mut wsl = session_registry::SessionInfo::new(
+        agent_client_protocol::SessionId::new("sid-wsl"),
+        std::path::PathBuf::from("/home/u"),
+    );
+    wsl.location = agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+    let out = format_sessions_table(&[host, wsl]);
+    assert!(out.contains("LOCATION"), "LOCATION header present: {out}");
+    assert!(out.contains("host"), "host location label present: {out}");
+    assert!(out.contains("wsl:Ubuntu"), "wsl distro label present: {out}");
+}
+
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
 
 #[test]
