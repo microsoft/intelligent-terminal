@@ -55,6 +55,39 @@ function Get-WtProcessesForApp {
     }
 }
 
+function Stop-AppInstances {
+    <#
+    .SYNOPSIS
+        Force a COLD start by terminating every running WindowsTerminal of THIS package.
+    .DESCRIPTION
+        WT is single-instance: a launch hands off to an existing monarch instead of starting
+        fresh, and the monarch keeps `agentFreCompleted` (and the rest of ApplicationState)
+        cached in memory — it never re-reads state.json. So driving the FRE overlay, or any
+        test that depends on cold-start behaviour, requires no monarch to be alive first.
+        Closes gracefully (CloseMainWindow), then force-kills only the specific stragglers by
+        pid. ONLY ever targets this IT package's processes (filtered by install location) — it
+        never touches the user's stock Windows Terminal.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)]$App, [int]$GraceSec = 6)
+    $ids = @(Get-WtProcessesForApp -App $App | Select-Object -ExpandProperty Id)
+    if (-not $ids.Count) { return }
+    Write-ItLog -Level INFO -Message "Cold start: closing existing $($App.Package) instance(s) [$($ids -join ',')]"
+    foreach ($id in $ids) {
+        $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+        if ($p) { try { $p.CloseMainWindow() | Out-Null } catch {} }
+    }
+    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
+        -not @(Get-WtProcessesForApp -App $App).Count
+    } | Out-Null
+    # Force-kill any window-less / multi-window monarch that ignored CloseMainWindow.
+    foreach ($id in @(Get-WtProcessesForApp -App $App | Select-Object -ExpandProperty Id)) {
+        Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+        Write-ItLog -Level WARN -Message "Cold start: force-killed straggler pid=$id"
+    }
+    # Let the OS tear down the COM monarch registration before the next launch.
+    Start-Sleep -Milliseconds 500
+}
+
 function Start-Terminal {
     <#
     .SYNOPSIS
@@ -64,6 +97,11 @@ function Start-Terminal {
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
+    .PARAMETER ColdStart Terminate any running instance of this package first so a FRESH
+                         monarch starts and re-reads state.json (required for the FRE to show;
+                         a running monarch caches ApplicationState and ignores the file).
+    .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
+                         Implies -ColdStart. COM resolution is best-effort in this mode.
     #>
     [CmdletBinding()]
     param(
@@ -71,6 +109,8 @@ function Start-Terminal {
         [hashtable]$Settings,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
+        [switch]$ColdStart,
+        [switch]$ShowFre,
         [int]$TimeoutSec = 60
     )
     $app = Resolve-ItApp -Package $Package
@@ -79,8 +119,13 @@ function Start-Terminal {
     # Per-run framework log file under TEMP.
     $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
+    # Cold start FIRST: kill any existing monarch BEFORE writing config, so its
+    # flush-on-exit can't overwrite the FRE/settings values we're about to write.
+    if ($ColdStart -or $ShowFre) { Stop-AppInstances -App $app }
+
     if ($Backup) { Backup-WtConfig -App $app }
-    if ($PassFre) { Invoke-FrePass -App $app | Out-Null }
+    if ($ShowFre) { Reset-Fre -App $app | Out-Null }
+    elseif ($PassFre) { Invoke-FrePass -App $app | Out-Null }
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
 
     $existing = @(Get-WtProcessesForApp -App $app | Select-Object -ExpandProperty Id)
@@ -111,8 +156,15 @@ function Start-Terminal {
     }
     Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
-    # Bring COM online and resolve the brand CLSID.
-    Resolve-WtComClsid -App $app -TimeoutSec $TimeoutSec | Out-Null
+    # Bring COM online and resolve the brand CLSID. Best-effort while the FRE overlay is up
+    # (the overlay replaces the window content, so the COM tab/pane surface may not be ready).
+    if ($ShowFre) {
+        try { Resolve-WtComClsid -App $app -TimeoutSec ([Math]::Min($TimeoutSec, 15)) | Out-Null }
+        catch { Write-ItLog -Level WARN -Message "COM not resolved during FRE (expected): $_" }
+    }
+    else {
+        Resolve-WtComClsid -App $app -TimeoutSec $TimeoutSec | Out-Null
+    }
 
     # Resolve the window HWND for this pid (for winapp ui targeting).
     $hwnd = Wait-Until -TimeoutSec 20 -IntervalSec 1 -Quiet -Because "WT window HWND" -Condition {
@@ -193,16 +245,14 @@ function Stop-Terminal {
 function Start-TerminalFre {
     <#
     .SYNOPSIS
-        Launch with the agent FRE overlay SHOWING (resets agentFreCompleted first) so the
-        FRE flow can be driven via UIA. Backs up config for restore on Stop-Terminal.
+        Launch with the agent FRE overlay SHOWING so the FRE flow can be driven via UIA.
+        Forces a COLD start (kills any running monarch) because a running monarch caches
+        ApplicationState and would otherwise just open a normal tab instead of the overlay.
+        Backs up config for restore on Stop-Terminal.
     #>
     [CmdletBinding()]
     param([string]$Package = 'Store', [int]$TimeoutSec = 60)
-    $app = Resolve-ItApp -Package $Package
-    $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-    Backup-WtConfig -App $app
-    Reset-Fre -App $app | Out-Null   # force the FRE to show
-    return (Start-Terminal -Package $Package -PassFre $false -Backup $false -TimeoutSec $TimeoutSec)
+    return (Start-Terminal -Package $Package -ColdStart -ShowFre -Backup $true -TimeoutSec $TimeoutSec)
 }
 
 function Reset-TerminalState {
