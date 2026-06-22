@@ -193,9 +193,17 @@ pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
 /// `cap` sessions per CLI by mtime and streams exactly their files as a
 /// `tar` archive on stdout, relative to `$HOME`.
 ///
-/// Assumes GNU coreutils/findutils (`find -printf`) — the default on
-/// Ubuntu/Debian/Fedora/etc. BusyBox-only distros (Alpine) are a known
-/// MVP gap (their `find` lacks `-printf`); they simply yield no rows.
+/// Assumes GNU coreutils/findutils (`find -printf`) and GNU `tar`
+/// (`--transform`) — the default on Ubuntu/Debian/Fedora/etc. BusyBox-only
+/// distros (Alpine) are a known MVP gap (their `find` lacks `-printf`); they
+/// simply yield no rows.
+///
+/// Searches each CLI's standard `~/.<cli>` root **and** snap-confined copies
+/// under `~/snap/<app>/{common,current}/.<cli>` — snap redirects a CLI's
+/// `$HOME`, so e.g. a snap-installed Copilot writes to
+/// `~/snap/copilot-cli/common/.copilot/...`. The `tar --transform` strips the
+/// `snap/<app>/{common,current}/` prefix so those land at a top-level
+/// `.copilot/...` in the archive, which the host parsers then read unchanged.
 ///
 /// Per CLI:
 /// * Copilot — rank session dirs by `events.jsonl` mtime, emit each dir's
@@ -205,29 +213,43 @@ fn build_fetch_script(cap: usize) -> String {
     format!(
         r#"set -eu
 cd "$HOME" 2>/dev/null || exit 0
+shopt -s nullglob
 CAP={cap}
 list="$(mktemp)"
 {{
   # Copilot: rank session dirs by events.jsonl mtime; emit dir's two files.
-  find .copilot/session-state -mindepth 2 -maxdepth 2 -name events.jsonl \
-       -printf '%T@\t%h\n' 2>/dev/null \
+  find .copilot/session-state \
+       snap/*/common/.copilot/session-state \
+       snap/*/current/.copilot/session-state \
+       -mindepth 2 -maxdepth 2 -name events.jsonl -printf '%T@\t%h\n' 2>/dev/null \
     | sort -rn | head -n "$CAP" | cut -f2- \
     | while IFS= read -r d; do
         [ -f "$d/events.jsonl" ] && printf '%s\n' "$d/events.jsonl"
         [ -f "$d/workspace.yaml" ] && printf '%s\n' "$d/workspace.yaml"
       done
   # Claude: project JSONLs.
-  find .claude/projects -type f -name '*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
+  find .claude/projects \
+       snap/*/common/.claude/projects \
+       snap/*/current/.claude/projects \
+       -type f -name '*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
     | sort -rn | head -n "$CAP" | cut -f2-
   # Codex: rollout JSONLs (nested YYYY/MM/DD).
-  find .codex/sessions -type f -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
+  find .codex/sessions \
+       snap/*/common/.codex/sessions \
+       snap/*/current/.codex/sessions \
+       -type f -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
     | sort -rn | head -n "$CAP" | cut -f2-
   # Gemini: chat session JSONLs.
-  find .gemini/tmp -type f -name 'session-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
+  find .gemini/tmp \
+       snap/*/common/.gemini/tmp \
+       snap/*/current/.gemini/tmp \
+       -type f -name 'session-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
     | sort -rn | head -n "$CAP" | cut -f2-
 }} > "$list"
 [ -s "$list" ] || exit 0
-tar -cf - -C "$HOME" -T "$list" 2>/dev/null
+# Normalize snap-confined paths (snap/<app>/common-or-current/.copilot/...) to a
+# top-level `.copilot/...` so the host parsers find them after extraction.
+tar -cf - -C "$HOME" --transform='s|^snap/[^/]*/[^/]*/||' -T "$list" 2>/dev/null
 "#
     )
 }
@@ -267,6 +289,14 @@ mod tests {
         assert!(script.contains("CAP=50"));
         // archive is produced relative to $HOME on stdout
         assert!(script.contains("tar -cf - -C \"$HOME\""));
+        // snap-confined installs are searched too (e.g. snap copilot writes to
+        // ~/snap/copilot-cli/common/.copilot/...) and normalized back to a
+        // top-level `.copilot/...` via tar --transform so the host parsers read
+        // them unchanged.
+        assert!(script.contains("snap/*/common/.copilot/session-state"));
+        assert!(script.contains("snap/*/current/.claude/projects"));
+        assert!(script.contains("shopt -s nullglob"));
+        assert!(script.contains("--transform='s|^snap/[^/]*/[^/]*/||'"));
     }
 
     #[test]

@@ -95,13 +95,23 @@ needed files out as a `tar`:
 1. **Rank (cheap, no file reads):** `find` the four CLI roots under `$HOME`
    emitting `mtime \t path`, `sort -rn`, `head` to the per-CLI cap
    (`MAX_PER_CLI`, today 50). This selects the newest N sessions per CLI without
-   reading any transcript.
+   reading any transcript. Each CLI is searched at its standard root
+   (`$HOME/.copilot`, …) **and** at snap-confined copies
+   (`$HOME/snap/<app>/common|current/.copilot`, …): snap redirects a CLI's
+   `$HOME`, so e.g. a snap-installed Copilot writes to
+   `~/snap/copilot-cli/common/.copilot/session-state/…`. (`shopt -s nullglob`
+   drops the snap globs cleanly on distros without them.)
 2. **Bundle (one stream):** `tar -cf -` the files those top-N sessions need
    (Copilot: the session **directory** — `events.jsonl` + `workspace.yaml`;
    Claude/Gemini/Codex: the session **`.jsonl`**), relative to `$HOME`, to
    stdout. `tar` is a standard Linux tool; `-c` create, `-f -` write the archive
    to stdout (so the bytes flow back through the `wsl.exe` pipe), paths kept
    relative via `-C $HOME` so the extracted tree mirrors a real `$HOME`.
+   `--transform='s|^snap/[^/]*/[^/]*/||'` strips the `snap/<app>/common|current/`
+   prefix so snap-confined sessions land at a top-level `.copilot/...` in the
+   archive — the host parsers (which only know `~/.copilot`) then read them
+   unchanged. Requires GNU `tar` (the same GNU-tools assumption as `find
+   -printf`).
 
 On the Windows side, `wta` pipes that `tar` stream straight into the **Windows
 system `tar.exe`** (`%SystemRoot%\System32\tar.exe` — bsdtar/libarchive, present
