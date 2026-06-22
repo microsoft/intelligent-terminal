@@ -87,14 +87,20 @@ const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
 /// Whether to scan WSL distros for historical sessions. Single
-/// chokepoint + env kill-switch (`WTA_WSL_SESSIONS=0|false|no`).
+/// choke point + env kill-switch (`WTA_WSL_SESSIONS=0|false|no|off`).
 /// Defaults to **enabled**. A future `wslSessions` setting will pass a
 /// flag that overrides this same function — no other call site changes.
 pub(crate) fn wsl_sessions_enabled() -> bool {
-    !matches!(
-        std::env::var("WTA_WSL_SESSIONS").ok().as_deref(),
-        Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("NO")
-    )
+    // Trim + case-fold so the kill-switch is forgiving in scripts / CI
+    // (` False `, `NO`, `off`, …), mirroring the env-bool parsing in
+    // `resolve_sessions_origin_filter`.
+    match std::env::var("WTA_WSL_SESSIONS") {
+        Ok(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
 }
 
 /// Run the four per-CLI scanners against a specific `home` (the real
@@ -3049,6 +3055,13 @@ mod tests {
         std::env::set_var("WTA_WSL_SESSIONS", "0");
         assert!(!wsl_sessions_enabled());
         std::env::set_var("WTA_WSL_SESSIONS", "false");
+        assert!(!wsl_sessions_enabled());
+        // Forgiving parsing: trimmed, case-insensitive, extra falsey spellings.
+        std::env::set_var("WTA_WSL_SESSIONS", "  False ");
+        assert!(!wsl_sessions_enabled(), "trimmed + case-insensitive False");
+        std::env::set_var("WTA_WSL_SESSIONS", "NO");
+        assert!(!wsl_sessions_enabled());
+        std::env::set_var("WTA_WSL_SESSIONS", "off");
         assert!(!wsl_sessions_enabled());
         std::env::set_var("WTA_WSL_SESSIONS", "1");
         assert!(wsl_sessions_enabled());

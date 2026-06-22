@@ -29,7 +29,7 @@ IT classifies every session by `SessionOrigin` (`agent_sessions.rs:137`):
 - **Class A — `AgentPane`**: an ACP session IT created for an agent pane. The
   agent CLI runs on the **Windows host** (spawned by `wta-master`); only its
   `cwd` may point into WSL (`\\wsl$\...`). `cwd_util.rs` already tolerates WSL
-  UNC cwds. These are **not** the subject of this spec.
+  UNC working directories. These are **not** the subject of this spec.
 
 - **Class B — `Unknown`**: the user ran the CLI themselves in a normal shell
   pane. When that shell pane is a **WSL pane** and the user runs the distro's
@@ -114,8 +114,8 @@ needed files out as a `tar`:
    -printf`).
 
 On the Windows side, `wta` pipes that `tar` stream straight into the **Windows
-system `tar.exe`** (`%SystemRoot%\System32\tar.exe` — bsdtar/libarchive, present
-on Windows 10 1803+ and Windows 11; verified `bsdtar 3.8.4` on the dev machine),
+system `tar.exe`** (`%SystemRoot%\System32\tar.exe` — libarchive-based, present
+on Windows 10 1803+ and Windows 11; verified libarchive `tar` 3.8.4 on the dev machine),
 extracting into a **temporary home directory** that mirrors the distro layout
 (`<tmp>/.copilot/session-state/...`, `<tmp>/.claude/projects/...`, …). It then
 calls the **existing** `load_copilot(<tmp>)` / `load_claude(<tmp>)` / … verbatim
@@ -129,7 +129,7 @@ and stamps `location = Wsl { distro }` on each returned row.
   them at the temp dir reuses *all* tested title/phantom/sort/cap logic.
 - **mtime fidelity:** Gemini and Claude derive `last_activity` from **file
   mtime**, so the extraction MUST preserve mtimes. GNU `tar` records them and
-  bsdtar restores them on extract by default — verified end-to-end on the dev
+  libarchive restores them on extract by default — verified end-to-end on the dev
   machine (extracted files kept their distro mtimes).
 - **Fast:** the full round-trip (in-distro `find`/`sort`/`tar` → pipe → Windows
   `tar.exe -x` of 100 files) measured **~0.3 s warm** on the dev machine (vs.
@@ -142,7 +142,7 @@ and stamps `location = Wsl { distro }` on each returned row.
 A small `wsl` module exposes `running_distros() -> Vec<String>`, parsing
 `wsl.exe -l --running -q`. Notes verified on the dev machine:
 
-- Output is **UTF-16LE** with embedded NULs and a trailing `*` marker on the
+- Output is **UTF-16LE** with embedded NUL bytes and a trailing `*` marker on the
   default distro — must be decoded/trimmed (mirror the existing pattern used for
   `wsl -l` parsing elsewhere if any; otherwise decode UTF-16LE explicitly).
 - No WSL installed → the enumeration spawn fails fast (no `wsl.exe`) → empty
@@ -253,11 +253,11 @@ Resume routing already exists: `decide_enter_action` (`session_mgmt.rs`) →
    (ACP `session/load`) is suppressed for `Wsl` location (helper/agent are
    host-side); both Enter and Shift+Enter route to the CLI-flag resume above.
 
-## Gating: `wta`-side chokepoint + env kill-switch (real setting deferred)
+## Gating: `wta`-side choke point + env kill-switch (real setting deferred)
 
 Following the repo's own MVP-gate convention
 (`app.rs:62-78` — `MVP_SESSIONS_ORIGIN_FILTER` const + `WTA_SESSIONS_SHOW_AGENT_PANE`
-env override), the WSL scan is gated at a **single chokepoint** in `load_all`:
+env override), the WSL scan is gated at a **single choke point** in `load_all`:
 
 - A function `wsl_sessions_enabled() -> bool` reads `WTA_WSL_SESSIONS`
   (`0`/`false` disables) and otherwise returns the build default (**enabled**).
@@ -274,12 +274,12 @@ Rationale:
 - **Future-proofed wiring.** When a real `wslSessions` setting is added later
   (`MTSMSettings.h` X-macro → `GlobalAppSettings` → C++ passes a `--wsl-sessions`
   flag to `wta`, same as `acpAgent`/`language`), it overrides the env default at
-  the **same** chokepoint — a one-line change, no refactor. The settings UI
+  the **same** choke point — a one-line change, no refactor. The settings UI
   toggle and the scan gate are the **same** boolean; no separate display filter
   is needed.
 
 This is a deferred follow-up, not MVP work; the spec only commits to the
-chokepoint + env override now.
+choke point + env override now.
 
 ## Where this plugs into the existing pipeline
 
@@ -293,7 +293,7 @@ async reactor / UI thread).
 ## Testing
 
 - **`wsl` module:** unit-test `running_distros()` parsing against captured
-  UTF-16LE `wsl -l --running -q` bytes (default-marker `*`, NULs, CRLF, empty).
+  UTF-16LE `wsl -l --running -q` bytes (default-marker `*`, NUL bytes, CRLF, empty).
 - **Hybrid extraction:** unit-test the **selection + path-derivation** logic that
   turns a `find` listing into the per-CLI file set to bundle, and the **stamping**
   step that runs the existing parsers over a temp `home` and sets
@@ -356,7 +356,7 @@ async reactor / UI thread).
 ## Future follow-ups (not MVP)
 
 - Real `wslSessions` setting + Settings UI toggle (wired to the existing
-  chokepoint).
+  choke point).
 - WSL live status via an in-distro watcher.
 - WSL-aware resumability probe (in-distro) to restore the phantom guard.
 - Stopped-distro opt-in scan.

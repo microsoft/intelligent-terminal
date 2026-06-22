@@ -105,9 +105,9 @@ fn fetch_distro_tar(distro: &str) -> Option<Vec<u8>> {
 }
 
 /// Production extract: pipe the tar stream into the in-box Windows
-/// `tar.exe` (bsdtar) extracting into `dest`. mtimes are preserved.
+/// `tar.exe` (libarchive) extracting into `dest`. mtimes are preserved.
 fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
-    use std::io::Write;
+    use std::io::{Read, Write};
     let tar_exe = std::env::var_os("SystemRoot")
         .map(|r| Path::new(&r).join("System32").join("tar.exe"))
         .unwrap_or_else(|| PathBuf::from("tar.exe"));
@@ -116,20 +116,38 @@ fn extract_tar_stream(tar_bytes: &[u8], dest: &Path) -> std::io::Result<()> {
         .arg(dest)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()?;
+    // Drain stderr on a thread so a chatty tar can't deadlock the stdin write
+    // by filling the stderr pipe while we're still feeding the archive in.
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("tar.exe: no stderr"))?;
+    let stderr_reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stderr.read_to_end(&mut buf);
+        buf
+    });
     child
         .stdin
         .take()
         .ok_or_else(|| std::io::Error::other("tar.exe: no stdin"))?
         .write_all(tar_bytes)?;
     let status = child.wait()?;
+    let stderr_bytes = stderr_reader.join().unwrap_or_default();
     if status.success() {
         Ok(())
     } else {
-        Err(std::io::Error::other(format!(
-            "tar.exe exited with {status}"
-        )))
+        // Surface tar's own diagnostic (corrupt stream, unsupported feature,
+        // path error) instead of a bare exit code.
+        let detail = String::from_utf8_lossy(&stderr_bytes);
+        let detail = detail.trim();
+        Err(std::io::Error::other(if detail.is_empty() {
+            format!("tar.exe exited with {status}")
+        } else {
+            format!("tar.exe exited with {status}: {detail}")
+        }))
     }
 }
 
@@ -167,7 +185,7 @@ fn run_capture_with_timeout(mut cmd: std::process::Command, timeout: Duration) -
 }
 
 /// A temp directory removed on drop. Used as the extraction target for a
-/// distro's `$HOME`-mirror. Names are uniquified with a v4 UUID.
+/// distro's `$HOME`-mirror. Names are made unique with a v4 UUID.
 struct ScopedTempDir(PathBuf);
 
 impl ScopedTempDir {
@@ -187,7 +205,8 @@ impl Drop for ScopedTempDir {
     }
 }
 
-/// Strips NULs/CR, trims, drops the `*` default marker and blank lines.
+/// Strips a UTF-16 BOM and any NUL / CR bytes, trims, drops the `*` default
+/// marker and blank lines.
 pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
     let u16s: Vec<u16> = utf16le
         .chunks_exact(2)
@@ -195,9 +214,12 @@ pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
         .collect();
     String::from_utf16_lossy(&u16s)
         .lines()
-        .map(|l| l.trim().trim_start_matches('*').trim())
+        // `str::trim` won't drop a BOM (U+FEFF) or a NUL — neither is ASCII
+        // whitespace — and a stray BOM/NUL carried into a distro name breaks
+        // later `wsl -d <name>` lookups, so remove them explicitly.
+        .map(|l| l.replace(|c: char| c == '\u{feff}' || c == '\0', ""))
+        .map(|l| l.trim().trim_start_matches('*').trim().to_string())
         .filter(|l| !l.is_empty())
-        .map(|l| l.to_string())
         .collect()
 }
 
@@ -205,7 +227,7 @@ pub(crate) fn parse_running_distros(utf16le: &[u8]) -> Vec<String> {
 /// `cap` sessions per CLI by mtime and streams exactly their files as a
 /// `tar` archive on stdout, relative to `$HOME`.
 ///
-/// Assumes GNU coreutils/findutils (`find -printf`) and GNU `tar`
+/// Assumes GNU coreutils / GNU find (`find -printf`) and GNU `tar`
 /// (`--transform`) — the default on Ubuntu/Debian/Fedora/etc. BusyBox-only
 /// distros (Alpine) are a known MVP gap (their `find` lacks `-printf`); they
 /// simply yield no rows.
@@ -228,6 +250,7 @@ cd "$HOME" 2>/dev/null || exit 0
 shopt -s nullglob
 CAP={cap}
 list="$(mktemp)"
+trap 'rm -f "$list"' EXIT INT TERM
 {{
   # Copilot: rank session dirs by events.jsonl mtime; emit dir's two files.
   find .copilot/session-state \
@@ -239,19 +262,19 @@ list="$(mktemp)"
         [ -f "$d/events.jsonl" ] && printf '%s\n' "$d/events.jsonl"
         [ -f "$d/workspace.yaml" ] && printf '%s\n' "$d/workspace.yaml"
       done
-  # Claude: project JSONLs.
+  # Claude: project .jsonl files.
   find .claude/projects \
        snap/*/common/.claude/projects \
        snap/*/current/.claude/projects \
        -type f -name '*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
     | sort -rn | head -n "$CAP" | cut -f2-
-  # Codex: rollout JSONLs (nested YYYY/MM/DD).
+  # Codex: rollout .jsonl files (nested YYYY/MM/DD).
   find .codex/sessions \
        snap/*/common/.codex/sessions \
        snap/*/current/.codex/sessions \
        -type f -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
     | sort -rn | head -n "$CAP" | cut -f2-
-  # Gemini: chat session JSONLs.
+  # Gemini: chat session .jsonl files.
   find .gemini/tmp \
        snap/*/common/.gemini/tmp \
        snap/*/current/.gemini/tmp \
@@ -285,6 +308,15 @@ mod tests {
     fn parse_running_distros_empty_when_nothing_running() {
         assert!(parse_running_distros(&utf16le("\r\n")).is_empty());
         assert!(parse_running_distros(&[]).is_empty());
+    }
+
+    #[test]
+    fn parse_running_distros_strips_bom_and_nul() {
+        // A real `wsl.exe -l --running -q` capture can carry a leading UTF-16
+        // BOM and trailing NUL padding; neither must leak into a distro name
+        // (it would break the later `wsl -d <name>` lookup).
+        let bytes = utf16le("\u{feff}Ubuntu\u{0}\r\n*Debian\u{0}\r\n");
+        assert_eq!(parse_running_distros(&bytes), vec!["Ubuntu", "Debian"]);
     }
 
     #[test]
