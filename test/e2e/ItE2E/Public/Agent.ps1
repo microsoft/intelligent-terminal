@@ -19,21 +19,30 @@ function Open-AgentPane {
         Open/toggle the agent pane via the bottom-bar AgentToggleButton (UIA), falling
         back to the command palette. Self-verifies the agent pane is shown.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 30)
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 45)
     process {
         if (Test-AgentPaneOpen -App $App) { return $App }
-        $opened = $false
-        try { Invoke-UiElement -App $App -Selector 'AgentToggleButton' -TimeoutSec 8 | Out-Null; $opened = $true }
-        catch { Write-ItLog -Level WARN -Message "AgentToggleButton invoke failed: $_" }
-        if (-not $opened) {
-            $active = Get-ActivePane -App $App
-            Send-WtKeys -App $App -SessionId $active.session_id -Keys @('C-S-p')
-            Start-Sleep -Milliseconds 400
-            Send-WtInput -App $App -SessionId $active.session_id -Text '>Toggle AI assistant'
-            Send-WtKeys -App $App -SessionId $active.session_id -Keys @('Enter')
-        }
-        Wait-Until -TimeoutSec $TimeoutSec -Because "agent pane to open" -Condition { Test-AgentPaneOpen -App $App } | Out-Null
-        $App
+        # Invoke the toggle, then poll; if the pane hasn't appeared within a slice, re-invoke
+        # (the first click can land on a busy frame / before the pre-warm helper is ready,
+        # especially after several consecutive launches under load).
+        $deadline = (Get-Date).AddSeconds($TimeoutSec)
+        $attempt = 0
+        do {
+            $attempt++
+            $invoked = $false
+            try { Invoke-UiElement -App $App -Selector 'AgentToggleButton' -TimeoutSec 8 | Out-Null; $invoked = $true }
+            catch { Write-ItLog -Level WARN -Message "AgentToggleButton invoke failed (attempt $attempt): $_" }
+            if (-not $invoked) {
+                $active = Get-ActivePane -App $App
+                Send-WtKeys -App $App -SessionId $active.session_id -Keys @('C-S-p')
+                Start-Sleep -Milliseconds 400
+                Send-WtInput -App $App -SessionId $active.session_id -Text '>Toggle AI assistant'
+                Send-WtKeys -App $App -SessionId $active.session_id -Keys @('Enter')
+            }
+            if (Test-Until -TimeoutSec 12 -IntervalSec 1 -Condition { Test-AgentPaneOpen -App $App }) { return $App }
+            # If a stray toggle closed it, the next loop's invoke re-opens it.
+        } while ((Get-Date) -lt $deadline)
+        throw "Open-AgentPane: agent pane did not open within ${TimeoutSec}s ($attempt attempts)."
     }
 }
 
