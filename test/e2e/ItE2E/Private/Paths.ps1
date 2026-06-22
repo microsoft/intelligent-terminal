@@ -79,11 +79,17 @@ function Resolve-ItApp {
     $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
     $logRoot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalCache\Local\IntelligentTerminal\logs"
 
+    # Launch entry point: the package's `wtai` AppExecutionAlias is the canonical,
+    # package-identity entry point for Intelligent Terminal (and matches how users start it).
+    # Prefer it; fall back to AUMID shell activation only if the alias isn't on PATH.
+    $launchAlias = (Get-Command 'wtai' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+
     [pscustomobject]@{
         Package          = $pfn
         PackageFullName  = $pkg.PackageFullName
         Version          = [string]$pkg.Version
         AppUserModelId   = $aumid
+        LaunchAlias      = $launchAlias
         InstallLocation  = $install
         WtcliPath        = $wtcli
         WtaPath          = $wta

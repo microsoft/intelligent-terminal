@@ -13,7 +13,11 @@ function ConvertFrom-ItJsonElement {
             foreach ($p in $Element.EnumerateObject()) { $o[$p.Name] = ConvertFrom-ItJsonElement $p.Value }
             [pscustomobject]$o
         }
-        'Array' { @($Element.EnumerateArray() | ForEach-Object { ConvertFrom-ItJsonElement $_ }) }
+        # Unary comma: the `switch` statement enumerates branch output, which would unroll a
+        # single-element array into a scalar (e.g. state.json `generatedProfiles: ["{guid}"]`
+        # round-tripping to a string, which fast-fails WindowsTerminal on startup). Emit the
+        # array as a single object so it survives re-serialization.
+        'Array' { , @($Element.EnumerateArray() | ForEach-Object { ConvertFrom-ItJsonElement $_ }) }
         'String' { $Element.GetString() }
         'Number' { $n = 0L; if ($Element.TryGetInt64([ref]$n)) { $n } else { $Element.GetDouble() } }
         'True' { $true }

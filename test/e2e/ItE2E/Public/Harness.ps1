@@ -84,8 +84,16 @@ function Start-Terminal {
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
 
     $existing = @(Get-WtProcessesForApp -App $app | Select-Object -ExpandProperty Id)
-    Write-ItLog -Level INFO -Message "Launching $($app.AppUserModelId)"
-    Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($app.AppUserModelId)" | Out-Null
+    # Launch via the `wtai` AppExecutionAlias (correct package-identity entry point).
+    # Fall back to AUMID shell activation only if the alias isn't available.
+    if ($app.LaunchAlias -and (Test-Path $app.LaunchAlias)) {
+        Write-ItLog -Level INFO -Message "Launching via wtai alias: $($app.LaunchAlias)"
+        Start-Process -FilePath $app.LaunchAlias | Out-Null
+    }
+    else {
+        Write-ItLog -Level WARN -Message "wtai alias not found; falling back to AUMID activation ($($app.AppUserModelId))."
+        Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($app.AppUserModelId)" | Out-Null
+    }
 
     # Find our WindowsTerminal.exe process (prefer a newly-spawned pid).
     $proc = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Because "WindowsTerminal process for $($app.Package)" -Condition {
@@ -125,11 +133,10 @@ function Stop-Terminal {
     .SYNOPSIS
         Close the terminal and (by default) restore the backed-up config.
     .DESCRIPTION
-        Closes GRACEFULLY first (CloseMainWindow), giving WindowEmperor time to clean up
-        its single-instance/COM-protocol registration. Only force-kills as a fallback after
-        -GraceSec. Force-killing (SIGKILL) every run wedges the app's COM/monarch state and
-        can crash subsequent launches (observed: fast-fail 0xc0000409 on startup), so the
-        graceful path is the default.
+        Closes GRACEFULLY first (CloseMainWindow), giving WindowEmperor time to deregister
+        its single-instance/COM-protocol server cleanly. Only force-kills as a fallback after
+        -GraceSec. Graceful close is preferred so the COM monarch handoff between runs is
+        clean; force-kill is a last resort for an unresponsive window.
     #>
     [CmdletBinding()]
     param(
