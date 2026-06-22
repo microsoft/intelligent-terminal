@@ -3063,13 +3063,24 @@ impl App {
 
         let key = s.key.clone();
         let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
-        // WSL rows run the distro's own CLI inside the distro; set the
-        // Linux cwd via `--cd` when the stored cwd is an absolute Linux
-        // path (Claude path-decoded / Copilot workspace.yaml cwd).
+        // WSL rows run the distro's own CLI *inside* the distro. Two
+        // WSL/cmd quirks shape this command line:
+        //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
+        //     WSL_E_DISTRO_NOT_FOUND when the command runs under the
+        //     `cmd /c echo … && …` banner wrapper — cmd/wsl don't strip the
+        //     quotes off `-d`, so wsl looks for a distro literally named
+        //     `"Ubuntu"`. Distro names from `wsl -l` are space-free, so bare
+        //     `-d <distro>` is safe. The `--cd` path keeps its quotes (it can
+        //     contain spaces and quoting works fine there).
+        //   * The CLI is launched through a **login shell** (`bash -lc`) so the
+        //     user's PATH is set up — a snap-installed Copilot lives in
+        //     `/snap/bin`, which a bare `wsl -- copilot` misses ("command not
+        //     found"). A login shell sources the profile that adds it.
+        let login_invocation = format!("bash -lc \"{resume_invocation}\"");
         let commandline = match &s.location {
             crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
-                Some(cwd) => format!("wsl -d \"{distro}\" --cd \"{cwd}\" -- {resume_invocation}"),
-                None => format!("wsl -d \"{distro}\" -- {resume_invocation}"),
+                Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
+                None => format!("wsl -d {distro} -- {login_invocation}"),
             },
             crate::agent_sessions::SessionLocation::Host => resume_invocation,
         };
@@ -15364,7 +15375,7 @@ mod tests {
         assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
         let argv = cmd.argv.join(" ");
         assert!(
-            argv.contains("wsl -d \"Ubuntu\" --cd \"/home/u/proj\" -- copilot --resume abc-123"),
+            argv.contains("wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""),
             "expected in-distro resume; argv: {argv}"
         );
         // WSL rows must not also pass the Windows `-d <cwd>` flag.

@@ -1236,10 +1236,13 @@ async fn run_sessions_list(
     // view (default `--origin all`). `--origin shell` matches what
     // the MVP sessions picker shows; `--origin agent-pane` surfaces the
     // rows MVP sessions hides.
-    let filtered: Vec<session_registry::SessionInfo> = sessions
+    let mut filtered: Vec<session_registry::SessionInfo> = sessions
         .into_iter()
         .filter(|s| origin_filter.matches_opt(s.origin.as_ref()))
         .collect();
+    // Match the `/sessions` picker, which renders newest-activity-first.
+    // `None` (no timestamp) sorts last.
+    filtered.sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
     if json_mode {
         print!("{}", format_sessions_json_lines(&filtered)?);
     } else {
@@ -1436,7 +1439,7 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
             origin_label(session.origin.as_ref()),
             location_label(&session.location),
             session.pane_session_id.as_deref().unwrap_or("-"),
-            session.updated_at.as_deref().unwrap_or("-"),
+            updated_label(session),
             session.title.as_deref().unwrap_or("-"),
         ));
     }
@@ -1479,6 +1482,40 @@ fn location_label(location: &agent_sessions::SessionLocation) -> String {
         agent_sessions::SessionLocation::Host => "host".to_string(),
         agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
     }
+}
+
+/// Render the UPDATED column. Prefers the `updated_at` ISO string (set for
+/// live sessions); for history-scanned rows that only carry an epoch-ms
+/// `last_activity_at_ms`, formats that as a `YYYY-MM-DD HH:MM` UTC stamp so
+/// the column isn't blank. `-` when neither is available.
+fn updated_label(s: &session_registry::SessionInfo) -> String {
+    if let Some(u) = s.updated_at.as_deref() {
+        return u.to_string();
+    }
+    match s.last_activity_at_ms {
+        Some(ms) => format_epoch_ms_utc(ms),
+        None => "-".to_string(),
+    }
+}
+
+/// Format epoch milliseconds as `YYYY-MM-DD HH:MM` (UTC) without pulling in a
+/// date crate. Uses Howard Hinnant's `civil_from_days` algorithm.
+fn format_epoch_ms_utc(ms: u64) -> String {
+    let secs = (ms / 1000) as i64;
+    let days = secs.div_euclid(86_400);
+    let tod = secs.rem_euclid(86_400);
+    let (hour, min) = (tod / 3600, (tod % 3600) / 60);
+    // civil_from_days: days since 1970-01-01 -> (year, month, day).
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{min:02}")
 }
 
 // ─── Output helpers ─────────────────────────────────────────────────────────

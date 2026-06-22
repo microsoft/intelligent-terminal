@@ -181,6 +181,30 @@ fn sessions_table_renders_location_labels() {
     assert!(out.contains("wsl:Ubuntu"), "wsl distro label present: {out}");
 }
 
+#[test]
+fn format_epoch_ms_utc_known_values() {
+    assert_eq!(format_epoch_ms_utc(0), "1970-01-01 00:00");
+    // 2021-01-01 00:00:00 UTC
+    assert_eq!(format_epoch_ms_utc(1_609_459_200_000), "2021-01-01 00:00");
+    // 2021-03-01 (just past a non-leap February) sanity-checks the month math.
+    assert_eq!(format_epoch_ms_utc(1_614_556_800_000), "2021-03-01 00:00");
+}
+
+#[test]
+fn updated_label_falls_back_to_last_activity_ms() {
+    let mut s = session_registry::SessionInfo::new(
+        agent_client_protocol::SessionId::new("sid-u"),
+        std::path::PathBuf::from("/home/u"),
+    );
+    // No updated_at, but an epoch-ms activity stamp -> formatted, not "-".
+    s.updated_at = None;
+    s.last_activity_at_ms = Some(1_609_459_200_000);
+    assert_eq!(updated_label(&s), "2021-01-01 00:00");
+    // updated_at, when present, wins verbatim.
+    s.updated_at = Some("2026-06-22T03:33:46Z".into());
+    assert_eq!(updated_label(&s), "2026-06-22T03:33:46Z");
+}
+
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
 
 #[test]
