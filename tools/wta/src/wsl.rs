@@ -58,9 +58,23 @@ where
 }
 
 /// Enumerate running distros and scan each, using the real spawn/extract.
+/// Fast (no VM boot) — used for the initial session list.
 pub fn scan_running_distros() -> Vec<AgentSession> {
+    scan_distros(running_distros())
+}
+
+/// Enumerate **stopped** distros and scan each. **Boots each distro's WSL
+/// VM** (~5-6s apiece), so this is meant for a background/async pass that
+/// refreshes the session list after the host + running rows have already
+/// rendered — never on the latency-sensitive initial load.
+pub fn scan_stopped_distros() -> Vec<AgentSession> {
+    scan_distros(stopped_distros())
+}
+
+/// Scan a specific set of distros, using the real spawn/extract.
+fn scan_distros(distros: Vec<String>) -> Vec<AgentSession> {
     let mut out = Vec::new();
-    for distro in running_distros() {
+    for distro in distros {
         let rows = scan_distro_with(&distro, fetch_distro_tar, extract_tar_stream);
         tracing::info!(target: "wsl", distro = %distro, rows = rows.len(), "scanned distro");
         out.extend(rows);
@@ -68,11 +82,33 @@ pub fn scan_running_distros() -> Vec<AgentSession> {
     out
 }
 
-/// `wsl -l --running -q` -> distro names. Empty on any failure (no WSL,
-/// nothing running, timeout).
+/// `wsl -l --running -q` -> running distro names. Empty on any failure
+/// (no WSL, nothing running, timeout).
 pub(crate) fn running_distros() -> Vec<String> {
+    list_distros(&["-l", "--running", "-q"])
+}
+
+/// `wsl -l -q` -> all installed distro names (running and stopped).
+pub(crate) fn all_distros() -> Vec<String> {
+    list_distros(&["-l", "-q"])
+}
+
+/// Installed distros that are **not** currently running. Reading one of
+/// these boots its WSL VM (~5-6s), so they are scanned on a background
+/// pass — never on the initial, latency-sensitive list.
+pub(crate) fn stopped_distros() -> Vec<String> {
+    let running: std::collections::HashSet<String> = running_distros().into_iter().collect();
+    all_distros()
+        .into_iter()
+        .filter(|d| !running.contains(d))
+        .collect()
+}
+
+/// Run `wsl.exe <args>` and parse its UTF-16LE distro-name list. Empty on
+/// any failure (no WSL, timeout).
+fn list_distros(args: &[&str]) -> Vec<String> {
     let mut cmd = std::process::Command::new("wsl.exe");
-    cmd.args(["-l", "--running", "-q"]);
+    cmd.args(args);
     match run_capture_with_timeout(cmd, WSL_LIST_TIMEOUT) {
         Some(bytes) => parse_running_distros(&bytes),
         None => Vec::new(),

@@ -1663,6 +1663,48 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         }
     });
 
+    // Phase 2: **stopped** WSL distros, loaded asynchronously. Reading a
+    // stopped distro boots its WSL VM (~5-6s apiece), so we keep it off the
+    // initial scan above (host + running rendered immediately) and refresh
+    // the session views once each stopped distro finishes. A no-op when WSL
+    // scanning is disabled or there are no stopped distros (no boot).
+    let inner_for_stopped = Arc::clone(&inner);
+    let stopped_cli = inner.cli_source.clone();
+    tokio::task::spawn_local(async move {
+        let rows = match tokio::task::spawn_blocking(move || {
+            crate::history_loader::load_stopped_wsl_for_cli(stopped_cli.as_ref())
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(
+                    target: "master_history",
+                    error = %e,
+                    "stopped-distro WSL scan task panicked"
+                );
+                return;
+            }
+        };
+        let count = rows.len();
+        for s in &rows {
+            let info = crate::session_registry::agent_session_to_session_info(s);
+            inner_for_stopped.registry.upsert(info).await;
+        }
+        tracing::info!(
+            target: "master_history",
+            count,
+            "stopped-distro WSL scan complete; broadcasting sessions/changed"
+        );
+        if count > 0 {
+            broadcast_ext_to_helpers(
+                &inner_for_stopped,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+    });
+
     // ── Hookless Class-B session watcher ──────────────────────────────
     // A blocking `notify` watcher runs on its own OS thread; a bridge thread
     // forwards emitted events into this LocalSet via a tokio channel, where

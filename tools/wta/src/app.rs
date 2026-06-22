@@ -3134,10 +3134,24 @@ impl App {
             );
         }
         let short_key: String = key.chars().take(8).collect();
-        let launch_commandline = format!(
-            "cmd /c echo \x1b[2;37mResuming {} session {}...\x1b[0m && {}",
-            cli_id, short_key, commandline
-        );
+        // Loading banner shown in the new pane while the CLI cold-starts.
+        // WSL rows also name the distro ("Resuming copilot session abc-123
+        // in Ubuntu (WSL)...") so the user can see which distro is being
+        // entered; host rows keep just the short session id. A WSL session
+        // only appears in the list because its distro was already started and
+        // scanned, so it is running at resume time — a "starting the distro…"
+        // hint would usually be wrong. (WSL2 can auto-shut-down an idle distro
+        // later, but a frequently-wrong hint is worse than none.)
+        let banner = match &s.location {
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
+            }
+            crate::agent_sessions::SessionLocation::Host => {
+                format!("Resuming {cli_id} session {short_key}...")
+            }
+        };
+        let launch_commandline =
+            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
             "-c".to_string(),
@@ -11219,6 +11233,37 @@ mod tests {
         );
     }
 
+    /// End-to-end render proof: a WSL `SessionInfo` in the `/sessions`
+    /// snapshot must actually paint its bracketed distro tag (`[WSL-Ubuntu]`)
+    /// on screen. `agents_rows_snapshot_preserves_wsl_location` proves the
+    /// data path and `origin_prefix_shows_distro_for_wsl_rows` proves the
+    /// prefix builder; this closes the loop through `crate::ui::render` so a
+    /// regression in `agents_view::render`'s own `session_info_to_agent_session`
+    /// conversion (a *second* call site, separate from `agents_rows_for_tab`)
+    /// can't silently drop the tag.
+    #[test]
+    fn render_sessions_view_paints_wsl_distro_tag() {
+        use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.sessions_origin_filter = OriginFilter::All;
+
+        let mut info = session_info_for_test("wsl-render-1");
+        info.title = Some("hack on wsl".into());
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("[WSL-Ubuntu]"),
+            "the /sessions view must paint the bracketed WSL distro tag; rendered:\n{text}"
+        );
+    }
+
     /// `resolve_sessions_origin_filter` reads the `WTA_SESSIONS_SHOW_AGENT_PANE`
     /// env var. With it unset (or 0/false) the MVP default
     /// (`ShellOnly`) wins; with it set to a truthy value we flip to
@@ -15377,6 +15422,12 @@ mod tests {
         assert!(
             argv.contains("wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""),
             "expected in-distro resume; argv: {argv}"
+        );
+        // The loading banner keeps the short session id and also names the
+        // distro for WSL rows.
+        assert!(
+            argv.contains("Resuming copilot session abc-123 in Ubuntu (WSL)"),
+            "expected distro-named WSL banner; argv: {argv}"
         );
         // WSL rows must not also pass the Windows `-d <cwd>` flag.
         assert!(!argv.contains(" -d /home"), "WSL row must not pass Windows -d cwd");

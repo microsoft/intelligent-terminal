@@ -116,6 +116,31 @@ pub(crate) fn load_all_in(home: &Path) -> Vec<AgentSession> {
     out
 }
 
+/// Retain only the requested CLI's WSL rows, mirroring the host-side
+/// `cli_scan_flags` behavior: a known CLI filter keeps just that CLI;
+/// `None` or a custom/unknown agent keeps all four.
+fn retain_wsl_cli(rows: &mut Vec<AgentSession>, cli_filter: Option<&CliSource>) {
+    if let Some(want) = cli_filter {
+        if !matches!(want, CliSource::Unknown(_)) {
+            rows.retain(|s| &s.cli_source == want);
+        }
+    }
+}
+
+/// Scan **stopped** WSL distros (booting each — slow). For the async
+/// second-phase load so the initial session list (host + running) renders
+/// immediately, then refreshes once stopped distros finish. Returns `[]`
+/// when WSL session scanning is disabled. Filtered to `cli_filter` exactly
+/// like the running-distro pass in [`load_for_cli`].
+pub fn load_stopped_wsl_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
+    if !wsl_sessions_enabled() {
+        return Vec::new();
+    }
+    let mut rows = crate::wsl::scan_stopped_distros();
+    retain_wsl_cli(&mut rows, cli_filter);
+    rows
+}
+
 /// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
 /// / non-JSONL transcript that is one giant line with no newline can't pull
 /// an unbounded amount into memory during the *cheap* phase. A real header
@@ -148,18 +173,14 @@ pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     let scan_started = std::time::Instant::now();
     let mut out = Vec::new();
 
-    // WSL historical sessions (in-distro, running distros only). Scanned
-    // before the host-home early return because they live in the distro's
-    // own `$HOME`, independent of the Windows profile. Filtered to the
-    // requested CLI to match the host-side `cli_scan_flags` behavior
-    // (None / a custom-or-unknown agent keeps all four).
+    // WSL historical sessions (in-distro, **running** distros only — fast,
+    // no VM boot). Scanned before the host-home early return because they
+    // live in the distro's own `$HOME`, independent of the Windows profile.
+    // Stopped distros are loaded by a separate async pass
+    // ([`load_stopped_wsl_for_cli`]) so they don't block this initial list.
     if wsl_sessions_enabled() {
         let mut wsl_rows = crate::wsl::scan_running_distros();
-        if let Some(want) = cli_filter {
-            if !matches!(want, CliSource::Unknown(_)) {
-                wsl_rows.retain(|s| &s.cli_source == want);
-            }
-        }
+        retain_wsl_cli(&mut wsl_rows, cli_filter);
         out.extend(wsl_rows);
     }
 
@@ -3045,6 +3066,55 @@ mod tests {
         assert!(!wsl_sessions_enabled());
         std::env::set_var("WTA_WSL_SESSIONS", "1");
         assert!(wsl_sessions_enabled());
+        std::env::remove_var("WTA_WSL_SESSIONS");
+    }
+
+    fn wsl_row(cli: CliSource) -> AgentSession {
+        AgentSession {
+            key: "k".into(),
+            cli_source: cli,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "t".into(),
+            cwd: std::path::PathBuf::from("/home/u"),
+            started_at: SystemTime::UNIX_EPOCH,
+            last_activity_at: SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: crate::agent_sessions::SessionOrigin::default(),
+            location: crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn retain_wsl_cli_keeps_known_filters_else_all() {
+        let base = || vec![wsl_row(CliSource::Copilot), wsl_row(CliSource::Claude)];
+        let mut known = base();
+        retain_wsl_cli(&mut known, Some(&CliSource::Copilot));
+        assert_eq!(known.len(), 1);
+        assert_eq!(known[0].cli_source, CliSource::Copilot);
+
+        let mut none = base();
+        retain_wsl_cli(&mut none, None);
+        assert_eq!(none.len(), 2, "None keeps all CLIs");
+
+        let mut unknown = base();
+        retain_wsl_cli(&mut unknown, Some(&CliSource::Unknown(String::new())));
+        assert_eq!(unknown.len(), 2, "Unknown (custom agent) keeps all CLIs");
+    }
+
+    #[test]
+    fn load_stopped_wsl_disabled_is_empty_without_spawning() {
+        let _g = WSL_ENV_LOCK.lock().unwrap();
+        // Disabled => returns [] before any `wsl.exe` spawn (no distro boot).
+        std::env::set_var("WTA_WSL_SESSIONS", "0");
+        assert!(load_stopped_wsl_for_cli(None).is_empty());
         std::env::remove_var("WTA_WSL_SESSIONS");
     }
 }
