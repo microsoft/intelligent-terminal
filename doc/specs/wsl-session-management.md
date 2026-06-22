@@ -321,9 +321,13 @@ async reactor / UI thread).
 
 ## Known limitations (accepted for MVP)
 
-1. **Running distros only.** Stopped distros are skipped to avoid the multi-second
-   auto-boot stall; their history reappears only once the user starts the distro.
-   A future "start & scan" affordance could opt in explicitly.
+1. **Running distros only, scanned once at startup.** Stopped distros are
+   skipped to avoid the multi-second auto-boot stall. The scan runs only when
+   `wta-master` starts, over the distros running at that instant, so a stopped
+   distro's history appears only if it happens to be running at the *next*
+   master start (≈ window restart) — starting it mid-session does **not** pull
+   it in (see limitation #5). A future "start & scan" affordance could opt in
+   explicitly.
 2. **No live status / no hooks in WSL.** WSL rows are historical-only. Live
    tracking would need either an in-distro watcher (inotify) or a cross-boundary
    transport for hooks (a distro bash hook can't `CoCreateInstance` the host COM
@@ -333,6 +337,21 @@ async reactor / UI thread).
 4. **Resume phantom safety is the CLI's job for WSL.** The host-disk phantom guard
    is bypassed; a phantom WSL key dead-ends in the Linux CLI's own error rather
    than being pruned pre-launch.
+5. **The WSL list is a one-time, startup-time snapshot — no liveness.** Because
+   the scan runs only at master start (limitation #1) and there is no in-distro
+   watcher (limitation #2), the following are simply **not reflected** for the
+   life of the window. These are called out here, not solved, in the MVP:
+   - **New in-distro sessions don't show.** A WSL session the user creates after
+     master start — even inside an already-listed, still-running distro — is
+     invisible until the next master start.
+   - **No live status for WSL rows.** Working / Idle / Attention is never shown
+     for WSL rows (restates limitation #2 from the liveness angle).
+   - **Stopped → running transition is missed.** A distro that was stopped at
+     master start (so skipped) and is started afterward is not picked up.
+   - **Running → stopped transition leaves stale rows.** A distro that *was*
+     running at scan time contributes rows; if it later stops, those rows stay
+     in the list pointing at a distro that is no longer up — they are neither
+     pruned nor marked stale (resume would simply re-boot the distro).
 
 ## Future follow-ups (not MVP)
 
@@ -341,6 +360,13 @@ async reactor / UI thread).
 - WSL live status via an in-distro watcher.
 - WSL-aware resumability probe (in-distro) to restore the phantom guard.
 - Stopped-distro opt-in scan.
+- **Liveness of the WSL list (call-out only — no design yet).** Make the list
+  reflect changes during the window instead of being a one-time startup snapshot
+  (see "Known limitations" #5). Deferred open questions, no mechanism chosen
+  here: how to surface a **new** in-distro session and give WSL rows live
+  **status** (Working / Idle / Attention) the way host rows get; how to pick up
+  a distro that goes **stopped → running** after start; and what to do with rows
+  whose distro goes **running → stopped** (prune, mark stale, or leave as-is).
 - Multi-Linux-user enumeration.
 - Composite `(location, key)` registry keying (only if a real host/WSL key
   collision is ever observed — see "Data model").
