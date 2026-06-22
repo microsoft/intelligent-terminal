@@ -5,7 +5,7 @@
   <description>Intelligent Terminal</description>
   <resources>
     <stringTable>
-      <string id="IntelligentTerminal">Intelligent Terminal</string>
+      <string id="IntelligentTerminal">Microsoft Intelligent Terminal</string>
       <string id="SUPPORTED_IntelligentTerminal_1_21">At least Intelligent Terminal 1.21</string>
       <string id="SUPPORTED_IntelligentTerminal_AgentPolicy">Intelligent Terminal with agent support</string>
       <string id="DisabledProfileSources">Disabled Profile Sources</string>
