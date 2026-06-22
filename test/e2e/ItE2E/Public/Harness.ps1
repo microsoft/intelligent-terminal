@@ -5,8 +5,38 @@ function Backup-WtConfig {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     foreach ($f in @($App.SettingsPath, $App.StatePath)) {
         $bak = "$f.e2ebak"
-        if ((Test-Path $f) -and -not (Test-Path $bak)) { Copy-Item -LiteralPath $f -Destination $bak -Force; Write-ItLog -Level INFO -Message "Backed up $f" }
+        # A leftover .e2ebak means a prior run crashed before restoring. Recover by
+        # restoring it first (revert that run's changes) so we snapshot the real
+        # pre-test state — not a state already mutated by the crashed run.
+        if (Test-Path $bak) {
+            Copy-Item -LiteralPath $bak -Destination $f -Force
+            Remove-Item -LiteralPath $bak -Force
+            Write-ItLog -Level WARN -Message "Recovered stale backup for $f (prior run did not clean up)"
+        }
+        if (Test-Path $f) { Copy-Item -LiteralPath $f -Destination $bak -Force; Write-ItLog -Level INFO -Message "Backed up $f" }
     }
+}
+
+function Get-DescendantWtaIds {
+    <# wta.exe PIDs that are descendants of the given WindowsTerminal pid (master spawned by
+       SharedWta, helpers as conpty children). Only these belong to this test run. #>
+    [CmdletBinding()] param([Parameter(Mandatory)][int]$RootPid)
+    $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
+    if (-not $all) { return @() }
+    $byParent = @{}
+    foreach ($p in $all) { $byParent[[int]$p.ParentProcessId] += @($p) }
+    # BFS from the WT root to collect all descendant PIDs.
+    $descendants = [System.Collections.Generic.HashSet[int]]::new()
+    $queue = [System.Collections.Generic.Queue[int]]::new(); $queue.Enqueue($RootPid)
+    while ($queue.Count) {
+        $cur = $queue.Dequeue()
+        foreach ($child in $byParent[$cur]) {
+            $cpid = [int]$child.ProcessId
+            if ($descendants.Add($cpid)) { $queue.Enqueue($cpid) }
+        }
+    }
+    $all | Where-Object { $_.Name -ieq 'wta.exe' -and $descendants.Contains([int]$_.ProcessId) } |
+        Select-Object -ExpandProperty ProcessId
 }
 
 function Restore-WtConfig {
@@ -88,15 +118,16 @@ function Stop-Terminal {
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$App, [bool]$RestoreSettings = $true)
     process {
+        # Collect OUR wta descendants before killing WT (parent links vanish afterwards).
+        $wtaIds = if ($App.Pid) { @(Get-DescendantWtaIds -RootPid ([int]$App.Pid)) } else { @() }
         try {
             if ($App.Pid) { Stop-Process -Id $App.Pid -Force -ErrorAction SilentlyContinue }
         }
         catch { Write-ItLog -Level WARN -Message "Stop-Process failed: $_" }
-        # Kill stray wta helpers/masters spawned during the run (by explicit Id).
-        $wtaIds = Get-Process -Name wta -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id
-        if ($wtaIds) { Stop-Process -Id $wtaIds -Force -ErrorAction SilentlyContinue }
+        # Kill only the wta helpers/master spawned by THIS run (not every wta on the machine).
+        if ($wtaIds.Count) { Stop-Process -Id $wtaIds -Force -ErrorAction SilentlyContinue }
         if ($RestoreSettings) { Restore-WtConfig -App $App }
-        Write-ItLog -Level INFO -Message "Terminal stopped (pid=$($App.Pid))."
+        Write-ItLog -Level INFO -Message "Terminal stopped (pid=$($App.Pid), wta killed=$($wtaIds.Count))."
     }
 }
 

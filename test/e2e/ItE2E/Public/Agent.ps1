@@ -16,8 +16,8 @@ function Test-AgentPaneOpen {
 function Open-AgentPane {
     <#
     .SYNOPSIS
-        Open/toggle the agent pane via the bottom-bar AgentToggleButton (UIA), falling
-        back to the command palette. Self-verifies the agent pane is shown.
+        Open/restore the agent pane via the bottom-bar AgentToggleButton (UIA), re-invoking
+        if it doesn't appear in a slice. Self-verifies the agent pane is shown.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 45)
     process {
@@ -29,16 +29,13 @@ function Open-AgentPane {
         $attempt = 0
         do {
             $attempt++
-            $invoked = $false
-            try { Invoke-UiElement -App $App -Selector 'AgentToggleButton' -TimeoutSec 8 | Out-Null; $invoked = $true }
+            # The only reliable open is the UIA toggle button; WT's command-palette
+            # accelerator is not reachable from this harness (send-keys reaches the conpty,
+            # not WT's keybinding handler), so there is no send-keys fallback. Re-invoke if
+            # the pane hasn't appeared (the first click can land on a busy frame / before
+            # the pre-warm helper is ready, especially after several launches under load).
+            try { Invoke-UiElement -App $App -Selector 'AgentToggleButton' -TimeoutSec 8 | Out-Null }
             catch { Write-ItLog -Level WARN -Message "AgentToggleButton invoke failed (attempt $attempt): $_" }
-            if (-not $invoked) {
-                $active = Get-ActivePane -App $App
-                Send-WtKeys -App $App -SessionId $active.session_id -Keys @('C-S-p')
-                Start-Sleep -Milliseconds 400
-                Send-WtInput -App $App -SessionId $active.session_id -Text '>Toggle AI assistant'
-                Send-WtKeys -App $App -SessionId $active.session_id -Keys @('Enter')
-            }
             if (Test-Until -TimeoutSec 12 -IntervalSec 1 -Condition { Test-AgentPaneOpen -App $App }) { return $App }
             # If a stray toggle closed it, the next loop's invoke re-opens it.
         } while ((Get-Date) -lt $deadline)

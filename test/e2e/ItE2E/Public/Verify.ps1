@@ -40,6 +40,9 @@ function Assert-Script {
     <# Run a PowerShell scriptblock; fail unless it exits 0 (and optionally matches output). #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][scriptblock]$ScriptBlock, [string]$MatchOutput)
+    # Reset so a stale exit code from an earlier native call can't cause a false failure
+    # when the scriptblock contains no native command.
+    $global:LASTEXITCODE = 0
     $out = & $ScriptBlock 2>&1 | Out-String
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Assert-Script: scriptblock exited $LASTEXITCODE. Output: $out" }
     if ($MatchOutput -and $out -notmatch $MatchOutput) { throw "Assert-Script: output did not match /$MatchOutput/. Output: $out" }

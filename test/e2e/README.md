@@ -2,7 +2,7 @@
 
 A robust, CLI-composition test framework that drives and verifies a **deployed
 (MSIX-packaged)** Intelligent Terminal. Tests are authored in **PowerShell + Pester 5**.
-Design rationale: [`../../`session design doc] and the inline notes below.
+Design rationale is captured in the inline notes below and in each suite's header comments.
 
 ## Release-checklist coverage
 
@@ -21,13 +21,15 @@ environment. Current status (run on the Store package):
 | `Feature.AgentRestart.Tests.ps1` | agent restart after settings change, Shift+Enter focus | 2 |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
-**98 of 98 automatable `[E2E]` items pass** (full suite: 79 cases green + 1 documented skip;
-the 98 checklist items map to these cases plus the deterministic settings/persistence
-assertions). **92 checklist items are environment-blocked** and tracked but not automated:
-other agent CLIs (Claude/Codex/Gemini/custom); multi-window drag; hook/CLI install; policy
-locks; IME/paste; WT window-level keyboard accelerators (command palette / Delegate
-`Alt+Shift+B` / pane hotkeys — not injectable via UIA/send-keys in this harness); and
-manual release-sign-off gates.
+**Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
+**Test status: 79 feature cases pass + 1 documented skip** (`wta sessions list` is
+identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
+cases plus the deterministic settings/persistence assertions. **92 checklist items are
+environment-blocked** and tracked but not automated: other agent CLIs
+(Claude/Codex/Gemini/custom); multi-window drag; hook/CLI install; policy locks; IME/paste;
+WT window-level keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane
+hotkeys — not injectable via UIA/send-keys in this harness); and manual release-sign-off
+gates.
 
 ## What it gives you
 

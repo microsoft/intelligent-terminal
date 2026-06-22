@@ -39,13 +39,14 @@ function Invoke-AgentJudge {
     $builder = $script:ItAgentJudges[$Agent]
     $cliArgs = if ($builder) { & $builder $Prompt $Model } else { @('-p', $Prompt) }
 
-    Write-ItLog -Level INFO -Message "AI judge via '$Agent' (timeout ${TimeoutSec}s)."
+    Write-ItLog -Level INFO -Message "AI judge via '$Agent' ($exe, timeout ${TimeoutSec}s)."
     # Use a job so the call operator handles multi-line arg passing AND we get a timeout.
+    # Pass the resolved executable path ($exe) so the job doesn't re-resolve via PATH.
     $job = Start-Job -ScriptBlock {
         param($e, $a)
         $ErrorActionPreference = 'Continue'
         & $e @a 2>&1 | Out-String
-    } -ArgumentList $Agent, $cliArgs
+    } -ArgumentList $exe, $cliArgs
     try {
         if (-not (Wait-Job $job -Timeout $TimeoutSec)) {
             Stop-Job $job
