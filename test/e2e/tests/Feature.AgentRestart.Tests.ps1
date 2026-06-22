@@ -18,8 +18,7 @@ Describe 'Feature: agent restart + session focus' -Tag 'Feature' -Skip:(-not $sc
         # Change a setting that affects the agent stack, then /restart the agent pane.
         Set-WtSetting -App $script:app -Key 'acpModel' -Value '' | Out-Null
         Invoke-AgentMenuItem -App $script:app -Name '/restart'
-        Start-Sleep -Seconds 4
-        # After restart the agent reconnects and can still answer.
+        # After restart the agent reconnects and can still answer (poll, no fixed sleep).
         $reconnected = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
             (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Ask anything|Copilot|Agent'
         }

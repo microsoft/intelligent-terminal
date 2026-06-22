@@ -94,7 +94,14 @@ function Start-Terminal {
         if ($new) { $new } elseif ($ps) { $ps | Select-Object -First 1 } else { $null }
     }
     $app.Pid = $proc.Id
-    Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid)"
+    # Track whether WE launched this process or merely attached to a pre-existing one
+    # (WT is single-instance — a launch can join an already-running window). Stop-Terminal
+    # only kills processes we launched, so it never terminates a user's existing terminal.
+    $app | Add-Member -NotePropertyName Launched -NotePropertyValue ($app.Pid -notin $existing) -Force
+    if (-not $app.Launched) {
+        Write-ItLog -Level WARN -Message "Attached to a pre-existing WindowsTerminal (pid=$($app.Pid)); Stop-Terminal will NOT kill it."
+    }
+    Write-ItLog -Level INFO -Message "WindowsTerminal pid=$($app.Pid) launched=$($app.Launched)"
 
     # Bring COM online and resolve the brand CLSID.
     Resolve-WtComClsid -App $app -TimeoutSec $TimeoutSec | Out-Null
@@ -118,6 +125,13 @@ function Stop-Terminal {
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$App, [bool]$RestoreSettings = $true)
     process {
+        # Only tear down processes WE launched. If Start-Terminal attached to a pre-existing
+        # WindowsTerminal (single-instance), leave it (and its wta) alone.
+        if ($App.PSObject.Properties.Name -contains 'Launched' -and -not $App.Launched) {
+            Write-ItLog -Level WARN -Message "Stop-Terminal: not killing pre-existing WindowsTerminal (pid=$($App.Pid))."
+            if ($RestoreSettings) { Restore-WtConfig -App $App }
+            return
+        }
         # Collect OUR wta descendants before killing WT (parent links vanish afterwards).
         $wtaIds = if ($App.Pid) { @(Get-DescendantWtaIds -RootPid ([int]$App.Pid)) } else { @() }
         try {

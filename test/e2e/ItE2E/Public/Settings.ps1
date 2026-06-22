@@ -3,15 +3,41 @@
 # aiIntegration.coordinator.enabled, ...) are TOP-LEVEL keys whose NAMES contain dots
 # (MTSMSettings.h), so they are set as single literal properties, not nested paths.
 
+function ConvertFrom-ItJsonElement {
+    <# Recursively convert a System.Text.Json.JsonElement to PSCustomObject/array/scalar
+       (same shape as ConvertFrom-Json output). #>
+    param($Element)
+    switch ($Element.ValueKind) {
+        'Object' {
+            $o = [ordered]@{}
+            foreach ($p in $Element.EnumerateObject()) { $o[$p.Name] = ConvertFrom-ItJsonElement $p.Value }
+            [pscustomobject]$o
+        }
+        'Array' { @($Element.EnumerateArray() | ForEach-Object { ConvertFrom-ItJsonElement $_ }) }
+        'String' { $Element.GetString() }
+        'Number' { $n = 0L; if ($Element.TryGetInt64([ref]$n)) { $n } else { $Element.GetDouble() } }
+        'True' { $true }
+        'False' { $false }
+        default { $null }   # Null / Undefined
+    }
+}
+
 function ConvertFrom-JsonC {
-    <# Parse JSON-with-comments (strip // and /* */), tolerant of trailing commas. #>
+    <# Parse JSON-with-comments (// and /* */) and trailing commas, without breaking URLs
+       like https://... inside strings. Uses System.Text.Json's built-in comment skipping
+       and trailing-comma support. #>
     [CmdletBinding()] param([Parameter(ValueFromPipeline)][string]$Text)
     process {
         if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
-        $noBlock = [regex]::Replace($Text, '/\*[\s\S]*?\*/', '')
-        $noLine = [regex]::Replace($noBlock, '(?m)^\s*//.*$', '')
-        $noTrailing = [regex]::Replace($noLine, ',\s*([}\]])', '$1')
-        try { $noTrailing | ConvertFrom-Json -Depth 64 } catch { Write-ItLog -Level WARN -Message "ConvertFrom-JsonC failed: $_"; $null }
+        try {
+            $opts = [System.Text.Json.JsonDocumentOptions]::new()
+            $opts.CommentHandling = [System.Text.Json.JsonCommentHandling]::Skip
+            $opts.AllowTrailingCommas = $true
+            $doc = [System.Text.Json.JsonDocument]::Parse($Text, $opts)
+            try { ConvertFrom-ItJsonElement $doc.RootElement }
+            finally { $doc.Dispose() }
+        }
+        catch { Write-ItLog -Level WARN -Message "ConvertFrom-JsonC failed: $_"; $null }
     }
 }
 
