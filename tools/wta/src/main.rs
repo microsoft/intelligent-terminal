@@ -1421,14 +1421,15 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
         return out;
     }
     out.push_str(&format!(
-        "{:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
-        "SESSION", "STATUS", "CLI", "ORIGIN", "LOCATION", "PANE", "UPDATED", "TITLE"
+        "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
+        "#", "SESSION", "STATUS", "CLI", "ORIGIN", "LOCATION", "PANE", "UPDATED", "TITLE"
     ));
-    for session in sessions {
+    for (i, session) in sessions.iter().enumerate() {
         let sid = session.session_id.to_string();
         let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
         out.push_str(&format!(
-            "{:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
+            "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
+            i + 1,
             short_sid,
             status_label(session.status.as_ref()),
             cli_source_label(session.cli_source.as_ref()),

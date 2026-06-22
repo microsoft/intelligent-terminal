@@ -139,6 +139,9 @@ fn sessions_table_prints_header_and_rows() {
     assert!(out.contains("ORIGIN"));
     let body = out.lines().nth(1).expect("body row present");
     assert!(body.contains(" - "), "untagged origin renders as '-' got: {body}");
+    // Leading 1-based index column.
+    assert!(out.lines().next().expect("header").starts_with("#"), "header has # column");
+    assert!(body.starts_with("1"), "first row is numbered 1, got: {body}");
 }
 
 #[test]
