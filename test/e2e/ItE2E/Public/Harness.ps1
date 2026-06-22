@@ -121,9 +121,22 @@ function Start-Terminal {
 Set-Alias -Name Start-TerminalClean -Value Start-Terminal
 
 function Stop-Terminal {
-    <# Close the terminal and (by default) restore the backed-up config. #>
+    <#
+    .SYNOPSIS
+        Close the terminal and (by default) restore the backed-up config.
+    .DESCRIPTION
+        Closes GRACEFULLY first (CloseMainWindow), giving WindowEmperor time to clean up
+        its single-instance/COM-protocol registration. Only force-kills as a fallback after
+        -GraceSec. Force-killing (SIGKILL) every run wedges the app's COM/monarch state and
+        can crash subsequent launches (observed: fast-fail 0xc0000409 on startup), so the
+        graceful path is the default.
+    #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [bool]$RestoreSettings = $true)
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [bool]$RestoreSettings = $true,
+        [int]$GraceSec = 8
+    )
     process {
         # Only tear down processes WE launched. If Start-Terminal attached to a pre-existing
         # WindowsTerminal (single-instance), leave it (and its wta) alone.
@@ -132,16 +145,41 @@ function Stop-Terminal {
             if ($RestoreSettings) { Restore-WtConfig -App $App }
             return
         }
-        # Collect OUR wta descendants before killing WT (parent links vanish afterwards).
+        # Collect OUR wta descendants before WT exits (parent links vanish afterwards).
         $wtaIds = if ($App.Pid) { @(Get-DescendantWtaIds -RootPid ([int]$App.Pid)) } else { @() }
-        try {
-            if ($App.Pid) { Stop-Process -Id $App.Pid -Force -ErrorAction SilentlyContinue }
+
+        $forced = $false
+        if ($App.Pid) {
+            $proc = Get-Process -Id $App.Pid -ErrorAction SilentlyContinue
+            if ($proc) {
+                # 1) Graceful close: post WM_CLOSE to the main window so WindowEmperor runs
+                #    its normal shutdown (deregisters COM monarch / protocol server cleanly).
+                $closed = $false
+                try { $closed = $proc.CloseMainWindow() } catch { }
+                if ($closed -or $proc.MainWindowHandle -eq 0) {
+                    $closed = Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
+                        $null -eq (Get-Process -Id $App.Pid -ErrorAction SilentlyContinue)
+                    }
+                }
+                # 2) Fallback: force-kill only if it did not exit gracefully in time.
+                if (-not (Get-Process -Id $App.Pid -ErrorAction SilentlyContinue)) {
+                    Write-ItLog -Level INFO -Message "Terminal closed gracefully (pid=$($App.Pid))."
+                }
+                else {
+                    Write-ItLog -Level WARN -Message "Graceful close timed out after ${GraceSec}s; force-killing pid=$($App.Pid)."
+                    Stop-Process -Id $App.Pid -Force -ErrorAction SilentlyContinue
+                    $forced = $true
+                }
+            }
         }
-        catch { Write-ItLog -Level WARN -Message "Stop-Process failed: $_" }
-        # Kill only the wta helpers/master spawned by THIS run (not every wta on the machine).
-        if ($wtaIds.Count) { Stop-Process -Id $wtaIds -Force -ErrorAction SilentlyContinue }
+
+        # Reap any of OUR wta helpers/master still alive (they normally exit with their helper
+        # conpty once WT closes; force only the stragglers, never every wta on the machine).
+        $alive = @($wtaIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+        if ($alive.Count) { Stop-Process -Id $alive -Force -ErrorAction SilentlyContinue }
+
         if ($RestoreSettings) { Restore-WtConfig -App $App }
-        Write-ItLog -Level INFO -Message "Terminal stopped (pid=$($App.Pid), wta killed=$($wtaIds.Count))."
+        Write-ItLog -Level INFO -Message "Terminal stopped (pid=$($App.Pid), graceful=$(-not $forced), wta reaped=$($alive.Count))."
     }
 }
 
