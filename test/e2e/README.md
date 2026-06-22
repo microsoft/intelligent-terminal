@@ -74,19 +74,25 @@ Invoke-Pester test/e2e/selftests              # everything (30 tests)
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
 
-## Reports (with precise per-failure diagnostics)
+## Reports (HTML + precise per-failure diagnostics)
 
-`Invoke-ItE2EReport.ps1` wraps Pester and writes a report dir (`-OutDir`):
+`Invoke-ItE2EReport.ps1` wraps Pester and, by default, writes the report to the **fixed
+in-repo path `test/e2e/artifacts/`** (override with `-OutDir`; the dir is git-ignored):
 
 ```powershell
+pwsh -File test/e2e/Invoke-ItE2EReport.ps1                 # full suite -> test/e2e/artifacts/
 pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
 pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
 ```
 
-Outputs:
+Outputs (all under `test/e2e/artifacts/`):
+- `report.html` — **self-contained HTML** (open in a browser): green/red pass-fail banner,
+  total/passed/failed/skipped stat cards, one **failure card** per failed test (exact error,
+  `file:line` of the failing assertion, duration, clickable artifact links + inline screenshot
+  thumbnails), and a full results table grouped by `Describe > Context`.
 - `results.xml` — **NUnit XML** for CI test reporting (Azure DevOps / GitHub).
-- `summary.md` — one block per **failed** test with the **exact error**, **file:line**, and
-  any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
+- `summary.md` — Markdown: one block per **failed** test with the **exact error**, **file:line**,
+  and any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
