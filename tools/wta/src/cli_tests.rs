@@ -158,3 +158,135 @@ fn sessions_table_renders_origin_labels() {
     assert!(out.contains("Shell"), "shell origin label present: {out}");
     assert!(out.contains("AgentPane"), "agent-pane origin label present: {out}");
 }
+
+// ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
+
+#[test]
+fn normalize_locale_exact_match_is_passthrough() {
+    // A locale we ship verbatim is returned unchanged (the input casing is
+    // preserved — step 1 returns the caller's string, not the file stem).
+    assert_eq!(normalize_locale("en-US"), "en-US");
+    assert_eq!(normalize_locale("zh-CN"), "zh-CN");
+    // Canadian French is shipped, so affinity must NOT rewrite it to fr-FR.
+    assert_eq!(normalize_locale("fr-CA"), "fr-CA");
+}
+
+#[test]
+fn normalize_locale_script_and_region_affinity() {
+    // Chinese: script-based split.
+    assert_eq!(normalize_locale("zh-HK"), "zh-TW");
+    assert_eq!(normalize_locale("zh-Hant-HK"), "zh-TW");
+    assert_eq!(normalize_locale("zh-SG"), "zh-CN");
+    assert_eq!(normalize_locale("zh-Hans"), "zh-CN");
+    // English: Commonwealth regions → en-GB.
+    assert_eq!(normalize_locale("en-AU"), "en-GB");
+    assert_eq!(normalize_locale("en-IN"), "en-GB");
+    // Spanish: Latin-American regions → es-MX.
+    assert_eq!(normalize_locale("es-AR"), "es-MX");
+    assert_eq!(normalize_locale("es-419"), "es-MX");
+    // French: non-Canadian → fr-FR.
+    assert_eq!(normalize_locale("fr-BE"), "fr-FR");
+    // Portuguese: non-Brazilian → pt-PT.
+    assert_eq!(normalize_locale("pt-MZ"), "pt-PT");
+    // Serbian: script-based split.
+    assert_eq!(normalize_locale("sr-Latn-BA"), "sr-Latn-RS");
+    assert_eq!(normalize_locale("sr-Cyrl-ME"), "sr-Cyrl-RS");
+}
+
+#[test]
+fn normalize_locale_affinity_is_case_insensitive() {
+    assert_eq!(normalize_locale("ZH-hk"), "zh-TW");
+    assert_eq!(normalize_locale("EN-au"), "en-GB");
+}
+
+#[test]
+fn normalize_locale_strips_territory_for_single_variant_languages() {
+    // We ship exactly one German / Japanese variant, so an unknown region
+    // falls back to it via the language-prefix match (step 3).
+    assert_eq!(normalize_locale("de-AT"), "de-DE");
+    assert_eq!(normalize_locale("ja-XX"), "ja-JP");
+}
+
+#[test]
+fn normalize_locale_unknown_language_falls_back_to_en_us() {
+    assert_eq!(normalize_locale("xx-YY"), "en-US");
+    assert_eq!(normalize_locale(""), "en-US");
+}
+
+// ── process_label: per-process log-file label derived from the CLI shape ─────
+
+#[test]
+fn process_label_default_no_subcommand_is_main() {
+    let cli = Cli::try_parse_from(["wta"]).unwrap();
+    assert_eq!(process_label(&cli), "main");
+}
+
+#[test]
+fn process_label_master_and_helper_modes() {
+    let master = Cli::try_parse_from(["wta", "--master", "\\\\.\\pipe\\m"]).unwrap();
+    assert_eq!(process_label(&master), "main_master");
+
+    let helper = Cli::try_parse_from(["wta", "--connect-master", "\\\\.\\pipe\\h"]).unwrap();
+    assert!(
+        process_label(&helper).starts_with("main_helper-"),
+        "helper label is per-PID"
+    );
+}
+
+#[test]
+fn process_label_short_lived_diagnostic_flags_are_cli() {
+    let info = Cli::try_parse_from(["wta", "--info"]).unwrap();
+    assert_eq!(process_label(&info), "cli");
+    let test_pipe = Cli::try_parse_from(["wta", "--test-pipe"]).unwrap();
+    assert_eq!(process_label(&test_pipe), "cli");
+}
+
+#[test]
+fn process_label_subcommands() {
+    let delegate = Cli::try_parse_from(["wta", "delegate", "do a thing"]).unwrap();
+    assert_eq!(process_label(&delegate), "delegate");
+
+    let probe = Cli::try_parse_from(["wta", "probe-models", "--agent", "copilot"]).unwrap();
+    assert_eq!(process_label(&probe), "probe");
+
+    // Any other subcommand is a short-lived wtcli-style client.
+    let sessions = Cli::try_parse_from(["wta", "sessions", "list"]).unwrap();
+    assert_eq!(process_label(&sessions), "cli");
+}
+
+// ── HooksCliFilter::into_scope: CLI filter → installer scope ─────────────────
+
+#[test]
+fn hooks_cli_filter_into_scope_maps_each_variant() {
+    use agent_hooks_installer::{CliKind, CliScope};
+    assert!(matches!(HooksCliFilter::All.into_scope(), CliScope::All));
+    assert!(matches!(
+        HooksCliFilter::Copilot.into_scope(),
+        CliScope::One(CliKind::Copilot)
+    ));
+    assert!(matches!(
+        HooksCliFilter::Claude.into_scope(),
+        CliScope::One(CliKind::Claude)
+    ));
+    assert!(matches!(
+        HooksCliFilter::Gemini.into_scope(),
+        CliScope::One(CliKind::Gemini)
+    ));
+    assert!(matches!(
+        HooksCliFilter::Codex.into_scope(),
+        CliScope::One(CliKind::Codex)
+    ));
+}
+
+// ── json_str_or_num: tolerant scalar extraction for human table rows ─────────
+
+#[test]
+fn json_str_or_num_reads_strings_and_numbers_else_dash() {
+    let v = serde_json::json!({ "s": "hi", "n": 42, "b": true, "nl": null });
+    assert_eq!(json_str_or_num(&v, "s"), "hi");
+    assert_eq!(json_str_or_num(&v, "n"), "42");
+    // Non-scalar / wrong-type / missing keys all degrade to "-".
+    assert_eq!(json_str_or_num(&v, "b"), "-");
+    assert_eq!(json_str_or_num(&v, "nl"), "-");
+    assert_eq!(json_str_or_num(&v, "missing"), "-");
+}

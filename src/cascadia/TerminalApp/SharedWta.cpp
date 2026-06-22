@@ -50,6 +50,12 @@ namespace winrt::TerminalApp::implementation
         return _process.is_valid();
     }
 
+    bool SharedWta::IsDegraded() const noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        return _degraded;
+    }
+
     HANDLE SharedWta::ProcessHandle() const noexcept
     {
         std::lock_guard lock{ _mtx };
@@ -78,7 +84,15 @@ namespace winrt::TerminalApp::implementation
 
         std::lock_guard lock{ _mtx };
 
-        if (!_process.is_valid())
+        // Degraded latch: the master died unexpectedly and hasn't been
+        // recovered via /restart yet. Open the pane WITHOUT respawning master,
+        // so it comes up in the disconnected state (the caller passes
+        // `--assume-master-down` to the helper). The user then recovers the
+        // whole stack with /restart from that disconnected pane — no silent
+        // respawn, and no hunting for another pane. `_masterPipeName` is still
+        // the stable name from the spawn that just died, so the helper inherits
+        // it (and ignores it under the flag).
+        if (!_process.is_valid() && !_degraded)
         {
             if (!_SpawnLocked(wtaPath, extraArgs))
             {
@@ -96,15 +110,30 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (--_refCount == 0 && _process.is_valid())
+        if (--_refCount == 0)
         {
-            _CleanupLocked();
+            if (_process.is_valid())
+            {
+                _CleanupLocked();
+            }
+            // Last pane gone. Clear the degraded latch (if set) so a
+            // future cold open spawns a fresh master normally — there are
+            // no orphaned helpers left to keep consistent with.
+            _degraded = false;
         }
     }
 
     bool SharedWta::Restart()
     {
         std::lock_guard lock{ _mtx };
+
+        // `/restart` is the explicit recovery: clear the degraded latch up
+        // front so the teardown+reopen this call drives (and any racing
+        // AcquirePane) can spawn a fresh master again. Done even on the
+        // early-return paths below — in a degraded state `_process` is
+        // already invalid, so without this the reopen's AcquirePane would
+        // stay refused and `/restart` would be a no-op.
+        _degraded = false;
 
         // Nothing running → nothing to restart. Caller's surrounding
         // teardown+reopen path will trigger the usual lazy `AcquirePane`
@@ -159,6 +188,10 @@ namespace winrt::TerminalApp::implementation
         }
 
         std::lock_guard lock{ _mtx };
+
+        // Settings-change respawn is also an explicit recovery point —
+        // clear the degraded latch so the rebuilt stack spawns normally.
+        _degraded = false;
 
         // Nothing live to replace (e.g. settings changed while no pane
         // was open in any window). The next AcquirePane will _SpawnLocked
@@ -436,5 +469,17 @@ namespace winrt::TerminalApp::implementation
             _waitHandle = nullptr;
         }
         _pid = 0;
+        // Latch "degraded": the master vanished out from under live panes
+        // (refs are still held by the zombie panes — this is the
+        // unexpected-death case, not a clean teardown, which resets
+        // `_process` first and bails at the validity check above).
+        // `AcquirePane` will now refuse to silently respawn so every
+        // orphaned pane stays consistently in the "connection lost —
+        // run /restart" state until the user recovers via `/restart`
+        // (or the last pane releases).
+        if (_refCount > 0)
+        {
+            _degraded = true;
+        }
     }
 }

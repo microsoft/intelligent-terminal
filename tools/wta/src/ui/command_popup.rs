@@ -5,6 +5,8 @@
 //! a filtered list of `CommandSpec`s. `/help` opens a centered overlay that
 //! lists every command with full descriptions.
 
+use std::borrow::Cow;
+
 use ratatui::prelude::*;
 use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
@@ -18,7 +20,12 @@ const POPUP_MAX_VISIBLE: usize = 6;
 /// Per-frame state captured from the [`App`] so callers don't need to know
 /// the popup internals.
 pub struct PopupState<'a> {
-    pub candidates: &'a [&'static CommandSpec],
+    /// The commands to show. Borrowed in the normal case (the candidates
+    /// already live on `TabSession`, so no per-frame allocation on the render
+    /// hot path); owned only when the App has to filter — in the degraded
+    /// (transport-lost) case it collapses to just `/restart` (the popup simply
+    /// *doesn't show the other commands* rather than greying them).
+    pub candidates: Cow<'a, [&'static CommandSpec]>,
     pub selected: usize,
     /// Effective model for the active pane (per-pane `/model` override, else
     /// the global one). Appended to the `/model` row so the user sees what
@@ -67,9 +74,27 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
         .highlight_symbol("> ");
 
     let mut list_state = ListState::default();
-    list_state.select(Some(state.selected.min(state.candidates.len() - 1)));
+    list_state.select(popup_highlight(
+        &state.candidates,
+        state.selected,
+    ));
 
     frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+/// Which row the command popup highlights: the user's cursor index, clamped
+/// into range. `None` for an empty list. The degraded (transport-lost) case
+/// needs no special handling here — the App pre-filters the candidate list to
+/// just `/restart`, so the normal clamp lands on it. Pure so it can be
+/// unit-tested without a render frame.
+pub(crate) fn popup_highlight(
+    candidates: &[&'static CommandSpec],
+    selected: usize,
+) -> Option<usize> {
+    if candidates.is_empty() {
+        return None;
+    }
+    Some(selected.min(candidates.len() - 1))
 }
 
 /// Render the `/help` overlay — a centered modal listing every command.
@@ -112,4 +137,33 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
     let paragraph =
         Paragraph::new(lines).block(popup::block(t!("commands.help_title").into_owned()));
     frame.render_widget(paragraph, modal);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::popup_highlight;
+    use crate::commands;
+
+    fn spec(name: &str) -> &'static commands::CommandSpec {
+        commands::lookup(name).expect("registered command")
+    }
+
+    #[test]
+    fn highlight_follows_cursor() {
+        let cands = vec![spec("help"), spec("new"), spec("restart")];
+        assert_eq!(popup_highlight(&cands, 1), Some(1));
+    }
+
+    #[test]
+    fn highlight_clamps_out_of_range_cursor() {
+        // The App collapses the list to a single command (/restart) when the
+        // transport is lost; a stale larger `selected` must clamp onto it.
+        let cands = vec![spec("restart")];
+        assert_eq!(popup_highlight(&cands, 9), Some(0));
+    }
+
+    #[test]
+    fn empty_candidates_highlight_nothing() {
+        assert_eq!(popup_highlight(&[], 0), None);
+    }
 }

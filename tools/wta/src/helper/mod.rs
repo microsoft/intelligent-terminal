@@ -8,18 +8,18 @@
 // is passed in and speaks ACP JSON-RPC over it. From the helper's
 // perspective, master IS the agent.
 //
-// All TUI / App / event-loop machinery is reused from the standard
-// `run_default_tui` path; the only delta is the ACP transport, which
-// is selected via `--connect-master` and threaded down through
-// `run_acp_app` to swap `run_acp_client` for `run_acp_client_over_pipe`.
+// All App / event-loop machinery is reused from `run_default_tui_over_pipe`;
+// the only delta is the ACP transport, which is selected via
+// `--connect-master` and threaded down through `run_acp_app`, which drives
+// `run_acp_client_over_pipe` against the wta-master pipe.
 
 use anyhow::Result;
 
 use crate::Cli;
 
-/// Helper-mode entry point. Mirrors `run_default_tui` but routes the
-/// ACP traffic through a named pipe to the wta-master singleton
-/// instead of spawning a private agent CLI subprocess.
+/// Helper-mode entry point. Routes the ACP traffic through a named pipe
+/// to the wta-master singleton instead of spawning a private agent CLI
+/// subprocess.
 pub async fn run_helper_mode(cli: Cli, pipe_name: String) -> Result<()> {
     crate::run_default_tui_over_pipe(cli, pipe_name).await
 }

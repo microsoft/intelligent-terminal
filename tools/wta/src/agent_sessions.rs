@@ -1169,7 +1169,14 @@ impl AgentSessionRegistry {
 
     /// Insert historical entries loaded from disk, skipping any whose key
     /// is already present (the live registry wins). Idempotent — safe to
-    /// call multiple times. Used at startup.
+    /// call multiple times.
+    ///
+    /// Test-only: production no longer scans on-disk history into the
+    /// helper's registry (the view renders from master's `session/list`
+    /// snapshot — see doc/specs/per-cli-history-filtering.md). Retained as a
+    /// setup helper for registry tests that seed Historical rows to exercise
+    /// the still-live alive-join / liveness logic.
+    #[cfg(test)]
     pub fn merge_historical(&mut self, loaded: Vec<AgentSession>) {
         for s in loaded {
             if self.sessions.contains_key(&s.key) {

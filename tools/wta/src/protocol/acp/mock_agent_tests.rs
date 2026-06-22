@@ -14,7 +14,10 @@
 
 use super::{ClientState, PromptTimingState, WtaClient};
 use super::{
-    dispatch_master_ext_request, dispatch_prompt, MasterExtRequest, PromptSubmission, TemplateMemo,
+    dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session,
+    CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
+    PromptSubmission, RenameSessionRequest, TemplateMemo,
 };
 use crate::app::AppEvent;
 use crate::shell::ShellManager;
@@ -63,6 +66,13 @@ struct MockAgent {
     /// When set, `new_session` returns an error instead of a session id —
     /// simulates the agent/transport dropping during session establishment.
     fail_new_session: Arc<AtomicBool>,
+    /// When set, `load_session` returns an error instead of a response —
+    /// simulates the agent not recognizing the session id / `session/load`
+    /// being unsupported.
+    fail_load_session: Arc<AtomicBool>,
+    /// When set, `load_session` sleeps long enough that a short injected
+    /// dispatch timeout elapses first — exercises the timeout path.
+    slow_load: Arc<AtomicBool>,
 }
 
 fn first_text(blocks: &[acp::ContentBlock]) -> String {
@@ -243,6 +253,22 @@ impl acp::Agent for MockAgent {
     async fn cancel(&self, _args: acp::CancelNotification) -> acp::Result<()> {
         Ok(())
     }
+
+    async fn load_session(
+        &self,
+        _args: acp::LoadSessionRequest,
+    ) -> acp::Result<acp::LoadSessionResponse> {
+        if self.slow_load.load(Ordering::SeqCst) {
+            // Outlast any short injected dispatch timeout so the
+            // dispatcher takes its `Err(_)` (timeout) branch, but stay
+            // bounded so the task doesn't linger after the test returns.
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        if self.fail_load_session.load(Ordering::SeqCst) {
+            return Err(acp::Error::internal_error().data("mock load_session failure".to_string()));
+        }
+        Ok(acp::LoadSessionResponse::new())
+    }
 }
 
 /// Wire WTA's real `WtaClient` to a `MockAgent` over an in-memory duplex, spawn
@@ -276,6 +302,8 @@ fn connect_with(
         seen_prompts: seen_prompts.clone(),
         permission_outcome: permission_outcome.clone(),
         fail_new_session: Arc::new(AtomicBool::new(false)),
+        fail_load_session: Arc::new(AtomicBool::new(false)),
+        slow_load: Arc::new(AtomicBool::new(false)),
     };
 
     // Bidirectional in-memory pipe. Each half is split into read/write and
@@ -438,8 +466,8 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 //
 // The tests above act AS the orchestrator (they call `client_conn.prompt`
 // directly). The tests below instead drive WTA's real `dispatch_prompt`
-// orchestration — the per-prompt arm of the `run_acp_client_over_pipe` /
-// `run_inner` select loops — against the same mock agent, so the dispatcher
+// orchestration — the per-prompt arm of the `run_acp_client_over_pipe`
+// select loop — against the same mock agent, so the dispatcher
 // ("driver") logic
 // (single-flight gating, lazy session create, prompt assembly, response
 // routing) is itself under test, not just `WtaClient`'s ACP↔AppEvent
@@ -461,6 +489,12 @@ pub(crate) struct DispatchHarness {
     /// Flip to `true` before dispatching to make the mock's `new_session`
     /// fail, exercising the dispatcher's session-establishment error path.
     pub fail_new_session: Arc<AtomicBool>,
+    /// Flip to `true` before dispatching to make the mock's `load_session`
+    /// return an error, exercising the resume-failure path.
+    pub fail_load_session: Arc<AtomicBool>,
+    /// Flip to `true` before dispatching to make the mock's `load_session`
+    /// sleep past a short injected timeout, exercising the resume-timeout path.
+    pub slow_load: Arc<AtomicBool>,
 }
 
 /// Wire a real `WtaClient` to a `MockAgent` like [`connect_with`], but expose
@@ -480,6 +514,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let fail_new_session = Arc::new(AtomicBool::new(false));
+    let fail_load_session = Arc::new(AtomicBool::new(false));
+    let slow_load = Arc::new(AtomicBool::new(false));
     let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
@@ -487,6 +523,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         seen_prompts: seen_prompts.clone(),
         permission_outcome,
         fail_new_session: fail_new_session.clone(),
+        fail_load_session: fail_load_session.clone(),
+        slow_load: slow_load.clone(),
     };
 
     let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
@@ -528,6 +566,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         prompt_timing,
         seen_prompts,
         fail_new_session,
+        fail_load_session,
+        slow_load,
     }
 }
 
@@ -728,7 +768,6 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
                         "error must name the failed step; got {message:?}"
                     );
                 }
-                Ok(_) => panic!("expected AgentError"),
                 _ => panic!("expected AgentError, got nothing"),
             }
             // The slot is released so a retry isn't permanently blocked, no
@@ -789,6 +828,544 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
             assert!(
                 seen[0].contains("fix the build"),
                 "autofix prompt must still carry the user's text"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_rename_session` must rekey an existing tab binding from the old
+/// tab id to the new one (cross-window drag), preserving the SessionId, and
+/// be a no-op when the old tab id is absent.
+#[tokio::test]
+async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let sid = acp::SessionId::new("sess-rekey");
+            tab_to_session
+                .lock()
+                .await
+                .insert("old-tab".to_string(), sid.clone());
+
+            // Rekey old-tab -> new-tab.
+            dispatch_rename_session(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &tab_to_session,
+            );
+
+            // The rekey runs on a spawned task; wait (bounded) for it to land.
+            let mut rekeyed = false;
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            while tokio::time::Instant::now() < deadline {
+                {
+                    let g = tab_to_session.lock().await;
+                    if !g.contains_key("old-tab") && g.get("new-tab") == Some(&sid) {
+                        rekeyed = true;
+                        break;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            assert!(rekeyed, "old-tab must be rekeyed to new-tab with same SessionId");
+
+            // No-op: renaming a ghost tab leaves the map untouched.
+            dispatch_rename_session(
+                RenameSessionRequest {
+                    old_tab_id: "ghost".to_string(),
+                    new_tab_id: "phantom".to_string(),
+                },
+                &tab_to_session,
+            );
+            // Give the spawned task a chance to (not) mutate anything.
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            let g = tab_to_session.lock().await;
+            assert!(!g.contains_key("phantom"), "missing old id must be a no-op");
+            assert!(g.contains_key("new-tab"), "existing binding must survive the no-op");
+        })
+        .await;
+}
+
+
+/// `dispatch_cancel` must fire the local per-session cancel oneshot (so an
+/// in-flight prompt task drops out of `conn.prompt().await`) and remove the
+/// signal from the registry. The agent-side `session/cancel` is best-effort.
+#[tokio::test]
+async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let (tx, rx) = oneshot::channel::<()>();
+            cancel_signals
+                .lock()
+                .unwrap()
+                .insert("sess-cancel".to_string(), tx);
+
+            dispatch_cancel(
+                CancelRequest {
+                    session_id: "sess-cancel".to_string(),
+                },
+                &h.conn,
+                &cancel_signals,
+            );
+
+            // The local oneshot is fired synchronously inside dispatch_cancel.
+            assert!(rx.await.is_ok(), "local cancel signal must be fired");
+            assert!(
+                !cancel_signals.lock().unwrap().contains_key("sess-cancel"),
+                "the fired signal must be removed from the registry"
+            );
+
+            // Cancelling an unknown session is a harmless no-op (no panic).
+            dispatch_cancel(
+                CancelRequest {
+                    session_id: "ghost".to_string(),
+                },
+                &h.conn,
+                &cancel_signals,
+            );
+            // Let the best-effort agent-notify subtask run.
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+}
+
+/// `dispatch_drop_session` must unbind the tab's session, fire its in-flight
+/// cancel signal, and be a no-op for a tab that holds no session.
+#[tokio::test]
+async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let memo = TemplateMemo::default();
+
+            let sid = acp::SessionId::new("sess-drop");
+            tab_to_session
+                .lock()
+                .await
+                .insert("t1".to_string(), sid.clone());
+            let (tx, rx) = oneshot::channel::<()>();
+            cancel_signals
+                .lock()
+                .unwrap()
+                .insert(sid.to_string(), tx);
+
+            dispatch_drop_session(
+                DropSessionRequest {
+                    tab_id: "t1".to_string(),
+                },
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &cancel_signals,
+            );
+
+            // The in-flight cancel oneshot fires when the spawned task runs.
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), rx)
+                    .await
+                    .is_ok(),
+                "drop must fire the in-flight cancel signal"
+            );
+            assert!(
+                !tab_to_session.lock().await.contains_key("t1"),
+                "drop must unbind the tab's session"
+            );
+            assert!(
+                !cancel_signals.lock().unwrap().contains_key("sess-drop"),
+                "drop must remove the cancel signal from the registry"
+            );
+
+            // No-op: dropping an unbound tab leaves the map empty, no panic.
+            dispatch_drop_session(
+                DropSessionRequest {
+                    tab_id: "unbound".to_string(),
+                },
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &cancel_signals,
+            );
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            assert!(tab_to_session.lock().await.is_empty());
+        })
+        .await;
+}
+
+/// `dispatch_new_session` happy path: a fresh tab gets a session created and
+/// bound, and a `SessionAttached` event carrying the new session id is emitted.
+#[tokio::test]
+async fn dispatch_new_session_creates_binds_and_emits_attached() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let memo = TemplateMemo::default();
+            let mut event_rx = h.event_rx;
+
+            dispatch_new_session(
+                NewSessionForTab {
+                    tab_id: "t1".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                "Test",
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionAttached {
+                    tab_id, session_id, ..
+                })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert_eq!(session_id, "mock-session-1");
+                }
+                _ => panic!("expected SessionAttached"),
+            }
+            assert_eq!(
+                tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
+                Some("mock-session-1".to_string()),
+                "new session must be bound to the tab"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_new_session` failure path: when `new_session` errors, an
+/// `AgentError` is surfaced and the tab is left unbound.
+#[tokio::test]
+async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.fail_new_session.store(true, Ordering::SeqCst);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let memo = TemplateMemo::default();
+            let mut event_rx = h.event_rx;
+
+            dispatch_new_session(
+                NewSessionForTab {
+                    tab_id: "t1".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                "Test",
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::AgentError { message, .. })) => {
+                    assert!(
+                        message.contains("/new failed for tab t1"),
+                        "unexpected error message: {message}"
+                    );
+                }
+                _ => panic!("expected AgentError"),
+            }
+            assert!(
+                tab_to_session.lock().await.is_empty(),
+                "failed new_session must leave the tab unbound"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_new_session` replacing an existing session: the old session's
+/// in-flight cancel signal fires, and the tab is rebound to the new session.
+#[tokio::test]
+async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let memo = TemplateMemo::default();
+            let mut event_rx = h.event_rx;
+
+            let old = acp::SessionId::new("old-sess");
+            tab_to_session
+                .lock()
+                .await
+                .insert("t1".to_string(), old.clone());
+            let (tx_old, rx_old) = oneshot::channel::<()>();
+            cancel_signals
+                .lock()
+                .unwrap()
+                .insert(old.to_string(), tx_old);
+
+            dispatch_new_session(
+                NewSessionForTab {
+                    tab_id: "t1".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                "Test",
+            );
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_secs(5), rx_old)
+                    .await
+                    .is_ok(),
+                "replacing a session must fire the old session's cancel signal"
+            );
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionAttached { session_id, .. })) => {
+                    assert_eq!(session_id, "mock-session-1");
+                }
+                _ => panic!("expected SessionAttached"),
+            }
+            assert_eq!(
+                tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
+                Some("mock-session-1".to_string()),
+                "tab must be rebound to the replacement session"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_load_session` happy path: resuming a historical session binds it
+/// to the tab and emits `SessionAttached` followed by a `TabSystemMessage`
+/// confirmation note.
+#[tokio::test]
+async fn dispatch_load_session_binds_and_emits_attached_then_note() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            dispatch_load_session(
+                LoadSessionForTab {
+                    tab_id: "t1".to_string(),
+                    session_id: "hist-sess-7".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                std::time::Duration::from_secs(5),
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionAttached {
+                    tab_id, session_id, ..
+                })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert_eq!(session_id, "hist-sess-7");
+                }
+                _ => panic!("expected SessionAttached"),
+            }
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::TabSystemMessage { tab_id, message })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert!(
+                        message.contains("Session loaded"),
+                        "unexpected system message: {message}"
+                    );
+                }
+                _ => panic!("expected TabSystemMessage"),
+            }
+            assert_eq!(
+                tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
+                Some("hist-sess-7".to_string()),
+                "loaded session must be bound to the tab"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_load_session` failure with the direct-path strategy
+/// (`use_load_failure_handler = false`): a `load_session` error surfaces a
+/// `TabError` routed to the target tab and leaves it unbound.
+#[tokio::test]
+async fn dispatch_load_session_failure_inline_emits_tab_error() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.fail_load_session.store(true, Ordering::SeqCst);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            dispatch_load_session(
+                LoadSessionForTab {
+                    tab_id: "t1".to_string(),
+                    session_id: "hist-sess-7".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                std::time::Duration::from_secs(5),
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::TabError { tab_id, message })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert!(
+                        message.contains("Failed to resume session"),
+                        "unexpected error message: {message}"
+                    );
+                }
+                _ => panic!("expected TabError"),
+            }
+            assert!(
+                tab_to_session.lock().await.is_empty(),
+                "failed load must leave the tab unbound"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_load_session` failure with the helper-path strategy
+/// (`use_load_failure_handler = true`) and a pre-bound prior session: the
+/// failure handler restores the prior binding and surfaces a `TabError`.
+#[tokio::test]
+async fn dispatch_load_session_failure_handler_restores_prior_binding() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.fail_load_session.store(true, Ordering::SeqCst);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            let old = acp::SessionId::new("old-sess");
+            tab_to_session
+                .lock()
+                .await
+                .insert("t1".to_string(), old.clone());
+
+            dispatch_load_session(
+                LoadSessionForTab {
+                    tab_id: "t1".to_string(),
+                    session_id: "hist-sess-7".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                true,
+                std::time::Duration::from_secs(5),
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::TabError { tab_id, message })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert!(
+                        message.contains("Failed to resume session"),
+                        "unexpected error message: {message}"
+                    );
+                }
+                _ => panic!("expected TabError"),
+            }
+            assert_eq!(
+                tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
+                Some("old-sess".to_string()),
+                "failure handler must restore the prior session binding"
+            );
+        })
+        .await;
+}
+
+/// `dispatch_load_session` timeout path: when the agent does not respond
+/// within the injected timeout, a `TabError` is surfaced (here via the direct
+/// inline strategy).
+#[tokio::test]
+async fn dispatch_load_session_timeout_emits_tab_error() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.slow_load.store(true, Ordering::SeqCst);
+            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+                Arc::new(Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+
+            dispatch_load_session(
+                LoadSessionForTab {
+                    tab_id: "t1".to_string(),
+                    session_id: "hist-sess-7".to_string(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &h.event_tx,
+                false,
+                false,
+                std::time::Duration::from_millis(50),
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
+                Ok(Some(AppEvent::TabError { tab_id, message })) => {
+                    assert_eq!(tab_id, "t1");
+                    assert!(
+                        message.contains("timed out"),
+                        "unexpected error message: {message}"
+                    );
+                }
+                _ => panic!("expected TabError"),
+            }
+            assert!(
+                tab_to_session.lock().await.is_empty(),
+                "timed-out load must leave the tab unbound"
             );
         })
         .await;
@@ -861,5 +1438,314 @@ async fn dispatch_master_ext_session_focus_completes() {
         })
         .await;
 }
+
+// ── inbound Client-trait routing (session_notification / request_permission) ──
+
+/// Build a bare `WtaClient` (no agent connection) plus the `AppEvent` receiver
+/// its handlers write to. Lets us drive the inbound `Client` trait methods
+/// directly and assert the `SessionUpdate → AppEvent` translation without
+/// spinning up the ACP I/O loop.
+fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let state = Arc::new(ClientState {
+        event_tx,
+        shell_mgr: Arc::new(ShellManager::new()),
+        prompt_timing: Arc::new(PromptTimingState::default()),
+    });
+    (WtaClient { state }, event_rx)
+}
+
+fn notif(sid: &str, update: acp::SessionUpdate) -> acp::SessionNotification {
+    acp::SessionNotification::new(acp::SessionId::new(sid), update)
+}
+
+/// An `AgentThoughtChunk` update becomes an `AgentThoughtChunk` event carrying
+/// the session id and the chunk text.
+#[tokio::test]
+async fn session_notification_routes_agent_thought_chunk() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new("thinking".into())),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::AgentThoughtChunk { session_id, text }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(text, "thinking");
+        }
+        _ => panic!("expected AgentThoughtChunk"),
+    }
+}
+
+/// A `user_message_chunk` (only emitted during a `session/load` replay) becomes
+/// a `UserMessageReplayChunk` event.
+#[tokio::test]
+async fn session_notification_routes_user_message_replay_chunk() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new("prior prompt".into())),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::UserMessageReplayChunk { session_id, text }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(text, "prior prompt");
+        }
+        _ => panic!("expected UserMessageReplayChunk"),
+    }
+}
+
+/// A `ToolCall` update becomes a `ToolCall` event with the tool id and title.
+#[tokio::test]
+async fn session_notification_routes_tool_call() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCall(acp::ToolCall::new(
+                acp::ToolCallId::new("tc-1"),
+                "Run: echo hi",
+            )),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            session_id,
+            id,
+            title,
+            status,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(id, "tc-1");
+            assert_eq!(title, "Run: echo hi");
+            assert!(!status.is_empty(), "status should be a rendered enum name");
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// A `ToolCallUpdate` carrying only a status becomes a `ToolCallUpdate` event
+/// whose status string is the rendered enum name.
+#[tokio::test]
+async fn session_notification_routes_tool_call_update_status_only() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                acp::ToolCallId::new("tc-1"),
+                acp::ToolCallUpdateFields::new().status(acp::ToolCallStatus::Completed),
+            )),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            session_id,
+            id,
+            status,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(id, "tc-1");
+            assert_eq!(status, "Completed");
+        }
+        _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
+/// A failed `ToolCallUpdate` that carries a `raw_output.message` surfaces that
+/// reason appended to the status, so the chat shows *why* a tool call failed
+/// instead of a bare "Failed".
+#[tokio::test]
+async fn session_notification_tool_call_update_surfaces_raw_output_message() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                acp::ToolCallId::new("tc-1"),
+                acp::ToolCallUpdateFields::new()
+                    .status(acp::ToolCallStatus::Failed)
+                    .raw_output(serde_json::json!({
+                        "message": "The user rejected this tool call."
+                    })),
+            )),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate { status, .. }) => {
+            assert!(status.contains("Failed"), "got: {status}");
+            assert!(
+                status.contains("The user rejected this tool call."),
+                "the raw_output reason must be surfaced; got: {status}"
+            );
+        }
+        _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
+/// A `ToolCallUpdate` with no status is dropped (nothing actionable to show).
+#[tokio::test]
+async fn session_notification_tool_call_update_without_status_is_dropped() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
+                acp::ToolCallId::new("tc-1"),
+                acp::ToolCallUpdateFields::new(),
+            )),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        rx.try_recv().is_err(),
+        "a status-less ToolCallUpdate must not emit an event"
+    );
+}
+
+/// A `Plan` update becomes a `Plan` event whose entries preserve content and
+/// map each ACP status onto the app's `PlanEntryStatus`.
+#[tokio::test]
+async fn session_notification_routes_plan_with_status_mapping() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::SessionUpdate::Plan(acp::Plan::new(vec![
+                acp::PlanEntry::new(
+                    "Step one",
+                    acp::PlanEntryPriority::Medium,
+                    acp::PlanEntryStatus::InProgress,
+                ),
+                acp::PlanEntry::new(
+                    "Step two",
+                    acp::PlanEntryPriority::Low,
+                    acp::PlanEntryStatus::Completed,
+                ),
+                acp::PlanEntry::new(
+                    "Step three",
+                    acp::PlanEntryPriority::Low,
+                    acp::PlanEntryStatus::Pending,
+                ),
+            ])),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::Plan { session_id, entries }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(
+                entries,
+                vec![
+                    crate::app::PlanEntry {
+                        content: "Step one".to_string(),
+                        status: crate::app::PlanEntryStatus::InProgress,
+                    },
+                    crate::app::PlanEntry {
+                        content: "Step two".to_string(),
+                        status: crate::app::PlanEntryStatus::Completed,
+                    },
+                    crate::app::PlanEntry {
+                        content: "Step three".to_string(),
+                        status: crate::app::PlanEntryStatus::Pending,
+                    },
+                ]
+            );
+        }
+        _ => panic!("expected Plan"),
+    }
+}
+
+fn permission_request(sid: &str) -> acp::RequestPermissionRequest {
+    acp::RequestPermissionRequest::new(
+        acp::SessionId::new(sid),
+        acp::ToolCallUpdate::new(
+            acp::ToolCallId::new("mock-tool-1"),
+            acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+        ),
+        vec![acp::PermissionOption::new(
+            acp::PermissionOptionId::new("allow-once"),
+            "Allow once",
+            acp::PermissionOptionKind::AllowOnce,
+        )],
+    )
+}
+
+/// `request_permission` surfaces a `PermissionRequest` event and, once the user
+/// picks an option through the responder, returns `Selected(option_id)`.
+#[tokio::test]
+async fn request_permission_returns_selected_option() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let handle = tokio::task::spawn_local(async move {
+                client.request_permission(permission_request("s1")).await
+            });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    session_id,
+                    description,
+                    options,
+                    responder,
+                }) => {
+                    assert_eq!(session_id, "s1");
+                    assert_eq!(description, "Run: echo hi");
+                    assert_eq!(options.len(), 1);
+                    assert_eq!(options[0].id, "allow-once");
+                    responder
+                }
+                _ => panic!("expected PermissionRequest"),
+            };
+            responder.send("allow-once".to_string()).unwrap();
+
+            let resp = handle.await.unwrap().unwrap();
+            match resp.outcome {
+                acp::RequestPermissionOutcome::Selected(sel) => {
+                    assert_eq!(sel.option_id.to_string(), "allow-once");
+                }
+                _ => panic!("expected Selected outcome"),
+            }
+        })
+        .await;
+}
+
+/// If the responder is dropped without a choice (e.g. the pane closes), the
+/// permission resolves as `Cancelled` rather than hanging.
+#[tokio::test]
+async fn request_permission_cancelled_when_responder_dropped() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let handle = tokio::task::spawn_local(async move {
+                client.request_permission(permission_request("s1")).await
+            });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest { responder, .. }) => responder,
+                _ => panic!("expected PermissionRequest"),
+            };
+            drop(responder);
+
+            let resp = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                resp.outcome,
+                acp::RequestPermissionOutcome::Cancelled
+            ));
+        })
+        .await;
+}
+
 
 
