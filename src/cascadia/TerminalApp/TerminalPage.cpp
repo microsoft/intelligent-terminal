@@ -4457,9 +4457,29 @@ namespace winrt::TerminalApp::implementation
     // already respawned the master) sees a valid `_process` and just
     // bumps the refcount — connecting the new helper to the freshly-spawned
     // master under the same stable pipe name.
-    void TerminalPage::OnRestartAgentStackRequested(hstring /*eventJson*/)
+    void TerminalPage::OnRestartAgentStackRequested(hstring eventJson)
     {
-        _agentPaneLog("OnRestartAgentStackRequested: /restart received from wta");
+        _agentPaneLog("OnRestartAgentStackRequested: restart_agent_stack received from wta");
+
+        // Optional `params.tab_id`: the agent pane that triggered the restart.
+        // Auth-recovery restarts carry it so we can reopen the *failing* tab
+        // instead of whatever tab is active. `/restart` from the TUI carries no
+        // tab_id and keeps the legacy "reopen active tab" behavior.
+        winrt::hstring failingTabId;
+        {
+            Json::Value evt;
+            Json::CharReaderBuilder rb;
+            std::istringstream ss(winrt::to_string(eventJson));
+            std::string errs;
+            if (Json::parseFromStream(rb, ss, &evt, &errs))
+            {
+                const auto& params = evt["params"];
+                if (params.isObject() && params.isMember("tab_id") && params["tab_id"].isString())
+                {
+                    failingTabId = winrt::to_hstring(params["tab_id"].asString());
+                }
+            }
+        }
 
         // Reentrancy guard — share the flag with the settings-driven
         // `_RebuildAgentStack` path. If a settings reload is racing this
@@ -4513,9 +4533,24 @@ namespace winrt::TerminalApp::implementation
             // AcquirePane, which lazily spawns when _process is invalid.
         }
 
-        // Reopen the active tab's pane immediately so the user sees
-        // continuity. Tabs that had a pane but aren't active need to be
-        // toggled open again by the user — same UX as _RebuildAgentStack.
+        // Reopen target: prefer the tab that actually failed auth so the user
+        // lands back where they were. When the failing tab isn't in this window
+        // (multi-window fan-out) or no tab_id was supplied, fall back to this
+        // window's active tab — its panes were torn down + poisoned too, so
+        // reopening recovers them, matching the `/restart` fan-out behavior.
+        // Other tabs that had a pane but aren't reopened here are toggled open
+        // again by the user — same UX as _RebuildAgentStack.
+        if (!failingTabId.empty())
+        {
+            if (const auto reopenTarget = _FindTabByStableId(failingTabId))
+            {
+                _agentPaneLog("OnRestartAgentStackRequested: reopening failing tab by stable id");
+                _AutoCreateHiddenAgentPaneShared(reopenTarget,
+                                                 /*intoSessionsView*/ false,
+                                                 /*autoStash*/ false);
+                return;
+            }
+        }
         _OpenOrReuseAgentPane(false, L"RestartAgent");
     }
 
