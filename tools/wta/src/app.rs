@@ -1520,6 +1520,19 @@ pub struct TabSession {
     // C++-originated `set_agent_state` requests (hotkey/button toggles)
     // and by wta-internal events like Ctrl+C×2 reset.
     pub pane_open: bool,
+
+    // Pre-entry pane visibility, remembered when the user opens the
+    // session-management (Agents) view so Esc can restore *that* state rather
+    // than always landing on an open chat pane:
+    //   * `Some(false)` — entered from a folded (stashed) pane → Esc re-folds.
+    //   * `Some(true)`  — entered from an expanded chat pane → Esc returns to it.
+    //   * `None`        — not currently in / entering the Agents view.
+    // Captured in `open_agents_view_for_tab`, read by the Esc handler, cleared
+    // in `close_agents_view_for_tab`. The capture is reliable because the C++
+    // `set_agent_state` request applies `view` before `pane_open`: an unstash
+    // sends `{view:sessions, pane_open:true}`, but the view switch (and thus
+    // our snapshot) runs while `pane_open` still holds the old `false`.
+    pub agents_view_prev_pane_open: Option<bool>,
 }
 
 impl TabSession {
@@ -3439,6 +3452,12 @@ impl App {
         let rows_available = !self.agents_rows_for_tab(&tab_id).is_empty();
         {
             let tab = self.tab_mut(&tab_id);
+            // Snapshot the pre-entry pane visibility so Esc can restore it
+            // (a folded pane re-folds, an expanded chat pane stays open).
+            // Read before any mutation below: at this point `pane_open` still
+            // holds the value from before this transition (see the field docs
+            // on `agents_view_prev_pane_open`).
+            tab.agents_view_prev_pane_open = Some(tab.pane_open);
             tab.current_view = View::Agents;
             tab.agents_view.snapshot = Some(Vec::new());
             tab.agents_view.dirty = false;
@@ -3457,6 +3476,7 @@ impl App {
         tab.agents_view.refetch_in_flight = false;
         tab.agents_view.dirty = false;
         tab.agents_view.focused_sid = None;
+        tab.agents_view_prev_pane_open = None;
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
@@ -6362,7 +6382,33 @@ impl App {
                 }
                 KeyCode::Esc => {
                     let tab_id = self.active_tab_key().to_string();
-                    self.close_agents_view_for_tab(&tab_id);
+                    // Restore the pane visibility the user had *before* they
+                    // entered session management. Read before any mutation.
+                    // Falls back to "stay open" (the legacy Esc behaviour) if
+                    // nothing was captured.
+                    let restore_open = self
+                        .current_tab()
+                        .agents_view_prev_pane_open
+                        .unwrap_or(true);
+                    if restore_open {
+                        // Entered from an expanded chat pane → return to it:
+                        // switch the TUI back to chat, leave the pane visible.
+                        self.close_agents_view_for_tab(&tab_id);
+                        self.tab_mut(&tab_id).pane_open = true;
+                    } else {
+                        // Entered from a folded (stashed) pane → re-fold.
+                        // Deliberately do NOT switch to chat here: if we did,
+                        // the helper would re-render the chat view for a frame
+                        // while the pane is still on screen, so the user sees
+                        // the agent pane flash before C++ stashes it. Keeping
+                        // the session list rendered lets the pane stash
+                        // straight from it. Clear the snapshot so a later
+                        // re-entry re-captures; the lingering Agents view
+                        // self-heals to chat on the next chat-toggle open.
+                        let tab = self.tab_mut(&tab_id);
+                        tab.pane_open = false;
+                        tab.agents_view_prev_pane_open = None;
+                    }
                     self.project_active_tab_state();
                 }
                 _ => {}
@@ -11588,6 +11634,97 @@ mod tests {
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
         assert_eq!(cmd.session_id.as_deref(), Some("a"));
+    }
+
+    // Esc out of the session-management (Agents) view restores the pane
+    // visibility the user had *before* they entered it, rather than always
+    // leaving an open chat pane behind. Two cases mirror the two ways the
+    // view is reached (see `open_agents_view_for_tab` + the Esc handler).
+
+    #[test]
+    fn esc_from_session_view_refolds_when_entered_from_folded_pane() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // Pane starts folded (stashed): pane_open == false.
+        app.tab_mut(&tab_id).pane_open = false;
+
+        // Reproduce the C++ "unstash into sessions" request, which applies
+        // `view` before `pane_open`: the view switch snapshots the pre-message
+        // `pane_open=false`, then the pane is marked open while sessions show.
+        app.open_agents_view_for_tab(tab_id.clone());
+        app.tab_mut(&tab_id).pane_open = true;
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        // Re-folds: pane hidden. The view is intentionally left on Agents
+        // (not switched to Chat) so the pane stashes straight from the
+        // session list without flashing the chat view for a frame first.
+        assert!(
+            !app.current_tab().pane_open,
+            "Esc from a pane that was folded before session management must re-fold it"
+        );
+        assert_eq!(
+            app.current_tab().current_view,
+            View::Agents,
+            "fold-restore must not switch to chat (would flash before stashing)"
+        );
+        assert_eq!(
+            app.current_tab().agents_view_prev_pane_open, None,
+            "the snapshot must be cleared after Esc so a re-entry re-captures"
+        );
+    }
+
+    #[test]
+    fn esc_from_session_view_keeps_pane_open_when_entered_from_chat() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // Pane is already an expanded chat pane: pane_open == true. The
+        // chat->sessions request keeps pane_open=true, so the snapshot is
+        // Some(true) and Esc must leave the pane open.
+        app.tab_mut(&tab_id).pane_open = true;
+        app.open_agents_view_for_tab(tab_id.clone());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.current_tab().current_view, View::Chat);
+        assert!(
+            app.current_tab().pane_open,
+            "Esc from an expanded chat pane must return to it (stay open)"
+        );
+    }
+
+    // A pane folded *from within* the sessions view (fold keeps current_view ==
+    // Agents) and then reopened must re-snapshot the now-folded state, so a
+    // later Esc re-folds instead of using a stale "was open" snapshot.
+    #[test]
+    fn esc_reuses_latest_snapshot_after_fold_from_session_view() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // 1. Enter sessions from an open chat pane -> snapshot Some(true).
+        app.tab_mut(&tab_id).pane_open = true;
+        app.open_agents_view_for_tab(tab_id.clone());
+
+        // 2. Fold while staying in the sessions view (current_view unchanged).
+        app.tab_mut(&tab_id).pane_open = false;
+
+        // 3. Reopen sessions (C++ unstash echo) -> must re-snapshot Some(false).
+        app.open_agents_view_for_tab(tab_id.clone());
+        app.tab_mut(&tab_id).pane_open = true;
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(
+            !app.current_tab().pane_open,
+            "the second entry must capture the folded state, so Esc re-folds"
+        );
     }
 
     #[test]
