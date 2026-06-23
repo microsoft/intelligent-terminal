@@ -6365,6 +6365,13 @@ impl App {
                     self.close_agents_view_for_tab(&tab_id);
                     self.project_active_tab_state();
                 }
+                KeyCode::F(5) => {
+                    // Refresh the session list (footer hint: "F5 to refresh").
+                    // schedule_agents_refetch_for_tab no-ops when the view
+                    // isn't primed and coalesces with an in-flight fetch.
+                    let tab_id = self.active_tab_key().to_string();
+                    self.schedule_agents_refetch_for_tab(&tab_id);
+                }
                 _ => {}
             }
             return;
@@ -11588,6 +11595,29 @@ mod tests {
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
         assert_eq!(cmd.session_id.as_deref(), Some("a"));
+    }
+
+    // F5 in the session-management view refetches the session list (footer
+    // hint: "F5 to refresh"). When no fetch is in flight it dispatches a
+    // fresh sessions/list request to master.
+    #[test]
+    fn f5_in_session_view_refetches_sessions() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let tab_id = app.active_tab_key().to_string();
+        app.open_agents_view_for_tab(tab_id);
+
+        // Drain the open-time refetch and clear the in-flight flag so the F5
+        // refetch is dispatched fresh instead of just coalescing to dirty.
+        let _ = master_rx.try_recv();
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+
+        match master_rx.try_recv().expect("F5 must request sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { .. } => {}
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
     }
 
     #[test]

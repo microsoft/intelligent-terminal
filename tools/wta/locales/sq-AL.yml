@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Sigurohuni që %{name} është i instaluar dhe në PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Po ngarkohet..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ për të naviguar • Enter për të nisur seancën • Esc për të dalë)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ për të naviguar • Enter për të nisur seancën • Esc për të dalë • F5 për të rifreskuar)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Po pret hyrjen"
 agents.status.error: "Gabim"

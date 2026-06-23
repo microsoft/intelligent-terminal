@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus ai
 
 # ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Ga luchdadh..."
-# {Locked="Enter","Esc","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
-agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail)"
+# {Locked="Enter","Esc","F5","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
+agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail • F5 gus ùrachadh)"
 agents.status.active: "Gnìomhach"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"

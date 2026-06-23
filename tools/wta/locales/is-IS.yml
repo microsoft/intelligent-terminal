@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Gakktu úr skugga um að %{name} sé uppsett og á PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Hleð..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ til að fletta • Enter til að hefja lotu • Esc til að hætta)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ til að fletta • Enter til að hefja lotu • Esc til að hætta • F5 til að endurnýja)"
 agents.status.active: "Virk"
 agents.status.waiting_for_input: "Bíður eftir inntaki"
 agents.status.error: "Villa"

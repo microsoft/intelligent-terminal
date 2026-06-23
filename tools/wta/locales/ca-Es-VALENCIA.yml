@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Assegureu-vos que %{name} estiga instal·lat i al vostr
 
 # ── Vista d'agents (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "S'està carregant..."
-# {Locked="Enter","Esc","↑","↓"} - combinacions de tecles, no traduïu
-agents.footer_hint: "(↑ ↓ per a navegar • Enter per a iniciar la sessió • Esc per a eixir)"
+# {Locked="Enter","Esc","F5","↑","↓"} - combinacions de tecles, no traduïu
+agents.footer_hint: "(↑ ↓ per a navegar • Enter per a iniciar la sessió • Esc per a eixir • F5 per a actualitzar)"
 agents.status.active: "Actiu"
 agents.status.waiting_for_input: "Esperant entrada"
 agents.status.error: "Error"

@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Kun żgur li %{name} huwa installat u fuq il-PATH tieg�
 
 # ── Vista tal-aġenti (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Qed jitgħabba..."
-# {Locked="Enter","Esc","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
-agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ)"
+# {Locked="Enter","Esc","F5","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
+agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ • F5 biex taġġorna)"
 agents.status.active: "Attiv"
 agents.status.waiting_for_input: "Qed jistenna input"
 agents.status.error: "Żball"
