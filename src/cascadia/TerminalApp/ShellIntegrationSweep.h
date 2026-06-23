@@ -43,6 +43,7 @@
 
 #include "../inc/ShellIntegration.h"
 #include "../inc/ShellIntegrationProfileGate.h"
+#include "AgentPaneLog.h"
 
 #include <winrt/Microsoft.Terminal.Settings.Model.h>
 
@@ -194,13 +195,29 @@ namespace winrt::TerminalApp::implementation::ShellIntegrationSweep
             }
             return SI::Install(profilePath);
         };
+        // Probe each PowerShell host's execution policy, and log the raw outcome
+        // (policy + whether the probe timed out + verdict) so a future FRE
+        // false-block is diagnosable straight from terminal-agent-pane.log. The
+        // probe itself is a pure query (ExecutionPolicyBlocksShellIntegration does
+        // no I/O); the logging lives here, at the app layer, next to the existing
+        // [FRE] shell-integration logging — not buried in the shared inc/ header.
+        const auto probeExecutionPolicyBlocked = [](SI::Target t, const char* label) {
+            std::wstring policy;
+            bool timedOut = false;
+            const bool blocked = SI::ExecutionPolicyBlocksShellIntegration(t, &policy, &timedOut);
+            _agentPaneLog(std::string{ "[FRE] EP probe " } + label +
+                          " policy='" + winrt::to_string(winrt::hstring{ policy }) + "'" +
+                          " timedOut=" + (timedOut ? "1" : "0") +
+                          " -> " + (blocked ? "BLOCKED" : "not-blocked"));
+            return blocked;
+        };
         r.pwsh = SI::ResolvePowerShellHostInstall(
             shellPresence.pwsh,
-            SI::ExecutionPolicyBlocksShellIntegration(SI::Target::Pwsh),
+            probeExecutionPolicyBlocked(SI::Target::Pwsh, "pwsh"),
             [&] { return installSkippingPolicyProbe(SI::Target::Pwsh); });
         r.windowsPowerShell = SI::ResolvePowerShellHostInstall(
             shellPresence.windowsPowerShell,
-            SI::ExecutionPolicyBlocksShellIntegration(SI::Target::WindowsPowerShell),
+            probeExecutionPolicyBlocked(SI::Target::WindowsPowerShell, "winPs"),
             [&] { return installSkippingPolicyProbe(SI::Target::WindowsPowerShell); });
         if (shellPresence.bash)
         {
