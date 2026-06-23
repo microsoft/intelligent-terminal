@@ -3,7 +3,7 @@
 # (the FRE is a XAML overlay with AutomationId buttons NextButton / SaveButton).
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
-BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) }
+BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
 Describe 'Feature §0 FRE overlay flow' -Tag 'Feature' -Skip:(-not $script:Ready) {
 

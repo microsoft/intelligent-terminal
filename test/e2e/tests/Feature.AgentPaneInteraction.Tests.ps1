@@ -3,7 +3,7 @@
 # Agent pane slash commands (2) + Built-in agent chat (copilot) (2).
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
-BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
+BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
 Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {

@@ -34,6 +34,9 @@ BeforeDiscovery {
     # of the suite cleanly skipping.
     $script:DevReady = $false
     try { $null = Resolve-ItApp -Package Dev -ErrorAction Stop; $script:DevReady = $true } catch { $script:DevReady = $false }
+    # winapp drives the FRE overlay via UIA; without it BeforeAll would throw, so fold it into
+    # the gate and skip the suite cleanly instead.
+    $script:DevReady = $script:DevReady -and (Test-WinAppAvailable)
     # A Group Policy execution-policy override (MachinePolicy/UserPolicy) outranks the HKCU
     # CurrentUser scope these tests force, making the FRE verdict non-deterministic — skip the
     # whole suite when one is in effect rather than assert against an uncontrollable policy.

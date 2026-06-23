@@ -5,7 +5,7 @@
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
 BeforeDiscovery {
-    $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue))
+    $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue))
 }
 
 Describe 'Feature: agent pane popup + menu' -Tag 'Feature' -Skip:(-not $script:Ready) {
