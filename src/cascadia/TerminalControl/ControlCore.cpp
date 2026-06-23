@@ -1522,6 +1522,18 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return hstring{ _terminal->GetWorkingDirectory() };
     }
 
+    hstring ControlCore::ShellName() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return hstring{ _terminal->GetShellName() };
+    }
+
+    hstring ControlCore::ShellVersion() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return hstring{ _terminal->GetShellVersion() };
+    }
+
     bool ControlCore::BracketedPasteEnabled() const noexcept
     {
         const auto lock = _terminal->LockForReading();

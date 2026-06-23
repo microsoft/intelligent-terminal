@@ -336,6 +336,18 @@ void ConhostInternalGetSet::SetWorkingDirectory(const std::wstring_view /*uri*/)
 }
 
 // Routine Description:
+// - Records the shell identity reported via OSC 9001;ShellType. This is a
+//   Windows Terminal feature with no meaning in conhost, so it is a no-op here.
+// Arguments:
+// - shellName - the reported shell name (unused in conhost).
+// - shellVersion - the reported shell version (unused in conhost).
+// Return Value:
+// - <none>
+void ConhostInternalGetSet::SetShellType(const std::wstring_view /*shellName*/, const std::wstring_view /*shellVersion*/)
+{
+}
+
+// Routine Description:
 // - Plays a single MIDI note, blocking for the duration.
 // Arguments:
 // - noteNumber - The MIDI note number to be played (0 - 127).

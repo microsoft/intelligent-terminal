@@ -234,6 +234,27 @@ void Terminal::SetWorkingDirectory(std::wstring_view uri)
     _workingDirectory = uri;
 }
 
+void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shellVersion)
+{
+    _assertLocked();
+
+    static bool logged = false;
+    if (!logged)
+    {
+        TraceLoggingWrite(
+            g_hCTerminalCoreProvider,
+            "ShellIntegrationShellTypeSet",
+            TraceLoggingDescription("The shell reported its identity via OSC 9001;ShellType"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
+        logged = true;
+    }
+
+    _shellName = shellName;
+    _shellVersion = shellVersion;
+}
+
 void Terminal::PlayMidiNote(const int noteNumber, const int velocity, const std::chrono::microseconds duration)
 {
     _pfnPlayMidiNote(noteNumber, velocity, duration);

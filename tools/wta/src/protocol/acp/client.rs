@@ -985,11 +985,30 @@ fn process_image_name(_pid: u32) -> Option<String> {
     None
 }
 
-/// Resolve the canonical shell exe from an active-pane JSON object's `pid`
-/// field (already present in `get_active_pane`/`get_panes` responses). The
-/// agent gets this as the `shell` field — the sole shell-type signal, since
-/// the WT profile *name* (which the user can rename) is no longer shipped.
+/// Resolve the shell identity for an active-pane JSON object. The agent gets
+/// this as the `shell` field — the shell-type signal that drives PowerShell vs
+/// bash vs cmd syntax in any fix command it suggests.
+///
+/// Resolution order:
+///   1. The `shell` field reported by shell integration via `OSC 9001;ShellType`
+///      (e.g. `pwsh`, `powershell`, `bash`, `wsl:Ubuntu`). This is the only
+///      signal that survives a nested shell — `pwsh` → `wsl` → `exit` reports
+///      `wsl:<distro>` while inside WSL and `pwsh` again after exit, because the
+///      shell re-emits it on every prompt. The pid-based fallback below can't
+///      see this: the pane's host process stays `wsl.exe`/`pwsh.exe` regardless
+///      of which shell is actually drawing the prompt. See
+///      doc/specs/shell-integration-and-osc9001.md §4.1/§4.3.
+///   2. Otherwise, the canonical shell exe from the pane's `pid` (covers panes
+///      without shell integration installed, or before the first prompt).
 fn shell_from_active(active: &serde_json::Value) -> Option<String> {
+    if let Some(shell) = active
+        .get("shell")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(shell.to_string());
+    }
     active
         .get("pid")
         .and_then(|v| v.as_u64())
@@ -3548,6 +3567,25 @@ mod tests {
 
         assert_eq!(shell_from_active(&serde_json::json!({ "pid": 0 })), None);
         assert_eq!(shell_from_active(&serde_json::json!({})), None);
+    }
+
+    /// The `shell` field reported via `OSC 9001;ShellType` wins over the
+    /// pid-based fallback — even when a real pid is present. This is the
+    /// nested-shell case (`pwsh` → `wsl` → bash): the pane's host process is
+    /// still pwsh/wsl.exe, but the prompt is drawn by bash, so the OSC-reported
+    /// `wsl:Ubuntu` must reach the agent. Platform-independent (no pid lookup).
+    #[test]
+    fn shell_from_active_prefers_osc_reported_shell() {
+        // Reported shell wins over a live pid.
+        let pane = serde_json::json!({ "pid": std::process::id(), "shell": "wsl:Ubuntu" });
+        assert_eq!(shell_from_active(&pane), Some("wsl:Ubuntu".to_string()));
+
+        // Empty/whitespace reported shell is ignored; falls back to pid (or None).
+        assert_eq!(
+            shell_from_active(&serde_json::json!({ "shell": "  ", "pid": 0 })),
+            None
+        );
+        assert_eq!(shell_from_active(&serde_json::json!({ "shell": "" })), None);
     }
 
     /// Helper-only: round-trip a `_meta` blob through `inject_wta_pane_meta`

@@ -437,6 +437,14 @@ if (-not $Global:__ShellInteg_Installed) {
         # ── Report current working directory (OSC 9;9) ──
         $prefix += "${E}]9;9;`"${loc}`"${B}"
 
+        # ── Report shell identity (OSC 9001;ShellType) ──
+        # Emitted every prompt so the terminal always knows which shell owns
+        # the pane, even after a nested shell (e.g. wsl) exits and PowerShell
+        # repaints its prompt. PSEdition 'Core' is pwsh 7+, 'Desktop' is
+        # Windows PowerShell 5.1.
+        $shellName = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+        $prefix += "${E}]9001;ShellType;${shellName};$($PSVersionTable.PSVersion)${B}"
+
         # ── Prompt ended, command input starts (OSC 133;B) ──
         $suffix = "${E}]133;B${B}"
 

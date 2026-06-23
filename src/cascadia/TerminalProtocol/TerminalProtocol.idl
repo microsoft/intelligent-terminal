@@ -38,6 +38,11 @@ namespace Microsoft.Terminal.Protocol
         // terminal control's working-directory tracking (OSC 9;9 / shell
         // integration). Empty when not known.
         String Cwd;
+        // Shell identity reported by shell integration via OSC 9001;ShellType
+        // (e.g. "pwsh", "powershell", "bash", "wsl:Ubuntu"). Empty when the
+        // shell has not reported its identity.
+        String Shell;
+        String ShellVersion;
     };
 
     struct PaneOutput
