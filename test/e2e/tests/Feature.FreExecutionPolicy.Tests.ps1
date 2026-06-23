@@ -15,10 +15,18 @@
 #   Invoke-Pester test/e2e/tests/Feature.FreExecutionPolicy.Tests.ps1 -Tag Feature
 
 BeforeDiscovery {
+    Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     $script:DevReady = [bool](Get-AppxPackage | Where-Object { $_.Name -eq 'IntelligentTerminal' })
+    # A Group Policy execution-policy override (MachinePolicy/UserPolicy) outranks the HKCU
+    # CurrentUser scope these tests force, making the FRE verdict non-deterministic — skip the
+    # whole suite when one is in effect rather than assert against an uncontrollable policy.
+    $script:EpControllable = Test-WtExecutionPolicyControllable
+    # The not-blocked case additionally needs pwsh (if present) to not independently block,
+    # since the FRE blocks when EITHER host blocks and we only control WinPS via the registry.
+    $script:PwshBlocks = Test-WtPwshBlocksShellIntegration
 }
 
-Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)' -Tag 'Feature' -Skip:(-not $script:DevReady) {
+Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)' -Tag 'Feature' -Skip:(-not ($script:DevReady -and $script:EpControllable)) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         # Safety-net snapshot so the machine's policy is restored even if a test
@@ -68,7 +76,7 @@ Describe 'Feature §0 FRE execution-policy verdict (deterministic, via registry)
         finally { Restore-WtExecutionPolicy -State $st }
     }
 
-    It 'RemoteSigned policy -> FRE probe reads it and does NOT block (winPs=ok)' {
+    It 'RemoteSigned policy -> FRE probe reads it and does NOT block (winPs=ok)' -Skip:($script:PwshBlocks) {
         # RemoteSigned permits *local* unsigned scripts, so our $PROFILE block runs
         # and the probe must NOT block shell integration.
         $st = Set-WtExecutionPolicy -Value RemoteSigned

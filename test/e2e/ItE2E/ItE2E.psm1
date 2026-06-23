@@ -28,6 +28,7 @@ $publicFns = @(
     'Get-WtStateObject', 'Set-WtState', 'Invoke-FrePass', 'Reset-Fre', 'Get-FreCompleted',
     'Invoke-FrePassViaUi', 'Test-FreShowing',
     'Get-WtExecutionPolicyState', 'Set-WtExecutionPolicy', 'Restore-WtExecutionPolicy',
+    'Test-WtExecutionPolicyControllable', 'Test-WtPwshBlocksShellIntegration',
     # Ui
     'Get-UiTree', 'Find-UiElement', 'Invoke-UiElement', 'Invoke-UiClick', 'Set-UiValue', 'Get-UiValue',
     'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds',

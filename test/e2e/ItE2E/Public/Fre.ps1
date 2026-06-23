@@ -102,7 +102,7 @@ function Set-WtExecutionPolicy {
     $state = Get-WtExecutionPolicyState
     if (-not (Test-Path $state.Key)) { New-Item -Path $state.Key -Force | Out-Null }
     if ($Value -eq 'Undefined') { Remove-ItemProperty -Path $state.Key -Name ExecutionPolicy -ErrorAction SilentlyContinue }
-    else { Set-ItemProperty -Path $state.Key -Name ExecutionPolicy -Value $Value -Type String }
+    else { Set-ItemProperty -Path $state.Key -Name ExecutionPolicy -Value $Value -Type String -ErrorAction Stop }
     Write-ItLog -Level INFO -Message "Set WinPS CurrentUser ExecutionPolicy = $Value (was '$($state.Value)')"
     $state
 }
@@ -111,8 +111,48 @@ function Restore-WtExecutionPolicy {
     <# Restore the snapshot returned by Set-WtExecutionPolicy / Get-WtExecutionPolicyState. #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$State)
     process {
-        if ($State.HadValue) { Set-ItemProperty -Path $State.Key -Name ExecutionPolicy -Value $State.Value -Type String }
+        if ($State.HadValue) { Set-ItemProperty -Path $State.Key -Name ExecutionPolicy -Value $State.Value -Type String -ErrorAction Stop }
         else { Remove-ItemProperty -Path $State.Key -Name ExecutionPolicy -ErrorAction SilentlyContinue }
         Write-ItLog -Level INFO -Message "Restored WinPS CurrentUser ExecutionPolicy to '$($State.Value)'"
     }
+}
+
+function Test-WtExecutionPolicyControllable {
+    <#
+    .SYNOPSIS
+        Returns $true when the Windows PowerShell effective execution policy can be forced
+        via the HKCU CurrentUser scope — i.e. no Group Policy override is in effect.
+    .DESCRIPTION
+        Group Policy scopes (MachinePolicy / UserPolicy) outrank CurrentUser, so when one is
+        set the registry value these tests write is NOT the effective policy and the FRE
+        verdict becomes non-deterministic. The EP suite must skip in that environment. GPO
+        scopes are host-independent (HKLM/HKCU ...\Policies\...\PowerShell), so probing them
+        from whatever host runs the test is valid for the WinPS the FRE will probe.
+    #>
+    [CmdletBinding()] param()
+    $gpo = Get-ExecutionPolicy -List |
+        Where-Object { $_.Scope -in 'MachinePolicy', 'UserPolicy' -and $_.ExecutionPolicy -ne 'Undefined' }
+    -not [bool]$gpo
+}
+
+function Test-WtPwshBlocksShellIntegration {
+    <#
+    .SYNOPSIS
+        Returns $true when pwsh 7 is installed AND its effective execution policy refuses
+        unsigned local scripts (Restricted / AllSigned).
+    .DESCRIPTION
+        The FRE blocks shell integration if EITHER PowerShell host blocks, but these helpers
+        only control Windows PowerShell via HKCU (pwsh keeps its policy in
+        powershell.config.json, not the registry). So the not-blocked case must skip when a
+        present pwsh would independently block — otherwise the FRE blocks regardless of the
+        RemoteSigned WinPS policy under test.
+    #>
+    [CmdletBinding()] param()
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $pwsh) { return $false }
+    try {
+        $policy = & $pwsh.Source -NoProfile -NonInteractive -Command 'Get-ExecutionPolicy' 2>$null
+        return ([string]$policy -in 'Restricted', 'AllSigned')
+    }
+    catch { return $false }
 }
