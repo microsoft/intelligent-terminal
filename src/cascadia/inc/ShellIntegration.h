@@ -73,7 +73,9 @@ namespace Microsoft::Terminal::ShellIntegration
     inline InstallResult Install(const std::wstring& profilePathW) { return Powershell::Install(profilePathW); }
     inline InstallResult Uninstall(const std::wstring& profilePathW) { return Powershell::Uninstall(profilePathW); }
     inline std::wstring DiscoverProfilePath(Target target) { return Powershell::DiscoverProfilePath(target); }
-    inline bool ExecutionPolicyBlocksShellIntegration(Target target) noexcept { return Powershell::ExecutionPolicyBlocksShellIntegration(target); }
+    inline bool ExecutionPolicyBlocksShellIntegration(Target target,
+                                                      std::wstring* outPolicy = nullptr,
+                                                      bool* outTimedOut = nullptr) noexcept { return Powershell::ExecutionPolicyBlocksShellIntegration(target, outPolicy, outTimedOut); }
     inline constexpr int kShellIntegrationVersion = Powershell::kVersion;
     inline std::wstring ShellIntegrationScriptFileName() { return Powershell::ScriptFileName(); }
     inline std::string ShellIntegrationScriptContent() { return Powershell::ScriptContent(); }
@@ -115,8 +117,8 @@ namespace Microsoft::Terminal::ShellIntegration
 
     // WSL.
     inline std::wstring WslUncPath(std::wstring_view distName, std::string_view posixPath) { return Wsl::UncPath(distName, posixPath); }
-    inline InstallResult InstallWslBash(const std::wstring& distName) { return Wsl::Install(distName); }
-    inline InstallResult UninstallWslBash(const std::wstring& distName) { return Wsl::Uninstall(distName); }
+    inline InstallResult InstallWslBash(const std::wstring& launchCommandline) { return Wsl::Install(launchCommandline); }
+    inline InstallResult UninstallWslBash(const std::wstring& launchCommandline) { return Wsl::Uninstall(launchCommandline); }
 
     // Re-expose per-flavor details under the top-level `details::` namespace
     // so existing tests that reference `details::QueryExecutionPolicy(...)`

@@ -2914,13 +2914,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Автоматическое обнаружение ошибок</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Разрешите Intelligent Terminal доступ к оболочке и автоматическое обнаружение ошибок. Доступно в PowerShell и Windows PowerShell.</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>Разрешите Интеллектуальному Терминалу доступ к оболочке и автоматическое обнаружение ошибок. Доступно в PowerShell, bash и WSL bash. </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>Показать все поддерживаемые оболочки</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>Автоматическое предложение исправлений</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Разрешите Intelligent Terminal отправлять ошибки агенту для автоматического предложения исправлений.</value>
+    <value>Разрешите Интеллектуальному Терминалу отправлять ошибки агенту для автоматического предложения исправлений.</value>
   </data>
 </root>

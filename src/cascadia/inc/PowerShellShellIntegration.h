@@ -20,18 +20,33 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     namespace details
     {
         // Runs `<exe> -NoProfile -NonInteractive -Command Get-ExecutionPolicy`
-        // synchronously and returns the lowercased policy name from stdout
-        // (e.g. "restricted"). Returns an empty string if the executable can't
-        // be launched (typical for pwsh.exe when PowerShell 7 isn't installed)
-        // or if the call doesn't finish within the timeout.
+        // synchronously and returns the lowercased effective policy name from
+        // stdout (e.g. "restricted"), or an EMPTY string if it could not be
+        // determined — CreateProcess failed, the host isn't installed, or the
+        // child didn't finish within the timeout. Empty therefore means "unknown
+        // / probe failed", NOT "blocked" (the caller fails open on empty).
         //
-        // `-Command <expr>` runs an inline expression that is NOT subject to
-        // the .ps1 execution policy, so this works even when the answer is
-        // Restricted / AllSigned. We deliberately do NOT pass
-        // `-ExecutionPolicy` because that would set the Process scope and
-        // override the value we're trying to read.
-        inline std::wstring QueryExecutionPolicy(LPCWSTR exe) noexcept
+        // `outTimedOut`, when provided, is set to true iff the wait hit the
+        // timeout (vs. a CreateProcess/pipe failure) — for diagnostic logging.
+        //
+        // Timeout = 20s: the probe spawns a PowerShell host, and its COLD START
+        // can take many seconds when the machine is busy — which is exactly the
+        // FRE Save case (concurrent winget pre-warm + agent-hook install + the
+        // other host's probe). The previous 5s budget was hit under that load,
+        // the killed probe returned empty, and an empty result used to be misread
+        // as "blocked", false-stopping FRE completion. 20s comfortably covers a
+        // loaded cold start while still bounding the FRE Save so it can't hang.
+        //
+        // `-Command <expr>` runs an inline expression that is NOT subject to the
+        // .ps1 execution policy, so this works even when the answer is Restricted
+        // / AllSigned. We deliberately do NOT pass `-ExecutionPolicy` because that
+        // would set the Process scope and override the value we're trying to read.
+        inline std::wstring QueryExecutionPolicy(LPCWSTR exe, bool* outTimedOut = nullptr) noexcept
         {
+            if (outTimedOut)
+            {
+                *outTimedOut = false;
+            }
             // This is a best-effort helper: any failure (CreateProcess, pipe,
             // read hang, OOM, …) must fail-open by returning an empty string
             // so the caller treats the policy as "not blocking" rather than
@@ -83,8 +98,21 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
 
                 writeEnd.reset();
 
-                if (WaitForSingleObject(process.get(), 5000) != WAIT_OBJECT_0)
+                constexpr DWORD timeoutMs = 20000;
+                const DWORD waitResult = WaitForSingleObject(process.get(), timeoutMs);
+                if (waitResult != WAIT_OBJECT_0)
                 {
+                    // The child didn't exit on its own — either it timed out, or the
+                    // wait itself failed (WAIT_FAILED / unexpected). In BOTH cases the
+                    // child may still be running and still holds the pipe's write end,
+                    // so the ReadFile below would block forever waiting for EOF — kill
+                    // it first so the read returns promptly and we fail open. Only a
+                    // real WAIT_TIMEOUT is reported as a timeout; a wait failure is an
+                    // inconclusive probe (empty result), not a timeout.
+                    if (waitResult == WAIT_TIMEOUT && outTimedOut)
+                    {
+                        *outTimedOut = true;
+                    }
                     TerminateProcess(process.get(), 1);
                     WaitForSingleObject(process.get(), 1000);
                 }
@@ -129,6 +157,17 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
 
         inline bool PolicyNameBlocksUnsignedScripts(std::wstring_view name) noexcept
         {
+            // Block only the two effective policies that actually refuse to run
+            // unsigned local scripts — Restricted and AllSigned. Everything else
+            // permits our (unsigned) shell-integration $PROFILE block to load:
+            // RemoteSigned / Unrestricted / Bypass, the "undefined" no-restriction
+            // marker, AND an empty/unknown result from an inconclusive probe (a
+            // probe failure is NOT a restrictive policy, so it must not block).
+            //
+            // This is the contract the ShellIntegrationTests PolicyName_* unit
+            // tests assert — the earlier allow-list form ("block unless
+            // RemoteSigned/Unrestricted/Bypass") contradicted them by treating "",
+            // "undefined" and unknown values as blocking.
             return name == L"restricted" || name == L"allsigned";
         }
 
@@ -205,14 +244,82 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // Re-queried on every call so that after the user fixes the policy outside
     // (e.g. `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) and clicks
     // Save again, the Terminal picks up the new policy.
-    inline bool ExecutionPolicyBlocksShellIntegration(Target target) noexcept
+    //
+    // Pure query — no logging / no I/O side effects. The optional out-params let
+    // the caller (the FRE shell-integration sweep) record diagnostics:
+    //   * `outPolicy`   — the raw effective policy we read ("" when the probe was
+    //                     inconclusive, e.g. it timed out).
+    //   * `outTimedOut` — true iff the probe was killed at its timeout (so an
+    //                     empty `outPolicy` is a probe failure, NOT a restrictive
+    //                     policy).
+    inline bool ExecutionPolicyBlocksShellIntegration(Target target,
+                                                      std::wstring* outPolicy = nullptr,
+                                                      bool* outTimedOut = nullptr) noexcept
     {
-        // pwsh.exe is optional. If it isn't installed QueryExecutionPolicy
-        // returns "" which doesn't match any blocking policy → not blocked,
-        // and the install attempt for that profile dir will succeed
-        // harmlessly — it sits inert until they install PowerShell 7.
-        const auto exe = target == Target::Pwsh ? L"pwsh.exe" : L"powershell.exe";
-        return details::PolicyNameBlocksUnsignedScripts(details::QueryExecutionPolicy(exe));
+        if (outPolicy)
+        {
+            outPolicy->clear();
+        }
+        if (outTimedOut)
+        {
+            *outTimedOut = false;
+        }
+        // Resolve the host to a FULL path and probe THAT exact binary (not the bare
+        // name), so a PATH change between resolution and the probe can't make us run a
+        // different executable, and so the probe isn't susceptible to PATH-order
+        // hijacking. If the host can't be resolved to a trustworthy path we fail open
+        // (return false): a missing/unresolvable host — e.g. pwsh.exe on machines
+        // without PowerShell 7 — must not false-positive as "EP blocked". A PRESENT
+        // host whose probe comes back empty/inconclusive (which can happen in the
+        // packaged-app context) ALSO does not block: only a definitively restrictive
+        // policy (Restricted/AllSigned) does — see PolicyNameBlocksUnsignedScripts.
+        std::wstring resolved;
+        if (target == Target::WindowsPowerShell)
+        {
+            // Windows PowerShell ships in the OS at a FIXED system location, so pin it
+            // to %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe instead of
+            // trusting PATH — exactly as WslDistroGenerator pins wsl.exe to System32
+            // (GH#11096) to defeat path hijacking of a system binary.
+            wchar_t system32[MAX_PATH]{};
+            const UINT system32Len = GetSystemDirectoryW(system32, MAX_PATH);
+            if (system32Len == 0 || system32Len >= MAX_PATH)
+            {
+                return false;
+            }
+            resolved.assign(system32, system32Len);
+            resolved += L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+            // A genuinely absent system powershell.exe (extremely unusual) fails open.
+            if (GetFileAttributesW(resolved.c_str()) == INVALID_FILE_ATTRIBUTES)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            // PowerShell 7 (pwsh.exe) is an optional third-party install with no fixed
+            // location, so it must be resolved via PATH.
+            wchar_t buffer[MAX_PATH]{};
+            const DWORD resolvedLen = SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buffer, nullptr);
+            if (resolvedLen == 0 || resolvedLen >= MAX_PATH)
+            {
+                // Not on PATH (resolvedLen == 0), or path too long for the buffer
+                // (resolvedLen >= MAX_PATH leaves `buffer` unfilled/truncated).
+                return false;
+            }
+            resolved.assign(buffer, resolvedLen);
+        }
+        bool timedOut = false;
+        auto policy = details::QueryExecutionPolicy(resolved.c_str(), &timedOut);
+        const bool blocked = details::PolicyNameBlocksUnsignedScripts(policy);
+        if (outTimedOut)
+        {
+            *outTimedOut = timedOut;
+        }
+        if (outPolicy)
+        {
+            *outPolicy = std::move(policy);
+        }
+        return blocked;
     }
 
     // Discover the PowerShell $PROFILE path.

@@ -311,13 +311,25 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
 }
 
 /// Incrementally extracts a JSON string field's decoded value from a
-/// possibly-truncated text. Handles `\"`, `\\`, `\n`, `\t`, `\u{XXXX}` etc.
-/// Returns the partial value if the closing quote hasn't arrived yet.
+/// possibly-truncated text. Handles `\"`, `\\`, `\n`, `\t`, `\uXXXX` and
+/// UTF-16 surrogate pairs (e.g. emoji). Returns the partial value if the
+/// closing quote hasn't arrived yet.
 pub(crate) fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
     let key = format!("\"{field}\"");
-    let start = text.find(&key)?;
-    let rest = text[start + key.len()..].trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
+    // Find the occurrence of `"field"` that is actually a *key* (followed by
+    // `:`), not the same token appearing earlier as a string value. Without
+    // this, `{"kind":"explanation","explanation":"real"}` would stop at the
+    // value and return None.
+    let mut search_from = 0;
+    let rest = loop {
+        let rel = text[search_from..].find(&key)?;
+        let abs = search_from + rel;
+        let after = text[abs + key.len()..].trim_start();
+        if let Some(r) = after.strip_prefix(':') {
+            break r.trim_start();
+        }
+        search_from = abs + key.len();
+    };
     let body = rest.strip_prefix('"')?;
 
     let mut out = String::with_capacity(body.len());
@@ -340,11 +352,43 @@ pub(crate) fn extract_json_string_field(text: &str, field: &str) -> Option<Strin
                     if hex.len() < 4 {
                         return Some(out);
                     }
-                    if let Some(ch) = u32::from_str_radix(&hex, 16)
-                        .ok()
-                        .and_then(char::from_u32)
-                    {
-                        out.push(ch);
+                    let Some(code) = u32::from_str_radix(&hex, 16).ok() else {
+                        continue;
+                    };
+                    match code {
+                        // High surrogate: pair it with the following
+                        // `\uXXXX` low surrogate to recover the non-BMP scalar
+                        // (e.g. emoji). If the low half hasn't streamed in yet
+                        // (or is malformed), drop the lone surrogate — the next
+                        // frame re-runs over the now-complete buffer.
+                        0xD800..=0xDBFF => {
+                            let mut lookahead = chars.clone();
+                            if lookahead.next() == Some('\\')
+                                && lookahead.next() == Some('u')
+                            {
+                                let lo_hex: String = lookahead.by_ref().take(4).collect();
+                                if lo_hex.len() == 4 {
+                                    if let Some(lo @ 0xDC00..=0xDFFF) =
+                                        u32::from_str_radix(&lo_hex, 16).ok()
+                                    {
+                                        let scalar = 0x1_0000
+                                            + ((code - 0xD800) << 10)
+                                            + (lo - 0xDC00);
+                                        if let Some(ch) = char::from_u32(scalar) {
+                                            out.push(ch);
+                                        }
+                                        chars = lookahead; // consume the low half
+                                    }
+                                }
+                            }
+                        }
+                        // Lone low surrogate or any non-scalar: skip. Valid
+                        // scalars get pushed.
+                        _ => {
+                            if let Some(ch) = char::from_u32(code) {
+                                out.push(ch);
+                            }
+                        }
                     }
                 }
                 Some(other) => out.push(other),
@@ -590,4 +634,214 @@ fn truncate_render_text(text: &str) -> Cow<'_, str> {
         .collect();
 
     Cow::Owned(format!("{head} ...<{omitted} chars omitted>... {tail}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line_text(line: &Line) -> String {
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    // ── extract_json_string_field: escape decoding ──────────────────────────
+
+    #[test]
+    fn json_field_basic_value() {
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"hello"}"#, "explanation")
+                .as_deref(),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn json_field_decodes_escapes() {
+        // \" \\ \/ \n \r \t all per RFC 8259.
+        let raw = r#"{"explanation":"a\"b\\c\/d\ne\tf"}"#;
+        assert_eq!(
+            extract_json_string_field(raw, "explanation").as_deref(),
+            Some("a\"b\\c/d\ne\tf")
+        );
+    }
+
+    #[test]
+    fn json_field_decodes_bmp_unicode_escape() {
+        // \u0041 = 'A', \u00e9 = 'é'
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"\u0041\u00e9"}"#, "explanation")
+                .as_deref(),
+            Some("Aé")
+        );
+    }
+
+    #[test]
+    fn json_field_tolerates_whitespace_around_colon() {
+        assert_eq!(
+            extract_json_string_field("{ \"explanation\" : \"v\" }", "explanation")
+                .as_deref(),
+            Some("v")
+        );
+    }
+
+    #[test]
+    fn json_field_returns_partial_when_unterminated() {
+        // Streaming: the closing quote hasn't arrived yet — show what we have.
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"hello world"#, "explanation")
+                .as_deref(),
+            Some("hello world")
+        );
+    }
+
+    #[test]
+    fn json_field_absent_returns_none() {
+        assert_eq!(
+            extract_json_string_field(r#"{"command":"ls"}"#, "explanation"),
+            None
+        );
+    }
+
+    // ── extract_json_string_field: ADVERSARIAL (expected to expose gaps) ─────
+
+    /// A non-BMP character (emoji) encoded as a UTF-16 surrogate pair must
+    /// decode to the actual character. Agents routinely emit emoji in prose.
+    #[test]
+    fn json_field_decodes_surrogate_pair_emoji() {
+        // U+1F600 😀 = \uD83D\uDE00 in UTF-16.
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"\uD83D\uDE00"}"#, "explanation")
+                .as_deref(),
+            Some("😀")
+        );
+    }
+
+    /// When the field name also appears earlier as a *value*, extraction must
+    /// still find the real key=value pair, not give up at the first textual
+    /// match.
+    #[test]
+    fn json_field_skips_name_appearing_as_value() {
+        let raw = r#"{"kind":"explanation","explanation":"real"}"#;
+        assert_eq!(
+            extract_json_string_field(raw, "explanation").as_deref(),
+            Some("real")
+        );
+    }
+
+    // ── user_visible_stream_text ────────────────────────────────────────────
+
+    #[test]
+    fn stream_text_pure_prose_passes_through() {
+        assert_eq!(
+            user_visible_stream_text("just talking").as_deref(),
+            Some("just talking")
+        );
+    }
+
+    #[test]
+    fn stream_text_json_wrapper_extracts_explanation() {
+        assert_eq!(
+            user_visible_stream_text(r#"{"explanation":"why blue"}"#).as_deref(),
+            Some("why blue")
+        );
+    }
+
+    #[test]
+    fn stream_text_json_without_explanation_is_hidden() {
+        // A fix-action wrapper (no explanation) must not leak raw JSON.
+        assert_eq!(user_visible_stream_text(r#"{"command":"ls"}"#), None);
+    }
+
+    #[test]
+    fn stream_text_prose_then_fence_shows_prose_prefix_only() {
+        let buf = "Here is the plan.\n```json\n{\"choices\":[]}\n```";
+        assert_eq!(
+            user_visible_stream_text(buf).as_deref(),
+            Some("Here is the plan.")
+        );
+    }
+
+    #[test]
+    fn stream_text_empty_is_none() {
+        assert_eq!(user_visible_stream_text("   \n  "), None);
+    }
+
+    // ── truncate_render_text ────────────────────────────────────────────────
+
+    #[test]
+    fn truncate_passes_short_text_unchanged_borrowed() {
+        let s = "short";
+        match truncate_render_text(s) {
+            Cow::Borrowed(b) => assert_eq!(b, "short"),
+            Cow::Owned(_) => panic!("short text must not allocate"),
+        }
+    }
+
+    #[test]
+    fn truncate_long_text_keeps_head_tail_and_reports_omission() {
+        let s: String = std::iter::repeat('x').take(5000).collect();
+        let out = truncate_render_text(&s).into_owned();
+        // 5000 - (3072 + 1024) = 904 omitted.
+        assert!(
+            out.contains("<904 chars omitted>"),
+            "expected omission marker, got: {}",
+            &out[..out.len().min(80)]
+        );
+        assert!(out.starts_with('x'));
+        assert!(out.ends_with('x'));
+        assert!(
+            out.chars().count() < s.chars().count(),
+            "truncated output must be shorter than the input"
+        );
+    }
+
+    #[test]
+    fn truncate_is_char_safe_at_boundary() {
+        // Multi-byte chars just below and above the limit must not panic and
+        // must round-trip below the threshold.
+        let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
+        assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
+        let over: String =
+            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
+        let _ = truncate_render_text(&over).into_owned(); // must not panic
+    }
+
+    // ── push_dot_prefixed_lines ─────────────────────────────────────────────
+
+    #[test]
+    fn dot_prefix_skips_leading_blank_lines() {
+        // Models often prefix prose with \n / \n\n; the dot must land on the
+        // first content row, not burn on an empty line.
+        let mut lines = Vec::new();
+        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        assert_eq!(lines.len(), 1, "leading blanks must be dropped");
+        assert_eq!(line_text(&lines[0]), "● Hello");
+    }
+
+    #[test]
+    fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
+        let mut lines = Vec::new();
+        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
+    }
+
+    #[test]
+    fn dot_prefix_wraps_long_paragraph_with_hanging_indent() {
+        let mut lines = Vec::new();
+        // wrap_width 12 → body_width 10; "aaaa bbbb cccc" wraps to 2 rows.
+        push_dot_prefixed_lines(
+            &mut lines,
+            "aaaa bbbb cccc",
+            12,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
+        assert!(lines.len() >= 2, "long paragraph must wrap");
+        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
+        assert!(
+            line_text(&lines[1]).starts_with("  "),
+            "continuation rows get a 2-cell hanging indent"
+        );
+    }
 }

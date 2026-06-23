@@ -2929,13 +2929,16 @@
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Аутоматско откривање грешака</value>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaption.Text" xml:space="preserve">
-    <value>Дозволите да Intelligent Terminal приступи вашој командној линији и аутоматски открива грешке. Доступно у PowerShell и Windows PowerShell.</value>
+  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
+    <value>Дозволите да Интелигентни Терминал приступи вашој командној линији и аутоматски открива грешке. Доступно у PowerShell, bash и WSL bash. </value>
+  </data>
+  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+    <value>Прикажи све подржане shell-ове</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
     <value>Аутоматски предлог исправки</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Дозволите да Intelligent Terminal шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
+    <value>Дозволите да Интелигентни Терминал шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
   </data>
 </root>

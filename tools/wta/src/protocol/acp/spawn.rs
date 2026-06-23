@@ -1,13 +1,13 @@
 //! Shared agent-process spawn logic for the ACP layer.
 //!
-//! Both [`super::client::run_inner`] and [`super::probe::probe_models`]
-//! need to spawn an ACP agent the same way: parse the user-facing
-//! cmdline, resolve bare names via [`crate::agent_registry`], optionally
-//! wrap in `cmd /c`, scrub the claude-code-acp guard env var, and pipe
-//! stdio with `kill_on_drop`. They diverge only after `spawn()` — the
-//! full client wraps stdio with instrumentation and drives a prompt
-//! loop; the probe attaches raw stdio, runs `initialize` + `new_session`,
-//! and exits.
+//! Both [`crate::master`] (spawning the shared agent CLI) and
+//! [`super::probe::probe_models`] need to spawn an ACP agent the same
+//! way: parse the user-facing cmdline, resolve bare names via
+//! [`crate::agent_registry`], optionally wrap in `cmd /c`, scrub the
+//! claude-code-acp guard env var, and pipe stdio with `kill_on_drop`.
+//! They diverge only after `spawn()` — master drives a full prompt loop
+//! over the helper pipes; the probe attaches raw stdio, runs `initialize`
+//! + `new_session`, and exits.
 
 use std::path::Path;
 

@@ -113,9 +113,15 @@ __IT_SHELLINTEG_INSTALLED=1
 #
 # "${PROMPT_COMMAND[@]}" expands to one element on a scalar var, zero
 # elements when unset, and N elements on an array -- the same loop
-# handles bash 3.2+ scalar and bash 5.1+ array uniformly.
+# handles bash 3.2+ scalar and bash 5.1+ array uniformly. The
+# ${PROMPT_COMMAND[@]+...} alternate-value guard keeps it `set -u`
+# safe: when PROMPT_COMMAND is unset the whole expansion collapses to
+# nothing instead of tripping "unbound variable" on bash 3.2 (a plain
+# "${PROMPT_COMMAND[@]}" errors there). ${PROMPT_COMMAND:-} can't be
+# used: scalar ${VAR:-} defaulting only sees element [0] of an array,
+# which is exactly the empty-slot case this loop exists to handle.
 __IT_SHELLINTEG_USER_PC=""
-for __it_pc_entry in "${PROMPT_COMMAND[@]}"; do
+for __it_pc_entry in ${PROMPT_COMMAND[@]+"${PROMPT_COMMAND[@]}"}; do
     [ -z "$__it_pc_entry" ] && continue
     if [ -z "$__IT_SHELLINTEG_USER_PC" ]; then
         __IT_SHELLINTEG_USER_PC="$__it_pc_entry"

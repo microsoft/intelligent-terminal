@@ -409,34 +409,6 @@ pub fn is_cli_available(bare_name: &str) -> bool {
     false
 }
 
-// ─── Display ─────────────────────────────────────────────────────────────────
-
-/// Human-friendly display name for an agent executable.
-pub fn display_name_for(executable: &str) -> String {
-    let profile = lookup_profile(executable);
-    if profile.id != "unknown" {
-        return profile.display_name.to_string();
-    }
-    // Unknown agent — title-case the basename.
-    let basename = executable
-        .rsplit(|ch: char| ch == '\\' || ch == '/')
-        .next()
-        .unwrap_or(executable)
-        .strip_suffix(".exe")
-        .or_else(|| executable.strip_suffix(".cmd"))
-        .unwrap_or(executable);
-    let mut chars = basename.chars();
-    match chars.next() {
-        Some(first) => {
-            let mut title = String::with_capacity(basename.len());
-            title.push(first.to_ascii_uppercase());
-            title.extend(chars);
-            title
-        }
-        None => basename.to_string(),
-    }
-}
-
 // ─── Delegate Agent Helpers ──────────────────────────────────────────────────
 
 /// List all agents that can serve as delegates (all known agents).
