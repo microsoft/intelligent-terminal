@@ -852,7 +852,7 @@ void ShellIntegrationTests::QueryExecutionPolicy_ParsesStdoutAndLowercases()
     // Smoke test against real powershell.exe (always present on Windows).
     // We don't care WHICH policy the runner returns — we care that the
     // QueryExecutionPolicy contract holds:
-    //   * the call completes within the 5s timeout (no hang on the pipe),
+    //   * the call completes within the 20s timeout (no hang on the pipe),
     //   * stdout is captured (non-empty), and
     //   * the result is lowercase ASCII letters only — the parser strips
     //     newlines / spaces / tabs, lowercases A-Z, but a stray BOM byte or
