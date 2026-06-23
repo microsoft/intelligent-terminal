@@ -28,7 +28,12 @@
 
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-    $script:DevReady = [bool](Get-AppxPackage | Where-Object { $_.Name -eq 'IntelligentTerminal' })
+    # Gate on the SAME resolution the harness uses (Resolve-ItApp -Package Dev resolves by
+    # PackageFamilyName), not a raw Name match — otherwise a same-Name-but-different-PFN
+    # sideload could pass the gate and then make Start-TerminalFre -Package Dev throw instead
+    # of the suite cleanly skipping.
+    $script:DevReady = $false
+    try { $null = Resolve-ItApp -Package Dev -ErrorAction Stop; $script:DevReady = $true } catch { $script:DevReady = $false }
     # A Group Policy execution-policy override (MachinePolicy/UserPolicy) outranks the HKCU
     # CurrentUser scope these tests force, making the FRE verdict non-deterministic — skip the
     # whole suite when one is in effect rather than assert against an uncontrollable policy.
