@@ -2631,8 +2631,13 @@ pub async fn run_acp_client_over_pipe(
                 // If we just completed post-login authenticate successfully
                 // but new_session STILL returns AuthRequired, do NOT route
                 // back to the login screen (that would recreate the auth
-                // loop). Instead surface a terminal HandshakeFailed error
-                // that tells the user to restart.
+                // loop). Surface a terminal HandshakeFailed tagged with the
+                // `NewSession` stage — the DISTINCT signal the App's auth
+                // recovery matches on (`is_post_login_auth_failure`). This is
+                // deliberately NOT the `Authenticate` stage: an authenticate
+                // RPC that itself fails/times out (above) stays `Authenticate`
+                // and must NOT trigger a master restart, only this
+                // "authenticate-OK-but-new_session-still-auth" case should.
                 if post_login_reconnect && failure.is_auth() {
                     tracing::error!(
                         target: "helper",
@@ -2641,7 +2646,7 @@ pub async fn run_acp_client_over_pipe(
                          agent has a deeper auth issue; not routing back to login screen"
                     );
                     return anyhow::Error::new(AgentFailure::HandshakeFailed {
-                        stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                        stage: crate::protocol::acp::failure::HandshakeStage::NewSession,
                         detail: format!(
                             "Agent still requires authentication after successful authenticate. \
                              This may indicate a Copilot subscription or organization access issue. \
