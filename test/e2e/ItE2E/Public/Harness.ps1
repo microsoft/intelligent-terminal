@@ -129,15 +129,20 @@ function Start-Terminal {
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
 
     $existing = @(Get-WtProcessesForApp -App $app | Select-Object -ExpandProperty Id)
-    # Launch via the `wtai` AppExecutionAlias (correct package-identity entry point).
-    # Fall back to AUMID shell activation only if the alias isn't available.
-    if ($app.LaunchAlias -and (Test-Path $app.LaunchAlias)) {
-        Write-ItLog -Level INFO -Message "Launching via wtai alias: $($app.LaunchAlias)"
-        Start-Process -FilePath $app.LaunchAlias | Out-Null
-    }
-    else {
-        Write-ItLog -Level WARN -Message "wtai alias not found; falling back to AUMID activation ($($app.AppUserModelId))."
+    # Launch via AUMID shell activation — this is package-specific by construction
+    # (shell:AppsFolder\<PackageFamilyName>!App) and therefore launches EXACTLY the
+    # target package. The global `wtai` AppExecutionAlias is owned by only one package,
+    # so when both the store and a dev/sideloaded IT build are installed it is ambiguous
+    # and would launch the wrong one (silently timing out the dev-targeted tests). The
+    # earlier crash-on-AUMID-activation was the state.json corruption bug (now fixed via
+    # the unary-comma ConvertFrom-ItJsonElement change), not the activation method.
+    if ($app.AppUserModelId) {
+        Write-ItLog -Level INFO -Message "Launching via AUMID: $($app.AppUserModelId)"
         Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$($app.AppUserModelId)" | Out-Null
+    }
+    elseif ($app.LaunchAlias -and (Test-Path $app.LaunchAlias)) {
+        Write-ItLog -Level WARN -Message "No AUMID; falling back to wtai alias ($($app.LaunchAlias)) — may be ambiguous across packages."
+        Start-Process -FilePath $app.LaunchAlias | Out-Null
     }
 
     # Find our WindowsTerminal.exe process (prefer a newly-spawned pid).

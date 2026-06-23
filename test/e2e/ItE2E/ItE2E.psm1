@@ -27,6 +27,7 @@ $publicFns = @(
     'Set-WtAutofix', 'Set-WtPanePosition', 'Set-WtSettings', 'ConvertFrom-JsonC',
     'Get-WtStateObject', 'Set-WtState', 'Invoke-FrePass', 'Reset-Fre', 'Get-FreCompleted',
     'Invoke-FrePassViaUi', 'Test-FreShowing',
+    'Get-WtExecutionPolicyState', 'Set-WtExecutionPolicy', 'Restore-WtExecutionPolicy',
     # Ui
     'Get-UiTree', 'Find-UiElement', 'Invoke-UiElement', 'Invoke-UiClick', 'Set-UiValue', 'Get-UiValue',
     'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds',

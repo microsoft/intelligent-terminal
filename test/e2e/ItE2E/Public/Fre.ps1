@@ -71,3 +71,48 @@ function Test-FreShowing {
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
     process { Test-UiElementExists -App $App -Selector 'WelcomePage' -TimeoutSec 3 }
 }
+
+# ── Execution-policy control (deterministic FRE EP-block coverage) ────────────
+# The FRE Save probes each PowerShell host's execution policy and blocks shell
+# integration when it refuses unsigned local scripts (Restricted/AllSigned). These
+# helpers force the *Windows PowerShell* effective policy via the CurrentUser
+# registry scope — which outranks LocalMachine and needs NO admin — so a test can
+# deterministically exercise BOTH the blocked and the not-blocked verdict, then
+# restore the machine. (pwsh 7 keeps its policy in powershell.config.json, not the
+# registry; the FRE blocks if EITHER host is blocked, so forcing WinPS is enough.)
+
+$script:WtWinPSExecutionPolicyKey = 'HKCU:\SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell'
+
+function Get-WtExecutionPolicyState {
+    <# Snapshot the WinPS CurrentUser execution-policy registry value for restore. #>
+    [CmdletBinding()] param()
+    $val = (Get-ItemProperty -Path $script:WtWinPSExecutionPolicyKey -Name ExecutionPolicy -ErrorAction SilentlyContinue).ExecutionPolicy
+    [pscustomobject]@{ Key = $script:WtWinPSExecutionPolicyKey; HadValue = ($null -ne $val); Value = $val }
+}
+
+function Set-WtExecutionPolicy {
+    <#
+    .SYNOPSIS
+        Force the Windows PowerShell CurrentUser execution policy (HKCU, no admin) so the FRE
+        EP probe deterministically returns it. Pass 'Undefined' to clear the scope. Returns the
+        prior state object — pass it to Restore-WtExecutionPolicy (always restore in a finally).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][ValidateSet('Restricted', 'AllSigned', 'RemoteSigned', 'Unrestricted', 'Bypass', 'Undefined')][string]$Value)
+    $state = Get-WtExecutionPolicyState
+    if (-not (Test-Path $state.Key)) { New-Item -Path $state.Key -Force | Out-Null }
+    if ($Value -eq 'Undefined') { Remove-ItemProperty -Path $state.Key -Name ExecutionPolicy -ErrorAction SilentlyContinue }
+    else { Set-ItemProperty -Path $state.Key -Name ExecutionPolicy -Value $Value -Type String }
+    Write-ItLog -Level INFO -Message "Set WinPS CurrentUser ExecutionPolicy = $Value (was '$($state.Value)')"
+    $state
+}
+
+function Restore-WtExecutionPolicy {
+    <# Restore the snapshot returned by Set-WtExecutionPolicy / Get-WtExecutionPolicyState. #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$State)
+    process {
+        if ($State.HadValue) { Set-ItemProperty -Path $State.Key -Name ExecutionPolicy -Value $State.Value -Type String }
+        else { Remove-ItemProperty -Path $State.Key -Name ExecutionPolicy -ErrorAction SilentlyContinue }
+        Write-ItLog -Level INFO -Message "Restored WinPS CurrentUser ExecutionPolicy to '$($State.Value)'"
+    }
+}
