@@ -15,6 +15,7 @@ environment. Current status (run on the Store package):
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol + §10 logging | 16 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
+| `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 2 |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 13 |
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.SessionList.Tests.ps1` | session view, session states, view switching, focus/restore | 11 (+1 skip) |
@@ -59,6 +60,40 @@ One-shot setup + verify:
 pwsh -File test/e2e/bootstrap.ps1          # install deps, import module
 pwsh -File test/e2e/bootstrap.ps1 -Check   # verify only
 ```
+
+## Choosing the build: Dev vs Store
+
+Every harness entry point takes a **`-Package`** selector, so a test can target
+either the production build or the build you're developing:
+
+| `-Package` | Resolves to | When to use |
+|---|---|---|
+| `Store` | `Microsoft.IntelligentTerminal_8wekyb3d8bbwe` | The shipped/production package — real user environment. |
+| `Dev` | `IntelligentTerminal_rd9vj3e6a2mbr` | A locally **sideloaded** build (e.g. your F5 / `bx` output). Use this to validate a change before it ships. |
+| `Auto` *(default)* | First fully-resolvable of Store → Dev | Most feature suites; picks whatever is installed. |
+| *(explicit PFN)* | the family name you pass | Any other package. |
+
+```powershell
+$app = Start-Terminal       -Package Dev    # control/UI tests against the dev build
+$app = Start-TerminalFre    -Package Store  # drive the FRE overlay on the store build
+```
+
+**Both builds can be installed at once and targeted independently.** The harness
+launches via **AUMID** (`shell:AppsFolder\<PackageFamilyName>!App`), which is
+package-specific, so `-Package Dev` always hits the dev build even while the
+store build is also installed. (The global `wtai` AppExecutionAlias is owned by a
+single package and is therefore ambiguous in that scenario — it is kept only as a
+last-resort fallback.)
+
+To make a build selectable:
+- **Dev**: build + deploy it once, e.g. `cd src/cascadia/CascadiaPackage; bx` then
+  `DeployAppRecipe.exe bin\x64\Debug\CascadiaPackage.build.appxrecipe`.
+- **Store**: install the shipped MSIX.
+
+A suite that asserts on diagnostics only present in a particular build should pin
+its `-Package` and **`-Skip`** itself when that package isn't installed (see
+`Feature.FreExecutionPolicy.Tests.ps1`, which targets `Dev` and skips when the
+dev package is absent — keeping CI green on machines that only have the store build).
 
 ## Running the self-tests
 
@@ -123,6 +158,11 @@ Describe 'Agent pane' -Tag 'Live' {
 FRE complete, applies your settings, launches the app, brings COM online (probes the
 per-brand `WT_COM_CLSID`), and resolves the window HWND. `Stop-Terminal` closes it and
 restores the backup.
+
+> **Picking the build**: pass `-Package Dev` / `-Package Store` (default `Auto`) — see
+> [Choosing the build](#choosing-the-build-dev-vs-store). Launch is package-specific
+> (AUMID), so both builds can be installed and targeted independently.
+
 
 ## How it works (key facts)
 
