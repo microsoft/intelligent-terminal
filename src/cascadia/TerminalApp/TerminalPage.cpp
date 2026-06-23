@@ -4467,29 +4467,9 @@ namespace winrt::TerminalApp::implementation
     // already respawned the master) sees a valid `_process` and just
     // bumps the refcount — connecting the new helper to the freshly-spawned
     // master under the same stable pipe name.
-    void TerminalPage::OnRestartAgentStackRequested(hstring eventJson)
+    void TerminalPage::OnRestartAgentStackRequested(hstring /*eventJson*/)
     {
-        _agentPaneLog("OnRestartAgentStackRequested: restart_agent_stack received from wta");
-
-        // Optional `params.tab_id`: the agent pane that triggered the restart.
-        // Auth-recovery restarts carry it so we can reopen the *failing* tab
-        // instead of whatever tab is active. `/restart` from the TUI carries no
-        // tab_id and keeps the legacy "reopen active tab" behavior.
-        winrt::hstring failingTabId;
-        {
-            Json::Value evt;
-            Json::CharReaderBuilder rb;
-            std::istringstream ss(winrt::to_string(eventJson));
-            std::string errs;
-            if (Json::parseFromStream(rb, ss, &evt, &errs))
-            {
-                const auto& params = evt["params"];
-                if (params.isObject() && params.isMember("tab_id") && params["tab_id"].isString())
-                {
-                    failingTabId = winrt::to_hstring(params["tab_id"].asString());
-                }
-            }
-        }
+        _agentPaneLog("OnRestartAgentStackRequested: /restart received from wta");
 
         // Reentrancy guard — share the flag with the settings-driven
         // `_RebuildAgentStack` path. If a settings reload is racing this
@@ -4546,47 +4526,24 @@ namespace winrt::TerminalApp::implementation
         // Reconnect EVERY tab that had an agent pane, not just the active one
         // — a /restart recovers the whole stack, so a user who restarts from
         // one pane shouldn't have to re-toggle every other tab's pane by hand.
-        // One tab is reopened *visible* (continuity); the rest are re-warmed
-        // stashed, so their helpers reconnect to the fresh master in the
-        // background and the panes restore as soon as the user switches to
+        // The active tab is reopened visible (continuity); the rest are
+        // re-warmed stashed, so their helpers reconnect to the fresh master in
+        // the background and the panes restore as soon as the user switches to
         // them. Recovery sessions aren't resumed (master is brand new with an
         // empty registry), so chat history starts fresh — same as before.
-        //
-        // Prefer reopening the tab that actually failed auth (auth-recovery
-        // carries its tab_id) visible so the user lands back where they were —
-        // it may not be the active tab. Otherwise fall back to the focused tab.
         const auto activeTab = _GetFocusedTabImpl();
-        winrt::com_ptr<Tab> primaryTab;
-        if (!failingTabId.empty())
-        {
-            primaryTab = _FindTabByStableId(failingTabId);
-        }
-        if (!primaryTab)
-        {
-            primaryTab = activeTab;
-        }
         for (const auto& tabImpl : tabsThatHadAgentPane)
         {
-            const bool isPrimary = primaryTab && primaryTab == tabImpl;
-            if (isPrimary && primaryTab == activeTab)
+            const bool isActive = activeTab && activeTab == tabImpl;
+            if (isActive)
             {
-                // Primary tab is the focused tab: reopen visible via the
-                // normal path.
+                // Active tab: reopen visible via the normal path.
                 _OpenOrReuseAgentPane(false, L"RestartAgent");
-            }
-            else if (isPrimary)
-            {
-                // Primary tab is a background tab (auth-recovery on a non-active
-                // tab): reopen it visible by targeting it specifically.
-                _agentPaneLog("OnRestartAgentStackRequested: reopening failing tab by stable id");
-                _AutoCreateHiddenAgentPaneShared(tabImpl,
-                                                 /*intoSessionsView*/ false,
-                                                 /*autoStash*/ false);
             }
             else
             {
-                // Other tabs: re-warm a stashed helper so it reconnects now and
-                // the pane restores when the user switches over.
+                // Background tab: re-warm a stashed helper so it reconnects
+                // now and the pane restores when the user switches over.
                 _AutoCreateHiddenAgentPaneShared(tabImpl,
                                                  /*intoSessionsView*/ false,
                                                  /*autoStash*/ true);

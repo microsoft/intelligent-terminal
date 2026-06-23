@@ -284,7 +284,7 @@ impl PreflightResult {
 /// is a genuine `authenticate` RPC rejection or timeout (the credentials were
 /// not accepted / the agent hung), which a master restart would not fix — it
 /// routes to the sign-in screen via the normal `AgentError` path instead.
-pub fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
+fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     matches!(
         failure,
