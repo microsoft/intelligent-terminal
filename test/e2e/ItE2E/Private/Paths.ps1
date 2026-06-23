@@ -79,9 +79,11 @@ function Resolve-ItApp {
     $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
     $logRoot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalCache\Local\IntelligentTerminal\logs"
 
-    # Launch entry point: the package's `wtai` AppExecutionAlias is the canonical,
-    # package-identity entry point for Intelligent Terminal (and matches how users start it).
-    # Prefer it; fall back to AUMID shell activation only if the alias isn't on PATH.
+    # Launch entry point: tests activate via AUMID (shell:AppsFolder\<PFN>!App),
+    # which is package-specific and therefore reliably hits THIS package even when
+    # both the Store and a Dev build are installed (see Start-Terminal). The global
+    # `wtai` AppExecutionAlias is owned by a single package, so it is ambiguous in
+    # that scenario — it is kept here only as a last-resort fallback.
     $launchAlias = (Get-Command 'wtai' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 
     [pscustomobject]@{
