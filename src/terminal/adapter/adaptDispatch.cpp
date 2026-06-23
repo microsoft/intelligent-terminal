@@ -3876,8 +3876,7 @@ void AdaptDispatch::DoWTAction(const std::wstring_view string)
     {
         // The shell reports its own identity once per prompt so the terminal
         // always knows which shell currently owns the pane (including after a
-        // nested shell like `wsl` exits). See
-        // doc/specs/shell-integration-and-osc9001.md.
+        // nested shell like `wsl` exits).
         // The structure of the message is as follows:
         // `e]9001;
         // 0:     ShellType;

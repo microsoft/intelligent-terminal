@@ -146,7 +146,7 @@ __it_shellinteg_prompt() {
     # OSC 9001;ShellType — report shell identity each prompt so the terminal
     # always knows which shell owns the pane, even after a nested shell exits.
     # Under WSL, $WSL_DISTRO_NAME is set so we report "wsl:<distro>"; plain
-    # (Git) bash reports "bash". See doc/specs/shell-integration-and-osc9001.md.
+    # (Git) bash reports "bash".
     if [ -n "${WSL_DISTRO_NAME:-}" ]; then
         printf '\033]9001;ShellType;wsl:%s;%s\007' "$WSL_DISTRO_NAME" "${BASH_VERSION:-}"
     else

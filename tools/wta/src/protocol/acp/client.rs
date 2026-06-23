@@ -996,8 +996,7 @@ fn process_image_name(_pid: u32) -> Option<String> {
 ///      `wsl:<distro>` while inside WSL and `pwsh` again after exit, because the
 ///      shell re-emits it on every prompt. The pid-based fallback below can't
 ///      see this: the pane's host process stays `wsl.exe`/`pwsh.exe` regardless
-///      of which shell is actually drawing the prompt. See
-///      doc/specs/shell-integration-and-osc9001.md §4.1/§4.3.
+///      of which shell is actually drawing the prompt.
 ///   2. Otherwise, the canonical shell exe from the pane's `pid` (covers panes
 ///      without shell integration installed, or before the first prompt).
 fn shell_from_active(active: &serde_json::Value) -> Option<String> {
