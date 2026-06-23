@@ -2479,7 +2479,7 @@ impl App {
                             // refresh it. Request a fresh master (auth recovery)
                             // instead of looping back to the sign-in screen.
                             // Match BOTH the plain AuthRequired and the post-
-                            // login HandshakeFailed{Authenticate} the client
+                            // login HandshakeFailed{NewSession} the client
                             // wraps a still-AuthRequired new_session into.
                             let is_external = matches!(
                                 crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
@@ -4436,8 +4436,15 @@ impl App {
             preflight: PreflightResult {
                 agent_id: profile.id.to_string(),
                 display_name: profile.display_name.to_string(),
-                cli_status: CheckStatus::Passed,
-                cli_path: None,
+                // Reflect the CLI's real presence (we just computed
+                // `agent_status`) instead of hard-coding "found" — on the
+                // dead-man fallback the CLI may genuinely be the problem.
+                cli_status: if agent_status.cli_found {
+                    CheckStatus::Passed
+                } else {
+                    CheckStatus::Failed(t!("agent.status.not_found").into_owned())
+                },
+                cli_path: agent_status.cli_path.clone(),
                 auth_status: CheckStatus::Failed(
                     t!("system.authentication_failed").into_owned(),
                 ),
@@ -4832,7 +4839,7 @@ impl App {
                 // common (successful) case never flashes the setup screen
                 // between login and the fresh pane connecting. Only a dropped/
                 // slow restart leaves us alive long enough for the
-                // `AuthRecoveryTimedOut` fallback to surface the sign-in screen.
+                // `AuthRecoveryTimedOut` fallback path to surface the sign-in screen.
                 self.mode = AppMode::Chat;
                 self.setup = None;
                 self.auth = None;

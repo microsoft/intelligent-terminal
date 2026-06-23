@@ -2192,6 +2192,12 @@ pub async fn run_acp_client_over_pipe(
     // `authenticate` RPC is the deterministic signal that tells the agent
     // "credentials changed, please re-check". See:
     // https://agentclientprotocol.com/protocol/initialization
+    //
+    // Tracks whether we actually completed a post-login `authenticate` (vs.
+    // skipped it because the agent advertised no auth methods). Only then may
+    // a still-AuthRequired `new_session` be classified as the distinct
+    // "authenticate-OK-but-still-auth" recovery signal below.
+    let mut post_login_authenticated = false;
     if post_login_reconnect {
         let auth_method_id = init_resp
             .auth_methods
@@ -2216,6 +2222,7 @@ pub async fn run_acp_client_over_pipe(
                         method_id = %method_id.0,
                         "post-login authenticate succeeded"
                     );
+                    post_login_authenticated = true;
                 }
                 Ok(Err(e)) => {
                     tracing::error!(
@@ -2365,7 +2372,13 @@ pub async fn run_acp_client_over_pipe(
                 // RPC that itself fails/times out (above) stays `Authenticate`
                 // and must NOT trigger a master restart, only this
                 // "authenticate-OK-but-new_session-still-auth" case should.
-                if post_login_reconnect && failure.is_auth() {
+                // Gate on `post_login_authenticated`: if `authenticate` was
+                // skipped (agent advertised no auth methods) we did not prove
+                // credentials refreshed, so don't emit the "after successful
+                // authenticate" signal — fall through to the normal auth
+                // classification instead (the App still recovers genuine auth
+                // failures via its `AuthRequired` arm, bounded to one restart).
+                if post_login_reconnect && post_login_authenticated && failure.is_auth() {
                     tracing::error!(
                         target: "helper",
                         error_code = Into::<i32>::into(e.code),
