@@ -1520,6 +1520,12 @@ pub struct TabSession {
     // C++-originated `set_agent_state` requests (hotkey/button toggles)
     // and by wta-internal events like Ctrl+C×2 reset.
     pub pane_open: bool,
+
+    /// Pass-through mode: when `true`, the agent pane's own accumulated
+    /// output is included in the context sent to the agent on each turn.
+    /// Toggled by the `/passthrough` slash command. Persists per-tab for
+    /// the life of the pane; defaults to `false`.
+    pub passthrough_mode: bool,
 }
 
 impl TabSession {
@@ -6720,7 +6726,9 @@ impl App {
                         cwd: None,
                         source_pane_id: None,
                     };
-                    let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+                    let passthrough_mode = self.current_tab().passthrough_mode;
+                    let mut prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+                    prompt.passthrough_mode = passthrough_mode;
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,
@@ -7094,6 +7102,7 @@ impl App {
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Passthrough => self.cmd_passthrough(),
         }
     }
 
@@ -7325,6 +7334,24 @@ impl App {
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
         self.publish_agent_status();
+    }
+
+    /// `/passthrough` — toggle pass-through mode on the active tab.
+    ///
+    /// When enabled, the agent pane's own accumulated output is included in
+    /// the context sent to the agent on each prompt turn. This lets the
+    /// agent read what has been displayed in its own pane (the accumulated
+    /// conversation and output). Toggling again disables it.
+    fn cmd_passthrough(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.passthrough_mode = !tab.passthrough_mode;
+        let msg = if tab.passthrough_mode {
+            t!("system.passthrough_enabled").into_owned()
+        } else {
+            t!("system.passthrough_disabled").into_owned()
+        };
+        tab.messages.push(ChatMessage::System(msg));
+        tab.scroll_to_bottom();
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the

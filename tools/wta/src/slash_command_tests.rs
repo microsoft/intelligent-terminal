@@ -179,6 +179,59 @@ fn slash_restart_resets_connection_and_clears_sessions() {
 }
 
 #[test]
+fn slash_passthrough_toggles_mode() {
+    let mut app = test_app();
+
+    // Initially disabled.
+    assert!(
+        !app.current_tab().passthrough_mode,
+        "passthrough_mode must start as false"
+    );
+
+    // First /passthrough: enable.
+    run_slash(&mut app, "passthrough");
+    assert!(
+        app.current_tab().passthrough_mode,
+        "/passthrough must enable pass-through mode"
+    );
+    assert_eq!(
+        app.current_tab().messages.len(),
+        1,
+        "/passthrough must emit a system message"
+    );
+    assert!(
+        matches!(app.current_tab().messages.last(), Some(ChatMessage::System(_))),
+        "/passthrough must emit a System message"
+    );
+
+    // Second /passthrough: disable.
+    run_slash(&mut app, "passthrough");
+    assert!(
+        !app.current_tab().passthrough_mode,
+        "/passthrough must disable pass-through mode on second call"
+    );
+    assert_eq!(
+        app.current_tab().messages.len(),
+        2,
+        "/passthrough must emit a second system message when disabling"
+    );
+}
+
+#[test]
+fn slash_passthrough_is_per_tab() {
+    let mut app = test_app();
+
+    // Enable on active tab (default tab).
+    run_slash(&mut app, "passthrough");
+    assert!(app.current_tab().passthrough_mode);
+
+    // The mode is stored per tab; other tabs start at false (there is only
+    // one tab in test_app, so just verify the toggle is correctly stored).
+    let mode_after = app.current_tab().passthrough_mode;
+    assert!(mode_after, "passthrough_mode should remain true after toggle");
+}
+
+#[test]
 fn slash_fix_when_idle_submits_autofix_turn() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;

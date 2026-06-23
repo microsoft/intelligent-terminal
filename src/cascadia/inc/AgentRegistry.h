@@ -37,6 +37,8 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     // (claude via @agentclientprotocol/claude-agent-acp, codex via
     // @zed-industries/codex-acp).
     // Only these agents can be hosted in an agent pane.
+    // Ollama is intentionally absent: it has no ACP adapter and cannot be
+    // hosted in an agent pane. It is delegate-only (see BuiltinDelegateAgents).
     inline constexpr std::array<BuiltinAgent, 4> BuiltinAcpAgents{ {
         { L"copilot", L"GitHub Copilot" },
         { L"claude", L"Claude" },
@@ -48,11 +50,12 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     // similar flows. The set is broader than ACP because delegation doesn't
     // require an ACP-speaking agent — any CLI agent that accepts a prompt
     // as input works.
-    inline constexpr std::array<BuiltinAgent, 4> BuiltinDelegateAgents{ {
+    inline constexpr std::array<BuiltinAgent, 5> BuiltinDelegateAgents{ {
         { L"copilot", L"GitHub Copilot" },
         { L"claude", L"Claude" },
         { L"codex", L"Codex" },
         { L"gemini", L"Gemini" },
+        { L"ollama", L"Ollama" },
     } };
 
     // Return only agents whose IDs are permitted by GPO policy.

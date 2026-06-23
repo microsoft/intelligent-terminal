@@ -142,6 +142,8 @@ system.cannot_resume_phantom_via_flag: "[!!_Cannot resume %{agent} session %{ses
 system.cannot_resume_phantom_via_load: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row._!!]"
 system.fallback.this_agent: "[!!_this agent_!!]"
 system.fallback.connected_agent: "[!!_the connected agent_!!]"
+system.passthrough_enabled: "Pass-through mode enabled — agent pane output will be included in context."  # {Locked="/passthrough"}
+system.passthrough_disabled: "Pass-through mode disabled."  # {Locked="/passthrough"}
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!!_No windows found._!!]"
@@ -203,6 +205,7 @@ system.choice_execution_failed: "[!!_Choice %{choice} failed: %{error}_!!]"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!!_Pick the model for this pane (/model <id> to switch directly)_!!]"  # {Locked="/model","<id>"}
+commands.passthrough.summary: "Toggle pass-through mode (include agent pane output in context)"  # {Locked="/passthrough"}
 model_picker.title: "[!!_Select model (↑ ↓ • Enter • Esc)_!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!!_The connected agent did not advertise any selectable models._!!]"
 system.model_set: "[!!_Model for this pane set to %{model}._!!]"  # {Locked="%{model}"}
