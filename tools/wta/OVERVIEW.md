@@ -189,7 +189,7 @@ cargo build
 # Output binary: tools/wta/target/debug/wta.exe
 
 # Run the WTA test suite (cargo build does NOT compile #[cfg(test)] code)
-cargo test --manifest-path tools/wta/Cargo.toml
+cargo test
 ```
 
 WTA is normally launched **by Windows Terminal** (master + helper), not run by

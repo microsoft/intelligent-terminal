@@ -198,7 +198,7 @@ cd tools/wta
 cargo build
 
 # Run the test suite (cargo build does NOT compile #[cfg(test)] code):
-cargo test --manifest-path tools/wta/Cargo.toml
+cargo test
 ```
 
 The TUI (master + helper) is launched by Windows Terminal as an agent pane — see
