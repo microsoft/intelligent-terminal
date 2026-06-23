@@ -34,7 +34,13 @@
 
 namespace Microsoft::Terminal::ShellIntegration::Bash
 {
-    inline constexpr int kVersion = 1;
+    // v2: added OSC 9001;ShellType emission (bash/WSL self-reports identity
+    // each prompt). Bumped from v1 so existing users — whose ~/.bashrc
+    // already references the v1 script byte-for-byte — get the new script
+    // rewritten in; without the bump the orchestrator's block-match early-
+    // out would leave the stale v1 script (no ShellType) in place. WSL
+    // inherits this version via WslBashFlavor.
+    inline constexpr int kVersion = 2;
 
     inline std::wstring ScriptFileName()
     {

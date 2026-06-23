@@ -346,8 +346,14 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // `shell-integration*.ps1` reference in $PROFILE and rewrite it to
     // point at the current version. Older script files left on disk are
     // inert (never referenced). To roll out a new version, bump this.
+    //
+    // v2: added OSC 9001;ShellType emission (shell self-reports identity
+    // each prompt). Bumped from v1 so existing users — whose $PROFILE
+    // already references the v1 script byte-for-byte — get the new script
+    // rewritten in; without the bump the orchestrator's block-match early-
+    // out would leave the stale v1 script (no ShellType) in place.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 1;
+    inline constexpr int kVersion = 2;
 
     inline std::wstring ScriptFileName()
     {
