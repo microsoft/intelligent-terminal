@@ -90,7 +90,10 @@ function Wait-AgentReady {
         $deadline = (Get-Date).AddSeconds($TimeoutSec)
         do {
             # The connected input placeholder is the user-visible "ready to chat" signal.
-            if ((Get-AgentPaneText -App $App -MaxLines 50) -match '(?i)for commands|Ask anything') { return $true }
+            # Require the FULL placeholder in order ("Ask anything … for commands") on one line,
+            # not either fragment anywhere, so stray transcript/help text in the captured
+            # scrollback can't false-positive the gate.
+            if ((Get-AgentPaneText -App $App -MaxLines 50) -match '(?i)Ask anything.*for commands') { return $true }
             $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
             if ($log -match 'exiting with error|agent failure class="auth') {
                 Write-ItLog -Level WARN -Message "Wait-AgentReady: helper logged an auth/fatal connect failure; not ready."
