@@ -167,6 +167,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         hstring Title();
         Windows::Foundation::IReference<winrt::Windows::UI::Color> TabColor() noexcept;
         hstring WorkingDirectory() const;
+        hstring ShellName() const;
+        hstring ShellVersion() const;
 
         TerminalConnection::ConnectionState ConnectionState() const;
 

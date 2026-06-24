@@ -18,6 +18,7 @@ use std::fmt;
 pub enum HandshakeStage {
     PipeConnect,
     Initialize,
+    Authenticate,
     NewSession,
     LoadSession,
 }
@@ -28,6 +29,7 @@ impl HandshakeStage {
         match self {
             HandshakeStage::PipeConnect => "pipe_connect",
             HandshakeStage::Initialize => "initialize",
+            HandshakeStage::Authenticate => "authenticate",
             HandshakeStage::NewSession => "new_session",
             HandshakeStage::LoadSession => "load_session",
         }

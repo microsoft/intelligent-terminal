@@ -153,6 +153,8 @@ namespace winrt::TerminalApp::implementation
         if (const auto termControl = effectivePane->GetTerminalControl())
         {
             result.Cwd = termControl.WorkingDirectory();
+            result.Shell = termControl.ShellName();
+            result.ShellVersion = termControl.ShellVersion();
         }
 
         result.Pid = _getPidFromPane(effectivePane);
@@ -256,6 +258,8 @@ namespace winrt::TerminalApp::implementation
                         info.Rows = termControl.ViewHeight();
                         info.Columns = 0;
                         info.Cwd = termControl.WorkingDirectory();
+                        info.Shell = termControl.ShellName();
+                        info.ShellVersion = termControl.ShellVersion();
                     }
                 }
 

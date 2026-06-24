@@ -4,12 +4,17 @@
 # Maps to checklist items (auto): packaged wta present, packaged identity, WT_COM_CLSID,
 # wtcli list-panes/capture-pane/send-keys/listen, master+helper start, logs+version dir.
 
-BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) }
+BeforeDiscovery {
+    $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' })
+    # §10 opens the agent pane (UI automation) so it additionally needs winapp; §9 is
+    # pure protocol/packaging and runs without it.
+    $script:UiReady = $script:Ready -and [bool](Get-Command winapp -ErrorAction SilentlyContinue)
+}
 
 Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -73,10 +78,10 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
     }
 }
 
-Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script:UiReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }

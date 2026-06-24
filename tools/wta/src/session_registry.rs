@@ -714,6 +714,14 @@ pub struct SessionInfo {
     pub origin: Option<SessionOrigin>,
     #[serde(default)]
     pub last_error: Option<String>,
+    /// Where this session's artefacts live (host vs a WSL distro).
+    /// `#[serde(default)]` so older peers / responses without the field
+    /// deserialize as `Host`. This is the cross-process carrier that
+    /// makes the distro tag + WSL-resume work in the agent-pane
+    /// `/sessions` view (which renders from master's `SessionInfo`
+    /// snapshot, not the helper's `AgentSession` registry).
+    #[serde(default)]
+    pub location: crate::agent_sessions::SessionLocation,
     /// PID of the process that owns this Class-B session (Copilot worker /
     /// Codex rollout holder / cwd-matched Claude), captured at bind time.
     /// Master's liveness poll checks it to demote shell-pane sessions whose
@@ -743,6 +751,7 @@ impl SessionInfo {
             last_activity_at_ms: None,
             origin: None,
             last_error: None,
+            location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
         }
     }
@@ -782,6 +791,7 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         last_activity_at_ms,
         origin: Some(s.origin.clone()),
         last_error: s.last_error.clone(),
+        location: s.location.clone(),
         // History-scan / helper-sourced rows have no bound pid; only the
         // file watcher's bind step populates it.
         bound_pid: None,
@@ -1837,6 +1847,7 @@ mod tests {
             last_activity_at_ms: Some(1717012345678),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: Some("previous failure".into()),
+            location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
         };
 
@@ -1881,6 +1892,7 @@ mod tests {
             last_activity_at_ms: Some(123),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: None,
+            location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
         };
         let raw = build_sessions_list_response(vec![row.clone()]);
@@ -2086,6 +2098,7 @@ mod tests {
             last_activity_at_ms: Some(1),
             origin: Some(crate::agent_sessions::SessionOrigin::AgentPane),
             last_error: None,
+            location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
         }).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: "sid".into() }).await;
@@ -2404,7 +2417,7 @@ mod tests {
 
     #[test]
     fn agent_session_to_session_info_preserves_fields_for_historical_row() {
-        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
+        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
         let s = AgentSession {
             key: "hist-sid".to_string(),
             cli_source: CliSource::Copilot,
@@ -2421,6 +2434,7 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::AgentPane,
+            location: SessionLocation::Host,
         };
         let info = agent_session_to_session_info(&s);
         assert_eq!(info.session_id.0.as_ref(), "hist-sid");
@@ -2435,7 +2449,7 @@ mod tests {
 
     #[test]
     fn agent_session_to_session_info_drops_empty_title() {
-        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
+        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
         let s = AgentSession {
             key: "x".to_string(),
             cli_source: CliSource::Claude,
@@ -2452,6 +2466,7 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::Unknown,
+            location: SessionLocation::Host,
         };
         let info = agent_session_to_session_info(&s);
         assert_eq!(info.title, None, "empty title should map to None, not Some(\"\")");
@@ -2701,6 +2716,76 @@ mod tests {
         assert!(
             reg.snapshot().await.is_empty(),
             "registry untouched on malformed input"
+        );
+    }
+
+    // ─── WSL SessionLocation serde + wire round-trip ─────────────────────────
+
+    /// `SessionInfo` must carry a `Wsl` location through JSON serde so that
+    /// when master serializes the `sessions/list` response and the helper
+    /// deserializes it, the distro stamp survives the boundary.
+    #[test]
+    fn session_info_carries_wsl_location_through_serde() {
+        use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
+
+        let s = AgentSession {
+            key: "k".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "t".into(),
+            cwd: PathBuf::from("/home/u"),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+            location: SessionLocation::Wsl { distro: "Ubuntu".into() },
+        };
+
+        // Round-trip through agent_session_to_session_info.
+        let info = agent_session_to_session_info(&s);
+        assert_eq!(
+            info.location,
+            SessionLocation::Wsl { distro: "Ubuntu".into() },
+            "agent_session_to_session_info must carry the WSL location"
+        );
+
+        // Round-trip through JSON serde (the wire boundary).
+        let json = serde_json::to_string(&info).unwrap();
+        let back: SessionInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.location,
+            SessionLocation::Wsl { distro: "Ubuntu".into() },
+            "SessionInfo must survive JSON round-trip with Wsl location intact"
+        );
+    }
+
+    /// A `SessionInfo` JSON object that has no `location` key (e.g. produced
+    /// by an older master that predates this field) must deserialize as `Host`
+    /// thanks to `#[serde(default)]`.
+    #[test]
+    fn session_info_without_location_defaults_to_host() {
+        use crate::agent_sessions::SessionLocation;
+
+        // Build a valid SessionInfo, serialise it, then strip the location key.
+        let info = SessionInfo::new(
+            acp::SessionId::new("x"),
+            PathBuf::from("/tmp"),
+        );
+        let mut value: serde_json::Value = serde_json::to_value(&info).unwrap();
+        value.as_object_mut().unwrap().remove("location");
+
+        let json = serde_json::to_string(&value).unwrap();
+        let parsed: SessionInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.location,
+            SessionLocation::Host,
+            "missing location key must default to Host"
         );
     }
 }

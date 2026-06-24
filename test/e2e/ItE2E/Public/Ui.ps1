@@ -8,6 +8,23 @@ function Get-WinAppPath {
     $script:ItWinAppPath = $c; $c
 }
 
+function Test-WinAppAvailable {
+    <#
+    .SYNOPSIS
+        Non-throwing probe for the winapp (Windows App CLI) UI-automation tool.
+    .DESCRIPTION
+        Returns $true when winapp is on PATH (or already resolved), $false otherwise — unlike
+        Get-WinAppPath, which throws. Use this in a Describe readiness gate so UI-dependent
+        suites SKIP cleanly when winapp is missing instead of blowing up in BeforeAll with a
+        raw "winapp not found" exception. Install winapp via test/e2e/bootstrap.ps1.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    if ($script:ItWinAppPath -and (Test-Path $script:ItWinAppPath)) { return $true }
+    [bool](Get-Command winapp -ErrorAction SilentlyContinue)
+}
+
 function Get-UiTarget {
     param([Parameter(Mandatory)]$App)
     if ($App.Hwnd) { return @('-w', [string]$App.Hwnd) }

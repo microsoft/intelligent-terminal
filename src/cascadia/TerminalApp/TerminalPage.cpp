@@ -2119,8 +2119,33 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                // Visible in chat view — switch into sessions view.
+                // Visible in chat view — switch into sessions view, and move
+                // keyboard focus onto the agent pane so Esc / arrows / Enter
+                // reach the wta TUI immediately. Without this the bottom-bar
+                // button keeps focus and the first Esc is swallowed until the
+                // user clicks the pane once. Deferred to a low-priority tick:
+                // a synchronous Programmatic focus set during a button click
+                // is undone when the pointer-up restores focus to the button
+                // (same race RestoreStashedAgentPane works around). The
+                // stashed branch above doesn't need this — its echo runs
+                // through OnAgentStateChanged → RestoreStashedAgentPane, which
+                // already re-focuses after the pane is re-attached.
                 _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
+                if (const auto termControl = agentContent.GetTermControl())
+                {
+                    if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+                    {
+                        auto weakControl = winrt::make_weak(termControl);
+                        dispatcher.TryEnqueue(
+                            winrt::Windows::System::DispatcherQueuePriority::Low,
+                            [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                                }
+                            });
+                    }
+                }
             }
             _UpdateBottomBarState();
             return;

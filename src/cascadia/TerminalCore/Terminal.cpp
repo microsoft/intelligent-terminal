@@ -280,6 +280,16 @@ std::wstring_view Terminal::GetWorkingDirectory() noexcept
     return _workingDirectory;
 }
 
+std::wstring_view Terminal::GetShellName() const noexcept
+{
+    return _shellName;
+}
+
+std::wstring_view Terminal::GetShellVersion() const noexcept
+{
+    return _shellVersion;
+}
+
 // Method Description:
 // - Resize the terminal as the result of some user interaction.
 // Arguments:

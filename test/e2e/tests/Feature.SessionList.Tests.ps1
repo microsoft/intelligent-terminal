@@ -3,12 +3,12 @@
 # (the agent-pane session-management view). Deterministic where possible; AI only for
 # semantic checks.
 
-BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
+BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
 Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
         # Seed a live session with a known marker so a row exists.

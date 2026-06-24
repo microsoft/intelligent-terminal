@@ -72,7 +72,7 @@ use crate::agent_sessions::{AgentSession, AgentStatus, CliSource};
 /// candidates survive `select_top_candidates` into the expensive content
 /// parse. It bounds phase-2 IO, so it is a pre-filter threshold — not a
 /// guaranteed post-filter row count. See `select_top_candidates`.
-const MAX_PER_CLI: usize = 50;
+pub(crate) const MAX_PER_CLI: usize = 50;
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
 /// Upper bound on bytes read by the `*_has_real_content` classifiers
@@ -85,6 +85,53 @@ const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 /// pathological "JSONL contains only meta records up to the cap"
 /// case (treated as phantom — conservative but safe).
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
+
+/// Whether to scan WSL distros for historical sessions. Single
+/// choke point + env kill-switch (`WTA_WSL_SESSIONS=0|false|no|off`).
+/// Defaults to **enabled**. A future `wslSessions` setting will pass a
+/// flag that overrides this same function — no other call site changes.
+pub(crate) fn wsl_sessions_enabled() -> bool {
+    // Trim + case-fold so the kill-switch is forgiving in scripts / CI
+    // (` False `, `NO`, `off`, …), mirroring the env-bool parsing in
+    // `resolve_sessions_origin_filter`.
+    match std::env::var("WTA_WSL_SESSIONS") {
+        Ok(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
+}
+
+/// Run the four per-CLI scanners against a specific `home` (the real
+/// user profile for host rows, or a temp `$HOME`-mirror extracted from a
+/// WSL distro). Caps each CLI at [`MAX_PER_CLI`]. Used by the WSL scan
+/// (`crate::wsl`) to reuse the host parsers verbatim over an extracted
+/// distro `$HOME`; the host path goes through [`load_for_cli`] instead.
+pub(crate) fn load_all_in(home: &Path) -> Vec<AgentSession> {
+    // The WSL temp `$HOME` has no agent-pane (Class A) sessions, so pass an
+    // empty index to the production `_indexed` loaders (the bare wrappers are
+    // test-only). Reuses the host parsers verbatim over the extracted distro
+    // home.
+    let empty = HashSet::new();
+    let mut out = Vec::new();
+    out.extend(take_n(load_copilot_indexed(home, &empty), MAX_PER_CLI));
+    out.extend(take_n(load_claude_indexed(home, &empty), MAX_PER_CLI));
+    out.extend(take_n(load_gemini_indexed(home, &empty), MAX_PER_CLI));
+    out.extend(take_n(load_codex_indexed(home, &empty), MAX_PER_CLI));
+    out
+}
+
+/// Retain only the requested CLI's WSL rows, mirroring the host-side
+/// `cli_scan_flags` behavior: a known CLI filter keeps just that CLI;
+/// `None` or a custom/unknown agent keeps all four.
+fn retain_wsl_cli(rows: &mut Vec<AgentSession>, cli_filter: Option<&CliSource>) {
+    if let Some(want) = cli_filter {
+        if !matches!(want, CliSource::Unknown(_)) {
+            rows.retain(|s| &s.cli_source == want);
+        }
+    }
+}
 
 /// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
 /// / non-JSONL transcript that is one giant line with no newline can't pull
@@ -117,6 +164,18 @@ fn cli_scan_flags(cli_filter: Option<&CliSource>) -> (bool, bool, bool, bool) {
 pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     let scan_started = std::time::Instant::now();
     let mut out = Vec::new();
+
+    // WSL historical sessions (in-distro, **running** distros only — fast,
+    // no VM boot). Scanned before the host-home early return because they
+    // live in the distro's own `$HOME`, independent of the Windows profile.
+    // Stopped (non-running) distros are intentionally skipped: reading one
+    // boots its WSL VM, which is too costly to do just to build a list.
+    if wsl_sessions_enabled() {
+        let mut wsl_rows = crate::wsl::scan_running_distros();
+        retain_wsl_cli(&mut wsl_rows, cli_filter);
+        out.extend(wsl_rows);
+    }
+
     let Some(home) = home_dir() else { return out };
 
     // Load the agent-pane (Class A) index once. Each per-CLI loader uses it
@@ -661,6 +720,7 @@ fn load_copilot_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<
             attention_reason:  None,
             log_path:          Some(events),
             origin:            crate::agent_sessions::SessionOrigin::default(),
+            location:          crate::agent_sessions::SessionLocation::Host,
         });
     }
     out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
@@ -732,6 +792,7 @@ fn load_claude_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
         out.push(AgentSession {
             key:               c.id,
             cli_source:        CliSource::Claude,
+            location:          crate::agent_sessions::SessionLocation::Host,
             pane_session_id:   None,
             window_id:         None,
             tab_id:            None,
@@ -811,6 +872,7 @@ fn load_gemini_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<A
         out.push(AgentSession {
             key:               c.id,
             cli_source:        CliSource::Gemini,
+            location:          crate::agent_sessions::SessionLocation::Host,
             pane_session_id:   None,
             window_id:         None,
             tab_id:            None,
@@ -909,6 +971,7 @@ fn load_codex_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<Ag
         out.push(AgentSession {
             key:               c.id,
             cli_source:        CliSource::Codex,
+            location:          crate::agent_sessions::SessionLocation::Host,
             pane_session_id:   None,
             window_id:         None,
             tab_id:            None,
@@ -2980,5 +3043,68 @@ mod tests {
         // 2024 IS a leap year; 2023 is not.
         assert!(parse_iso_to_system_time("2024-02-29T00:00:00Z").is_some());
         assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
+    }
+
+    static WSL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn wsl_gate_defaults_on_and_honors_env() {
+        let _g = WSL_ENV_LOCK.lock().unwrap();
+        std::env::remove_var("WTA_WSL_SESSIONS");
+        assert!(wsl_sessions_enabled(), "default must be enabled");
+        std::env::set_var("WTA_WSL_SESSIONS", "0");
+        assert!(!wsl_sessions_enabled());
+        std::env::set_var("WTA_WSL_SESSIONS", "false");
+        assert!(!wsl_sessions_enabled());
+        // Forgiving parsing: trimmed, case-insensitive, extra falsey spellings.
+        std::env::set_var("WTA_WSL_SESSIONS", "  False ");
+        assert!(!wsl_sessions_enabled(), "trimmed + case-insensitive False");
+        std::env::set_var("WTA_WSL_SESSIONS", "NO");
+        assert!(!wsl_sessions_enabled());
+        std::env::set_var("WTA_WSL_SESSIONS", "off");
+        assert!(!wsl_sessions_enabled());
+        std::env::set_var("WTA_WSL_SESSIONS", "1");
+        assert!(wsl_sessions_enabled());
+        std::env::remove_var("WTA_WSL_SESSIONS");
+    }
+
+    fn wsl_row(cli: CliSource) -> AgentSession {
+        AgentSession {
+            key: "k".into(),
+            cli_source: cli,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "t".into(),
+            cwd: std::path::PathBuf::from("/home/u"),
+            started_at: SystemTime::UNIX_EPOCH,
+            last_activity_at: SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: crate::agent_sessions::SessionOrigin::default(),
+            location: crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn retain_wsl_cli_keeps_known_filters_else_all() {
+        let base = || vec![wsl_row(CliSource::Copilot), wsl_row(CliSource::Claude)];
+        let mut known = base();
+        retain_wsl_cli(&mut known, Some(&CliSource::Copilot));
+        assert_eq!(known.len(), 1);
+        assert_eq!(known[0].cli_source, CliSource::Copilot);
+
+        let mut none = base();
+        retain_wsl_cli(&mut none, None);
+        assert_eq!(none.len(), 2, "None keeps all CLIs");
+
+        let mut unknown = base();
+        retain_wsl_cli(&mut unknown, Some(&CliSource::Unknown(String::new())));
+        assert_eq!(unknown.len(), 2, "Unknown (custom agent) keeps all CLIs");
     }
 }

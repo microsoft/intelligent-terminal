@@ -88,6 +88,21 @@ function Stop-AppInstances {
     Start-Sleep -Milliseconds 500
 }
 
+function Get-ItTestPackage {
+    <#
+    .SYNOPSIS
+        Resolve which package selector the feature/self-test suites should launch.
+        Honors the ITE2E_PACKAGE env var (Auto|Store|Dev|<PackageFamilyName>); defaults
+        to 'Auto', which prefers a fully-resolvable Store install and falls back to Dev.
+        This is the single knob that lets the suites run against a dev-only machine
+        (where only the sideload package is installed) without editing each Describe.
+    #>
+    [CmdletBinding()]
+    param()
+    if ($env:ITE2E_PACKAGE) { return $env:ITE2E_PACKAGE }
+    return 'Auto'
+}
+
 function Start-Terminal {
     <#
     .SYNOPSIS
@@ -256,7 +271,7 @@ function Start-TerminalFre {
         Backs up config for restore on Stop-Terminal.
     #>
     [CmdletBinding()]
-    param([string]$Package = 'Store', [int]$TimeoutSec = 60)
+    param([string]$Package = (Get-ItTestPackage), [int]$TimeoutSec = 60)
     return (Start-Terminal -Package $Package -ColdStart -ShowFre -Backup $true -TimeoutSec $TimeoutSec)
 }
 

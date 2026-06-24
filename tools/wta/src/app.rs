@@ -273,6 +273,29 @@ impl PreflightResult {
 /// - `FirstRun` / `SwitchAgent`: one `SelectAgent` per known agent.
 /// - `AgentMissing` / `AgentError`: diagnostic options for the current agent
 ///   (reinstall, install manually, sign in, switch) depending on what failed.
+/// True for the auth failures a post-login reconnect can hit when the shared
+/// master CLI was spawned with a stale token: the plain `AuthRequired`, AND the
+/// `HandshakeFailed { stage: NewSession }` that the pipe client wraps a
+/// still-`AuthRequired` `new_session` into after a *successful* `authenticate`
+/// (the Copilot CLI does not refresh its in-process auth on `authenticate`, so
+/// only respawning it recovers — see `run_acp_client_over_pipe`).
+///
+/// Deliberately does NOT match `HandshakeFailed { stage: Authenticate }`: that
+/// is a genuine `authenticate` RPC rejection or timeout (the credentials were
+/// not accepted / the agent hung), which a master restart would not fix — it
+/// routes to the sign-in screen via the normal `AgentError` path instead.
+fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
+    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+    matches!(
+        failure,
+        AgentFailure::AuthRequired { .. }
+            | AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::NewSession,
+                ..
+            }
+    )
+}
+
 pub fn build_setup_options(
     reason: &SetupReason,
     current_agent_status: Option<&crate::agent_check::AgentStatus>,
@@ -1266,6 +1289,26 @@ pub enum AppEvent {
         agent_id: String,
         success: bool,
     },
+    /// Post-login auth recovery: a genuine post-login reconnect (helper/pipe
+    /// mode) for an External-auth agent STILL failed auth, which means the
+    /// shared long-lived master CLI was spawned with a stale token and
+    /// `authenticate` can't refresh it. The handler shows a transient
+    /// "Reconnecting…" and fires `restart_agent_stack` so a fresh master
+    /// (which re-reads the now-valid on-disk token) takes over.
+    PostLoginAuthRecovery {
+        failure: crate::protocol::acp::failure::AgentFailure,
+        tab_id: Option<String>,
+        agent_id: String,
+    },
+    /// Dead-man fallback for `PostLoginAuthRecovery`: a successful restart
+    /// tears this helper down before this fires; if it DOES fire (restart
+    /// dropped/slow), surface the sign-in screen instead of stranding the user
+    /// on a perpetual "Reconnecting…". `generation` pins this to the specific
+    /// recovery that armed it, so a stale timer can't act on a later state.
+    AuthRecoveryTimedOut {
+        agent_id: String,
+        generation: u64,
+    },
     /// Result of `preflight::check_agent` run by main.rs before the TUI
     /// loop starts. If `all_passed()` is false the App switches into
     /// `AppMode::Setup` so the user can install / authenticate the CLI.
@@ -1520,6 +1563,19 @@ pub struct TabSession {
     // C++-originated `set_agent_state` requests (hotkey/button toggles)
     // and by wta-internal events like Ctrl+C×2 reset.
     pub pane_open: bool,
+
+    // Pre-entry pane visibility, remembered when the user opens the
+    // session-management (Agents) view so Esc can restore *that* state rather
+    // than always landing on an open chat pane:
+    //   * `Some(false)` — entered from a folded (stashed) pane → Esc re-folds.
+    //   * `Some(true)`  — entered from an expanded chat pane → Esc returns to it.
+    //   * `None`        — not currently in / entering the Agents view.
+    // Captured in `open_agents_view_for_tab`, read by the Esc handler, cleared
+    // in `close_agents_view_for_tab`. The capture is reliable because the C++
+    // `set_agent_state` request applies `view` before `pane_open`: an unstash
+    // sends `{view:sessions, pane_open:true}`, but the view switch (and thus
+    // our snapshot) runs while `pane_open` still holds the old `false`.
+    pub agents_view_prev_pane_open: Option<bool>,
 }
 
 impl TabSession {
@@ -1875,6 +1931,20 @@ pub struct App {
     event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
+    /// Set by LoginComplete success — consumed once by try_start_acp to pass
+    /// `post_login_reconnect=true` to the pipe-mode ACP client. This ensures
+    /// the authenticate RPC is only sent on genuine post-login reconnects, not
+    /// on agent-switch / retry / install-complete reconnects that also go
+    /// through try_start_acp.
+    needs_post_login_authenticate: bool,
+    /// Monotonic id for the in-flight post-login auth recovery. Bumped each
+    /// time `PostLoginAuthRecovery` arms its 8s dead-man timer, and bumped
+    /// again on a successful `AgentConnected`. The `AuthRecoveryTimedOut`
+    /// fallback only fires if its captured generation still matches — so a
+    /// stale timer from an earlier recovery (or one whose connection already
+    /// succeeded) cannot force the sign-in screen onto a later, unrelated
+    /// `Connecting` state.
+    auth_recovery_generation: u64,
     /// Agent ID selected by user (FRE/preflight) — sent to C++ once connected.
     pending_agent_selection: Option<String>,
     /// Show first-run welcome hint until user sends first message.
@@ -2139,6 +2209,7 @@ pub(crate) fn session_info_to_agent_session(
         attention_reason: info.attention_reason.clone(),
         log_path: None,
         origin,
+        location: info.location.clone(),
     }
 }
 
@@ -2167,6 +2238,8 @@ impl App {
             auth: None,
             event_tx: None,
             pending_acp_start: false,
+            needs_post_login_authenticate: false,
+            auth_recovery_generation: 0,
             pending_agent_selection: None,
             show_welcome_hint: false,
             deferred_acp: None,
@@ -2299,7 +2372,9 @@ impl App {
             return;
         }
         self.pending_acp_start = false;
-        tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), "try_start_acp triggered");
+        let post_login_auth = self.needs_post_login_authenticate;
+        self.needs_post_login_authenticate = false;
+        tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
@@ -2373,6 +2448,12 @@ impl App {
                         pipe = %pipe_name,
                         "try_start_acp: reconnecting via master pipe"
                     );
+                    // Captured for post-login auth recovery: who failed (agent)
+                    // and which tab, so a still-auth-failing post-login
+                    // reconnect can request a fresh master targeting that tab.
+                    // Taken before `owner_tab_opt` is moved into the client.
+                    let recovery_tab_id = owner_tab_opt.clone();
+                    let recovery_agent_id = self.current_agent_id.clone();
                     let event_tx_for_pipe = event_tx.clone();
                     tokio::task::spawn_local(async move {
                         if let Err(e) =
@@ -2393,6 +2474,7 @@ impl App {
                                 master_ext_rx,
                                 shell_mgr,
                                 wt_connected,
+                                post_login_auth, // only true on genuine LoginComplete reconnects
                             )
                             .await
                         {
@@ -2405,13 +2487,43 @@ impl App {
                                 &e,
                                 crate::protocol::acp::failure::HandshakeStage::Initialize,
                             );
-                            let _ = event_tx_for_pipe.send(AppEvent::AgentError {
-                                session_id: None,
-                                failure,
-                                message: format!(
-                                    "helper ACP transport failed on reconnect: {e:#}"
-                                ),
-                            });
+                            // A post-login reconnect for an External-auth agent
+                            // that STILL fails auth means the long-lived shared
+                            // master CLI is poisoned and `authenticate` won't
+                            // refresh it. Request a fresh master (auth recovery)
+                            // instead of looping back to the sign-in screen.
+                            // Match BOTH the plain AuthRequired and the post-
+                            // login HandshakeFailed{NewSession} the client
+                            // wraps a still-AuthRequired new_session into.
+                            let is_external = matches!(
+                                crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
+                                    .acp_auth_flow,
+                                crate::agent_registry::AcpAuthFlow::External
+                            );
+                            if post_login_auth
+                                && is_external
+                                && is_post_login_auth_failure(&failure)
+                            {
+                                tracing::warn!(
+                                    target: "auth_recovery",
+                                    agent_id = %recovery_agent_id,
+                                    tab_id = ?recovery_tab_id,
+                                    "post-login reconnect still auth-failing on shared master CLI; requesting auth recovery"
+                                );
+                                let _ = event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
+                                    failure,
+                                    tab_id: recovery_tab_id.clone(),
+                                    agent_id: recovery_agent_id.clone(),
+                                });
+                            } else {
+                                let _ = event_tx_for_pipe.send(AppEvent::AgentError {
+                                    session_id: None,
+                                    failure,
+                                    message: format!(
+                                        "helper ACP transport failed on reconnect: {e:#}"
+                                    ),
+                                });
+                            }
                         }
                     });
                 } else {
@@ -2794,6 +2906,11 @@ impl App {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
+        // WSL rows can only resume via the CLI `--resume` flag *inside*
+        // the distro. ACP `session/load` (the Shift target for Class B
+        // dead rows) can't rehydrate a Linux session into a host agent
+        // pane, so collapse Shift to Enter — both route to ResumeCliFlag.
+        let shift = shift && !s.location.is_wsl();
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
         // Claude / Codex / Copilot / Gemini (all four CLIs accept some
@@ -3023,7 +3140,9 @@ impl App {
         // artefacts at startup, *then* validate the `--resume`
         // argument and exit with an error — leaving phantom artefacts
         // behind for the next session-load to surface again.
-        if !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key) {
+        if !s.location.is_wsl()
+            && !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key)
+        {
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
@@ -3054,7 +3173,28 @@ impl App {
         }
 
         let key = s.key.clone();
-        let commandline = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        // WSL rows run the distro's own CLI *inside* the distro. Two
+        // WSL/cmd quirks shape this command line:
+        //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
+        //     WSL_E_DISTRO_NOT_FOUND when the command runs under the
+        //     `cmd /c echo … && …` banner wrapper — cmd/wsl don't strip the
+        //     quotes off `-d`, so wsl looks for a distro literally named
+        //     `"Ubuntu"`. Distro names from `wsl -l` are space-free, so bare
+        //     `-d <distro>` is safe. The `--cd` path keeps its quotes (it can
+        //     contain spaces and quoting works fine there).
+        //   * The CLI is launched through a **login shell** (`bash -lc`) so the
+        //     user's PATH is set up — a snap-installed Copilot lives in
+        //     `/snap/bin`, which a bare `wsl -- copilot` misses ("command not
+        //     found"). A login shell sources the profile that adds it.
+        let login_invocation = format!("bash -lc \"{resume_invocation}\"");
+        let commandline = match &s.location {
+            crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
+                Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
+                None => format!("wsl -d {distro} -- {login_invocation}"),
+            },
+            crate::agent_sessions::SessionLocation::Host => resume_invocation,
+        };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
         // working directory (e.g. Claude looks under
@@ -3090,7 +3230,13 @@ impl App {
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
         // Drop stale cwd so wtcli falls back to the profile default
         // rather than failing CreateProcessW with ERROR_DIRECTORY.
-        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        // WSL rows use `wsl --cd` inside the distro command; passing
+        // the Linux path as a Windows `-d` flag to wtcli would fail.
+        let valid_cwd = if s.location.is_wsl() {
+            None
+        } else {
+            crate::cwd_util::validate_starting_directory(&s.cwd)
+        };
         if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
             tracing::warn!(
                 target: "agents_view",
@@ -3099,10 +3245,24 @@ impl App {
             );
         }
         let short_key: String = key.chars().take(8).collect();
-        let launch_commandline = format!(
-            "cmd /c echo \x1b[2;37mResuming {} session {}...\x1b[0m && {}",
-            cli_id, short_key, commandline
-        );
+        // Loading banner shown in the new pane while the CLI cold-starts.
+        // WSL rows also name the distro ("Resuming copilot session abc-123
+        // in Ubuntu (WSL)...") so the user can see which distro is being
+        // entered; host rows keep just the short session id. A WSL session
+        // only appears in the list because its distro was already started and
+        // scanned, so it is running at resume time — a "starting the distro…"
+        // hint would usually be wrong. (WSL2 can auto-shut-down an idle distro
+        // later, but a frequently-wrong hint is worse than none.)
+        let banner = match &s.location {
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
+            }
+            crate::agent_sessions::SessionLocation::Host => {
+                format!("Resuming {cli_id} session {short_key}...")
+            }
+        };
+        let launch_commandline =
+            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
             "-c".to_string(),
@@ -3390,6 +3550,12 @@ impl App {
         let rows_available = !self.agents_rows_for_tab(&tab_id).is_empty();
         {
             let tab = self.tab_mut(&tab_id);
+            // Snapshot the pre-entry pane visibility so Esc can restore it
+            // (a folded pane re-folds, an expanded chat pane stays open).
+            // Read before any mutation below: at this point `pane_open` still
+            // holds the value from before this transition (see the field docs
+            // on `agents_view_prev_pane_open`).
+            tab.agents_view_prev_pane_open = Some(tab.pane_open);
             tab.current_view = View::Agents;
             tab.agents_view.snapshot = Some(Vec::new());
             tab.agents_view.dirty = false;
@@ -3408,6 +3574,7 @@ impl App {
         tab.agents_view.refetch_in_flight = false;
         tab.agents_view.dirty = false;
         tab.agents_view.focused_sid = None;
+        tab.agents_view_prev_pane_open = None;
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
@@ -4283,6 +4450,8 @@ impl App {
             AppEvent::AgentInstallComplete => "agent_install_complete",
             AppEvent::LoginProgress { .. } => "login_progress",
             AppEvent::LoginComplete { .. } => "login_complete",
+            AppEvent::PostLoginAuthRecovery { .. } => "post_login_auth_recovery",
+            AppEvent::AuthRecoveryTimedOut { .. } => "auth_recovery_timed_out",
             AppEvent::PreflightComplete(_) => "preflight_complete",
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
@@ -4313,6 +4482,60 @@ impl App {
             !tab.permission.is_empty(),
             tab.timing_note.is_some()
         )
+    }
+
+    /// Render the sign-in / setup screen for `agent_id` (the
+    /// `SetupReason::AgentError` flavor). Used by the `AuthRecoveryTimedOut`
+    /// dead-man fallback so a dropped/slow auth-recovery restart still lands
+    /// the user on an actionable sign-in screen (mirrors the `AgentError`
+    /// auth-fallback path).
+    fn show_signin_setup_screen(&mut self, agent_id: String) {
+        tracing::info!("show_signin_setup_screen: agent_id={}", agent_id);
+        let profile = crate::agent_registry::lookup_profile(&agent_id);
+        let agent_status = crate::agent_check::check_agent(profile.id);
+        let all_agents = crate::agent_check::check_all_agents();
+        let reason = SetupReason::AgentError;
+        let options = build_setup_options(&reason, Some(&agent_status), &all_agents);
+        self.mode = AppMode::Setup;
+        self.state = ConnectionState::Disconnected;
+        self.auth = None;
+        self.setup = Some(SetupState {
+            reason,
+            selected_index: 0,
+            preflight: PreflightResult {
+                agent_id: profile.id.to_string(),
+                display_name: profile.display_name.to_string(),
+                // Reflect the CLI's real presence (we just computed
+                // `agent_status`) instead of hard-coding "found" — on the
+                // dead-man fallback the CLI may genuinely be the problem.
+                cli_status: if agent_status.cli_found {
+                    CheckStatus::Passed
+                } else {
+                    CheckStatus::Failed(t!("agent.status.not_found").into_owned())
+                },
+                cli_path: agent_status.cli_path.clone(),
+                auth_status: CheckStatus::Failed(
+                    t!("system.authentication_failed").into_owned(),
+                ),
+                install_hint: profile.install_hint.to_string(),
+                install_url: String::new(),
+                auth_hint: profile.auth_hint.to_string(),
+            },
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options,
+            title: t!("setup.title.sign_in").into_owned(),
+            subtitle: if profile.id == "copilot" {
+                t!("setup.subtitle.copilot_auth", agent = profile.display_name)
+                    .into_owned()
+            } else {
+                t!("setup.subtitle.agent_auth", agent = profile.display_name)
+                    .into_owned()
+            },
+        });
+        let tab = self.current_tab_mut();
+        tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
     fn handle_event(&mut self, event: AppEvent) {
@@ -4393,6 +4616,10 @@ impl App {
                 self.current_model_id = current_model_id.clone();
                 self.agent_supports_load_session = load_session_supported;
                 self.state = ConnectionState::Connected;
+                // A successful connect resolves any in-flight auth recovery:
+                // bump the generation so a still-pending dead-man timer becomes
+                // stale and can't later force the sign-in screen.
+                self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
                 // A live connection cancels the degraded latch (e.g. the
                 // post-sign-in reconnect that goes back through master).
                 self.transport_lost = false;
@@ -4649,6 +4876,109 @@ impl App {
                     if !is_duplicate {
                         tab.messages.push(ChatMessage::Error(message));
                     }
+                }
+            }
+            AppEvent::PostLoginAuthRecovery {
+                failure,
+                tab_id,
+                agent_id,
+            } => {
+                tracing::warn!(
+                    target: "auth_recovery",
+                    failure_class = failure.class(),
+                    tab_id = ?tab_id,
+                    agent_id = %agent_id,
+                    "post-login auth recovery: shared master CLI still AuthRequired \
+                     after a successful login; reconnecting via a fresh master \
+                     (restart_agent_stack)"
+                );
+                let resolved = if !agent_id.is_empty() {
+                    agent_id.clone()
+                } else {
+                    "copilot".to_string()
+                };
+                // Pin this recovery to a fresh generation so a stale dead-man
+                // timer (from an earlier recovery, or one whose reconnect later
+                // succeeds — see AgentConnected) can't fire onto an unrelated
+                // Connecting state.
+                self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
+                let recovery_generation = self.auth_recovery_generation;
+                // (i) Transient "Reconnecting…" — NOT the sign-in screen. The
+                // restart below tears this pane down + respawns it, so the
+                // common (successful) case never flashes the setup screen
+                // between login and the fresh pane connecting. Only a dropped/
+                // slow restart leaves us alive long enough for the
+                // `AuthRecoveryTimedOut` fallback path to surface the sign-in screen.
+                self.mode = AppMode::Chat;
+                self.setup = None;
+                self.auth = None;
+                self.state =
+                    ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
+                {
+                    let tab = self.current_tab_mut();
+                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                }
+                // (ii) Request a fresh master CLI. The long-lived shared CLI
+                // cached its unauthenticated state at spawn and `authenticate`
+                // does not refresh it; only a respawn (which re-reads the now
+                // valid on-disk credential) recovers. Reuse the tested
+                // `/restart` machinery; `tab_id` lets C++ reopen the failing
+                // tab rather than the active one.
+                let evt = serde_json::json!({
+                    "type": "event",
+                    "method": "restart_agent_stack",
+                    "params": { "reason": "auth_recovery", "tab_id": tab_id },
+                });
+                send_wt_protocol_event(evt.to_string());
+                // (iii) Dead-man fallback: if the restart actually respawned
+                // this pane, this helper process is gone before the timer
+                // fires. If it survives (dropped/slow restart), surface the
+                // sign-in screen so the user isn't stranded on "Reconnecting…".
+                // Guarded on a live async runtime so unit tests (no LocalSet)
+                // don't panic in `spawn_local`.
+                if let Some(ref tx) = self.event_tx {
+                    if tokio::runtime::Handle::try_current().is_ok() {
+                        let tx = tx.clone();
+                        tokio::task::spawn_local(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                            let _ = tx.send(AppEvent::AuthRecoveryTimedOut {
+                                agent_id: resolved,
+                                generation: recovery_generation,
+                            });
+                        });
+                    }
+                }
+            }
+            AppEvent::AuthRecoveryTimedOut {
+                agent_id,
+                generation,
+            } => {
+                // Only reached when the auth-recovery restart did NOT tear this
+                // pane down within the window (dropped/slow delivery) — a
+                // successful restart kills this helper process first. Surface
+                // the sign-in fallback so the user can retry instead of being
+                // stranded on a perpetual "Reconnecting…".
+                //
+                // The generation guard drops a stale timer: if a newer recovery
+                // started, or the reconnect already succeeded (AgentConnected
+                // bumps the generation), this no longer matches the current
+                // recovery and must not force the sign-in screen.
+                if generation == self.auth_recovery_generation
+                    && self.mode != AppMode::Setup
+                    && matches!(self.state, ConnectionState::Connecting(_))
+                {
+                    tracing::warn!(
+                        target: "auth_recovery",
+                        agent_id = %agent_id,
+                        "auth-recovery restart did not take effect within the window; \
+                         falling back to the sign-in screen"
+                    );
+                    let resolved = if !agent_id.is_empty() {
+                        agent_id
+                    } else {
+                        "copilot".to_string()
+                    };
+                    self.show_signin_setup_screen(resolved);
                 }
             }
             AppEvent::AgentSoftStop { session_id, reason } => {
@@ -6007,6 +6337,7 @@ impl App {
                         });
                     }
                     self.pending_acp_start = true;
+                    self.needs_post_login_authenticate = true;
                     self.auth = None;
                 } else {
                     // Login failed — show auth screen again
@@ -6313,7 +6644,33 @@ impl App {
                 }
                 KeyCode::Esc => {
                     let tab_id = self.active_tab_key().to_string();
-                    self.close_agents_view_for_tab(&tab_id);
+                    // Restore the pane visibility the user had *before* they
+                    // entered session management. Read before any mutation.
+                    // Falls back to "stay open" (the legacy Esc behaviour) if
+                    // nothing was captured.
+                    let restore_open = self
+                        .current_tab()
+                        .agents_view_prev_pane_open
+                        .unwrap_or(true);
+                    if restore_open {
+                        // Entered from an expanded chat pane → return to it:
+                        // switch the TUI back to chat, leave the pane visible.
+                        self.close_agents_view_for_tab(&tab_id);
+                        self.tab_mut(&tab_id).pane_open = true;
+                    } else {
+                        // Entered from a folded (stashed) pane → re-fold.
+                        // Deliberately do NOT switch to chat here: if we did,
+                        // the helper would re-render the chat view for a frame
+                        // while the pane is still on screen, so the user sees
+                        // the agent pane flash before C++ stashes it. Keeping
+                        // the session list rendered lets the pane stash
+                        // straight from it. Clear the snapshot so a later
+                        // re-entry re-captures; the lingering Agents view
+                        // self-heals to chat on the next chat-toggle open.
+                        let tab = self.tab_mut(&tab_id);
+                        tab.pane_open = false;
+                        tab.agents_view_prev_pane_open = None;
+                    }
                     self.project_active_tab_state();
                 }
                 _ => {}
@@ -7901,6 +8258,16 @@ impl App {
         }
         self.current_tab_mut().selection_visible_pending = false;
     }
+}
+
+/// Return the cwd to hand to `wsl --cd` — only when it's an absolute
+/// Linux path (starts with `/`). A Windows path, empty cwd, or a path
+/// containing a double-quote (which would break the quoted `--cd "…"`
+/// argument) yields `None`, so WSL falls back to the distro's `$HOME`.
+fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
+    let s = cwd.to_string_lossy();
+    let s = s.trim();
+    (s.starts_with('/') && !s.contains('"')).then(|| s.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -11135,6 +11502,76 @@ mod tests {
         assert_eq!(rows[0].key, "shell-key");
     }
 
+    /// The PRODUCTION snapshot path (master pushed `sessions/list` response
+    /// into `agents_view.snapshot`) must preserve the `Wsl` location in every
+    /// `AgentSession` produced by `agents_rows_for_tab`.
+    ///
+    /// This is the regression test that would have caught the original bug:
+    /// `session_info_to_agent_session` hardcoded `location: Host`, so WSL
+    /// rows crossing the master→helper boundary silently lost their distro
+    /// stamp.  The fix carries `location` through `SessionInfo`; this test
+    /// guards that fix forever.
+    #[test]
+    fn agents_rows_snapshot_preserves_wsl_location() {
+        use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+        let mut app = test_app();
+        // Use `All` to bypass the MVP ShellOnly filter — we want to confirm
+        // location preservation regardless of origin filtering.
+        app.sessions_origin_filter = OriginFilter::All;
+
+        let mut info = session_info_for_test("wsl-1");
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 1, "expected one row; got: {rows:?}");
+        assert!(
+            rows[0].location.is_wsl(),
+            "snapshot path must preserve WSL location; got: {:?}",
+            rows[0].location
+        );
+        assert_eq!(
+            rows[0].location,
+            SessionLocation::Wsl { distro: "Ubuntu".into() },
+            "distro name must round-trip through session_info_to_agent_session"
+        );
+    }
+
+    /// End-to-end render proof: a WSL `SessionInfo` in the `/sessions`
+    /// snapshot must actually paint its bracketed distro tag (`[WSL-Ubuntu]`)
+    /// on screen. `agents_rows_snapshot_preserves_wsl_location` proves the
+    /// data path and `origin_prefix_shows_distro_for_wsl_rows` proves the
+    /// prefix builder; this closes the loop through `crate::ui::render` so a
+    /// regression in `agents_view::render`'s own `session_info_to_agent_session`
+    /// conversion (a *second* call site, separate from `agents_rows_for_tab`)
+    /// can't silently drop the tag.
+    #[test]
+    fn render_sessions_view_paints_wsl_distro_tag() {
+        use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.sessions_origin_filter = OriginFilter::All;
+
+        let mut info = session_info_for_test("wsl-render-1");
+        info.title = Some("hack on wsl".into());
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("[WSL-Ubuntu]"),
+            "the /sessions view must paint the bracketed WSL distro tag; rendered:\n{text}"
+        );
+    }
+
     /// `resolve_sessions_origin_filter` reads the `WTA_SESSIONS_SHOW_AGENT_PANE`
     /// env var. With it unset (or 0/false) the MVP default
     /// (`ShellOnly`) wins; with it set to a truthy value we flip to
@@ -11459,6 +11896,97 @@ mod tests {
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
         assert_eq!(cmd.session_id.as_deref(), Some("a"));
+    }
+
+    // Esc out of the session-management (Agents) view restores the pane
+    // visibility the user had *before* they entered it, rather than always
+    // leaving an open chat pane behind. Two cases mirror the two ways the
+    // view is reached (see `open_agents_view_for_tab` + the Esc handler).
+
+    #[test]
+    fn esc_from_session_view_refolds_when_entered_from_folded_pane() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // Pane starts folded (stashed): pane_open == false.
+        app.tab_mut(&tab_id).pane_open = false;
+
+        // Reproduce the C++ "unstash into sessions" request, which applies
+        // `view` before `pane_open`: the view switch snapshots the pre-message
+        // `pane_open=false`, then the pane is marked open while sessions show.
+        app.open_agents_view_for_tab(tab_id.clone());
+        app.tab_mut(&tab_id).pane_open = true;
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        // Re-folds: pane hidden. The view is intentionally left on Agents
+        // (not switched to Chat) so the pane stashes straight from the
+        // session list without flashing the chat view for a frame first.
+        assert!(
+            !app.current_tab().pane_open,
+            "Esc from a pane that was folded before session management must re-fold it"
+        );
+        assert_eq!(
+            app.current_tab().current_view,
+            View::Agents,
+            "fold-restore must not switch to chat (would flash before stashing)"
+        );
+        assert_eq!(
+            app.current_tab().agents_view_prev_pane_open, None,
+            "the snapshot must be cleared after Esc so a re-entry re-captures"
+        );
+    }
+
+    #[test]
+    fn esc_from_session_view_keeps_pane_open_when_entered_from_chat() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // Pane is already an expanded chat pane: pane_open == true. The
+        // chat->sessions request keeps pane_open=true, so the snapshot is
+        // Some(true) and Esc must leave the pane open.
+        app.tab_mut(&tab_id).pane_open = true;
+        app.open_agents_view_for_tab(tab_id.clone());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.current_tab().current_view, View::Chat);
+        assert!(
+            app.current_tab().pane_open,
+            "Esc from an expanded chat pane must return to it (stay open)"
+        );
+    }
+
+    // A pane folded *from within* the sessions view (fold keeps current_view ==
+    // Agents) and then reopened must re-snapshot the now-folded state, so a
+    // later Esc re-folds instead of using a stale "was open" snapshot.
+    #[test]
+    fn esc_reuses_latest_snapshot_after_fold_from_session_view() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // 1. Enter sessions from an open chat pane -> snapshot Some(true).
+        app.tab_mut(&tab_id).pane_open = true;
+        app.open_agents_view_for_tab(tab_id.clone());
+
+        // 2. Fold while staying in the sessions view (current_view unchanged).
+        app.tab_mut(&tab_id).pane_open = false;
+
+        // 3. Reopen sessions (C++ unstash echo) -> must re-snapshot Some(false).
+        app.open_agents_view_for_tab(tab_id.clone());
+        app.tab_mut(&tab_id).pane_open = true;
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(
+            !app.current_tab().pane_open,
+            "the second entry must capture the folded state, so Esc re-folds"
+        );
     }
 
     #[test]
@@ -12520,6 +13048,80 @@ mod tests {
             .filter(|m| matches!(m, ChatMessage::Error(s) if *s == lost))
             .count();
         assert_eq!(n, 1, "identical connection.lost must not duplicate");
+    }
+
+    /// `is_post_login_auth_failure` must catch BOTH the plain `AuthRequired`
+    /// and the `HandshakeFailed { NewSession }` the pipe client wraps a
+    /// still-AuthRequired post-login `new_session` into — `is_auth()` alone
+    /// would miss the latter and the auth recovery would never fire. It must
+    /// NOT match `HandshakeFailed { Authenticate }` (a genuine authenticate
+    /// RPC rejection/timeout) — that routes to sign-in, not a master restart.
+    #[test]
+    fn post_login_auth_failure_matches_auth_required_and_handshake_new_session() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+        assert!(is_post_login_auth_failure(&AgentFailure::AuthRequired {
+            message: "auth".to_string()
+        }));
+        assert!(is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::NewSession,
+            detail: "still auth after authenticate".to_string()
+        }));
+        // An authenticate-RPC rejection/timeout must NOT trigger auth recovery
+        // (a master restart can't fix bad credentials) — it routes to sign-in.
+        assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::Authenticate,
+            detail: "authenticate rejected/timed out".to_string()
+        }));
+        // A non-auth handshake stage must NOT trigger auth recovery.
+        assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::Initialize,
+            detail: "boom".to_string()
+        }));
+    }
+
+    /// `PostLoginAuthRecovery` shows a transient "Reconnecting…" (NOT the
+    /// sign-in screen, so there is no flash), and the `AuthRecoveryTimedOut`
+    /// dead-man only falls back to the sign-in screen if the restart never
+    /// took effect (this helper survived the window).
+    #[test]
+    fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
+        let mut app = test_app();
+        app.handle_event(AppEvent::PostLoginAuthRecovery {
+            failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+                message: "auth".to_string(),
+            },
+            tab_id: None,
+            agent_id: "copilot".to_string(),
+        });
+        // Common case: transient Reconnecting, NOT the setup screen (no flash).
+        assert!(
+            !matches!(app.mode, AppMode::Setup),
+            "recovery must NOT flash the sign-in screen"
+        );
+        assert!(
+            matches!(app.state, ConnectionState::Connecting(_)),
+            "recovery must show a transient Reconnecting state"
+        );
+        let generation = app.auth_recovery_generation;
+        // A STALE timer (older generation) must be ignored — it must not force
+        // the sign-in screen onto the current Connecting state.
+        app.handle_event(AppEvent::AuthRecoveryTimedOut {
+            agent_id: "copilot".to_string(),
+            generation: generation.wrapping_sub(1),
+        });
+        assert!(
+            !matches!(app.mode, AppMode::Setup),
+            "a stale-generation timeout must be ignored"
+        );
+        // Dead-man fallback (restart never took effect) → sign-in screen.
+        app.handle_event(AppEvent::AuthRecoveryTimedOut {
+            agent_id: "copilot".to_string(),
+            generation,
+        });
+        assert!(
+            matches!(app.mode, AppMode::Setup),
+            "timeout fallback must surface the sign-in screen"
+        );
     }
 
     /// The degraded latch (`App::transport_lost`) drives the slash-command
@@ -15255,5 +15857,52 @@ mod tests {
     fn known_cli_id_returns_none_for_unknown_variant() {
         use crate::agent_sessions::CliSource;
         assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    }
+
+    #[test]
+    fn enter_on_wsl_history_row_resumes_inside_distro() {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let row = crate::agent_sessions::AgentSession {
+            key:              "abc-123".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "t".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u/proj"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
+            location:         SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        };
+        let mut app = test_app();
+        app.agent_sessions.merge_historical(vec![row]);
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_list_state.select(Some(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let cmd = app
+            .last_dispatched_command_for_test()
+            .expect("a command was dispatched");
+        assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
+        let argv = cmd.argv.join(" ");
+        assert!(
+            argv.contains("wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""),
+            "expected in-distro resume; argv: {argv}"
+        );
+        // The loading banner keeps the short session id and also names the
+        // distro for WSL rows.
+        assert!(
+            argv.contains("Resuming copilot session abc-123 in Ubuntu (WSL)"),
+            "expected distro-named WSL banner; argv: {argv}"
+        );
+        // WSL rows must not also pass the Windows `-d <cwd>` flag.
+        assert!(!argv.contains(" -d /home"), "WSL row must not pass Windows -d cwd");
     }
 }

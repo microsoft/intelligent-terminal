@@ -202,6 +202,15 @@ namespace winrt::TerminalApp::implementation
         // enough because the fan-out runs in tight succession on
         // adjacent UI-thread ticks.
         std::optional<std::chrono::steady_clock::time_point> _lastRespawn;
+        // Stamp of the most recent *restart request* that actually respawned
+        // the master (set in the no-arg `Restart()` after a successful spawn).
+        // The fan-out dedup keys off THIS, not `_lastRespawn`: `_lastRespawn`
+        // is also stamped by the initial spawn, so keying on it would wrongly
+        // suppress a legitimate restart that fires shortly after the master
+        // first comes up (e.g. an auth-recovery restart against a freshly
+        // poisoned master). Keyed on the last restart, only restart-after-
+        // restart (the true fan-out duplicate) is suppressed.
+        std::optional<std::chrono::steady_clock::time_point> _lastRestartRequest;
         // "Degraded" latch: set when the master dies UNEXPECTEDLY
         // (crash/OOM/external kill, observed by the wait callback) while
         // panes still hold refs. While set, `AcquirePane` refuses to

@@ -139,6 +139,9 @@ fn sessions_table_prints_header_and_rows() {
     assert!(out.contains("ORIGIN"));
     let body = out.lines().nth(1).expect("body row present");
     assert!(body.contains(" - "), "untagged origin renders as '-' got: {body}");
+    // Leading 1-based index column.
+    assert!(out.lines().next().expect("header").starts_with("#"), "header has # column");
+    assert!(body.starts_with("1"), "first row is numbered 1, got: {body}");
 }
 
 #[test]
@@ -157,6 +160,49 @@ fn sessions_table_renders_origin_labels() {
     let out = format_sessions_table(&[shell, pane]);
     assert!(out.contains("Shell"), "shell origin label present: {out}");
     assert!(out.contains("AgentPane"), "agent-pane origin label present: {out}");
+}
+
+#[test]
+fn sessions_table_renders_location_labels() {
+    let mut host = session_registry::SessionInfo::new(
+        agent_client_protocol::SessionId::new("sid-host"),
+        std::path::PathBuf::from("C:\\repo"),
+    );
+    host.location = agent_sessions::SessionLocation::Host;
+    let mut wsl = session_registry::SessionInfo::new(
+        agent_client_protocol::SessionId::new("sid-wsl"),
+        std::path::PathBuf::from("/home/u"),
+    );
+    wsl.location = agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+    let out = format_sessions_table(&[host, wsl]);
+    assert!(out.contains("LOCATION"), "LOCATION header present: {out}");
+    assert!(out.contains("host"), "host location label present: {out}");
+    assert!(out.contains("wsl:Ubuntu"), "wsl distro label present: {out}");
+}
+
+#[test]
+fn format_epoch_ms_utc_known_values() {
+    assert_eq!(format_epoch_ms_utc(0), "1970-01-01 00:00");
+    // 2021-01-01 00:00:00 UTC
+    assert_eq!(format_epoch_ms_utc(1_609_459_200_000), "2021-01-01 00:00");
+    // 2021-03-01 (just past a non-leap February) sanity-checks the month math.
+    assert_eq!(format_epoch_ms_utc(1_614_556_800_000), "2021-03-01 00:00");
+}
+
+#[test]
+fn updated_label_falls_back_to_last_activity_ms() {
+    let mut s = session_registry::SessionInfo::new(
+        agent_client_protocol::SessionId::new("sid-u"),
+        std::path::PathBuf::from("/home/u"),
+    );
+    // No updated_at, but an epoch-ms activity stamp -> formatted, not "-".
+    s.updated_at = None;
+    s.last_activity_at_ms = Some(1_609_459_200_000);
+    assert_eq!(updated_label(&s), "2021-01-01 00:00");
+    // updated_at, when present, wins verbatim.
+    s.updated_at = Some("2026-06-22T03:33:46Z".into());
+    assert_eq!(updated_label(&s), "2026-06-22T03:33:46Z");
 }
 
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
