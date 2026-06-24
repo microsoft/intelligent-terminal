@@ -14,7 +14,7 @@ BeforeDiscovery {
 Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -81,7 +81,7 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
 Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script:UiReady) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }

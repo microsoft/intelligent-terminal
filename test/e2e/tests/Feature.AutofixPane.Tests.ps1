@@ -24,7 +24,7 @@ BeforeDiscovery {
 Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
         $script:CardShown = { ((Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command|Insert in Terminal') }
@@ -67,7 +67,7 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
 Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }
@@ -100,7 +100,7 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
 Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }
@@ -130,7 +130,7 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
 Describe 'Feature: autofix on stashed pane' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         # Pre-warm + connect, then stash so the helper is ready but the pane is hidden.
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
@@ -153,7 +153,7 @@ Describe 'Feature: autofix on stashed pane' -Tag 'Feature' -Skip:(-not $script:R
 Describe 'Feature: autofix across layout changes' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }

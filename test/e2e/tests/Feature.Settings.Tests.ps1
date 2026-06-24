@@ -9,7 +9,7 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature §1 Settings > AI Agents' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -60,7 +60,7 @@ Describe 'Feature §1 Settings > AI Agents' -Tag 'Feature' -Skip:(-not $script:R
 Describe 'Feature §0 FRE settings, positions, auto-error, session mgmt' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 

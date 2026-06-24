@@ -12,7 +12,7 @@ Describe 'Agent pane + autofix' -Tag 'Agent' -Skip:(-not ($script:HasPackage -an
 
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 

@@ -161,7 +161,11 @@ restores the backup.
 
 > **Picking the build**: pass `-Package Dev` / `-Package Store` (default `Auto`) — see
 > [Choosing the build](#choosing-the-build-dev-vs-store). Launch is package-specific
-> (AUMID), so both builds can be installed and targeted independently.
+> (AUMID), so both builds can be installed and targeted independently. The feature/self
+> -test suites don't hardcode a build — they call `Start-Terminal -Package (Get-ItTestPackage)`,
+> which honors the `ITE2E_PACKAGE` env var (`Auto`|`Store`|`Dev`|`<PackageFamilyName>`)
+> and defaults to `Auto`. So on a dev-only machine the suites resolve to the sideload
+> build automatically; set `$env:ITE2E_PACKAGE='Store'` to pin them to the store build.
 
 
 ## How it works (key facts)
