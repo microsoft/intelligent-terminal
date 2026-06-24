@@ -58,6 +58,7 @@ chat.turn_executed: "→ keyrt: %{title}"
 input.placeholder.connected: "Spurðu hvað sem er, / fyrir skipanir.."  # {Locked="/"}
 input.placeholder.connecting: "tengist..."
 input.placeholder.disconnected: "aftengt"
+input.image_attachments: "📎 Myndir: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Svarið var skorið af eftir að úttaksmörkum lík
 system.stopped_max_turn_requests: "Umboðsmaðurinn stöðvaðist eftir að beiðnamörkum hans fyrir þessa umferð var náð."
 system.stopped_refusal: "Umboðsmaðurinn neitaði að halda áfram með þessa beiðni."
 system.agent_busy: "Agentinn er upptekinn á þessum flipa — bíddu þar til núverandi kvaðning lýkur."
+system.image_clipboard_empty: "Engin mynd er á klemmuspjaldinu til að líma inn."
+system.image_not_supported: "Þessi agent styður ekki myndinntak."
+system.image_pasted: "Mynd viðhengd (%{label}). Ýttu á Enter til að senda."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Held áfram með setu %{session_id}..."
 system.unknown_command: "Óþekkt skipun \"%{command}\" — send sem kvaðning. Sláðu inn /help til að sjá listann."
 system.busy_use_stop: "Bíddu þar til núverandi kvaðning lýkur, eða notaðu /stop fyrst."

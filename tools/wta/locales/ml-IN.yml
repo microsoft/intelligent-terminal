@@ -58,6 +58,7 @@ chat.turn_executed: "→ നടപ്പിലാക്കി: %{title}"
 input.placeholder.connected: "എന്തും ചോദിക്കൂ, / കമാന്‍ഡുകള്‍ക്ക്.."  # {Locked="/"}
 input.placeholder.connecting: "കണക്ട് ചെയ്യുന്നു..."
 input.placeholder.disconnected: "വിച്ഛേദിച്ചു"
+input.image_attachments: "📎 ചിത്രങ്ങൾ: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── കമാന്‍ഡ് പോപ്പ്അപ്പ് (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - സ്ലാഷ്-കമാന്‍ഡ് പ്രിഫിക്സ്, ASCII ആയിരിക്കണം
@@ -143,6 +144,9 @@ system.stopped_max_tokens: "മോഡലിന്റെ ഔട്ട്പുട
 system.stopped_max_turn_requests: "ഈ ഊഴത്തിനായുള്ള അഭ്യർത്ഥനാ പരിധിയിലെത്തിയ ശേഷം ഏജന്റ് നിർത്തി."
 system.stopped_refusal: "ഈ അഭ്യർത്ഥന തുടരാൻ ഏജന്റ് വിസമ്മതിച്ചു."
 system.agent_busy: "ഈ ടാബിൽ Agent തിരക്കിലാണ് — നിലവിലെ പ്രോംപ്റ്റ് പൂർത്തിയാകുന്നത് വരെ കാത്തിരിക്കുക."
+system.image_clipboard_empty: "ഒട്ടിക്കാൻ ക്ലിപ്പ്ബോർഡിൽ ചിത്രം ഇല്ല."
+system.image_not_supported: "ഈ ഏജന്റ് ഇമേജ് ഇൻപുട്ട് പിന്തുണയ്ക്കുന്നില്ല."
+system.image_pasted: "ചിത്രം അറ്റാച്ച് ചെയ്തു (%{label}). അയയ്ക്കാൻ Enter അമർത്തുക."  # {Locked="%{label}","Enter"}
 system.resuming_session: "സെഷൻ %{session_id} പുനരാരംഭിക്കുന്നു..."
 system.unknown_command: "അറിയാത്ത കമാൻഡ് \"%{command}\" — പ്രോംപ്റ്റായി അയച്ചു. പട്ടികയ്ക്കായി /help ടൈപ്പ് ചെയ്യുക."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "നിലവിലെ പ്രോംപ്റ്റ് പൂർത്തിയാകുന്നത് വരെ കാത്തിരിക്കുക, അല്ലെങ്കിൽ ആദ്യം /stop ചെയ്യുക."  # {Locked="/stop"} — slash-command name.

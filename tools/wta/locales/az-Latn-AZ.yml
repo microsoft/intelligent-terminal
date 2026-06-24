@@ -58,6 +58,8 @@ chat.turn_executed: "→ icra edildi: %{title}"
 input.placeholder.connected: "Hər şeyi soruşun, / əmrlər üçün.."  # {Locked="/"}
 input.placeholder.connecting: "qoşulur..."
 input.placeholder.disconnected: "əlaqə kəsilib"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Şəkillər: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -143,6 +145,10 @@ system.stopped_max_tokens: "Cavab modelin çıxış həddinə çatdıqdan sonra 
 system.stopped_max_turn_requests: "Agent bu növbə üçün sorğu həddinə çatdıqdan sonra dayandı."
 system.stopped_refusal: "Agent bu sorğunu davam etdirməkdən imtina etdi."
 system.agent_busy: "Agent bu tabda məşğuldur — cari sorğunun tamamlanmasını gözləyin."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Yapışdırmaq üçün mübadilə buferində şəkil yoxdur."
+system.image_not_supported: "Bu agent şəkil girişini dəstəkləmir."
+system.image_pasted: "Şəkil əlavə edildi (%{label}). Göndərmək üçün Enter basın."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sessiya %{session_id} bərpa olunur..."
 system.unknown_command: "Naməlum əmr \"%{command}\" — sorğu kimi göndərildi. Siyahı üçün /help yazın."  # {Locked="/help"}
 system.busy_use_stop: "Cari sorğunun tamamlanmasını gözləyin və ya əvvəlcə /stop istifadə edin."  # {Locked="/stop"}

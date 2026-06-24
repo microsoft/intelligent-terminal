@@ -58,6 +58,7 @@ chat.turn_executed: "→ ruwasqa: %{title}"
 input.placeholder.connected: "Imata tapukuy, / kamachiykunapaq.."  # {Locked="/"}
 input.placeholder.connecting: "t'inkichkan..."
 input.placeholder.disconnected: "t'inkisqa"
+input.image_attachments: "📎 Imagenkuna: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Kutichiyqa kuchurqakun modelopa lluqsiynin sayaynin 
 system.stopped_max_turn_requests: "Agenteqa sayarqan kay kutipi mañakuy sayaynin chayasqan qhipata."
 system.stopped_refusal: "Agenteqa kay mañakuyta qatiyta mana munarqanchu."
 system.agent_busy: "Kay tab nisqapi Agent llamk'achkan — kunan prompt tukukunankama suyay."
+system.image_clipboard_empty: "K'askachinapaq wich'amanpi mana imagen kanchu."
+system.image_not_supported: "Kay Agent mana imagen yaykuchiyta yanapanchu."
+system.image_pasted: "Imagen k'askachasqa (%{label}). Enter nit'iy apachinapaq."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sesión %{session_id} kutichispa..."
 system.unknown_command: "Mana riqsisqa kamachiy \"%{command}\" — prompt hina apachisqa. Lista rikunaykipaq /help qillqay."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Kunan prompt tukukunankama suyay, utaq ñawpaqta /stop ruway."  # {Locked="/stop"} — slash-command name.

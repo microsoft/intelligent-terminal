@@ -58,6 +58,7 @@ chat.turn_executed: "→ käivitatud: %{title}"
 input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked="/"}
 input.placeholder.connecting: "ühendamine..."
 input.placeholder.disconnected: "ühendus katkestatud"
+input.image_attachments: "📎 Pildid: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavu
 system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
 system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
 system.agent_busy: "Agent on sellel vahekaardil hõivatud — oodake, kuni praegune viip lõpeb."
+system.image_clipboard_empty: "Lõikelaual pole kleepimiseks pilti."
+system.image_not_supported: "See agent ei toeta pildisisendit."
+system.image_pasted: "Pilt lisatud (%{label}). Vajutage Enter saatmiseks."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Seansi %{session_id} jätkamine..."
 system.unknown_command: "Tundmatu käsk \"%{command}\" — saadeti viibana. Loendi jaoks tippige /help."  # {Locked="/help"}
 system.busy_use_stop: "Oodake, kuni praegune viip lõpeb, või kasutage esmalt /stop."  # {Locked="/stop"}

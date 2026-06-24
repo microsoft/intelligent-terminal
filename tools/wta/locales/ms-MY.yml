@@ -58,6 +58,7 @@ chat.turn_executed: "→ dilaksanakan: %{title}"
 input.placeholder.connected: "Tanya apa sahaja, / untuk arahan.."  # {Locked="/"}
 input.placeholder.connecting: "menyambung..."
 input.placeholder.disconnected: "terputus"
+input.image_attachments: "📎 Imej: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Respons telah dipotong selepas mencapai had output m
 system.stopped_max_turn_requests: "Ejen berhenti selepas mencapai had permintaannya untuk giliran ini."
 system.stopped_refusal: "Ejen enggan meneruskan permintaan ini."
 system.agent_busy: "Ejen sedang sibuk pada tab ini — tunggu prompt semasa selesai."
+system.image_clipboard_empty: "Tiada imej pada papan klip untuk ditampal."
+system.image_not_supported: "Ejen ini tidak menyokong input imej."
+system.image_pasted: "Imej dilampirkan (%{label}). Tekan Enter untuk menghantar."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Menyambung semula sesi %{session_id}..."
 system.unknown_command: "Arahan tidak diketahui \"%{command}\" — dihantar sebagai prompt. Taip /help untuk senarai."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu prompt semasa selesai, atau jalankan /stop dahulu."  # {Locked="/stop"}

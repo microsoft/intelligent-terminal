@@ -58,6 +58,7 @@ chat.turn_executed: "→ executat: %{title}"
 input.placeholder.connected: "Întrebați orice, / pentru comenzi.."  # {Locked="/"}
 input.placeholder.connecting: "se conectează..."
 input.placeholder.disconnected: "deconectat"
+input.image_attachments: "📎 Imagini: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei
 system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
 system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."
 system.agent_busy: "Agentul este ocupat în această filă — așteptați finalizarea solicitării curente."
+system.image_clipboard_empty: "Nu există nicio imagine în clipboard de lipit."
+system.image_not_supported: "Acest agent nu acceptă introducerea imaginilor."
+system.image_pasted: "Imagine atașată (%{label}). Apăsați Enter pentru a trimite."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Se reia sesiunea %{session_id}..."
 system.unknown_command: "Comandă necunoscută \"%{command}\" — trimisă ca solicitare. Tastați /help pentru listă."  # {Locked="/help"}
 system.busy_use_stop: "Așteptați finalizarea solicitării curente sau folosiți mai întâi /stop."  # {Locked="/stop"}

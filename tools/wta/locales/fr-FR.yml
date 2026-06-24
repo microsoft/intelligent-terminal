@@ -58,6 +58,7 @@ chat.turn_executed: "→ exécuté : %{title}"
 input.placeholder.connected: "Posez une question, / pour les commandes.."  # {Locked="/"}
 input.placeholder.connecting: "Connexion en cours..."
 input.placeholder.disconnected: "Déconnecté"
+input.image_attachments: "📎 Images : %{items}"  # {Locked="📎","%{items}"}
 
 # ── Fenêtre contextuelle des commandes (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - préfixe de commande slash, doit rester en ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "La réponse a été tronquée après avoir atteint l
 system.stopped_max_turn_requests: "L'agent s'est arrêté après avoir atteint sa limite de requêtes pour ce tour."
 system.stopped_refusal: "L'agent a refusé de poursuivre cette demande."
 system.agent_busy: "L’agent est occupé dans cet onglet — attendez que l’invite actuelle se termine."
+system.image_clipboard_empty: "Aucune image dans le presse-papiers à coller."
+system.image_not_supported: "Cet agent ne prend pas en charge l’entrée d’image."
+system.image_pasted: "Image jointe (%{label}). Appuyez sur Enter pour envoyer."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Reprise de la session %{session_id}..."
 system.unknown_command: "Commande inconnue \"%{command}\" — envoyée comme invite. Tapez /help pour afficher la liste."
 system.busy_use_stop: "Attendez que l’invite actuelle se termine, ou utilisez d’abord /stop."

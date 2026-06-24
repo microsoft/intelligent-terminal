@@ -58,6 +58,7 @@ chat.turn_executed: "[!!_→ executed: %{title}_!!]"
 input.placeholder.connected: "[!!_Ask anything, / for commands.._!!]"  # {Locked="/"}
 input.placeholder.connecting: "[!!_connecting..._!!]"
 input.placeholder.disconnected: "[!!_disconnected_!!]"
+input.image_attachments: "[!!_📎 Images: %{items}_!!]"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "[!!_The response was cut off after reaching the mode
 system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
 system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"
 system.agent_busy: "[!!_Agent is busy on this tab — wait for the current prompt to finish._!!]"
+system.image_clipboard_empty: "[!!_No image on the clipboard to paste._!!]"
+system.image_not_supported: "[!!_This agent doesn't support image input._!!]"
+system.image_pasted: "[!!_Image attached (%{label}). Press Enter to send._!!]"  # {Locked="%{label}","Enter"}
 system.resuming_session: "[!!_Resuming session %{session_id}..._!!]"
 system.unknown_command: "[!!_Unknown command \"%{command}\" — sent as prompt. Type /help for the list._!!]"  # {Locked="/help"}
 system.busy_use_stop: "[!!_Wait for the current prompt to finish, or /stop first._!!]"  # {Locked="/stop"}

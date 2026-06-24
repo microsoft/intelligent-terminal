@@ -58,6 +58,8 @@ chat.turn_executed: "→ εκτελέστηκε: %{title}"
 input.placeholder.connected: "Ρωτήστε οτιδήποτε, / για εντολές.."  # {Locked="/"}
 input.placeholder.connecting: "σύνδεση..."
 input.placeholder.disconnected: "αποσυνδέθηκε"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Εικόνες: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "Η απάντηση περικόπηκε μετά τ
 system.stopped_max_turn_requests: "Ο πράκτορας σταμάτησε μετά την επίτευξη του ορίου αιτημάτων για αυτόν τον γύρο."
 system.stopped_refusal: "Ο πράκτορας αρνήθηκε να συνεχίσει με αυτό το αίτημα."
 system.agent_busy: "Ο agent είναι απασχολημένος σε αυτήν την καρτέλα — περιμένετε να ολοκληρωθεί η τρέχουσα προτροπή."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Δεν υπάρχει εικόνα στο πρόχειρο για επικόλληση."
+system.image_not_supported: "Αυτός ο παράγοντας δεν υποστηρίζει είσοδο εικόνας."
+system.image_pasted: "Η εικόνα επισυνάφθηκε (%{label}). Πατήστε Enter για αποστολή."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Συνέχιση της περιόδου λειτουργίας %{session_id}..."
 system.unknown_command: "Άγνωστη εντολή \"%{command}\" — στάλθηκε ως προτροπή. Πληκτρολογήστε /help για τη λίστα."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Περιμένετε να ολοκληρωθεί η τρέχουσα προτροπή ή χρησιμοποιήστε πρώτα /stop."  # {Locked="/stop"} — slash-command name.

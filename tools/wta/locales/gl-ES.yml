@@ -58,6 +58,7 @@ chat.turn_executed: "→ executado: %{title}"
 input.placeholder.connected: "Pregunte o que queira, / para comandos.."  # {Locked="/"}
 input.placeholder.connecting: "conectando..."
 input.placeholder.disconnected: "desconectado"
+input.image_attachments: "📎 Imaxes: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Ventá emerxente de comandos (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefixo de comando de barra, debe permanecer ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "A resposta cortouse ao acadar o límite de saída do
 system.stopped_max_turn_requests: "O axente detívose ao acadar o seu límite de solicitudes para esta quenda."
 system.stopped_refusal: "O axente negouse a continuar con esta solicitude."
 system.agent_busy: "O axente está ocupado nesta lapela — agarde a que remate a solicitude actual."
+system.image_clipboard_empty: "Non hai ningunha imaxe no portapapeis para pegar."
+system.image_not_supported: "Este axente non admite entrada de imaxes."
+system.image_pasted: "Imaxe anexada (%{label}). Prema Enter para enviar."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Retomando a sesión %{session_id}..."
 system.unknown_command: "Comando descoñecido \"%{command}\" — enviado como solicitude. Escriba /help para ver a lista."
 system.busy_use_stop: "Agarde a que remate a solicitude actual, ou use /stop primeiro."

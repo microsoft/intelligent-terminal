@@ -58,6 +58,8 @@ chat.turn_executed: "→ executat: %{title}"
 input.placeholder.connected: "Pregunteu el que vullgueu, / per a ordes.."  # {Locked="/"}
 input.placeholder.connecting: "connectant..."
 input.placeholder.disconnected: "desconnectat"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Imatges: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Finestra emergent d'ordes (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefix d'orde de barra, ha de romandre ASCII
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit d'eixid
 system.stopped_max_turn_requests: "L'agent s'ha parat en arribar al seu límit de sol·licituds per a este torn."
 system.stopped_refusal: "L'agent ha rebutjat continuar amb esta sol·licitud."
 system.agent_busy: "L’agent està ocupat en esta pestanya — espereu que acabe la indicació actual."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "No hi ha cap imatge al porta-retalls per a enganxar."
+system.image_not_supported: "Este agent no admet l'entrada d'imatges."
+system.image_pasted: "Imatge adjunta (%{label}). Premeu Enter per a enviar."  # {Locked="%{label}","Enter"}
 system.resuming_session: "S’està reprenent la sessió %{session_id}..."
 system.unknown_command: "Orde desconeguda \"%{command}\" — s’ha enviat com a indicació. Escriviu /help per a vore la llista."
 system.busy_use_stop: "Espereu que acabe la indicació actual, o feu /stop primer."

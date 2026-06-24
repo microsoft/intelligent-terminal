@@ -58,6 +58,8 @@ chat.turn_executed: "→ ausgeführt: %{title}"
 input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}
 input.placeholder.connecting: "Verbindung wird hergestellt..."
 input.placeholder.disconnected: "Getrennt"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Befehlspopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstrich-Befehlspräfix, muss ASCII bleiben
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "Die Antwort wurde abgeschnitten, nachdem das Ausgabe
 system.stopped_max_turn_requests: "Der Agent hat angehalten, nachdem sein Anfragelimit für diesen Zug erreicht wurde."
 system.stopped_refusal: "Der Agent hat es abgelehnt, mit dieser Anfrage fortzufahren."
 system.agent_busy: "Der Agent ist auf dieser Registerkarte beschäftigt — warten Sie, bis der aktuelle Prompt abgeschlossen ist."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Kein Bild in der Zwischenablage zum Einfügen."
+system.image_not_supported: "Dieser Agent unterstützt keine Bildeingabe."
+system.image_pasted: "Bild angehängt (%{label}). Drücken Sie Enter zum Senden."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sitzung %{session_id} wird fortgesetzt..."
 system.unknown_command: "Unbekannter Befehl \"%{command}\" — als Prompt gesendet. Geben Sie /help ein, um die Liste anzuzeigen."
 system.busy_use_stop: "Warten Sie, bis der aktuelle Prompt abgeschlossen ist, oder verwenden Sie zuerst /stop."

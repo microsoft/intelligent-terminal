@@ -58,6 +58,7 @@ chat.turn_executed: "→ utförd: %{title}"
 input.placeholder.connected: "Fråga vad som helst, / för kommandon.."  # {Locked="/"}
 input.placeholder.connecting: "ansluter..."
 input.placeholder.disconnected: "frånkopplad"
+input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Svaret avbröts efter att modellens utdatagräns nå
 system.stopped_max_turn_requests: "Agenten stoppade efter att ha nått sin begäransgräns för den här omgången."
 system.stopped_refusal: "Agenten avböjde att fortsätta med den här begäran."
 system.agent_busy: "Agenten är upptagen på den här fliken — vänta tills den aktuella prompten är klar."
+system.image_clipboard_empty: "Ingen bild i urklipp att klistra in."
+system.image_not_supported: "Den här agenten stöder inte bildinmatning."
+system.image_pasted: "Bild bifogad (%{label}). Tryck på Enter för att skicka."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Återupptar session %{session_id}..."
 system.unknown_command: "Okänt kommando \"%{command}\" — skickades som prompt. Skriv /help för listan."
 system.busy_use_stop: "Vänta tills den aktuella prompten är klar, eller använd /stop först."

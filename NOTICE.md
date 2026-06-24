@@ -556,6 +556,7 @@ under each atom alongside its canonical text, so MIT / BSD attribution
 requirements are met without embedding any single crate's license body as
 if it were canonical for the whole group.
 
+- **adler2** v2.0.1 -- [https://github.com/oyvindln/adler2](https://github.com/oyvindln/adler2) -- `0BSD OR Apache-2.0 OR MIT`
 - **agent-client-protocol** v0.10.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
 - **agent-client-protocol-schema** v0.11.0 -- [https://github.com/agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) -- `Apache-2.0`
 - **aho-corasick** v1.1.4 -- [https://github.com/BurntSushi/aho-corasick](https://github.com/BurntSushi/aho-corasick) -- `MIT OR Unlicense`
@@ -579,6 +580,7 @@ if it were canonical for the whole group.
 - **block-buffer** v0.10.4 -- [https://github.com/RustCrypto/utils](https://github.com/RustCrypto/utils) -- `Apache-2.0 OR MIT`
 - **bstr** v1.12.1 -- [https://github.com/BurntSushi/bstr](https://github.com/BurntSushi/bstr) -- `Apache-2.0 OR MIT`
 - **bytemuck** v1.25.0 -- [https://github.com/Lokathor/bytemuck](https://github.com/Lokathor/bytemuck) -- `Apache-2.0 OR MIT OR Zlib`
+- **byteorder-lite** v0.1.0 -- [https://github.com/image-rs/byteorder-lite](https://github.com/image-rs/byteorder-lite) -- `MIT OR Unlicense`
 - **bytes** v1.11.1 -- [https://github.com/tokio-rs/bytes](https://github.com/tokio-rs/bytes) -- `MIT`
 - **castaway** v0.2.4 -- [https://github.com/sagebind/castaway](https://github.com/sagebind/castaway) -- `MIT`
 - **cfg-if** v1.0.4 -- [https://github.com/rust-lang/cfg-if](https://github.com/rust-lang/cfg-if) -- `Apache-2.0 OR MIT`
@@ -591,6 +593,7 @@ if it were canonical for the whole group.
 - **concurrent-queue** v2.5.0 -- [https://github.com/smol-rs/concurrent-queue](https://github.com/smol-rs/concurrent-queue) -- `Apache-2.0 OR MIT`
 - **convert_case** v0.10.0 -- [https://github.com/rutrum/convert-case](https://github.com/rutrum/convert-case) -- `MIT`
 - **cpufeatures** v0.2.17 -- [https://github.com/RustCrypto/utils](https://github.com/RustCrypto/utils) -- `Apache-2.0 OR MIT`
+- **crc32fast** v1.5.0 -- [https://github.com/srijs/rust-crc32fast](https://github.com/srijs/rust-crc32fast) -- `Apache-2.0 OR MIT`
 - **crossbeam-channel** v0.5.15 -- [https://github.com/crossbeam-rs/crossbeam](https://github.com/crossbeam-rs/crossbeam) -- `Apache-2.0 OR MIT`
 - **crossbeam-deque** v0.8.6 -- [https://github.com/crossbeam-rs/crossbeam](https://github.com/crossbeam-rs/crossbeam) -- `Apache-2.0 OR MIT`
 - **crossbeam-epoch** v0.9.18 -- [https://github.com/crossbeam-rs/crossbeam](https://github.com/crossbeam-rs/crossbeam) -- `Apache-2.0 OR MIT`
@@ -616,10 +619,12 @@ if it were canonical for the whole group.
 - **event-listener** v5.4.1 -- [https://github.com/smol-rs/event-listener](https://github.com/smol-rs/event-listener) -- `Apache-2.0 OR MIT`
 - **event-listener-strategy** v0.5.4 -- [https://github.com/smol-rs/event-listener-strategy](https://github.com/smol-rs/event-listener-strategy) -- `Apache-2.0 OR MIT`
 - **fancy-regex** v0.11.0 -- [https://github.com/fancy-regex/fancy-regex](https://github.com/fancy-regex/fancy-regex) -- `MIT`
+- **fdeflate** v0.3.7 -- [https://github.com/image-rs/fdeflate](https://github.com/image-rs/fdeflate) -- `Apache-2.0 OR MIT`
 - **filedescriptor** v0.8.3 -- [https://github.com/wezterm/wezterm](https://github.com/wezterm/wezterm) -- `MIT`
 - **filetime** v0.2.29 -- [https://github.com/alexcrichton/filetime](https://github.com/alexcrichton/filetime) -- `Apache-2.0 OR MIT`
 - **finl_unicode** v1.4.0 -- [https://github.com/dahosek/finl_unicode](https://github.com/dahosek/finl_unicode) -- `(MIT OR Apache-2.0) AND Unicode-DFS-2016`
 - **fixedbitset** v0.4.2 -- [https://github.com/petgraph/fixedbitset](https://github.com/petgraph/fixedbitset) -- `Apache-2.0 OR MIT`
+- **flate2** v1.1.9 -- [https://github.com/rust-lang/flate2-rs](https://github.com/rust-lang/flate2-rs) -- `Apache-2.0 OR MIT`
 - **fnv** v1.0.7 -- [https://github.com/servo/rust-fnv](https://github.com/servo/rust-fnv) -- `Apache-2.0 OR MIT`
 - **foldhash** v0.2.0 -- [https://github.com/orlp/foldhash](https://github.com/orlp/foldhash) -- `Zlib`
 - **futures** v0.3.32 -- [https://github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) -- `Apache-2.0 OR MIT`
@@ -642,6 +647,7 @@ if it were canonical for the whole group.
 - **hex** v0.4.3 -- [https://github.com/KokaKiwi/rust-hex](https://github.com/KokaKiwi/rust-hex) -- `Apache-2.0 OR MIT`
 - **ident_case** v1.0.1 -- [https://github.com/TedDriggs/ident_case](https://github.com/TedDriggs/ident_case) -- `Apache-2.0 OR MIT`
 - **ignore** v0.4.25 -- [https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore](https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore) -- `MIT OR Unlicense`
+- **image** v0.25.10 -- [https://github.com/image-rs/image](https://github.com/image-rs/image) -- `Apache-2.0 OR MIT`
 - **indexmap** v2.13.0 -- [https://github.com/indexmap-rs/indexmap](https://github.com/indexmap-rs/indexmap) -- `Apache-2.0 OR MIT`
 - **indoc** v2.0.7 -- [https://github.com/dtolnay/indoc](https://github.com/dtolnay/indoc) -- `Apache-2.0 OR MIT`
 - **instability** v0.3.11 -- [https://github.com/ratatui/instability](https://github.com/ratatui/instability) -- `MIT`
@@ -663,7 +669,9 @@ if it were canonical for the whole group.
 - **memchr** v2.8.0 -- [https://github.com/BurntSushi/memchr](https://github.com/BurntSushi/memchr) -- `MIT OR Unlicense`
 - **memmem** v0.1.1 -- [http://github.com/jneem/memmem](http://github.com/jneem/memmem) -- `Apache-2.0 OR MIT`
 - **minimal-lexical** v0.2.1 -- [https://github.com/Alexhuszagh/minimal-lexical](https://github.com/Alexhuszagh/minimal-lexical) -- `Apache-2.0 OR MIT`
+- **miniz_oxide** v0.8.9 -- [https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) -- `Apache-2.0 OR MIT OR Zlib`
 - **mio** v1.1.1 -- [https://github.com/tokio-rs/mio](https://github.com/tokio-rs/mio) -- `MIT`
+- **moxcms** v0.8.1 -- [https://github.com/awxkee/moxcms.git](https://github.com/awxkee/moxcms.git) -- `Apache-2.0 OR BSD-3-Clause`
 - **nom** v7.1.3 -- [https://github.com/Geal/nom](https://github.com/Geal/nom) -- `MIT`
 - **normpath** v1.5.1 -- [https://github.com/dylni/normpath](https://github.com/dylni/normpath) -- `Apache-2.0 OR MIT`
 - **notify** v6.1.1 -- [https://github.com/notify-rs/notify.git](https://github.com/notify-rs/notify.git) -- `CC0-1.0`
@@ -686,9 +694,11 @@ if it were canonical for the whole group.
 - **phf_macros** v0.11.3 -- [https://github.com/rust-phf/rust-phf](https://github.com/rust-phf/rust-phf) -- `MIT`
 - **phf_shared** v0.11.3 -- [https://github.com/rust-phf/rust-phf](https://github.com/rust-phf/rust-phf) -- `MIT`
 - **pin-project-lite** v0.2.17 -- [https://github.com/taiki-e/pin-project-lite](https://github.com/taiki-e/pin-project-lite) -- `Apache-2.0 OR MIT`
+- **png** v0.18.1 -- [https://github.com/image-rs/image-png](https://github.com/image-rs/image-png) -- `Apache-2.0 OR MIT`
 - **portable-atomic** v1.13.1 -- [https://github.com/taiki-e/portable-atomic](https://github.com/taiki-e/portable-atomic) -- `Apache-2.0 OR MIT`
 - **powerfmt** v0.2.0 -- [https://github.com/jhpratt/powerfmt](https://github.com/jhpratt/powerfmt) -- `Apache-2.0 OR MIT`
 - **proc-macro2** v1.0.106 -- [https://github.com/dtolnay/proc-macro2](https://github.com/dtolnay/proc-macro2) -- `Apache-2.0 OR MIT`
+- **pxfm** v0.1.29 -- [https://github.com/awxkee/pxfm](https://github.com/awxkee/pxfm) -- `Apache-2.0 OR BSD-3-Clause`
 - **quote** v1.0.45 -- [https://github.com/dtolnay/quote](https://github.com/dtolnay/quote) -- `Apache-2.0 OR MIT`
 - **rand** v0.8.5 -- [https://github.com/rust-random/rand](https://github.com/rust-random/rand) -- `Apache-2.0 OR MIT`
 - **rand_core** v0.6.4 -- [https://github.com/rust-random/rand](https://github.com/rust-random/rand) -- `Apache-2.0 OR MIT`
@@ -721,6 +731,7 @@ if it were canonical for the whole group.
 - **serde_yaml** v0.9.34+deprecated -- [https://github.com/dtolnay/serde-yaml](https://github.com/dtolnay/serde-yaml) -- `Apache-2.0 OR MIT`
 - **sha2** v0.10.9 -- [https://github.com/RustCrypto/hashes](https://github.com/RustCrypto/hashes) -- `Apache-2.0 OR MIT`
 - **sharded-slab** v0.1.7 -- [https://github.com/hawkw/sharded-slab](https://github.com/hawkw/sharded-slab) -- `MIT`
+- **simd-adler32** v0.3.9 -- [https://github.com/mcountryman/simd-adler32](https://github.com/mcountryman/simd-adler32) -- `MIT`
 - **siphasher** v1.0.2 -- [https://github.com/jedisct1/rust-siphash](https://github.com/jedisct1/rust-siphash) -- `Apache-2.0 OR MIT`
 - **slab** v0.4.12 -- [https://github.com/tokio-rs/slab](https://github.com/tokio-rs/slab) -- `MIT`
 - **smallvec** v1.15.1 -- [https://github.com/servo/rust-smallvec](https://github.com/servo/rust-smallvec) -- `Apache-2.0 OR MIT`
@@ -802,9 +813,23 @@ above crate list (directly or as a component of a composite expression).
 Each section reproduces the SPDX-canonical text of the license and then,
 where applicable, the per-crate copyright notices harvested from upstream.
 
+### `0BSD`
+
+Applies to 1 crate(s) (directly or via composite identifiers): adler2 v2.0.1
+
+_Canonical text reproduced from upstream `SPDX:0BSD`:_
+
+```
+Copyright (C) YEAR by AUTHOR EMAIL
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+```
+
 ### `Apache-2.0`
 
-Applies to 155 crate(s) (directly or via composite identifiers): agent-client-protocol v0.10.0, agent-client-protocol-schema v0.11.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+147 more)
+Applies to 164 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v0.10.0, agent-client-protocol-schema v0.11.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, ... (+156 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -897,8 +922,10 @@ Copyright (c) 2014 Alex Crichton
 Copyright (c) 2014 Chris Morgan and the Teepee project developers
 Copyright (c) 2014 Paho Lurie-Gregg
 Copyright (c) 2014 The Rust Project Developers
+Copyright (c) 2014-2026 Alex Crichton
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
+Copyright (c) 2015 nwin
 Copyright (c) 2015 The Rust Project Developers
 Copyright (c) 2015-2018 The winapi-rs Developers
 Copyright (c) 2015-2020 The rust-hex Developers
@@ -912,10 +939,13 @@ Copyright (c) 2016-2019 Ulrik Sverdrup "bluss" and scopeguard developers
 Copyright (c) 2017 arc-swap developers
 Copyright (c) 2017 Artyom Pavlov
 Copyright (c) 2017 Contributors
+Copyright (c) 2017 Frommi
 Copyright (c) 2017 Nikolai Vazquez
 Copyright (c) 2017 Robert Grosse
 Copyright (c) 2017 The Tokio Authors
+Copyright (c) 2017-2024 oyvindln
 Copyright (c) 2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
+Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors
 Copyright (c) 2018 The Servo Project Developers
 Copyright (c) 2018-2019 Andrew Gallant
 Copyright (c) 2018-2019 The RustCrypto Project Developers
@@ -937,7 +967,9 @@ Copyright (c) 2023 Jacob Pratt
 Copyright (c) 2023 Jacob Pratt et al.
 Copyright (c) 2024 Jacob Pratt et al.
 Copyright (c) 2024 Josh McKinney
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright 2012-2016 The Rust Project Developers.
+Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2014 Paho Lurie-Gregg
 Copyright 2016-2026 Frank Denis.
 Copyright 2018 Developers of the Rand project
@@ -947,7 +979,34 @@ Copyright 2023 Jacob Pratt
 Copyright 2023 Jacob Pratt et al.
 Copyright 2024 Jacob Pratt et al.
 Copyright 2024 Josh McKinney
+Copyright 2024 Radzivon Bartoshyk
 Copyright 2025 Zed Industries, Inc. and contributors
+```
+
+### `BSD-3-Clause`
+
+Applies to 2 crate(s) (directly or via composite identifiers): moxcms v0.8.1, pxfm v0.1.29
+
+_Canonical text reproduced from upstream `SPDX:BSD-3-Clause`:_
+
+```
+Copyright (c) <year> <owner>. 
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+_Copyright notices harvested from the above crates' upstream LICENSE files:_
+
+```
+Copyright 2024 Radzivon Bartoshyk
 ```
 
 ### `BSL-1.0`
@@ -1098,7 +1157,7 @@ express Statement of Purpose.
 
 ### `MIT`
 
-Applies to 231 crate(s) (directly or via composite identifiers): aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, anyhow v1.0.102, ... (+223 more)
+Applies to 240 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+232 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
@@ -1140,6 +1199,7 @@ Copyright (c) 2014 Paho Lurie-Gregg
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2019 Geoffroy Couprie
 Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+Copyright (c) 2014-2026 Alex Crichton
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
 Copyright (c) 2015 Bartłomiej Kamiński
@@ -1147,6 +1207,7 @@ Copyright (c) 2015 Danny Guo
 Copyright (c) 2015 fangyuanziti
 Copyright (c) 2015 François Bernier
 Copyright (c) 2015 Jonathan Reem
+Copyright (c) 2015 nwin
 Copyright (c) 2015 The Rust Project Developers
 Copyright (c) 2015-2018 The winapi-rs Developers
 Copyright (c) 2015-2020 The rust-hex Developers
@@ -1166,15 +1227,18 @@ Copyright (c) 2017 Andrew Gallant
 Copyright (c) 2017 arc-swap developers
 Copyright (c) 2017 Artyom Pavlov
 Copyright (c) 2017 Contributors
+Copyright (c) 2017 Frommi
 Copyright (c) 2017 Gilad Naaman
 Copyright (c) 2017 Martin Geisler
 Copyright (c) 2017 Nikolai Vazquez
 Copyright (c) 2017 Robert Grosse
 Copyright (c) 2017 Ted Driggs
 Copyright (c) 2017 The Tokio Authors
+Copyright (c) 2017-2024 oyvindln
 Copyright (c) 2018 Akash Kurdekar
 Copyright (c) 2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
 Copyright (c) 2018 Carl Lerche
+Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors
 Copyright (c) 2018 The Servo Project Developers
 Copyright (c) 2018 Wez Furlong
 Copyright (c) 2018-2019 Andrew Gallant
@@ -1214,7 +1278,9 @@ Copyright (c) 2024 Jacob Pratt et al.
 Copyright (c) 2024 Josh McKinney
 Copyright (c) 2025 rutrum
 Copyright (c) 2025 The Ratatui Developers
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright 2012-2016 The Rust Project Developers.
+Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2014 Paho Lurie-Gregg
 Copyright 2015 The Fancy Regex Authors.
 Copyright 2016-2026 Frank Denis.
@@ -1309,7 +1375,7 @@ Except as contained in this notice, the name of a copyright holder shall not be 
 
 ### `Unlicense`
 
-Applies to 7 crate(s) (directly or via composite identifiers): aho-corasick v1.1.4, globset v0.4.18, ignore v0.4.25, memchr v2.8.0, same-file v1.0.6, walkdir v2.5.0, winapi-util v0.1.11
+Applies to 8 crate(s) (directly or via composite identifiers): aho-corasick v1.1.4, byteorder-lite v0.1.0, globset v0.4.18, ignore v0.4.25, memchr v2.8.0, same-file v1.0.6, walkdir v2.5.0, winapi-util v0.1.11
 
 _Canonical text reproduced from upstream `SPDX:Unlicense`:_
 
@@ -1355,7 +1421,7 @@ TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
 ### `Zlib`
 
-Applies to 2 crate(s) (directly or via composite identifiers): bytemuck v1.25.0, foldhash v0.2.0
+Applies to 3 crate(s) (directly or via composite identifiers): bytemuck v1.25.0, foldhash v0.2.0, miniz_oxide v0.8.9
 
 _Canonical text reproduced from upstream `SPDX:Zlib`:_
 
@@ -1376,8 +1442,12 @@ Permission is granted to anyone to use this software for any purpose, including 
 _Copyright notices harvested from the above crates' upstream LICENSE files:_
 
 ```
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
 Copyright (c) 2019 Daniel "Lokathor" Gee.
 Copyright (c) 2024 Orson Peters
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright 2013-2014 RAD Game Tools and Valve Software
 ```
 
 <!-- END wta-rust-deps -->

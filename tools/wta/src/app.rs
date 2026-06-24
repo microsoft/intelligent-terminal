@@ -1133,6 +1133,11 @@ pub enum AppEvent {
         /// error before opening a new tab when the agent can't
         /// rehydrate ACP sessions.
         load_session_supported: bool,
+        /// Whether the agent advertised the `image` prompt capability
+        /// (`promptCapabilities.image`) in its initialize response. Gates the
+        /// Alt+V image-paste handler so the user gets a clear message instead
+        /// of silently sending an image the agent will reject.
+        image_supported: bool,
     },
     /// A new ACP session has been created and bound to a tab. Carries the
     /// per-tab model list (each ACP session can advertise its own).
@@ -1516,6 +1521,10 @@ pub struct TabSession {
     // cursor, and slash-command popup across switches.
     pub input: String,
     pub cursor_pos: usize,
+    /// Images captured from the clipboard via Alt+V, waiting to be sent with
+    /// the next prompt. Rendered as `[image #N]` chips above the input; drained
+    /// into the `PromptSubmission` on Enter and cleared after submit/clear.
+    pub pending_images: Vec<crate::clipboard_image::PastedImage>,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
@@ -2054,6 +2063,10 @@ pub struct App {
     /// with a clear error before opening a new tab when the agent
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
+    /// Whether the connected ACP agent advertised the `image` prompt
+    /// capability (`promptCapabilities.image`). Gates the Alt+V image-paste
+    /// handler. Set on `AgentConnected`.
+    pub agent_supports_image: bool,
     /// Origin filter for the `/sessions` picker. Captured once at
     /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
     /// stable for the lifetime of this helper process. Read by
@@ -2296,6 +2309,7 @@ impl App {
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             agent_supports_load_session: false,
+            agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
             install_request_tx: None,
             agent_event_tx: None,
@@ -4630,6 +4644,7 @@ impl App {
                 available_models,
                 current_model_id,
                 load_session_supported,
+                image_supported,
             } => {
                 self.agent_name = name;
                 self.agent_model = model;
@@ -4638,6 +4653,7 @@ impl App {
                 self.available_models = available_models.clone();
                 self.current_model_id = current_model_id.clone();
                 self.agent_supports_load_session = load_session_supported;
+                self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
                 // A successful connect resolves any in-flight auth recovery:
                 // bump the generation so a still-pending dead-man timer becomes
@@ -7074,7 +7090,8 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if !self.current_tab().input.is_empty()
+                if (!self.current_tab().input.is_empty()
+                    || !self.current_tab().pending_images.is_empty())
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -7089,6 +7106,8 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     let text = std::mem::take(&mut tab.input);
+                    // Drain any Alt+V images queued for this prompt.
+                    let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
                     tab.refresh_command_popup();
                     // `session_id` may be None on a brand-new tab whose ACP
@@ -7110,7 +7129,27 @@ impl App {
                         cwd: None,
                         source_pane_id: None,
                     };
-                    let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+                    // The echoed user message shows a marker for each queued
+                    // image; the ACP text block stays raw (the image rides as a
+                    // separate ContentBlock::Image).
+                    let display_text = if images.is_empty() {
+                        text.clone()
+                    } else {
+                        let items = images
+                            .iter()
+                            .enumerate()
+                            .map(|(i, im)| format!("[{}] {}", i + 1, im.label))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let marker = t!("input.image_attachments", items = items).into_owned();
+                        if text.is_empty() {
+                            marker
+                        } else {
+                            format!("{text}\n{marker}")
+                        }
+                    };
+                    let prompt =
+                        PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,
@@ -7123,7 +7162,7 @@ impl App {
                     }
                     let submitted = SubmittedPrompt {
                         id: prompt.id,
-                        text: text.clone(),
+                        text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
                         autofix: None,
                     };
@@ -7170,6 +7209,11 @@ impl App {
             KeyCode::PageDown => {
                 self.current_tab_mut().chat_scroll.by(-10);
             }
+            KeyCode::Char('v') | KeyCode::Char('V')
+                if key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.handle_paste_image();
+            }
             KeyCode::Char(c) => {
                 // Only type into the input when it is the live caret target.
                 // When a recommendation/permission card or a past turn is
@@ -7187,6 +7231,42 @@ impl App {
 
     fn scroll_to_bottom(&mut self) {
         self.current_tab_mut().scroll_to_bottom();
+    }
+
+    /// Alt+V: capture an image from the Windows clipboard and queue it to send
+    /// with the next prompt. Gated on the input being the live caret target and
+    /// on the agent advertising the `image` prompt capability — otherwise the
+    /// user gets a clear system message instead of a silently-rejected image.
+    fn handle_paste_image(&mut self) {
+        if !self.current_tab().input_has_nav_focus() {
+            return;
+        }
+        if !self.agent_supports_image {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.image_not_supported").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        match crate::clipboard_image::read_clipboard_image() {
+            Some(image) => {
+                let label = image.label.clone();
+                let tab = self.current_tab_mut();
+                tab.pending_images.push(image);
+                tab.messages.push(ChatMessage::System(
+                    t!("system.image_pasted", label = label).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.image_clipboard_empty").into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
     }
 
     /// True while the open agents view should show the loading shimmer: either
@@ -13302,6 +13382,7 @@ mod tests {
             available_models: Vec::new(),
             current_model_id: None,
             load_session_supported: true,
+            image_supported: false,
         });
 
         assert!(
@@ -14796,7 +14877,54 @@ mod tests {
         );
     }
 
-    /// Render: a surfaced recommendation card with a `Send` action must paint
+    /// Alt+V when the agent did not advertise the `image` prompt capability
+    /// must no-op the paste and surface a clear system message rather than
+    /// queueing an image the agent would reject.
+    #[test]
+    fn alt_v_without_image_capability_shows_not_supported_message() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.agent_supports_image = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::ALT));
+
+        let want = t!("system.image_not_supported").into_owned();
+        let tab = app.current_tab();
+        assert!(
+            tab.messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::System(s) if *s == want)),
+            "Alt+V without image capability must push the not-supported message"
+        );
+        assert!(
+            tab.pending_images.is_empty(),
+            "no image should be queued when the capability is missing"
+        );
+    }
+
+    /// Render: queued Alt+V images surface as the input-box title so the user
+    /// can see what will be sent.
+    #[test]
+    fn input_box_titles_queued_images() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut()
+            .pending_images
+            .push(crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("screenshot"),
+            "the input box must title queued images; rendered:\n{text}"
+        );
+    }
+
+
     /// the action's command body (the card shows the command, not the choice
     /// `title` field, which only surfaces for action-less choices) plus the
     /// run-command button. Lifts `ui/recommendations.rs` (reached only when

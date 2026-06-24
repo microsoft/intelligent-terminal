@@ -58,6 +58,8 @@ chat.turn_executed: "→ wedi'i weithredu: %{title}"
 input.placeholder.connected: "Gofynnwch unrhyw beth, / am orchmynion.."  # {Locked="/"}
 input.placeholder.connecting: "yn cysylltu..."
 input.placeholder.disconnected: "datgysylltedig"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Delweddau: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Naidlen gorchmynion (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - rhagddodiad gorchymyn slaes, rhaid iddo aros yn ASCII
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "Cafodd yr ymateb ei dorri ar ôl cyrraedd terfyn all
 system.stopped_max_turn_requests: "Stopiodd yr asiant ar ôl cyrraedd ei derfyn ceisiadau ar gyfer y tro hwn."
 system.stopped_refusal: "Gwrthododd yr asiant barhau â'r cais hwn."
 system.agent_busy: "Mae’r asiant yn brysur ar y tab hwn — arhoswch i’r anogiad presennol orffen."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Nid oes delwedd ar y clipfwrdd i'w gludo."
+system.image_not_supported: "Nid yw'r asiant hwn yn cefnogi mewnbwn delwedd."
+system.image_pasted: "Delwedd wedi'i hatodi (%{label}). Pwyswch Enter i anfon."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Yn ailddechrau sesiwn %{session_id}..."
 system.unknown_command: "Gorchymyn anhysbys \"%{command}\" — anfonwyd fel anogiad. Teipiwch /help am y rhestr."
 system.busy_use_stop: "Arhoswch i’r anogiad presennol orffen, neu defnyddiwch /stop yn gyntaf."

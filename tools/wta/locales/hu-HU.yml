@@ -58,6 +58,7 @@ chat.turn_executed: "→ végrehajtva: %{title}"
 input.placeholder.connected: "Kérdezzen bármit, / a parancsokhoz.."  # {Locked="/"}
 input.placeholder.connecting: "csatlakozás..."
 input.placeholder.disconnected: "lecsatlakozva"
+input.image_attachments: "📎 Képek: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimen
 system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
 system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."
 system.agent_busy: "Az ügynök elfoglalt ezen a lapon — várja meg, amíg az aktuális kérés befejeződik."
+system.image_clipboard_empty: "Nincs beilleszthető kép a vágólapon."
+system.image_not_supported: "Ez az ügynök nem támogatja a képbevitelt."
+system.image_pasted: "Kép csatolva (%{label}). A küldéshez nyomja meg az Enter billentyűt."  # {Locked="%{label}","Enter"}
 system.resuming_session: "A(z) %{session_id} munkamenet folytatása..."
 system.unknown_command: "Ismeretlen parancs: \"%{command}\" — kérésként elküldve. A listához írja be: /help."  # {Locked="/help"}
 system.busy_use_stop: "Várja meg, amíg az aktuális kérés befejeződik, vagy előbb használja a /stop parancsot."  # {Locked="/stop"}

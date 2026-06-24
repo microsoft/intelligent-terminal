@@ -58,6 +58,7 @@ chat.turn_executed: "→ yürütüldü: %{title}"
 input.placeholder.connected: "Herhangi bir şey sorun, / komutlar için.."  # {Locked="/"}
 input.placeholder.connecting: "bağlanıyor..."
 input.placeholder.disconnected: "bağlantı kesildi"
+input.image_attachments: "📎 Görseller: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -143,6 +144,9 @@ system.stopped_max_tokens: "Modelin çıktı sınırına ulaşıldıktan sonra y
 system.stopped_max_turn_requests: "Aracı, bu tur için istek sınırına ulaştıktan sonra durdu."
 system.stopped_refusal: "Aracı, bu isteği sürdürmeyi reddetti."
 system.agent_busy: "Aracı bu sekmede meşgul — geçerli istemin bitmesini bekleyin."
+system.image_clipboard_empty: "Yapıştırılacak panoda görsel yok."
+system.image_not_supported: "Bu aracı görsel girişini desteklemiyor."
+system.image_pasted: "Görsel eklendi (%{label}). Göndermek için Enter tuşuna basın."  # {Locked="%{label}","Enter"}
 system.resuming_session: "%{session_id} oturumu sürdürülüyor..."
 system.unknown_command: "Bilinmeyen komut \"%{command}\" — istem olarak gönderildi. Liste için /help yazın."  # {Locked="/help"}
 system.busy_use_stop: "Geçerli istemin bitmesini bekleyin veya önce /stop kullanın."  # {Locked="/stop"}

@@ -58,6 +58,8 @@ chat.turn_executed: "→ udført: %{title}"
 input.placeholder.connected: "Spørg om hvad som helst, / for kommandoer.."  # {Locked="/"}
 input.placeholder.connecting: "forbinder..."
 input.placeholder.disconnected: "afbrudt"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Billeder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "Svaret blev afkortet, da modellens outputgrænse ble
 system.stopped_max_turn_requests: "Agenten stoppede, da dens anmodningsgrænse for denne tur blev nået."
 system.stopped_refusal: "Agenten afviste at fortsætte med denne anmodning."
 system.agent_busy: "Agenten er optaget på denne fane — vent på, at den aktuelle prompt afsluttes."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Der er intet billede i udklipsholderen at indsætte."
+system.image_not_supported: "Denne agent understøtter ikke billedinput."
+system.image_pasted: "Billede vedhæftet (%{label}). Tryk på Enter for at sende."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Genoptager session %{session_id}..."
 system.unknown_command: "Ukendt kommando \"%{command}\" — sendt som prompt. Skriv /help for at se listen."
 system.busy_use_stop: "Vent på, at den aktuelle prompt afsluttes, eller brug /stop først."

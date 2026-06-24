@@ -37,12 +37,25 @@ struct WrappedInput {
 }
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let block = Block::default()
+    let tab = app.current_tab();
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .border_style(theme::INPUT_BORDER)
         .style(Style::new().bg(theme::INPUT_BG))
         .padding(Padding::new(INPUT_LEFT_PAD, 0, 0, 0));
-    let tab = app.current_tab();
+    // Queued Alt+V images surface as a title on the top border so the user can
+    // see what will be sent without spending an inner text row.
+    if !tab.pending_images.is_empty() {
+        let items = tab
+            .pending_images
+            .iter()
+            .enumerate()
+            .map(|(i, img)| format!("[{}] {}", i + 1, img.label))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let title = t!("input.image_attachments", items = items).into_owned();
+        block = block.title(Span::styled(title, theme::INPUT_TEXT));
+    }
     let text_width = area
         .width
         .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);

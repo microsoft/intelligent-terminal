@@ -61,6 +61,55 @@ function Clear-AgentInput {
     }
 }
 
+function Send-AgentWin32Key {
+    <#
+    .SYNOPSIS
+        Inject a single MODIFIED key (e.g. Alt+V, Shift+Enter) into the agent pane via
+        win32-input-mode raw key-event sequences — the only way to express a modifier, since
+        wtcli's tmux tokens and bare ANSI escapes carry no modifier state.
+    .DESCRIPTION
+        Emits a keydown then keyup as `ESC[Vk;Sc;Uc;Kd;Cs;Rc_`, where:
+          Vk = virtual-key code, Sc = scan code, Uc = UTF-16 unit (0 if none),
+          Kd = 1 down / 0 up, Cs = control-key-state bitmask, Rc = repeat count.
+        ConPTY decodes these back into INPUT_RECORD key events for the helper's console, so
+        crossterm sees a real KeyEvent with the modifier — exactly like a physical keypress.
+    .PARAMETER Modifiers
+        Control-key-state bitmask: 0x02 = LEFT_ALT_PRESSED, 0x10 = SHIFT_PRESSED,
+        0x08 = LEFT_CTRL_PRESSED (combine with -bor).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][int]$Vk,
+        [int]$Sc = 0,
+        [int]$Uc = 0,
+        [int]$Modifiers = 0,
+        [string]$PaneSessionId
+    )
+    process {
+        if (-not $PaneSessionId) {
+            $PaneSessionId = (Wait-Until -TimeoutSec 20 -Because "agent pane session id" -Condition { Get-AgentPaneSession -App $App }).PaneSessionId
+        }
+        $e = $script:ItEsc
+        $down = "$e[$Vk;$Sc;$Uc;1;$Modifiers;1_"
+        $up = "$e[$Vk;$Sc;$Uc;0;$Modifiers;1_"
+        Invoke-WtCli -App $App -Arguments @('send-keys', '--raw', '-t', $PaneSessionId, '--', "$down$up") | Out-Null
+        Start-Sleep -Milliseconds 150
+        $App
+    }
+}
+
+function Send-AgentAltV {
+    <#
+    .SYNOPSIS
+        Simulate Alt+V (clipboard image paste) in the agent pane. VK_V=0x56, scan=0x2F, no
+        character (Alt+letter is a menu accelerator, so Uc=0 — matching real hardware),
+        LEFT_ALT_PRESSED=0x02. The agent pane session is resolved automatically.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$PaneSessionId)
+    process { Send-AgentWin32Key -App $App -Vk 0x56 -Sc 0x2F -Uc 0 -Modifiers 0x02 -PaneSessionId $PaneSessionId }
+}
+
 function Open-AgentCommandMenu {
     <#
     .SYNOPSIS

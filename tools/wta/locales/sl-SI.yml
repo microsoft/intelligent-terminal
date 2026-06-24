@@ -58,6 +58,7 @@ chat.turn_executed: "→ izvedeno: %{title}"
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}
 input.placeholder.connecting: "povezovanje..."
 input.placeholder.disconnected: "prekinjeno"
+input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -139,6 +140,9 @@ system.stopped_max_tokens: "Odgovor je bil odrezan po dosegu izhodne omejitve mo
 system.stopped_max_turn_requests: "Agent se je ustavil po dosegu omejitve zahtev za to potezo."
 system.stopped_refusal: "Agent je zavrnil nadaljevanje te zahteve."
 system.agent_busy: "Agent je zaposlen na tem zavihku — počakajte, da se trenutni poziv dokonča."
+system.image_clipboard_empty: "V odložišču ni slike za lepljenje."
+system.image_not_supported: "Ta agent ne podpira vnosa slik."
+system.image_pasted: "Slika priložena (%{label}). Pritisnite Enter za pošiljanje."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Nadaljevanje seje %{session_id}..."
 system.unknown_command: "Neznan ukaz \"%{command}\" — poslan kot poziv. Za seznam vnesite /help."  # {Locked="/help"}
 system.busy_use_stop: "Počakajte, da se trenutni poziv dokonča, ali najprej uporabite /stop."  # {Locked="/stop"}

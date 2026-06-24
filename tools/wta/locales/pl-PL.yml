@@ -58,6 +58,7 @@ chat.turn_executed: "→ wykonano: %{title}"
 input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked="/"}
 input.placeholder.connecting: "łączenie..."
 input.placeholder.disconnected: "rozłączono"
+input.image_attachments: "📎 Obrazy: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -139,6 +140,9 @@ system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu
 system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
 system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
 system.agent_busy: "Agent jest zajęty na tej karcie — poczekaj, aż bieżący monit się zakończy."
+system.image_clipboard_empty: "Brak obrazu w schowku do wklejenia."
+system.image_not_supported: "Ten agent nie obsługuje wprowadzania obrazów."
+system.image_pasted: "Obraz załączony (%{label}). Naciśnij Enter, aby wysłać."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Wznawianie sesji %{session_id}..."
 system.unknown_command: "Nieznane polecenie \"%{command}\" — wysłano jako monit. Wpisz /help, aby wyświetlić listę."  # {Locked="/help"}
 system.busy_use_stop: "Poczekaj, aż bieżący monit się zakończy, albo najpierw użyj /stop."  # {Locked="/stop"}

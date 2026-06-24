@@ -58,6 +58,7 @@ chat.turn_executed: "→ निष्पादित: %{title}"
 input.placeholder.connected: "कुछ भी पूछें, / कमांड के लिए.."  # {Locked="/"}
 input.placeholder.connecting: "कनेक्ट हो रहा है..."
 input.placeholder.disconnected: "डिस्कनेक्ट"
+input.image_attachments: "📎 छवियाँ: %{items}"  # {Locked="📎","%{items}"}
 
 # ── कमांड पॉपअप (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - स्लैश-कमांड उपसर्ग, ASCII रहना चाहिए
@@ -143,6 +144,9 @@ system.stopped_max_tokens: "मॉडल की आउटपुट सीमा 
 system.stopped_max_turn_requests: "इस बारी के लिए अपनी अनुरोध सीमा तक पहुँचने के बाद एजेंट रुक गया।"
 system.stopped_refusal: "एजेंट ने इस अनुरोध को जारी रखने से इनकार कर दिया।"
 system.agent_busy: "इस टैब पर Agent व्यस्त है — वर्तमान प्रॉम्प्ट समाप्त होने तक प्रतीक्षा करें।"
+system.image_clipboard_empty: "क्लिपबोर्ड पर पेस्ट करने के लिए कोई छवि नहीं है।"
+system.image_not_supported: "यह एजेंट छवि इनपुट का समर्थन नहीं करता।"
+system.image_pasted: "छवि संलग्न की गई (%{label}). भेजने के लिए Enter दबाएँ."  # {Locked="%{label}","Enter"}
 system.resuming_session: "सत्र %{session_id} फिर से शुरू किया जा रहा है..."
 system.unknown_command: "अज्ञात कमांड \"%{command}\" — प्रॉम्प्ट के रूप में भेजा गया। सूची के लिए /help लिखें।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "वर्तमान प्रॉम्प्ट समाप्त होने तक प्रतीक्षा करें, या पहले /stop करें।"  # {Locked="/stop"} — slash-command name.

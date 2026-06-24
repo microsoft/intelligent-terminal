@@ -58,6 +58,7 @@ chat.turn_executed: "→ извршено: %{title}"
 input.placeholder.connected: "Питајте било шта, / за команде.."  # {Locked="/"}
 input.placeholder.connecting: "повезивање..."
 input.placeholder.disconnected: "прекинута веза"
+input.image_attachments: "📎 Слике: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -139,6 +140,9 @@ system.stopped_max_tokens: "Одговор је одсечен након дос
 system.stopped_max_turn_requests: "Агент се зауставио након достизања ограничења захтева за овај потез."
 system.stopped_refusal: "Агент је одбио да настави са овим захтевом."
 system.agent_busy: "Агент је заузет на овој картици — сачекајте да се тренутни упит заврши."
+system.image_clipboard_empty: "Нема слике у међуспремнику за лијепљење."
+system.image_not_supported: "Овај агент не подржава унос слика."
+system.image_pasted: "Слика је приложена (%{label}). Притисните Enter за слање."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Наставља се сесија %{session_id}..."
 system.unknown_command: "Непозната команда \"%{command}\" — послата као упит. Унесите /help за списак."  # {Locked="/help"}
 system.busy_use_stop: "Сачекајте да се тренутни упит заврши или прво употребите /stop."  # {Locked="/stop"}

@@ -58,6 +58,7 @@ chat.turn_executed: "[!! → execu_ted: %{title} !!]"
 input.placeholder.connected: "[!! Ask_ anything, / for commands.. !!]"  # {Locked="/"}
 input.placeholder.connecting: "[!! con_necting... !!]"
 input.placeholder.disconnected: "[!! dis_connected !!]"
+input.image_attachments: "[!! 📎 Ima_ges: %{items} !!]"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "[!! The_ response was cut off after reaching the mod
 system.stopped_max_turn_requests: "[!! The_ agent stopped after reaching its request limit for this turn. !!]"
 system.stopped_refusal: "[!! The_ agent declined to continue with this request. !!]"
 system.agent_busy: "[!! Age_nt is busy on this tab — wait for the current prompt to finish. !!]"
+system.image_clipboard_empty: "[!! No_ image on the clipboard to paste. !!]"
+system.image_not_supported: "[!! This_ agent doesn't support image input. !!]"
+system.image_pasted: "[!! Ima_ge attached (%{label}). Press Enter to send. !!]"  # {Locked="%{label}","Enter"}
 system.resuming_session: "[!! Res_uming session %{session_id}... !!]"
 system.unknown_command: "[!! Unk_nown command \"%{command}\" — sent as prompt. Type /help for the list. !!]"  # {Locked="/help"}
 system.busy_use_stop: "[!! Wai_t for the current prompt to finish, or /stop first. !!]"  # {Locked="/stop"}

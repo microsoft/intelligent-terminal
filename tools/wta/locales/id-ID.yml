@@ -58,6 +58,7 @@ chat.turn_executed: "→ dijalankan: %{title}"
 input.placeholder.connected: "Tanyakan apa saja, / untuk perintah.."  # {Locked="/"}
 input.placeholder.connecting: "menyambungkan..."
 input.placeholder.disconnected: "terputus"
+input.image_attachments: "📎 Gambar: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Respons terpotong setelah mencapai batas keluaran mo
 system.stopped_max_turn_requests: "Agen berhenti setelah mencapai batas permintaannya untuk giliran ini."
 system.stopped_refusal: "Agen menolak untuk melanjutkan permintaan ini."
 system.agent_busy: "Agen sedang sibuk di tab ini — tunggu hingga prompt saat ini selesai."
+system.image_clipboard_empty: "Tidak ada gambar di clipboard untuk ditempel."
+system.image_not_supported: "Agen ini tidak mendukung input gambar."
+system.image_pasted: "Gambar dilampirkan (%{label}). Tekan Enter untuk mengirim."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Melanjutkan sesi %{session_id}..."
 system.unknown_command: "Perintah tidak dikenal \"%{command}\" — dikirim sebagai prompt. Ketik /help untuk daftar."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu hingga prompt saat ini selesai, atau jalankan /stop terlebih dahulu."  # {Locked="/stop"}

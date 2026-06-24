@@ -58,6 +58,7 @@ chat.turn_executed: "→ exekutatuta: %{title}"
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}
 input.placeholder.connecting: "konektatzen..."
 input.placeholder.disconnected: "deskonektatuta"
+input.image_attachments: "📎 Irudiak: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Komandoen popup-a (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - barra-komando aurrizkia, ASCII izan behar du
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gaind
 system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
 system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
 system.agent_busy: "Agentea lanpetuta dago fitxa honetan — itxaron uneko gonbita amaitu arte."
+system.image_clipboard_empty: "Ez dago irudirik arbelean itsasteko."
+system.image_not_supported: "Agente honek ez du irudi-sarrerarik onartzen."
+system.image_pasted: "Irudia erantsi da (%{label}). Sakatu Enter bidaltzeko."  # {Locked="%{label}","Enter"}
 system.resuming_session: "%{session_id} saioa berrekiten..."
 system.unknown_command: "Komando ezezaguna \"%{command}\" — gonbita gisa bidali da. Idatzi /help zerrenda ikusteko."
 system.busy_use_stop: "Itxaron uneko gonbita amaitu arte, edo erabili /stop lehenik."

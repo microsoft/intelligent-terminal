@@ -58,6 +58,7 @@ chat.turn_executed: "→ naisagawa: %{title}"
 input.placeholder.connected: "Magtanong ng kahit ano, / para sa mga command.."  # {Locked="/"}
 input.placeholder.connecting: "kumokonekta..."
 input.placeholder.disconnected: "nadiskonekta"
+input.image_attachments: "📎 Mga larawan: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Naputol ang tugon pagkatapos maabot ang limitasyon s
 system.stopped_max_turn_requests: "Huminto ang ahente pagkatapos maabot ang limitasyon nito sa kahilingan para sa pagliko na ito."
 system.stopped_refusal: "Tumanggi ang ahente na ipagpatuloy ang kahilingang ito."
 system.agent_busy: "Abala ang agent sa tab na ito — hintaying matapos ang kasalukuyang prompt."
+system.image_clipboard_empty: "Walang larawang ipa-paste sa clipboard."
+system.image_not_supported: "Hindi sinusuportahan ng agent na ito ang image input."
+system.image_pasted: "Naka-attach ang larawan (%{label}). Pindutin ang Enter para ipadala."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Ipinagpapatuloy ang session %{session_id}..."
 system.unknown_command: "Hindi kilalang command \"%{command}\" — ipinadala bilang prompt. I-type ang /help para sa listahan."  # {Locked="/help"}
 system.busy_use_stop: "Hintaying matapos ang kasalukuyang prompt, o mag-/stop muna."  # {Locked="/stop"}

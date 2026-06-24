@@ -58,6 +58,7 @@ chat.turn_executed: "→ kua mahia: %{title}"
 input.placeholder.connected: "Patai i tetahi mea, / mo nga whakahau.."  # {Locked="/"}
 input.placeholder.connecting: "e hono ana..."
 input.placeholder.disconnected: "kua wetekina"
+input.image_attachments: "📎 Ngā atahanga: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "I tapahia te whakautu i muri i te tutukinga o te tep
 system.stopped_max_turn_requests: "I mutu te kaihoko i muri i te tutukinga o tana tepe tono mō tēnei huri."
 system.stopped_refusal: "I whakakāhore te kaihoko ki te haere tonu me tēnei tono."
 system.agent_busy: "Kei te pukumahi te agent i tēnei ripa — tatari kia mutu te prompt onāianei."
+system.image_clipboard_empty: "Kāore he atahanga i te papatopenga hei whakapiri."
+system.image_not_supported: "Kāore tēnei agent e tautoko i te tauuru atahanga."
+system.image_pasted: "Kua āpitihia te atahanga (%{label}). Pēhia Enter ki te tuku."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Kei te tīmata anō te wāhanga %{session_id}..."
 system.unknown_command: "He command kāore e mōhiotia \"%{command}\" — kua tukuna hei prompt. Patohia /help mō te rārangi."  # {Locked="/help"}
 system.busy_use_stop: "Tatari kia mutu te prompt onāianei, me whakamahi rānei i te /stop i te tuatahi."  # {Locked="/stop"}

@@ -58,6 +58,7 @@ chat.turn_executed: "→ uitgevoerd: %{title}"
 input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/"}
 input.placeholder.connecting: "Verbinden..."
 input.placeholder.disconnected: "Verbroken"
+input.image_attachments: "📎 Afbeeldingen: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Opdrachtpopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - schuine-streep-opdrachtvoorvoegsel, moet ASCII blijven
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van 
 system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
 system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."
 system.agent_busy: "De agent is bezig op dit tabblad — wacht tot de huidige prompt is voltooid."
+system.image_clipboard_empty: "Geen afbeelding op het klembord om te plakken."
+system.image_not_supported: "Deze agent ondersteunt geen afbeeldingsinvoer."
+system.image_pasted: "Afbeelding bijgevoegd (%{label}). Druk op Enter om te verzenden."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sessie %{session_id} wordt hervat..."
 system.unknown_command: "Onbekende opdracht \"%{command}\" — verzonden als prompt. Typ /help voor de lijst."
 system.busy_use_stop: "Wacht tot de huidige prompt is voltooid, of gebruik eerst /stop."

@@ -58,6 +58,7 @@ chat.turn_executed: "→ đã thực thi: %{title}"
 input.placeholder.connected: "Hỏi bất cứ điều gì, / cho lệnh.."  # {Locked="/"}
 input.placeholder.connecting: "đang kết nối..."
 input.placeholder.disconnected: "đã ngắt kết nối"
+input.image_attachments: "📎 Hình ảnh: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Phản hồi đã bị cắt sau khi đạt đến g
 system.stopped_max_turn_requests: "Tác nhân đã dừng sau khi đạt đến giới hạn yêu cầu cho lượt này."
 system.stopped_refusal: "Tác nhân đã từ chối tiếp tục với yêu cầu này."
 system.agent_busy: "Tác nhân đang bận trên tab này — hãy đợi lời nhắc hiện tại hoàn tất."
+system.image_clipboard_empty: "Không có hình ảnh trong bảng tạm để dán."
+system.image_not_supported: "Tác nhân này không hỗ trợ nhập hình ảnh."
+system.image_pasted: "Đã đính kèm hình ảnh (%{label}). Nhấn Enter để gửi."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Đang tiếp tục phiên %{session_id}..."
 system.unknown_command: "Lệnh không xác định \"%{command}\" — đã gửi dưới dạng lời nhắc. Nhập /help để xem danh sách."  # {Locked="/help"}
 system.busy_use_stop: "Hãy đợi lời nhắc hiện tại hoàn tất, hoặc chạy /stop trước."  # {Locked="/stop"}
