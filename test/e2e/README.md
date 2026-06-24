@@ -22,7 +22,7 @@ environment. Current status (run on the Store package):
 | `Feature.AgentRestart.Tests.ps1` | agent restart after settings change, Shift+Enter focus | 2 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure) + non-integrated cmd.exe safety | 3 |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
-| `Feature.AgentMatrix.Tests.ps1` | §2 Claude/Codex/Gemini chat through the ACP adapter (per-CLI auth-gated; skips unauthed) | 2 (+1 skip) |
+| `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
 **Coverage: all 98 automatable `[E2E]` checklist items are implemented.**

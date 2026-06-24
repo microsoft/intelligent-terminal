@@ -25,16 +25,11 @@
     'Automatic error suggestion on'     = 'Automatic error suggestion off/on'
     'Session-management choice persists' = 'Session management choice persists'
 
-    # §2 built-in chat matrix
-    'Claude chat works'                 = 'Claude chat works'
-    'Codex chat works'                  = 'Codex chat works'
-    'Gemini chat works'                 = 'Gemini\b.*chat works'
+    # §2 built-in chat: the non-Copilot agents are one consolidated matrix case now
+    'Non-Copilot agents chat works'     = 'connects and answers'
 
-    # §3 autofix (copilot + matrix)
+    # §3 autofix (copilot)
     'Autofix with Copilot works'        = 'Visible agent pane autofix works'
-    'Autofix with Claude works'         = 'Claude autofix works'
-    'Autofix with Codex works'          = 'Codex autofix works'
-    'Autofix with Gemini works'         = 'Gemini\b.*autofix works'
     'Visible agent pane autofix works'  = 'Visible agent pane autofix works'
     'Stashed agent pane autofix works'  = 'Stashed agent pane autofix works'
 
