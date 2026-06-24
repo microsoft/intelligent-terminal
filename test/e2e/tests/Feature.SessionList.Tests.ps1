@@ -66,6 +66,21 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
             Close-SessionList -App $script:app | Out-Null
             Assert-AgentPaneText -App $script:app -Pattern 'Ask anything|/ for commands' -TimeoutSec 8
         }
+        It 'View switch preserves the draft input (type, open session view, return -> draft remains)' {
+            # Deterministic (no LLM): a typed-but-unsubmitted draft must survive a round-trip
+            # through the session view. Checklist §2 "View switch preserves input".
+            Close-SessionList -App $script:app | Out-Null
+            Clear-AgentInput -App $script:app | Out-Null
+            $draft = "draft$(Get-Random)"
+            Send-AgentPrompt -App $script:app -Text $draft -NoSubmit | Out-Null
+            Assert-AgentPaneText -App $script:app -Pattern $draft -TimeoutSec 8   # confirm typed
+            Open-SessionList -App $script:app | Out-Null
+            Test-SessionListShown -App $script:app | Should -BeTrue
+            Close-SessionList -App $script:app | Out-Null
+            # The draft must still be in the input after returning to chat.
+            Assert-AgentPaneText -App $script:app -Pattern $draft -TimeoutSec 8
+            Clear-AgentInput -App $script:app | Out-Null
+        }
         It 'View switch preserves connection (agent still answers after switching)' {
             Send-AgentPrompt -App $script:app -Text 'What is 8 plus 1? Reply with only the number.' | Out-Null
             Assert-AgentPaneText -App $script:app -Pattern '\b9\b' -TimeoutSec 40
