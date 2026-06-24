@@ -542,7 +542,7 @@ namespace SettingsModelUnitTests
         const auto settings = winrt::make_self<implementation::CascadiaSettings>(settings0String, implementation::LoadStringResource(IDR_DEFAULTS));
 
         VERIFY_ARE_EQUAL(0u, settings->Warnings().Size());
-        VERIFY_ARE_EQUAL(4u, settings->AllProfiles().Size());
+        VERIFY_ARE_EQUAL(5u, settings->AllProfiles().Size());
         VERIFY_IS_TRUE(settings->AllProfiles().GetAt(0).HasGuid());
         VERIFY_IS_TRUE(settings->AllProfiles().GetAt(1).HasGuid());
         VERIFY_IS_TRUE(settings->AllProfiles().GetAt(2).HasGuid());
@@ -550,7 +550,10 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(L"profile0", settings->AllProfiles().GetAt(0).Name());
         VERIFY_ARE_EQUAL(L"profile1", settings->AllProfiles().GetAt(1).Name());
         VERIFY_ARE_EQUAL(L"cmdFromUserSettings", settings->AllProfiles().GetAt(2).Name());
-        VERIFY_ARE_EQUAL(L"Windows PowerShell", settings->AllProfiles().GetAt(3).Name());
+        // The hidden "Agent Pane" profile from defaults.json (fork addition) is
+        // emitted in defaults.json order, ahead of the other inbox profiles.
+        VERIFY_ARE_EQUAL(L"Agent Pane", settings->AllProfiles().GetAt(3).Name());
+        VERIFY_ARE_EQUAL(L"Windows PowerShell", settings->AllProfiles().GetAt(4).Name());
     }
 
     void DeserializationTests::TestReorderingWithoutGuid()
@@ -620,7 +623,7 @@ namespace SettingsModelUnitTests
         const auto settings = winrt::make_self<implementation::CascadiaSettings>(settings0String, implementation::LoadStringResource(IDR_DEFAULTS));
 
         VERIFY_ARE_EQUAL(0u, settings->Warnings().Size());
-        VERIFY_ARE_EQUAL(4u, settings->AllProfiles().Size());
+        VERIFY_ARE_EQUAL(5u, settings->AllProfiles().Size());
         VERIFY_IS_TRUE(settings->AllProfiles().GetAt(0).HasGuid());
         VERIFY_IS_TRUE(settings->AllProfiles().GetAt(1).HasGuid());
         VERIFY_IS_TRUE(settings->AllProfiles().GetAt(2).HasGuid());
@@ -628,7 +631,10 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(L"Command Prompt", settings->AllProfiles().GetAt(0).Name());
         VERIFY_ARE_EQUAL(L"ThisProfileShouldNotCrash", settings->AllProfiles().GetAt(1).Name());
         VERIFY_ARE_EQUAL(L"Ubuntu", settings->AllProfiles().GetAt(2).Name());
-        VERIFY_ARE_EQUAL(L"Windows PowerShell", settings->AllProfiles().GetAt(3).Name());
+        // The hidden "Agent Pane" profile from defaults.json (fork addition) is
+        // emitted in defaults.json order, ahead of the other inbox profiles.
+        VERIFY_ARE_EQUAL(L"Agent Pane", settings->AllProfiles().GetAt(3).Name());
+        VERIFY_ARE_EQUAL(L"Windows PowerShell", settings->AllProfiles().GetAt(4).Name());
     }
 
     void DeserializationTests::TestLayeringNameOnlyProfiles()
@@ -656,12 +662,15 @@ namespace SettingsModelUnitTests
 
         const auto settings = winrt::make_self<implementation::CascadiaSettings>(settings0String, implementation::LoadStringResource(IDR_DEFAULTS));
         const auto profiles = settings->AllProfiles();
-        VERIFY_ARE_EQUAL(5u, profiles.Size());
+        VERIFY_ARE_EQUAL(6u, profiles.Size());
         VERIFY_ARE_EQUAL(L"ThisProfileIsGood", profiles.GetAt(0).Name());
         VERIFY_ARE_EQUAL(L"ThisProfileShouldNotLayer", profiles.GetAt(1).Name());
         VERIFY_ARE_EQUAL(L"NeitherShouldThisOne", profiles.GetAt(2).Name());
-        VERIFY_ARE_EQUAL(L"Windows PowerShell", profiles.GetAt(3).Name());
-        VERIFY_ARE_EQUAL(L"Command Prompt", profiles.GetAt(4).Name());
+        // The hidden "Agent Pane" profile from defaults.json (fork addition) is
+        // emitted in defaults.json order, ahead of the other inbox profiles.
+        VERIFY_ARE_EQUAL(L"Agent Pane", profiles.GetAt(3).Name());
+        VERIFY_ARE_EQUAL(L"Windows PowerShell", profiles.GetAt(4).Name());
+        VERIFY_ARE_EQUAL(L"Command Prompt", profiles.GetAt(5).Name());
     }
 
     void DeserializationTests::TestHideAllProfiles()
@@ -1028,7 +1037,9 @@ namespace SettingsModelUnitTests
         const auto settings = winrt::make_self<implementation::CascadiaSettings>(settings0String, implementation::LoadStringResource(IDR_DEFAULTS));
 
         VERIFY_ARE_EQUAL(guid1String, settings->GlobalSettings().UnparsedDefaultProfile());
-        VERIFY_ARE_EQUAL(4u, settings->AllProfiles().Size());
+        // 5u = profile0 + auto-guid profile1 + Windows PowerShell + Command Prompt
+        //      + the hidden "Agent Pane" profile from defaults.json (fork addition).
+        VERIFY_ARE_EQUAL(5u, settings->AllProfiles().Size());
         VERIFY_ARE_EQUAL(guid1, settings->AllProfiles().GetAt(0).Guid());
         VERIFY_ARE_NOT_EQUAL(guid1, settings->AllProfiles().GetAt(1).Guid());
     }
@@ -1909,8 +1920,10 @@ namespace SettingsModelUnitTests
         // GH#8146: A LoadDefaults call should populate the list of active profiles
 
         const auto settings{ CascadiaSettings::LoadDefaults() };
-        VERIFY_ARE_EQUAL(settings.ActiveProfiles().Size(), settings.AllProfiles().Size());
-        VERIFY_ARE_EQUAL(settings.AllProfiles().Size(), 2u);
+        // The fork's defaults.json adds a hidden "Agent Pane" profile, so the
+        // defaults now contain 3 profiles total (2 active + 1 hidden).
+        VERIFY_ARE_EQUAL(2u, settings.ActiveProfiles().Size());
+        VERIFY_ARE_EQUAL(3u, settings.AllProfiles().Size());
     }
 
     void DeserializationTests::TestInheritedCommand()
@@ -2111,9 +2124,13 @@ namespace SettingsModelUnitTests
         loader.FinalizeLayering();
 
         VERIFY_IS_FALSE(loader.duplicateProfile);
-        VERIFY_ARE_EQUAL(3u, loader.userSettings.profiles.size());
+        // 4u = Windows PowerShell + Command Prompt + the new "{6239...}" fragment
+        //      profile + the hidden "Agent Pane" profile from defaults.json (fork addition).
+        VERIFY_ARE_EQUAL(4u, loader.userSettings.profiles.size());
         // GH#12520: Fragments should be able to override the name of builtin profiles.
-        VERIFY_ARE_EQUAL(L"NewName", loader.userSettings.profiles[0]->Name());
+        // profiles[0] is the hidden "Agent Pane" profile from defaults.json (fork
+        // addition); Windows PowerShell (renamed by the fragment) follows it.
+        VERIFY_ARE_EQUAL(L"NewName", loader.userSettings.profiles[1]->Name());
     }
 
     void DeserializationTests::FragmentActionSimple()

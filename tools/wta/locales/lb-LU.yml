@@ -58,6 +58,7 @@ chat.turn_executed: "→ ausgeféiert: %{title}"
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}
 input.placeholder.connecting: "verbënnt..."
 input.placeholder.disconnected: "ofgeschalt"
+input.image_attachments: "📎 Biller: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Kommando-Popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstréch-Kommando-Prefix, muss ASCII bleiwen
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Suergt dofir datt %{name} installéiert ass an op Ärem
 
 # ── Agenten-Vue (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Gëtt gelueden..."
-# {Locked="Enter","Esc","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
-agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus)"
+# {Locked="Enter","Esc","F5","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
+agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus • F5 fir z'aktualiséieren)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Waart op Input"
 agents.status.error: "Feeler"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "D'Äntwert gouf ofgeschnidden nodeems d'Ausgab-Limit
 system.stopped_max_turn_requests: "Den Agent huet gestoppt nodeems seng Ufro-Limit fir dës Ronn erreecht gouf."
 system.stopped_refusal: "Den Agent huet refuséiert mat dëser Ufro weiderzemaachen."
 system.agent_busy: "Den Agent ass op dësem Tab beschäftegt — waart bis den aktuelle Prompt fäerdeg ass."
+system.image_clipboard_empty: "Kee Bild am Tëschespäicher fir anzefügen."
+system.image_not_supported: "Dësen Agent ënnerstëtzt keng Bildinput."
+system.image_pasted: "Bild ugehängt (%{label}). Dréckt Enter fir ze schécken."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sessioun %{session_id} gëtt weidergefouert..."
 system.unknown_command: "Onbekannte Commande \"%{command}\" — als Prompt geschéckt. Tippt /help fir d’Lëscht."
 system.busy_use_stop: "Waart bis den aktuelle Prompt fäerdeg ass, oder benotzt fir d’éischt /stop."

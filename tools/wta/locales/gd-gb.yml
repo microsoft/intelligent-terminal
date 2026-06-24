@@ -58,6 +58,7 @@ chat.turn_executed: "→ air a chur an gnìomh: %{title}"
 input.placeholder.connected: "Faighnich rud sam bith, / airson òrdughan.."  # {Locked="/"}
 input.placeholder.connecting: "a' ceangal..."
 input.placeholder.disconnected: "air a dhì-cheangal"
+input.image_attachments: "📎 Dealbhan: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Priob-uinneag òrdughan (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ro-leasachan àithne sgian-dubh, feumaidh e fuireach ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus ai
 
 # ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Ga luchdadh..."
-# {Locked="Enter","Esc","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
-agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail)"
+# {Locked="Enter","Esc","F5","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
+agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail • F5 gus ùrachadh)"
 agents.status.active: "Gnìomhach"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Chaidh am freagairt a ghearradh às dèidh crìoch t
 system.stopped_max_turn_requests: "Stad an riochdaire às dèidh a chrìoch iarrtais airson a' chuairt seo a ruighinn."
 system.stopped_refusal: "Dhiùlt an riochdaire leantainn air adhart leis an iarrtas seo."
 system.agent_busy: "Tha an t-àidseant trang air an taba seo — fuirich gus an crìochnaich am brosnachadh làithreach."
+system.image_clipboard_empty: "Chan eil dealbh air an stòr-bhùird ri chur ann."
+system.image_not_supported: "Chan eil an t-àidseant seo a' cur taic ri ion-chur dhealbhan."
+system.image_pasted: "Dealbh ceangailte (%{label}). Brùth Enter gus a chur."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Ag ath-thòiseachadh seisean %{session_id}..."
 system.unknown_command: "Àithne neo-aithnichte \"%{command}\" — air a cur mar bhrosnachadh. Taidhp /help airson an liosta."
 system.busy_use_stop: "Fuirich gus an crìochnaich am brosnachadh làithreach, no cleachd /stop an toiseach."

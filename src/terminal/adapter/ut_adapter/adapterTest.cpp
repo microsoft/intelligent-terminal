@@ -206,6 +206,11 @@ public:
         Log::Comment(L"SetWorkingDirectory MOCK called...");
     }
 
+    void SetShellType(const std::wstring_view /*shellName*/, const std::wstring_view /*shellVersion*/) override
+    {
+        Log::Comment(L"SetShellType MOCK called...");
+    }
+
     void PlayMidiNote(const int /*noteNumber*/, const int /*velocity*/, const std::chrono::microseconds /*duration*/) override
     {
         Log::Comment(L"PlayMidiNote MOCK called...");

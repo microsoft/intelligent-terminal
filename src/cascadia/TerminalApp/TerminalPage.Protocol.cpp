@@ -153,6 +153,8 @@ namespace winrt::TerminalApp::implementation
         if (const auto termControl = effectivePane->GetTerminalControl())
         {
             result.Cwd = termControl.WorkingDirectory();
+            result.Shell = termControl.ShellName();
+            result.ShellVersion = termControl.ShellVersion();
         }
 
         result.Pid = _getPidFromPane(effectivePane);
@@ -256,6 +258,8 @@ namespace winrt::TerminalApp::implementation
                         info.Rows = termControl.ViewHeight();
                         info.Columns = 0;
                         info.Cwd = termControl.WorkingDirectory();
+                        info.Shell = termControl.ShellName();
+                        info.ShellVersion = termControl.ShellVersion();
                     }
                 }
 
@@ -727,6 +731,21 @@ namespace winrt::TerminalApp::implementation
             const auto paneId = foundPane->Id();
             if (!paneId)
                 co_return false;
+
+            // Bring this window to the foreground. `focus_pane` can target a
+            // pane that lives in a *different* window than the one driving the
+            // request (e.g. Enter on a session in window B whose pane lives in
+            // window A). The `_SetFocusedTab` / `FocusPane` calls below only
+            // move XAML focus *within* this window — they don't activate the OS
+            // window, and when the target pane is already the focused pane here
+            // they no-op entirely. Without an explicit summon the window would
+            // then stay in the background whenever it happened to already have
+            // the target pane focused, while working only when focus actually
+            // transitioned (an accidental side effect). Raising
+            // `SummonWindowRequested` mirrors the desktop-notification
+            // activation path (TabManagement.cpp) and makes `focus_pane`
+            // reliably surface the window regardless of its prior focus state.
+            SummonWindowRequested.raise(nullptr, nullptr);
 
             _SetFocusedTab(tab);
 

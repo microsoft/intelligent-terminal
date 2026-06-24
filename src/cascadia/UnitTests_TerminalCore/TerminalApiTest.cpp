@@ -39,6 +39,7 @@ namespace TerminalCoreUnitTests
 
         TEST_METHOD(SetTaskbarProgress);
         TEST_METHOD(SetWorkingDirectory);
+        TEST_METHOD(SetShellType);
     };
 };
 
@@ -390,4 +391,45 @@ void TerminalCoreUnitTests::TerminalApiTest::SetWorkingDirectory()
 
     stateMachine.ProcessString(L"\x1b]9;9;D:\\中文\x1b\\");
     VERIFY_ARE_EQUAL(term.GetWorkingDirectory(), L"D:\\中文");
+}
+
+void TerminalCoreUnitTests::TerminalApiTest::SetShellType()
+{
+    Terminal term{ Terminal::TestDummyMarker{} };
+    DummyRenderer renderer{ &term };
+    term.Create({ 100, 100 }, 0, renderer);
+
+    auto& stateMachine = *(term._stateMachine);
+
+    // The shell reports its identity via OSC 9001;ShellType;<name>;<version>.
+    // Initially nothing has been reported.
+    VERIFY_IS_TRUE(term.GetShellName().empty());
+    VERIFY_IS_TRUE(term.GetShellVersion().empty());
+
+    // Name + version both present.
+    stateMachine.ProcessString(L"\x1b]9001;ShellType;pwsh;7.4.1\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetShellName(), L"pwsh");
+    VERIFY_ARE_EQUAL(term.GetShellVersion(), L"7.4.1");
+
+    // A later prompt from a different shell (e.g. after `wsl` exits) overwrites
+    // the previously reported identity — last writer wins.
+    stateMachine.ProcessString(L"\x1b]9001;ShellType;wsl:Ubuntu;5.15.0\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetShellName(), L"wsl:Ubuntu");
+    VERIFY_ARE_EQUAL(term.GetShellVersion(), L"5.15.0");
+
+    // Version is optional — name only still updates the name and clears version.
+    stateMachine.ProcessString(L"\x1b]9001;ShellType;bash\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetShellName(), L"bash");
+    VERIFY_IS_TRUE(term.GetShellVersion().empty());
+
+    // A ShellType action with no name field is tolerated and clears both.
+    stateMachine.ProcessString(L"\x1b]9001;ShellType\x1b\\");
+    VERIFY_IS_TRUE(term.GetShellName().empty());
+    VERIFY_IS_TRUE(term.GetShellVersion().empty());
+
+    // An unrelated WT sub-action must not touch the stored shell identity.
+    stateMachine.ProcessString(L"\x1b]9001;ShellType;powershell;5.1\x1b\\");
+    stateMachine.ProcessString(L"\x1b]9001;CmdNotFound;somecmd\x1b\\");
+    VERIFY_ARE_EQUAL(term.GetShellName(), L"powershell");
+    VERIFY_ARE_EQUAL(term.GetShellVersion(), L"5.1");
 }

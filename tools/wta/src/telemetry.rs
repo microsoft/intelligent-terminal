@@ -230,18 +230,20 @@ pub fn log_agent_response_first_token(
 /// Emitted when the agent finishes responding (prompt request completes).
 /// `total_duration_ms` is a monotonic duration (`Instant::elapsed`) from
 /// prompt dispatch to completion, not wall-clock.
-/// `raw_stdout_bytes_after_prompt` is the raw byte count read from the
-/// agent CLI's stdout after the prompt was dispatched. This includes the
-/// JSON-RPC framing / tool-call payloads, not just the user-visible text
-/// chunks — it is a transport-level volume metric, not a measure of the
-/// final answer length. The ETW field name (`TotalResponseBytes`) is
-/// preserved for downstream compatibility.
+/// `raw_stdout_bytes_after_prompt` was the raw transport byte count read
+/// from the agent CLI's stdout after the prompt was dispatched (JSON-RPC
+/// framing / tool-call payloads included — a transport-level volume metric,
+/// not a measure of the final answer length).
 ///
-/// Caveat: when multiple ACP sessions are active concurrently on one
-/// agent CLI subprocess, stdout bytes cannot be cleanly attributed to a
-/// single session — `observe_stdout_read()` charges every read to every
-/// in-flight prompt. In overlapping turns this over-counts; aggregate it
-/// as a coarse upper bound, not a per-session ground truth.
+/// NOTE: this is currently always 0. The stdout-read instrumentation lived
+/// in the direct agent-spawn path (`StartupInstrumentedReader`), which was
+/// removed when WTA moved to the master/helper architecture: a helper speaks
+/// ACP to wta-master over a named pipe and never reads the agent CLI's stdout
+/// directly — master owns that transport. The `raw_stdout_bytes_after_prompt`
+/// argument and the `TotalResponseBytes` ETW field are kept (always 0) for
+/// downstream schema compatibility; reintroducing the metric would mean
+/// accounting bytes at the master↔agent boundary. Until then, treat
+/// `TotalResponseBytes` as unpopulated rather than a per-session byte count.
 ///
 /// Uses a distinct event name (`AgentResponseComplete`) — see the note on
 /// `log_agent_response_first_token` for why this is split into two events.

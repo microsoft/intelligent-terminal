@@ -58,6 +58,7 @@ chat.turn_executed: "→ vykonané: %{title}"
 input.placeholder.connected: "Opýtajte sa čokoľvek, / pre príkazy.."  # {Locked="/"}
 input.placeholder.connecting: "pripájanie..."
 input.placeholder.disconnected: "odpojené"
+input.image_attachments: "📎 Obrázky: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -114,8 +115,8 @@ agent.custom.auth_hint: "Uistite sa, že %{name} je nainštalovaný a je v PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Načítava sa..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ na navigáciu • Enter na spustenie relácie • Esc na ukončenie)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ na navigáciu • Enter na spustenie relácie • Esc na ukončenie • F5 na obnovenie)"
 agents.status.active: "Aktívny"
 agents.status.waiting_for_input: "Čaká na vstup"
 agents.status.error: "Chyba"
@@ -139,6 +140,9 @@ system.stopped_max_tokens: "Odpoveď bola orezaná po dosiahnutí výstupného l
 system.stopped_max_turn_requests: "Agent sa zastavil po dosiahnutí limitu požiadaviek pre toto kolo."
 system.stopped_refusal: "Agent odmietol pokračovať v tejto požiadavke."
 system.agent_busy: "Agent je na tejto karte zaneprázdnený — počkajte, kým sa aktuálna výzva dokončí."
+system.image_clipboard_empty: "V schránke nie je žiadny obrázok na prilepenie."
+system.image_not_supported: "Tento agent nepodporuje vstup obrázkov."
+system.image_pasted: "Obrázok priložený (%{label}). Stlačte Enter na odoslanie."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Obnovuje sa relácia %{session_id}..."
 system.unknown_command: "Neznámy príkaz \"%{command}\" — odoslaný ako výzva. Zoznam zobrazíte zadaním /help."  # {Locked="/help"}
 system.busy_use_stop: "Počkajte, kým sa aktuálna výzva dokončí, alebo najprv použite /stop."  # {Locked="/stop"}

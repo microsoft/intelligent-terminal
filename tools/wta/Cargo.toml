@@ -28,10 +28,16 @@ windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Storage_Packaging_Appx",
+    "Win32_System_DataExchange",
     "Win32_System_Environment",
+    "Win32_System_Memory",
     "Win32_System_Registry",
     "Win32_System_Threading",
+    "Win32_UI_Shell",
 ] }
+# Image decode/encode for clipboard-paste (Alt+V). Minimal feature set: decode
+# the clipboard DIB (BMP) and re-encode to PNG for ACP `ContentBlock::Image`.
+image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
