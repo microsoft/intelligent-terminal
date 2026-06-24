@@ -2481,6 +2481,7 @@ async fn run_acp_app(
                         master_ext_rx,
                         shell_mgr_for_pipe,
                         wt_connected,
+                        false, // post_login_reconnect: first connection, no authenticate needed
                     )
                     .await
                     {

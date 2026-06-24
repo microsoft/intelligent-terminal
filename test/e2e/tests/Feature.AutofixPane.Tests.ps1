@@ -5,14 +5,26 @@
 # repeated identical corrections within one session, so tests that need a FRESH card each
 # (Insert / Run / Stashed) use their own fresh terminal and trigger exactly once.
 
-BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
+BeforeDiscovery {
+    # winapp (UI-automation CLI) is required by Open-AgentPane / agent-pane assertions; gate on
+    # it too so the whole suite SKIPS cleanly when it's missing instead of throwing in BeforeAll.
+    $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue))
+    # WSL-gated cases need: the dev sideload package (OSC 9001;ShellType + the autofix
+    # shell-context fix aren't in the Store build yet), copilot for autofix, winapp for the
+    # agent pane, and a runnable WSL distro. Absent any of these the WSL Describe is skipped.
+    $script:WslReady = $false
+    $devPkg = Get-AppxPackage | Where-Object { $_.PackageFamilyName -like 'IntelligentTerminal_*' }
+    if ($devPkg -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue) -and (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+        try { & wsl.exe -e true 2>$null; $script:WslReady = ($LASTEXITCODE -eq 0) } catch { $script:WslReady = $false }
+    }
+}
 
 # Helpers as script scriptblocks set up per-Describe in BeforeAll.
 
 Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
         $script:CardShown = { ((Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command|Insert in Terminal') }
@@ -55,7 +67,7 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
 Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }
@@ -73,7 +85,7 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
                 Start-Sleep -Milliseconds 400
                 Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } finally { Stop-WtEventListener -Listener $listener }
+            } catch { } finally { Stop-WtEventListener -Listener $listener }
             if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Insert in Terminal' }) { $gotCard = $true; break }
         }
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
@@ -88,7 +100,7 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
 Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }
@@ -104,7 +116,7 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
                 Start-Sleep -Milliseconds 400
                 Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } finally { Stop-WtEventListener -Listener $listener }
+            } catch { } finally { Stop-WtEventListener -Listener $listener }
             if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command' }) { $gotCard = $true; break }
         }
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
@@ -118,7 +130,7 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
 Describe 'Feature: autofix on stashed pane' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         # Pre-warm + connect, then stash so the helper is ready but the pane is hidden.
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
@@ -141,7 +153,7 @@ Describe 'Feature: autofix on stashed pane' -Tag 'Feature' -Skip:(-not $script:R
 Describe 'Feature: autofix across layout changes' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }
@@ -163,6 +175,86 @@ Describe 'Feature: autofix across layout changes' -Tag 'Feature' -Skip:(-not $sc
         Start-Sleep -Seconds 1
         { Close-WtPane -App $script:app -SessionId $tab.session_id } | Should -Not -Throw
         { Get-ActivePane -App $script:app } | Should -Not -Throw
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WSL-gated: exercises OSC 9001;ShellType end-to-end and the autofix shell-context
+# fix that consumes it. Runs ONLY when a runnable WSL distro + the dev package are
+# present (the feature isn't in the Store build); otherwise the whole Describe is
+# skipped. Requires the dev package, so it targets -Package Dev explicitly.
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag 'Feature' -Skip:(-not $script:WslReady) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        # Dev package: the ShellType plumbing and the autofix shell-context fix live
+        # here, not in the Store build.
+        $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+
+        # Open a WSL shell pane in a fresh tab, then focus it so it's the active tab:
+        # the agent pane is per-tab, and Get-AgentPaneText / Open-AgentPane target the
+        # active tab's helper. Each tab gets its own pre-warmed helper, so autofix
+        # works on this tab.
+        $script:wsl = New-WtTab -App $script:app -Command 'wsl.exe' -Title 'wsl-autofix'
+        $script:wslSid = $script:wsl.session_id
+        $script:wslTabId = $script:wsl.tab_id
+        $script:wslWinId = $script:wsl.window_id
+        Set-WtPaneFocus -App $script:app -SessionId $script:wslSid
+
+        # Nudge a prompt so bash shell integration emits OSC 9001;ShellType at least
+        # once, then wait for the reported shell to surface through the protocol.
+        # list-panes is active-tab scoped, so query the WSL tab explicitly by id —
+        # this is robust even if focus drifts. If the shell never surfaces, the distro
+        # has no shell integration installed; the per-It guards below skip not fail.
+        Send-WtKeys -App $script:app -SessionId $script:wslSid -Keys @('Enter')
+        $script:wslShell = $null
+        Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition {
+            $p = Get-WtPanes -App $script:app -TabId $script:wslTabId -WindowId $script:wslWinId |
+                Where-Object { $_.session_id -eq $script:wslSid }
+            if ($p -and ($p.shell -match '^(?i)wsl:')) { $script:wslShell = $p.shell; $true } else { $false }
+        } | Out-Null
+
+        # Agent pane on the (now active) WSL tab so autofix cards render here.
+        Open-AgentPane -App $script:app | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+    }
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'WSL pane self-reports its shell as wsl:<distro> through the protocol' {
+        if (-not $script:wslShell) {
+            Set-ItResult -Skipped -Because 'WSL pane never reported a wsl: shell (shell integration not installed in this distro)'
+            return
+        }
+        # Proves OSC 9001;ShellType -> adaptDispatch -> Terminal -> ControlCore ->
+        # PaneInfo -> COM JSON, including the distro name surviving the ';' split.
+        $script:wslShell | Should -Match '^(?i)wsl:\S'
+    }
+
+    It 'Autofix suggests a Linux/bash fix (not PowerShell) in a WSL pane' {
+        if (-not $script:wslShell) {
+            Set-ItResult -Skipped -Because 'WSL shell integration not installed; autofix has no WSL shell context to read'
+            return
+        }
+        # bash-typos whose correct form is unmistakably Linux (ls/grep/cat), so the AI
+        # oracle can tell a bash fix from a PowerShell one (Get-ChildItem etc.). The
+        # whole point of the fix under test: with shell=wsl:<distro> in the prompt the
+        # agent must NOT fall back to PowerShell syntax.
+        $typos = @('sl -la', 'lll', 'grpe root /etc/hostname', 'caat /etc/hostname')
+        $gotCard = $false
+        foreach ($cmd in $typos) {
+            $listener = Start-WtEventListener -App $script:app
+            try {
+                Start-Sleep -Milliseconds 400
+                Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command $cmd | Out-Null
+                Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
+            } catch { } finally { Stop-WtEventListener -Listener $listener }
+            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command|Insert in Terminal' }) { $gotCard = $true; break }
+        }
+        if (-not $gotCard) {
+            Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'
+            return
+        }
+        Assert-AI -Claim 'The suggested fix command uses Linux/bash shell syntax (e.g. ls, grep, cat, forward-slash paths). It is NOT a Windows PowerShell command (no Get-ChildItem / Select-String / cmdlet-style Verb-Noun).' -Context (Get-AgentPaneText -App $script:app -MaxLines 60)
     }
 }
 

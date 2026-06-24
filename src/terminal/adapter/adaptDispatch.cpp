@@ -3844,6 +3844,8 @@ void AdaptDispatch::DoVsCodeAction(const std::wstring_view string)
 //     to the terminal. The command is then shared with WinGet to see if it can
 //     find a package that provides that command, which is then displayed to the
 //     user.
+//   * ShellType: The shell reports its own identity (name + version) so the
+//     terminal knows which shell currently owns the pane.
 // - Not actually used in conhost
 // Arguments:
 // - string: contains the parameters that define which action we do
@@ -3870,32 +3872,19 @@ void AdaptDispatch::DoWTAction(const std::wstring_view string)
             _api.SearchMissingCommand(missingCmd);
         }
     }
-    else if (action == L"WtaReq")
+    else if (action == L"ShellType")
     {
-        // WTA (Windows Terminal Agent) protocol request via VT escape sequence.
-        // Format: \x1b]9001;WtaReq;{json}\x07
-        // Supports: {"method":"discover"} → returns pipe name + token for protocol access.
-        // The response is injected back as \x1b]9001;WtaRes;{json}\x1b\\ via stdin.
-        if (parts.size() >= 2)
-        {
-            const auto payload = til::at(parts, 1);
-
-            // Check if this is a "discover" request
-            if (payload.find(L"discover") != std::wstring_view::npos)
-            {
-                // Compute pipe name from current PID — matches what WindowEmperor creates.
-                const auto pid = GetCurrentProcessId();
-                const auto pipeName = fmt::format(FMT_COMPILE(L"\\\\\\\\.\\\\pipe\\\\WindowsTerminal-{}"), pid);
-                const auto response = fmt::format(FMT_COMPILE(L"9001;WtaRes;{{\"status\":\"ok\",\"pipe\":\"{}\",\"token\":\"\"}}"), pipeName);
-                _ReturnOscResponse(response);
-            }
-            else
-            {
-                // Default ack for other methods (e.g. "identify")
-                const auto response = fmt::format(FMT_COMPILE(L"9001;WtaRes;{{\"status\":\"ok\",\"vt_supported\":true}}"));
-                _ReturnOscResponse(response);
-            }
-        }
+        // The shell reports its own identity once per prompt so the terminal
+        // always knows which shell currently owns the pane (including after a
+        // nested shell like `wsl` exits).
+        // The structure of the message is as follows:
+        // `e]9001;
+        // 0:     ShellType;
+        // 1:     <shell name>   (e.g. pwsh, powershell, bash, wsl:Ubuntu)
+        // 2:     <shell version> (optional)
+        const std::wstring_view shellName = parts.size() >= 2 ? til::at(parts, 1) : std::wstring_view{};
+        const std::wstring_view shellVersion = parts.size() >= 3 ? til::at(parts, 2) : std::wstring_view{};
+        _api.SetShellType(shellName, shellVersion);
     }
 }
 

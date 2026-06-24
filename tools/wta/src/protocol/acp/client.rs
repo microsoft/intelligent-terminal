@@ -989,11 +989,29 @@ fn process_image_name(_pid: u32) -> Option<String> {
     None
 }
 
-/// Resolve the canonical shell exe from an active-pane JSON object's `pid`
-/// field (already present in `get_active_pane`/`get_panes` responses). The
-/// agent gets this as the `shell` field — the sole shell-type signal, since
-/// the WT profile *name* (which the user can rename) is no longer shipped.
+/// Resolve the shell identity for an active-pane JSON object. The agent gets
+/// this as the `shell` field — the shell-type signal that drives PowerShell vs
+/// bash vs cmd syntax in any fix command it suggests.
+///
+/// Resolution order:
+///   1. The `shell` field reported by shell integration via `OSC 9001;ShellType`
+///      (e.g. `pwsh`, `powershell`, `bash`, `wsl:Ubuntu`). This is the only
+///      signal that survives a nested shell — `pwsh` → `wsl` → `exit` reports
+///      `wsl:<distro>` while inside WSL and `pwsh` again after exit, because the
+///      shell re-emits it on every prompt. The pid-based fallback below can't
+///      see this: the pane's host process stays `wsl.exe`/`pwsh.exe` regardless
+///      of which shell is actually drawing the prompt.
+///   2. Otherwise, the canonical shell exe from the pane's `pid` (covers panes
+///      without shell integration installed, or before the first prompt).
 fn shell_from_active(active: &serde_json::Value) -> Option<String> {
+    if let Some(shell) = active
+        .get("shell")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(shell.to_string());
+    }
     active
         .get("pid")
         .and_then(|v| v.as_u64())
@@ -1990,6 +2008,7 @@ pub async fn run_acp_client_over_pipe(
     mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
+    post_login_reconnect: bool,
 ) -> Result<()> {
     let startup_probe = StartupProbe::new();
     startup_probe.log(&format!(
@@ -2185,6 +2204,93 @@ pub async fn run_acp_client_over_pipe(
         init_resp
     ));
 
+    // ── Post-login authenticate ──────────────────────────────────────────
+    // If this is a reconnect after LoginComplete (the user just completed
+    // `copilot login` / `codex auth` / etc.), we MUST call `authenticate`
+    // per ACP spec before attempting `new_session`. Without this, the
+    // long-running agent CLI subprocess (owned by master) may not have
+    // noticed the new disk-stored token — its internal auth state was set
+    // at spawn time and may still be "not authenticated". The
+    // `authenticate` RPC is the deterministic signal that tells the agent
+    // "credentials changed, please re-check". See:
+    // https://agentclientprotocol.com/protocol/initialization
+    //
+    // Tracks whether we actually completed a post-login `authenticate` (vs.
+    // skipped it because the agent advertised no auth methods). Only then may
+    // a still-AuthRequired `new_session` be classified as the distinct
+    // "authenticate-OK-but-still-auth" recovery signal below.
+    let mut post_login_authenticated = false;
+    if post_login_reconnect {
+        let auth_method_id = init_resp
+            .auth_methods
+            .first()
+            .map(|m| m.id().clone());
+        if let Some(method_id) = auth_method_id {
+            tracing::info!(
+                target: "helper",
+                method_id = %method_id.0,
+                auth_methods_count = init_resp.auth_methods.len(),
+                "post-login reconnect: sending authenticate to agent"
+            );
+            let auth_result = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                conn.authenticate(acp::AuthenticateRequest::new(method_id.clone())),
+            )
+            .await;
+            match &auth_result {
+                Ok(Ok(_)) => {
+                    tracing::info!(
+                        target: "helper",
+                        method_id = %method_id.0,
+                        "post-login authenticate succeeded"
+                    );
+                    post_login_authenticated = true;
+                }
+                Ok(Err(e)) => {
+                    tracing::error!(
+                        target: "helper",
+                        method_id = %method_id.0,
+                        error_code = Into::<i32>::into(e.code),
+                        error_message = %e.message,
+                        "post-login authenticate failed — agent rejected credentials"
+                    );
+                    return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                        stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                        detail: format!(
+                            "authenticate({}) failed: {} (code {}). \
+                             The agent did not accept the credentials. \
+                             Try restarting Intelligent Terminal.",
+                            method_id.0,
+                            e.message,
+                            Into::<i32>::into(e.code),
+                        ),
+                    }));
+                }
+                Err(_timeout) => {
+                    tracing::error!(
+                        target: "helper",
+                        method_id = %method_id.0,
+                        "post-login authenticate timed out (10s) — agent unresponsive"
+                    );
+                    return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                        stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
+                        detail: format!(
+                            "authenticate({}) timed out after 10s — agent unresponsive. \
+                             Try restarting Intelligent Terminal.",
+                            method_id.0,
+                        ),
+                    }));
+                }
+            }
+        } else {
+            tracing::warn!(
+                target: "helper",
+                "post-login reconnect: no auth_methods advertised in initialize response; \
+                 skipping authenticate (agent may not require it)"
+            );
+        }
+    }
+
     // Bootstrap the alive-session mirror BEFORE creating our own
     // session. We want master's existing view in the registry first so
     // that any `intellterm.wta/session_added` notification for our own
@@ -2277,11 +2383,44 @@ pub async fn run_acp_client_over_pipe(
                 &new_session_result,
             );
             let session = new_session_result.map_err(|e| {
-                // Attach the typed classification so an auth error
+                let failure = AgentFailure::from_acp_error(&e);
+                // If we just completed post-login authenticate successfully
+                // but new_session STILL returns AuthRequired, do NOT route
+                // back to the login screen (that would recreate the auth
+                // loop). Surface a terminal HandshakeFailed tagged with the
+                // `NewSession` stage — the DISTINCT signal the App's auth
+                // recovery matches on (`is_post_login_auth_failure`). This is
+                // deliberately NOT the `Authenticate` stage: an authenticate
+                // RPC that itself fails/times out (above) stays `Authenticate`
+                // and must NOT trigger a master restart, only this
+                // "authenticate-OK-but-new_session-still-auth" case should.
+                // Gate on `post_login_authenticated`: if `authenticate` was
+                // skipped (agent advertised no auth methods) we did not prove
+                // credentials refreshed, so don't emit the "after successful
+                // authenticate" signal — fall through to the normal auth
+                // classification instead (the App still recovers genuine auth
+                // failures via its `AuthRequired` arm, bounded to one restart).
+                if post_login_reconnect && post_login_authenticated && failure.is_auth() {
+                    tracing::error!(
+                        target: "helper",
+                        error_code = Into::<i32>::into(e.code),
+                        "new_session still AuthRequired after successful authenticate — \
+                         agent has a deeper auth issue; not routing back to login screen"
+                    );
+                    return anyhow::Error::new(AgentFailure::HandshakeFailed {
+                        stage: crate::protocol::acp::failure::HandshakeStage::NewSession,
+                        detail: format!(
+                            "Agent still requires authentication after successful authenticate. \
+                             This may indicate a Copilot subscription or organization access issue. \
+                             Try restarting Intelligent Terminal or check https://github.com/settings/copilot"
+                        ),
+                    });
+                }
+                // Normal path: attach the typed classification so an auth error
                 // (or any ACP code) survives the `?`-collapse into
                 // `anyhow` and can be recovered by `classify_anyhow`
                 // downcast at the receiver (main.rs).
-                anyhow::Error::new(AgentFailure::from_acp_error(&e))
+                anyhow::Error::new(failure)
                     .context(format!("new_session over master pipe failed: {e}"))
             })?;
 
@@ -3431,6 +3570,25 @@ mod tests {
 
         assert_eq!(shell_from_active(&serde_json::json!({ "pid": 0 })), None);
         assert_eq!(shell_from_active(&serde_json::json!({})), None);
+    }
+
+    /// The `shell` field reported via `OSC 9001;ShellType` wins over the
+    /// pid-based fallback — even when a real pid is present. This is the
+    /// nested-shell case (`pwsh` → `wsl` → bash): the pane's host process is
+    /// still pwsh/wsl.exe, but the prompt is drawn by bash, so the OSC-reported
+    /// `wsl:Ubuntu` must reach the agent. Platform-independent (no pid lookup).
+    #[test]
+    fn shell_from_active_prefers_osc_reported_shell() {
+        // Reported shell wins over a live pid.
+        let pane = serde_json::json!({ "pid": std::process::id(), "shell": "wsl:Ubuntu" });
+        assert_eq!(shell_from_active(&pane), Some("wsl:Ubuntu".to_string()));
+
+        // Empty/whitespace reported shell is ignored; falls back to pid (or None).
+        assert_eq!(
+            shell_from_active(&serde_json::json!({ "shell": "  ", "pid": 0 })),
+            None
+        );
+        assert_eq!(shell_from_active(&serde_json::json!({ "shell": "" })), None);
     }
 
     /// Helper-only: round-trip a `_meta` blob through `inject_wta_pane_meta`

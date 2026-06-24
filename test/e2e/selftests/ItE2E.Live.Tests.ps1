@@ -11,7 +11,7 @@ Describe 'ItE2E live primitives' -Tag 'Live' -Skip:(-not $script:HasPackage) {
 
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
     }
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
