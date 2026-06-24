@@ -12,8 +12,13 @@
 
     # §2 agent pane open/hide/focus + slash
     'Different positions work'          = 'at all four pane positions'
+    'Focus hotkey works'                = 'Focus hotkey / focus works'
     '`/model` works'                    = '/model opens the model picker'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
+
+    # §1 settings
+    'Model control appears'             = 'Model control / model changes apply'
+    'Model changes apply'               = 'Model control / model changes apply'
 
     # §2 built-in chat matrix
     'Claude chat works'                 = 'Claude chat works'

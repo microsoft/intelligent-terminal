@@ -29,7 +29,7 @@
 [CmdletBinding()]
 param(
     [string]$Checklist = (Join-Path $PSScriptRoot '..\..\doc\release-check-list.md'),
-    [string]$ResultsXml = (Join-Path $PSScriptRoot 'artifacts\results.xml'),
+    [string[]]$ResultsXml = @((Join-Path $PSScriptRoot 'artifacts\results.xml')),
     [string]$OverrideMap = (Join-Path $PSScriptRoot 'release-coverage-map.psd1'),
     [string]$OutFile = (Join-Path $PSScriptRoot 'artifacts\release-report.md')
 )
@@ -37,9 +37,12 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # ── Load test results (NUnit) → @{ name = 'Passed'|'Failed'|'Skipped' } ──────────────
+# Multiple files merge with LATER files overriding earlier ones per test name, so an
+# isolated re-run of a flaky suite can be layered on top of a full-suite results file.
 $results = @{}
-if (Test-Path $ResultsXml) {
-    foreach ($tc in ([xml](Get-Content -Raw $ResultsXml)).SelectNodes('//test-case')) {
+foreach ($xml in $ResultsXml) {
+    if (-not (Test-Path $xml)) { Write-Host "  (skip: $xml not found)" -ForegroundColor DarkGray; continue }
+    foreach ($tc in ([xml](Get-Content -Raw $xml)).SelectNodes('//test-case')) {
         $status = switch -Regex ($tc.result) {
             '^(Success|Passed)$'           { 'Passed' }
             '^(Failure|Failed|Error)$'     { 'Failed' }
@@ -49,7 +52,7 @@ if (Test-Path $ResultsXml) {
         $results[[string]$tc.name] = $status
     }
 }
-Write-Host "Loaded $($results.Count) test results from $ResultsXml" -ForegroundColor Cyan
+Write-Host "Loaded $($results.Count) test results from $($ResultsXml -join ', ')" -ForegroundColor Cyan
 
 $overrides = @{}
 if (Test-Path $OverrideMap) { $overrides = Import-PowerShellDataFile -Path $OverrideMap }
