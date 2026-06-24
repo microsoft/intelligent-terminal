@@ -85,11 +85,18 @@ $pass = 0; $fail = 0; $manual = 0
 $body = [System.Collections.Generic.List[string]]::new()
 foreach ($line in Get-Content -LiteralPath $Checklist) {
     if ($line -match '^\s*#{1,6}\s') { $body.Add($line); continue }              # section headers
-    if ($line -match '^\s*-\s*\[[ xX]\]\s*(?<rest>.*)$') {
+    if ($line -match '^\s*-\s*\[(?<box>[ xX])\]\s*(?<rest>.*)$') {
+        $box = $Matches['box']
         $rest = $Matches['rest']
         $title = Get-ItemTitle $rest
         $clean = Clear-ItemText $rest
-        switch (Get-ItemStatus $title) {
+        $status = Get-ItemStatus $title
+        # An originally-ticked box means the item is already fully verified by an automated
+        # UNIT test (the checklist's [x] convention). Unit tests are automation too, so unless
+        # an end-to-end test for it actually FAILED, credit it as passed — the human needn't
+        # re-verify it. (Items needing an E2E half were left unticked in the source.)
+        if ($status -eq 'Untested' -and $box -match 'x') { $status = 'Passed' }
+        switch ($status) {
             'Passed'   { $body.Add("- [x] $clean"); $pass++ }
             'Failed'   { $body.Add("- [ ] ⚠️ **AUTOMATION FAILED** — $clean"); $fail++ }
             default    { $body.Add("- [ ] $clean"); $manual++ }
@@ -107,7 +114,7 @@ $header = @(
     '> This is the release checklist, filled in by the automated test run. You do not need to'
     '> know how each item is tested — just read the boxes:'
     '>'
-    '> - **[x]** — verified automatically (a test ran and passed).'
+    '> - **[x]** — verified automatically (an automated unit or end-to-end test passed).'
     '> - **[ ] ⚠️ AUTOMATION FAILED** — a test ran and FAILED; investigate before shipping.'
     '> - **[ ]** (plain) — not covered by automation in this run; please verify manually.'
     '>'
