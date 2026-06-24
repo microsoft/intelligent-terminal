@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Maak seker %{name} is geïnstalleer en op jou PATH."  #
 
 # ── Agenteaansig (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Laai tans..."
-# {Locked="Enter","Esc","↑","↓"} - sleutelkombinasies, moenie vertaal nie
-agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie te begin • Esc om te verlaat)"
+# {Locked="Enter","Esc","F5","↑","↓"} - sleutelkombinasies, moenie vertaal nie
+agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie te begin • Esc om te verlaat • F5 om te verfris)"
 agents.status.active: "Aktief"
 agents.status.waiting_for_input: "Wag vir invoer"
 agents.status.error: "Fout"

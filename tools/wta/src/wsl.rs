@@ -10,7 +10,7 @@
 //! Running distros only: touching a *stopped* distro's filesystem
 //! auto-boots its VM (multi-second stall, GH#9541), so we never do it.
 
-use crate::agent_sessions::{AgentSession, SessionLocation};
+use crate::agent_sessions::{AgentSession, CliSource, SessionLocation};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -25,7 +25,12 @@ const WSL_LIST_TIMEOUT: Duration = Duration::from_secs(10);
 ///
 /// `fetch_tar(distro) -> Option<tar bytes>`; `extract(bytes, dest)`
 /// materializes a `$HOME`-mirror at `dest`.
-pub(crate) fn scan_distro_with<F, E>(distro: &str, fetch_tar: F, extract: E) -> Vec<AgentSession>
+pub(crate) fn scan_distro_with<F, E>(
+    distro: &str,
+    fetch_tar: F,
+    extract: E,
+    cli_filter: Option<&CliSource>,
+) -> Vec<AgentSession>
 where
     F: FnOnce(&str) -> Option<Vec<u8>>,
     E: FnOnce(&[u8], &Path) -> std::io::Result<()>,
@@ -47,7 +52,7 @@ where
         tracing::warn!(target: "wsl", distro, %err, "tar extract failed");
         return Vec::new();
     }
-    let mut rows = crate::history_loader::load_all_in(tmp.path());
+    let mut rows = crate::history_loader::load_all_in(tmp.path(), cli_filter);
     let loc = SessionLocation::Wsl {
         distro: distro.to_string(),
     };
@@ -59,15 +64,15 @@ where
 
 /// Enumerate running distros and scan each, using the real spawn/extract.
 /// Fast (no VM boot) — used for the initial session list.
-pub fn scan_running_distros() -> Vec<AgentSession> {
-    scan_distros(running_distros())
+pub fn scan_running_distros(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
+    scan_distros(running_distros(), cli_filter)
 }
 
 /// Scan a specific set of distros, using the real spawn/extract.
-fn scan_distros(distros: Vec<String>) -> Vec<AgentSession> {
+fn scan_distros(distros: Vec<String>, cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     let mut out = Vec::new();
     for distro in distros {
-        let rows = scan_distro_with(&distro, fetch_distro_tar, extract_tar_stream);
+        let rows = scan_distro_with(&distro, fetch_distro_tar, extract_tar_stream, cli_filter);
         tracing::info!(target: "wsl", distro = %distro, rows = rows.len(), "scanned distro");
         out.extend(rows);
     }
@@ -357,7 +362,7 @@ mod tests {
             Ok(())
         };
 
-        let rows = scan_distro_with("Ubuntu", fetch, extract);
+        let rows = scan_distro_with("Ubuntu", fetch, extract, None);
         assert_eq!(rows.len(), 1, "expected one Copilot row");
         assert_eq!(
             rows[0].location,
@@ -372,6 +377,39 @@ mod tests {
     fn scan_distro_empty_fetch_yields_no_rows() {
         let fetch = |_d: &str| None;
         let extract = |_b: &[u8], _d: &std::path::Path| Ok(());
-        assert!(scan_distro_with("Ubuntu", fetch, extract).is_empty());
+        assert!(scan_distro_with("Ubuntu", fetch, extract, None).is_empty());
+    }
+
+    #[test]
+    fn scan_distro_with_cli_filter_parses_only_selected_cli() {
+        // Same Copilot-only fixture as scan_distro_stamps_rows_with_wsl_location,
+        // but as named fns so the same fixture can drive two scans.
+        fn fetch(_distro: &str) -> Option<Vec<u8>> {
+            Some(vec![1u8, 2, 3])
+        }
+        fn extract(_bytes: &[u8], dest: &std::path::Path) -> std::io::Result<()> {
+            let dir = dest
+                .join(".copilot")
+                .join("session-state")
+                .join("11111111-2222-3333-4444-555555555555");
+            std::fs::create_dir_all(&dir)?;
+            std::fs::write(
+                dir.join("workspace.yaml"),
+                "id: 11111111-2222-3333-4444-555555555555\ncwd: /home/u/proj\nsummary: hello wsl\n",
+            )?;
+            std::fs::write(dir.join("events.jsonl"), "{\"type\":\"user\"}\n")?;
+            Ok(())
+        }
+
+        // Filtering to the CLI that's present parses + returns it.
+        let cop = scan_distro_with("Ubuntu", fetch, extract, Some(&CliSource::Copilot));
+        assert_eq!(cop.len(), 1, "selected CLI is parsed");
+        assert_eq!(cop[0].cli_source, CliSource::Copilot);
+
+        // Filtering to a different CLI skips Copilot's parse entirely, even
+        // though its files sit in the extracted mirror — this is the
+        // parse-time filter that avoids reading other CLIs' transcripts.
+        let cla = scan_distro_with("Ubuntu", fetch, extract, Some(&CliSource::Claude));
+        assert!(cla.is_empty(), "unselected CLI's transcripts are never parsed");
     }
 }

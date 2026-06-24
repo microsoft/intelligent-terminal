@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Gwnewch yn siŵr fod %{name} wedi'i osod ac ar eich PAT
 
 # ── Golwg asiantau (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Yn llwytho..."
-# {Locked="Enter","Esc","↑","↓"} - cyfuniadau bysellau, peidiwch â chyfieithu
-agents.footer_hint: "(↑ ↓ i lywio • Enter i lansio sesiwn • Esc i adael)"
+# {Locked="Enter","Esc","F5","↑","↓"} - cyfuniadau bysellau, peidiwch â chyfieithu
+agents.footer_hint: "(↑ ↓ i lywio • Enter i lansio sesiwn • Esc i adael • F5 i adnewyddu)"
 agents.status.active: "Gweithredol"
 agents.status.waiting_for_input: "Yn aros am fewnbwn"
 agents.status.error: "Gwall"

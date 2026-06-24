@@ -1646,7 +1646,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         let count = sessions.len();
         for s in &sessions {
             let info = crate::session_registry::agent_session_to_session_info(s);
-            inner_for_history.registry.upsert(info).await;
+            inner_for_history.registry.upsert_if_absent(info).await;
         }
         tracing::info!(
             target: "master_history",
@@ -2232,7 +2232,7 @@ async fn handle_sessions_list_with<F>(
 where
     F: Fn(crate::agent_sessions::CliSource, &str) -> Option<String> + Copy,
 {
-    crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
+    let parsed = crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
         tracing::warn!(
             target: "master",
             op = "sessions_list",
@@ -2241,6 +2241,50 @@ where
         );
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
+
+    // F5 refresh: re-scan the on-disk historical session logs and upsert them,
+    // exactly like the startup history seed. Run the blocking disk walk off the
+    // LocalSet so master stays responsive; on failure fall through to the
+    // cached snapshot rather than erroring the request.
+    if parsed.rescan {
+        let cli = state.cli_source.clone();
+        match tokio::task::spawn_blocking(move || {
+            crate::history_loader::load_for_cli(cli.as_ref())
+        })
+        .await
+        {
+            Ok(sessions) => {
+                let count = sessions.len();
+                for s in &sessions {
+                    let info = crate::session_registry::agent_session_to_session_info(s);
+                    state.registry.upsert_if_absent(info).await;
+                }
+                tracing::info!(
+                    target: "master_history",
+                    count,
+                    "sessions/list rescan: reloaded historical sessions from disk"
+                );
+                // Tell every helper with the session view open to refetch, so
+                // the freshly-loaded historical rows surface immediately in all
+                // windows/tabs — matching the startup history scan's broadcast
+                // instead of waiting up to 5s for the next periodic poll. The
+                // triggered refetches are rescan=false snapshots: they neither
+                // re-scan disk nor re-broadcast, so there's no feedback loop.
+                broadcast_ext_to_helpers(
+                    state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "master_history",
+                    error = %e,
+                    "sessions/list rescan task panicked; returning cached registry"
+                );
+            }
+        }
+    }
 
     for row in state.registry.snapshot().await {
         // `try_refresh_title_from_disk_with` no-ops internally unless the title
@@ -3882,7 +3926,7 @@ mod tests {
         row.last_activity_at_ms = Some(42);
         state.registry.upsert(row.clone()).await;
 
-        let req = session_registry::build_sessions_list_request();
+        let req = session_registry::build_sessions_list_request(false);
         let resp = handle_sessions_list(&state, &req.params)
             .await
             .expect("sessions/list succeeds");
@@ -3912,7 +3956,7 @@ mod tests {
         // title left None → synthetic, exactly as at born-bound launch time.
         state.registry.upsert(row).await;
 
-        let req = session_registry::build_sessions_list_request();
+        let req = session_registry::build_sessions_list_request(false);
         let resp = handle_sessions_list_with(&state, &req.params, |cli, key| {
             assert_eq!(cli, crate::agent_sessions::CliSource::Copilot);
             assert_eq!(key, "born-bound");

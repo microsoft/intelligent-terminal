@@ -187,7 +187,15 @@ pub struct SessionRemovedParams {
 pub struct SessionsChangedParams {}
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct SessionsListParams {}
+pub struct SessionsListParams {
+    /// When true, master re-scans the on-disk historical session logs
+    /// (`load_for_cli`) and upserts them into the registry before answering —
+    /// the F5 refresh path. `#[serde(default)]` keeps old empty `{}` params
+    /// deserializing as false, so the periodic 5s poll and view-open stay on
+    /// the cheap snapshot-only path.
+    #[serde(default)]
+    pub rescan: bool,
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListResponse {
@@ -228,9 +236,10 @@ pub fn build_sessions_changed_notification() -> acp::ExtNotification {
     acp::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
 }
 
-/// Build an `ExtRequest` for `intellterm.wta/sessions/list`.
-pub fn build_sessions_list_request() -> acp::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams::default())
+/// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` asks
+/// master to re-load the on-disk historical session logs before answering.
+pub fn build_sessions_list_request(rescan: bool) -> acp::ExtRequest {
+    let json = serde_json::to_string(&SessionsListParams { rescan })
         .expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
@@ -809,6 +818,18 @@ pub trait SessionRegistry: Send + Sync {
     /// twice with the same `session_id` keeps only the latest copy.
     async fn upsert(&self, info: SessionInfo);
 
+    /// Insert `info` only if no row already exists for `info.session_id`.
+    /// Unlike [`upsert`](Self::upsert), this never replaces an existing row —
+    /// used by the history (re)scan so a reloaded **Historical** disk row can't
+    /// clobber a live session's status / pane binding (the row a live session
+    /// already occupies). The default impl is a (non-atomic) lookup-then-upsert;
+    /// `InMemoryRegistry` overrides it with an atomic check under one lock.
+    async fn upsert_if_absent(&self, info: SessionInfo) {
+        if self.lookup(&info.session_id).await.is_none() {
+            self.upsert(info).await;
+        }
+    }
+
     /// Remove the row for `sid`. Returns the prior value if any (the master
     /// uses this both for routing teardown and to know what to broadcast
     /// in `session_removed` ext-notifications).
@@ -885,6 +906,13 @@ impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
         let mut guard = self.inner.lock().await;
         upsert_locked(&mut guard, info);
+    }
+
+    async fn upsert_if_absent(&self, info: SessionInfo) {
+        let mut guard = self.inner.lock().await;
+        if !guard.sessions.contains_key(&info.session_id) {
+            upsert_locked(&mut guard, info);
+        }
     }
 
     async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
@@ -1411,6 +1439,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn upsert_if_absent_preserves_existing_row_and_adds_new() {
+        let reg = InMemoryRegistry::new();
+
+        // A live row: bound pane + a non-historical status.
+        let mut live = info("sess-1", Some("pane-A"));
+        live.status = Some(AgentStatus::Idle);
+        reg.upsert(live).await;
+
+        // A history-scan row for the SAME id (Historical, no pane) — exactly
+        // what an F5 rescan reloads from disk. It must NOT replace the live row.
+        let mut historical = info("sess-1", None);
+        historical.status = Some(AgentStatus::Historical);
+        reg.upsert_if_absent(historical).await;
+
+        let got = reg
+            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .await
+            .expect("row present");
+        assert_eq!(
+            got.status,
+            Some(AgentStatus::Idle),
+            "rescan must not downgrade a live session to Historical"
+        );
+        assert_eq!(
+            got.pane_session_id.as_deref(),
+            Some("pane-A"),
+            "rescan must not drop the live pane binding"
+        );
+
+        // A genuinely new session (absent from the registry) IS added.
+        reg.upsert_if_absent(info("sess-2", None)).await;
+        assert!(
+            reg.lookup(&acp::SessionId::new("sess-2".to_string()))
+                .await
+                .is_some(),
+            "a new disk session is surfaced"
+        );
+    }
+
+    #[tokio::test]
     async fn remove_returns_prior_and_subsequent_lookup_is_none() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info("sess-1", Some("pane-A"))).await;
@@ -1863,10 +1931,30 @@ mod tests {
     }
 
     #[test]
-    fn build_sessions_list_request_round_trips_empty_params() {
-        let req = build_sessions_list_request();
+    fn build_sessions_list_request_round_trips_rescan() {
+        let req = build_sessions_list_request(false);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSIONS_LIST);
-        parse_sessions_list_params(&req.params).expect("empty object params are valid");
+        assert!(
+            !parse_sessions_list_params(&req.params)
+                .expect("params are valid")
+                .rescan
+        );
+
+        let req_rescan = build_sessions_list_request(true);
+        assert!(
+            parse_sessions_list_params(&req_rescan.params)
+                .expect("params are valid")
+                .rescan
+        );
+
+        // Backward compat: a legacy empty `{}` params object (older helper /
+        // master that predates the flag) deserializes as rescan=false.
+        let empty = serde_json::value::RawValue::from_string("{}".to_string()).unwrap();
+        assert!(
+            !parse_sessions_list_params(&empty)
+                .expect("empty is valid")
+                .rescan
+        );
     }
 
     #[test]

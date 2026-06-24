@@ -103,34 +103,37 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
     }
 }
 
-/// Run the four per-CLI scanners against a specific `home` (the real
-/// user profile for host rows, or a temp `$HOME`-mirror extracted from a
-/// WSL distro). Caps each CLI at [`MAX_PER_CLI`]. Used by the WSL scan
-/// (`crate::wsl`) to reuse the host parsers verbatim over an extracted
-/// distro `$HOME`; the host path goes through [`load_for_cli`] instead.
-pub(crate) fn load_all_in(home: &Path) -> Vec<AgentSession> {
+/// Run the per-CLI scanners against a specific `home` (the real user
+/// profile for host rows, or a temp `$HOME`-mirror extracted from a WSL
+/// distro), restricted to a single CLI when `cli_filter` is `Some(known)`
+/// (see [`cli_scan_flags`]). Caps each CLI at [`MAX_PER_CLI`]. Used by the
+/// WSL scan (`crate::wsl`) to reuse the host parsers verbatim over an
+/// extracted distro `$HOME`; the host path goes through [`load_for_cli`].
+///
+/// Filtering here — *before* the parse — means a CLI the view isn't showing
+/// is never parsed, so the WSL scan doesn't pay to read + parse the other
+/// three CLIs' transcripts out of the extracted mirror just to discard them.
+pub(crate) fn load_all_in(home: &Path, cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     // The WSL temp `$HOME` has no agent-pane (Class A) sessions, so pass an
     // empty index to the production `_indexed` loaders (the bare wrappers are
     // test-only). Reuses the host parsers verbatim over the extracted distro
     // home.
     let empty = HashSet::new();
+    let (cop, cla, gem, cod) = cli_scan_flags(cli_filter);
     let mut out = Vec::new();
-    out.extend(take_n(load_copilot_indexed(home, &empty), MAX_PER_CLI));
-    out.extend(take_n(load_claude_indexed(home, &empty), MAX_PER_CLI));
-    out.extend(take_n(load_gemini_indexed(home, &empty), MAX_PER_CLI));
-    out.extend(take_n(load_codex_indexed(home, &empty), MAX_PER_CLI));
-    out
-}
-
-/// Retain only the requested CLI's WSL rows, mirroring the host-side
-/// `cli_scan_flags` behavior: a known CLI filter keeps just that CLI;
-/// `None` or a custom/unknown agent keeps all four.
-fn retain_wsl_cli(rows: &mut Vec<AgentSession>, cli_filter: Option<&CliSource>) {
-    if let Some(want) = cli_filter {
-        if !matches!(want, CliSource::Unknown(_)) {
-            rows.retain(|s| &s.cli_source == want);
-        }
+    if cop {
+        out.extend(take_n(load_copilot_indexed(home, &empty), MAX_PER_CLI));
     }
+    if cla {
+        out.extend(take_n(load_claude_indexed(home, &empty), MAX_PER_CLI));
+    }
+    if gem {
+        out.extend(take_n(load_gemini_indexed(home, &empty), MAX_PER_CLI));
+    }
+    if cod {
+        out.extend(take_n(load_codex_indexed(home, &empty), MAX_PER_CLI));
+    }
+    out
 }
 
 /// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
@@ -171,9 +174,10 @@ pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     // Stopped (non-running) distros are intentionally skipped: reading one
     // boots its WSL VM, which is too costly to do just to build a list.
     if wsl_sessions_enabled() {
-        let mut wsl_rows = crate::wsl::scan_running_distros();
-        retain_wsl_cli(&mut wsl_rows, cli_filter);
-        out.extend(wsl_rows);
+        // Filtering happens inside the parse (`load_all_in` via
+        // `cli_scan_flags`), so an unselected CLI's transcripts are never
+        // parsed out of the extracted mirror — no post-hoc retain needed.
+        out.extend(crate::wsl::scan_running_distros(cli_filter));
     }
 
     let Some(home) = home_dir() else { return out };
@@ -3066,45 +3070,5 @@ mod tests {
         std::env::set_var("WTA_WSL_SESSIONS", "1");
         assert!(wsl_sessions_enabled());
         std::env::remove_var("WTA_WSL_SESSIONS");
-    }
-
-    fn wsl_row(cli: CliSource) -> AgentSession {
-        AgentSession {
-            key: "k".into(),
-            cli_source: cli,
-            pane_session_id: None,
-            window_id: None,
-            tab_id: None,
-            title: "t".into(),
-            cwd: std::path::PathBuf::from("/home/u"),
-            started_at: SystemTime::UNIX_EPOCH,
-            last_activity_at: SystemTime::UNIX_EPOCH,
-            status: AgentStatus::Historical,
-            last_error: None,
-            current_tool: None,
-            attention_reason: None,
-            log_path: None,
-            origin: crate::agent_sessions::SessionOrigin::default(),
-            location: crate::agent_sessions::SessionLocation::Wsl {
-                distro: "Ubuntu".into(),
-            },
-        }
-    }
-
-    #[test]
-    fn retain_wsl_cli_keeps_known_filters_else_all() {
-        let base = || vec![wsl_row(CliSource::Copilot), wsl_row(CliSource::Claude)];
-        let mut known = base();
-        retain_wsl_cli(&mut known, Some(&CliSource::Copilot));
-        assert_eq!(known.len(), 1);
-        assert_eq!(known[0].cli_source, CliSource::Copilot);
-
-        let mut none = base();
-        retain_wsl_cli(&mut none, None);
-        assert_eq!(none.len(), 2, "None keeps all CLIs");
-
-        let mut unknown = base();
-        retain_wsl_cli(&mut unknown, Some(&CliSource::Unknown(String::new())));
-        assert_eq!(unknown.len(), 2, "Unknown (custom agent) keeps all CLIs");
     }
 }

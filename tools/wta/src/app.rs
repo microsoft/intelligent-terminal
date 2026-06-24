@@ -2161,6 +2161,17 @@ pub struct AgentsViewState {
     pub dirty: bool,
     pub next_request_id: u64,
     pub latest_request_id: Option<u64>,
+    /// Set by F5 in the session view to request a master-side disk re-scan
+    /// (`load_for_cli`) on the next dispatched `sessions/list`. Sticky across
+    /// in-flight coalescing: only cleared when a request is actually built, so
+    /// an F5 pressed while a poll is in flight still rescans on the trailing
+    /// refetch. Reset on view close.
+    pub pending_rescan: bool,
+    /// True while an F5 rescan request is in flight (set when dispatched,
+    /// cleared when the response/failure lands). Drives the loading shimmer for
+    /// the whole refresh so F5 has visible feedback even when the list already
+    /// has rows — a normal 5s poll leaves it false and never flashes loading.
+    pub rescan_in_flight: bool,
 }
 
 // (Historical-session load-state tracking was removed: the helper no longer
@@ -3574,6 +3585,8 @@ impl App {
         tab.agents_view.refetch_in_flight = false;
         tab.agents_view.dirty = false;
         tab.agents_view.focused_sid = None;
+        tab.agents_view.pending_rescan = false;
+        tab.agents_view.rescan_in_flight = false;
         tab.agents_view_prev_pane_open = None;
     }
 
@@ -3592,7 +3605,15 @@ impl App {
             tab.agents_view.next_request_id = tab.agents_view.next_request_id.wrapping_add(1);
             let request_id = tab.agents_view.next_request_id;
             tab.agents_view.latest_request_id = Some(request_id);
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id }
+            // Consume the sticky F5 rescan intent only when we actually build a
+            // request; if we coalesced (in-flight) above, it stays set so the
+            // trailing refetch carries it.
+            let rescan = std::mem::take(&mut tab.agents_view.pending_rescan);
+            // Mirror onto rescan_in_flight so the loading shimmer shows for the
+            // whole F5 refresh (a normal poll keeps this false). Cleared when
+            // the response / failure lands.
+            tab.agents_view.rescan_in_flight = rescan;
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, rescan }
         };
         let _ = self.master_request_tx.send(request);
     }
@@ -3633,6 +3654,7 @@ impl App {
                 } else {
                     tab.agents_view.snapshot = Some(sessions.clone());
                     tab.agents_view.refetch_in_flight = false;
+                    tab.agents_view.rescan_in_flight = false;
                     let dirty = tab.agents_view.dirty;
                     tab.agents_view.dirty = false;
                     dirty
@@ -3669,6 +3691,7 @@ impl App {
                     false
                 } else {
                     tab.agents_view.refetch_in_flight = false;
+                    tab.agents_view.rescan_in_flight = false;
                     let dirty = tab.agents_view.dirty;
                     tab.agents_view.dirty = false;
                     dirty
@@ -6673,6 +6696,16 @@ impl App {
                     }
                     self.project_active_tab_state();
                 }
+                KeyCode::F(5) => {
+                    // Refresh: ask master to re-scan the on-disk historical
+                    // session logs (load_for_cli) like the startup seed, then
+                    // re-list. The sticky pending_rescan flag is consumed when
+                    // schedule actually dispatches, so it survives in-flight
+                    // coalescing.
+                    let tab_id = self.active_tab_key().to_string();
+                    self.tab_mut(&tab_id).agents_view.pending_rescan = true;
+                    self.schedule_agents_refetch_for_tab(&tab_id);
+                }
                 _ => {}
             }
             return;
@@ -7156,22 +7189,25 @@ impl App {
         self.current_tab_mut().scroll_to_bottom();
     }
 
-    /// True while the open agents view is waiting on its first `session/list`
-    /// reply from master — the placeholder snapshot is still the empty Vec
-    /// primed by `open_agents_view_for_tab` and a refetch is in flight. Drives
-    /// the loading-shimmer animation while the first snapshot is in flight.
+    /// True while the open agents view should show the loading shimmer: either
+    /// waiting on its first `session/list` reply from master (empty placeholder
+    /// snapshot + refetch in flight) or while an F5 rescan is in flight. Drives
+    /// the shimmer animation tick so a refresh is visible.
     fn agents_view_awaiting_snapshot(&self) -> bool {
         let tab = self.current_tab();
         if tab.current_view != View::Agents {
             return false;
         }
+        // First-snapshot OR an F5 rescan; a normal 5s poll keeps
+        // rescan_in_flight false so it doesn't flash the shimmer.
         tab.agents_view.refetch_in_flight
-            && tab
+            && (tab
                 .agents_view
                 .snapshot
                 .as_deref()
                 .map(|s| s.is_empty())
                 .unwrap_or(false)
+                || tab.agents_view.rescan_in_flight)
     }
 
     fn has_activity_indicator(&self) -> bool {
@@ -11608,7 +11644,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let first_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11626,7 +11662,7 @@ mod tests {
             Some(agent_client_protocol::SessionId::new("b"));
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11659,7 +11695,7 @@ mod tests {
             app.handle_event(AppEvent::SessionsChanged);
         }
         let first_req = match master_rx.try_recv().expect("one in-flight refetch") {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11694,7 +11730,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let first_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11718,7 +11754,7 @@ mod tests {
         // Kick a second refetch and report it as failed.
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().expect("second refetch sent") {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11760,7 +11796,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let req_id = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11797,7 +11833,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let _stale = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11810,7 +11846,7 @@ mod tests {
         });
         app.handle_event(AppEvent::SessionsChanged);
         let _fresh = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11855,6 +11891,37 @@ mod tests {
         assert!(!app.agents_view_awaiting_snapshot());
     }
 
+    #[test]
+    fn agents_view_loading_shows_during_f5_rescan() {
+        let (mut app, _master_rx) = test_app_with_master_rx();
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        // First snapshot landed: rows present, fetch settled — not loading.
+        app.current_tab_mut().agents_view.snapshot = Some(vec![session_info_for_test("a")]);
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+        assert!(!app.agents_view_awaiting_snapshot(), "a settled list is not loading");
+
+        // F5 dispatches a rescan: the loading shimmer must show even though the
+        // list already has rows, so the refresh is visible.
+        app.current_tab_mut().agents_view.pending_rescan = true;
+        app.schedule_agents_refetch_for_tab(DEFAULT_TAB_ID);
+        assert!(
+            app.agents_view_awaiting_snapshot(),
+            "F5 rescan must show the loading shimmer even with rows present"
+        );
+
+        // The rescan response clears it back to the settled list.
+        let rid = app
+            .current_tab()
+            .agents_view
+            .latest_request_id
+            .expect("a request was dispatched");
+        app.handle_agents_snapshot_loaded(rid, vec![session_info_for_test("a")]);
+        assert!(
+            !app.agents_view_awaiting_snapshot(),
+            "loading clears once the rescan response lands"
+        );
+    }
+
     fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
         let mut info = crate::session_registry::SessionInfo::new(
             agent_client_protocol::SessionId::new(id),
@@ -11896,6 +11963,36 @@ mod tests {
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
         assert_eq!(cmd.session_id.as_deref(), Some("a"));
+    }
+
+    // F5 in the session-management view refetches the session list (footer
+    // hint: "F5 to refresh"). When no fetch is in flight it dispatches a
+    // fresh sessions/list request to master.
+    #[test]
+    fn f5_in_session_view_refetches_sessions() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let tab_id = app.active_tab_key().to_string();
+        app.open_agents_view_for_tab(tab_id);
+
+        // The open-time refetch must be snapshot-only (no disk rescan).
+        match master_rx.try_recv().expect("open requests sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan, .. } => {
+                assert!(!rescan, "view-open refetch must not rescan");
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
+        // Clear the in-flight flag so the F5 refetch dispatches fresh.
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+
+        match master_rx.try_recv().expect("F5 must request sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan, .. } => {
+                assert!(rescan, "F5 must request a master-side disk rescan");
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
     }
 
     // Esc out of the session-management (Agents) view restores the pane

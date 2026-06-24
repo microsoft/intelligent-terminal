@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Se till att %{name} är installerat och finns i din PAT
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laddar..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ för att navigera • Enter för att starta session • Esc för att avsluta)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ för att navigera • Enter för att starta session • Esc för att avsluta • F5 för att uppdatera)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Väntar på inmatning"
 agents.status.error: "Fel"

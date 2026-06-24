@@ -106,8 +106,8 @@ agent.custom.auth_hint: "Assurez-vous que %{name} est installé et se trouve dan
 
 # ── Vue des agents (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Chargement..."
-# {Locked="Enter","Esc","↑","↓"} - combinaisons de touches, ne pas traduire
-agents.footer_hint: "(↑ ↓ naviguer • Enter lancer la session • Esc quitter)"
+# {Locked="Enter","Esc","F5","↑","↓"} - combinaisons de touches, ne pas traduire
+agents.footer_hint: "(↑ ↓ naviguer • Enter lancer la session • Esc quitter • F5 actualiser)"
 agents.status.active: "Actif"
 agents.status.waiting_for_input: "En attente de saisie"
 agents.status.error: "Erreur"

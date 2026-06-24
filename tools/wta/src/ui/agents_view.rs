@@ -40,16 +40,12 @@ pub fn render(
     // up with the cursor / Enter dispatch model. Caller threads the
     // stored `app.sessions_origin_filter`.
     origin_filter: OriginFilter,
-    // True iff the session management view is waiting on its first `session/list`
-    // snapshot from master (snapshot is currently empty AND a refetch
-    // request is in flight). Without this signal we have no way to
-    // distinguish "view just opened, master hasn't responded yet" from
-    // "view loaded, there really are zero sessions" — `open_agents_view`
-    // primes `snapshot = Some(Vec::new())` so the historical
-    // `!snapshot.is_some()` heuristic for the loading shimmer is always
-    // false after PR #73. Caller (ui::layout) computes this from
-    // `tab.agents_view.refetch_in_flight && snapshot.is_empty()`.
-    awaiting_first_snapshot: bool,
+    // True while the loading shimmer should replace the list: either waiting on
+    // the first `session/list` snapshot from master (empty placeholder + a
+    // refetch in flight) OR an F5 rescan is in flight, so a refresh is visible
+    // even when the list already has rows. Caller (ui::layout) computes it from
+    // `refetch_in_flight && (snapshot.is_empty() || rescan_in_flight)`.
+    show_loading: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -175,16 +171,13 @@ pub fn render(
         "rendering agents view"
     );
 
-    // While the view is waiting on its first `session/list` snapshot from
-    // master, replace the whole list with a single shimmer-styled loading
-    // row. Showing live rows alongside a dim "loading…" hint led users to
-    // think the list was complete and dismiss the view before the snapshot
-    // arrived. The session view was just opened, master hasn't yet replied
-    // to our `session/list` refetch, and the placeholder snapshot is still
-    // the empty Vec primed by `open_agents_view_for_tab`; without this the
-    // user sees a blank list and can't tell loading from "really empty".
-    let snapshot_loading = awaiting_first_snapshot && sorted.is_empty();
-    if snapshot_loading {
+    // While loading — the first `session/list` snapshot, or an F5 rescan —
+    // replace the whole list with a single shimmer-styled loading row. Showing
+    // live rows alongside a dim "loading…" hint led users to think the list was
+    // complete and dismiss the view before the snapshot arrived; replacing the
+    // list also gives F5 an unmistakable "refreshing now" signal even when rows
+    // are already present.
+    if show_loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
