@@ -1523,7 +1523,8 @@ pub struct TabSession {
     pub cursor_pos: usize,
     /// Images captured from the clipboard via Alt+V, waiting to be sent with
     /// the next prompt. Rendered as `[image #N]` chips above the input; drained
-    /// into the `PromptSubmission` on Enter and cleared after submit/clear.
+    /// into the `PromptSubmission` on Enter and cleared after submit, and on
+    /// `/clear` / `/new` / session reset via `clear_chat_history`.
     pub pending_images: Vec<crate::clipboard_image::PastedImage>,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode. The popup renderer treats an empty Vec as
@@ -1670,6 +1671,9 @@ impl TabSession {
         self.selection_visible_pending = false;
         self.turn = TurnState::Idle;
         self.clear_recommendations();
+        // Drop any clipboard image queued but not yet sent — a wiped/fresh
+        // conversation must not carry a stale attachment into the next prompt.
+        self.pending_images.clear();
     }
 
     /// Flush pending user/agent replay buffers at a turn boundary during

@@ -201,7 +201,7 @@ system.image_clipboard_empty: "No image on the clipboard to paste."
 system.image_not_supported: "This agent doesn't support image input."
 # Shown after Alt+V successfully queues a clipboard image. %{label} is a short
 # source label (a file name, or "screenshot"/"image"). Press Enter to send.
-system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locked="%{label}"}
+system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.

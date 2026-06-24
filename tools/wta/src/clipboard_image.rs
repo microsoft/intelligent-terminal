@@ -45,6 +45,14 @@ const CF_HDROP: u32 = 15;
 // BITMAPINFOHEADER biCompression values (wingdi.h).
 const BI_BITFIELDS: u32 = 3;
 
+/// Upper bound on a single clipboard payload we will copy into memory. A
+/// corrupted or hostile `GlobalSize` could otherwise drive an unbounded
+/// allocation (OOM) in the helper just from an Alt+V keypress. 256 MiB is far
+/// above any realistic screenshot DIB (a 4K 32-bpp frame is ~33 MiB) yet bounds
+/// the worst case. Oversized payloads are treated as non-pastable.
+#[cfg(windows)]
+const MAX_CLIPBOARD_BYTES: usize = 256 * 1024 * 1024;
+
 /// Read an image from the Windows clipboard, if one is present.
 ///
 /// Returns `None` when the clipboard holds no image (or only text), the
@@ -249,6 +257,11 @@ unsafe fn clipboard_bytes(format: u32) -> Option<Vec<u8>> {
         return None;
     }
     let size = GlobalSize(handle);
+    // Guard against an unbounded (or corrupted) size driving an OOM allocation.
+    if size == 0 || size > MAX_CLIPBOARD_BYTES {
+        GlobalUnlock(handle);
+        return None;
+    }
     let bytes = std::slice::from_raw_parts(ptr as *const u8, size).to_vec();
     GlobalUnlock(handle);
     if bytes.is_empty() {
@@ -333,6 +346,7 @@ pub(crate) unsafe fn set_clipboard_dib(dib: &[u8]) -> bool {
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
+    use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::Memory::{
         GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
     };
@@ -349,13 +363,19 @@ pub(crate) unsafe fn set_clipboard_dib(dib: &[u8]) -> bool {
     }
     let ptr = GlobalLock(hmem);
     if ptr.is_null() {
+        // Ownership was not handed to the clipboard — free our allocation.
+        GlobalFree(hmem);
         CloseClipboard();
         return false;
     }
     std::ptr::copy_nonoverlapping(dib.as_ptr(), ptr as *mut u8, dib.len());
     GlobalUnlock(hmem);
-    // On success the system takes ownership of `hmem`.
+    // On success the system takes ownership of `hmem`; on failure it does not,
+    // so we must free it ourselves to avoid leaking the allocation.
     let placed = !SetClipboardData(CF_DIB, hmem as _).is_null();
+    if !placed {
+        GlobalFree(hmem);
+    }
     CloseClipboard();
     placed
 }
