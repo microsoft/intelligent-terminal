@@ -372,3 +372,102 @@ mod tests {
         assert_eq!(sorted.len(), got.len(), "must not contain duplicates: {got:?}");
     }
 }
+
+/// Integration tests that spawn a **real** PowerShell host to exercise the
+/// subprocess-backed paths ([`enumerate_powershell_commands`] and
+/// [`powershell_near_matches`]) end-to-end. The pure-function unit tests above
+/// can't cover these because the behaviour depends on the live shell.
+///
+/// They are Windows-only and skip themselves (no-op `return`) when no
+/// PowerShell host is installed, so a bare CI image without `pwsh`/`powershell`
+/// doesn't fail — it just doesn't exercise them.
+#[cfg(all(test, windows))]
+mod integration_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Serializes the test(s) that mutate the process-wide `PATH`. Cargo runs
+    /// unit tests on parallel threads inside one process, so an unguarded
+    /// `set_var("PATH", …)` could race a concurrent test that reads it.
+    static PATH_GUARD: Mutex<()> = Mutex::new(());
+
+    /// First installed PowerShell host, or `None` to skip the test.
+    fn powershell_host() -> Option<String> {
+        ["pwsh.exe", "powershell.exe"]
+            .into_iter()
+            .find(|exe| which::which(exe).is_ok())
+            .map(String::from)
+    }
+
+    #[tokio::test]
+    async fn enumerate_returns_builtin_cmdlets() {
+        let Some(shell) = powershell_host() else {
+            eprintln!("no PowerShell host installed; skipping");
+            return;
+        };
+        let names = enumerate_powershell_commands(&shell)
+            .await
+            .expect("enumerate should return a non-empty command list");
+        // `Get-ChildItem` is present in every PowerShell host, profile or not.
+        assert!(
+            names.iter().any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
+            "expected the Get-ChildItem cmdlet in the enumerated list"
+        );
+    }
+
+    #[tokio::test]
+    async fn near_matches_none_for_a_real_builtin_alias() {
+        let Some(shell) = powershell_host() else {
+            eprintln!("no PowerShell host installed; skipping");
+            return;
+        };
+        // `gci` is a built-in alias for Get-ChildItem. `which` can't see it
+        // (it's not a PATH file), so the in-process pre-gate passes — but the
+        // full enumerate gate must still recognize it and suppress injection.
+        let got = powershell_near_matches(&shell, "gci").await;
+        assert!(got.is_none(), "expected None for the real alias `gci`, got {got:?}");
+    }
+
+    #[tokio::test]
+    async fn near_matches_suggests_a_local_script_typo_on_path() {
+        let Some(shell) = powershell_host() else {
+            eprintln!("no PowerShell host installed; skipping");
+            return;
+        };
+
+        // Drop a uniquely-named script into a fresh dir and put it on PATH. The
+        // enumerate subprocess inherits this process's PATH, so it sees the
+        // file as an ExternalScript — mirroring a user's own local PATH script
+        // (the core issue #287 scenario).
+        let _guard = PATH_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cmdrecall_it_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp script dir");
+        std::fs::write(dir.join("wtdeployit.ps1"), "Write-Host hi").expect("write script");
+
+        let original_path = std::env::var_os("PATH");
+        let mut prepended = std::ffi::OsString::from(&dir);
+        if let Some(existing) = &original_path {
+            prepended.push(";");
+            prepended.push(existing);
+        }
+        std::env::set_var("PATH", &prepended);
+
+        // `wtdeployt` is the script name with one character dropped — a genuine
+        // not-found whose closest existing command is the script itself.
+        let result = powershell_near_matches(&shell, "wtdeployt").await;
+
+        // Always restore PATH and remove the temp dir *before* asserting, so a
+        // failed assertion can never leak state into other tests.
+        match original_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let matches = result.expect("expected near-matches for a local script typo");
+        assert!(
+            matches.iter().any(|m| m.eq_ignore_ascii_case("wtdeployit")),
+            "expected the local script `wtdeployit` among near-matches, got {matches:?}"
+        );
+    }
+}
