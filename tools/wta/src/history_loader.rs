@@ -1119,14 +1119,18 @@ fn first_nonblank_line(raw: &str) -> String {
 ///
 /// Codex prepends/interleaves several non-prompt user-role records: XML-ish
 /// wrapper blocks (`<environment_context>`, `<user_instructions>`,
-/// `<subagent_notification>`, `<turn_aborted>`, …) and one
-/// `# AGENTS.md instructions for <dir>` block per project doc it auto-loads.
-/// These appear *before* the user's first real prompt in the rollout, so both
-/// the title scanner and the "has real content" (phantom) check must skip them
-/// — otherwise a freshly opened, never-prompted codex session is treated as
-/// real and titled with a doc heading (e.g.
-/// `# AGENTS.md instructions for C:\…\intelligent-terminal`) instead of the
-/// user's prompt. Add new codex wrapper tags to `WRAPPER_TAGS` as they appear.
+/// `<subagent_notification>`, `<turn_aborted>`, …) and the auto-loaded AGENTS.md,
+/// headed by codex's `# AGENTS.md instructions` marker. That marker comes in two
+/// forms (codex `UserInstructions::body`): `# AGENTS.md instructions for <dir>`
+/// for a project AGENTS.md (`directory = Some`) and the *bare*
+/// `# AGENTS.md instructions` for a global `~/.codex/AGENTS.md`
+/// (`directory = None`). All appear *before* the user's first real prompt in the
+/// rollout, so both the title scanner and the "has real content" (phantom) check
+/// must skip them — otherwise a freshly opened, never-prompted codex session is
+/// treated as real and titled with a doc heading (e.g.
+/// `# AGENTS.md instructions for C:\…\intelligent-terminal`, or the bare
+/// `# AGENTS.md instructions`) instead of the user's prompt. Add new codex
+/// wrapper tags to `WRAPPER_TAGS` as they appear.
 fn codex_user_text_is_synthetic(text: &str) -> bool {
     const WRAPPER_TAGS: &[&str] = &[
         "<environment_context",
@@ -1134,9 +1138,19 @@ fn codex_user_text_is_synthetic(text: &str) -> bool {
         "<subagent_notification",
         "<turn_aborted",
     ];
+    const AGENTS_MD_HEADING: &str = "# AGENTS.md instructions";
     let t = text.trim_start();
+    // Match the AGENTS.md marker only when it stands as a whole heading line so a
+    // real prompt that merely opens with the phrase mid-line isn't swallowed: the
+    // bare global form is followed by end-of-text or a newline, and the project
+    // form continues with ` for <dir>`.
     WRAPPER_TAGS.iter().any(|tag| t.starts_with(tag))
-        || t.starts_with("# AGENTS.md instructions for ")
+        || t.strip_prefix(AGENTS_MD_HEADING).is_some_and(|rest| {
+            rest.is_empty()
+                || rest.starts_with('\n')
+                || rest.starts_with('\r')
+                || rest.starts_with(" for ")
+        })
 }
 
 pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
@@ -2924,6 +2938,74 @@ mod tests {
         write_file(&path, &(codex_meta_line(id, "2026-05-28T15:00:00Z", "C:/proj") + &env + &agents));
         assert_eq!(load_codex(&home).len(), 0,
                    "meta + env_context + AGENTS.md injection alone must be phantom");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_user_text_is_synthetic_recognizes_bare_and_dir_headings() {
+        // Project AGENTS.md (directory=Some) -> "# AGENTS.md instructions for <dir>".
+        assert!(codex_user_text_is_synthetic(
+            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+        ));
+        // Global ~/.codex/AGENTS.md (directory=None) -> bare "# AGENTS.md instructions".
+        assert!(codex_user_text_is_synthetic(
+            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+        ));
+        // Bare heading with nothing after it, and with tolerated leading space.
+        assert!(codex_user_text_is_synthetic("# AGENTS.md instructions"));
+        assert!(codex_user_text_is_synthetic("  # AGENTS.md instructions\n"));
+        // XML-ish wrapper block.
+        assert!(codex_user_text_is_synthetic(
+            "<environment_context>cwd=C:/x</environment_context>"
+        ));
+        // A real prompt that merely opens with the phrase mid-line is NOT synthetic.
+        assert!(!codex_user_text_is_synthetic(
+            "# AGENTS.md instructions are unclear, please rewrite them"
+        ));
+        // An ordinary prompt is not synthetic.
+        assert!(!codex_user_text_is_synthetic("fix the build"));
+    }
+
+    #[test]
+    fn codex_title_skips_injected_bare_agents_md_instructions() {
+        // A GLOBAL ~/.codex/AGENTS.md makes codex emit the *bare* heading
+        // "# AGENTS.md instructions" (directory=None) before the real prompt —
+        // issue #339's still-leaking variant (the "for <dir>" form was already
+        // skipped). The real prompt must still win the title.
+        let home = tmp_root("codex-title-bare-agents-md");
+        let id = "abcdef00-6666-6666-6666-666666666666";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T16-00-00", id);
+        let agents = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
+        let real = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"fix the build\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T16:00:00Z", "C:/proj") + &agents + &real));
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].title, "fix the build",
+                   "bare AGENTS.md injection must be skipped; got: {:?}", rows[0].title);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_session_with_only_bare_agents_md_is_phantom() {
+        // meta + <environment_context> + *bare* AGENTS.md injection, no real user
+        // turn → phantom. Guards codex_user_text_is_synthetic on the
+        // global-AGENTS.md form via codex_session_has_real_content.
+        let home = tmp_root("codex-phantom-bare-agents-md");
+        let id = "abcdef00-7777-7777-7777-777777777777";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T17-00-00", id);
+        let env = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"<environment_context>cwd=C:/proj</environment_context>\"}}]}}}}\n");
+        let agents = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\nbody\\n</INSTRUCTIONS>\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T17:00:00Z", "C:/proj") + &env + &agents));
+        assert_eq!(load_codex(&home).len(), 0,
+                   "meta + env_context + bare AGENTS.md injection alone must be phantom");
         let _ = fs::remove_dir_all(&home);
     }
 
