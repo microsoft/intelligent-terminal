@@ -130,6 +130,10 @@ pub struct RestartRequest {
 pub enum MasterExtRequest {
     SessionsList {
         request_id: u64,
+        /// When true, master re-scans the on-disk historical session logs
+        /// (`load_for_cli`) before answering — the F5 refresh path — instead of
+        /// returning the cached registry snapshot.
+        rescan: bool,
     },
     SessionResumeDispatched {
         request_id: u64,
@@ -2535,8 +2539,8 @@ fn dispatch_master_ext_request(
     let tab_to_session = Arc::clone(tab_to_session);
     tokio::task::spawn_local(async move {
         match req {
-            MasterExtRequest::SessionsList { request_id } => {
-                let wire = crate::session_registry::build_sessions_list_request();
+            MasterExtRequest::SessionsList { request_id, rescan } => {
+                let wire = crate::session_registry::build_sessions_list_request(rescan);
                 // Bound the wait so a single dropped RPC response can't
                 // permanently strand the tab's `refetch_in_flight=true`.
                 //

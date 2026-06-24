@@ -1385,7 +1385,7 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
             let mut event_rx = h.event_rx;
 
             dispatch_master_ext_request(
-                MasterExtRequest::SessionsList { request_id: 7 },
+                MasterExtRequest::SessionsList { request_id: 7, rescan: false },
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,

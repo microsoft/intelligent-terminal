@@ -187,7 +187,15 @@ pub struct SessionRemovedParams {
 pub struct SessionsChangedParams {}
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct SessionsListParams {}
+pub struct SessionsListParams {
+    /// When true, master re-scans the on-disk historical session logs
+    /// (`load_for_cli`) and upserts them into the registry before answering —
+    /// the F5 refresh path. `#[serde(default)]` keeps old empty `{}` params
+    /// deserializing as false, so the periodic 5s poll and view-open stay on
+    /// the cheap snapshot-only path.
+    #[serde(default)]
+    pub rescan: bool,
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListResponse {
@@ -228,9 +236,10 @@ pub fn build_sessions_changed_notification() -> acp::ExtNotification {
     acp::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
 }
 
-/// Build an `ExtRequest` for `intellterm.wta/sessions/list`.
-pub fn build_sessions_list_request() -> acp::ExtRequest {
-    let json = serde_json::to_string(&SessionsListParams::default())
+/// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` asks
+/// master to re-load the on-disk historical session logs before answering.
+pub fn build_sessions_list_request(rescan: bool) -> acp::ExtRequest {
+    let json = serde_json::to_string(&SessionsListParams { rescan })
         .expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
@@ -1863,10 +1872,30 @@ mod tests {
     }
 
     #[test]
-    fn build_sessions_list_request_round_trips_empty_params() {
-        let req = build_sessions_list_request();
+    fn build_sessions_list_request_round_trips_rescan() {
+        let req = build_sessions_list_request(false);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSIONS_LIST);
-        parse_sessions_list_params(&req.params).expect("empty object params are valid");
+        assert!(
+            !parse_sessions_list_params(&req.params)
+                .expect("params are valid")
+                .rescan
+        );
+
+        let req_rescan = build_sessions_list_request(true);
+        assert!(
+            parse_sessions_list_params(&req_rescan.params)
+                .expect("params are valid")
+                .rescan
+        );
+
+        // Backward compat: a legacy empty `{}` params object (older helper /
+        // master that predates the flag) deserializes as rescan=false.
+        let empty = serde_json::value::RawValue::from_string("{}".to_string()).unwrap();
+        assert!(
+            !parse_sessions_list_params(&empty)
+                .expect("empty is valid")
+                .rescan
+        );
     }
 
     #[test]
