@@ -17,12 +17,17 @@ Describe 'Feature: agent restart + session focus' -Tag 'Feature' -Skip:(-not $sc
     It 'Agent restart after settings change works (/restart reconnects and answers)' {
         # Change a setting that affects the agent stack, then /restart the agent pane.
         Set-WtSetting -App $script:app -Key 'acpModel' -Value '' | Out-Null
+        # The settings change rebuilds the agent stack; wait for the helper's session to be
+        # usable again BEFORE driving the menu, so opening it doesn't race the reconnect
+        # (deterministic readiness gate, not a fixed sleep).
+        Wait-AgentReady -App $script:app -TimeoutSec 90 | Out-Null
         Invoke-AgentMenuItem -App $script:app -Name '/restart'
         # After restart the agent reconnects and can still answer (poll, no fixed sleep).
         $reconnected = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
             (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Ask anything|Copilot|Agent'
         }
         $reconnected | Should -BeTrue
+        Wait-AgentReady -App $script:app -TimeoutSec 90 | Out-Null
         Send-AgentPrompt -App $script:app -Text 'What is 6 plus 6? Reply with only the number.' | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern '\b12\b' -TimeoutSec 50
     }

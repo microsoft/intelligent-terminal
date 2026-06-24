@@ -69,26 +69,39 @@ function Set-AgentPaneFocus {
 function Wait-AgentReady {
     <#
     .SYNOPSIS
-        Open the agent pane and wait until its helper's ACP session is connected (anti-flake
-        gate before autofix/prompt assertions). Signals (best-effort, any-of): an
-        agent_state_changed event reaching a ready state, or a helper-log connect marker.
+        Wait until the agent pane's helper has a USABLE ACP session — i.e. its
+        agent-pane-sessions.jsonl record exists and the pane is running. That is the exact
+        precondition every agent-pane primitive (Send-AgentKey / Send-AgentPrompt /
+        Open-SessionList) needs. Returns $true when ready, $false on a logged hard failure or
+        on timeout.
+    .DESCRIPTION
+        Polls the REAL readiness signal instead of a premature log marker. The helper logs
+        "acp_initialize" several seconds BEFORE it writes the session origin
+        ("recording agent-pane session origin"), which is what populates the jsonl that
+        Get-AgentPaneSession reads. The old approach matched the early marker and returned
+        "ready" too soon, so a following agent-pane call raced a not-yet-written record and
+        timed out (the agent-pane-readiness flake). Get-AgentPaneSession returns non-null
+        exactly when the record is present and the pane is running — covering the initial
+        connect and a reconnect after /restart or a settings-driven stack rebuild (the newest
+        running record wins). This is deterministic: it returns the instant the session is
+        usable, not after a fixed delay. A logged auth/fatal connect failure short-circuits so
+        a genuinely-failed connect fails fast instead of burning the whole timeout.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 60)
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 90)
     process {
         Open-AgentPane -App $App | Out-Null
-        $listener = Start-WtEventListener -App $App -EventFilter 'agent*'
-        try {
-            $ready = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Quiet -Because "agent ACP connected" -Condition {
-                # Any agent_event means the helper/ACP pipeline is live; or a helper-log marker.
-                if (Get-WtEvents -Listener $listener -Predicate { $_.method -eq 'agent_event' }) { return $true }
-                $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
-                if ($log -match 'session/new|acp_initialize|Connected') { return $true }
-                $false
+        $deadline = (Get-Date).AddSeconds($TimeoutSec)
+        do {
+            if (Get-AgentPaneSession -App $App) { return $true }
+            $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
+            if ($log -match 'exiting with error|agent failure class="auth') {
+                Write-ItLog -Level WARN -Message "Wait-AgentReady: helper logged an auth/fatal connect failure; not ready."
+                return $false
             }
-            if (-not $ready) { Write-ItLog -Level WARN -Message "Wait-AgentReady: no explicit connect signal within ${TimeoutSec}s." }
-            $ready
-        }
-        finally { Stop-WtEventListener -Listener $listener }
+            Start-Sleep -Milliseconds 500
+        } while ((Get-Date) -lt $deadline)
+        Write-ItLog -Level WARN -Message "Wait-AgentReady: agent pane session not resolvable within ${TimeoutSec}s."
+        return $false
     }
 }
 
