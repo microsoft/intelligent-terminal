@@ -178,7 +178,9 @@ function Start-Terminal {
     # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
     # CreateTab E_FAIL 0x80004005) or steal the shared per-brand COM CLSID and misroute wtcli.
     # Doing it before config write also stops a closing monarch's flush from clobbering the
-    # FRE/settings values we are about to write. (-ColdStart/-ShowFre are now implied.)
+    # FRE/settings values we are about to write. This makes every launch effectively a cold
+    # start (so -ColdStart is now redundant); -ShowFre still separately controls whether the
+    # FRE overlay is left showing.
     Stop-StaleItInstances
 
     if ($Backup) { Backup-WtConfig -App $app }
