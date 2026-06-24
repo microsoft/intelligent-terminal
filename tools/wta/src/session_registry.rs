@@ -818,6 +818,18 @@ pub trait SessionRegistry: Send + Sync {
     /// twice with the same `session_id` keeps only the latest copy.
     async fn upsert(&self, info: SessionInfo);
 
+    /// Insert `info` only if no row already exists for `info.session_id`.
+    /// Unlike [`upsert`](Self::upsert), this never replaces an existing row —
+    /// used by the history (re)scan so a reloaded **Historical** disk row can't
+    /// clobber a live session's status / pane binding (the row a live session
+    /// already occupies). The default impl is a (non-atomic) lookup-then-upsert;
+    /// `InMemoryRegistry` overrides it with an atomic check under one lock.
+    async fn upsert_if_absent(&self, info: SessionInfo) {
+        if self.lookup(&info.session_id).await.is_none() {
+            self.upsert(info).await;
+        }
+    }
+
     /// Remove the row for `sid`. Returns the prior value if any (the master
     /// uses this both for routing teardown and to know what to broadcast
     /// in `session_removed` ext-notifications).
@@ -894,6 +906,13 @@ impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
         let mut guard = self.inner.lock().await;
         upsert_locked(&mut guard, info);
+    }
+
+    async fn upsert_if_absent(&self, info: SessionInfo) {
+        let mut guard = self.inner.lock().await;
+        if !guard.sessions.contains_key(&info.session_id) {
+            upsert_locked(&mut guard, info);
+        }
     }
 
     async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
@@ -1417,6 +1436,46 @@ mod tests {
             .unwrap();
         assert_eq!(found.pane_session_id.as_deref(), Some("pane-B"));
         assert_eq!(reg.snapshot().await.len(), 1, "no duplicate rows");
+    }
+
+    #[tokio::test]
+    async fn upsert_if_absent_preserves_existing_row_and_adds_new() {
+        let reg = InMemoryRegistry::new();
+
+        // A live row: bound pane + a non-historical status.
+        let mut live = info("sess-1", Some("pane-A"));
+        live.status = Some(AgentStatus::Idle);
+        reg.upsert(live).await;
+
+        // A history-scan row for the SAME id (Historical, no pane) — exactly
+        // what an F5 rescan reloads from disk. It must NOT replace the live row.
+        let mut historical = info("sess-1", None);
+        historical.status = Some(AgentStatus::Historical);
+        reg.upsert_if_absent(historical).await;
+
+        let got = reg
+            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .await
+            .expect("row present");
+        assert_eq!(
+            got.status,
+            Some(AgentStatus::Idle),
+            "rescan must not downgrade a live session to Historical"
+        );
+        assert_eq!(
+            got.pane_session_id.as_deref(),
+            Some("pane-A"),
+            "rescan must not drop the live pane binding"
+        );
+
+        // A genuinely new session (absent from the registry) IS added.
+        reg.upsert_if_absent(info("sess-2", None)).await;
+        assert!(
+            reg.lookup(&acp::SessionId::new("sess-2".to_string()))
+                .await
+                .is_some(),
+            "a new disk session is surfaced"
+        );
     }
 
     #[tokio::test]

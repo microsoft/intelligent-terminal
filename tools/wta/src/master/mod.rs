@@ -1646,7 +1646,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         let count = sessions.len();
         for s in &sessions {
             let info = crate::session_registry::agent_session_to_session_info(s);
-            inner_for_history.registry.upsert(info).await;
+            inner_for_history.registry.upsert_if_absent(info).await;
         }
         tracing::info!(
             target: "master_history",
@@ -2257,7 +2257,7 @@ where
                 let count = sessions.len();
                 for s in &sessions {
                     let info = crate::session_registry::agent_session_to_session_info(s);
-                    state.registry.upsert(info).await;
+                    state.registry.upsert_if_absent(info).await;
                 }
                 tracing::info!(
                     target: "master_history",
