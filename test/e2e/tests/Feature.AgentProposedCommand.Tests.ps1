@@ -14,7 +14,7 @@ BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Na
 Describe 'Feature §2 agent-proposed command Insert/Run (chat path)' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Store -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
 
