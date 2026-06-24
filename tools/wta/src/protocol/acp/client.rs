@@ -1418,7 +1418,11 @@ async fn build_prompt_text(
                                          in this shell. Closest commands that DO exist on \
                                          this machine: {}",
                                         token,
-                                        matches.join(", ")
+                                        matches
+                                            .iter()
+                                            .map(|m| format!("`{m}`"))
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
                                     ));
                                 }
                             }
