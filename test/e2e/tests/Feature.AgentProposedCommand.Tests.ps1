@@ -7,19 +7,22 @@
 #
 # LLM nondeterminism is tamed by (a) a UNIQUE marker we fully control, so the card text and the
 # pane assertion are exact, and (b) cross-retry + skip if Copilot explains instead of carding.
+# IMPORTANT: Insert and Run each use their OWN fresh terminal (like Feature.AutofixPane). With a
+# shared terminal a prior card's "Run command"/"Insert in Terminal" text lingers in the
+# scrollback and could co-occur with the next case's marker (which appears in the prompt echo)
+# to false-positive the card-readiness check before a fresh card actually renders.
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
 
-Describe 'Feature §2 agent-proposed command Insert/Run (chat path)' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
-
-        # Ask Copilot to propose `echo <marker>` as a runnable command; return $true once the
-        # recommendation card renders BOTH the Run/Insert actions AND our exact marker.
+        # Ask Copilot to propose `echo <marker>`; return $true once the recommendation card
+        # renders BOTH the Run/Insert actions AND our exact marker.
         $script:GetCommandCard = {
             param($marker)
             for ($try = 0; $try -lt 3; $try++) {
@@ -47,6 +50,29 @@ Describe 'Feature §2 agent-proposed command Insert/Run (chat path)' -Tag 'Featu
         Assert-Pane -App $script:app -SessionId $sid -Match $marker -TimeoutSec 12
         Send-WtKeys -App $script:app -SessionId $sid -Keys @('C-c')   # clear the inserted (unexecuted) line
     }
+}
+
+Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        Open-AgentPane -App $script:app | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+        $script:GetCommandCard = {
+            param($marker)
+            for ($try = 0; $try -lt 3; $try++) {
+                Clear-AgentInput -App $script:app | Out-Null
+                Send-AgentPrompt -App $script:app -Text "Propose the exact shell command: echo $marker -- as a runnable command for my terminal so I can Run or Insert it. Do not just explain it." | Out-Null
+                $ok = Test-Until -TimeoutSec 35 -IntervalSec 2 -Condition {
+                    $t = Get-AgentPaneText -App $script:app -MaxLines 60
+                    ($t -match 'Run command|Insert in Terminal') -and ($t -match [regex]::Escape($marker))
+                }
+                if ($ok) { return $true }
+            }
+            return $false
+        }
+    }
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Run: an agent-proposed command runs in the active shell pane' {
         $sid = (Get-ActivePane -App $script:app).session_id
