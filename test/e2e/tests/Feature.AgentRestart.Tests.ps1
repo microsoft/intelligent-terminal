@@ -27,12 +27,14 @@ Describe 'Feature: agent restart + session focus' -Tag 'Feature' -Skip:(-not $sc
         Assert-AgentPaneText -App $script:app -Pattern '\b12\b' -TimeoutSec 50
     }
 
-    It 'Shift+Enter on a live session row focuses it (same as Enter for Live)' {
-        # A live session already exists from the restart test. Open the list and act on the
-        # current (live) row. Shift+Enter on a Live row is a safety alias for Focus.
+    It 'Shift+Enter on a live session row focuses it (real Shift+Enter via win32-input-mode)' {
+        # A live session already exists from the restart test. Send a REAL Shift+Enter (not a
+        # plain-Enter substitute): the win32-input-mode sequence delivers KeyCode::Enter +
+        # KeyModifiers::SHIFT to the helper's ratatui app (app.rs). On a Live row Shift is a
+        # safety alias for Enter (Focus), so the session view dismisses back to chat.
         Open-SessionList -App $script:app | Out-Null
         (Get-SessionListSelection -App $script:app) | Should -Not -BeNullOrEmpty
-        Send-AgentKey -App $script:app -Key 'Enter' | Out-Null   # Shift alias == Enter for Live
+        Send-AgentShiftEnter -App $script:app | Out-Null
         $backToChat = Test-Until -TimeoutSec 12 -Condition { -not (Test-SessionListShown -App $script:app -TimeoutSec 1) }
         $backToChat | Should -BeTrue
     }

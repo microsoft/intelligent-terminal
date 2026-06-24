@@ -51,6 +51,31 @@ function Send-AgentKey {
     }
 }
 
+function Send-AgentShiftEnter {
+    <#
+    .SYNOPSIS
+        Send a REAL Shift+Enter to the agent pane. tmux send-keys tokens cannot express a
+        modified Enter, so this writes the raw win32-input-mode sequence:
+        `ESC[Vk;Sc;Uc;Kd;Cs;Rc_` (key-down then key-up) with Vk=13 (VK_RETURN), Sc=28,
+        Uc=13 ('\r'), Cs=16 (SHIFT_PRESSED). WT's conpty honors win32 input mode, so this
+        delivers KeyCode::Enter + KeyModifiers::SHIFT to the helper's ratatui app
+        (app.rs handles `KeyCode::Enter if modifiers.contains(SHIFT)`). Verified live: in the
+        chat input it inserts a newline (multi-line input) instead of submitting, and kitty
+        (`ESC[13;2u`) / CSI-27 (`ESC[27;2;13~`) encodings are NOT honored (typed literally).
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$PaneSessionId)
+    process {
+        if (-not $PaneSessionId) {
+            $PaneSessionId = (Wait-Until -TimeoutSec 20 -Because "agent pane session id" -Condition { Get-AgentPaneSession -App $App }).PaneSessionId
+        }
+        $esc = [char]27
+        $seq = "$esc[13;28;13;1;16;1_$esc[13;28;13;0;16;1_"
+        Invoke-WtCli -App $App -Arguments @('send-keys', '--raw', '-t', $PaneSessionId, '--', $seq) | Out-Null
+        Start-Sleep -Milliseconds 150
+        $App
+    }
+}
+
 function Clear-AgentInput {
     <# Clear the agent pane input line / dismiss any popup (Escape resets to the hint). #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)

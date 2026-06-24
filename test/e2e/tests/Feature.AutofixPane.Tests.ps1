@@ -79,8 +79,9 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
         Send-AgentKey -App $script:app -Key Right | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
-        Start-Sleep -Seconds 2
-        Assert-Pane -App $script:app -SessionId $sid -Match 'git ' -TimeoutSec 10
+        # No fixed settle: Assert-Pane polls (Verify.ps1) and returns as soon as the
+        # inserted text reaches the shell pane.
+        Assert-Pane -App $script:app -SessionId $sid -Match 'git ' -TimeoutSec 12
         Send-WtKeys -App $script:app -SessionId $sid -Keys @('C-c')
     }
 }
@@ -110,7 +111,8 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
         Send-AgentKey -App $script:app -Key Left | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
-        Start-Sleep -Seconds 5
+        # No fixed settle: Assert-Pane polls (Verify.ps1) and returns as soon as the
+        # executed fix produces output in the shell pane.
         Assert-Pane -App $script:app -SessionId $sid -Match 'branch|not a git repository|fatal|Changes|working tree|nothing to commit|git' -TimeoutSec 25
     }
 }
@@ -159,8 +161,8 @@ Describe 'Feature: autofix across layout changes' -Tag 'Feature' -Skip:(-not $sc
         Close-WtPane -App $script:app -SessionId $split.session_id
     }
     It 'Closed pane cleanup works (closing the failing pane is safe)' {
+        # New-WtTab already Wait-Until's for the tab to appear (Wt.ps1), so no extra settle.
         $tab = New-WtTab -App $script:app -Title 'cleanup-tab'
-        Start-Sleep -Seconds 1
         { Close-WtPane -App $script:app -SessionId $tab.session_id } | Should -Not -Throw
         { Get-ActivePane -App $script:app } | Should -Not -Throw
     }

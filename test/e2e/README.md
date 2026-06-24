@@ -20,10 +20,12 @@ environment. Current status (run on the Store package):
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.SessionList.Tests.ps1` | session view, session states, view switching, focus/restore | 11 (+1 skip) |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after settings change, Shift+Enter focus | 2 |
+| `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure) + non-integrated cmd.exe safety | 3 |
+| `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
 **Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
-**Test status: 79 feature cases pass + 1 documented skip** (`wta sessions list` is
+**Test status: 84 feature cases pass + 1 documented skip** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
 cases plus the deterministic settings/persistence assertions. **92 checklist items are
 environment-blocked** and tracked but not automated: other agent CLIs

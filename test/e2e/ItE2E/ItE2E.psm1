@@ -38,7 +38,7 @@ $publicFns = @(
     # Agent / Autofix / Sessions
     'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSession', 'Get-AgentPaneText',
-    'Send-AgentKey', 'Clear-AgentInput', 'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
+    'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Wait-Autofix', 'Wait-WtCommandFailure', 'Send-AutofixState', 'Invoke-FailingCommand', 'Get-WtSessions',
     'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionRows',
