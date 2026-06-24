@@ -15,7 +15,7 @@ foreach ($scope in @('Private', 'Public')) {
 $publicFns = @(
     # Harness
     'Resolve-ItApp', 'Resolve-WtComClsid', 'Get-ItTestPackage', 'Start-Terminal', 'Start-TerminalClean', 'Stop-Terminal',
-    'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Get-WtProcessesForApp', 'Stop-AppInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
+    'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Get-WtProcessesForApp', 'Stop-AppInstances', 'Stop-StaleItInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
     # Core (useful in tests)
     'Wait-Until', 'Test-Until', 'Invoke-Native', 'Write-ItLog', 'ConvertFrom-JsonSafe',
     # Wt
