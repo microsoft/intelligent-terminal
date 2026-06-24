@@ -85,7 +85,7 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
                 Start-Sleep -Milliseconds 400
                 Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } finally { Stop-WtEventListener -Listener $listener }
+            } catch { } finally { Stop-WtEventListener -Listener $listener }
             if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Insert in Terminal' }) { $gotCard = $true; break }
         }
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
@@ -116,7 +116,7 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
                 Start-Sleep -Milliseconds 400
                 Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } finally { Stop-WtEventListener -Listener $listener }
+            } catch { } finally { Stop-WtEventListener -Listener $listener }
             if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command' }) { $gotCard = $true; break }
         }
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
