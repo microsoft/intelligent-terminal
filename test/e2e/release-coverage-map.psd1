@@ -51,6 +51,9 @@
 
     # §9 packaging / §10 logging (titles differ from test names)
     'Packaged wta.exe is present'       = 'Packaged wta.exe is present'
+    # The wta.exe case asserts the resolved binary is NOT the stale dev-build (tools\wta\target);
+    # the wtcli case asserts wtcli co-location — together they cover "no unpackaged WTA is used".
+    'Wrong unpackaged WTA is not used'  = 'Packaged wta\.exe is present|Packaged wtcli is co-located in the package'
     'wtcli send-keys/send input path works' = 'wtcli send-keys / send input path works'
     'wtcli listen works'                = 'wtcli listen streams events'
     'C++ agent pane log is written'     = 'C\+\+ agent pane log is written'

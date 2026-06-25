@@ -15,8 +15,10 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         # autofix OFF: this suite is about the shell-integration marks themselves, not the
-        # downstream autofix UI (which is covered by Feature.AutofixPane.Tests.ps1).
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $false }
+        # downstream autofix UI (which is covered by Feature.AutofixPane.Tests.ps1). No agent is
+        # pinned — these tests never open the agent pane, so leaving acpAgent at its default avoids
+        # an unnecessary copilot install/auth dependency (the pre-warmed helper is irrelevant here).
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ autoFixEnabled = $false }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 

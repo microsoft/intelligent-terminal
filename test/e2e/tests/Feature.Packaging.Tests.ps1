@@ -30,7 +30,7 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
         $script:app.ComClsid | Should -Match '^\{[0-9A-Fa-f-]+\}$'
         @(Get-WtWindows -App $script:app).Count | Should -BeGreaterThan 0
     }
-    It 'Wrong unpackaged WTA is not used (resolved binary is in the package)' {
+    It 'Packaged wtcli is co-located in the package (no unpackaged fallback)' {
         # Co-location is the guarantee: wtcli must resolve from the package InstallLocation
         # (WindowsApps for Store, or the Dev layout AppX dir), NOT its non-packaged fallbacks —
         # for wtcli that's a PATH-resolved standalone (Get-Command wtcli) or
