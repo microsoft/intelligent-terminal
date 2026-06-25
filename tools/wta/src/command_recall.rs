@@ -43,13 +43,23 @@ const EXE_EXTS: [&str; 6] = [".exe", ".cmd", ".bat", ".com", ".ps1", ".msc"];
 /// Max number of near-matches to surface.
 const MAX_NEAR_MATCHES: usize = 5;
 
-/// True when `shell_exe` is a PowerShell host (`pwsh.exe` / `powershell.exe`),
-/// matched on the leaf name so a full path also works. v1 only recalls for
-/// PowerShell panes.
-pub fn is_powershell(shell_exe: &str) -> bool {
-    let lower = shell_exe.to_ascii_lowercase();
+/// True when `shell` names a PowerShell host. v1 only recalls for PowerShell
+/// panes.
+///
+/// The pane's reported shell comes from one of two sources (see
+/// `shell_from_active`), and we must accept both forms:
+/// - the **OSC 9001 ShellType** value when shell integration is installed —
+///   the *common* case — which is the bare name `pwsh` / `powershell`;
+/// - the pid-based process image name fallback, `pwsh.exe` / `powershell.exe`
+///   (possibly a full path).
+///
+/// So match on the leaf with any trailing `.exe` stripped — otherwise the
+/// feature silently never runs on the common shell-integration path.
+pub fn is_powershell(shell: &str) -> bool {
+    let lower = shell.to_ascii_lowercase();
     let leaf = lower.rsplit(['\\', '/']).next().unwrap_or(lower.as_str());
-    leaf == "pwsh.exe" || leaf == "powershell.exe"
+    let leaf = leaf.strip_suffix(".exe").unwrap_or(leaf);
+    leaf == "pwsh" || leaf == "powershell"
 }
 
 /// Extract the command token (executable name) from a captured
@@ -235,13 +245,21 @@ mod tests {
 
     #[test]
     fn is_powershell_matches_leaf_name_and_full_path() {
+        // Process image-name form (pid-based fallback).
         assert!(is_powershell("pwsh.exe"));
         assert!(is_powershell("powershell.exe"));
         assert!(is_powershell(r"C:\Program Files\PowerShell\7\pwsh.exe"));
         assert!(is_powershell("PWSH.EXE")); // case-insensitive
+        // OSC 9001 ShellType form (the common shell-integration case) — bare
+        // name, no `.exe`. Regressing this silently disables the whole feature.
+        assert!(is_powershell("pwsh"));
+        assert!(is_powershell("powershell"));
+        assert!(is_powershell("PowerShell")); // case-insensitive
         assert!(!is_powershell("bash.exe"));
+        assert!(!is_powershell("bash"));
         assert!(!is_powershell("cmd.exe"));
         assert!(!is_powershell("wsl.exe"));
+        assert!(!is_powershell("wsl:Ubuntu")); // OSC ShellType for a WSL pane
         assert!(!is_powershell(""));
     }
 
@@ -399,6 +417,16 @@ mod integration_tests {
             .map(String::from)
     }
 
+    /// First PowerShell host resolvable by its **bare** name (no `.exe`) — the
+    /// form `shell_from_active` reports from the OSC 9001 ShellType in the
+    /// common shell-integration case.
+    fn powershell_host_bare() -> Option<String> {
+        ["pwsh", "powershell"]
+            .into_iter()
+            .find(|exe| which::which(exe).is_ok())
+            .map(String::from)
+    }
+
     #[tokio::test]
     async fn enumerate_returns_builtin_cmdlets() {
         let Some(shell) = powershell_host() else {
@@ -412,6 +440,25 @@ mod integration_tests {
         assert!(
             names.iter().any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
             "expected the Get-ChildItem cmdlet in the enumerated list"
+        );
+    }
+
+    #[tokio::test]
+    async fn enumerate_accepts_a_bare_osc_shell_name() {
+        // In the common case `shell_from_active` reports the OSC 9001 ShellType
+        // (`pwsh` / `powershell`, no `.exe`). The enumerate subprocess must
+        // still spawn from that bare name — proving the whole near-match path
+        // works on the shell-integration path, not just the `.exe` fallback.
+        let Some(shell) = powershell_host_bare() else {
+            eprintln!("no bare PowerShell host on PATH; skipping");
+            return;
+        };
+        let names = enumerate_powershell_commands(&shell)
+            .await
+            .expect("enumerate should spawn from a bare shell name");
+        assert!(
+            names.iter().any(|n| n.eq_ignore_ascii_case("Get-ChildItem")),
+            "expected Get-ChildItem from a bare-name enumerate"
         );
     }
 
