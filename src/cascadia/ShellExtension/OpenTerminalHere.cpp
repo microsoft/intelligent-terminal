@@ -49,7 +49,7 @@ try
         siEx.StartupInfo.wShowWindow = SW_SHOWNORMAL;
 
         std::filesystem::path modulePath{ wil::GetModuleFileNameW<std::wstring>(wil::GetModuleInstanceHandle()) };
-        modulePath.replace_filename(runElevated ? ElevateShimExe : WindowsTerminalExe);
+        modulePath.replace_filename(runElevated ? ElevateShimExe : IntelligentTerminalExe);
 
         std::wstring cmdline;
         cmdline.reserve(256); // The IntelligentTerminal.exe path is ~110 characters long

@@ -58,9 +58,9 @@ function Get-WtWindowHwnds {
             [pscustomobject]@{ hwnd = [int]$_.hwnd; pid = [int]$wpid; title = [string]$_.title }
         }
     }
-    # Fallback: parse the text form "HWND 985238: "title" ... (WindowsTerminal, PID 21228)".
+    # Fallback: parse the text form "HWND 985238: "title" ... (IntelligentTerminal, PID 21228)".
     @($r.StdOut -split "`n" | ForEach-Object {
-            if ($_ -match 'HWND\s+(\d+):\s+"?(.*?)"?\s+.*\(WindowsTerminal,\s*PID\s+(\d+)\)') {
+            if ($_ -match 'HWND\s+(\d+):\s+"?(.*?)"?\s+.*\(IntelligentTerminal,\s*PID\s+(\d+)\)') {
                 [pscustomobject]@{ hwnd = [int]$Matches[1]; title = $Matches[2]; pid = [int]$Matches[3] }
             }
         })

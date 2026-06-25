@@ -10,7 +10,7 @@
 // dev/preview/release flavor.
 constexpr std::wstring_view WtExe{ L"wtai.exe" };
 constexpr std::wstring_view WtdExe{ L"wtai.exe" };
-constexpr std::wstring_view WindowsTerminalExe{ L"IntelligentTerminal.exe" };
+constexpr std::wstring_view IntelligentTerminalExe{ L"IntelligentTerminal.exe" };
 constexpr std::wstring_view LocalAppDataAppsPath{ L"%LOCALAPPDATA%\\Microsoft\\WindowsApps\\" };
 constexpr std::wstring_view ElevateShimExe{ L"elevate-shim.exe" };
 
@@ -106,7 +106,7 @@ _TIL_INLINEPREFIX const std::wstring& GetWtExePath()
         try
         {
             std::filesystem::path module = wil::GetModuleFileNameW<std::wstring>(nullptr);
-            module.replace_filename(WindowsTerminalExe);
+            module.replace_filename(IntelligentTerminalExe);
             return module;
         }
         CATCH_LOG();
