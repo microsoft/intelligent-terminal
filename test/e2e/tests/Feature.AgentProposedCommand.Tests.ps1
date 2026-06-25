@@ -21,6 +21,13 @@ Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Featu
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+        # Recommendation card button labels ([ Run command ] / Insert in Terminal) are localized,
+        # so match them across all bundled locales (Get-WtaLocalizedTextRegex; en-US fallback).
+        $script:CardButtonRegex = (@(
+            (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command'),
+            (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
+        ) | Where-Object { $_ }) -join '|'
+        if (-not $script:CardButtonRegex) { $script:CardButtonRegex = 'Run command|Insert in Terminal' }
         # Ask Copilot to propose `echo <marker>`; return $true once the recommendation card
         # renders BOTH the Run/Insert actions AND our exact marker.
         $script:GetCommandCard = {
@@ -30,7 +37,7 @@ Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Featu
                 Send-AgentPrompt -App $script:app -Text "Propose the exact shell command: echo $marker -- as a runnable command for my terminal so I can Run or Insert it. Do not just explain it." | Out-Null
                 $ok = Test-Until -TimeoutSec 35 -IntervalSec 2 -Condition {
                     $t = Get-AgentPaneText -App $script:app -MaxLines 60
-                    ($t -match 'Run command|Insert in Terminal') -and ($t -match [regex]::Escape($marker))
+                    ($t -match $script:CardButtonRegex) -and ($t -match [regex]::Escape($marker))
                 }
                 if ($ok) { return $true }
             }
@@ -58,6 +65,11 @@ Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature'
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+        $script:CardButtonRegex = (@(
+            (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command'),
+            (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
+        ) | Where-Object { $_ }) -join '|'
+        if (-not $script:CardButtonRegex) { $script:CardButtonRegex = 'Run command|Insert in Terminal' }
         $script:GetCommandCard = {
             param($marker)
             for ($try = 0; $try -lt 3; $try++) {
@@ -65,7 +77,7 @@ Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature'
                 Send-AgentPrompt -App $script:app -Text "Propose the exact shell command: echo $marker -- as a runnable command for my terminal so I can Run or Insert it. Do not just explain it." | Out-Null
                 $ok = Test-Until -TimeoutSec 35 -IntervalSec 2 -Condition {
                     $t = Get-AgentPaneText -App $script:app -MaxLines 60
-                    ($t -match 'Run command|Insert in Terminal') -and ($t -match [regex]::Escape($marker))
+                    ($t -match $script:CardButtonRegex) -and ($t -match [regex]::Escape($marker))
                 }
                 if ($ok) { return $true }
             }

@@ -24,8 +24,12 @@ Describe 'Feature §2 non-Copilot built-in agents connect through the ACP adapte
             if (-not (Get-Command $Cli -ErrorAction SilentlyContinue)) { return 'not-installed' }
             $job = Start-Job -ScriptBlock $Probe
             $out = ''
-            if (Wait-Job $job -Timeout 50) { $out = ((Receive-Job $job 2>&1) -join "`n") } else { Stop-Job $job -ErrorAction SilentlyContinue }
+            $finished = Wait-Job $job -Timeout 50
+            if ($finished) { $out = ((Receive-Job $job 2>&1) -join "`n") } else { Stop-Job $job -ErrorAction SilentlyContinue }
             Remove-Job $job -Force -ErrorAction SilentlyContinue
+            # A probe that never returns is NOT the same as unauthenticated — surface it
+            # distinctly so a hung/changed CLI doesn't masquerade as a clean auth gap in CI.
+            if (-not $finished) { return 'probe-timeout' }
             if ($out -match 'AUTHOK') { return 'authed' } else { return 'installed-unauthenticated' }
         }
 
