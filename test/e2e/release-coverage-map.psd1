@@ -52,4 +52,5 @@
     'wtcli send-keys/send input path works' = 'wtcli send-keys / send input path works'
     'wtcli listen works'                = 'wtcli listen streams events'
     'C++ agent pane log is written'     = 'C\+\+ agent pane log is written'
+    'Early startup failures are logged' = 'Early startup failures would be logged'
 }

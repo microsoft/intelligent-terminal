@@ -12,13 +12,13 @@ environment. Current status (run on the Store package):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
-| `Feature.Packaging.Tests.ps1` | §9 packaging/protocol + §10 logging | 16 |
+| `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 13 |
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
-| `Feature.SessionList.Tests.ps1` | session view, session states, view switching (incl. draft-preservation), focus/restore | 12 (+1 skip) |
+| `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after settings change, Shift+Enter focus | 2 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure) + non-integrated cmd.exe safety | 3 |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
@@ -26,7 +26,7 @@ environment. Current status (run on the Store package):
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
 **Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
-**Test status: 87 feature cases pass + 2 documented skips** (`wta sessions list` is
+**Test status: 90 feature cases pass + 2 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
 cases plus the deterministic settings/persistence assertions. Remaining
 environment-dependent items are tracked and auto-skipped when their prerequisite is absent:

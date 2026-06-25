@@ -31,6 +31,12 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
             Open-SessionList -App $script:app | Out-Null
             Test-SessionListShown -App $script:app | Should -BeTrue
         }
+        It 'Slash command works (/sessions opens the session view)' {
+            # The session view is reachable from the `/` command menu (not just the button).
+            Close-SessionList -App $script:app | Out-Null
+            Invoke-AgentMenuItem -App $script:app -Name '/sessions'
+            Test-SessionListShown -App $script:app | Should -BeTrue
+        }
         It 'Command action / out-of-band registry list (wta sessions list) is identity-gated' -Skip {
             # KNOWN LIMITATION: `wta sessions list --json` needs the in-package master, but
             # an externally-launched wta copy resolves the wrong runtime paths and reports
