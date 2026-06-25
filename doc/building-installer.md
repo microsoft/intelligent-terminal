@@ -192,7 +192,7 @@ To repeat-test the FRE, run [`fre-test-reset.ps1`](../tools/fre-test-reset.ps1) 
 
 ## 2. Self-Extracting EXE Installer (Unpackaged / Portable)
 
-Built by [`build\scripts\New-WtaLocalInstaller.ps1`](../build/scripts/New-WtaLocalInstaller.ps1). Creates a portable distribution with `WindowsTerminal.exe`, `wta.exe`, `wtcli.exe`, and prompt templates — no MSIX, no package identity.
+Built by [`build\scripts\New-WtaLocalInstaller.ps1`](../build/scripts/New-WtaLocalInstaller.ps1). Creates a portable distribution with `IntelligentTerminal.exe`, `wta.exe`, `wtcli.exe`, and prompt templates — no MSIX, no package identity.
 
 ### Prerequisites
 

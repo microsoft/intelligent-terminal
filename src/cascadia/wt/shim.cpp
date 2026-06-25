@@ -15,8 +15,8 @@ int __stdcall wWinMain(HINSTANCE, HINSTANCE, LPWSTR pCmdLine, int)
     // Cache our name (wt, wtd)
     std::wstring ourFilename{ module.filename() };
 
-    // Swap wt[d].exe for WindowsTerminal.exe
-    module.replace_filename(L"WindowsTerminal.exe");
+    // Swap wt[d].exe for IntelligentTerminal.exe
+    module.replace_filename(L"IntelligentTerminal.exe");
 
     // Append the rest of the commandline to the saved name
     std::wstring cmdline;

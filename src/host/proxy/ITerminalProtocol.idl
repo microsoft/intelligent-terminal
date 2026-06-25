@@ -28,7 +28,7 @@ import "unknwn.idl";
     HRESULT OnEvent([in] BSTR eventJson);
 };
 
-// Terminal protocol — implemented by WindowsTerminal.exe, activated by the
+// Terminal protocol — implemented by IntelligentTerminal.exe, activated by the
 // client via CoCreateInstance(CLSCTX_LOCAL_SERVER) under the existing
 // per-branding CLSID (discovered through the WT_COM_CLSID env var).
 [

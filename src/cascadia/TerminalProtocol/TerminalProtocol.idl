@@ -96,7 +96,7 @@ namespace Microsoft.Terminal.Protocol
         void OnEvent(String eventJson);
     }
 
-    // Server interface — implemented by WindowsTerminal.exe, consumed by wtcli.exe.
+    // Server interface — implemented by IntelligentTerminal.exe, consumed by wtcli.exe.
     // Activated via CoCreateInstance (CLSCTX_LOCAL_SERVER) with a custom class factory.
     // Marshaled cross-process via MBM (no proxy/stub DLL needed).
     interface IProtocolServer

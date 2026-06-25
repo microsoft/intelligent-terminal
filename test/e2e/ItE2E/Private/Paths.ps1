@@ -72,7 +72,7 @@ function Resolve-ItApp {
     # Binaries: prefer co-located (have package identity, readable for Store).
     $wtcli = if ($install -and (Test-Path (Join-Path $install 'wtcli.exe'))) { Join-Path $install 'wtcli.exe' }
     else { (Get-Command wtcli -ErrorAction SilentlyContinue).Source }
-    $wt = if ($install -and (Test-Path (Join-Path $install 'WindowsTerminal.exe'))) { Join-Path $install 'WindowsTerminal.exe' } else { $null }
+    $wt = if ($install -and (Test-Path (Join-Path $install 'IntelligentTerminal.exe'))) { Join-Path $install 'IntelligentTerminal.exe' } else { $null }
 
     $wta = $null
     if ($install -and (Test-Path (Join-Path $install 'wta.exe'))) { $wta = Join-Path $install 'wta.exe' }

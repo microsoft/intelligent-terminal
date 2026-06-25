@@ -46,10 +46,10 @@ namespace winrt::TerminalApp::implementation
     // fails to run we leak one std::pair until process exit, which is
     // acceptable for a drag-drop edge case.
     //
-    // This lives in TerminalApp (and not WindowEmperor in WindowsTerminal.exe)
+    // This lives in TerminalApp (and not WindowEmperor in IntelligentTerminal.exe)
     // because both producer and consumer (Tab.cpp + TerminalPage.cpp) link
     // against TerminalApp; TerminalApp.dll is loaded exactly once into
-    // WindowsTerminal.exe, so a static inside it is process-wide.
+    // IntelligentTerminal.exe, so a static inside it is process-wide.
     struct AgentPaneDragStash
     {
         static void Stash(uint64_t contentId, const winrt::hstring& originalTabId) noexcept

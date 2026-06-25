@@ -35,7 +35,7 @@ Three configurations exist: **Debug**, **Release**, and **AuditMode** (enables e
 
 **OpenConsole (console host):** From a razzle environment, run `opencon` to launch `OpenConsole.exe` from the build output.
 
-**Windows Terminal:** You cannot launch `WindowsTerminal.exe` directly — it is a packaged app. The easiest way is F5 in Visual Studio with `CascadiaPackage` as the startup project (set Debug > Application/Background process to "Native Only"). From the command line in a razzle environment:
+**Windows Terminal:** You cannot launch `IntelligentTerminal.exe` directly — it is a packaged app. The easiest way is F5 in Visual Studio with `CascadiaPackage` as the startup project (set Debug > Application/Background process to "Native Only"). From the command line in a razzle environment:
 
 ```cmd
 cd src\cascadia\CascadiaPackage
@@ -87,7 +87,7 @@ The codebase has two main products sharing foundational components:
 - **TerminalConnection** — Abstraction for backends (ConPTY, Azure Cloud Shell, SSH, etc.).
 - **TerminalSettingsModel** — Settings parsing, serialization, and schema. Uses a macro-driven `MTSM_SETTINGS` pattern and an `IInheritable` parent-chain for settings layering.
 - **TerminalSettingsEditor** — XAML-based Settings UI.
-- **CascadiaPackage** — MSIX packaging project. **This is the startup project for debugging** (not WindowsTerminal.exe directly).
+- **CascadiaPackage** — MSIX packaging project. **This is the startup project for debugging** (not IntelligentTerminal.exe directly).
 - **Remoting** — Cross-process communication for single-instance / quake-mode window management.
 
 ### Console Host (`src/host/`)

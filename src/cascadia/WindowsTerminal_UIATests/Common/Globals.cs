@@ -28,7 +28,7 @@ namespace WindowsTerminal.UIA.Tests.Common
 
         static string[] modules =
         {
-            "WindowsTerminal.exe",
+            "IntelligentTerminal.exe",
             "OpenConsole.exe",
             "Microsoft.Terminal.Control.dll",
             "Microsoft.Terminal.Settings.Editor.dll",

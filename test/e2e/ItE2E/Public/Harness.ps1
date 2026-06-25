@@ -50,7 +50,7 @@ function Restore-WtConfig {
 function Get-WtProcessesForApp {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     $loc = $App.InstallLocation
-    Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object {
+    Get-Process -Name IntelligentTerminal -ErrorAction SilentlyContinue | Where-Object {
         try { $loc -and $_.Path -and $_.Path.StartsWith($loc, [StringComparison]::OrdinalIgnoreCase) } catch { $false }
     }
 }
@@ -117,7 +117,7 @@ function Stop-StaleItInstances {
             ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
     if (-not $locs) { return }
     $find = {
-        Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object {
+        Get-Process -Name IntelligentTerminal -ErrorAction SilentlyContinue | Where-Object {
             $path = $null; try { $path = $_.Path } catch {}
             $path -and ($locs | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })
         }
@@ -209,7 +209,7 @@ function Start-Terminal {
         Start-Process -FilePath $app.LaunchAlias | Out-Null
     }
 
-    # Find our WindowsTerminal.exe process (prefer a newly-spawned pid).
+    # Find our IntelligentTerminal.exe process (prefer a newly-spawned pid).
     $proc = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Because "WindowsTerminal process for $($app.Package)" -Condition {
         $ps = Get-WtProcessesForApp -App $app
         $new = $ps | Where-Object { $_.Id -notin $existing } | Select-Object -First 1

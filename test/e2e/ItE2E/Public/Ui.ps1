@@ -49,7 +49,7 @@ function Invoke-WinAppUi {
 function Get-WtWindowHwnds {
     <# Return normalized @{ hwnd; pid; title } for WT windows (via winapp list-windows). #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
-    $r = Invoke-WinAppUi -App $App -NoTarget -UiArgs @('list-windows', '-a', 'WindowsTerminal', '--json') -TimeoutSec 15
+    $r = Invoke-WinAppUi -App $App -NoTarget -UiArgs @('list-windows', '-a', 'IntelligentTerminal', '--json') -TimeoutSec 15
     $j = $r.StdOut | ConvertFrom-JsonSafe
     if ($null -ne $j) {
         $rows = if ($j -is [System.Array]) { $j } elseif ($j.windows) { $j.windows } else { @($j) }

@@ -211,7 +211,7 @@
                 <com:ExeServer DisplayName="OpenConsole" Executable="OpenConsole.exe">
                     <com:Class Id="06EC847C-C0A5-46B8-92CB-7C92F6E35CD5"/>
                 </com:ExeServer>
-                <com:ExeServer DisplayName="WindowsTerminal" Executable="WindowsTerminal.exe">
+                <com:ExeServer DisplayName="WindowsTerminal" Executable="IntelligentTerminal.exe">
                     <com:Class Id="86633F1F-6454-40EC-89CE-DA4EBA977EE2"/>
                     <com:Class Id="B3F5A7C9-2D4E-4F6A-B7C8-D9E0F1A2B3C4"/> <!-- TerminalProtocolComServer (Preview) -->
                 </com:ExeServer>

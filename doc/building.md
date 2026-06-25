@@ -52,7 +52,7 @@ To debug the Windows Terminal in VS, right click on `CascadiaPackage` (in the So
 
 You should then be able to build & debug the Terminal project by hitting <kbd>F5</kbd>.
 
-> 👉 You will _not_ be able to launch the Terminal directly by running the WindowsTerminal.exe. For more details on why, see [#926](https://github.com/microsoft/terminal/issues/926), [#4043](https://github.com/microsoft/terminal/issues/4043)
+> 👉 You will _not_ be able to launch the Terminal directly by running the IntelligentTerminal.exe. For more details on why, see [#926](https://github.com/microsoft/terminal/issues/926), [#4043](https://github.com/microsoft/terminal/issues/4043)
 
 ## Configuration Types
 

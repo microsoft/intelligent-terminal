@@ -228,7 +228,7 @@ liveness model, hooks auto-upgrade, third-party notice generation).
 
 | Process | Binary | Lifetime | Role |
 |------|-----------|---------|------|
-| **Windows Terminal** | `WindowsTerminal.exe` | User-launched, long-lived | Window manager + renderer; hosts `TerminalProtocolComServer`; spawns master + helpers |
+| **Windows Terminal** | `IntelligentTerminal.exe` | User-launched, long-lived | Window manager + renderer; hosts `TerminalProtocolComServer`; spawns master + helpers |
 | **wta-master** | `wta.exe --master` | Spawned once by `SharedWta` | Owns the agent CLI; multiplexes ACP sessions for all helpers |
 | **wta-helper** | `wta.exe --connect-master` | One per agent pane | TUI + per-pane side effects; ACP client of master |
 | **Agent CLI** | `copilot`, `claude`, `gemini`, `codex` | Spawned once by master | The AI "brain"; shared across all helpers |

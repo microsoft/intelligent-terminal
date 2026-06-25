@@ -75,7 +75,7 @@ In this release, **agent session management only tracks sessions for the agent C
 
 **Symptom:** One of two related failures:
 
-- The app launches, the agent pane starts, and then **`WindowsTerminal.exe` crashes a few seconds later**. Windows Event Viewer records an *Application Error* faulting in **`combase.dll`** with exception code **`0xc0000005`**.
+- The app launches, the agent pane starts, and then **`IntelligentTerminal.exe` crashes a few seconds later**. Windows Event Viewer records an *Application Error* faulting in **`combase.dll`** with exception code **`0xc0000005`**.
 - Or the app stays open, but agent-driven actions (for example, inserting a command into a pane) fail with **`Connection failed: 0x80010105 — The server threw an exception`** (`RPC_E_SERVERFAULT`) reported by `wtcli`.
 
 **Cause:** This appears to be an **operating-system-level issue in the Windows COM/WinRT cross-process activation path** (the `combase.dll` activation/marshaling path) that is **triggered by Intelligent Terminal's use of Metadata-Based Marshaling** when activating its out-of-proc COM/WinRT service. The same underlying fault can surface either as the `combase.dll` crash or as the `0x80010105` "server threw an exception" error.

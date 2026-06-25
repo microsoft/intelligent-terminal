@@ -183,7 +183,7 @@ same bare path when the process has no package identity):
 
 ```
 # Packaged (every production wta process — helper is a conpty child of the
-# packaged WindowsTerminal.exe, master is spawned in-package by SharedWta):
+# packaged IntelligentTerminal.exe, master is spawned in-package by SharedWta):
 
   …\Packages\<PackageFamilyName>\LocalState\IntelligentTerminal\   <- STATE root
       prompts\                      (prompt overrides)             intelligent_terminal_root()
@@ -352,7 +352,7 @@ cmd.exe //c "tools\razzle.cmd && bcz no_clean"
 - Set `CascadiaPackage` as startup project → F5
 - MSBuild copies `wta.exe` from Cargo output into the package layout
   (via Content items in `CascadiaPackage.wapproj`)
-- The deployed `wta.exe` sits next to `WindowsTerminal.exe` in the
+- The deployed `wta.exe` sits next to `IntelligentTerminal.exe` in the
   package directory, inheriting package identity for COM access
 
 ### Full rebuild flow (typical dev cycle)
@@ -374,7 +374,7 @@ The COM server (`TerminalProtocolComServer`) is registered under the
 Terminal's package identity. `wtcli.exe` and `wta.exe` must also have
 package identity to activate it via `CoCreateInstance`. This is why:
 
-- `wta.exe` is deployed **inside the package** (next to `WindowsTerminal.exe`)
+- `wta.exe` is deployed **inside the package** (next to `IntelligentTerminal.exe`)
 - `_DetectWtaPath()` prefers the co-located `wta.exe` over dev-build paths
 - Running `wta.exe` from `tools/wta/target/debug/` directly will fail with
   `0x80073D54` (APPMODEL_ERROR_NO_PACKAGE) when calling COM methods

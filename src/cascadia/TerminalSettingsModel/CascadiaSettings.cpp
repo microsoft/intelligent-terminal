@@ -1141,7 +1141,7 @@ winrt::hstring CascadiaSettings::ApplicationVersion()
         {
             WORD language, codepage;
         };
-        // Use the current module instance handle for TerminalApp.dll, nullptr for WindowsTerminal.exe
+        // Use the current module instance handle for TerminalApp.dll, nullptr for IntelligentTerminal.exe
         auto filename{ wil::GetModuleFileNameW<std::wstring>(wil::GetModuleInstanceHandle()) };
         auto size{ GetFileVersionInfoSizeExW(0, filename.c_str(), nullptr) };
         THROW_LAST_ERROR_IF(size == 0);

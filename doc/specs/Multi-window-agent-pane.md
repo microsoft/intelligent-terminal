@@ -222,7 +222,7 @@ makes Z's "helper as conpty child" structurally important.
 ### 1. Process topology
 
 ```
-WindowsTerminal.exe (one process)
+IntelligentTerminal.exe (one process)
  ├─ Window A, Window B, Window C  (each a TerminalPage / AppHost)
  │   └─ Per agent pane: TerminalControl with a ConptyConnection
  │                                          │

@@ -18,7 +18,7 @@
 
             // The rest
             "PackageContents/wt.exe",
-            "PackageContents/WindowsTerminal.exe",
+            "PackageContents/IntelligentTerminal.exe",
             "PackageContents/elevate-shim.exe"
         ],
         "SigningInfo": {

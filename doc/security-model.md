@@ -50,7 +50,7 @@ Key security claim post-revert: shell input is **not** held behind a separate ca
 
 | Component | Process | Identity / boundary notes |
 |---|---|---|
-| **WT** (`WindowsTerminal.exe`) | Long-lived UI host | Packaged desktop app running at medium integrity in the current configuration. Package-local paths are storage layout, not a low-privilege isolation boundary. |
+| **WT** (`IntelligentTerminal.exe`) | Long-lived UI host | Packaged desktop app running at medium integrity in the current configuration. Package-local paths are storage layout, not a low-privilege isolation boundary. |
 | **WT-launched WTA** (`wta.exe`) | Agent-pane TUI or hidden delegate helper | Production intent is packaged and co-located with WT, but development / PATH fallbacks exist. Agent-pane WTA performs all WT operations (including `send_input`) by shelling out to `wtcli.exe`, which speaks COM. Hidden delegate WTA uses COM `CreateTab(commandline)` to start the delegate Agent CLI in a new tab. Binary resolution and identity are part of the trust boundary. |
 | **WTA helper CLI** (`wta.exe`) | One-shot helper commands | Invoked by panes, agents, users, Settings UI, or support scripts. It routes through COM / filesystem / third-party plugin managers depending on the subcommand. |
 | **Agent-pane ACP Agent CLI / adapter** | `copilot`, `claude`, `gemini`, `codex`, custom; adapter packages launched through tools such as `npx` | Third-party child process spawned by agent-pane WTA and connected over ACP stdio. Treated as semi-trusted. It inherits normal process environment unless scrubbed, including `WT_COM_CLSID`, so a compromised Agent CLI or adapter can also attempt COM access. Claude/Codex ACP paths currently launch `npx -y` adapter packages, which adds package-manager supply-chain risk beyond local binary resolution. |
@@ -73,7 +73,7 @@ Key security claim post-revert: shell input is **not** held behind a separate ca
 ### 2.3 Typical process tree
 
 ```text
-WindowsTerminal.exe
+IntelligentTerminal.exe
 +-- ConPTY -> user shell(s)
 +-- ConPTY -> wta.exe agent pane
 |   +-- Agent CLI (ACP stdio child)
@@ -91,7 +91,7 @@ flowchart TB
     LLM[/LLM provider/]
 
     subgraph WTZone["WT full-trust packaged process (not AppContainer)"]
-        WT(("WindowsTerminal.exe<br/>TerminalPage / AppHost"))
+        WT(("IntelligentTerminal.exe<br/>TerminalPage / AppHost"))
         Scroll[("Pane scrollback<br/>in WT memory")]
         SettingsModel("Settings model<br/>(loaded in WT)")
         EventBus(("Protocol event bus<br/>ProtocolVtSequenceReceived"))

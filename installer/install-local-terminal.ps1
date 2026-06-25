@@ -186,7 +186,7 @@ function Get-ExecutablePathWithinInstallDir {
 function Get-RunningInstalledProcesses {
     param([string]$InstallRoot)
 
-    $candidates = Get-CimInstance Win32_Process -Filter "Name = 'WindowsTerminal.exe' OR Name = 'wta.exe'" -ErrorAction SilentlyContinue
+    $candidates = Get-CimInstance Win32_Process -Filter "Name = 'IntelligentTerminal.exe' OR Name = 'wta.exe'" -ErrorAction SilentlyContinue
     $running = @()
 
     foreach ($candidate in $candidates) {
@@ -340,7 +340,7 @@ try {
         Write-Status "Restored user settings"
     }
 
-    $terminalExe = Join-Path $InstallDir 'WindowsTerminal.exe'
+    $terminalExe = Join-Path $InstallDir 'IntelligentTerminal.exe'
     $wtaExe = Join-Path $InstallDir 'wta.exe'
 
     if (-not $NoShortcuts) {

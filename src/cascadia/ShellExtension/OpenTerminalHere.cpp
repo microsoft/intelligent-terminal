@@ -52,7 +52,7 @@ try
         modulePath.replace_filename(runElevated ? ElevateShimExe : WindowsTerminalExe);
 
         std::wstring cmdline;
-        cmdline.reserve(256); // The WindowsTerminal.exe path is ~110 characters long
+        cmdline.reserve(256); // The IntelligentTerminal.exe path is ~110 characters long
         cmdline.push_back(L'"');
         cmdline.append(modulePath.native());
         cmdline.append(LR"(" -d )");
@@ -132,10 +132,10 @@ HRESULT OpenTerminalHere::GetIcon(IShellItemArray* /*psiItemArray*/,
 try
 {
     std::filesystem::path modulePath{ wil::GetModuleFileNameW<std::wstring>(wil::GetModuleInstanceHandle()) };
-    // WindowsTerminal.exe,-101 will be the first icon group in WT
-    // We're using WindowsTerminal here explicitly, and not wt (from GetWtExePath), because
-    // WindowsTerminal is the only one built with the right icons.
-    modulePath.replace_filename(L"WindowsTerminal.exe,-101");
+    // IntelligentTerminal.exe,-101 will be the first icon group in WT
+    // We're using IntelligentTerminal here explicitly, and not wt (from GetWtExePath), because
+    // IntelligentTerminal is the only one built with the right icons.
+    modulePath.replace_filename(L"IntelligentTerminal.exe,-101");
     return SHStrDupW(modulePath.c_str(), ppszIcon);
 }
 CATCH_RETURN();
