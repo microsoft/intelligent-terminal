@@ -58,7 +58,11 @@ Describe 'Feature §2 non-Copilot built-in agents connect through the ACP adapte
                 # cold-fetch the adapter, so allow a generous readiness window.
                 (Wait-AgentReady -App $app -TimeoutSec 120) | Should -BeTrue -Because "$id should reach a connected ACP session"
                 Send-AgentPrompt -App $app -Text 'What is 3 plus 4? Reply with only the number.' | Out-Null
-                Assert-AgentPaneText -App $app -Pattern '\b7\b' -TimeoutSec 90
+                # Non-Copilot agents answer via the npx ACP adapter (extra hop + remote model
+                # latency), so the first reply is markedly slower than Copilot's local-ish path.
+                # 90s was demonstrably too tight (observed turns approaching it); 150s keeps the
+                # consolidated external-CLI case from flaking on adapter/model latency.
+                Assert-AgentPaneText -App $app -Pattern '\b7\b' -TimeoutSec 150
             }
             finally { Stop-Terminal -App $app }
         }

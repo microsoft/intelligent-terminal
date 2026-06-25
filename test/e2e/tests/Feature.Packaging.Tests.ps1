@@ -19,7 +19,11 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Packaged wta.exe is present (co-located in the install dir)' {
-        $script:app.WtaPath | Should -Match 'WindowsApps'
+        # Co-located = resolved from the package InstallLocation (WindowsApps for an installed
+        # Store package, or the run-from-layout AppX dir for a Dev/F5 build) — NOT the stray
+        # unpackaged tools\wta\target fallback, which would lack package identity for COM.
+        $script:app.WtaPath | Should -BeLike "$($script:app.InstallLocation)*"
+        $script:app.WtaPath | Should -Not -Match 'tools[\\/]wta[\\/]target'
         Test-Path $script:app.WtaPath | Should -BeTrue
     }
     It 'Packaged identity works (wtcli reaches COM via brand CLSID)' {
@@ -27,7 +31,10 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
         @(Get-WtWindows -App $script:app).Count | Should -BeGreaterThan 0
     }
     It 'Wrong unpackaged WTA is not used (resolved binary is in the package)' {
-        $script:app.WtcliPath | Should -Match 'WindowsApps'
+        # Same co-location guarantee for wtcli: it must come from the package InstallLocation
+        # (WindowsApps or the Dev layout AppX dir), not a PATH-resolved standalone build.
+        $script:app.WtcliPath | Should -BeLike "$($script:app.InstallLocation)*"
+        $script:app.WtcliPath | Should -Not -Match 'tools[\\/]wta[\\/]target'
     }
     It 'WT_COM_CLSID resolves to a live server' {
         # Probing the brand CLSID succeeded during Start-Terminal; re-confirm a call works.
