@@ -94,17 +94,23 @@ function Stop-StaleItInstances {
         Close any leftover Intelligent Terminal windows (BOTH the store and dev packages)
         before a test launches.
     .DESCRIPTION
-        The harness owns the IT terminal during a run, so any IT window already running at
-        launch time is a leftover from a previous test whose AfterAll/Stop-Terminal didn't run
-        (e.g. a BeforeAll that threw). Such a leftover causes two real flakes:
+        The harness OWNS every Intelligent Terminal window for the duration of a run: this
+        unconditionally closes/kills ALL running IT windows (store + dev) at launch time — not
+        only crashed-test leftovers, but also a window a developer started by hand, and even the
+        IT window hosting the current shell if the tests are launched from inside Intelligent
+        Terminal. So do NOT run this suite from an IT window you want to keep. (The user's stock
+        Windows Terminal is never touched — its image lives under Microsoft.WindowsTerminal_*,
+        which never matches the *IntelligentTerminal* install-location filter below.)
+
+        Any IT window already running at launch is treated as a leftover from a previous test
+        whose AfterAll/Stop-Terminal didn't run (e.g. a BeforeAll that threw). Such a leftover
+        causes two real flakes:
           * the single-instance AUMID launch hands off to the stale (often half-initialised)
             window instead of starting fresh, so the harness attaches to a broken instance and
             `new-tab` returns CreateTab E_FAIL (0x80004005);
           * the store and dev packages share one per-brand COM CLSID, so a stale window of the
             OTHER package steals wtcli's CoCreateInstance and misroutes every protocol call.
-        Closing all IT windows first makes each launch deterministic and freshly-owned. Only
-        ever targets *IntelligentTerminal* install locations — never the user's stock Windows
-        Terminal (its image lives under Microsoft.WindowsTerminal_*, which never matches).
+        Closing all IT windows first makes each launch deterministic and freshly-owned.
     #>
     [CmdletBinding()] param([int]$GraceSec = 6)
     $locs = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' } |
