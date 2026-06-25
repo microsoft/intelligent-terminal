@@ -20,7 +20,7 @@ Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Featu
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
-        Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the copilot agent pane must reach a connected ACP session before driving the proposed-command card'
         # Recommendation card button labels ([ Run command ] / Insert in Terminal) are localized,
         # so match each across all bundled locales (Get-WtaLocalizedTextRegex; en-US fallback).
         $script:CardRunRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command')
@@ -63,7 +63,7 @@ Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature'
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
         Open-AgentPane -App $script:app | Out-Null
-        Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the copilot agent pane must reach a connected ACP session before driving the proposed-command card'
         $script:CardRunRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command')
         if (-not $script:CardRunRegex) { $script:CardRunRegex = 'Run command' }
         $script:CardInsertRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')

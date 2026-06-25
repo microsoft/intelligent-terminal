@@ -26,7 +26,7 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
-        Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the copilot agent pane must reach a connected ACP session before the autofix card suite runs'
         $script:CardShown = { ((Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex)) }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
@@ -231,7 +231,7 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
 
             # Agent pane on the (now active) WSL tab so autofix cards render here.
             Open-AgentPane -App $script:app | Out-Null
-            Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+            Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane must be connected for WSL autofix to render cards'
         }
         catch {
             Write-ItLog -Level WARN -Message "WSL autofix setup failed (build without WSL-capable CreateTab / OSC 9001, or no WSL shell integration): $_"
