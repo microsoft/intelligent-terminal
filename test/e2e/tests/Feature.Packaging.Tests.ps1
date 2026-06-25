@@ -40,7 +40,7 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
         $sid = (Get-ActivePane -App $script:app).session_id
         $out = Invoke-RunCommand -App $script:app -SessionId $sid `
             -Command 'Write-Output "CLSIDENV=$env:WT_COM_CLSID"' -SettleSec 8
-        $out | Should -Match 'CLSIDENV=\{[0-9A-Fa-f-]+\}'
+        $out | Should -Match 'CLSIDENV=\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}'
     }
     It 'wtcli list-panes works' {
         @(Get-WtPanes -App $script:app).Count | Should -BeGreaterThan 0

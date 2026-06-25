@@ -66,6 +66,34 @@ function Set-AgentPaneFocus {
     }
 }
 
+function Get-AgentConnectedPlaceholderRegex {
+    <#
+    .SYNOPSIS
+        Case-insensitive regex matching the connected input placeholder of ANY bundled wta
+        locale, so Wait-AgentReady works on non-en-US machines (the placeholder is localized
+        via input.placeholder.connected — see tools/wta/locales/*.yml + ui/input.rs). Built
+        once from the locale bundle and cached; degrades to the en-US literal if the bundle
+        can't be read (e.g. running outside a repo checkout).
+    #>
+    [CmdletBinding()] param()
+    if ($script:AgentReadyRegex) { return $script:AgentReadyRegex }
+    $fallback = '(?i)Ask anything.*for commands'
+    try {
+        $localeDir = Join-Path $PSScriptRoot '..\..\..\..\tools\wta\locales'
+        $pats = @()
+        if (Test-Path $localeDir) {
+            $pats = Select-String -Path (Join-Path $localeDir '*.yml') `
+                        -Pattern '^\s*input\.placeholder\.connected:\s*"(.+?)"' |
+                ForEach-Object { ($_.Matches[0].Groups[1].Value) -replace '\.+\s*$', '' } |
+                Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
+        }
+        $pats = @($pats)
+        $script:AgentReadyRegex = if ($pats.Count) { '(?i)(' + ($pats -join '|') + ')' } else { $fallback }
+    }
+    catch { $script:AgentReadyRegex = $fallback }
+    $script:AgentReadyRegex
+}
+
 function Wait-AgentReady {
     <#
     .SYNOPSIS
@@ -87,13 +115,15 @@ function Wait-AgentReady {
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 90)
     process {
         Open-AgentPane -App $App | Out-Null
+        $readyRe = Get-AgentConnectedPlaceholderRegex
         $deadline = (Get-Date).AddSeconds($TimeoutSec)
         do {
-            # The connected input placeholder is the user-visible "ready to chat" signal.
-            # Require the FULL placeholder in order ("Ask anything … for commands") on one line,
-            # not either fragment anywhere, so stray transcript/help text in the captured
-            # scrollback can't false-positive the gate.
-            if ((Get-AgentPaneText -App $App -MaxLines 50) -match '(?i)Ask anything.*for commands') { return $true }
+            # The connected input placeholder is the user-visible "ready to chat" signal. It is
+            # localized (input.placeholder.connected), so $readyRe matches the connected
+            # placeholder of ANY bundled wta locale — never just the en-US string — to stay
+            # robust on non-en-US machines. The connecting/disconnected placeholders are distinct
+            # per locale, so this remains a clean Connected-only signal.
+            if ((Get-AgentPaneText -App $App -MaxLines 50) -match $readyRe) { return $true }
             $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
             if ($log -match 'exiting with error|agent failure class="auth') {
                 Write-ItLog -Level WARN -Message "Wait-AgentReady: helper logged an auth/fatal connect failure; not ready."
