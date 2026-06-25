@@ -3428,6 +3428,7 @@ async fn dispatch_prompt_body(
                             id: m.model_id.0.to_string(),
                             name: m.name.clone(),
                             description: m.description.clone(),
+                            kind: crate::agent::ModelKind::Cloud,
                         })
                         .collect();
                     (models, Some(state.current_model_id.0.to_string()))

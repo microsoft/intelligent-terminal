@@ -1054,6 +1054,11 @@ pub struct AcpModelInfo {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Which inference backend serves this model. Defaults to `Cloud`; only
+    /// emitted into `agent_status` when `Local`, so existing consumers that
+    /// don't know the field are unaffected.
+    #[serde(default, skip_serializing_if = "crate::agent::ModelKind::is_cloud")]
+    pub kind: crate::agent::ModelKind,
 }
 
 /// Test-visible record of a wtcli command the App fired through the
@@ -2664,6 +2669,7 @@ impl App {
                     id: m.id,
                     name: m.name,
                     description: m.description,
+                    kind: m.kind,
                 })
                 .collect(),
             current_id,
@@ -2680,6 +2686,7 @@ impl App {
                 id: m.id,
                 name: m.name,
                 description: m.description,
+                kind: m.kind,
             })
             .collect();
         (models, resolved.current_id, resolved.switchable)
@@ -2720,10 +2727,11 @@ impl App {
     /// sessions fall back on their next attach, but we send nothing (the
     /// default can't be expressed as `set_session_model`).
     fn apply_global_acp_model(&mut self, new_model: Option<String>) {
-        // BYOK pins the model via env; a global `acpModel` setting can't
-        // override it (and would wrongly clobber the local-model display), so
-        // ignore the change entirely in that mode.
-        if !self.model_switchable {
+        // A local (BYOK) model is pinned via env at agent-CLI startup; a global
+        // `acpModel` setting can't override it (and would wrongly clobber the
+        // local-model display), so ignore the change while a local model is
+        // active. Cloud models remain freely switchable.
+        if self.currently_local() {
             return;
         }
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
@@ -2844,22 +2852,50 @@ impl App {
     /// and `/model <id>`. If no session is live yet, the override is stored
     /// and `SessionAttached` applies it via `effective_model_for_tab`.
     fn apply_model_pick(&mut self, model_id: String) {
-        // Under BYOK the model is pinned by `COPILOT_MODEL` at copilot startup
-        // and `session/set_model` can't change it — surface that instead of
-        // pretending to switch.
-        if !self.model_switchable {
-            let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::System(t!("system.model_pinned").into_owned()));
-            tab.scroll_to_bottom();
+        // Re-picking the active model is a no-op (avoids a needless respawn).
+        if self.current_model_id.as_deref() == Some(model_id.as_str()) {
             return;
         }
-        let name = self
+
+        let (name, picked_local) = self
             .available_models
             .iter()
             .find(|m| m.id == model_id)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| model_id.clone());
+            .map(|m| (m.name.clone(), m.kind == crate::agent::ModelKind::Local))
+            .unwrap_or_else(|| (model_id.clone(), false));
+        let current_local = self.currently_local();
+
+        // A switch can stay live (ACP `set_session_model`) only when BOTH ends
+        // are cloud — `COPILOT_MODEL` / the BYOK provider env are read by the
+        // agent CLI only at startup, so any switch touching a local model
+        // requires reconfiguring the env and respawning the agent CLI.
+        if picked_local || current_local {
+            // Persist the pick so the freshly-spawned master applies the right
+            // provider env (see `llm_provider::spawn_provider`), then trigger
+            // the stack restart. All agent panes reset to a fresh session.
+            let selection = crate::llm_provider::ProviderSelection {
+                local: picked_local,
+                model: Some(model_id.clone()),
+            };
+            let _ = crate::llm_provider::save_selection(&selection);
+            self.trigger_stack_restart("Switching model...");
+            let msg = if picked_local {
+                t!("system.switching_local", model = name.as_str()).into_owned()
+            } else {
+                t!("system.switching_cloud", model = name.as_str()).into_owned()
+            };
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(msg));
+            tab.scroll_to_bottom();
+            return;
+        }
+
+        // Cloud → cloud: live switch via `set_session_model`. Keep the persisted
+        // selection in sync so the pick survives a later respawn / IT restart.
+        let _ = crate::llm_provider::save_selection(&crate::llm_provider::ProviderSelection {
+            local: false,
+            model: Some(model_id.clone()),
+        });
         let session_id = {
             let tab = self.current_tab_mut();
             tab.model_override = Some(model_id.clone());
@@ -4722,7 +4758,34 @@ impl App {
                 self.available_models = resolved_models;
                 self.current_model_id = resolved_current;
                 self.model_switchable = switchable;
-                self.agent_supports_load_session = load_session_supported;
+                // Honor a persisted cloud `/model` pick across this respawn:
+                // re-select it on the bootstrap session so a cross-boundary or
+                // cloud switch that round-tripped through a stack restart lands
+                // on the exact model the user chose. Local picks are already
+                // applied via `COPILOT_MODEL` at spawn, so only cloud is
+                // reapplied here (guarded to models the agent actually
+                // advertises, and skipped when already active).
+                if let Some(selection) = crate::llm_provider::load_selection() {
+                    if !selection.local {
+                        if let Some(picked) =
+                            selection.model.filter(|m| !m.trim().is_empty())
+                        {
+                            let in_catalog =
+                                self.available_models.iter().any(|m| m.id == picked);
+                            if in_catalog
+                                && self.current_model_id.as_deref()
+                                    != Some(picked.as_str())
+                                && !self.session_id.is_empty()
+                            {
+                                self.current_model_id = Some(picked.clone());
+                                self.send_session_model(
+                                    Some(self.session_id.clone()),
+                                    picked,
+                                );
+                            }
+                        }
+                    }
+                }
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
                 // A successful connect resolves any in-flight auth recovery:
@@ -7861,7 +7924,16 @@ impl App {
     ///   state set below is short-lived — this helper process is
     ///   on its way out as part of the pane teardown.
     fn cmd_restart(&mut self) {
-        self.state = ConnectionState::Connecting("Restarting agent...".to_string());
+        self.trigger_stack_restart("Restarting agent...");
+    }
+
+    /// Tear down the current agent sessions and ask the transport to respawn the
+    /// agent CLI from scratch (standalone: in-process; helper: C++ restarts the
+    /// whole stack — see [`cmd_restart`]). Shared by `/restart` and the
+    /// cross-boundary model switch, which respawns to pick up a new
+    /// `COPILOT_MODEL` / BYOK provider env.
+    fn trigger_stack_restart(&mut self, connecting_label: &str) {
+        self.state = ConnectionState::Connecting(connecting_label.to_string());
         self.session_to_tab.clear();
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
@@ -7872,6 +7944,18 @@ impl App {
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
         self.publish_agent_status();
+    }
+
+    /// Whether the currently-active model is served by a local (BYOK) backend.
+    /// Keys off the active model's tag in the aggregated catalog. Used to gate
+    /// the global `acpModel` push (which is meaningless while a local model is
+    /// env-pinned) and to decide whether a `/model` pick crosses the boundary.
+    fn currently_local(&self) -> bool {
+        self.current_model_id
+            .as_ref()
+            .and_then(|cid| self.available_models.iter().find(|m| &m.id == cid))
+            .map(|m| m.kind == crate::agent::ModelKind::Local)
+            .unwrap_or(false)
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the
@@ -11506,6 +11590,7 @@ mod tests {
             id: id.to_string(),
             name: id.to_uppercase(),
             description: None,
+            kind: crate::agent::ModelKind::Cloud,
         }
     }
 
@@ -14698,11 +14783,13 @@ mod tests {
                 id: "pick-1".into(),
                 name: "PickModelXYZ".into(),
                 description: None,
+                kind: crate::agent::ModelKind::Cloud,
             },
             AcpModelInfo {
                 id: "pick-2".into(),
                 name: "OtherModel".into(),
                 description: None,
+                kind: crate::agent::ModelKind::Cloud,
             },
         ];
         app.current_tab_mut().model_picker_open = true;
@@ -14711,6 +14798,40 @@ mod tests {
         assert!(
             text.contains("PickModelXYZ"),
             "the model picker must list the advertised models; rendered:\n{text}"
+        );
+    }
+
+    /// Render: when the aggregated list contains a Local (BYOK) model, the
+    /// picker tags each row Cloud/Local and brands itself "powered by Foundry
+    /// Local". Guards the Phase-1 unified-picker presentation.
+    #[test]
+    fn render_model_picker_tags_local_and_cloud() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.available_models = vec![
+            AcpModelInfo {
+                id: "qwen-local".into(),
+                name: "qwen-local".into(),
+                description: None,
+                kind: crate::agent::ModelKind::Local,
+            },
+            AcpModelInfo {
+                id: "cloud-1".into(),
+                name: "CloudModelABC".into(),
+                description: None,
+                kind: crate::agent::ModelKind::Cloud,
+            },
+        ];
+        app.current_tab_mut().model_picker_open = true;
+
+        let text = render_to_text(&mut app, 100, 24);
+        assert!(
+            text.contains("Local") && text.contains("Cloud"),
+            "rows must be tagged with their inference backend; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("Foundry Local"),
+            "a local model present must brand the picker 'powered by Foundry Local'; rendered:\n{text}"
         );
     }
 

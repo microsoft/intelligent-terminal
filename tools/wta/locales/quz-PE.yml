@@ -209,7 +209,15 @@ system.choice_execution_failed: "Akllay %{choice} pantarun: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Phuyu"
+model_picker.local_tag: "Kikinpi"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local nisqawan kallpachasqa"
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}
 system.model_pinned: "Kay panelqa COPILOT_MODEL nisqawan local modelman watasqa kachkan. Tikrachinapaq, COPILOT_MODEL environment variable nisqata tikrachiy hinaspa kutiy qallariy."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Llaqta ukhupi modeloman %{model} tikrachkan — wakmanta tʼinkichkan…"
+system.switching_cloud: "Puyu modeloman %{model} tikrachkan — wakmanta tʼinkichkan…"

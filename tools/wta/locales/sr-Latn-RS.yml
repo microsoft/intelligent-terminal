@@ -210,7 +210,15 @@ system.choice_execution_failed: "Izbor %{choice} nije uspeo: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izaberite model za ovo okno (/model <id> za direktno prebacivanje)"  # {Locked="/model","<id>"}
 model_picker.title: "Izaberite model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Oblak"
+model_picker.local_tag: "Lokalno"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "omogućava Foundry Local"
 system.no_models: "Povezani agent nije oglasio nijedan model koji se može izabrati."
 system.model_set: "Model za ovo okno je podešen na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nepoznat model %{model} — unesite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}
 system.model_pinned: "Ovo okno je putem COPILOT_MODEL prikačeno na lokalni model. Da biste promenili, izmenite promenljivu okruženja COPILOT_MODEL i ponovo pokrenite."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Prebacivanje na lokalni model %{model} — ponovno povezivanje…"
+system.switching_cloud: "Prebacivanje na model u oblaku %{model} — ponovno povezivanje…"

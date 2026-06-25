@@ -210,7 +210,15 @@ system.choice_execution_failed: "Keuze %{choice} is mislukt: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}
 model_picker.title: "Model selecteren (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Lokaal"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "mogelijk gemaakt door Foundry Local"
 system.no_models: "De verbonden agent heeft geen selecteerbare modellen aangekondigd."
 system.model_set: "Model voor dit deelvenster ingesteld op %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}
 system.model_pinned: "Dit deelvenster is via COPILOT_MODEL vastgezet op een lokaal model. Wijzig de omgevingsvariabele COPILOT_MODEL en start opnieuw op om te wisselen."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Overschakelen naar lokaal model %{model} — opnieuw verbinden…"
+system.switching_cloud: "Overschakelen naar cloudmodel %{model} — opnieuw verbinden…"

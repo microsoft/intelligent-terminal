@@ -3,7 +3,7 @@
 use std::env;
 
 use super::Agent;
-use crate::llm_provider::LlmProviderConfig;
+use crate::llm_provider::{discover_local_models, LlmProviderConfig};
 
 /// The GitHub Copilot CLI agent.
 ///
@@ -53,26 +53,66 @@ impl Agent for CopilotAgent {
     }
 
     fn resolve_models(&self, acp: super::ModelCatalog) -> super::ModelCatalog {
-        // Under BYOK, Copilot CLI's ACP `new_session` still advertises its full
-        // cloud catalog (auto / claude / gpt / gemini) with a cloud
-        // `current_model_id`, completely decoupled from the actual inference
-        // routing — `COPILOT_MODEL` pins the model at the HTTP layer only. So
-        // the ACP list is a lie in this mode: surface the real local model and
-        // mark it non-switchable (changing it requires restarting Copilot with
-        // a different `COPILOT_MODEL`, not `session/set_model`).
-        let Some(model_id) = byok_model() else {
+        // Under BYOK, Copilot CLI's ACP `new_session` advertises its full cloud
+        // catalog (auto / claude / gpt / gemini) with a cloud `current_model_id`,
+        // completely decoupled from the actual inference routing — `COPILOT_MODEL`
+        // pins the real model at the HTTP layer only.
+        //
+        // Rather than discard the cloud list, we AGGREGATE: surface the local
+        // BYOK model(s) (tagged `Local`) *alongside* the cloud catalog (tagged
+        // `Cloud`) so the `/model` picker shows the full mix the user can reach.
+        // The pinned local model is marked current (it's what's really serving).
+        //
+        // The catalog stays non-switchable in this pass — crossing the
+        // cloud/local boundary requires reconfiguring the provider env and
+        // respawning Copilot, which is wired up in a later phase. cloud→cloud
+        // live switching also lands then.
+        let Some(pinned) = byok_model() else {
+            // Not BYOK (or BYOK with no named model): the ACP cloud catalog is
+            // authoritative and stays fully switchable.
             return acp;
         };
+
         let provider = env::var("COPILOT_PROVIDER_BASE_URL").unwrap_or_default();
-        let provider = provider.trim();
+        let provider = provider.trim().to_string();
         let description = (!provider.is_empty()).then(|| format!("Local provider · {provider}"));
+
+        // Discover the local endpoint's catalog (best-effort, short timeout).
+        // Always include the env-pinned model even if discovery fails or omits
+        // it, so the actually-serving model is never missing from the list.
+        let mut local_ids: Vec<String> = if provider.is_empty() {
+            Vec::new()
+        } else {
+            discover_local_models(&provider)
+                .into_iter()
+                .map(|m| m.id)
+                .collect()
+        };
+        if !local_ids.iter().any(|id| *id == pinned) {
+            local_ids.insert(0, pinned.clone());
+        }
+
+        let mut models: Vec<super::ModelEntry> = local_ids
+            .into_iter()
+            .map(|id| super::ModelEntry {
+                name: id.clone(),
+                id,
+                description: description.clone(),
+                kind: super::ModelKind::Local,
+            })
+            .collect();
+
+        // Append the cloud catalog, tagged Cloud (the conversion seam already
+        // defaults to Cloud, but be explicit so this stays correct regardless
+        // of the caller).
+        models.extend(acp.models.into_iter().map(|m| super::ModelEntry {
+            kind: super::ModelKind::Cloud,
+            ..m
+        }));
+
         super::ModelCatalog {
-            models: vec![super::ModelEntry {
-                id: model_id.clone(),
-                name: format!("{model_id} (local)"),
-                description,
-            }],
-            current_id: Some(model_id),
+            models,
+            current_id: Some(pinned),
             switchable: false,
         }
     }
@@ -103,6 +143,16 @@ impl Agent for CopilotAgent {
             env.push(("COPILOT_OFFLINE".to_string(), "true".to_string()));
         }
         env
+    }
+
+    fn byok_env_keys(&self) -> Vec<&'static str> {
+        vec![
+            "COPILOT_PROVIDER_BASE_URL",
+            "COPILOT_PROVIDER_API_KEY",
+            "COPILOT_PROVIDER_TYPE",
+            "COPILOT_MODEL",
+            "COPILOT_OFFLINE",
+        ]
     }
 }
 
@@ -190,11 +240,13 @@ mod tests {
                     id: "claude-sonnet-4.6".into(),
                     name: "Claude Sonnet 4.6".into(),
                     description: None,
+                    kind: super::super::ModelKind::Cloud,
                 },
                 super::super::ModelEntry {
                     id: "gpt-5.5".into(),
                     name: "GPT-5.5".into(),
                     description: None,
+                    kind: super::super::ModelKind::Cloud,
                 },
             ],
             current_id: Some("claude-sonnet-4.6".into()),
@@ -216,27 +268,42 @@ mod tests {
     }
 
     #[test]
-    fn resolve_models_overrides_to_pinned_local_model_under_byok() {
+    fn resolve_models_aggregates_local_and_cloud_under_byok() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_byok_env();
-        env::set_var("COPILOT_PROVIDER_BASE_URL", "http://127.0.0.1:55690/v1");
+        // Point at a port with no live endpoint: discovery fails gracefully and
+        // we fall back to just the env-pinned local model, still aggregated with
+        // the cloud catalog.
+        env::set_var("COPILOT_PROVIDER_BASE_URL", "http://127.0.0.1:1/v1");
         env::set_var("COPILOT_MODEL", "qwen2.5-coder-7b");
         let resolved = CopilotAgent.resolve_models(sample_acp_catalog());
-        assert_eq!(resolved.models.len(), 1, "BYOK collapses to the one real model");
+
+        // 1 local (pinned) + 2 cloud (claude, gpt) = 3 aggregated entries.
+        assert_eq!(resolved.models.len(), 3, "local model is aggregated with the cloud catalog");
+
+        // The pinned local model leads the list and is tagged Local + current.
         assert_eq!(resolved.models[0].id, "qwen2.5-coder-7b");
-        assert_eq!(resolved.models[0].name, "qwen2.5-coder-7b (local)");
+        assert_eq!(resolved.models[0].kind, super::super::ModelKind::Local);
         assert_eq!(resolved.current_id.as_deref(), Some("qwen2.5-coder-7b"));
-        assert!(
-            !resolved.switchable,
-            "the env-pinned BYOK model can't be switched at runtime"
-        );
         assert!(
             resolved.models[0]
                 .description
                 .as_deref()
                 .unwrap_or_default()
-                .contains("127.0.0.1:55690"),
-            "the provider URL is surfaced in the description"
+                .contains("127.0.0.1:1"),
+            "the provider URL is surfaced in the local model description"
+        );
+
+        // The cloud catalog survives, tagged Cloud.
+        assert!(
+            resolved.models.iter().any(|m| m.id == "claude-sonnet-4.6"
+                && m.kind == super::super::ModelKind::Cloud),
+            "cloud models remain in the aggregated list tagged Cloud"
+        );
+
+        assert!(
+            !resolved.switchable,
+            "the env-pinned BYOK catalog isn't runtime-switchable in this phase"
         );
         clear_byok_env();
     }

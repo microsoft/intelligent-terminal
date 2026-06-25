@@ -48,6 +48,28 @@ mod gemini;
 use crate::agent_registry::AgentProfile;
 use crate::llm_provider::LlmProviderConfig;
 
+/// Which inference backend a model is served by. Drives the `Cloud`/`Local`
+/// tag in the `/model` picker and the switch semantics (crossing this boundary
+/// requires reconfiguring the agent's provider env and respawning it, whereas
+/// switching within `Cloud` is a live ACP `set_model`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelKind {
+    /// Served by the agent's hosted/cloud backend (the ACP-advertised catalog).
+    #[default]
+    Cloud,
+    /// Served by a local BYOK provider (Foundry Local / Ollama / custom endpoint).
+    Local,
+}
+
+impl ModelKind {
+    /// `true` for the default (cloud) kind — used to skip serializing the common
+    /// case so existing `agent_status` consumers see no new field unless local.
+    pub fn is_cloud(&self) -> bool {
+        matches!(self, ModelKind::Cloud)
+    }
+}
+
 /// One selectable model, mirroring `app::AcpModelInfo` but kept independent so
 /// the `agent` module owns no dependency on `app`. Callers convert at the seam.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +77,9 @@ pub struct ModelEntry {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    /// Which backend serves this model — the picker tags it and switch logic
+    /// keys on whether a pick crosses the cloud/local boundary.
+    pub kind: ModelKind,
 }
 
 /// The model view the UI should present for an agent: the selectable list, the
@@ -188,6 +213,18 @@ pub trait Agent {
     /// injected provider env. Callers should only invoke this when
     /// [`LlmProviderConfig::is_active`] is true.
     fn byok_env(&self, _cfg: &LlmProviderConfig) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
+    /// The full set of environment variable *names* this agent reads for BYOK.
+    ///
+    /// Used to force an agent back to its hosted/cloud backend on respawn: when
+    /// the user switches a pinned local model to a cloud one, the spawner must
+    /// *remove* these vars from the child so an ambient (e.g. machine-scoped)
+    /// BYOK config can't keep routing to the local endpoint. The default is
+    /// empty (no BYOK contract). Should be a superset of every key
+    /// [`Agent::byok_env`] can emit.
+    fn byok_env_keys(&self) -> Vec<&'static str> {
         Vec::new()
     }
 }

@@ -241,8 +241,8 @@ fn slash_model_without_models_notes_none() {
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
     app.available_models = vec![
-        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None },
-        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None },
+        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None, kind: Default::default() },
+        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None, kind: Default::default() },
     ];
 
     run_slash(&mut app, "model");
@@ -257,8 +257,8 @@ fn slash_model_bare_opens_picker_when_models_present() {
 fn slash_model_direct_switch_sets_override() {
     let mut app = test_app();
     app.available_models = vec![
-        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None },
-        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None },
+        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None, kind: Default::default() },
+        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None, kind: Default::default() },
     ];
 
     run_slash_args(&mut app, "model", "smart");
@@ -310,6 +310,7 @@ fn degraded_blocks_model_command_too() {
         id: "fast".into(),
         name: "Fast".into(),
         description: None,
+        kind: Default::default(),
     }];
 
     run_slash(&mut app, "model");

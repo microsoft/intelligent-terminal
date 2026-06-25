@@ -210,7 +210,15 @@ system.choice_execution_failed: "Lựa chọn %{choice} không thành công: %{e
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
 model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Đám mây"
+model_picker.local_tag: "Cục bộ"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "được hỗ trợ bởi Foundry Local"
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
 system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}
 system.model_pinned: "Ngăn này được ghim vào một mô hình cục bộ bởi COPILOT_MODEL. Để chuyển đổi, hãy thay đổi biến môi trường COPILOT_MODEL và khởi động lại."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Đang chuyển sang mô hình cục bộ %{model} — đang kết nối lại…"
+system.switching_cloud: "Đang chuyển sang mô hình đám mây %{model} — đang kết nối lại…"

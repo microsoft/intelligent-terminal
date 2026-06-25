@@ -211,7 +211,15 @@ system.choice_execution_failed: "தேர்வு %{choice} தோல்வி
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "மேகம்"
+model_picker.local_tag: "உள்ளூர்"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local மூலம் இயக்கப்படுகிறது"
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}
 system.model_pinned: "இந்தப் பலகம் COPILOT_MODEL மூலம் உள்ளூர் மாதிரிக்கு பொருத்தப்பட்டுள்ளது. மாற்ற, COPILOT_MODEL சூழல் மாறியை மாற்றி மீண்டும் தொடங்கவும்."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "உள்ளூர் மாதிரி %{model} க்கு மாறுகிறது — மீண்டும் இணைக்கிறது…"
+system.switching_cloud: "கிளவுட் மாதிரி %{model} க்கு மாறுகிறது — மீண்டும் இணைக்கிறது…"

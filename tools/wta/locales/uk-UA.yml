@@ -210,7 +210,15 @@ system.choice_execution_failed: "Не вдалося виконати вибір
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
 model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Хмара"
+model_picker.local_tag: "Локально"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "на базі Foundry Local"
 system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
 system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}
 system.model_pinned: "Цю панель закріплено за локальною моделлю за допомогою COPILOT_MODEL. Щоб переключитися, змініть змінну середовища COPILOT_MODEL і перезапустіть."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Перемикання на локальну модель %{model} — повторне підключення…"
+system.switching_cloud: "Перемикання на хмарну модель %{model} — повторне підключення…"

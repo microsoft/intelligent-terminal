@@ -211,7 +211,15 @@ system.choice_execution_failed: "[Çĥöïçé %{choice} ƒåïĺéď: %{error}!
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[Ṗïçķ ţĥé ḿöďéĺ ƒöŕ ţĥïś ṗåñé (/model <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/model","<id>"}
 model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "[Çĺöûď!!]"
+model_picker.local_tag: "[Ĺöçåĺ!!]"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "[ṗöŵéŕéď ƀÿ Foundry Local!!!!]"
 system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"
 system.model_set: "[Ḿöďéĺ ƒöŕ ţĥïś ṗåñé śéţ ţö %{model}.!!!! !!!! !!!!]"  # {Locked="%{model}"}
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}
 system.model_pinned: "This pane is pinned to a local model by COPILOT_MODEL. Change the COPILOT_MODEL environment variable and restart to switch."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "[Śŵïţçĥïñğ ţö ĺöçåĺ ḿöďéĺ %{model} — ŕéçöññéçţïñğ…!!!! !!!!]"
+system.switching_cloud: "[Śŵïţçĥïñğ ţö çĺöûď ḿöďéĺ %{model} — ŕéçöññéçţïñğ…!!!! !!!!]"

@@ -138,23 +138,36 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
         cmd.current_dir(cwd);
     }
 
-    // Inject the BYOK (bring-your-own-LLM) provider env onto *this child only*,
-    // driven by the LLM-provider abstraction. This is the single converged
-    // injection point: the generic [`LlmProviderConfig`] is read once here, and
-    // the agent that owns this command translates it into its concrete env
-    // contract (copilot: `COPILOT_PROVIDER_*` / `COPILOT_MODEL` / …). Scoping
-    // the env to the spawned agent CLI — rather than relying on ambient global
-    // inheritance — keeps BYOK confined to IT's agent processes and gives us
-    // one place to evolve when the config source moves off the environment.
+    // Resolve the BYOK (bring-your-own-LLM) provider env for *this child only*,
+    // driven by the LLM-provider abstraction. The persisted [`ProviderSelection`]
+    // (the user's last `/model` pick) is overlaid on the ambient env, so a
+    // cloud↔local switch — which can only take effect on a fresh agent CLI —
+    // lands here on respawn. Three outcomes:
+    //   * Local  → inject the provider env (with the pinned model) onto the child.
+    //   * Cloud  → strip any inherited BYOK env so the agent uses its hosted
+    //              backend, even if a machine-scoped local config is present.
+    //   * Inherit → leave the child's env as-is (pre-BYOK default).
+    // Scoping to the spawned child — rather than ambient global inheritance —
+    // keeps BYOK confined to IT's agent processes.
     {
-        let cfg = crate::llm_provider::LlmProviderConfig::from_env();
-        if cfg.is_active() {
-            let agent_id = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
-            if let Some(agent) = crate::agent::agent_for_id(agent_id) {
-                for (key, value) in agent.byok_env(&cfg) {
-                    cmd.env(key, value);
+        let agent_id = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
+        let agent = crate::agent::agent_for_id(agent_id);
+        match crate::llm_provider::spawn_provider() {
+            crate::llm_provider::SpawnProvider::Local(cfg) => {
+                if let Some(agent) = agent {
+                    for (key, value) in agent.byok_env(&cfg) {
+                        cmd.env(key, value);
+                    }
                 }
             }
+            crate::llm_provider::SpawnProvider::Cloud => {
+                if let Some(agent) = agent {
+                    for key in agent.byok_env_keys() {
+                        cmd.env_remove(key);
+                    }
+                }
+            }
+            crate::llm_provider::SpawnProvider::Inherit => {}
         }
     }
 

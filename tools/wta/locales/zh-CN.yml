@@ -205,7 +205,15 @@ system.choice_execution_failed: "选项 %{choice} 执行失败：%{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
 model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "云"
+model_picker.local_tag: "本地"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "由 Foundry Local 提供支持"
 system.no_models: "已连接的智能体未公布任何可选模型。"
 system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}
 system.model_pinned: "此窗格已通过 COPILOT_MODEL 固定为本地模型。请更改 COPILOT_MODEL 环境变量并重启以切换。"  # {Locked="COPILOT_MODEL"}
+system.switching_local: "正在切换到本地模型 %{model} — 正在重新连接…"
+system.switching_cloud: "正在切换到云模型 %{model} — 正在重新连接…"

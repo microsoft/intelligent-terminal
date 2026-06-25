@@ -210,7 +210,15 @@ system.choice_execution_failed: "Valik %{choice} nurjus: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
 model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Pilv"
+model_picker.local_tag: "Kohalik"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "toetab Foundry Local"
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}
 system.model_pinned: "See paan on COPILOT_MODEL kaudu kohaliku mudeli külge kinnitatud. Vahetamiseks muutke keskkonnamuutujat COPILOT_MODEL ja taaskäivitage."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Lülitutakse kohalikule mudelile %{model} — ühendatakse uuesti…"
+system.switching_cloud: "Lülitutakse pilvemudelile %{model} — ühendatakse uuesti…"

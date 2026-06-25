@@ -210,7 +210,15 @@ system.choice_execution_failed: "Izvēle %{choice} neizdevās: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izvēlieties šīs rūts modeli (/model <id>, lai pārslēgtu tieši)"  # {Locked="/model","<id>"}
 model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Mākonis"
+model_picker.local_tag: "Lokāls"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "darbina Foundry Local"
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nezināms modelis %{model} — ierakstiet /model, lai redzētu pieejamo sarakstu."  # {Locked="%{model}","/model"}
 system.model_pinned: "Šī rūts ar COPILOT_MODEL ir piesaistīta lokālam modelim. Lai pārslēgtu, mainiet vides mainīgo COPILOT_MODEL un restartējiet."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Pārslēgšanās uz lokālo modeli %{model} — atkārtota savienošana…"
+system.switching_cloud: "Pārslēgšanās uz mākoņa modeli %{model} — atkārtota savienošana…"

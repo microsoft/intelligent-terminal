@@ -101,6 +101,12 @@ commands.model.summary: "Pick the model for this pane (/model <id> to switch dir
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
 model_picker.title: "Select model (↑ ↓ • Enter • Esc)"
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Local"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "powered by Foundry Local"
 # Shown when the connected agent advertised no selectable models.
 system.no_models: "The connected agent did not advertise any selectable models."
 # {model} is the agent's model id/name, inserted verbatim.
@@ -110,6 +116,11 @@ system.model_unknown: "Unknown model %{model} — type /model to see the availab
 # Shown when the user tries to switch models but the agent's model is pinned by
 # a local provider (BYOK). {Locked="COPILOT_MODEL"} is the env var name.
 system.model_pinned: "This pane is pinned to a local model by COPILOT_MODEL. Change the COPILOT_MODEL environment variable and restart to switch."
+
+# Shown after picking a model that crosses the cloud/local boundary, which
+# respawns the agent CLI. {model} is the model name, inserted verbatim.
+system.switching_local: "Switching to local model %{model} — reconnecting…"
+system.switching_cloud: "Switching to cloud model %{model} — reconnecting…"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key

@@ -209,7 +209,15 @@ system.choice_execution_failed: "L-għażla %{choice} falliet: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
 model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Lokali"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "imħaddem minn Foundry Local"
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}
 system.model_pinned: "Dan il-pannell huwa mwaħħal ma' mudell lokali minn COPILOT_MODEL. Biex tibdel, ibdel il-varjabbli tal-ambjent COPILOT_MODEL u erġa' ibda."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Qed taqleb għall-mudell lokali %{model} — qed terġa’ tikkonnettja…"
+system.switching_cloud: "Qed taqleb għall-mudell tal-cloud %{model} — qed terġa’ tikkonnettja…"

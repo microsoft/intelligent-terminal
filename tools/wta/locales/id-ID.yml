@@ -210,7 +210,15 @@ system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Lokal"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "didukung oleh Foundry Local"
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}
 system.model_pinned: "Panel ini disematkan ke model lokal oleh COPILOT_MODEL. Untuk beralih, ubah variabel lingkungan COPILOT_MODEL dan mulai ulang."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Beralih ke model lokal %{model} — menyambungkan kembali…"
+system.switching_cloud: "Beralih ke model cloud %{model} — menyambungkan kembali…"

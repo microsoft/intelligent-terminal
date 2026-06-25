@@ -210,7 +210,15 @@ system.choice_execution_failed: "Nabigo ang pagpipiliang %{choice}: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}
 model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Lokal"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "pinapagana ng Foundry Local"
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}
 system.model_pinned: "Naka-pin ang pane na ito sa isang lokal na modelo sa pamamagitan ng COPILOT_MODEL. Upang lumipat, baguhin ang environment variable na COPILOT_MODEL at i-restart."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Lumilipat sa lokal na modelong %{model} — muling kumokonekta…"
+system.switching_cloud: "Lumilipat sa cloud model na %{model} — muling kumokonekta…"

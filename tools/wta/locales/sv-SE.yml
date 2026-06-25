@@ -210,7 +210,15 @@ system.choice_execution_failed: "Val %{choice} misslyckades: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}
 model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Moln"
+model_picker.local_tag: "Lokal"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "drivs av Foundry Local"
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}
 system.model_pinned: "Den här rutan är låst till en lokal modell via COPILOT_MODEL. Ändra miljövariabeln COPILOT_MODEL och starta om för att byta."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Växlar till lokal modell %{model} — återansluter…"
+system.switching_cloud: "Växlar till molnmodell %{model} — återansluter…"

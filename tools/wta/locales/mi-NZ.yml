@@ -209,7 +209,15 @@ system.choice_execution_failed: "I rahua te kōwhiringa %{choice}: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
 model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Kapua"
+model_picker.local_tag: "Paetata"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "whakahaeretia e Foundry Local"
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}
 system.model_pinned: "Kua titia tēnei paatete ki tētahi tauira ā-rohe e COPILOT_MODEL. Hei huri, whakarereketia te taurangi taiao COPILOT_MODEL ka tīmata anō."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Kei te huri ki te tauira paetata %{model} — kei te hono anō…"
+system.switching_cloud: "Kei te huri ki te tauira kapua %{model} — kei te hono anō…"

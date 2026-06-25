@@ -210,7 +210,15 @@ system.choice_execution_failed: "انتخاب %{choice} ناموفق بود: %{e
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "مدل این پنل را انتخاب کنید (/model <id> برای تغییر مستقیم)"  # {Locked="/model","<id>"}
 model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "ابر"
+model_picker.local_tag: "محلی"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "با پشتیبانی Foundry Local"
 system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
 system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}
 system.model_pinned: "این بخش توسط COPILOT_MODEL به یک مدل محلی متصل شده است. برای تغییر، متغیر محیطی COPILOT_MODEL را تغییر دهید و دوباره راه‌اندازی کنید."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "در حال تغییر به مدل محلی %{model} — در حال اتصال مجدد…"
+system.switching_cloud: "در حال تغییر به مدل ابری %{model} — در حال اتصال مجدد…"

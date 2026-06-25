@@ -211,7 +211,15 @@ system.choice_execution_failed: "Keuse %{choice} het misluk: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
 model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Wolk"
+model_picker.local_tag: "Plaaslik"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "aangedryf deur Foundry Local"
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}
 system.model_pinned: "Hierdie ruit is deur COPILOT_MODEL aan 'n plaaslike model vasgespeld. Om oor te skakel, verander die omgewingsveranderlike COPILOT_MODEL en herbegin."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Skakel oor na plaaslike model %{model} — koppel weer…"
+system.switching_cloud: "Skakel oor na wolkmodel %{model} — koppel weer…"

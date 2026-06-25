@@ -210,7 +210,15 @@ system.choice_execution_failed: "%{choice} seçimi başarısız oldu: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Bulut"
+model_picker.local_tag: "Yerel"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local tarafından desteklenir"
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
 system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}
 system.model_pinned: "Bu bölme COPILOT_MODEL tarafından yerel bir modele sabitlenmiş. Değiştirmek için COPILOT_MODEL ortam değişkenini değiştirip yeniden başlatın."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Yerel model %{model} modeline geçiliyor — yeniden bağlanılıyor…"
+system.switching_cloud: "Bulut modeli %{model} modeline geçiliyor — yeniden bağlanılıyor…"

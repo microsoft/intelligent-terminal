@@ -210,7 +210,15 @@ system.choice_execution_failed: "Valg %{choice} mislyktes: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Velg modellen for dette panelet (/model <id> for å bytte direkte)"  # {Locked="/model","<id>"}
 model_picker.title: "Velg modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Sky"
+model_picker.local_tag: "Lokal"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "drevet av Foundry Local"
 system.no_models: "Den tilkoblede agenten annonserte ingen valgbare modeller."
 system.model_set: "Modellen for dette panelet er satt til %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den tilgjengelige listen."  # {Locked="%{model}","/model"}
 system.model_pinned: "Denne ruten er låst til en lokal modell via COPILOT_MODEL. Endre miljøvariabelen COPILOT_MODEL og start på nytt for å bytte."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Bytter til lokal modell %{model} — kobler til på nytt…"
+system.switching_cloud: "Bytter til skymodell %{model} — kobler til på nytt…"

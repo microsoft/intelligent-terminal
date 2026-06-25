@@ -205,7 +205,15 @@ system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "클라우드"
+model_picker.local_tag: "로컬"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local에서 제공"
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}
 system.model_pinned: "이 창은 COPILOT_MODEL에 의해 로컬 모델로 고정되어 있습니다. 전환하려면 COPILOT_MODEL 환경 변수를 변경하고 다시 시작하세요."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "로컬 모델 %{model}(으)로 전환 중 — 다시 연결 중…"
+system.switching_cloud: "클라우드 모델 %{model}(으)로 전환 중 — 다시 연결 중…"

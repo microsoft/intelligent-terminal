@@ -66,6 +66,7 @@ pub(crate) fn models_from_new_session(
                 id: m.model_id.0.to_string(),
                 name: m.name.clone(),
                 description: m.description.clone(),
+                kind: crate::agent::ModelKind::Cloud,
             })
             .collect();
         return (models, Some(state.current_model_id.0.to_string()));
@@ -116,6 +117,7 @@ fn model_option_from_config(
             id: o.value.0.to_string(),
             name: o.name.clone(),
             description: o.description.clone(),
+            kind: crate::agent::ModelKind::Cloud,
         })
         .collect();
 

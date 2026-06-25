@@ -211,7 +211,15 @@ system.choice_execution_failed: "Η επιλογή %{choice} απέτυχε: %{e
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
 model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Τοπικό"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "με την υποστήριξη του Foundry Local"
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}
 system.model_pinned: "Αυτό το τμήμα παραθύρου είναι καρφιτσωμένο σε ένα τοπικό μοντέλο μέσω του COPILOT_MODEL. Για εναλλαγή, αλλάξτε τη μεταβλητή περιβάλλοντος COPILOT_MODEL και επανεκκινήστε."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Γίνεται εναλλαγή στο τοπικό μοντέλο %{model} — γίνεται επανασύνδεση…"
+system.switching_cloud: "Γίνεται εναλλαγή στο μοντέλο cloud %{model} — γίνεται επανασύνδεση…"

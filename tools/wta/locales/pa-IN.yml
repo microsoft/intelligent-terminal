@@ -211,7 +211,15 @@ system.choice_execution_failed: "ਚੋਣ %{choice} ਅਸਫਲ ਰਹੀ: %{e
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /model <id>)"  # {Locked="/model","<id>"}
 model_picker.title: "ਮਾਡਲ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "ਕਲਾਊਡ"
+model_picker.local_tag: "ਸਥਾਨਕ"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local ਦੁਆਰਾ ਸੰਚਾਲਿਤ"
 system.no_models: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਚੁਣਨਯੋਗ ਮਾਡਲ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"
 system.model_set: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ %{model} 'ਤੇ ਸੈੱਟ ਕੀਤਾ ਗਿਆ।"  # {Locked="%{model}"}
 system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}
 system.model_pinned: "ਇਹ ਪੈਨ COPILOT_MODEL ਦੁਆਰਾ ਇੱਕ ਸਥਾਨਕ ਮਾਡਲ 'ਤੇ ਪਿੰਨ ਕੀਤਾ ਗਿਆ ਹੈ। ਬਦਲਣ ਲਈ, COPILOT_MODEL ਵਾਤਾਵਰਣ ਵੇਰੀਏਬਲ ਬਦਲੋ ਅਤੇ ਮੁੜ ਚਾਲੂ ਕਰੋ।"  # {Locked="COPILOT_MODEL"}
+system.switching_local: "ਸਥਾਨਕ ਮਾਡਲ %{model} ਤੇ ਸਵਿੱਚ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ — ਮੁੜ ਕਨੈਕਟ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…"
+system.switching_cloud: "ਕਲਾਉਡ ਮਾਡਲ %{model} ਤੇ ਸਵਿੱਚ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ — ਮੁੜ ਕਨੈਕਟ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…"

@@ -211,7 +211,15 @@ system.choice_execution_failed: "ಆಯ್ಕೆ %{choice} ವಿಫಲವಾಗ
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
 model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "ಕ್ಲೌಡ್"
+model_picker.local_tag: "ಸ್ಥಳೀಯ"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local ನಿಂದ ಚಾಲಿತ"
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}
 system.model_pinned: "ಈ ಫಲಕವನ್ನು COPILOT_MODEL ಮೂಲಕ ಸ್ಥಳೀಯ ಮಾದರಿಗೆ ಪಿನ್ ಮಾಡಲಾಗಿದೆ. ಬದಲಾಯಿಸಲು, COPILOT_MODEL ಪರಿಸರ ವೇರಿಯೇಬಲ್ ಅನ್ನು ಬದಲಾಯಿಸಿ ಮತ್ತು ಮರುಪ್ರಾರಂಭಿಸಿ."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "ಸ್ಥಳೀಯ ಮಾದರಿ %{model} ಗೆ ಬದಲಾಯಿಸಲಾಗುತ್ತಿದೆ — ಮರುಸಂಪರ್ಕಿಸಲಾಗುತ್ತಿದೆ…"
+system.switching_cloud: "ಕ್ಲೌಡ್ ಮಾದರಿ %{model} ಗೆ ಬದಲಾಯಿಸಲಾಗುತ್ತಿದೆ — ಮರುಸಂಪರ್ಕಿಸಲಾಗುತ್ತಿದೆ…"

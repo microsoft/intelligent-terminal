@@ -210,7 +210,15 @@ system.choice_execution_failed: "Voľba %{choice} zlyhala: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
 model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Lokálne"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "používa technológiu Foundry Local"
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
 system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}
 system.model_pinned: "Táto tabla je pripnutá k lokálnemu modelu pomocou COPILOT_MODEL. Ak chcete prepnúť, zmeňte premennú prostredia COPILOT_MODEL a reštartujte."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Prepína sa na lokálny model %{model} — znova sa pripája…"
+system.switching_cloud: "Prepína sa na cloudový model %{model} — znova sa pripája…"

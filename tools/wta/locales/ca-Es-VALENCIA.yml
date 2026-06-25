@@ -212,7 +212,15 @@ system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Trieu el model per a este panell (/model <id> per a canviar directament)"  # {Locked="/model","<id>"}
 model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Núvol"
+model_picker.local_tag: "Local"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "amb tecnologia de Foundry Local"
 system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
 system.model_set: "El model d’este panell s’ha establit a %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model desconegut %{model} — escriviu /model per a vore la llista disponible."  # {Locked="%{model}","/model"}
 system.model_pinned: "Aquest tauler està fixat a un model local mitjançant COPILOT_MODEL. Per canviar-lo, modifiqueu la variable d'entorn COPILOT_MODEL i reinicieu."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Canviant al model local %{model} — tornant a connectar…"
+system.switching_cloud: "Canviant al model al núvol %{model} — tornant a connectar…"

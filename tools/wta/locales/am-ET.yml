@@ -211,7 +211,15 @@ system.choice_execution_failed: "ምርጫ %{choice} አልተሳካም፦ %{err
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ለዚህ ፓነል ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /model <id>)"  # {Locked="/model","<id>"}
 model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "ደመና"
+model_picker.local_tag: "አካባቢያዊ"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "በFoundry Local የተጎላበተ"
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
 system.model_pinned: "ይህ ክፍል በ COPILOT_MODEL አማካኝነት ወደ አካባቢያዊ ሞዴል ተሰክቷል። ለመቀየር የ COPILOT_MODEL የአካባቢ ተለዋዋጭ ይቀይሩ እና እንደገና ያስጀምሩ።"  # {Locked="COPILOT_MODEL"}
+system.switching_local: "ወደ አካባቢያዊ ሞዴል %{model} በመቀየር ላይ — እንደገና በመገናኘት ላይ…"
+system.switching_cloud: "ወደ ደመና ሞዴል %{model} በመቀየር ላይ — እንደገና በመገናኘት ላይ…"

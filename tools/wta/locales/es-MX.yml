@@ -210,7 +210,15 @@ system.choice_execution_failed: "Error en la opción %{choice}: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Elige el modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Nube"
+model_picker.local_tag: "Local"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "con tecnología de Foundry Local"
 system.no_models: "El agente conectado no anunció ningún modelo seleccionable."
 system.model_set: "El modelo para este panel se estableció en %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modelo desconocido %{model} — escribe /model para ver la lista disponible."  # {Locked="%{model}","/model"}
 system.model_pinned: "Este panel está fijado a un modelo local mediante COPILOT_MODEL. Cambia la variable de entorno COPILOT_MODEL y reinicia para cambiar."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Cambiando al modelo local %{model} — reconectando…"
+system.switching_cloud: "Cambiando al modelo en la nube %{model} — reconectando…"

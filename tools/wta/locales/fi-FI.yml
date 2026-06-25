@@ -210,7 +210,15 @@ system.choice_execution_failed: "Valinta %{choice} epäonnistui: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valitse tämän paneelin malli (/model <id> vaihtaaksesi suoraan)"  # {Locked="/model","<id>"}
 model_picker.title: "Valitse malli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Pilvi"
+model_picker.local_tag: "Paikallinen"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "käyttää Foundry Localia"
 system.no_models: "Yhdistetty agentti ei ilmoittanut yhtään valittavissa olevaa mallia."
 system.model_set: "Tämän paneelin malliksi asetettiin %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}
 system.model_pinned: "Tämä ruutu on kiinnitetty paikalliseen malliin COPILOT_MODEL-muuttujalla. Vaihtaaksesi muuta COPILOT_MODEL-ympäristömuuttujaa ja käynnistä uudelleen."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Vaihdetaan paikalliseen malliin %{model} — yhdistetään uudelleen…"
+system.switching_cloud: "Vaihdetaan pilvimalliin %{model} — yhdistetään uudelleen…"

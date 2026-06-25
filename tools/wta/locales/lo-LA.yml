@@ -210,7 +210,15 @@ system.choice_execution_failed: "ຕົວເລືອກ %{choice} ລົ້ມ
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ເລືອກແບບຈຳລອງສຳລັບ pane ນີ້ (/model <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/model","<id>"}
 model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "ຄລາວ"
+model_picker.local_tag: "ທ້ອງຖິ່ນ"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "ຂັບເຄື່ອນໂດຍ Foundry Local"
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."
 system.model_set: "ແບບຈຳລອງສຳລັບ pane ນີ້ຖືກຕັ້ງເປັນ %{model}."  # {Locked="%{model}"}
 system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{model} — ພິມ /model ເພື່ອເບິ່ງລາຍການທີ່ມີ."  # {Locked="%{model}","/model"}
 system.model_pinned: "ແຜງນີ້ຖືກປັກໝຸດໄວ້ກັບໂມເດລໃນເຄື່ອງໂດຍ COPILOT_MODEL. ເພື່ອສະຫຼັບ, ປ່ຽນຕົວແປສະພາບແວດລ້ອມ COPILOT_MODEL ແລະ ເລີ່ມຕົ້ນໃໝ່."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "ກຳລັງສະຫຼັບໄປຫາໂມເດວພາຍໃນ %{model} — ກຳລັງເຊື່ອມຕໍ່ໃໝ່…"
+system.switching_cloud: "ກຳລັງສະຫຼັບໄປຫາໂມເດວຄລາວດ໌ %{model} — ກຳລັງເຊື່ອມຕໍ່ໃໝ່…"

@@ -47,8 +47,20 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
         .map(|m| {
             let is_current = state.current_id == Some(m.id.as_str());
             let marker = if is_current { CURRENT_MARKER } else { CURRENT_PAD };
+            // Tag each row with its inference backend (Cloud / Local) so the
+            // aggregated list is unambiguous at a glance.
+            let (tag, tag_style) = match m.kind {
+                crate::agent::ModelKind::Local => {
+                    (t!("model_picker.local_tag").into_owned(), theme::SELECTED)
+                }
+                crate::agent::ModelKind::Cloud => {
+                    (t!("model_picker.cloud_tag").into_owned(), theme::DIM)
+                }
+            };
             let mut spans = vec![
-                Span::styled(format!(" {}{}", marker, m.name), theme::INPUT_TEXT),
+                Span::styled(format!(" {}", marker), theme::INPUT_TEXT),
+                Span::styled(format!("[{}] ", tag), tag_style),
+                Span::styled(m.name.clone(), theme::INPUT_TEXT),
             ];
             // Show the raw id when it differs from the display name, plus the
             // optional one-line description, both dimmed.
@@ -62,8 +74,23 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
         })
         .collect();
 
+    // When any local (BYOK) model is present, brand the picker accordingly.
+    let has_local = state
+        .models
+        .iter()
+        .any(|m| matches!(m.kind, crate::agent::ModelKind::Local));
+    let title = if has_local {
+        format!(
+            "{} — {}",
+            t!("model_picker.title"),
+            t!("model_picker.local_provider")
+        )
+    } else {
+        t!("model_picker.title").into_owned()
+    };
+
     let list = List::new(items)
-        .block(popup::block(t!("model_picker.title").into_owned()))
+        .block(popup::block(title))
         .highlight_style(theme::SELECTED)
         .highlight_symbol("> ");
 

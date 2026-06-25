@@ -209,7 +209,15 @@ system.choice_execution_failed: "Theip ar rogha %{choice}: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}
 model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Néal"
+model_picker.local_tag: "Áitiúil"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "á chumhachtú ag Foundry Local"
 system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
 system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}
 system.model_pinned: "Tá an pána seo pinneáilte le samhail áitiúil ag COPILOT_MODEL. Chun athrú, athraigh an athróg timpeallachta COPILOT_MODEL agus atosaigh."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Ag athrú chuig samhail áitiúil %{model} — ag athcheangal…"
+system.switching_cloud: "Ag athrú chuig samhail néil %{model} — ag athcheangal…"

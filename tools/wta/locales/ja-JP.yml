@@ -205,7 +205,15 @@ system.choice_execution_failed: "選択肢 %{choice} が失敗しました: %{er
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}
 model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "クラウド"
+model_picker.local_tag: "ローカル"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "Foundry Local によって提供"
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}
 system.model_pinned: "このペインは COPILOT_MODEL によってローカル モデルに固定されています。切り替えるには COPILOT_MODEL 環境変数を変更して再起動してください。"  # {Locked="COPILOT_MODEL"}
+system.switching_local: "ローカル モデル %{model} に切り替えています — 再接続しています…"
+system.switching_cloud: "クラウド モデル %{model} に切り替えています — 再接続しています…"

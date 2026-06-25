@@ -210,7 +210,15 @@ system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Awan"
+model_picker.local_tag: "Setempat"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "dikuasakan oleh Foundry Local"
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}
 system.model_pinned: "Anak tetingkap ini disematkan pada model setempat oleh COPILOT_MODEL. Untuk bertukar, ubah pemboleh ubah persekitaran COPILOT_MODEL dan mulakan semula."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Bertukar kepada model setempat %{model} — menyambung semula…"
+system.switching_cloud: "Bertukar kepada model awan %{model} — menyambung semula…"

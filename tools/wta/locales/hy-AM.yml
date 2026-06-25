@@ -228,7 +228,15 @@ system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվ
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Ամպային"
+model_picker.local_tag: "Տեղական"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "աշխատում է Foundry Local-ի միջոցով"
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}
 system.model_pinned: "Այս վահանակը COPILOT_MODEL-ի միջոցով ամրացված է տեղային մոդելին։ Փոխելու համար փոխեք COPILOT_MODEL միջավայրի փոփոխականը և վերագործարկեք։"  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Անցում տեղական %{model} մոդելին — կրկին միացվում է…"
+system.switching_cloud: "Անցում ամպային %{model} մոդելին — կրկին միացվում է…"

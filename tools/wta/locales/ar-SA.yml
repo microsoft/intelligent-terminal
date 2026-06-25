@@ -212,7 +212,15 @@ system.choice_execution_failed: "فشل الاختيار %{choice}: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}
 model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "سحابة"
+model_picker.local_tag: "محلي"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "مشغّل بواسطة Foundry Local"
 system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
 system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}
 system.model_pinned: "تم تثبيت هذا الجزء على نموذج محلي بواسطة COPILOT_MODEL. لتبديله، غيّر متغيّر البيئة COPILOT_MODEL وأعد التشغيل."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "جارٍ التبديل إلى النموذج المحلي %{model} — جارٍ إعادة الاتصال…"
+system.switching_cloud: "جارٍ التبديل إلى نموذج السحابة %{model} — جارٍ إعادة الاتصال…"

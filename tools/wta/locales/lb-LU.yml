@@ -210,7 +210,15 @@ system.choice_execution_failed: "Wiel %{choice} ass feelgeschloen: %{error}"
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}
 model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
+# Tags marking which inference backend serves each model in the picker list.
+model_picker.cloud_tag: "Cloud"
+model_picker.local_tag: "Lokal"
+# Subtitle appended to the picker when local (BYOK) models are present.
+# {Locked="Foundry Local"} - product name, do not translate.
+model_picker.local_provider: "ugedriwwe vu Foundry Local"
 system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
 system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}
 system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}
 system.model_pinned: "Dëse Beräich ass duerch COPILOT_MODEL op e lokaalt Modell fixéiert. Fir ze wiesselen, ännert d'Ëmweltvariabel COPILOT_MODEL a start nei."  # {Locked="COPILOT_MODEL"}
+system.switching_local: "Wiessel op lokale Modell %{model} — Verbindung gëtt nei opgebaut…"
+system.switching_cloud: "Wiessel op Cloud-Modell %{model} — Verbindung gëtt nei opgebaut…"
