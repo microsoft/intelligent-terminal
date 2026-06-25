@@ -52,10 +52,19 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
         # protocol surface keeps responding.
         $tab = New-WtTab -App $script:app -Command 'cmd.exe' -Title 'no-shellint'
         try {
+            # Run the bad command, then on a SEPARATE line echo the errorlevel. cmd expands
+            # %errorlevel% at PARSE time, so a single-line `badcmd & echo %errorlevel%` captures the
+            # OLD value (0) — the echo must be its own command to see the failure's 9009.
             Send-WtInput -App $script:app -SessionId $tab.session_id -Text "nonexistentcmd$(Get-Random)"
             Send-WtKeys -App $script:app -SessionId $tab.session_id -Keys @('Enter')
-            # The failing command's error is shown in the pane (cmd reports the missing command).
-            Assert-Pane -App $script:app -SessionId $tab.session_id -Match "not recognized|cannot find|is not recognized|nonexistentcmd" -TimeoutSec 12
+            Send-WtInput -App $script:app -SessionId $tab.session_id -Text 'echo ITERR=%errorlevel%'
+            Send-WtKeys -App $script:app -SessionId $tab.session_id -Keys @('Enter')
+            # cmd sets errorlevel 9009 for an unrecognized command, so the pane prints "ITERR=9009".
+            # Asserting that is deterministic AND locale-robust — unlike the localized "not
+            # recognized" text, and unlike the command name (which the echoed input line contains
+            # even if nothing ran). The echoed line shows "%errorlevel%" literally; only the
+            # expanded OUTPUT is "ITERR=9009", so this also proves Enter actually executed it.
+            Assert-Pane -App $script:app -SessionId $tab.session_id -Match 'ITERR=9009' -TimeoutSec 12
             # The protocol surface is still alive and the WT process did not crash.
             { Invoke-WtCli -App $script:app -Arguments @('list-panes') } | Should -Not -Throw
             (Get-Process -Id $script:app.Pid -ErrorAction SilentlyContinue) | Should -Not -BeNullOrEmpty
