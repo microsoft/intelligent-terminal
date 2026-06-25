@@ -37,7 +37,9 @@
     'PowerShell shell integration installed' = 'PowerShell shell integration emits'
 
     # §4 session view / focus
-    'Shift+Enter behavior works'        = 'Shift\+Enter on a live session row'
+    # NOTE: 'Shift+Enter behavior works' is NOT E2E-mapped — its contract (Live row Shift+Enter ->
+    # FocusPane) is deterministically covered by the Rust unit test
+    # shift_enter_on_class_a_live_row_focuses; focus-pane semantics aren't stably observable in E2E.
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'

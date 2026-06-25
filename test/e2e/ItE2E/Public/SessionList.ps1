@@ -8,16 +8,24 @@ function Open-SessionList {
     .SYNOPSIS
         Open the session-management view in the agent pane (via SessionToggleButton) and
         wait until the list renders. Returns the agent pane session object.
+    .NOTES
+        SessionToggleButton is a TOGGLE: if the view is already open (or a click lands during a
+        transition) a single press can CLOSE it, leaving us in chat view. So we verify the list
+        actually rendered and re-toggle up to a few times instead of trusting one click.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 20)
     process {
         Open-AgentPane -App $App | Out-Null
         $sess = Get-AgentPaneSession -App $App
-        Invoke-UiElement -App $App -Selector 'SessionToggleButton' -TimeoutSec 10 | Out-Null
-        Wait-Until -TimeoutSec $TimeoutSec -Because "the session list to render" -Condition {
-            (Get-AgentPaneText -App $App -MaxLines 50) -match 'to launch session|to exit|No sessions|navigate'
-        } | Out-Null
-        $sess
+        $shownNow = { (Get-AgentPaneText -App $App -MaxLines 50) -match 'to launch session|to exit|No sessions|navigate' }
+        $perTry = [Math]::Max(3, [int]($TimeoutSec / 3))
+        for ($try = 0; $try -lt 3; $try++) {
+            # Already open? Don't toggle (that would CLOSE it). Otherwise press and verify.
+            if (& $shownNow) { return $sess }
+            Invoke-UiElement -App $App -Selector 'SessionToggleButton' -TimeoutSec 10 | Out-Null
+            if (Test-Until -TimeoutSec $perTry -IntervalSec 0.5 -Condition $shownNow) { return $sess }
+        }
+        throw "Open-SessionList: the session view did not render after 3 toggles (${TimeoutSec}s)."
     }
 }
 

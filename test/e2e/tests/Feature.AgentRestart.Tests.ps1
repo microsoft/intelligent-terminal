@@ -1,11 +1,18 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist: remaining tractable items — agent restart after settings change,
-# Shift+Enter (focus) on a live session row.
+# Release checklist: agent restart after a settings change (/restart reconnects and answers).
 #   Invoke-Pester test/e2e/tests -Tag Feature
+#
+# NOTE: the former "Shift+Enter on a live session row" case was removed. Its premise was wrong —
+# it asserted the session view dismisses back to chat, but Shift+Enter on a Live row dispatches
+# FocusPane (wtcli focus-pane → move WT focus to that session's pane); it does NOT close the
+# view. That contract is covered deterministically by the Rust unit test
+# `shift_enter_on_class_a_live_row_focuses` (tools/wta/src/app.rs). The focus-pane semantics
+# aren't stably observable from E2E here (the MVP picker shows only Class B shell sessions, whose
+# panes are typically already closed → Focus returns NotFound), so E2E adds no reliable signal.
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
-Describe 'Feature: agent restart + session focus' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: agent restart' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
@@ -30,24 +37,5 @@ Describe 'Feature: agent restart + session focus' -Tag 'Feature' -Skip:(-not $sc
         Wait-AgentReady -App $script:app -TimeoutSec 90 | Should -BeTrue -Because 'the agent must be ready again after /restart before sending a prompt'
         Send-AgentPrompt -App $script:app -Text 'What is 6 plus 6? Reply with only the number.' | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern '\b12\b' -TimeoutSec 50
-    }
-
-    It 'Shift+Enter on a live session row focuses it (real Shift+Enter via win32-input-mode)' {
-        # A live session already exists from the restart test. Send a REAL Shift+Enter (not a
-        # plain-Enter substitute): the win32-input-mode sequence delivers KeyCode::Enter +
-        # KeyModifiers::SHIFT to the helper's ratatui app (app.rs). On a Live row Shift is a
-        # safety alias for Enter (Focus), so the session view dismisses back to chat.
-        Open-SessionList -App $script:app | Out-Null
-        if (-not (Get-SessionListSelection -App $script:app)) {
-            Set-ItResult -Skipped -Because 'no selectable session row in the list this run'; return
-        }
-        # The raw keystroke injection can be dropped under load, so retry while polling for
-        # the view to dismiss (only re-send while it is still showing).
-        $backToChat = $false
-        for ($i = 0; $i -lt 3 -and -not $backToChat; $i++) {
-            Send-AgentShiftEnter -App $script:app | Out-Null
-            $backToChat = Test-Until -TimeoutSec 8 -Condition { -not (Test-SessionListShown -App $script:app -TimeoutSec 1) }
-        }
-        $backToChat | Should -BeTrue
     }
 }

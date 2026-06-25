@@ -19,14 +19,14 @@ environment. Current status (run on the Store package):
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 13 |
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
-| `Feature.AgentRestart.Tests.ps1` | agent restart after settings change, Shift+Enter focus | 2 |
+| `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure) + non-integrated cmd.exe safety | 3 |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
 | `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
 **Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
-**Test status: 90 feature cases pass + 2 documented skips** (`wta sessions list` is
+**Test status: 89 feature cases pass + 2 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
 cases plus the deterministic settings/persistence assertions. Remaining
 environment-dependent items are tracked and auto-skipped when their prerequisite is absent:

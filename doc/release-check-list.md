@@ -230,7 +230,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Restore old agent-pane session:** Supported agent-pane sessions resume through agent-pane/session-load path when enabled. _(UT: `ResumeInAgentPane` decision.)_
 - [ ] `[UT✓]` `[E2E]` **Unsupported restore is clear:** Unknown CLI, missing resume support, or missing on-disk session shows a clear not-resumable message. _(UT: `NotResumable` reasons.)_
 - [ ] `[UT✓]` `[E2E]` **Enter behavior works:** Enter performs the expected focus/resume action.
-- [ ] `[UT✓]` `[E2E]` **Shift+Enter behavior works:** Shift+Enter performs the alternate resume path for dead sessions and same focus path for live sessions. _(UT: `decide_enter_action` shift.)_
+- [ ] `[UT✓]` **Shift+Enter behavior works:** Shift+Enter performs the alternate resume path for dead sessions and same focus path for live sessions. _(UT: `decide_enter_action` shift + `shift_enter_on_class_a_live_row_focuses`. Not E2E: Live-row Shift+Enter dispatches FocusPane — moves WT focus to the session's pane, it does NOT dismiss the view — and the MVP picker shows only Class B shell sessions whose panes are usually already closed, so there is no stable E2E observable.)_
 
 ### Session-management scope and custom agents
 
