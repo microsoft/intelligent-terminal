@@ -90,7 +90,17 @@ function Get-WtaLocalizedTextRegex {
                     $raw = $_.Matches[0].Groups[1].Value.Trim()
                     # YAML scalar: double-quoted (ignoring a trailing # comment / Locked hint),
                     # single-quoted (with '' escaping), or a bare scalar (strip a trailing # comment).
-                    if ($raw -match '^"((?:[^"\\]|\\.)*)"') { $val = $Matches[1] }
+                    if ($raw -match '^"((?:[^"\\]|\\.)*)"') {
+                        # Unescape YAML double-quoted escapes (\" \\ \n \t \r) so the regex matches
+                        # the RENDERED text, not literal backslashes (e.g. setup.subtitle.* use \").
+                        $val = [regex]::Replace($Matches[1], '\\(.)', {
+                            param($m)
+                            switch ($m.Groups[1].Value) {
+                                'n' { "`n" } 't' { "`t" } 'r' { "`r" }
+                                default { $m.Groups[1].Value }  # \" -> " , \\ -> \ , \x -> x
+                            }
+                        })
+                    }
                     elseif ($raw -match "^'((?:[^']|'')*)'") { $val = ($Matches[1] -replace "''", "'") }
                     else { $val = ($raw -replace '\s+#.*$', '').Trim() }
                     # Drop a trailing " (…)" key-hint and "." run. Require whitespace BEFORE the
