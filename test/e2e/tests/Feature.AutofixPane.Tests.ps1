@@ -27,7 +27,7 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
-        $script:CardShown = { ((Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command|Insert in Terminal') }
+        $script:CardShown = { ((Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex)) }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
@@ -99,7 +99,7 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
                 Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
             } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Insert in Terminal' }) { $gotCard = $true; break }
+            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) { $gotCard = $true; break }
         }
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
         Send-AgentKey -App $script:app -Key Right | Out-Null
@@ -268,7 +268,7 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
                 Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
             } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command|Insert in Terminal' }) { $gotCard = $true; break }
+            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) { $gotCard = $true; break }
         }
         if (-not $gotCard) {
             Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'

@@ -109,6 +109,21 @@ function Get-WtaLocalizedTextRegex {
     $result
 }
 
+function Get-RecommendationCardRegex {
+    <#
+    .SYNOPSIS
+        Regex matching EITHER recommendation/autofix-card button label ("[ Run command ]" /
+        "Insert in Terminal"), localized across ALL bundled wta locales (en-US fallback). Used to
+        detect that a card is shown, so card-presence checks work on non-en-US machines.
+    #>
+    [CmdletBinding()] param()
+    $parts = @(
+        (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command'),
+        (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
+    ) | Where-Object { $_ }
+    if ($parts.Count) { ($parts -join '|') } else { 'Run command|Insert in Terminal' }
+}
+
 function Get-AgentConnectedPlaceholderRegex {
     <#
     .SYNOPSIS
@@ -175,8 +190,11 @@ function Wait-AgentReady {
                         # StreamReader also disposes the underlying FileStream.
                         try {
                             $fs = [System.IO.FileStream]::new($helperLog.FullName, 'Open', 'Read', 'ReadWrite')
-                            $sr = [System.IO.StreamReader]::new($fs)
-                            try { $log = $sr.ReadToEnd() } finally { $sr.Dispose() }
+                            try {
+                                $sr = [System.IO.StreamReader]::new($fs)
+                                try { $log = $sr.ReadToEnd() } finally { $sr.Dispose() }
+                            }
+                            finally { $fs.Dispose() }  # also disposes $fs if the StreamReader ctor threw
                         }
                         catch { $log = '' }
                     }
