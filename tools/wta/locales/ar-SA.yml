@@ -58,6 +58,8 @@ chat.turn_executed: "→ تم التنفيذ: %{title}"
 input.placeholder.connected: "اسأل أي شيء، / للأوامر.."  # {Locked="/"}
 input.placeholder.connecting: "جارٍ الاتصال..."
 input.placeholder.disconnected: "غير متصل"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 الصور: %{items}"  # {Locked="📎","%{items}"}
 
 # ── نافذة الأوامر المنبثقة (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - بادئة أمر الشرطة المائلة، يجب أن تبقى ASCII
@@ -118,8 +120,8 @@ agent.custom.auth_hint: "تأكد من أن %{name} مثبّت وموجود في
 
 # ── عرض عوامل الذكاء الاصطناعي (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "جارٍ التحميل..."
-# {Locked="Enter","Esc","↑","↓"} - مجموعات المفاتيح، لا تترجمها
-agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة • Esc للخروج)"
+# {Locked="Enter","Esc","F5","↑","↓"} - مجموعات المفاتيح، لا تترجمها
+agents.footer_hint: "(↑ ↓ للتنقل • Enter لبدء جلسة • Esc للخروج • F5 للتحديث)"
 agents.status.active: "نشط"
 agents.status.waiting_for_input: "في انتظار الإدخال"
 agents.status.error: "خطأ"
@@ -143,6 +145,10 @@ system.stopped_max_tokens: "تم اقتطاع الرد بعد بلوغ حد إخ
 system.stopped_max_turn_requests: "توقف الوكيل بعد بلوغ حد الطلبات لهذه الجولة."
 system.stopped_refusal: "رفض الوكيل متابعة هذا الطلب."
 system.agent_busy: "العامل مشغول في علامة التبويب هذه — انتظر حتى ينتهي الطلب الحالي."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "لا توجد صورة في الحافظة للصقها."
+system.image_not_supported: "عامل الذكاء الاصطناعي هذا لا يدعم إدخال الصور."
+system.image_pasted: "تم إرفاق الصورة (%{label}). اضغط Enter للإرسال."  # {Locked="%{label}","Enter"}
 system.resuming_session: "جارٍ استئناف الجلسة %{session_id}..."
 system.unknown_command: "أمر غير معروف \"%{command}\" — تم إرساله كطلب. اكتب /help لعرض القائمة."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "انتظر حتى ينتهي الطلب الحالي، أو استخدم /stop أولًا."  # {Locked="/stop"} — slash-command name.

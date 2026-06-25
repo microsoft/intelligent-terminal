@@ -1133,6 +1133,11 @@ pub enum AppEvent {
         /// error before opening a new tab when the agent can't
         /// rehydrate ACP sessions.
         load_session_supported: bool,
+        /// Whether the agent advertised the `image` prompt capability
+        /// (`promptCapabilities.image`) in its initialize response. Gates the
+        /// Alt+V image-paste handler so the user gets a clear message instead
+        /// of silently sending an image the agent will reject.
+        image_supported: bool,
     },
     /// A new ACP session has been created and bound to a tab. Carries the
     /// per-tab model list (each ACP session can advertise its own).
@@ -1516,6 +1521,11 @@ pub struct TabSession {
     // cursor, and slash-command popup across switches.
     pub input: String,
     pub cursor_pos: usize,
+    /// Images captured from the clipboard via Alt+V, waiting to be sent with
+    /// the next prompt. Rendered as `[image #N]` chips above the input; drained
+    /// into the `PromptSubmission` on Enter and cleared after submit, and on
+    /// `/clear` / `/new` / session reset via `clear_chat_history`.
+    pub pending_images: Vec<crate::clipboard_image::PastedImage>,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
@@ -1661,6 +1671,9 @@ impl TabSession {
         self.selection_visible_pending = false;
         self.turn = TurnState::Idle;
         self.clear_recommendations();
+        // Drop any clipboard image queued but not yet sent — a wiped/fresh
+        // conversation must not carry a stale attachment into the next prompt.
+        self.pending_images.clear();
     }
 
     /// Flush pending user/agent replay buffers at a turn boundary during
@@ -2054,6 +2067,10 @@ pub struct App {
     /// with a clear error before opening a new tab when the agent
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
+    /// Whether the connected ACP agent advertised the `image` prompt
+    /// capability (`promptCapabilities.image`). Gates the Alt+V image-paste
+    /// handler. Set on `AgentConnected`.
+    pub agent_supports_image: bool,
     /// Origin filter for the `/sessions` picker. Captured once at
     /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
     /// stable for the lifetime of this helper process. Read by
@@ -2161,6 +2178,17 @@ pub struct AgentsViewState {
     pub dirty: bool,
     pub next_request_id: u64,
     pub latest_request_id: Option<u64>,
+    /// Set by F5 in the session view to request a master-side disk re-scan
+    /// (`load_for_cli`) on the next dispatched `sessions/list`. Sticky across
+    /// in-flight coalescing: only cleared when a request is actually built, so
+    /// an F5 pressed while a poll is in flight still rescans on the trailing
+    /// refetch. Reset on view close.
+    pub pending_rescan: bool,
+    /// True while an F5 rescan request is in flight (set when dispatched,
+    /// cleared when the response/failure lands). Drives the loading shimmer for
+    /// the whole refresh so F5 has visible feedback even when the list already
+    /// has rows — a normal 5s poll leaves it false and never flashes loading.
+    pub rescan_in_flight: bool,
 }
 
 // (Historical-session load-state tracking was removed: the helper no longer
@@ -2285,6 +2313,7 @@ impl App {
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             agent_supports_load_session: false,
+            agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
             install_request_tx: None,
             agent_event_tx: None,
@@ -3574,6 +3603,8 @@ impl App {
         tab.agents_view.refetch_in_flight = false;
         tab.agents_view.dirty = false;
         tab.agents_view.focused_sid = None;
+        tab.agents_view.pending_rescan = false;
+        tab.agents_view.rescan_in_flight = false;
         tab.agents_view_prev_pane_open = None;
     }
 
@@ -3592,7 +3623,15 @@ impl App {
             tab.agents_view.next_request_id = tab.agents_view.next_request_id.wrapping_add(1);
             let request_id = tab.agents_view.next_request_id;
             tab.agents_view.latest_request_id = Some(request_id);
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id }
+            // Consume the sticky F5 rescan intent only when we actually build a
+            // request; if we coalesced (in-flight) above, it stays set so the
+            // trailing refetch carries it.
+            let rescan = std::mem::take(&mut tab.agents_view.pending_rescan);
+            // Mirror onto rescan_in_flight so the loading shimmer shows for the
+            // whole F5 refresh (a normal poll keeps this false). Cleared when
+            // the response / failure lands.
+            tab.agents_view.rescan_in_flight = rescan;
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, rescan }
         };
         let _ = self.master_request_tx.send(request);
     }
@@ -3633,6 +3672,7 @@ impl App {
                 } else {
                     tab.agents_view.snapshot = Some(sessions.clone());
                     tab.agents_view.refetch_in_flight = false;
+                    tab.agents_view.rescan_in_flight = false;
                     let dirty = tab.agents_view.dirty;
                     tab.agents_view.dirty = false;
                     dirty
@@ -3669,6 +3709,7 @@ impl App {
                     false
                 } else {
                     tab.agents_view.refetch_in_flight = false;
+                    tab.agents_view.rescan_in_flight = false;
                     let dirty = tab.agents_view.dirty;
                     tab.agents_view.dirty = false;
                     dirty
@@ -4607,6 +4648,7 @@ impl App {
                 available_models,
                 current_model_id,
                 load_session_supported,
+                image_supported,
             } => {
                 self.agent_name = name;
                 self.agent_model = model;
@@ -4615,6 +4657,7 @@ impl App {
                 self.available_models = available_models.clone();
                 self.current_model_id = current_model_id.clone();
                 self.agent_supports_load_session = load_session_supported;
+                self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
                 // A successful connect resolves any in-flight auth recovery:
                 // bump the generation so a still-pending dead-man timer becomes
@@ -6673,6 +6716,16 @@ impl App {
                     }
                     self.project_active_tab_state();
                 }
+                KeyCode::F(5) => {
+                    // Refresh: ask master to re-scan the on-disk historical
+                    // session logs (load_for_cli) like the startup seed, then
+                    // re-list. The sticky pending_rescan flag is consumed when
+                    // schedule actually dispatches, so it survives in-flight
+                    // coalescing.
+                    let tab_id = self.active_tab_key().to_string();
+                    self.tab_mut(&tab_id).agents_view.pending_rescan = true;
+                    self.schedule_agents_refetch_for_tab(&tab_id);
+                }
                 _ => {}
             }
             return;
@@ -7041,7 +7094,8 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if !self.current_tab().input.is_empty()
+                if (!self.current_tab().input.is_empty()
+                    || !self.current_tab().pending_images.is_empty())
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -7056,6 +7110,8 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     let text = std::mem::take(&mut tab.input);
+                    // Drain any Alt+V images queued for this prompt.
+                    let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
                     tab.refresh_command_popup();
                     // `session_id` may be None on a brand-new tab whose ACP
@@ -7077,7 +7133,27 @@ impl App {
                         cwd: None,
                         source_pane_id: None,
                     };
-                    let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+                    // The echoed user message shows a marker for each queued
+                    // image; the ACP text block stays raw (the image rides as a
+                    // separate ContentBlock::Image).
+                    let display_text = if images.is_empty() {
+                        text.clone()
+                    } else {
+                        let items = images
+                            .iter()
+                            .enumerate()
+                            .map(|(i, im)| format!("[{}] {}", i + 1, im.label))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let marker = t!("input.image_attachments", items = items).into_owned();
+                        if text.is_empty() {
+                            marker
+                        } else {
+                            format!("{text}\n{marker}")
+                        }
+                    };
+                    let prompt =
+                        PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,
@@ -7090,7 +7166,7 @@ impl App {
                     }
                     let submitted = SubmittedPrompt {
                         id: prompt.id,
-                        text: text.clone(),
+                        text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
                         autofix: None,
                     };
@@ -7137,6 +7213,11 @@ impl App {
             KeyCode::PageDown => {
                 self.current_tab_mut().chat_scroll.by(-10);
             }
+            KeyCode::Char('v') | KeyCode::Char('V')
+                if key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.handle_paste_image();
+            }
             KeyCode::Char(c) => {
                 // Only type into the input when it is the live caret target.
                 // When a recommendation/permission card or a past turn is
@@ -7156,22 +7237,61 @@ impl App {
         self.current_tab_mut().scroll_to_bottom();
     }
 
-    /// True while the open agents view is waiting on its first `session/list`
-    /// reply from master — the placeholder snapshot is still the empty Vec
-    /// primed by `open_agents_view_for_tab` and a refetch is in flight. Drives
-    /// the loading-shimmer animation while the first snapshot is in flight.
+    /// Alt+V: capture an image from the Windows clipboard and queue it to send
+    /// with the next prompt. Gated on the input being the live caret target and
+    /// on the agent advertising the `image` prompt capability — otherwise the
+    /// user gets a clear system message instead of a silently-rejected image.
+    fn handle_paste_image(&mut self) {
+        if !self.current_tab().input_has_nav_focus() {
+            return;
+        }
+        if !self.agent_supports_image {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.image_not_supported").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        match crate::clipboard_image::read_clipboard_image() {
+            Some(image) => {
+                let label = image.label.clone();
+                let tab = self.current_tab_mut();
+                tab.pending_images.push(image);
+                tab.messages.push(ChatMessage::System(
+                    t!("system.image_pasted", label = label).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.image_clipboard_empty").into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    /// True while the open agents view should show the loading shimmer: either
+    /// waiting on its first `session/list` reply from master (empty placeholder
+    /// snapshot + refetch in flight) or while an F5 rescan is in flight. Drives
+    /// the shimmer animation tick so a refresh is visible.
     fn agents_view_awaiting_snapshot(&self) -> bool {
         let tab = self.current_tab();
         if tab.current_view != View::Agents {
             return false;
         }
+        // First-snapshot OR an F5 rescan; a normal 5s poll keeps
+        // rescan_in_flight false so it doesn't flash the shimmer.
         tab.agents_view.refetch_in_flight
-            && tab
+            && (tab
                 .agents_view
                 .snapshot
                 .as_deref()
                 .map(|s| s.is_empty())
                 .unwrap_or(false)
+                || tab.agents_view.rescan_in_flight)
     }
 
     fn has_activity_indicator(&self) -> bool {
@@ -11608,7 +11728,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let first_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11626,7 +11746,7 @@ mod tests {
             Some(agent_client_protocol::SessionId::new("b"));
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11659,7 +11779,7 @@ mod tests {
             app.handle_event(AppEvent::SessionsChanged);
         }
         let first_req = match master_rx.try_recv().expect("one in-flight refetch") {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11694,7 +11814,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let first_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11718,7 +11838,7 @@ mod tests {
         // Kick a second refetch and report it as failed.
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().expect("second refetch sent") {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11760,7 +11880,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let req_id = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11797,7 +11917,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let _stale = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11810,7 +11930,7 @@ mod tests {
         });
         app.handle_event(AppEvent::SessionsChanged);
         let _fresh = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11855,6 +11975,37 @@ mod tests {
         assert!(!app.agents_view_awaiting_snapshot());
     }
 
+    #[test]
+    fn agents_view_loading_shows_during_f5_rescan() {
+        let (mut app, _master_rx) = test_app_with_master_rx();
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        // First snapshot landed: rows present, fetch settled — not loading.
+        app.current_tab_mut().agents_view.snapshot = Some(vec![session_info_for_test("a")]);
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+        assert!(!app.agents_view_awaiting_snapshot(), "a settled list is not loading");
+
+        // F5 dispatches a rescan: the loading shimmer must show even though the
+        // list already has rows, so the refresh is visible.
+        app.current_tab_mut().agents_view.pending_rescan = true;
+        app.schedule_agents_refetch_for_tab(DEFAULT_TAB_ID);
+        assert!(
+            app.agents_view_awaiting_snapshot(),
+            "F5 rescan must show the loading shimmer even with rows present"
+        );
+
+        // The rescan response clears it back to the settled list.
+        let rid = app
+            .current_tab()
+            .agents_view
+            .latest_request_id
+            .expect("a request was dispatched");
+        app.handle_agents_snapshot_loaded(rid, vec![session_info_for_test("a")]);
+        assert!(
+            !app.agents_view_awaiting_snapshot(),
+            "loading clears once the rescan response lands"
+        );
+    }
+
     fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
         let mut info = crate::session_registry::SessionInfo::new(
             agent_client_protocol::SessionId::new(id),
@@ -11896,6 +12047,36 @@ mod tests {
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
         assert_eq!(cmd.session_id.as_deref(), Some("a"));
+    }
+
+    // F5 in the session-management view refetches the session list (footer
+    // hint: "F5 to refresh"). When no fetch is in flight it dispatches a
+    // fresh sessions/list request to master.
+    #[test]
+    fn f5_in_session_view_refetches_sessions() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let tab_id = app.active_tab_key().to_string();
+        app.open_agents_view_for_tab(tab_id);
+
+        // The open-time refetch must be snapshot-only (no disk rescan).
+        match master_rx.try_recv().expect("open requests sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan, .. } => {
+                assert!(!rescan, "view-open refetch must not rescan");
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
+        // Clear the in-flight flag so the F5 refetch dispatches fresh.
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+
+        match master_rx.try_recv().expect("F5 must request sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan, .. } => {
+                assert!(rescan, "F5 must request a master-side disk rescan");
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
     }
 
     // Esc out of the session-management (Agents) view restores the pane
@@ -13205,6 +13386,7 @@ mod tests {
             available_models: Vec::new(),
             current_model_id: None,
             load_session_supported: true,
+            image_supported: false,
         });
 
         assert!(
@@ -14699,7 +14881,54 @@ mod tests {
         );
     }
 
-    /// Render: a surfaced recommendation card with a `Send` action must paint
+    /// Alt+V when the agent did not advertise the `image` prompt capability
+    /// must no-op the paste and surface a clear system message rather than
+    /// queueing an image the agent would reject.
+    #[test]
+    fn alt_v_without_image_capability_shows_not_supported_message() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.agent_supports_image = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::ALT));
+
+        let want = t!("system.image_not_supported").into_owned();
+        let tab = app.current_tab();
+        assert!(
+            tab.messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::System(s) if *s == want)),
+            "Alt+V without image capability must push the not-supported message"
+        );
+        assert!(
+            tab.pending_images.is_empty(),
+            "no image should be queued when the capability is missing"
+        );
+    }
+
+    /// Render: queued Alt+V images surface as the input-box title so the user
+    /// can see what will be sent.
+    #[test]
+    fn input_box_titles_queued_images() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut()
+            .pending_images
+            .push(crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("screenshot"),
+            "the input box must title queued images; rendered:\n{text}"
+        );
+    }
+
+
     /// the action's command body (the card shows the command, not the choice
     /// `title` field, which only surfaces for action-less choices) plus the
     /// run-command button. Lifts `ui/recommendations.rs` (reached only when

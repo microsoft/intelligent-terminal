@@ -60,6 +60,9 @@ struct MockAgent {
     behavior: MockBehavior,
     /// Side-channel: every prompt's user text.
     seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: every image content block (mime, base64 data) that reached
+    /// the agent on the wire — used by the Alt+V image-paste integration test.
+    seen_images: Arc<Mutex<Vec<(String, String)>>>,
     /// Side-channel: the permission option id the client selected (or
     /// "cancelled"), for `AskPermission` runs.
     permission_outcome: Arc<Mutex<Option<String>>>,
@@ -115,6 +118,15 @@ impl acp::Agent for MockAgent {
     async fn prompt(&self, args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
         let text = first_text(&args.prompt);
         self.seen_prompts.lock().unwrap().push(text.clone());
+        let images: Vec<(String, String)> = args
+            .prompt
+            .iter()
+            .filter_map(|b| match b {
+                acp::ContentBlock::Image(img) => Some((img.mime_type.clone(), img.data.clone())),
+                _ => None,
+            })
+            .collect();
+        self.seen_images.lock().unwrap().extend(images);
         let sid = args.session_id.clone();
 
         // Spawn the turn's work on the LocalSet so the prompt response returns
@@ -300,6 +312,7 @@ fn connect_with(
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
         fail_new_session: Arc::new(AtomicBool::new(false)),
         fail_load_session: Arc::new(AtomicBool::new(false)),
@@ -486,6 +499,9 @@ pub(crate) struct DispatchHarness {
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Agent-side record of every image content block (mime, base64) assembled
+    /// onto the wire — the Alt+V image-paste assertion target.
+    pub seen_images: Arc<Mutex<Vec<(String, String)>>>,
     /// Flip to `true` before dispatching to make the mock's `new_session`
     /// fail, exercising the dispatcher's session-establishment error path.
     pub fail_new_session: Arc<AtomicBool>,
@@ -512,6 +528,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let wta = WtaClient { state };
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
+    let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
@@ -521,6 +538,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_images: seen_images.clone(),
         permission_outcome,
         fail_new_session: fail_new_session.clone(),
         fail_load_session: fail_load_session.clone(),
@@ -565,6 +583,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         shell_mgr,
         prompt_timing,
         seen_prompts,
+        seen_images,
         fail_new_session,
         fail_load_session,
         slow_load,
@@ -595,6 +614,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         pane_context: None,
         submitted_at_unix_s: 0.0,
         is_autofix,
+        images: Vec::new(),
     }
 }
 
@@ -728,9 +748,96 @@ async fn dispatch_prompt_round_trips_through_agent() {
         .await;
 }
 
-/// Error path: if the lazy `new_session` fails (agent/transport dropped during
-/// session establishment), the dispatcher must surface `AgentError`, release
-/// the single-flight slot, and never reach the prompt — not hang the turn.
+/// Full **Alt+V image paste** integration: a screenshot-shaped DIB on the live
+/// OS clipboard is captured via `read_clipboard_image` (the paste), attached to
+/// a `PromptSubmission`, and dispatched through the real `dispatch_prompt` →
+/// real ACP serialization → mock agent. Proves the captured image survives,
+/// byte-for-byte, as a `ContentBlock::Image` on the wire alongside the user's
+/// text. Skips where the session has no clipboard.
+#[cfg(windows)]
+#[tokio::test]
+async fn dispatch_prompt_sends_clipboard_image_to_agent() {
+    use crate::clipboard_image::{
+        read_clipboard_image, sample_screenshot_dib, set_clipboard_dib, CLIPBOARD_TEST_LOCK,
+    };
+
+    // Capture the screenshot off the live clipboard up front (all sync). The
+    // clipboard lock is held only for set+read, never across an `.await`.
+    let pasted = {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let dib = sample_screenshot_dib();
+        if !unsafe { set_clipboard_dib(&dib) } {
+            eprintln!(
+                "skipping dispatch_prompt_sends_clipboard_image_to_agent: clipboard unavailable"
+            );
+            return;
+        }
+        read_clipboard_image().expect("Alt+V must capture the DIB on the clipboard")
+    };
+    assert_eq!(pasted.mime_type, "image/png");
+
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+
+            // The user typed text *and* pasted an image, then pressed Enter.
+            let mut submission = test_prompt(1, "what is in this screenshot?", false);
+            submission.images = vec![pasted.clone()];
+
+            dispatch_prompt(
+                submission,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                false, // wt_connected
+                true,  // is_agent_pane
+            );
+
+            // Pump until the turn ends so the prompt has fully reached the agent.
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match event_rx.recv().await {
+                        Some(AppEvent::AgentMessageEnd { .. }) => break,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before turn end"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for turn end");
+
+            // The agent received exactly the captured image as a ContentBlock::Image.
+            let images = h.seen_images.lock().unwrap().clone();
+            assert_eq!(images.len(), 1, "exactly one image must reach the agent");
+            assert_eq!(images[0].0, "image/png", "mime type must survive the wire");
+            assert_eq!(
+                images[0].1, pasted.data_base64,
+                "the exact captured image bytes must reach the agent unmodified"
+            );
+
+            // ...and the user's text rode along in the same prompt.
+            let seen = h.seen_prompts.lock().unwrap().clone();
+            assert_eq!(seen.len(), 1);
+            assert!(
+                seen[0].contains("what is in this screenshot?"),
+                "the user's text must accompany the image"
+            );
+        })
+        .await;
+}
 #[tokio::test]
 async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
     let local = tokio::task::LocalSet::new();
@@ -1385,7 +1492,7 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
             let mut event_rx = h.event_rx;
 
             dispatch_master_ext_request(
-                MasterExtRequest::SessionsList { request_id: 7 },
+                MasterExtRequest::SessionsList { request_id: 7, rescan: false },
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,

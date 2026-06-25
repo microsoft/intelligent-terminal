@@ -253,16 +253,21 @@ born-bound rows use:
 
 Because the path is shared, a latent codex bug affected **all three origins**,
 not just the watcher: codex auto-loads `AGENTS.md` when the cwd has one and
-prepends it as a synthetic user-role record (`# AGENTS.md instructions for
-<dir>`) *before* the user's first prompt. The old scanner skipped only
-`<environment_context>`, so it titled the session with that 69-character doc
-heading instead of the prompt.
+prepends it as a synthetic user-role record headed by codex's
+`# AGENTS.md instructions` marker *before* the user's first prompt. The marker
+has two forms (codex `UserInstructions::body`): `# AGENTS.md instructions for
+<dir>` for a project `AGENTS.md` (`directory = Some`) and the bare
+`# AGENTS.md instructions` for a global `~/.codex/AGENTS.md`
+(`directory = None`). The old scanner skipped only `<environment_context>`, so
+it titled the session with that doc heading instead of the prompt.
 
 The fix is a shared `codex_user_text_is_synthetic` helper
 (`history_loader.rs`) that recognises codex's injected blocks —
 `<environment_context>`, `<user_instructions>`, `<subagent_notification>`,
-`<turn_aborted>`, and `# AGENTS.md instructions for ` — and is used by **both**
-the title scan (`codex_title_from_file`) and the phantom-session check
+`<turn_aborted>`, and the `# AGENTS.md instructions` heading in **both** its
+`for <dir>` and bare forms (matched only as a whole heading line so a real
+prompt that merely opens with the phrase isn't swallowed) — and is used by
+**both** the title scan (`codex_title_from_file`) and the phantom-session check
 (`codex_session_has_real_content`, so a never-prompted codex opened in an
 `AGENTS.md` repo is correctly treated as empty rather than surfaced with a doc
 title).

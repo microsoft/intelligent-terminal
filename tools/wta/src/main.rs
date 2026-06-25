@@ -7,6 +7,7 @@ mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;
 mod app;
+mod clipboard_image;
 mod commands;
 mod coordinator;
 mod cwd_util;
@@ -1289,7 +1290,7 @@ async fn fetch_sessions_from_master(
     );
     init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
-    let req = session_registry::build_sessions_list_request();
+    let req = session_registry::build_sessions_list_request(false);
     let resp = conn
         .ext_method(req)
         .await

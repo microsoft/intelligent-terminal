@@ -58,6 +58,7 @@ chat.turn_executed: "→ įvykdyta: %{title}"
 input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}
 input.placeholder.connecting: "jungiamasi..."
 input.placeholder.disconnected: "atjungta"
+input.image_attachments: "📎 Vaizdai: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Įsitikinkite, kad %{name} yra įdiegtas ir yra jūsų 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Įkeliama..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti • F5 atnaujinti)"
 agents.status.active: "Aktyvus"
 agents.status.waiting_for_input: "Laukia įvesties"
 agents.status.error: "Klaida"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvestie
 system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
 system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."
 system.agent_busy: "Agentas šiame skirtuke užimtas — palaukite, kol dabartinė užklausa bus baigta."
+system.image_clipboard_empty: "Iškarpinėje nėra vaizdo, kurį būtų galima įklijuoti."
+system.image_not_supported: "Šis agentas nepalaiko vaizdo įvesties."
+system.image_pasted: "Vaizdas pridėtas (%{label}). Paspauskite Enter, kad išsiųstumėte."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Tęsiamas seansas %{session_id}..."
 system.unknown_command: "Nežinoma komanda \"%{command}\" — išsiųsta kaip užklausa. Sąrašui įveskite /help."  # {Locked="/help"}
 system.busy_use_stop: "Palaukite, kol dabartinė užklausa bus baigta, arba pirmiausia naudokite /stop."  # {Locked="/stop"}

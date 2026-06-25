@@ -58,6 +58,8 @@ chat.turn_executed: "→ uitgevoer: %{title}"
 input.placeholder.connected: "Vra enigiets, / vir opdragte.."  # {Locked="/"}
 input.placeholder.connecting: "koppel tans..."
 input.placeholder.disconnected: "ontkoppel"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Beelde: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Opdrag-opspring (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - skuinsstreep-opdrag voorvoegsel, moet ASCII bly
@@ -106,8 +108,8 @@ agent.custom.auth_hint: "Maak seker %{name} is geïnstalleer en op jou PATH."  #
 
 # ── Agenteaansig (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Laai tans..."
-# {Locked="Enter","Esc","↑","↓"} - sleutelkombinasies, moenie vertaal nie
-agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie te begin • Esc om te verlaat)"
+# {Locked="Enter","Esc","F5","↑","↓"} - sleutelkombinasies, moenie vertaal nie
+agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie te begin • Esc om te verlaat • F5 om te verfris)"
 agents.status.active: "Aktief"
 agents.status.waiting_for_input: "Wag vir invoer"
 agents.status.error: "Fout"
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "Die antwoord is afgekap nadat die model se afvoerlim
 system.stopped_max_turn_requests: "Die agent het gestop nadat sy versoeklimiet vir hierdie beurt bereik is."
 system.stopped_refusal: "Die agent het geweier om met hierdie versoek voort te gaan."
 system.agent_busy: "Agent is besig op hierdie oortjie — wag totdat die huidige opdrag klaar is."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Geen beeld op die knipbord om te plak nie."
+system.image_not_supported: "Hierdie agent ondersteun nie beeldinvoer nie."
+system.image_pasted: "Beeld aangeheg (%{label}). Druk Enter om te stuur."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Hervat sessie %{session_id}..."
 system.unknown_command: "Onbekende opdrag \"%{command}\" — as opdrag gestuur. Tik /help vir die lys."
 system.busy_use_stop: "Wag totdat die huidige opdrag klaar is, of gebruik eers /stop."

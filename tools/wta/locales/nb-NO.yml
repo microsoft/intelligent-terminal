@@ -58,6 +58,7 @@ chat.turn_executed: "→ utført: %{title}"
 input.placeholder.connected: "Spør om hva som helst, / for kommandoer.."  # {Locked="/"}
 input.placeholder.connecting: "kobler til..."
 input.placeholder.disconnected: "frakoblet"
+input.image_attachments: "📎 Bilder: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laster..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte • F5 for å oppdatere)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Venter på inndata"
 agents.status.error: "Feil"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Svaret ble avkortet etter at modellens utdatagrense 
 system.stopped_max_turn_requests: "Agenten stoppet etter at forespørselsgrensen for denne runden ble nådd."
 system.stopped_refusal: "Agenten avslo å fortsette med denne forespørselen."
 system.agent_busy: "Agenten er opptatt i denne fanen — vent til gjeldende ledetekst er ferdig."
+system.image_clipboard_empty: "Det finnes ikke noe bilde på utklippstavlen å lime inn."
+system.image_not_supported: "Denne agenten støtter ikke bildeinndata."
+system.image_pasted: "Bilde vedlagt (%{label}). Trykk Enter for å sende."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Fortsetter økten %{session_id}..."
 system.unknown_command: "Ukjent kommando \"%{command}\" — sendt som ledetekst. Skriv /help for listen."
 system.busy_use_stop: "Vent til gjeldende ledetekst er ferdig, eller bruk /stop først."

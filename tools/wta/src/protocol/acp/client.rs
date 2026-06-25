@@ -90,6 +90,11 @@ pub struct PromptSubmission {
     /// as a User message (the client already shows the error line), and
     /// the planner uses it to pick the auto-fix prompt template.
     pub is_autofix: bool,
+    /// Images pasted into the input via Alt+V. Sent to the agent as ACP
+    /// `ContentBlock::Image` blocks appended after the text block (only when
+    /// the agent advertised `promptCapabilities.image`). Empty for the common
+    /// text-only and all auto-fix prompts.
+    pub images: Vec<crate::clipboard_image::PastedImage>,
 }
 
 /// User-initiated cancel of an in-flight prompt. The App emits one of
@@ -130,6 +135,10 @@ pub struct RestartRequest {
 pub enum MasterExtRequest {
     SessionsList {
         request_id: u64,
+        /// When true, master re-scans the on-disk historical session logs
+        /// (`load_for_cli`) before answering — the F5 refresh path — instead of
+        /// returning the cached registry snapshot.
+        rescan: bool,
     },
     SessionResumeDispatched {
         request_id: u64,
@@ -226,7 +235,14 @@ impl PromptSubmission {
             pane_context,
             submitted_at_unix_s: now_unix_s(),
             is_autofix,
+            images: Vec::new(),
         }
+    }
+
+    /// Attach pasted images (Alt+V) to a human-entered prompt.
+    pub fn with_images(mut self, images: Vec<crate::clipboard_image::PastedImage>) -> Self {
+        self.images = images;
+        self
     }
 
     pub fn preview(&self) -> String {
@@ -2489,9 +2505,10 @@ pub async fn run_acp_client_over_pipe(
         .and_then(|info| info.title.clone().or_else(|| Some(info.name.clone())))
         .unwrap_or_else(|| "wta-master".to_string());
     let load_session_supported = init_resp.agent_capabilities.load_session;
+    let image_supported = init_resp.agent_capabilities.prompt_capabilities.image;
     startup_probe.log(&format!(
-        "Agent capabilities (over pipe): loadSession={}",
-        load_session_supported
+        "Agent capabilities (over pipe): loadSession={} image={}",
+        load_session_supported, image_supported
     ));
     let _ = event_tx.send(AppEvent::AgentConnected {
         name: agent_name,
@@ -2503,6 +2520,7 @@ pub async fn run_acp_client_over_pipe(
         available_models,
         current_model_id,
         load_session_supported,
+        image_supported,
     });
 
     // Per-tab session cache. Only
@@ -2674,8 +2692,8 @@ fn dispatch_master_ext_request(
     let tab_to_session = Arc::clone(tab_to_session);
     tokio::task::spawn_local(async move {
         match req {
-            MasterExtRequest::SessionsList { request_id } => {
-                let wire = crate::session_registry::build_sessions_list_request();
+            MasterExtRequest::SessionsList { request_id, rescan } => {
+                let wire = crate::session_registry::build_sessions_list_request(rescan);
                 // Bound the wait so a single dropped RPC response can't
                 // permanently strand the tab's `refetch_in_flight=true`.
                 //
@@ -3261,6 +3279,24 @@ fn dispatch_rename_session(
     });
 }
 
+/// Assemble the ACP prompt content: the (already-templated) text block,
+/// followed by one `ContentBlock::Image` per pasted (Alt+V) image. Extracted
+/// so the text→Image ordering and base64/mime mapping are unit-testable
+/// without standing up a full ACP session.
+fn build_prompt_content(
+    text: &str,
+    images: &[crate::clipboard_image::PastedImage],
+) -> Vec<acp::ContentBlock> {
+    let mut content: Vec<acp::ContentBlock> = vec![text.to_string().into()];
+    for image in images {
+        content.push(acp::ContentBlock::Image(acp::ImageContent::new(
+            image.data_base64.clone(),
+            image.mime_type.clone(),
+        )));
+    }
+    content
+}
+
 fn dispatch_prompt(
     prompt: PromptSubmission,
     conn: &Arc<acp::ClientSideConnection>,
@@ -3488,9 +3524,14 @@ async fn dispatch_prompt_body(
         .unwrap()
         .insert(prompt_session_id_str.clone(), cancel_tx);
 
+    // Build the prompt content: the (templated) text block, followed by any
+    // images pasted via Alt+V as ACP `ContentBlock::Image` blocks. Images ride
+    // through master → agent CLI verbatim; the agent only receives them if it
+    // advertised `promptCapabilities.image` (the UI gates Alt+V on that flag).
+    let content = build_prompt_content(&text, &prompt.images);
     let prompt_fut = conn_task.prompt(acp::PromptRequest::new(
         prompt_session_id.clone(),
-        vec![text.into()],
+        content,
     ));
     tokio::pin!(prompt_fut);
 
@@ -4156,6 +4197,59 @@ mod tests {
     }
 
     // ── truncate / snippet / session_short ──────────────────────────────────
+
+    #[test]
+    fn build_prompt_content_text_only_is_single_text_block() {
+        let content = super::build_prompt_content("hello", &[]);
+        assert_eq!(content.len(), 1);
+        match &content[0] {
+            acp::ContentBlock::Text(t) => assert_eq!(t.text, "hello"),
+            other => panic!("expected text block, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_prompt_content_appends_image_blocks_after_text() {
+        let images = vec![
+            crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".to_string(),
+                mime_type: "image/png".to_string(),
+                label: "screenshot".to_string(),
+            },
+            crate::clipboard_image::PastedImage {
+                data_base64: "BBB=".to_string(),
+                mime_type: "image/jpeg".to_string(),
+                label: "photo.jpg".to_string(),
+            },
+        ];
+        let content = super::build_prompt_content("look at these", &images);
+        assert_eq!(content.len(), 3, "1 text + 2 image blocks");
+        assert!(matches!(content[0], acp::ContentBlock::Text(_)));
+        match (&content[1], &content[2]) {
+            (acp::ContentBlock::Image(a), acp::ContentBlock::Image(b)) => {
+                assert_eq!(a.data, "AAA=");
+                assert_eq!(a.mime_type, "image/png");
+                assert_eq!(b.data, "BBB=");
+                assert_eq!(b.mime_type, "image/jpeg");
+            }
+            other => panic!("expected two image blocks, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_prompt_content_image_only_keeps_empty_leading_text_block() {
+        // Image-only paste (no typed text) still ships a (empty) text block
+        // first so the agent's content array always leads with text.
+        let images = vec![crate::clipboard_image::PastedImage {
+            data_base64: "ZZZ=".to_string(),
+            mime_type: "image/png".to_string(),
+            label: "screenshot".to_string(),
+        }];
+        let content = super::build_prompt_content("", &images);
+        assert_eq!(content.len(), 2);
+        assert!(matches!(content[0], acp::ContentBlock::Text(_)));
+        assert!(matches!(content[1], acp::ContentBlock::Image(_)));
+    }
 
     #[test]
     fn truncate_for_prompt_appends_marker_only_when_over_budget() {

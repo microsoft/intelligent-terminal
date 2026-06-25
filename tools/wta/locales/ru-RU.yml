@@ -58,6 +58,7 @@ chat.turn_executed: "→ выполнено: %{title}"
 input.placeholder.connected: "Спросите что угодно, / для команд.."  # {Locked="/"}
 input.placeholder.connecting: "Подключение..."
 input.placeholder.disconnected: "Отключено"
+input.image_attachments: "📎 Изображения: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Всплывающее окно команд (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - префикс слеш-команды, должен оставаться ASCII
@@ -114,8 +115,8 @@ agent.custom.auth_hint: "Убедитесь, что %{name} установлен
 
 # ── Представление агентов (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Загрузка..."
-# {Locked="Enter","Esc","↑","↓"} - комбинации клавиш, не переводить
-agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс • Esc выход)"
+# {Locked="Enter","Esc","F5","↑","↓"} - комбинации клавиш, не переводить
+agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс • Esc выход • F5 обновить)"
 agents.status.active: "Активен"
 agents.status.waiting_for_input: "Ожидание ввода"
 agents.status.error: "Ошибка"
@@ -139,6 +140,9 @@ system.stopped_max_tokens: "Ответ был обрезан после дост
 system.stopped_max_turn_requests: "Агент остановился после достижения лимита запросов для этого хода."
 system.stopped_refusal: "Агент отказался продолжать выполнение этого запроса."
 system.agent_busy: "Агент занят на этой вкладке — дождитесь завершения текущего запроса."
+system.image_clipboard_empty: "В буфере обмена нет изображения для вставки."
+system.image_not_supported: "Этот агент не поддерживает ввод изображений."
+system.image_pasted: "Изображение прикреплено (%{label}). Нажмите Enter, чтобы отправить."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Возобновление сеанса %{session_id}..."
 system.unknown_command: "Неизвестная команда \"%{command}\" — отправлена как запрос. Введите /help, чтобы увидеть список."  # {Locked="/help"}
 system.busy_use_stop: "Дождитесь завершения текущего запроса или сначала используйте /stop."  # {Locked="/stop"}

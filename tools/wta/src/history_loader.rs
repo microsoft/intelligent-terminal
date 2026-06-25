@@ -103,34 +103,37 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
     }
 }
 
-/// Run the four per-CLI scanners against a specific `home` (the real
-/// user profile for host rows, or a temp `$HOME`-mirror extracted from a
-/// WSL distro). Caps each CLI at [`MAX_PER_CLI`]. Used by the WSL scan
-/// (`crate::wsl`) to reuse the host parsers verbatim over an extracted
-/// distro `$HOME`; the host path goes through [`load_for_cli`] instead.
-pub(crate) fn load_all_in(home: &Path) -> Vec<AgentSession> {
+/// Run the per-CLI scanners against a specific `home` (the real user
+/// profile for host rows, or a temp `$HOME`-mirror extracted from a WSL
+/// distro), restricted to a single CLI when `cli_filter` is `Some(known)`
+/// (see [`cli_scan_flags`]). Caps each CLI at [`MAX_PER_CLI`]. Used by the
+/// WSL scan (`crate::wsl`) to reuse the host parsers verbatim over an
+/// extracted distro `$HOME`; the host path goes through [`load_for_cli`].
+///
+/// Filtering here — *before* the parse — means a CLI the view isn't showing
+/// is never parsed, so the WSL scan doesn't pay to read + parse the other
+/// three CLIs' transcripts out of the extracted mirror just to discard them.
+pub(crate) fn load_all_in(home: &Path, cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     // The WSL temp `$HOME` has no agent-pane (Class A) sessions, so pass an
     // empty index to the production `_indexed` loaders (the bare wrappers are
     // test-only). Reuses the host parsers verbatim over the extracted distro
     // home.
     let empty = HashSet::new();
+    let (cop, cla, gem, cod) = cli_scan_flags(cli_filter);
     let mut out = Vec::new();
-    out.extend(take_n(load_copilot_indexed(home, &empty), MAX_PER_CLI));
-    out.extend(take_n(load_claude_indexed(home, &empty), MAX_PER_CLI));
-    out.extend(take_n(load_gemini_indexed(home, &empty), MAX_PER_CLI));
-    out.extend(take_n(load_codex_indexed(home, &empty), MAX_PER_CLI));
-    out
-}
-
-/// Retain only the requested CLI's WSL rows, mirroring the host-side
-/// `cli_scan_flags` behavior: a known CLI filter keeps just that CLI;
-/// `None` or a custom/unknown agent keeps all four.
-fn retain_wsl_cli(rows: &mut Vec<AgentSession>, cli_filter: Option<&CliSource>) {
-    if let Some(want) = cli_filter {
-        if !matches!(want, CliSource::Unknown(_)) {
-            rows.retain(|s| &s.cli_source == want);
-        }
+    if cop {
+        out.extend(take_n(load_copilot_indexed(home, &empty), MAX_PER_CLI));
     }
+    if cla {
+        out.extend(take_n(load_claude_indexed(home, &empty), MAX_PER_CLI));
+    }
+    if gem {
+        out.extend(take_n(load_gemini_indexed(home, &empty), MAX_PER_CLI));
+    }
+    if cod {
+        out.extend(take_n(load_codex_indexed(home, &empty), MAX_PER_CLI));
+    }
+    out
 }
 
 /// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
@@ -171,9 +174,10 @@ pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     // Stopped (non-running) distros are intentionally skipped: reading one
     // boots its WSL VM, which is too costly to do just to build a list.
     if wsl_sessions_enabled() {
-        let mut wsl_rows = crate::wsl::scan_running_distros();
-        retain_wsl_cli(&mut wsl_rows, cli_filter);
-        out.extend(wsl_rows);
+        // Filtering happens inside the parse (`load_all_in` via
+        // `cli_scan_flags`), so an unselected CLI's transcripts are never
+        // parsed out of the extracted mirror — no post-hoc retain needed.
+        out.extend(crate::wsl::scan_running_distros(cli_filter));
     }
 
     let Some(home) = home_dir() else { return out };
@@ -1115,14 +1119,18 @@ fn first_nonblank_line(raw: &str) -> String {
 ///
 /// Codex prepends/interleaves several non-prompt user-role records: XML-ish
 /// wrapper blocks (`<environment_context>`, `<user_instructions>`,
-/// `<subagent_notification>`, `<turn_aborted>`, …) and one
-/// `# AGENTS.md instructions for <dir>` block per project doc it auto-loads.
-/// These appear *before* the user's first real prompt in the rollout, so both
-/// the title scanner and the "has real content" (phantom) check must skip them
-/// — otherwise a freshly opened, never-prompted codex session is treated as
-/// real and titled with a doc heading (e.g.
-/// `# AGENTS.md instructions for C:\…\intelligent-terminal`) instead of the
-/// user's prompt. Add new codex wrapper tags to `WRAPPER_TAGS` as they appear.
+/// `<subagent_notification>`, `<turn_aborted>`, …) and the auto-loaded AGENTS.md,
+/// headed by codex's `# AGENTS.md instructions` marker. That marker comes in two
+/// forms (codex `UserInstructions::body`): `# AGENTS.md instructions for <dir>`
+/// for a project AGENTS.md (`directory = Some`) and the *bare*
+/// `# AGENTS.md instructions` for a global `~/.codex/AGENTS.md`
+/// (`directory = None`). All appear *before* the user's first real prompt in the
+/// rollout, so both the title scanner and the "has real content" (phantom) check
+/// must skip them — otherwise a freshly opened, never-prompted codex session is
+/// treated as real and titled with a doc heading (e.g.
+/// `# AGENTS.md instructions for C:\…\intelligent-terminal`, or the bare
+/// `# AGENTS.md instructions`) instead of the user's prompt. Add new codex
+/// wrapper tags to `WRAPPER_TAGS` as they appear.
 fn codex_user_text_is_synthetic(text: &str) -> bool {
     const WRAPPER_TAGS: &[&str] = &[
         "<environment_context",
@@ -1130,9 +1138,19 @@ fn codex_user_text_is_synthetic(text: &str) -> bool {
         "<subagent_notification",
         "<turn_aborted",
     ];
+    const AGENTS_MD_HEADING: &str = "# AGENTS.md instructions";
     let t = text.trim_start();
+    // Match the AGENTS.md marker only when it stands as a whole heading line so a
+    // real prompt that merely opens with the phrase mid-line isn't swallowed: the
+    // bare global form is followed by end-of-text or a newline, and the project
+    // form continues with ` for <dir>`.
     WRAPPER_TAGS.iter().any(|tag| t.starts_with(tag))
-        || t.starts_with("# AGENTS.md instructions for ")
+        || t.strip_prefix(AGENTS_MD_HEADING).is_some_and(|rest| {
+            rest.is_empty()
+                || rest.starts_with('\n')
+                || rest.starts_with('\r')
+                || rest.starts_with(" for ")
+        })
 }
 
 pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
@@ -2924,6 +2942,74 @@ mod tests {
     }
 
     #[test]
+    fn codex_user_text_is_synthetic_recognizes_bare_and_dir_headings() {
+        // Project AGENTS.md (directory=Some) -> "# AGENTS.md instructions for <dir>".
+        assert!(codex_user_text_is_synthetic(
+            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+        ));
+        // Global ~/.codex/AGENTS.md (directory=None) -> bare "# AGENTS.md instructions".
+        assert!(codex_user_text_is_synthetic(
+            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+        ));
+        // Bare heading with nothing after it, and with tolerated leading space.
+        assert!(codex_user_text_is_synthetic("# AGENTS.md instructions"));
+        assert!(codex_user_text_is_synthetic("  # AGENTS.md instructions\n"));
+        // XML-ish wrapper block.
+        assert!(codex_user_text_is_synthetic(
+            "<environment_context>cwd=C:/x</environment_context>"
+        ));
+        // A real prompt that merely opens with the phrase mid-line is NOT synthetic.
+        assert!(!codex_user_text_is_synthetic(
+            "# AGENTS.md instructions are unclear, please rewrite them"
+        ));
+        // An ordinary prompt is not synthetic.
+        assert!(!codex_user_text_is_synthetic("fix the build"));
+    }
+
+    #[test]
+    fn codex_title_skips_injected_bare_agents_md_instructions() {
+        // A GLOBAL ~/.codex/AGENTS.md makes codex emit the *bare* heading
+        // "# AGENTS.md instructions" (directory=None) before the real prompt —
+        // issue #339's still-leaking variant (the "for <dir>" form was already
+        // skipped). The real prompt must still win the title.
+        let home = tmp_root("codex-title-bare-agents-md");
+        let id = "abcdef00-6666-6666-6666-666666666666";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T16-00-00", id);
+        let agents = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
+        let real = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"fix the build\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T16:00:00Z", "C:/proj") + &agents + &real));
+        let rows = load_codex(&home);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].title, "fix the build",
+                   "bare AGENTS.md injection must be skipped; got: {:?}", rows[0].title);
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn codex_session_with_only_bare_agents_md_is_phantom() {
+        // meta + <environment_context> + *bare* AGENTS.md injection, no real user
+        // turn → phantom. Guards codex_user_text_is_synthetic on the
+        // global-AGENTS.md form via codex_session_has_real_content.
+        let home = tmp_root("codex-phantom-bare-agents-md");
+        let id = "abcdef00-7777-7777-7777-777777777777";
+        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T17-00-00", id);
+        let env = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"<environment_context>cwd=C:/proj</environment_context>\"}}]}}}}\n");
+        let agents = format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
+\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\nbody\\n</INSTRUCTIONS>\"}}]}}}}\n");
+        write_file(&path, &(codex_meta_line(id, "2026-05-28T17:00:00Z", "C:/proj") + &env + &agents));
+        assert_eq!(load_codex(&home).len(), 0,
+                   "meta + env_context + bare AGENTS.md injection alone must be phantom");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
     fn codex_key_resumable_returns_true_when_artefact_missing() {
         use crate::agent_sessions::CliSource;
         let home = tmp_root("codex-resumable-missing");
@@ -3066,45 +3152,5 @@ mod tests {
         std::env::set_var("WTA_WSL_SESSIONS", "1");
         assert!(wsl_sessions_enabled());
         std::env::remove_var("WTA_WSL_SESSIONS");
-    }
-
-    fn wsl_row(cli: CliSource) -> AgentSession {
-        AgentSession {
-            key: "k".into(),
-            cli_source: cli,
-            pane_session_id: None,
-            window_id: None,
-            tab_id: None,
-            title: "t".into(),
-            cwd: std::path::PathBuf::from("/home/u"),
-            started_at: SystemTime::UNIX_EPOCH,
-            last_activity_at: SystemTime::UNIX_EPOCH,
-            status: AgentStatus::Historical,
-            last_error: None,
-            current_tool: None,
-            attention_reason: None,
-            log_path: None,
-            origin: crate::agent_sessions::SessionOrigin::default(),
-            location: crate::agent_sessions::SessionLocation::Wsl {
-                distro: "Ubuntu".into(),
-            },
-        }
-    }
-
-    #[test]
-    fn retain_wsl_cli_keeps_known_filters_else_all() {
-        let base = || vec![wsl_row(CliSource::Copilot), wsl_row(CliSource::Claude)];
-        let mut known = base();
-        retain_wsl_cli(&mut known, Some(&CliSource::Copilot));
-        assert_eq!(known.len(), 1);
-        assert_eq!(known[0].cli_source, CliSource::Copilot);
-
-        let mut none = base();
-        retain_wsl_cli(&mut none, None);
-        assert_eq!(none.len(), 2, "None keeps all CLIs");
-
-        let mut unknown = base();
-        retain_wsl_cli(&mut unknown, Some(&CliSource::Unknown(String::new())));
-        assert_eq!(unknown.len(), 2, "Unknown (custom agent) keeps all CLIs");
     }
 }

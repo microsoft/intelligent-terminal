@@ -58,6 +58,7 @@ chat.turn_executed: "→ rinneadh: %{title}"
 input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {Locked="/"}
 input.placeholder.connecting: "ag ceangal..."
 input.placeholder.disconnected: "dícheangailte"
+input.image_attachments: "📎 Íomhánna: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Aníos orduithe (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - réimír ordú scáth, caithfidh sé fanacht ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Cinntigh go bhfuil %{name} suiteáilte agus ar do PATH.
 
 # ── Amharc gníomhairí (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Á luchtú..."
-# {Locked="Enter","Esc","↑","↓"} - teaglamaí eochracha, ná haistrigh
-agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor)"
+# {Locked="Enter","Esc","F5","↑","↓"} - teaglamaí eochracha, ná haistrigh
+agents.footer_hint: "(↑ ↓ chun nascleanúint • Enter chun seisiún a sheoladh • Esc chun scor • F5 chun athnuachan)"
 agents.status.active: "Gníomhach"
 agents.status.waiting_for_input: "Ag fanacht le hionchur"
 agents.status.error: "Earráid"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Gearradh an freagra tar éis teorainn aschuir an mh�
 system.stopped_max_turn_requests: "Stop an gníomhaire tar éis a theorainn iarratas don seal seo a bhaint amach."
 system.stopped_refusal: "Dhiúltaigh an gníomhaire leanúint ar aghaidh leis an iarratas seo."
 system.agent_busy: "Tá an gníomhaire gnóthach ar an gcluaisín seo — fan go gcríochnóidh an leid reatha."
+system.image_clipboard_empty: "Níl aon íomhá ar an ngearrthaisce le greamú."
+system.image_not_supported: "Ní thacaíonn an gníomhaire seo le hionchur íomhá."
+system.image_pasted: "Íomhá ceangailte (%{label}). Brúigh Enter chun í a sheoladh."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Seisiún %{session_id} á atosú..."
 system.unknown_command: "Ordú anaithnid \"%{command}\" — seolta mar leid. Clóscríobh /help don liosta."
 system.busy_use_stop: "Fan go gcríochnóidh an leid reatha, nó úsáid /stop ar dtús."

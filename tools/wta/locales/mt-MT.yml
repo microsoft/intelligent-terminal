@@ -58,6 +58,7 @@ chat.turn_executed: "→ ġie eżegwit: %{title}"
 input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}
 input.placeholder.connecting: "qed jikkonnettja..."
 input.placeholder.disconnected: "diskonnettjat"
+input.image_attachments: "📎 Stampi: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Popup tal-kmandati (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefiss tal-kmand slash, irid jibqa' ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Kun żgur li %{name} huwa installat u fuq il-PATH tieg�
 
 # ── Vista tal-aġenti (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Qed jitgħabba..."
-# {Locked="Enter","Esc","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
-agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ)"
+# {Locked="Enter","Esc","F5","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
+agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ • F5 biex taġġorna)"
 agents.status.active: "Attiv"
 agents.status.waiting_for_input: "Qed jistenna input"
 agents.status.error: "Żball"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal
 system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
 system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
 system.agent_busy: "L-aġent huwa okkupat fuq din it-tab — stenna sakemm jintemm il-prompt kurrenti."
+system.image_clipboard_empty: "M'hemm l-ebda stampa fil-clipboard biex tippejstja."
+system.image_not_supported: "Dan l-aġent ma jappoġġjax input ta' stampi."
+system.image_pasted: "Stampa mehmuża (%{label}). Agħfas Enter biex tibgħat."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Qed tkompli s-sessjoni %{session_id}..."
 system.unknown_command: "Kmand mhux magħruf \"%{command}\" — intbagħat bħala prompt. Ittajpja /help għal-lista."
 system.busy_use_stop: "Stenna sakemm jintemm il-prompt kurrenti, jew uża /stop l-ewwel."
