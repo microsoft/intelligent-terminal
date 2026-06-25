@@ -29,12 +29,10 @@ Describe 'Feature: agent restart' -Tag 'Feature' -Skip:(-not $script:Ready) {
         # (deterministic readiness gate, not a fixed sleep).
         Wait-AgentReady -App $script:app -TimeoutSec 90 | Should -BeTrue -Because 'the agent stack must reconnect after the settings change before driving the menu'
         Invoke-AgentMenuItem -App $script:app -Name '/restart'
-        # After restart the agent reconnects and can still answer (poll, no fixed sleep).
-        $reconnected = Test-Until -TimeoutSec 60 -IntervalSec 2 -Condition {
-            (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Ask anything|Copilot|Agent'
-        }
-        $reconnected | Should -BeTrue
-        Wait-AgentReady -App $script:app -TimeoutSec 90 | Should -BeTrue -Because 'the agent must be ready again after /restart before sending a prompt'
+        # After /restart the agent stack rebuilds; Wait-AgentReady is the deterministic
+        # reconnect-and-ready signal (the connected input placeholder), so gate on it before
+        # sending the next prompt — no fixed sleep, and locale-robust.
+        Wait-AgentReady -App $script:app -TimeoutSec 90 | Should -BeTrue -Because 'the agent must reconnect and be ready again after /restart before sending a prompt'
         Send-AgentPrompt -App $script:app -Text 'What is 6 plus 6? Reply with only the number.' | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern '\b12\b' -TimeoutSec 50
     }

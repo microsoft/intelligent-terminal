@@ -131,7 +131,7 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
                 Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
                 Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
             } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match 'Run command' }) { $gotCard = $true; break }
+            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) { $gotCard = $true; break }
         }
         if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
         Send-AgentKey -App $script:app -Key Left | Out-Null
