@@ -25,12 +25,15 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
     It 'PowerShell shell integration emits a command-finished mark on failure (OSC 133;D;<nonzero>)' {
         # The default pane runs the IT PowerShell profile with shell integration enabled, so a
         # failing command must surface an OSC 133;D mark with a non-zero exit code on the stream.
-        $sid = (Get-ActivePane -App $script:app).session_id
+        $pane = Get-ActivePane -App $script:app
+        $sid = $pane.session_id
         $listener = Start-WtEventListener -App $script:app
         try {
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command "nope$(Get-Random) status" | Out-Null
-            # Wait-WtCommandFailure matches osc:133;D;<nonzero> on the vt_sequence stream.
-            $ev = Wait-WtCommandFailure -Listener $listener -TimeoutSec 20
+            # Scope to the active pane (the event's pane_id == the pane session_id) so an unrelated
+            # OSC 133;D failure mark (e.g. from profile/startup activity in another pane) can't
+            # satisfy the assertion.
+            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $pane.session_id -TimeoutSec 20
             "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;'
         }
         finally { Stop-WtEventListener -Listener $listener }

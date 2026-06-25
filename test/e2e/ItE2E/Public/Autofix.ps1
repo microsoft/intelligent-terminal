@@ -33,14 +33,21 @@ function Wait-WtCommandFailure {
     .SYNOPSIS
         Wait for an OSC 133;D shell-integration mark with a non-zero exit code (the autofix
         trigger). Requires a listener started before the failing command.
+    .PARAMETER PaneId
+        Scope to a specific pane. The vt_sequence event's `pane_id` equals the pane's session_id
+        (= Get-ActivePane.session_id), so pass that to ignore unrelated OSC 133 marks from other
+        panes/startup. Prefer this over -TabId: the event's `tab_id` is a GUID, whereas
+        Get-ActivePane/Get-WtTabs expose tab_id as a numeric INDEX, so -TabId can't be satisfied
+        from those without a separate GUID lookup.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$Listener, [string]$TabId, [int]$TimeoutSec = 20)
+    param([Parameter(Mandatory, ValueFromPipeline)]$Listener, [string]$TabId, [string]$PaneId, [int]$TimeoutSec = 20)
     process {
         Wait-WtEvent -Listener $Listener -TimeoutSec $TimeoutSec -Predicate {
             $_.method -eq 'vt_sequence' -and
             $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)' -and
-            (-not $TabId -or "$($_.params.tab_id)" -eq "$TabId")
+            (-not $TabId -or "$($_.params.tab_id)" -eq "$TabId") -and
+            (-not $PaneId -or "$($_.params.pane_id)" -eq "$PaneId")
         }
     }
 }

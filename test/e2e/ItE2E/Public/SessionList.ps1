@@ -6,15 +6,16 @@
 function Get-SessionViewRenderRegex {
     <#
     .SYNOPSIS
-        Regex that detects the rendered session view, robust across locales. The view's footer
-        hint (agents.footer_hint) is drawn in BOTH the loading and populated branches
-        (ui/agents_view.rs render_footer_hint), so it's the reliable "view is open" signal — and
-        it's localized, so we match it across all bundled locales. Falls back to the en-US footer
-        substrings when the locale bundle isn't readable (running outside a repo checkout).
+        Regex that detects the rendered session view, robust across locales AND pane widths. The
+        view's footer hint (agents.footer_hint) is drawn in BOTH the loading and populated branches
+        (ui/agents_view.rs render_footer_hint), so it's the reliable "view is open" signal — but it
+        is end-truncated to the pane width (render_footer_hint → trunc), so the full localized line
+        may not appear. EVERY bundled locale leads the hint with the invariant nav arrows "↑ ↓"
+        (e.g. en "(↑ ↓ to navigate …)", zh "(↑ ↓ 导航 …)"), and being at the start they survive
+        truncation — so match those. The en-US footer words are an extra fallback.
     #>
     [CmdletBinding()] param()
-    $re = Get-WtaLocalizedTextRegex -Key 'agents.footer_hint'
-    if ($re) { $re } else { 'to launch session|to exit|No sessions|navigate' }
+    '↑\s*↓|to launch session|to exit|No sessions|navigate'
 }
 
 function Open-SessionList {
