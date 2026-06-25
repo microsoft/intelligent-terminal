@@ -152,11 +152,10 @@ function Start-Terminal {
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
-    .PARAMETER ColdStart Terminate any running instance of this package first so a FRESH
-                         monarch starts and re-reads state.json (required for the FRE to show;
-                         a running monarch caches ApplicationState and ignores the file).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
-                         Implies -ColdStart. COM resolution is best-effort in this mode.
+                         COM resolution is best-effort in this mode. A fresh monarch is always
+                         started (see Stop-StaleItInstances below), which is what lets the FRE
+                         re-read state.json — a running monarch caches ApplicationState.
     #>
     [CmdletBinding()]
     param(
@@ -164,7 +163,6 @@ function Start-Terminal {
         [hashtable]$Settings,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
-        [switch]$ColdStart,
         [switch]$ShowFre,
         [int]$TimeoutSec = 60
     )
@@ -178,9 +176,9 @@ function Start-Terminal {
     # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
     # CreateTab E_FAIL 0x80004005) or steal the shared per-brand COM CLSID and misroute wtcli.
     # Doing it before config write also stops a closing monarch's flush from clobbering the
-    # FRE/settings values we are about to write. This makes every launch effectively a cold
-    # start (so -ColdStart is now redundant); -ShowFre still separately controls whether the
-    # FRE overlay is left showing.
+    # FRE/settings values we are about to write. This ALWAYS enforces cold-start semantics (a
+    # fresh monarch re-reads state.json); -ShowFre separately controls whether the FRE overlay
+    # is left showing.
     Stop-StaleItInstances
 
     if ($Backup) { Backup-WtConfig -App $app }
@@ -317,7 +315,7 @@ function Start-TerminalFre {
     #>
     [CmdletBinding()]
     param([string]$Package = (Get-ItTestPackage), [int]$TimeoutSec = 60)
-    return (Start-Terminal -Package $Package -ColdStart -ShowFre -Backup $true -TimeoutSec $TimeoutSec)
+    return (Start-Terminal -Package $Package -ShowFre -Backup $true -TimeoutSec $TimeoutSec)
 }
 
 function Reset-TerminalState {
