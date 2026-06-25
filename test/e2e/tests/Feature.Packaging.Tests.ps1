@@ -31,10 +31,13 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
         @(Get-WtWindows -App $script:app).Count | Should -BeGreaterThan 0
     }
     It 'Wrong unpackaged WTA is not used (resolved binary is in the package)' {
-        # Same co-location guarantee for wtcli: it must come from the package InstallLocation
-        # (WindowsApps or the Dev layout AppX dir), not a PATH-resolved standalone build.
+        # Co-location is the guarantee: wtcli must resolve from the package InstallLocation
+        # (WindowsApps for Store, or the Dev layout AppX dir), NOT its non-packaged fallbacks —
+        # for wtcli that's a PATH-resolved standalone (Get-Command wtcli) or
+        # bin/x64/{Debug,Release}/wtcli/wtcli.exe (cli_channel.rs), none of which live under the
+        # InstallLocation. So -BeLike InstallLocation* alone fully covers it (no tools\wta\target
+        # check here — that's wta.exe's fallback, asserted in the wta.exe case above).
         $script:app.WtcliPath | Should -BeLike "$($script:app.InstallLocation)*"
-        $script:app.WtcliPath | Should -Not -Match 'tools[\\/]wta[\\/]target'
     }
     It 'WT_COM_CLSID resolves to a live server' {
         # Probing the brand CLSID succeeded during Start-Terminal; re-confirm a call works.
