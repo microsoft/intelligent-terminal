@@ -25,8 +25,10 @@
     'Automatic error suggestion on'     = 'Automatic error suggestion off/on'
     'Session-management choice persists' = 'Session management choice persists'
 
-    # §2 built-in chat: the non-Copilot agents are one consolidated matrix case now
-    'Non-Copilot agents chat works'     = 'connects and answers'
+    # §2 built-in chat: the non-Copilot agents are one consolidated matrix case now. Anchor on the
+    # "non-Copilot agent" phrase so this does NOT also match the Copilot restart test name
+    # ("/restart reconnects and answers"), which would otherwise credit this item incorrectly.
+    'Non-Copilot agents chat works'     = 'non-Copilot agent.*connects and answers'
 
     # §3 autofix (copilot)
     'Autofix with Copilot works'        = 'Visible agent pane autofix works'
