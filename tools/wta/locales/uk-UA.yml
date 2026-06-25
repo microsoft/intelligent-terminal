@@ -213,3 +213,4 @@ model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)" 
 system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
 system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}
+system.model_pinned: "Цю панель закріплено за локальною моделлю за допомогою COPILOT_MODEL. Щоб переключитися, змініть змінну середовища COPILOT_MODEL і перезапустіть."  # {Locked="COPILOT_MODEL"}

@@ -213,3 +213,4 @@ model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."
 system.model_set: "Bu panel uchun model %{model} ga oʻrnatildi."  # {Locked="%{model}"}
 system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}
+system.model_pinned: "Ushbu panel COPILOT_MODEL orqali mahalliy modelga biriktirilgan. Almashtirish uchun COPILOT_MODEL muhit o'zgaruvchisini o'zgartiring va qayta ishga tushiring."  # {Locked="COPILOT_MODEL"}

@@ -231,3 +231,4 @@ model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}
+system.model_pinned: "Այս վահանակը COPILOT_MODEL-ի միջոցով ամրացված է տեղային մոդելին։ Փոխելու համար փոխեք COPILOT_MODEL միջավայրի փոփոխականը և վերագործարկեք։"  # {Locked="COPILOT_MODEL"}

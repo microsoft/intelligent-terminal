@@ -213,3 +213,4 @@ model_picker.title: "Модельді таңдаңыз (↑ ↓ • Enter • Es
 system.no_models: "Қосылған агент таңдауға болатын ешбір модельді жарияламады."
 system.model_set: "Осы панельдің моделі %{model} етіп орнатылды."  # {Locked="%{model}"}
 system.model_unknown: "Белгісіз модель %{model} — қолжетімді тізімді көру үшін /model теріңіз."  # {Locked="%{model}","/model"}
+system.model_pinned: "Бұл аумақ COPILOT_MODEL арқылы жергілікті модельге бекітілген. Ауыстыру үшін COPILOT_MODEL орта айнымалысын өзгертіп, қайта іске қосыңыз."  # {Locked="COPILOT_MODEL"}

@@ -213,3 +213,4 @@ model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}
+system.model_pinned: "Panel ini disematkan ke model lokal oleh COPILOT_MODEL. Untuk beralih, ubah variabel lingkungan COPILOT_MODEL dan mulai ulang."  # {Locked="COPILOT_MODEL"}

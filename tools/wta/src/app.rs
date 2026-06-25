@@ -303,10 +303,10 @@ pub fn build_setup_options(
 ) -> Vec<SetupOption> {
     match reason {
         SetupReason::FirstRun | SetupReason::SwitchAgent => {
-            // Show Copilot (always) + any detected agents
+            // Show auto-installable agents (Copilot) always + any detected agent.
             all_agents
                 .iter()
-                .filter(|a| a.id == "copilot" || a.cli_found)
+                .filter(|a| a.can_auto_install() || a.cli_found)
                 .map(|a| SetupOption::SelectAgent { agent: a.clone() })
                 .collect()
         }
@@ -323,8 +323,9 @@ pub fn build_setup_options(
                     }
                 } else if !status.has_credential || *reason == SetupReason::AgentError {
                     // CLI found but auth missing or known to have failed
-                    if status.id == "copilot" {
-                        // Copilot: we can drive the device-flow sign-in
+                    if crate::agent::agent_for_id(&status.id).is_some_and(|a| a.drives_interactive_signin()) {
+                        // Agents WTA can sign in for (Copilot): drive the
+                        // device-flow sign-in.
                         opts.push(SetupOption::SignIn {
                             agent_id: status.id.clone(),
                             display_name: status.display_name.clone(),
@@ -1977,6 +1978,11 @@ pub struct App {
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
+    /// Whether the active model can be switched at runtime. `false` when the
+    /// agent provider pins its model out-of-band (Copilot BYOK's
+    /// `COPILOT_MODEL`), so the `/model` picker and the global `acpModel`
+    /// setting become read-only — see `crate::agent::Agent::resolve_models`.
+    pub model_switchable: bool,
     pub prompt_name: Option<String>,
     pub session_id: String,
     #[allow(dead_code)]
@@ -2279,6 +2285,7 @@ impl App {
             agent_version: None,
             available_models: Vec::new(),
             current_model_id: None,
+            model_switchable: true,
             prompt_name: None,
             session_id: String::new(),
             wt_connected,
@@ -2639,6 +2646,45 @@ impl App {
     /// The model a given tab should run on: its explicit per-pane override
     /// (set via `/model`) wins, else the global `acpModel`. `None` means no
     /// opinion — leave the session on the agent's default.
+    /// Run the current agent provider's model resolution over an ACP-advertised
+    /// list, returning `(models, current_id, switchable)` the UI should use.
+    ///
+    /// This is the single seam where Copilot BYOK swaps its decoupled cloud
+    /// catalog for the real env-pinned local model (and marks it
+    /// non-switchable); every other agent passes the list through unchanged.
+    fn resolve_agent_models(
+        &self,
+        models: Vec<AcpModelInfo>,
+        current_id: Option<String>,
+    ) -> (Vec<AcpModelInfo>, Option<String>, bool) {
+        let acp = crate::agent::ModelCatalog {
+            models: models
+                .into_iter()
+                .map(|m| crate::agent::ModelEntry {
+                    id: m.id,
+                    name: m.name,
+                    description: m.description,
+                })
+                .collect(),
+            current_id,
+            switchable: true,
+        };
+        let resolved = match crate::agent::agent_for_id(&self.current_agent_id) {
+            Some(agent) => agent.resolve_models(acp),
+            None => acp,
+        };
+        let models = resolved
+            .models
+            .into_iter()
+            .map(|m| AcpModelInfo {
+                id: m.id,
+                name: m.name,
+                description: m.description,
+            })
+            .collect();
+        (models, resolved.current_id, resolved.switchable)
+    }
+
     fn effective_model_for_tab(&self, tab_key: &str) -> Option<String> {
         self.tab_sessions
             .get(tab_key)
@@ -2674,6 +2720,12 @@ impl App {
     /// sessions fall back on their next attach, but we send nothing (the
     /// default can't be expressed as `set_session_model`).
     fn apply_global_acp_model(&mut self, new_model: Option<String>) {
+        // BYOK pins the model via env; a global `acpModel` setting can't
+        // override it (and would wrongly clobber the local-model display), so
+        // ignore the change entirely in that mode.
+        if !self.model_switchable {
+            return;
+        }
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
         for tab in self.tab_sessions.values_mut() {
             tab.model_override = None;
@@ -2792,6 +2844,16 @@ impl App {
     /// and `/model <id>`. If no session is live yet, the override is stored
     /// and `SessionAttached` applies it via `effective_model_for_tab`.
     fn apply_model_pick(&mut self, model_id: String) {
+        // Under BYOK the model is pinned by `COPILOT_MODEL` at copilot startup
+        // and `session/set_model` can't change it — surface that instead of
+        // pretending to switch.
+        if !self.model_switchable {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.model_pinned").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
         let name = self
             .available_models
             .iter()
@@ -4059,10 +4121,11 @@ impl App {
                 tracing::info!(target: "setup_key", agent_id = %agent_id, cli_found = agent.cli_found, has_deferred = self.deferred_acp.is_some(), "SelectAgent/SwitchAgent entered");
 
                 if agent.cli_found {
-                    let has_cred = crate::agent_check::has_credential(&agent_id);
-                    tracing::info!(target: "setup_key", agent_id = %agent_id, has_cred = has_cred, "credential check");
-                    if has_cred {
-                        // Credential found → connect directly
+                    let needs_auth = crate::agent::auth_needed_for(&agent_id);
+                    tracing::info!(target: "setup_key", agent_id = %agent_id, needs_auth = needs_auth, "auth gate check");
+                    if !needs_auth {
+                        // Credential present, or a BYOK/local provider makes
+                        // platform auth optional → connect directly
                         self.update_deferred_acp_agent(&agent_id);
                         self.mode = AppMode::Chat;
                         self.state =
@@ -4567,7 +4630,7 @@ impl App {
             install_error: None,
             options,
             title: t!("setup.title.sign_in").into_owned(),
-            subtitle: if profile.id == "copilot" {
+            subtitle: if crate::agent::agent_for_id(profile.id).is_some_and(|a| a.drives_interactive_signin()) {
                 t!("setup.subtitle.copilot_auth", agent = profile.display_name)
                     .into_owned()
             } else {
@@ -4654,8 +4717,11 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
-                self.available_models = available_models.clone();
-                self.current_model_id = current_model_id.clone();
+                let (resolved_models, resolved_current, switchable) =
+                    self.resolve_agent_models(available_models, current_model_id);
+                self.available_models = resolved_models;
+                self.current_model_id = resolved_current;
+                self.model_switchable = switchable;
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -4743,11 +4809,14 @@ impl App {
                 // this session in the future. For now we keep
                 // App.available_models pointing at the active session's
                 // models so the existing settings UI stays correct.
-                if !available_models.is_empty() {
-                    self.available_models = available_models;
+                let (resolved_models, resolved_current, switchable) =
+                    self.resolve_agent_models(available_models, current_model_id);
+                if !resolved_models.is_empty() {
+                    self.available_models = resolved_models;
+                    self.model_switchable = switchable;
                 }
-                if current_model_id.is_some() {
-                    self.current_model_id = current_model_id;
+                if resolved_current.is_some() {
+                    self.current_model_id = resolved_current;
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -4880,7 +4949,7 @@ impl App {
                         install_error: None,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
-                        subtitle: if profile.id == "copilot" {
+                        subtitle: if crate::agent::agent_for_id(profile.id).is_some_and(|a| a.drives_interactive_signin()) {
                             t!("setup.subtitle.copilot_auth", agent = profile.display_name)
                                 .into_owned()
                         } else {
@@ -6266,8 +6335,9 @@ impl App {
                             .map(|s| s.reason == SetupReason::FirstRun)
                             .unwrap_or(false);
 
-                        if crate::agent_check::has_credential(&agent_id) {
-                            // Has credential → connect directly
+                        if !crate::agent::auth_needed_for(&agent_id) {
+                            // Credential present, or a BYOK/local provider
+                            // makes platform auth optional → connect directly
                             if is_fre {
                                 self.update_deferred_acp_agent(&agent_id);
                                 self.pending_acp_start = true;
@@ -6589,7 +6659,7 @@ impl App {
                                 install_error: None,
                                 options,
                                 title: t!("setup.title.sign_in").into_owned(),
-                                subtitle: if profile.id == "copilot" {
+                                subtitle: if crate::agent::agent_for_id(profile.id).is_some_and(|a| a.drives_interactive_signin()) {
                                     t!("setup.subtitle.copilot_auth", agent = profile.display_name)
                                         .into_owned()
                                 } else {

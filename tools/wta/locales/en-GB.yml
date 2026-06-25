@@ -213,3 +213,4 @@ model_picker.title: "Select model (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."  # {Locked="%{model}","/model"}
+system.model_pinned: "This pane is pinned to a local model by COPILOT_MODEL. Change the COPILOT_MODEL environment variable and restart to switch."  # {Locked="COPILOT_MODEL"}

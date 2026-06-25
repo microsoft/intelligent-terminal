@@ -213,3 +213,4 @@ model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}
+system.model_pinned: "Den här rutan är låst till en lokal modell via COPILOT_MODEL. Ändra miljövariabeln COPILOT_MODEL och starta om för att byta."  # {Locked="COPILOT_MODEL"}

@@ -213,3 +213,4 @@ model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
 system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}
+system.model_pinned: "این بخش توسط COPILOT_MODEL به یک مدل محلی متصل شده است. برای تغییر، متغیر محیطی COPILOT_MODEL را تغییر دهید و دوباره راه‌اندازی کنید."  # {Locked="COPILOT_MODEL"}

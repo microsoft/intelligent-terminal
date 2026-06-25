@@ -214,3 +214,4 @@ model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !
 system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"
 system.model_set: "[Ḿöďéĺ ƒöŕ ţĥïś ṗåñé śéţ ţö %{model}.!!!! !!!! !!!!]"  # {Locked="%{model}"}
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}
+system.model_pinned: "This pane is pinned to a local model by COPILOT_MODEL. Change the COPILOT_MODEL environment variable and restart to switch."  # {Locked="COPILOT_MODEL"}

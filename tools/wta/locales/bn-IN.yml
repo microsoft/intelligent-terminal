@@ -216,3 +216,4 @@ model_picker.title: "মডেল নির্বাচন করুন (↑ ↓
 system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
 system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}
 system.model_unknown: "অজানা মডেল %{model} — উপলব্ধ তালিকা দেখতে /model টাইপ করুন।"  # {Locked="%{model}","/model"}
+system.model_pinned: "এই প্যানটি COPILOT_MODEL দ্বারা একটি স্থানীয় মডেলে পিন করা আছে। পরিবর্তন করতে, COPILOT_MODEL পরিবেশ ভেরিয়েবল পরিবর্তন করুন এবং পুনরায় চালু করুন।"  # {Locked="COPILOT_MODEL"}

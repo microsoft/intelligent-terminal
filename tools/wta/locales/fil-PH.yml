@@ -213,3 +213,4 @@ model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}
+system.model_pinned: "Naka-pin ang pane na ito sa isang lokal na modelo sa pamamagitan ng COPILOT_MODEL. Upang lumipat, baguhin ang environment variable na COPILOT_MODEL at i-restart."  # {Locked="COPILOT_MODEL"}

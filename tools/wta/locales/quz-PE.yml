@@ -212,3 +212,4 @@ model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}
+system.model_pinned: "Kay panelqa COPILOT_MODEL nisqawan local modelman watasqa kachkan. Tikrachinapaq, COPILOT_MODEL environment variable nisqata tikrachiy hinaspa kutiy qallariy."  # {Locked="COPILOT_MODEL"}

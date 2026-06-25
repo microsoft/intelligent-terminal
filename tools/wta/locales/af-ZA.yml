@@ -214,3 +214,4 @@ model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","�
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}
+system.model_pinned: "Hierdie ruit is deur COPILOT_MODEL aan 'n plaaslike model vasgespeld. Om oor te skakel, verander die omgewingsveranderlike COPILOT_MODEL en herbegin."  # {Locked="COPILOT_MODEL"}

@@ -215,3 +215,4 @@ model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locke
 system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
 system.model_set: "El model d’aquest tauler s’ha establert a %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model desconegut %{model} — escriviu /model per veure la llista disponible."  # {Locked="%{model}","/model"}
+system.model_pinned: "Aquest tauler està fixat a un model local mitjançant COPILOT_MODEL. Per canviar-lo, modifiqueu la variable d'entorn COPILOT_MODEL i reinicieu."  # {Locked="COPILOT_MODEL"}

@@ -213,3 +213,4 @@ model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}
+system.model_pinned: "Anak tetingkap ini disematkan pada model setempat oleh COPILOT_MODEL. Untuk bertukar, ubah pemboleh ubah persekitaran COPILOT_MODEL dan mulakan semula."  # {Locked="COPILOT_MODEL"}

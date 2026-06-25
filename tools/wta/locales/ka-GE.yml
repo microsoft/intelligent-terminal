@@ -213,3 +213,4 @@ model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}
+system.model_pinned: "ეს პანელი COPILOT_MODEL-ით მიმაგრებულია ლოკალურ მოდელზე. გადასართავად შეცვალეთ გარემოს ცვლადი COPILOT_MODEL და გადატვირთეთ."  # {Locked="COPILOT_MODEL"}

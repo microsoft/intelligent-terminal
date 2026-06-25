@@ -214,3 +214,4 @@ model_picker.title: "मॉडेल निवडात (↑ ↓ • Enter • E
 system.no_models: "जोडिल्ल्या एजंटान कसलेच निवडपायोग्य मॉडेल जाहीर केलें ना."
 system.model_set: "ह्या पेना खातीर मॉडेल %{model} चेर सेट केलें."  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध वळेरी पळोवपाक /model टायप करात."  # {Locked="%{model}","/model"}
+system.model_pinned: "हें पटल COPILOT_MODEL वरवीं स्थानीय मॉडेलाचेर पिन केलां. बदलूंक, COPILOT_MODEL वातावरण चल बदला आनी परतून सुरू करा."  # {Locked="COPILOT_MODEL"}

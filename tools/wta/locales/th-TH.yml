@@ -213,3 +213,4 @@ model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}
+system.model_pinned: "บานหน้าต่างนี้ถูกตรึงไว้กับโมเดลในเครื่องโดย COPILOT_MODEL หากต้องการสลับ ให้เปลี่ยนตัวแปรสภาพแวดล้อม COPILOT_MODEL แล้วเริ่มต้นใหม่"  # {Locked="COPILOT_MODEL"}

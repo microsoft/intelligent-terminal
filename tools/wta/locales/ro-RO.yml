@@ -212,3 +212,4 @@ model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked=
 system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
 system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}
+system.model_pinned: "Acest panou este fixat la un model local prin COPILOT_MODEL. Pentru a comuta, modificați variabila de mediu COPILOT_MODEL și reporniți."  # {Locked="COPILOT_MODEL"}

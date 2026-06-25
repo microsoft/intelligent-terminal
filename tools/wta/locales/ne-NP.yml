@@ -214,3 +214,4 @@ model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ •
 system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
 system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}
+system.model_pinned: "यो प्यान COPILOT_MODEL द्वारा स्थानीय मोडेलमा पिन गरिएको छ। परिवर्तन गर्न, COPILOT_MODEL वातावरण चल परिवर्तन गर्नुहोस् र पुनः सुरु गर्नुहोस्।"  # {Locked="COPILOT_MODEL"}

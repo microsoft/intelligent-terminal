@@ -208,3 +208,4 @@ model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked=
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}
+system.model_pinned: "このペインは COPILOT_MODEL によってローカル モデルに固定されています。切り替えるには COPILOT_MODEL 環境変数を変更して再起動してください。"  # {Locked="COPILOT_MODEL"}

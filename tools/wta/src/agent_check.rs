@@ -33,7 +33,7 @@ impl AgentStatus {
     /// User-facing status string for agent list.
     pub fn status_label(&self) -> String {
         if !self.cli_found {
-            if self.id == "copilot" {
+            if self.can_auto_install() {
                 t!("agent.status.not_installed_auto").into_owned()
             } else {
                 t!("agent.status.not_found").into_owned()
@@ -45,7 +45,9 @@ impl AgentStatus {
 
     /// Whether this agent can be auto-installed (e.g. via winget).
     pub fn can_auto_install(&self) -> bool {
-        self.id == "copilot"
+        crate::agent::agent_for_id(&self.id)
+            .map(|a| a.can_auto_install())
+            .unwrap_or(false)
     }
 }
 
@@ -88,48 +90,14 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
 /// Fast synchronous credential check. Returns true if a credential is
 /// likely present. Used to decide: connect directly vs show auth screen.
 ///
-/// Strategy:
-///   1. If `auth_check_command` is defined → run it (exit 0 = true)
-///   2. Else → agent-specific fast check (cmdkey / config files)
+/// Thin shim over the per-agent [`crate::agent::Agent::probe_credential`]
+/// seam (which runs the declarative `auth_check_command` then the agent's
+/// native check). Unknown / custom agents have no `Agent` impl and report
+/// "no credential", matching the historical `match _ => false` behavior.
 pub fn has_credential(agent_id: &str) -> bool {
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
-
-    // Strategy 1: auth_check_command
-    if let Some(result) = run_auth_command(profile.auth_check_command) {
-        return result;
-    }
-
-    // Strategy 2: agent-specific fast check
-    let home = std::env::var("USERPROFILE").unwrap_or_default();
-    let home = std::path::PathBuf::from(&home);
-
-    match agent_id {
-        "copilot" => {
-            std::process::Command::new("cmd")
-                .args(["/C", "cmdkey /list | findstr /i copilot-cli"])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
-                .map(|o| !o.stdout.is_empty())
-                .unwrap_or(false)
-        }
-        "claude" => {
-            let path = home.join(".claude").join(".credentials.json");
-            let exists = path.exists();
-            tracing::debug!(target: "agent_check", path = %path.display(), exists, "claude credential check");
-            exists
-        }
-        "codex" => {
-            std::env::var("OPENAI_API_KEY").is_ok() || home.join(".codex").exists()
-        }
-        "gemini" => {
-            // Check GEMINI_API_KEY or GOOGLE_API_KEY env var, or OAuth token in ~/.gemini/
-            std::env::var("GEMINI_API_KEY").is_ok()
-                || std::env::var("GOOGLE_API_KEY").is_ok()
-                || home.join(".gemini").exists()
-        }
-        _ => false,
-    }
+    crate::agent::agent_for_id(agent_id)
+        .map(|a| a.probe_credential())
+        .unwrap_or(false)
 }
 
 /// Run an auth_check_command from the agent registry.
@@ -162,12 +130,11 @@ pub fn build_login_cmd(agent_id: &str) -> String {
     let exe_path = find_exe(agent_id)
         .unwrap_or_else(|| agent_id.to_string());
 
-    // Agent-specific login subcommand
-    let subcommand = match agent_id {
-        "codex" => "auth",
-        "gemini" => "auth login",
-        _ => "login",
-    };
+    // Agent-specific login subcommand (sourced from the per-agent `Agent`
+    // impl; falls back to "login" for unknown/custom agents).
+    let subcommand = crate::agent::agent_for_id(agent_id)
+        .map(|a| a.login_subcommand())
+        .unwrap_or("login");
 
     if exe_path.contains(' ') {
         format!("\"{}\" {}", exe_path, subcommand)

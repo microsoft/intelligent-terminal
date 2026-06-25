@@ -213,3 +213,4 @@ model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}
+system.model_pinned: "See paan on COPILOT_MODEL kaudu kohaliku mudeli külge kinnitatud. Vahetamiseks muutke keskkonnamuutujat COPILOT_MODEL ja taaskäivitage."  # {Locked="COPILOT_MODEL"}

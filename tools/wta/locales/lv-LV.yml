@@ -213,3 +213,4 @@ model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nezināms modelis %{model} — ierakstiet /model, lai redzētu pieejamo sarakstu."  # {Locked="%{model}","/model"}
+system.model_pinned: "Šī rūts ar COPILOT_MODEL ir piesaistīta lokālam modelim. Lai pārslēgtu, mainiet vides mainīgo COPILOT_MODEL un restartējiet."  # {Locked="COPILOT_MODEL"}

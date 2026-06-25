@@ -213,3 +213,4 @@ model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
 system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}
+system.model_pinned: "Ši sritis per COPILOT_MODEL prisegta prie vietinio modelio. Norėdami perjungti, pakeiskite aplinkos kintamąjį COPILOT_MODEL ir paleiskite iš naujo."  # {Locked="COPILOT_MODEL"}

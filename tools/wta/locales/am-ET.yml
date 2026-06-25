@@ -214,3 +214,4 @@ model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Loc
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}
+system.model_pinned: "ይህ ክፍል በ COPILOT_MODEL አማካኝነት ወደ አካባቢያዊ ሞዴል ተሰክቷል። ለመቀየር የ COPILOT_MODEL የአካባቢ ተለዋዋጭ ይቀይሩ እና እንደገና ያስጀምሩ።"  # {Locked="COPILOT_MODEL"}

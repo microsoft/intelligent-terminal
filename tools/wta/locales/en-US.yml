@@ -107,6 +107,9 @@ system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."
 # {model} is the unrecognized text the user typed after /model.
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."
+# Shown when the user tries to switch models but the agent's model is pinned by
+# a local provider (BYOK). {Locked="COPILOT_MODEL"} is the env var name.
+system.model_pinned: "This pane is pinned to a local model by COPILOT_MODEL. Change the COPILOT_MODEL environment variable and restart to switch."
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key

@@ -215,3 +215,4 @@ model_picker.title: "Vælg model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Den tilsluttede agent annoncerede ingen modeller, der kan vælges."
 system.model_set: "Modellen til denne panel er angivet til %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ukendt model %{model} — skriv /model for at se den tilgængelige liste."  # {Locked="%{model}","/model"}
+system.model_pinned: "Denne rude er fastgjort til en lokal model via COPILOT_MODEL. Skift miljøvariablen COPILOT_MODEL, og genstart for at skifte."  # {Locked="COPILOT_MODEL"}

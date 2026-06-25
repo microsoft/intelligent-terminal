@@ -212,3 +212,4 @@ model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}
+system.model_pinned: "Kua titia tēnei paatete ki tētahi tauira ā-rohe e COPILOT_MODEL. Hei huri, whakarereketia te taurangi taiao COPILOT_MODEL ka tīmata anō."  # {Locked="COPILOT_MODEL"}

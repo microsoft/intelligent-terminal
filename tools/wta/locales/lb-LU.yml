@@ -213,3 +213,4 @@ model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
 system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}
 system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}
+system.model_pinned: "Dëse Beräich ass duerch COPILOT_MODEL op e lokaalt Modell fixéiert. Fir ze wiesselen, ännert d'Ëmweltvariabel COPILOT_MODEL a start nei."  # {Locked="COPILOT_MODEL"}

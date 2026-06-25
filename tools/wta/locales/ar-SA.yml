@@ -215,3 +215,4 @@ model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Lo
 system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
 system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}
+system.model_pinned: "تم تثبيت هذا الجزء على نموذج محلي بواسطة COPILOT_MODEL. لتبديله، غيّر متغيّر البيئة COPILOT_MODEL وأعد التشغيل."  # {Locked="COPILOT_MODEL"}

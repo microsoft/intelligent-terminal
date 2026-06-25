@@ -215,3 +215,4 @@ model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Připojený agent neohlásil žádné dostupné modely."
 system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}
+system.model_pinned: "Tento panel je připnut k místnímu modelu pomocí COPILOT_MODEL. Chcete-li jej přepnout, změňte proměnnou prostředí COPILOT_MODEL a restartujte."  # {Locked="COPILOT_MODEL"}

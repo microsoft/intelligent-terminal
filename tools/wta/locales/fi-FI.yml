@@ -213,3 +213,4 @@ model_picker.title: "Valitse malli (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Yhdistetty agentti ei ilmoittanut yhtään valittavissa olevaa mallia."
 system.model_set: "Tämän paneelin malliksi asetettiin %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}
+system.model_pinned: "Tämä ruutu on kiinnitetty paikalliseen malliin COPILOT_MODEL-muuttujalla. Vaihtaaksesi muuta COPILOT_MODEL-ympäristömuuttujaa ja käynnistä uudelleen."  # {Locked="COPILOT_MODEL"}

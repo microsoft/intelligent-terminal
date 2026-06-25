@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate rust_i18n;
 
+// New behavioral seam (the `Agent` trait + per-agent impls). Decision sites
+// gate connect-vs-auth through `agent::auth_needed_for`; remaining
+// `match agent_id` sites will migrate onto this in follow-up changes.
+mod agent;
 mod agent_check;
 mod agent_hooks_installer;
 mod agent_pane_origin;
@@ -14,6 +18,7 @@ mod cwd_util;
 mod event;
 mod helper;
 mod history_loader;
+mod llm_provider;
 mod logging;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]

@@ -215,3 +215,4 @@ model_picker.title: "Izaberite model (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Povezani agent nije oglasio nijedan model koji se može izabrati."
 system.model_set: "Model za ovaj panel postavljen je na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nepoznat model %{model} — upišite /model da vidite dostupnu listu."  # {Locked="%{model}","/model"}
+system.model_pinned: "Ovo okno je putem COPILOT_MODEL prikačeno na lokalni model. Za promjenu izmijenite varijablu okruženja COPILOT_MODEL i ponovo pokrenite."  # {Locked="COPILOT_MODEL"}

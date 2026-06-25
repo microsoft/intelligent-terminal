@@ -213,3 +213,4 @@ model_picker.title: "Модель сайлагыз (↑ ↓ • Enter • Esc)" 
 system.no_models: "Тоташкан агент бер дә сайлап була торган модель игълан итмәде."
 system.model_set: "Бу панель өчен модель %{model} итеп билгеләнде."  # {Locked="%{model}"}
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}
+system.model_pinned: "Бу өлкә COPILOT_MODEL ярдәмендә җирле модельгә беркетелгән. Алыштыру өчен COPILOT_MODEL әйләнә-тирәлек үзгәрешен үзгәртегез һәм яңадан кабызыгыз."  # {Locked="COPILOT_MODEL"}

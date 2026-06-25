@@ -137,6 +137,27 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
+
+    // Inject the BYOK (bring-your-own-LLM) provider env onto *this child only*,
+    // driven by the LLM-provider abstraction. This is the single converged
+    // injection point: the generic [`LlmProviderConfig`] is read once here, and
+    // the agent that owns this command translates it into its concrete env
+    // contract (copilot: `COPILOT_PROVIDER_*` / `COPILOT_MODEL` / …). Scoping
+    // the env to the spawned agent CLI — rather than relying on ambient global
+    // inheritance — keeps BYOK confined to IT's agent processes and gives us
+    // one place to evolve when the config source moves off the environment.
+    {
+        let cfg = crate::llm_provider::LlmProviderConfig::from_env();
+        if cfg.is_active() {
+            let agent_id = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
+            if let Some(agent) = crate::agent::agent_for_id(agent_id) {
+                for (key, value) in agent.byok_env(&cfg) {
+                    cmd.env(key, value);
+                }
+            }
+        }
+    }
+
     let child = cmd
         .args(&args)
         .stdin(std::process::Stdio::piped())

@@ -222,3 +222,4 @@ model_picker.title: "مودېل تاللاڭ (↑ ↓ • Enter • Esc)"  # {Lo
 system.no_models: "ئۇلانغان AI ئاگېنتى تاللىغىلى بولىدىغان ھېچقانداق مودېل ئېلان قىلمىدى."
 system.model_set: "بۇ تاختا ئۈچۈن مودېل %{model} قىلىپ بەلگىلەندى."  # {Locked="%{model}"}
 system.model_unknown: "نامەلۇم مودېل %{model} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /model نى كىرگۈزۈڭ."  # {Locked="%{model}","/model"}
+system.model_pinned: "بۇ كۆزنەكچە COPILOT_MODEL ئارقىلىق يەرلىك مودېلغا مۇقىملاشتۇرۇلغان. ئالماشتۇرۇش ئۈچۈن COPILOT_MODEL مۇھىت ئۆزگەرگۈچىسىنى ئۆزگەرتىپ قايتا قوزغىتىڭ."  # {Locked="COPILOT_MODEL"}

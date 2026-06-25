@@ -214,3 +214,4 @@ model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
 system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}
+system.model_pinned: "Mae'r cwarel hwn wedi'i binio i fodel lleol gan COPILOT_MODEL. I newid, newidiwch y newidyn amgylchedd COPILOT_MODEL ac ailgychwyn."  # {Locked="COPILOT_MODEL"}

@@ -213,3 +213,4 @@ model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter 
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."
 system.model_set: "ແບບຈຳລອງສຳລັບ pane ນີ້ຖືກຕັ້ງເປັນ %{model}."  # {Locked="%{model}"}
 system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{model} — ພິມ /model ເພື່ອເບິ່ງລາຍການທີ່ມີ."  # {Locked="%{model}","/model"}
+system.model_pinned: "ແຜງນີ້ຖືກປັກໝຸດໄວ້ກັບໂມເດລໃນເຄື່ອງໂດຍ COPILOT_MODEL. ເພື່ອສະຫຼັບ, ປ່ຽນຕົວແປສະພາບແວດລ້ອມ COPILOT_MODEL ແລະ ເລີ່ມຕົ້ນໃໝ່."  # {Locked="COPILOT_MODEL"}

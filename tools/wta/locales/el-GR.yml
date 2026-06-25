@@ -214,3 +214,4 @@ model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}
+system.model_pinned: "Αυτό το τμήμα παραθύρου είναι καρφιτσωμένο σε ένα τοπικό μοντέλο μέσω του COPILOT_MODEL. Για εναλλαγή, αλλάξτε τη μεταβλητή περιβάλλοντος COPILOT_MODEL και επανεκκινήστε."  # {Locked="COPILOT_MODEL"}

@@ -213,3 +213,4 @@ model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}
+system.model_pinned: "Þessi rúða er fest við staðbundið líkan með COPILOT_MODEL. Til að skipta skaltu breyta umhverfisbreytunni COPILOT_MODEL og endurræsa."  # {Locked="COPILOT_MODEL"}

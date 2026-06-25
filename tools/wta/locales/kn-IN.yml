@@ -214,3 +214,4 @@ model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • En
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}
+system.model_pinned: "ಈ ಫಲಕವನ್ನು COPILOT_MODEL ಮೂಲಕ ಸ್ಥಳೀಯ ಮಾದರಿಗೆ ಪಿನ್ ಮಾಡಲಾಗಿದೆ. ಬದಲಾಯಿಸಲು, COPILOT_MODEL ಪರಿಸರ ವೇರಿಯೇಬಲ್ ಅನ್ನು ಬದಲಾಯಿಸಿ ಮತ್ತು ಮರುಪ್ರಾರಂಭಿಸಿ."  # {Locked="COPILOT_MODEL"}

@@ -212,3 +212,4 @@ model_picker.title: "Roghnaigh samhail (↑ ↓ • Enter • Esc)"  # {Locked="
 system.no_models: "Níor fhógair an gníomhaire ceangailte aon tsamhail in-roghnaithe."
 system.model_set: "Samhail an phána seo socraithe go %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}
+system.model_pinned: "Tá an pána seo pinneáilte le samhail áitiúil ag COPILOT_MODEL. Chun athrú, athraigh an athróg timpeallachta COPILOT_MODEL agus atosaigh."  # {Locked="COPILOT_MODEL"}

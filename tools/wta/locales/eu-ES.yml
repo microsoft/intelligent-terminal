@@ -213,3 +213,4 @@ model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
 system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}
+system.model_pinned: "Panel hau tokiko eredu batera ainguratuta dago COPILOT_MODEL bidez. Aldatzeko, aldatu COPILOT_MODEL ingurune-aldagaia eta berrabiarazi."  # {Locked="COPILOT_MODEL"}

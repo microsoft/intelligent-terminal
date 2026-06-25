@@ -213,3 +213,4 @@ model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="
 system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
 system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}
+system.model_pinned: "Questo riquadro è bloccato su un modello locale tramite COPILOT_MODEL. Modifica la variabile di ambiente COPILOT_MODEL e riavvia per cambiare."  # {Locked="COPILOT_MODEL"}

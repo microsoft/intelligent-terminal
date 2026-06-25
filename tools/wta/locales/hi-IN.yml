@@ -214,3 +214,4 @@ model_picker.title: "मॉडल चुनें (↑ ↓ • Enter • Esc)"  
 system.no_models: "कनेक्टेड एजेंट ने कोई चयन योग्य मॉडल घोषित नहीं किया।"
 system.model_set: "इस पेन के लिए मॉडल %{model} पर सेट किया गया।"  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मॉडल %{model} — उपलब्ध सूची देखने के लिए /model टाइप करें।"  # {Locked="%{model}","/model"}
+system.model_pinned: "यह फलक COPILOT_MODEL द्वारा एक स्थानीय मॉडल पर पिन किया गया है. बदलने के लिए, COPILOT_MODEL पर्यावरण चर बदलें और पुनः आरंभ करें."  # {Locked="COPILOT_MODEL"}

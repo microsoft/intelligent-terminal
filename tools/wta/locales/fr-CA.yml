@@ -213,3 +213,4 @@ model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {L
 system.no_models: "L'agent connecté n'a annoncé aucun modèle sélectionnable."
 system.model_set: "Le modèle pour ce volet est défini sur %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modèle inconnu %{model} — tapez /model pour afficher la liste disponible."  # {Locked="%{model}","/model"}
+system.model_pinned: "Ce volet est associé à un modèle local par COPILOT_MODEL. Modifiez la variable d'environnement COPILOT_MODEL et redémarrez pour changer."  # {Locked="COPILOT_MODEL"}

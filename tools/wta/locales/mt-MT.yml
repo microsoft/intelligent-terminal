@@ -212,3 +212,4 @@ model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}
+system.model_pinned: "Dan il-pannell huwa mwaħħal ma' mudell lokali minn COPILOT_MODEL. Biex tibdel, ibdel il-varjabbli tal-ambjent COPILOT_MODEL u erġa' ibda."  # {Locked="COPILOT_MODEL"}

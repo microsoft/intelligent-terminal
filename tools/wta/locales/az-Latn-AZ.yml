@@ -215,3 +215,4 @@ model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}
 system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək üçün /model yazın."  # {Locked="%{model}","/model"}
+system.model_pinned: "Bu panel COPILOT_MODEL vasitəsilə lokal modelə bərkidilib. Dəyişmək üçün COPILOT_MODEL mühit dəyişənini dəyişin və yenidən başladın."  # {Locked="COPILOT_MODEL"}
