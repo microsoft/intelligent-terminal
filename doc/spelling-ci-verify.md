@@ -1,5 +1,5 @@
-# Spelling CI Verification
+# Spelling Verification
 
 This file is a temporary marker used to verify that the spell checking
-workflow runs and passes after merging the secpoll workaround removal.
-It will be deleted once the verification is complete.
+workflow runs and reports correctly. It will be deleted once the check
+has been confirmed to pass.
