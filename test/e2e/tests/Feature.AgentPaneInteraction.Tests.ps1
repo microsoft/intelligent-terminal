@@ -107,7 +107,11 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             # listing Auto + its model variants). The old test only checked the menu rendered.
             Invoke-AgentMenuItem -App $script:app -Name '/model'
             Assert-AgentPaneText -App $script:app -Pattern 'Select model' -TimeoutSec 15
-            (Get-AgentPaneText -App $script:app -MaxLines 60) | Should -Match '(?i)auto|claude|gpt|sonnet|opus'
+            # Prove a selectable model row actually rendered, rather than guessing model names
+            # (auto/claude/gpt drift with releases and "auto" matches "autofix"/"automatic"):
+            # the picker marks its highlighted row with the "> " selector (model_popup.rs
+            # highlight_symbol) — locale-independent and stable across model renames.
+            (Get-AgentPaneText -App $script:app -MaxLines 60) | Should -Match '>\s+\S'
             Send-AgentKey -App $script:app -Key Escape | Out-Null
             Clear-AgentInput -App $script:app | Out-Null
         }

@@ -18,23 +18,30 @@ Describe 'Feature §2 non-Copilot built-in agents connect through the ACP adapte
     BeforeAll { Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force }
 
     It 'Each installed+authenticated non-Copilot agent (Claude/Codex/Gemini) connects and answers' {
-        # Installed AND authenticated? Spawn the CLI's print mode and look for the sentinel.
-        function Test-CliAuthed([string]$Cli, [scriptblock]$Probe) {
-            if (-not (Get-Command $Cli -ErrorAction SilentlyContinue)) { return $false }
+        # Classify each CLI precisely so a skip is actionable: not-installed vs
+        # installed-but-unauthenticated vs authed (only 'authed' agents are exercised).
+        function Get-CliStatus([string]$Cli, [scriptblock]$Probe) {
+            if (-not (Get-Command $Cli -ErrorAction SilentlyContinue)) { return 'not-installed' }
             $job = Start-Job -ScriptBlock $Probe
             $out = ''
             if (Wait-Job $job -Timeout 50) { $out = ((Receive-Job $job 2>&1) -join "`n") } else { Stop-Job $job -ErrorAction SilentlyContinue }
             Remove-Job $job -Force -ErrorAction SilentlyContinue
-            return [bool]($out -match 'AUTHOK')
+            if ($out -match 'AUTHOK') { return 'authed' } else { return 'installed-unauthenticated' }
         }
 
-        $available = @()
-        if (Test-CliAuthed 'claude' { claude -p "Reply with only the token AUTHOK" 2>&1 }) { $available += 'claude' }
-        if (Test-CliAuthed 'codex'  { $null | codex exec "Reply with only the token AUTHOK" 2>&1 }) { $available += 'codex' }
-        if (Test-CliAuthed 'gemini' { gemini -p "Reply with only the token AUTHOK" 2>&1 }) { $available += 'gemini' }
+        $status = [ordered]@{}
+        $status['claude'] = Get-CliStatus 'claude' { claude -p "Reply with only the token AUTHOK" 2>&1 }
+        $status['codex']  = Get-CliStatus 'codex'  { $null | codex exec "Reply with only the token AUTHOK" 2>&1 }
+        $status['gemini'] = Get-CliStatus 'gemini' { gemini -p "Reply with only the token AUTHOK" 2>&1 }
+
+        $detail = (($status.Keys | ForEach-Object { "${_}=$($status[$_])" }) -join ', ')
+        Write-ItLog -Level INFO -Message "AgentMatrix CLI status: $detail"
+        $available = @($status.Keys | Where-Object { $status[$_] -eq 'authed' })
 
         if (-not $available.Count) {
-            Set-ItResult -Skipped -Because 'no non-Copilot built-in agent (claude/codex/gemini) is installed and authenticated in this environment'
+            # Surface WHY each CLI was skipped (not-installed vs installed-but-unauthenticated)
+            # so CI results stay actionable and an auth regression isn't silently collapsed.
+            Set-ItResult -Skipped -Because "no non-Copilot built-in agent is installed+authenticated ($detail)"
             return
         }
 
