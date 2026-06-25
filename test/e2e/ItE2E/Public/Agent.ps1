@@ -85,8 +85,17 @@ function Get-WtaLocalizedTextRegex {
         $localeDir = Join-Path $PSScriptRoot '..\..\..\..\tools\wta\locales'
         if (Test-Path $localeDir) {
             $escKey = [regex]::Escape($Key)
-            $pats = Select-String -Path (Join-Path $localeDir '*.yml') -Pattern ('^\s*' + $escKey + ':\s*"(.+?)"') |
-                ForEach-Object { ($_.Matches[0].Groups[1].Value) -replace '\s*\([^)]*\)\s*$', '' -replace '\.+\s*$', '' } |
+            $pats = Select-String -Path (Join-Path $localeDir '*.yml') -Pattern ('^\s*' + $escKey + ':\s*(\S.*)$') |
+                ForEach-Object {
+                    $raw = $_.Matches[0].Groups[1].Value.Trim()
+                    # YAML scalar: double-quoted (ignoring a trailing # comment / Locked hint),
+                    # single-quoted (with '' escaping), or a bare scalar (strip a trailing # comment).
+                    if ($raw -match '^"((?:[^"\\]|\\.)*)"') { $val = $Matches[1] }
+                    elseif ($raw -match "^'((?:[^']|'')*)'") { $val = ($Matches[1] -replace "''", "'") }
+                    else { $val = ($raw -replace '\s+#.*$', '').Trim() }
+                    # Drop a trailing " (…)" key-hint and "." run.
+                    $val -replace '\s*\([^)]*\)\s*$', '' -replace '\.+\s*$', ''
+                } |
                 Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
             $pats = @($pats)
             if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }

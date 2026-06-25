@@ -124,6 +124,8 @@ $header = @(
     ''
 ) -join "`n"
 
+$outDir = Split-Path -Parent $OutFile
+if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
 Set-Content -LiteralPath $OutFile -Value ($header + ($body -join "`n")) -Encoding UTF8
 Write-Host "Report -> $OutFile" -ForegroundColor Green
 Write-Host ("  [x] passed={0}  [!] FAILED={1}  [ ] manual={2}  (total {3})" -f $pass, $fail, $manual, $total)
