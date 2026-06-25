@@ -3,6 +3,20 @@
 # (live + historical) in the agent pane. Navigate ↑/↓, Enter launches/resumes, Esc exits.
 # Like all agent-pane UI, it's TEXT captured via Get-AgentPaneText.
 
+function Get-SessionViewRenderRegex {
+    <#
+    .SYNOPSIS
+        Regex that detects the rendered session view, robust across locales. The view's footer
+        hint (agents.footer_hint) is drawn in BOTH the loading and populated branches
+        (ui/agents_view.rs render_footer_hint), so it's the reliable "view is open" signal — and
+        it's localized, so we match it across all bundled locales. Falls back to the en-US footer
+        substrings when the locale bundle isn't readable (running outside a repo checkout).
+    #>
+    [CmdletBinding()] param()
+    $re = Get-WtaLocalizedTextRegex -Key 'agents.footer_hint'
+    if ($re) { $re } else { 'to launch session|to exit|No sessions|navigate' }
+}
+
 function Open-SessionList {
     <#
     .SYNOPSIS
@@ -17,7 +31,8 @@ function Open-SessionList {
     process {
         Open-AgentPane -App $App | Out-Null
         $sess = Get-AgentPaneSession -App $App
-        $shownNow = { (Get-AgentPaneText -App $App -MaxLines 50) -match 'to launch session|to exit|No sessions|navigate' }
+        $renderRe = Get-SessionViewRenderRegex
+        $shownNow = { (Get-AgentPaneText -App $App -MaxLines 50) -match $renderRe }
         $perTry = [Math]::Max(3, [int]($TimeoutSec / 3))
         for ($try = 0; $try -lt 3; $try++) {
             # Already open? Don't toggle (that would CLOSE it). Otherwise press and verify.
@@ -40,11 +55,12 @@ function Close-SessionList {
 }
 
 function Test-SessionListShown {
-    <# Is the session-management view currently displayed? #>
+    <# Is the session-management view currently displayed? (locale-robust footer-hint match) #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 5)
     process {
+        $renderRe = Get-SessionViewRenderRegex
         Test-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Condition {
-            (Get-AgentPaneText -App $App -MaxLines 50) -match 'to launch session|Enter to launch|No sessions'
+            (Get-AgentPaneText -App $App -MaxLines 50) -match $renderRe
         }
     }
 }

@@ -93,8 +93,11 @@ function Get-WtaLocalizedTextRegex {
                     if ($raw -match '^"((?:[^"\\]|\\.)*)"') { $val = $Matches[1] }
                     elseif ($raw -match "^'((?:[^']|'')*)'") { $val = ($Matches[1] -replace "''", "'") }
                     else { $val = ($raw -replace '\s+#.*$', '').Trim() }
-                    # Drop a trailing " (…)" key-hint and "." run.
-                    $val -replace '\s*\([^)]*\)\s*$', '' -replace '\.+\s*$', ''
+                    # Drop a trailing " (…)" key-hint and "." run. Require whitespace BEFORE the
+                    # parenthesized hint (\s+\() so a value that is ENTIRELY parenthesized — e.g.
+                    # agents.footer_hint "(↑ ↓ … Esc to exit …)" — is preserved intact instead of
+                    # being stripped to an empty string.
+                    $val -replace '\s+\([^)]*\)\s*$', '' -replace '\.+\s*$', ''
                 } |
                 Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
             $pats = @($pats)
