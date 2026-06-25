@@ -21,8 +21,12 @@
 //!    closest existing commands.
 //!
 //! The gate is locale-independent: it asks the shell "does this command
-//! exist", never matches the (localized) error text. The enumerate cost is
-//! only paid on a genuine not-found, which is rare.
+//! exist", never matches the (localized) error text. The `which` pre-gate
+//! skips the enumerate subprocess only for tokens that resolve as plain PATH
+//! programs; a failing cmdlet / alias / function token — which `which` can't
+//! see — still spawns the enumerate and then bails out via the existence
+//! gate. So the subprocess runs for any token that *looks* not-found to PATH,
+//! not only a genuine not-found.
 //!
 //! Known blind spot (accepted for v1): the enumerate subprocess runs with
 //! `-NoProfile`, so it sees PATH executables and external scripts (the
@@ -65,14 +69,26 @@ pub fn is_powershell(shell: &str) -> bool {
 /// Extract the command token (executable name) from a captured
 /// `[command + output]` buffer.
 ///
-/// Returns `None` when there is no usable token, or when the token is an
-/// explicit path / call-operator invocation (`.\x.ps1`, `C:\x.exe`, `& x`) —
-/// a PATH-lookup near-match wouldn't apply to those.
+/// Returns `None` when there is no usable token, or when the (post-`&`) token
+/// is an explicit path invocation (`.\x.ps1`, `C:\x.exe`) — a PATH-lookup
+/// near-match wouldn't apply to those. A leading PowerShell call operator
+/// (`& cmd`, `&cmd`) is peeled first, since `&` still performs normal command
+/// resolution on the command it invokes.
 pub fn extract_command_token(content: &str) -> Option<String> {
     let first_line = content.lines().map(str::trim).find(|l| !l.is_empty())?;
-    let token = first_line.split_whitespace().next()?;
+    let mut tokens = first_line.split_whitespace();
+    let mut token = tokens.next()?;
+    // PowerShell call operator: `& cmd ...` (or `&cmd`) still performs normal
+    // command resolution, so peel a leading `&` and look at the command it
+    // invokes — a not-found `& gti` is just as correctable as `gti`.
+    if token == "&" {
+        token = tokens.next()?;
+    } else if let Some(rest) = token.strip_prefix('&') {
+        token = rest;
+    }
     let token = token.trim_matches(|c| c == '"' || c == '\'');
-    // Explicit path, relative path, or call operator → not a bare PATH command.
+    // After peeling `&`, an explicit / relative path is still not a bare PATH
+    // command, so a near-match suggestion wouldn't apply.
     if token.is_empty()
         || token.starts_with('&')
         || token.starts_with('.')
@@ -279,15 +295,30 @@ mod tests {
     }
 
     #[test]
-    fn extract_token_rejects_explicit_paths_and_call_operator() {
-        // Explicit paths and call-operator invocations are not PATH lookups,
-        // so a near-match suggestion wouldn't apply.
+    fn extract_token_rejects_explicit_paths() {
+        // Explicit / relative paths are not PATH lookups, so a near-match
+        // suggestion wouldn't apply.
         assert_eq!(extract_command_token(r".\build.ps1"), None);
         assert_eq!(extract_command_token(r"C:\tools\x.exe -a"), None);
         assert_eq!(extract_command_token("/usr/bin/foo"), None);
-        assert_eq!(extract_command_token("& somecmd"), None);
         assert_eq!(extract_command_token("   "), None);
         assert_eq!(extract_command_token(""), None);
+    }
+
+    #[test]
+    fn extract_token_peels_powershell_call_operator() {
+        // `& cmd` (or `&cmd`) still performs normal command resolution, so a
+        // not-found `& gti` is just as correctable — extract the invoked name.
+        assert_eq!(extract_command_token("& gti status").as_deref(), Some("gti"));
+        assert_eq!(extract_command_token("&gti").as_deref(), Some("gti"));
+        assert_eq!(extract_command_token("& 'gti'").as_deref(), Some("gti"));
+        // But after the operator, an explicit path is still not a PATH-style
+        // lookup → None.
+        assert_eq!(extract_command_token(r"& .\build.ps1"), None);
+        assert_eq!(extract_command_token(r"& C:\tools\x.exe"), None);
+        // A bare `&` with nothing after it is nothing to suggest.
+        assert_eq!(extract_command_token("&"), None);
+        assert_eq!(extract_command_token("& "), None);
     }
 
     #[test]

@@ -1257,12 +1257,15 @@ async fn build_prompt_text(
                     runtime_sections.push(format!("### Terminal Output\n```\n{}\n```", content));
 
                     // issue #287: when the failing command doesn't resolve on
-                    // the user's machine, surface local PATH near-matches so
-                    // the agent can suggest the script/program they likely
+                    // the user's machine, surface near-matches from the live
+                    // command list (PATH programs, scripts, functions, aliases,
+                    // cmdlets) so the agent can suggest what they likely
                     // mistyped (PowerShell only in v1). The existence gate is
                     // locale-independent — it asks the shell, never matches the
-                    // localized error text — and the enumerate cost is only
-                    // paid on a genuine not-found.
+                    // localized error text. The `which` pre-gate skips the
+                    // enumerate only for plain PATH programs; a failing
+                    // cmdlet/alias still enumerates then bails via the gate, so
+                    // the cost isn't limited to genuine not-founds.
                     if let Some(shell_exe) = active.as_ref().and_then(shell_from_active) {
                         if crate::command_recall::is_powershell(&shell_exe) {
                             if let Some(token) =
