@@ -66,32 +66,48 @@ function Set-AgentPaneFocus {
     }
 }
 
+function Get-WtaLocalizedTextRegex {
+    <#
+    .SYNOPSIS
+        Case-insensitive regex matching the value of a wta localization key across EVERY bundled
+        locale (tools/wta/locales/*.yml), so assertions on localized UI text work on non-en-US
+        machines (the running binary renders one locale; matching any locale's value covers it).
+        Each value is normalized by stripping a trailing " (…)" key-hint and trailing "." run
+        (e.g. "Select model (↑ ↓ • Enter • Esc)" -> "Select model", "Ask anything, / for
+        commands.." -> "Ask anything, / for commands"). Cached per key. Returns $null when the
+        bundle/key can't be read so callers can fall back to an en-US literal.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Key)
+    if (-not $script:WtaLocaleRegexCache) { $script:WtaLocaleRegexCache = @{} }
+    if ($script:WtaLocaleRegexCache.ContainsKey($Key)) { return $script:WtaLocaleRegexCache[$Key] }
+    $result = $null
+    try {
+        $localeDir = Join-Path $PSScriptRoot '..\..\..\..\tools\wta\locales'
+        if (Test-Path $localeDir) {
+            $escKey = [regex]::Escape($Key)
+            $pats = Select-String -Path (Join-Path $localeDir '*.yml') -Pattern ('^\s*' + $escKey + ':\s*"(.+?)"') |
+                ForEach-Object { ($_.Matches[0].Groups[1].Value) -replace '\s*\([^)]*\)\s*$', '' -replace '\.+\s*$', '' } |
+                Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
+            $pats = @($pats)
+            if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
+        }
+    }
+    catch { $result = $null }
+    $script:WtaLocaleRegexCache[$Key] = $result
+    $result
+}
+
 function Get-AgentConnectedPlaceholderRegex {
     <#
     .SYNOPSIS
         Case-insensitive regex matching the connected input placeholder of ANY bundled wta
         locale, so Wait-AgentReady works on non-en-US machines (the placeholder is localized
-        via input.placeholder.connected — see tools/wta/locales/*.yml + ui/input.rs). Built
-        once from the locale bundle and cached; degrades to the en-US literal if the bundle
-        can't be read (e.g. running outside a repo checkout).
+        via input.placeholder.connected — see tools/wta/locales/*.yml + ui/input.rs). Degrades
+        to the en-US literal if the bundle can't be read (e.g. running outside a repo checkout).
     #>
     [CmdletBinding()] param()
-    if ($script:AgentReadyRegex) { return $script:AgentReadyRegex }
-    $fallback = '(?i)Ask anything.*for commands'
-    try {
-        $localeDir = Join-Path $PSScriptRoot '..\..\..\..\tools\wta\locales'
-        $pats = @()
-        if (Test-Path $localeDir) {
-            $pats = Select-String -Path (Join-Path $localeDir '*.yml') `
-                        -Pattern '^\s*input\.placeholder\.connected:\s*"(.+?)"' |
-                ForEach-Object { ($_.Matches[0].Groups[1].Value) -replace '\.+\s*$', '' } |
-                Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
-        }
-        $pats = @($pats)
-        $script:AgentReadyRegex = if ($pats.Count) { '(?i)(' + ($pats -join '|') + ')' } else { $fallback }
-    }
-    catch { $script:AgentReadyRegex = $fallback }
-    $script:AgentReadyRegex
+    $re = Get-WtaLocalizedTextRegex -Key 'input.placeholder.connected'
+    if ($re) { $re } else { '(?i)Ask anything.*for commands' }
 }
 
 function Wait-AgentReady {

@@ -36,7 +36,7 @@ $publicFns = @(
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',
     # Agent / Autofix / Sessions
-    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Send-AgentPrompt', 'Wait-AgentState',
+    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-WtaLocalizedTextRegex', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSession', 'Get-AgentPaneText',
     'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',

@@ -106,7 +106,11 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             # Drive the REAL /model command (proven live: Copilot opens a "Select model" modal
             # listing Auto + its model variants). The old test only checked the menu rendered.
             Invoke-AgentMenuItem -App $script:app -Name '/model'
-            Assert-AgentPaneText -App $script:app -Pattern 'Select model' -TimeoutSec 15
+            # The picker title is localized (model_picker.title), so match it across all bundled
+            # locales rather than hardcoding the en-US "Select model" (would fail on non-en-US).
+            $titleRe = Get-WtaLocalizedTextRegex -Key 'model_picker.title'
+            if (-not $titleRe) { $titleRe = '(?i)Select model' }
+            Assert-AgentPaneText -App $script:app -Pattern $titleRe -TimeoutSec 15
             # Prove a selectable model row actually rendered, rather than guessing model names
             # (auto/claude/gpt drift with releases and "auto" matches "autofix"/"automatic"):
             # the picker marks its highlighted row with the "> " selector (model_popup.rs
