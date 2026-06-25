@@ -157,7 +157,28 @@ function Wait-AgentReady {
             # 500ms): Get-ItLogText re-reads the whole appended slice each call and the helper log
             # grows while connecting, so reading it every loop would be O(n²) IO on long waits.
             if ((Get-Date) -ge $nextLogCheck) {
-                $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
+                # Read the NEWEST helper log file in FULL (not -SinceStart). The helper is pre-warmed
+                # during tab init, so an auth/fatal failure can be logged BEFORE Start-Terminal
+                # captures the -SinceStart offset — -SinceStart would then miss it and we'd burn the
+                # whole timeout. The newest wta-main_helper-*.log is this launch's helper (fresh PID
+                # → fresh file, since Stop-StaleItInstances killed any prior terminal), so reading it
+                # from the top catches the early failure without false-matching a previous run's log.
+                $log = ''
+                $dir = Get-ItLogDir -App $App
+                if ($dir) {
+                    $helperLog = Get-ChildItem $dir -Filter 'wta-main_helper-*.log' -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($helperLog) {
+                        # Shared read: the helper has the file open for writing, so use a
+                        # FileShare.ReadWrite stream (plain Get-Content -Raw can hit a sharing
+                        # violation), matching how Get-ItLogText reads live logs.
+                        try {
+                            $fs = [System.IO.FileStream]::new($helperLog.FullName, 'Open', 'Read', 'ReadWrite')
+                            try { $log = [System.IO.StreamReader]::new($fs).ReadToEnd() } finally { $fs.Dispose() }
+                        }
+                        catch { $log = '' }
+                    }
+                }
                 # Fail-fast on a logged fatal connect failure. The helper logs the typed failure as
                 # `target=failure … class=auth_required` (app.rs) / `non_compliant_auth=true`
                 # (failure.rs string-fallback), so match the stable class labels (quote-agnostic),
