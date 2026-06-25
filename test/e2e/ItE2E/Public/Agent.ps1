@@ -181,12 +181,14 @@ function Wait-AgentReady {
                         catch { $log = '' }
                     }
                 }
-                # Fail-fast on a logged fatal connect failure. The helper logs the typed failure as
-                # `target=failure … class=auth_required` (app.rs) / `non_compliant_auth=true`
-                # (failure.rs string-fallback), so match the stable class labels (quote-agnostic),
-                # NOT the message "agent failure" (which also fires for a benign cancel). The helper
-                # process exit is `exiting with error`.
-                if ($log -match 'exiting with error|auth_required|non_compliant_auth') {
+                # Fail-fast on a logged fatal connect failure. Match the STRUCTURED tracing fields,
+                # not bare substrings: the helper logs the typed failure as `class=auth_required`
+                # (app.rs; tracing may quote the &str value → `class="auth_required"`, so the quote
+                # is optional) and `non_compliant_auth=true` (failure.rs string-fallback). Requiring
+                # the `class=`/`…=true` prefix avoids a false-trigger from those tokens appearing in
+                # an unrelated field/value. NOT the message "agent failure" (also fires for a benign
+                # cancel). The helper process exit is `exiting with error`.
+                if ($log -match 'exiting with error|class="?auth_required|non_compliant_auth=true') {
                     Write-ItLog -Level WARN -Message "Wait-AgentReady: helper logged an auth/fatal connect failure; not ready."
                     return $false
                 }
