@@ -114,10 +114,10 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             # Prove a selectable model row actually rendered, rather than guessing model names
             # (auto/claude/gpt drift with releases and "auto" matches "autofix"/"automatic"):
             # the picker marks its highlighted row with the "> " selector (model_popup.rs
-            # highlight_symbol) — locale-independent and stable across model renames. Anchor to
-            # the line start (allowing a leading popup border │/║/| or spaces) so a stray "->"
-            # in chat output can't false-positive.
-            (Get-AgentPaneText -App $script:app -MaxLines 60) | Should -Match '(?m)^[\s│║|]*>\s+\S'
+            # highlight_symbol), drawn INSIDE the popup's left border — e.g. "│>  ● Claude …".
+            # Require a popup border char (│/║/|) immediately before the marker so a Markdown
+            # blockquote ("> …") or a stray "->" in the chat transcript can't false-positive.
+            (Get-AgentPaneText -App $script:app -MaxLines 60) | Should -Match '(?m)^\s*[│║|]\s*>\s+\S'
             Send-AgentKey -App $script:app -Key Escape | Out-Null
             Clear-AgentInput -App $script:app | Out-Null
         }

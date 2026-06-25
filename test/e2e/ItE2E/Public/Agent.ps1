@@ -171,10 +171,12 @@ function Wait-AgentReady {
                     if ($helperLog) {
                         # Shared read: the helper has the file open for writing, so use a
                         # FileShare.ReadWrite stream (plain Get-Content -Raw can hit a sharing
-                        # violation), matching how Get-ItLogText reads live logs.
+                        # violation), matching how Get-ItLogText reads live logs. Disposing the
+                        # StreamReader also disposes the underlying FileStream.
                         try {
                             $fs = [System.IO.FileStream]::new($helperLog.FullName, 'Open', 'Read', 'ReadWrite')
-                            try { $log = [System.IO.StreamReader]::new($fs).ReadToEnd() } finally { $fs.Dispose() }
+                            $sr = [System.IO.StreamReader]::new($fs)
+                            try { $log = $sr.ReadToEnd() } finally { $sr.Dispose() }
                         }
                         catch { $log = '' }
                     }
