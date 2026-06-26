@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kod buferə kopyalandı — brauzerdə yapışdırın.
 auth.sign_in_prompt: "Agentinizi istifadə etmək üçün daxil olun:"
 auth.card_connect: "  Agent xüsusiyyətlərini aktivləşdirmək üçün %{name} qoşun"
 auth.button_sign_in_github: "[ GitHub ilə daxil ol ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} ilə daxil ol ]"
-auth.hint_footer: "  Daxil olmaq üçün Enter, geri qayıtmaq üçün Esc basın"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Daxil olma əmrini kopyalamaq üçün Enter basın, sonra daxil olmanı tamamlamaq üçün onu yeni terminal pəncərəsinə yapışdırın"  # {Locked="Enter"}
+auth.hint_footer_back: "  Geri qayıtmaq üçün Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Daxil olmaq üçün Enter · GitHub Enterprise üçün E · geri qayıtmaq üçün Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domeni: "
+auth.enterprise_hint_footer: "  Daxil olmaq üçün Enter · github.com üçün Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Yenidən cəhd etmək üçün Enter basın, yaxud github.com üçün Esc. Ümumi səbəblər: səhv yazılmış və ya əlçatmaz domen, vaxtı bitmiş kod, yaxud həmin hostda Copilot girişi yoxdur."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Yenidən cəhd etmək üçün Enter basın, yaxud geri qayıtmaq üçün Esc."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Düşünür…"

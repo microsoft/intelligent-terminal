@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kod panoya kopyalandı — tarayıcınıza yapıştır
 auth.sign_in_prompt: "Aracınızı kullanmak için oturum açın:"
 auth.card_connect: "  Aracı özelliklerini etkinleştirmek için %{name} bağlayın"
 auth.button_sign_in_github: "[ GitHub ile oturum aç ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} ile oturum aç ]"
-auth.hint_footer: "  Oturum açmak için Enter, geri dönmek için Esc tuşuna basın"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Oturum açma komutunu kopyalamak için Enter tuşuna basın, ardından oturum açmayı tamamlamak için yeni bir terminal penceresine yapıştırın"  # {Locked="Enter"}
+auth.hint_footer_back: "  Geri gitmek için Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = oturum aç · E = GitHub Enterprise · Esc = geri git"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise etki alanı: "
+auth.enterprise_hint_footer: "  Enter = oturum aç · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Yeniden denemek için Enter tuşuna veya github.com için Esc tuşuna basın. Yaygın nedenler: yanlış yazılmış ya da ulaşılamayan etki alanı, süresi dolmuş kod veya bu konakta Copilot erişiminin olmaması."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Yeniden denemek için Enter tuşuna veya geri gitmek için Esc tuşuna basın."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Düşünüyor…"

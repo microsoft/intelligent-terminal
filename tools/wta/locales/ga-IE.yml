@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Cód cóipeáilte chuig an ngearrthaisce — greamaigh
 auth.sign_in_prompt: "Sínigh isteach chun do ghníomhaire a úsáid:"
 auth.card_connect: "  Ceangail %{name} chun gnéithe gníomhaire a chumasú"
 auth.button_sign_in_github: "[ Sínigh isteach le GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Sínigh isteach le %{name} ]"
-auth.hint_footer: "  Brúigh Enter chun síniú isteach, Esc chun dul ar ais"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Brúigh Enter chun an t-ordú sínithe isteach a chóipeáil, ansin greamaigh i bhfuinneog teirminéil nua é chun an síniú isteach a chríochnú"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc chun dul siar"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = sínigh isteach · E = GitHub Enterprise · Esc = téigh siar"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Fearann Enterprise: "
+auth.enterprise_hint_footer: "  Enter = sínigh isteach · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Brúigh Enter chun triail a bhaint as arís, nó Esc le haghaidh github.com. Cúiseanna coitianta: fearann mílitrithe nó nach féidir a bhaint amach, cód imithe in éag, nó gan rochtain Copilot ar an óstach sin."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Brúigh Enter chun triail a bhaint as arís, nó Esc chun dul siar."  # {Locked="Enter","Esc"}
 
 # ── Amharc comhrá (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Ag smaoineamh…"

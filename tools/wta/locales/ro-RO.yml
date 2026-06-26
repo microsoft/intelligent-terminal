@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Codul a fost copiat în clipboard — inserați-l în 
 auth.sign_in_prompt: "Conectați-vă pentru a utiliza agentul:"
 auth.card_connect: "  Conectați %{name} pentru a activa funcțiile agentului"
 auth.button_sign_in_github: "[ Conectare cu GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Conectare cu %{name} ]"
-auth.hint_footer: "  Apăsați Enter pentru conectare, Esc pentru a reveni"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Apăsați Enter pentru a copia comanda de conectare, apoi lipiți-o într-o fereastră nouă de terminal pentru a finaliza conectarea"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc pentru a reveni"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter pentru conectare · E pentru GitHub Enterprise · Esc pentru a reveni"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domeniu Enterprise: "
+auth.enterprise_hint_footer: "  Enter pentru conectare · Esc pentru github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Apăsați Enter pentru a încerca din nou, sau Esc pentru github.com. Cauze comune: un domeniu tastat greșit sau inaccesibil, un cod expirat sau lipsa accesului la Copilot pe acea gazdă."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Apăsați Enter pentru a încerca din nou, sau Esc pentru a reveni."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Se gândește..."

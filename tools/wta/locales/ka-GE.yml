@@ -38,8 +38,14 @@ auth.code_copied_hint: "  კოდი კოპირებულია — ჩ
 auth.sign_in_prompt: "შედით აგენტის გამოსაყენებლად:"
 auth.card_connect: "  დაუკავშირეთ %{name} აგენტის ფუნქციების გასააქტიურებლად"
 auth.button_sign_in_github: "[ GitHub-ით შესვლა ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name}-ით შესვლა ]"
-auth.hint_footer: "  დააჭირეთ Enter შესასვლელად, Esc უკან დასაბრუნებლად"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  დააჭირეთ Enter-ს შესვლის ბრძანების დასაკოპირებლად, შემდეგ ჩასვით იგი ახალი ტერმინალის ფანჯარაში შესვლის დასასრულებლად"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc უკან დასაბრუნებლად"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter შესასვლელად · E GitHub Enterprise-ისთვის · Esc უკან დასაბრუნებლად"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise დომენი: "
+auth.enterprise_hint_footer: "  Enter შესასვლელად · Esc github.com-ისთვის"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  დააჭირეთ Enter-ს ხელახლა საცდელად, ან Esc-ს github.com-ისთვის. ხშირი მიზეზები: არასწორად აკრეფილი ან მიუწვდომელი დომენი, ვადაგასული კოდი, ან ამ ჰოსტზე Copilot-ზე წვდომის არქონა."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  დააჭირეთ Enter-ს ხელახლა საცდელად, ან Esc-ს უკან დასაბრუნებლად."  # {Locked="Enter","Esc"}
 
 # ── ჩატის ხედი (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "ვფიქრობ…"

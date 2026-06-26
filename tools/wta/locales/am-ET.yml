@@ -38,8 +38,14 @@ auth.code_copied_hint: "ኮዱ ተቀድቷል — በአስሳሽዎ ላይ ይ
 auth.sign_in_prompt: "ኤጅንትዎን ለመጠቀም ይግቡ፡"
 auth.card_connect: "የኤጅንት ባህሪያትን ለማንቃት %{name} ይጋኙ"
 auth.button_sign_in_github: "[ በ GitHub ይግቡ ]"
-auth.button_sign_in_with: "[ በ %{name} ይግቡ ]"
-auth.hint_footer: "ለመግባት Enter ይጫኑ, ለመመለስ Esc ይጫኑ"
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  የመግቢያ ትእዛዙን ለመቅዳት Enter ይጫኑ፣ ከዚያ መግባቱን ለማጠናቀቅ በአዲስ ተርሚናል መስኮት ውስጥ ይለጥፉት"  # {Locked="Enter"}
+auth.hint_footer_back: "  ለመመለስ Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  ለመግባት Enter · GitHub Enterprise ለመጠቀም E · ለመመለስ Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise ጎራ: "
+auth.enterprise_hint_footer: "  ለመግባት Enter · github.com ለመጠቀም Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  እንደገና ለመሞከር Enter ይጫኑ፣ ወይም github.com ለመጠቀም Esc. የተለመዱ ምክንያቶች፦ በስህተት የተጻፈ ወይም ሊደረስበት የማይችል ጎራ፣ ጊዜው ያለፈ ኮድ፣ ወይም በዚያ አስተናጋጅ ላይ የCopilot መዳረሻ አለመኖር።"  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  እንደገና ለመሞከር Enter ይጫኑ፣ ወይም ለመመለስ Esc."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "በማሰብ…"

@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Code in die Zwischenablage kopiert — fügen Sie ihn 
 auth.sign_in_prompt: "Melden Sie sich an, um Ihren Agenten zu verwenden:"
 auth.card_connect: "  %{name} verbinden, um Agentfunktionen zu aktivieren"
 auth.button_sign_in_github: "[ Mit GitHub anmelden ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Mit %{name} anmelden ]"
-auth.hint_footer: "  Drücken Sie Enter zum Anmelden, Esc zum Zurückkehren"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Drücken Sie Enter, um den Anmeldebefehl zu kopieren, und fügen Sie ihn dann in ein neues Terminalfenster ein, um die Anmeldung abzuschließen"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc zum Zurückgehen"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter zum Anmelden · E für GitHub Enterprise · Esc zum Zurückgehen"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-Domäne: "
+auth.enterprise_hint_footer: "  Enter zum Anmelden · Esc für github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Drücken Sie Enter, um es erneut zu versuchen, oder Esc für github.com. Häufige Ursachen: eine falsch eingegebene oder nicht erreichbare Domäne, ein abgelaufener Code oder kein Copilot-Zugriff auf diesem Host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Drücken Sie Enter, um es erneut zu versuchen, oder Esc zum Zurückgehen."  # {Locked="Enter","Esc"}
 
 # ── Chatansicht (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Denke nach…"

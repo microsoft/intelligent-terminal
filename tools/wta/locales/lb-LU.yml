@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Code an d'Tëschoflag kopéiert — setzt en an Ärem 
 auth.sign_in_prompt: "Mellt Iech un fir Ären Agent ze benotzen:"
 auth.card_connect: "  Verbinnt %{name} fir Agent-Funktiounen z'aktivéieren"
 auth.button_sign_in_github: "[ Mat GitHub umellen ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Mat %{name} umellen ]"
-auth.hint_footer: "  Dréckt Enter fir Iech unzemellen, Esc fir zréckzegoen"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Dréckt Enter, fir den Umeldungsbefeel ze kopéieren, a pecht en dann an eng nei Terminalfënster an, fir d'Umeldung ofzeschléissen"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc fir zréckzegoen"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter fir Iech unzemellen · E fir GitHub Enterprise · Esc fir zréckzegoen"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-Domän: "
+auth.enterprise_hint_footer: "  Enter fir Iech unzemellen · Esc fir github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Dréckt Enter fir nach eng Kéier ze probéieren, oder Esc fir github.com. Heefeg Ursaachen: eng falsch aginn oder net erreechbar Domän, en ofgelafene Code oder kee Copilot-Zougang op deem Host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Dréckt Enter fir nach eng Kéier ze probéieren, oder Esc fir zréckzegoen."  # {Locked="Enter","Esc"}
 
 # ── Chat-Vue (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Denkt no…"

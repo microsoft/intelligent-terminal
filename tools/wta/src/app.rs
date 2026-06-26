@@ -133,6 +133,36 @@ pub struct AuthState {
     pub login_command: String,
     pub checking: bool,
     pub status_message: String,
+    /// GitHub Enterprise sign-in: true while the domain input is shown/active.
+    pub enterprise_mode: bool,
+    /// The GitHub Enterprise domain being entered (e.g. "mycompany.ghe.com").
+    pub enterprise_host: String,
+}
+
+/// Prefill the Copilot GHE sign-in state from the persisted host. Returns
+/// `(enterprise_mode, enterprise_host)`: a returning GHE user starts with the
+/// domain input expanded and pre-filled so they can sign in with one keypress.
+fn copilot_enterprise_prefill(agent_id: &str) -> (bool, String) {
+    if agent_id == "copilot" {
+        if let Some(host) = crate::agent_check::load_copilot_enterprise_host() {
+            return (true, host);
+        }
+    }
+    (false, String::new())
+}
+
+/// The device-verification URL for a Copilot device-code login. Data-residency
+/// GitHub Enterprise verifies device codes on the enterprise host (taken from
+/// the `--host https://<host>` in the login command), not github.com.
+fn device_verify_url(login_command: &str) -> String {
+    login_command
+        .split("--host ")
+        .nth(1)
+        .and_then(|s| s.split_whitespace().next())
+        .map(|h| h.trim_end_matches('/'))
+        .filter(|h| !h.is_empty())
+        .map(|h| format!("{}/login/device", h))
+        .unwrap_or_else(|| "https://github.com/login/device".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1293,6 +1323,9 @@ pub enum AppEvent {
     LoginComplete {
         agent_id: String,
         success: bool,
+        /// On failure, the most specific error line captured from the login
+        /// process output (if any), surfaced to the user. `None` on success.
+        error: Option<String>,
     },
     /// Post-login auth recovery: a genuine post-login reconnect (helper/pipe
     /// mode) for an External-auth agent STILL failed auth, which means the
@@ -3838,6 +3871,17 @@ impl App {
         self.event_tx = Some(tx);
     }
 
+    /// Enter the "checking" state for a (re)login: show the spinner and clear
+    /// any prior status. A stale `Login failed…` (or device-code) line must not
+    /// leak into the checking view, which treats a non-empty status as live
+    /// device-flow progress and would otherwise render a phantom "code copied".
+    fn begin_auth_checking(&mut self) {
+        if let Some(ref mut auth) = self.auth {
+            auth.checking = true;
+            auth.status_message.clear();
+        }
+    }
+
     fn spawn_login(&self, agent_id: &str, login_command: &str) {
         if let Some(ref tx) = self.event_tx {
             let tx = tx.clone();
@@ -3875,6 +3919,11 @@ impl App {
                         )
                     };
 
+                    // The device-verification URL follows the (optional)
+                    // `--host` (see `device_verify_url`).
+                    let verify_url = device_verify_url(&cmd);
+                    let verify_url_stderr = verify_url.clone();
+
                     let mut child = match std::process::Command::new(&exe)
                         .args(&args)
                         .stdout(std::process::Stdio::piped())
@@ -3885,7 +3934,7 @@ impl App {
                         Ok(c) => c,
                         Err(e) => {
                             tracing::warn!("spawn_login: failed to spawn '{}': {}", exe, e);
-                            return false;
+                            return (false, None);
                         }
                     };
 
@@ -3897,6 +3946,7 @@ impl App {
                     let progress_tx2 = progress_tx.clone();
                     let stderr_handle = std::thread::spawn(move || {
                         let mut found_success = false;
+                        let mut error_line: Option<String> = None;
                         if let Some(stderr) = stderr {
                             let reader = std::io::BufReader::new(stderr);
                             for line in reader.lines().map_while(Result::ok) {
@@ -3907,8 +3957,7 @@ impl App {
                                         let code = code.trim_end_matches('.');
                                         let _ = progress_tx2.send(AppEvent::LoginProgress {
                                             device_code: code.to_string(),
-                                            verify_url: "https://github.com/login/device"
-                                                .to_string(),
+                                            verify_url: verify_url_stderr.clone(),
                                         });
                                     }
                                 }
@@ -3918,12 +3967,17 @@ impl App {
                                     found_success = true;
                                     break;
                                 }
+                                let low = line.to_lowercase();
+                                if low.contains("fail") || low.contains("error") {
+                                    error_line = Some(line.clone());
+                                }
                             }
                         }
-                        found_success
+                        (found_success, error_line)
                     });
 
                     let mut found_success = false;
+                    let mut error_line: Option<String> = None;
                     if let Some(stdout) = stdout {
                         let reader = std::io::BufReader::new(stdout);
                         for line in reader.lines().map_while(Result::ok) {
@@ -3934,7 +3988,7 @@ impl App {
                                     let code = code.trim_end_matches('.');
                                     let _ = progress_tx.send(AppEvent::LoginProgress {
                                         device_code: code.to_string(),
-                                        verify_url: "https://github.com/login/device".to_string(),
+                                        verify_url: verify_url.clone(),
                                     });
                                 }
                             }
@@ -3943,6 +3997,10 @@ impl App {
                             {
                                 found_success = true;
                                 break;
+                            }
+                            let low = line.to_lowercase();
+                            if low.contains("fail") || low.contains("error") {
+                                error_line = Some(line.clone());
                             }
                         }
                     }
@@ -3957,10 +4015,11 @@ impl App {
                         // Don't call child.wait() — it can block if
                         // sub-processes are still running.
                         drop(stderr_handle);
-                        return true;
+                        return (true, None);
                     }
 
-                    let stderr_success = stderr_handle.join().unwrap_or(false);
+                    let (stderr_success, stderr_error) =
+                        stderr_handle.join().unwrap_or((false, None));
                     found_success = stderr_success;
 
                     if !found_success {
@@ -3970,15 +4029,31 @@ impl App {
                         let _ = child.kill();
                         let _ = child.wait();
                     }
-                    found_success
+                    // On failure, surface the most specific error line we saw
+                    // (stdout preferred, then stderr) so the UI can show *why*.
+                    let error = if found_success {
+                        None
+                    } else {
+                        error_line.or(stderr_error)
+                    };
+                    (found_success, error)
                 })
                 .await;
 
-                let success = result.unwrap_or(false);
+                let (success, error) = result.unwrap_or((false, None));
+                if !success {
+                    tracing::warn!(
+                        target: "login",
+                        agent = %id,
+                        reason = error.as_deref().unwrap_or("(no reason captured)"),
+                        "login failed"
+                    );
+                }
                 tracing::info!("login: spawn_blocking returned, sending LoginComplete success={}", success);
                 let send_result = tx.send(AppEvent::LoginComplete {
                     agent_id: id,
                     success,
+                    error,
                 });
                 tracing::info!("login: LoginComplete send result={:?}", send_result.is_ok());
             });
@@ -4077,26 +4152,34 @@ impl App {
                             });
                         }
                         self.setup = None;
+                        let (enterprise_mode, enterprise_host) =
+                            copilot_enterprise_prefill(&agent_id);
                         self.auth = Some(AuthState {
                             agent_id: agent_id.clone(),
                             agent_name,
                             auth_hint: profile.auth_hint.to_string(),
-                            login_command: crate::agent_check::build_login_cmd(&agent_id),
+                            login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                             checking: false,
                             status_message: String::new(),
+                            enterprise_mode,
+                            enterprise_host,
                         });
                     } else {
                         // No credential → auth screen
                         self.update_deferred_acp_agent(&agent_id);
                         self.mode = AppMode::Auth;
                         self.setup = None;
+                        let (enterprise_mode, enterprise_host) =
+                            copilot_enterprise_prefill(&agent_id);
                         self.auth = Some(AuthState {
                             agent_id: agent_id.clone(),
                             agent_name,
                             auth_hint: profile.auth_hint.to_string(),
-                            login_command: crate::agent_check::build_login_cmd(&agent_id),
+                            login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                             checking: false,
                             status_message: String::new(),
+                            enterprise_mode,
+                            enterprise_host,
                         });
                     }
                 } else if agent.can_auto_install() {
@@ -4194,13 +4277,16 @@ impl App {
             } => {
                 let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
                 self.mode = AppMode::Auth;
+                let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(&agent_id);
                 self.auth = Some(AuthState {
                     agent_id: agent_id.clone(),
                     agent_name: display_name,
                     auth_hint: profile.auth_hint.to_string(),
-                    login_command: crate::agent_check::build_login_cmd(&agent_id),
+                    login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                     checking: false,
                     status_message: String::new(),
+                    enterprise_mode,
+                    enterprise_host,
                 });
             }
             SetupOption::Retry => {
@@ -6284,13 +6370,17 @@ impl App {
                             tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                             tab.chat_scroll.reset();
                             self.setup = None;
+                            let (enterprise_mode, enterprise_host) =
+                                copilot_enterprise_prefill(&agent_id);
                             self.auth = Some(AuthState {
                                 agent_id: agent_id.clone(),
                                 agent_name: status.display_name.clone(),
                                 auth_hint: profile.auth_hint.to_string(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id),
+                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                                 checking: false,
                                 status_message: String::new(),
+                                enterprise_mode,
+                                enterprise_host,
                             });
                         } else {
                             // No credential → auth screen
@@ -6299,13 +6389,17 @@ impl App {
                             }
                             self.mode = AppMode::Auth;
                             self.setup = None;
+                            let (enterprise_mode, enterprise_host) =
+                                copilot_enterprise_prefill(&agent_id);
                             self.auth = Some(AuthState {
                                 agent_id: agent_id.clone(),
                                 agent_name: status.display_name.clone(),
                                 auth_hint: profile.auth_hint.to_string(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id),
+                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                                 checking: false,
                                 status_message: String::new(),
+                                enterprise_mode,
+                                enterprise_host,
                             });
                         }
                         return;
@@ -6329,31 +6423,49 @@ impl App {
                 device_code,
                 verify_url,
             } => {
+                // Only reflect device-flow progress while an auth attempt is
+                // actively checking. A late event after the user left the
+                // screen (auth = None) must not write status or copy a device
+                // code to the clipboard.
                 if let Some(ref mut auth) = self.auth {
-                    auth.status_message =
-                        format!("Visit {} and enter code: {}", verify_url, device_code);
-                }
-                // Copy device code to clipboard
-                #[cfg(windows)]
-                {
-                    let _ = std::process::Command::new("cmd")
-                        .args(["/C", &format!("echo {}| clip", device_code)])
-                        .spawn();
+                    if auth.checking {
+                        auth.status_message =
+                            format!("Visit {} and enter code: {}", verify_url, device_code);
+                        // Copy device code to clipboard
+                        #[cfg(windows)]
+                        {
+                            let _ = std::process::Command::new("cmd")
+                                .args(["/C", &format!("echo {}| clip", device_code)])
+                                .spawn();
+                        }
+                    }
                 }
             }
-            AppEvent::LoginComplete { success, .. } => {
+            AppEvent::LoginComplete { success, error, agent_id } => {
                 tracing::info!("LoginComplete received: success={} deferred_acp={}", success, self.deferred_acp.is_some());
+                // Ignore stale/late completions: only act on a completion that
+                // matches the currently active auth attempt. After the user
+                // escapes the auth screen (auth = None) or switches agents, a
+                // late background login must not force Chat mode, start ACP for
+                // the wrong/empty agent, or rewrite another screen's status.
+                let active = self
+                    .auth
+                    .as_ref()
+                    .map(|a| a.agent_id == agent_id)
+                    .unwrap_or(false);
+                if !active {
+                    tracing::info!(
+                        "LoginComplete ignored (no matching active auth attempt) agent={}",
+                        agent_id
+                    );
+                    return;
+                }
                 if success {
                     // Login succeeded → transition to Chat and start ACP
                     self.mode = AppMode::Chat;
                     self.setup = None;
                     self.state =
                         ConnectionState::Connecting(t!("connection.starting").into_owned());
-                    let agent_id = self
-                        .auth
-                        .as_ref()
-                        .map(|a| a.agent_id.clone())
-                        .unwrap_or_default();
                     self.update_deferred_acp_agent(&agent_id);
                     // If deferred_acp is None (helper mode — the initial
                     // ACP client already exited with auth error and dropped
@@ -6383,11 +6495,18 @@ impl App {
                     self.needs_post_login_authenticate = true;
                     self.auth = None;
                 } else {
-                    // Login failed — show auth screen again
+                    // Login failed — show auth screen again with feedback.
                     if let Some(ref mut auth) = self.auth {
                         auth.checking = false;
                         if !auth.login_command.contains("copilot") {
                             auth.status_message = t!("system.command_copied_retry").into_owned();
+                        } else {
+                            // Copilot device-flow failed (e.g. an unreachable
+                            // GitHub Enterprise host) — surface the reason
+                            // instead of silently returning to the form.
+                            auth.status_message = error
+                                .filter(|e| !e.trim().is_empty())
+                                .unwrap_or_else(|| t!("system.authentication_failed").into_owned());
                         }
                     }
                 }
@@ -6492,21 +6611,100 @@ impl App {
         // Auth mode: Enter to sign in, Esc to go back
         if self.mode == AppMode::Auth {
             match key.code {
+                // GitHub Enterprise sign-in (Copilot): [E] reveals a domain
+                // input; while it's open, typed chars edit the domain and
+                // Backspace deletes. (Esc collapses it — handled below.)
+                KeyCode::Char('e') | KeyCode::Char('E')
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self
+                            .auth
+                            .as_ref()
+                            .map(|a| !a.checking && a.agent_id == "copilot" && !a.enterprise_mode)
+                            .unwrap_or(false) =>
+                {
+                    if let Some(ref mut auth) = self.auth {
+                        auth.enterprise_mode = true;
+                        // Starting a fresh enterprise attempt: drop any prior
+                        // failure/progress text so it doesn't show in the domain
+                        // input (e.g. a leftover github.com "Login failed").
+                        auth.status_message.clear();
+                    }
+                }
+                KeyCode::Char(c)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self
+                            .auth
+                            .as_ref()
+                            .map(|a| !a.checking && a.enterprise_mode)
+                            .unwrap_or(false) =>
+                {
+                    if !c.is_whitespace() {
+                        if let Some(ref mut auth) = self.auth {
+                            auth.enterprise_host.push(c);
+                        }
+                    }
+                }
+                KeyCode::Backspace
+                    if self
+                        .auth
+                        .as_ref()
+                        .map(|a| !a.checking && a.enterprise_mode)
+                        .unwrap_or(false) =>
+                {
+                    if let Some(ref mut auth) = self.auth {
+                        auth.enterprise_host.pop();
+                    }
+                }
                 KeyCode::Enter => {
                     // Extract values before borrowing self again
                     let login_info = self.auth.as_ref().and_then(|a| {
                         if !a.checking && !a.login_command.is_empty() {
-                            Some((a.agent_id.clone(), a.login_command.clone()))
+                            // In enterprise mode, a non-empty domain drives a
+                            // `--host` sign-in; otherwise the default github.com.
+                            let host = if a.enterprise_mode {
+                                let h = a.enterprise_host.trim();
+                                if h.is_empty() {
+                                    None
+                                } else {
+                                    Some(h.to_string())
+                                }
+                            } else {
+                                None
+                            };
+                            Some((a.agent_id.clone(), a.login_command.clone(), host))
                         } else {
                             None
                         }
                     });
-                    if let Some((agent_id, login_cmd)) = login_info {
+                    if let Some((agent_id, login_cmd, host)) = login_info {
                         if login_cmd.contains("copilot") {
-                            // Copilot: auto device-flow sign-in via piped stdio
-                            if let Some(ref mut auth) = self.auth {
-                                auth.checking = true;
-                            }
+                            // Copilot: auto device-flow sign-in via piped stdio.
+                            // Rebuild the command with the (optional) GitHub
+                            // Enterprise host and remember it for next time.
+                            let login_cmd =
+                                crate::agent_check::build_login_cmd(&agent_id, host.as_deref());
+                            // Remember the last-used host for next time. Persist
+                            // the *normalized* bare domain (or "" for github.com /
+                            // empty) so a returning user is prefilled only for a
+                            // real GHE domain — not stuck in the expanded
+                            // enterprise input after a github.com fallback.
+                            let normalized_host = host
+                                .as_deref()
+                                .and_then(crate::agent_check::normalize_enterprise_host);
+                            crate::agent_check::save_copilot_enterprise_host(
+                                normalized_host.as_deref().unwrap_or(""),
+                            );
+                            self.begin_auth_checking();
+                            tracing::info!(
+                                target: "login",
+                                agent = %agent_id,
+                                enterprise = host.is_some(),
+                                host = host.as_deref().unwrap_or("github.com"),
+                                cmd = %login_cmd,
+                                "starting copilot device-flow login"
+                            );
                             self.spawn_login(&agent_id, &login_cmd);
                         } else {
                             // Non-Copilot agents: copy command to clipboard, re-check credential
@@ -6527,10 +6725,7 @@ impl App {
                                     .spawn();
                             }
 
-                            if let Some(ref mut auth) = self.auth {
-                                auth.checking = true;
-                                auth.status_message = String::new();
-                            }
+                            self.begin_auth_checking();
 
                             // Re-check credential asynchronously
                             if let Some(ref tx) = self.event_tx {
@@ -6542,13 +6737,34 @@ impl App {
                                     })
                                     .await;
                                     let success = result.unwrap_or(false);
-                                    let _ = tx.send(AppEvent::LoginComplete { agent_id, success });
+                                    let _ = tx.send(AppEvent::LoginComplete {
+                                        agent_id,
+                                        success,
+                                        error: None,
+                                    });
                                 });
                             }
                         }
                     }
                 }
                 KeyCode::Esc => {
+                    // In the GHE domain input, Esc collapses back to the
+                    // github.com sign-in choice rather than leaving the screen.
+                    if self
+                        .auth
+                        .as_ref()
+                        .map(|a| a.enterprise_mode && !a.checking)
+                        .unwrap_or(false)
+                    {
+                        if let Some(ref mut auth) = self.auth {
+                            auth.enterprise_mode = false;
+                            // Collapsing back to the github.com choice abandons
+                            // the enterprise attempt — clear its failure/progress
+                            // text so it doesn't linger on the collapsed screen.
+                            auth.status_message.clear();
+                        }
+                        return;
+                    }
                     if self.setup.is_some() {
                         // Go back to setup screen
                         self.mode = AppMode::Setup;
@@ -14686,6 +14902,8 @@ mod tests {
             login_command: String::new(),
             checking: true,
             status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
         });
 
         let text = render_to_text(&mut app, 80, 24);
@@ -14716,8 +14934,8 @@ mod tests {
     }
 
     /// Render: the auth screen's sign-in card branch (`checking == false`)
-    /// must paint the connect prompt and a Copilot-specific sign-in button.
-    /// Covers the `else` arm of `ui/auth.rs` (lines 62-122).
+    /// must paint the connect prompt and, for Copilot, the GitHub Enterprise
+    /// sign-in footer. Covers the `else` arm of `ui/auth.rs`.
     #[test]
     fn render_auth_sign_in_card() {
         let mut app = test_app();
@@ -14729,6 +14947,8 @@ mod tests {
             login_command: String::new(),
             checking: false,
             status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
         });
 
         let text = render_to_text(&mut app, 80, 24);
@@ -14738,11 +14958,324 @@ mod tests {
             !probe.trim().is_empty() && text.contains(&probe),
             "the auth sign-in card must paint the connect prompt ({connect:?}); rendered:\n{text}"
         );
-        let button = t!("auth.button_sign_in_github").into_owned();
-        let button_probe: String = button.chars().take(6).collect();
+        let footer = t!("auth.enterprise_prompt").into_owned();
+        let footer_probe: String = footer.trim_start().chars().take(13).collect();
         assert!(
-            !button_probe.trim().is_empty() && text.contains(&button_probe),
-            "the auth sign-in card must paint the GitHub sign-in button ({button:?}); rendered:\n{text}"
+            !footer_probe.trim().is_empty() && text.contains(&footer_probe),
+            "the auth sign-in card must paint the Copilot enterprise footer ({footer:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: a non-Copilot agent's sign-in card (`checking == false`) shows
+    /// no sign-in button. Before Enter it paints the copy/paste instruction
+    /// plus the Esc hint; after Enter (status set) the instruction is replaced
+    /// by the "command copied" status. Covers the non-Copilot `else` arm of
+    /// `ui/auth.rs`.
+    #[test]
+    fn render_auth_non_copilot_sign_in_card() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "claude".into(),
+            agent_name: "Claude".into(),
+            auth_hint: String::new(),
+            login_command: "claude /login".into(),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        // Wide enough that the long instruction stays on one line (no wrap).
+        let text = render_to_text(&mut app, 140, 24);
+        // The copy/paste instruction is shown; "terminal window" is unique to
+        // it (the copied status instead says "another terminal,").
+        let instr = t!("auth.hint_footer").into_owned();
+        assert!(
+            instr.contains("terminal window"),
+            "probe guard: instruction wording changed ({instr:?})"
+        );
+        assert!(
+            text.contains("terminal window"),
+            "non-copilot card must paint the copy/paste instruction; rendered:\n{text}"
+        );
+        // The Esc hint is on its own line.
+        let back = t!("auth.hint_footer_back").into_owned();
+        let back_probe: String = back.trim_start().chars().take(6).collect();
+        assert!(
+            text.contains(&back_probe),
+            "non-copilot card must paint the Esc hint ({back:?}); rendered:\n{text}"
+        );
+        // No sign-in button is painted.
+        let button = t!("auth.button_sign_in_with", name = "Claude").into_owned();
+        assert!(
+            !text.contains(&button),
+            "non-copilot card must not paint a sign-in button ({button:?}); rendered:\n{text}"
+        );
+
+        // After Enter the command is copied: the status replaces the
+        // instruction (the header is not used for non-Copilot status).
+        if let Some(ref mut a) = app.auth {
+            a.status_message = t!("system.command_copied_retry").into_owned();
+        }
+        let text2 = render_to_text(&mut app, 140, 24);
+        let status_probe: String = t!("system.command_copied_retry").chars().take(10).collect();
+        assert!(
+            text2.contains(&status_probe),
+            "after Enter the command-copied status must be painted; rendered:\n{text2}"
+        );
+        assert!(
+            !text2.contains("terminal window"),
+            "after Enter the copy/paste instruction must be replaced; rendered:\n{text2}"
+        );
+    }
+
+    /// `device_verify_url` derives the device-code verification URL from the
+    /// login command: github.com by default, but the GitHub Enterprise host
+    /// when the command carries `--host https://<host>` (bug B).
+    #[test]
+    fn device_verify_url_follows_enterprise_host() {
+        assert_eq!(
+            device_verify_url("copilot login"),
+            "https://github.com/login/device"
+        );
+        assert_eq!(
+            device_verify_url("copilot login --host https://mycorp.ghe.com"),
+            "https://mycorp.ghe.com/login/device"
+        );
+        // Trailing slash is trimmed.
+        assert_eq!(
+            device_verify_url("copilot login --host https://mycorp.ghe.com/"),
+            "https://mycorp.ghe.com/login/device"
+        );
+        // A quoted exe path doesn't confuse the --host parse.
+        assert_eq!(
+            device_verify_url("\"C:\\Program Files\\copilot.exe\" login --host https://x.ghe.com"),
+            "https://x.ghe.com/login/device"
+        );
+    }
+
+    /// A failed Copilot device-flow login (e.g. an unreachable GitHub
+    /// Enterprise host) must surface the captured reason on the auth screen
+    /// instead of silently returning to the form with no feedback (bug C).
+    #[test]
+    fn copilot_login_failure_surfaces_reason() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: true,
+            status_message: String::new(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: false,
+            error: Some("Login failed: TypeError: fetch failed".into()),
+        });
+
+        let auth = app.auth.as_ref().expect("auth screen stays after failure");
+        assert!(!auth.checking, "failure clears the checking spinner");
+        assert_eq!(
+            auth.status_message, "Login failed: TypeError: fetch failed",
+            "the copilot login failure reason must be surfaced"
+        );
+    }
+
+    /// When no specific reason is captured, a Copilot login failure still shows
+    /// a generic localized message rather than nothing.
+    #[test]
+    fn copilot_login_failure_without_reason_shows_generic_message() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login".into(),
+            checking: true,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: false,
+            error: None,
+        });
+
+        let auth = app.auth.as_ref().expect("auth screen stays after failure");
+        assert_eq!(
+            auth.status_message,
+            t!("system.authentication_failed").into_owned(),
+            "a reasonless copilot failure falls back to a generic message"
+        );
+    }
+
+    /// Render: a Copilot login failure shows the reason at the *bottom* of the
+    /// screen (not appended to the header) followed by situation-specific
+    /// guidance. Regression guard for the "error on the first line" report.
+    #[test]
+    fn render_auth_copilot_failure_shows_reason_and_guidance_at_bottom() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: false,
+            status_message: "Login failed: boom".into(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        let text = render_to_text(&mut app, 100, 24);
+        assert!(
+            text.contains("Login failed: boom"),
+            "the failure reason must render; rendered:\n{text}"
+        );
+        // Situation-specific guidance is shown (stable leading probe).
+        let help = t!("auth.login_failed_help_enterprise").into_owned();
+        let help_probe: String = help.trim_start().chars().take(16).collect();
+        assert!(
+            text.contains(&help_probe),
+            "enterprise failure guidance must render ({help:?}); rendered:\n{text}"
+        );
+        // The reason must NOT be on the header (card_connect) line — it now
+        // belongs at the bottom.
+        let header = text
+            .lines()
+            .find(|l| l.contains("Connect GitHub Copilot"))
+            .expect("header line present");
+        assert!(
+            !header.contains("Login failed"),
+            "the failure reason must not be in the header; rendered:\n{text}"
+        );
+    }
+
+    /// Review fix ①: a stale `LoginComplete` after the user escaped the auth
+    /// screen (auth = None) must be ignored — it must not force Chat mode or
+    /// start ACP for an empty agent.
+    #[test]
+    fn login_complete_ignored_when_no_active_auth_attempt() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.auth = None;
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: true,
+            error: None,
+        });
+
+        assert_eq!(
+            app.mode,
+            AppMode::Setup,
+            "a stale success must not force Chat mode after the user left auth"
+        );
+        assert!(
+            !app.pending_acp_start,
+            "a stale success must not start an ACP client"
+        );
+    }
+
+    /// Review fix ①: a `LoginComplete` whose agent doesn't match the active
+    /// auth attempt (user switched agents) must be ignored.
+    #[test]
+    fn login_complete_ignored_on_agent_mismatch() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "claude".into(),
+            agent_name: "Claude".into(),
+            auth_hint: String::new(),
+            login_command: "claude /login".into(),
+            checking: true,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: true,
+            error: None,
+        });
+
+        assert_eq!(
+            app.mode,
+            AppMode::Auth,
+            "a completion for a different agent must not transition to Chat"
+        );
+        assert!(
+            app.auth.is_some(),
+            "a mismatched completion must not tear down the active auth screen"
+        );
+    }
+
+    /// Regression: a Copilot retry must clear any prior failure status so the
+    /// checking view shows "Checking…" — not a stale "Login failed…" plus a
+    /// phantom "code copied" from the previous attempt. `begin_auth_checking`
+    /// is the shared entry point both login paths use.
+    #[test]
+    fn begin_auth_checking_clears_stale_status() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: false,
+            status_message: "Login failed: TypeError: fetch failed".into(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        app.begin_auth_checking();
+
+        let auth = app.auth.as_ref().expect("auth screen present");
+        assert!(auth.checking, "begin_auth_checking must enter the checking state");
+        assert!(
+            auth.status_message.is_empty(),
+            "a retry must clear the stale failure status so the checking view \
+             does not render a phantom 'code copied'"
+        );
+    }
+
+    /// Regression: after a GHE failure, the first Esc collapses the enterprise
+    /// input AND clears the failure status, so it does not linger on the
+    /// collapsed github.com sign-in screen ("failed/copied message carried back").
+    #[test]
+    fn esc_collapse_clears_enterprise_failure_status() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: false,
+            status_message: "Login failed: TypeError: fetch failed".into(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.mode, AppMode::Auth, "collapse stays on the sign-in screen");
+        let auth = app.auth.as_ref().expect("collapse keeps the auth screen");
+        assert!(!auth.enterprise_mode, "first Esc collapses the enterprise input");
+        assert!(
+            auth.status_message.is_empty(),
+            "collapsing must clear the enterprise failure status so it does not linger"
         );
     }
 
@@ -14760,6 +15293,8 @@ mod tests {
             login_command: String::new(),
             checking: true,
             status_message: "AUTH_STATUS_XYZ".into(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
         });
 
         let text = render_to_text(&mut app, 80, 24);
@@ -14767,6 +15302,55 @@ mod tests {
             text.contains("AUTH_STATUS_XYZ"),
             "the auth screen must paint the status message while waiting; rendered:\n{text}"
         );
+    }
+
+    /// The GHE sign-in affordance: [E] reveals the domain input, typed chars
+    /// edit it (Ctrl-modified keys and whitespace are ignored), Backspace
+    /// deletes, and Esc collapses back to the github.com choice WITHOUT leaving
+    /// the sign-in screen.
+    #[test]
+    fn auth_enterprise_domain_entry_via_keys() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login".into(),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        // [E] opens the enterprise domain input (it is not typed into the field).
+        app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+        assert!(
+            app.auth.as_ref().unwrap().enterprise_mode,
+            "E must reveal the domain input"
+        );
+
+        // Typed characters edit the domain.
+        for c in ['c', 'o', 'r', 'p', '.', 'g', 'h', 'e', '.', 'c', 'o', 'm'] {
+            app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        // Ctrl-combinations and whitespace must NOT be typed into the field.
+        app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        assert_eq!(app.auth.as_ref().unwrap().enterprise_host, "corp.ghe.com");
+
+        // Backspace deletes one character.
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(app.auth.as_ref().unwrap().enterprise_host, "corp.ghe.co");
+
+        // Esc collapses the input but stays on the sign-in screen.
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let auth = app
+            .auth
+            .as_ref()
+            .expect("Esc collapse must not leave the sign-in screen");
+        assert!(!auth.enterprise_mode, "Esc must collapse the enterprise input");
+        assert_eq!(app.mode, AppMode::Auth, "Esc collapse must stay in Auth mode");
     }
 
     fn agent_status_for_test(id: &str, display: &str, cli_found: bool) -> crate::agent_check::AgentStatus {

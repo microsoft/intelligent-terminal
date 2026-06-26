@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kods nokopēts starpliktuvē — ielīmējiet to pārl
 auth.sign_in_prompt: "Pierakstieties, lai izmantotu savu aģentu:"
 auth.card_connect: "  Savienojiet %{name}, lai iespējotu aģenta funkcijas"
 auth.button_sign_in_github: "[ Pierakstīties ar GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Pierakstīties ar %{name} ]"
-auth.hint_footer: "  Nospiediet Enter, lai pierakstītos, Esc, lai atgrieztos"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Nospiediet Enter, lai kopētu pierakstīšanās komandu, pēc tam ielīmējiet to jaunā termināļa logā, lai pabeigtu pierakstīšanos"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc = atgriezties"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = pierakstīties · E = GitHub Enterprise · Esc = atgriezties"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domēns: "
+auth.enterprise_hint_footer: "  Enter = pierakstīties · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Nospiediet Enter, lai mēģinātu vēlreiz, vai Esc, lai izmantotu github.com. Biežākie cēloņi: nepareizi ievadīts vai nesasniedzams domēns, beidzies koda derīguma termiņš vai nav Copilot piekļuves šajā resursdatorā."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Nospiediet Enter, lai mēģinātu vēlreiz, vai Esc, lai atgrieztos."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Domā..."

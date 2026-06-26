@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kod kopiran u međuspremnik — zalijepite ga u pregle
 auth.sign_in_prompt: "Prijavite se za korištenje agenta:"
 auth.card_connect: "  Povežite %{name} za omogućavanje značajki agenta"
 auth.button_sign_in_github: "[ Prijava putem GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prijava putem %{name} ]"
-auth.hint_footer: "  Pritisnite Enter za prijavu, Esc za povratak"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Pritisnite Enter da biste kopirali naredbu za prijavu, zatim je zalijepite u novi prozor terminala da biste dovršili prijavu"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc za povratak"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter za prijavu · E za GitHub Enterprise · Esc za povratak"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domena GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter za prijavu · Esc za github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pritisnite Enter za ponovni pokušaj ili Esc za github.com. Česti uzroci: pogrešno unesena ili nedostupna domena, istekli kod ili nema pristupa Copilot na tom hostu."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pritisnite Enter za ponovni pokušaj ili Esc za povratak."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam..."

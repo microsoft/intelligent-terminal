@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Mã đã được sao chép vào bộ nhớ tạm — 
 auth.sign_in_prompt: "Đăng nhập để sử dụng tác nhân AI của bạn:"
 auth.card_connect: "  Kết nối %{name} để bật tính năng tác nhân AI"
 auth.button_sign_in_github: "[ Đăng nhập bằng GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Đăng nhập bằng %{name} ]"
-auth.hint_footer: "  Nhấn Enter để đăng nhập, Esc để quay lại"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Nhấn Enter để sao chép lệnh đăng nhập, rồi dán lệnh đó vào cửa sổ terminal mới để hoàn tất đăng nhập"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc để quay lại"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter để đăng nhập · E để dùng GitHub Enterprise · Esc để quay lại"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Miền doanh nghiệp: "
+auth.enterprise_hint_footer: "  Enter để đăng nhập · Esc để dùng github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Nhấn Enter để thử lại hoặc Esc để dùng github.com. Nguyên nhân thường gặp: nhập sai miền hoặc miền không truy cập được, mã đã hết hạn, hoặc tài khoản của bạn không có quyền truy cập Copilot trên máy chủ đó."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Nhấn Enter để thử lại hoặc Esc để quay lại."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Đang suy nghĩ…"

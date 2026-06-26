@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kode na die knipbord gekopieer — plak dit in jou bla
 auth.sign_in_prompt: "Meld aan om jou agent te gebruik:"
 auth.card_connect: "  Koppel %{name} om agentkenmerke te aktiveer"
 auth.button_sign_in_github: "[ Meld aan met GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Meld aan met %{name} ]"
-auth.hint_footer: "  Druk Enter om aan te meld, Esc om terug te gaan"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Druk Enter om die aanmeldopdrag te kopieer en plak dit dan in 'n nuwe terminaalvenster om aanmelding te voltooi"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc om terug te gaan"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter om aan te meld · E vir GitHub Enterprise · Esc om terug te gaan"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-domein: "
+auth.enterprise_hint_footer: "  Enter om aan te meld · Esc vir github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Druk Enter om weer te probeer, of Esc vir github.com. Algemene oorsake: 'n verkeerd getikte of onbereikbare domein, 'n vervalde kode, of geen Copilot-toegang op daardie gasheer nie."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Druk Enter om weer te probeer, of Esc om terug te gaan."  # {Locked="Enter","Esc"}
 
 # ── Kletsaansig (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Dink na…"

@@ -38,8 +38,14 @@ auth.code_copied_hint: "  কোড ক্লিপবোর্ডে কপি 
 auth.sign_in_prompt: "আপনার এজেন্ট ব্যবহার করতে সাইন ইন করুন:"
 auth.card_connect: "  এজেন্ট বৈশিষ্ট্য সক্রিয় করতে %{name} সংযুক্ত করুন"
 auth.button_sign_in_github: "[ GitHub দিয়ে সাইন ইন করুন ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} দিয়ে সাইন ইন করুন ]"
-auth.hint_footer: "  সাইন ইন করতে Enter চাপুন, ফিরে যেতে Esc চাপুন"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  সাইন-ইন কমান্ড কপি করতে Enter টিপুন, তারপর সাইন ইন শেষ করতে এটি একটি নতুন টার্মিনাল উইন্ডোতে পেস্ট করুন"  # {Locked="Enter"}
+auth.hint_footer_back: "  ফিরে যেতে Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  সাইন ইন করতে Enter · GitHub Enterprise-এর জন্য E · ফিরে যেতে Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise ডোমেন: "
+auth.enterprise_hint_footer: "  সাইন ইন করতে Enter · github.com-এর জন্য Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  আবার চেষ্টা করতে Enter টিপুন, অথবা github.com-এর জন্য Esc. সাধারণ কারণ: ভুল টাইপ করা বা নাগালের বাইরে থাকা ডোমেন, মেয়াদোত্তীর্ণ কোড, অথবা সেই হোস্টে Copilot অ্যাক্সেস না থাকা."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  আবার চেষ্টা করতে Enter টিপুন, অথবা ফিরে যেতে Esc."  # {Locked="Enter","Esc"}
 
 # ── চ্যাট দৃশ্য (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "ভাবছে…"

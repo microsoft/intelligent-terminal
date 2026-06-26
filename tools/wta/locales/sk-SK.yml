@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kód skopírovaný do schránky — prilepte ho v preh
 auth.sign_in_prompt: "Prihláste sa, aby ste mohli používať agenta:"
 auth.card_connect: "  Pripojte %{name} na povolenie funkcií agenta"
 auth.button_sign_in_github: "[ Prihlásiť sa cez GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prihlásiť sa cez %{name} ]"
-auth.hint_footer: "  Stlačte Enter na prihlásenie, Esc na návrat"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Stlačením Enter skopírujte príkaz na prihlásenie a potom ho vložte do nového okna terminálu, aby ste dokončili prihlásenie"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc na návrat"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter na prihlásenie · E pre GitHub Enterprise · Esc na návrat"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Doména GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter na prihlásenie · Esc pre github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Stlačením Enter to skúste znova alebo Esc pre github.com. Bežné príčiny: nesprávne zadaná alebo nedostupná doména, kód s uplynutou platnosťou alebo chýbajúci prístup Copilot na tomto hostiteľovi."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Stlačením Enter to skúste znova alebo Esc na návrat."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Premýšľam..."

@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kode wich'aman apasqa — navegador nisqaykipi k'askac
 auth.sign_in_prompt: "Agentiykita llamk'achinapaq yaykuy:"
 auth.card_connect: "  %{name} t'inkiy agente llamk'aykunata hurqunapaq"
 auth.button_sign_in_github: "[ GitHub nisqawan yaykuy ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} nisqawan yaykuy ]"
-auth.hint_footer: "  Enter nit'iy yaykunapaq, Esc kutirinapaq"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Yaykuna kamachita kikinchaypaq Enter ñit'iy, chaymanta yaykuyta tukuchinapaq musuq terminal t’uqupi k'askachiy"  # {Locked="Enter"}
+auth.hint_footer_back: "  Kutimunaykipaq Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Yaykunapaq Enter · GitHub Enterprisepaq E · kutimunaykipaq Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise dominio: "
+auth.enterprise_hint_footer: "  Yaykunapaq Enter · github.compaq Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq github.compaq Esc. Sapa kuti kaqninkuna: pantasqa qillqasqa utaq mana chayay atina dominio, tukusqa codigo, utaq chay hostpi Copilot yaykuy mana kanchu."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Watiqmanta ruwanapaq Enter ñit'iy, utaq kutimunaykipaq Esc."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Yuyachkan..."

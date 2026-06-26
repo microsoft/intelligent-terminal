@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Código copiado para a área de transferência — col
 auth.sign_in_prompt: "Entre para usar seu agente:"
 auth.card_connect: "  Conectar %{name} para habilitar os recursos do agente"
 auth.button_sign_in_github: "[ Entrar com GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Entrar com %{name} ]"
-auth.hint_footer: "  Pressione Enter para entrar, Esc para voltar"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Pressione Enter para copiar o comando de login e cole-o em uma nova janela do terminal para concluir o login"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc para voltar"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter para fazer login · E para GitHub Enterprise · Esc para voltar"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domínio Enterprise: "
+auth.enterprise_hint_footer: "  Enter para fazer login · Esc para github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pressione Enter para tentar novamente, ou Esc para github.com. Causas comuns: domínio digitado incorretamente ou inacessível, código expirado ou falta de acesso ao Copilot nesse host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pressione Enter para tentar novamente, ou Esc para voltar."  # {Locked="Enter","Esc"}
 
 # ── Visualização do chat (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pensando…"

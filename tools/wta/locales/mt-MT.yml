@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Il-kodiċi ġie kkupjat fil-clipboard — waħħlu fil
 auth.sign_in_prompt: "Idħol biex tuża l-aġent tiegħek:"
 auth.card_connect: "  Qabbad %{name} biex tattiva l-karatteristiċi tal-aġent"
 auth.button_sign_in_github: "[ Idħol b'GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Idħol b'%{name} ]"
-auth.hint_footer: "  Agħfas Enter biex tidħol, Esc biex tmur lura"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Agħfas Enter biex tikkopja l-kmand tad-dħul, imbagħad waħħlu f'tieqa ġdida tat-terminal biex tlesti d-dħul"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc biex tmur lura"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = idħol · E = GitHub Enterprise · Esc = mur lura"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Dominju Enterprise: "
+auth.enterprise_hint_footer: "  Enter = idħol · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Agħfas Enter biex terġa' tipprova, jew Esc għal github.com. Kawżi komuni: dominju miktub ħażin jew mhux aċċessibbli, kodiċi skadut, jew l-ebda aċċess Copilot fuq dak l-ospitant."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Agħfas Enter biex terġa' tipprova, jew Esc biex tmur lura."  # {Locked="Enter","Esc"}
 
 # ── Vista taċ-ċatt (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Qed jaħseb…"

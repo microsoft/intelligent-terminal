@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Chaidh an còd a chopaigeadh dhan stòr-bhùird — cu
 auth.sign_in_prompt: "Clàraich a-steach gus an àidseant agad a chleachdadh:"
 auth.card_connect: "  Ceangail %{name} gus gleusan àidseant a chur an comas"
 auth.button_sign_in_github: "[ Clàraich a-steach le GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Clàraich a-steach le %{name} ]"
-auth.hint_footer: "  Brùth Enter gus clàradh a-steach, Esc gus tilleadh"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Brùth Enter gus an àithne clàraidh a-steach a chopaigeadh, agus cuir ann an uinneag terminal ùr i gus an clàradh a-steach a chrìochnachadh"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc airson a dhol air ais"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = clàraich a-steach · E = GitHub Enterprise · Esc = air ais"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Àrainn Enterprise: "
+auth.enterprise_hint_footer: "  Enter = clàraich a-steach · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Brùth Enter airson feuchainn ris a-rithist, no Esc airson github.com. Adhbharan cumanta: àrainn air a sgrìobhadh ceàrr no nach gabh ruigsinn, còd a dh'fhalbh, no gun inntrigeadh Copilot air an òstair sin."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Brùth Enter airson feuchainn ris a-rithist, no Esc airson a dhol air ais."  # {Locked="Enter","Esc"}
 
 # ── Sealladh còmhraidh (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "A' smaoineachadh…"

@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kóði afritaður á klippispjald — límdu hann í v
 auth.sign_in_prompt: "Skráðu þig inn til að nota agentinn þinn:"
 auth.card_connect: "  Tengdu %{name} til að virkja agenteiginleika"
 auth.button_sign_in_github: "[ Skrá inn með GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Skrá inn með %{name} ]"
-auth.hint_footer: "  Ýttu á Enter til að skrá þig inn, Esc til að fara til baka"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Ýttu á Enter til að afrita innskráningarskipunina og límdu hana síðan inn í nýjan útstöðvarglugga til að ljúka innskráningu"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc til að fara til baka"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter til að skrá þig inn · E fyrir GitHub Enterprise · Esc til að fara til baka"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-lén: "
+auth.enterprise_hint_footer: "  Enter til að skrá þig inn · Esc fyrir github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Ýttu á Enter til að reyna aftur eða Esc fyrir github.com. Algengar orsakir: rangt slegið inn eða óaðgengilegt lén, útrunninn kóði eða enginn Copilot-aðgangur á þeim hýsil."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Ýttu á Enter til að reyna aftur eða Esc til að fara til baka."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Hugsa..."

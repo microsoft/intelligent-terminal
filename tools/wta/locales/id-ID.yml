@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kode disalin ke papan klip — tempel di browser Anda.
 auth.sign_in_prompt: "Masuk untuk menggunakan agen AI Anda:"
 auth.card_connect: "  Sambungkan %{name} untuk mengaktifkan fitur agen AI"
 auth.button_sign_in_github: "[ Masuk dengan GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Masuk dengan %{name} ]"
-auth.hint_footer: "  Tekan Enter untuk masuk, Esc untuk kembali"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Tekan Enter untuk menyalin perintah masuk, lalu tempelkan di jendela terminal baru untuk menyelesaikan proses masuk"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc untuk kembali"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter untuk masuk · E untuk GitHub Enterprise · Esc untuk kembali"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domain Enterprise: "
+auth.enterprise_hint_footer: "  Enter untuk masuk · Esc untuk menggunakan github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Tekan Enter untuk mencoba lagi, atau Esc untuk menggunakan github.com. Penyebab umum: domain salah ketik atau tidak dapat dijangkau, kode kedaluwarsa, atau akun Anda tidak memiliki akses Copilot di host tersebut."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Tekan Enter untuk mencoba lagi, atau Esc untuk kembali."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Berpikir…"

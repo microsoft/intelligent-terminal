@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Кодът е копиран в клипборда —
 auth.sign_in_prompt: "Влезте, за да използвате агента си:"
 auth.card_connect: "  Свържете %{name}, за да активирате функциите на агента"
 auth.button_sign_in_github: "[ Влизане с GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Влизане с %{name} ]"
-auth.hint_footer: "  Натиснете Enter за влизане, Esc за връщане назад"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Натиснете Enter, за да копирате командата за влизане, след което я поставете в нов прозорец на терминала, за да завършите влизането"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc за връщане назад"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter за влизане · E за GitHub Enterprise · Esc за връщане назад"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Домейн на GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter за влизане · Esc за github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Натиснете Enter, за да опитате отново, или Esc за github.com. Чести причини: грешно въведен или недостъпен домейн, изтекъл код или липса на достъп до Copilot на този хост."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Натиснете Enter, за да опитате отново, или Esc за връщане назад."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Мисля..."

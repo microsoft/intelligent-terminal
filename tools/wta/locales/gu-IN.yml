@@ -38,8 +38,14 @@ auth.code_copied_hint: "  કોડ ક્લિપબોર્ડ પર કૉ
 auth.sign_in_prompt: "તમારા એજન્ટનો ઉપયોગ કરવા સાઇન ઇન કરો:"
 auth.card_connect: "  એજન્ટ સુવિધાઓ સક્ષમ કરવા %{name} કનેક્ટ કરો"
 auth.button_sign_in_github: "[ GitHub થી સાઇન ઇન કરો ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} થી સાઇન ઇન કરો ]"
-auth.hint_footer: "  સાઇન ઇન કરવા Enter દબાવો, પાછા જવા Esc દબાવો"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  સાઇન-ઇન કમાન્ડ કૉપિ કરવા Enter દબાવો, પછી સાઇન ઇન પૂર્ણ કરવા માટે તેને નવી ટર્મિનલ વિંડોમાં પેસ્ટ કરો"  # {Locked="Enter"}
+auth.hint_footer_back: "  પાછા જવા માટે Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  સાઇન ઇન કરવા Enter · GitHub Enterprise માટે E · પાછા જવા માટે Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise ડોમેન: "
+auth.enterprise_hint_footer: "  સાઇન ઇન કરવા Enter · github.com માટે Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  ફરી પ્રયાસ કરવા Enter દબાવો, અથવા github.com માટે Esc. સામાન્ય કારણો: ખોટો ટાઇપ કરેલો અથવા પહોંચી ન શકાય એવો ડોમેન, સમાપ્ત થયેલો કોડ, અથવા તે હોસ્ટ પર Copilot ઍક્સેસ ન હોવી."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  ફરી પ્રયાસ કરવા Enter દબાવો, અથવા પાછા જવા માટે Esc."  # {Locked="Enter","Esc"}
 
 # ── ચૅટ દૃશ્ય (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "વિચારી રહ્યું છે…"

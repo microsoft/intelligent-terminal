@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Nakopya ang code sa clipboard — i-paste ito sa iyong
 auth.sign_in_prompt: "Mag-sign in para magamit ang iyong agent:"
 auth.card_connect: "  Ikonekta ang %{name} para paganahin ang mga feature ng agent"
 auth.button_sign_in_github: "[ Mag-sign in gamit ang GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Mag-sign in gamit ang %{name} ]"
-auth.hint_footer: "  Pindutin ang Enter para mag-sign in, Esc para bumalik"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Pindutin ang Enter para kopyahin ang command sa pag-sign in, pagkatapos ay i-paste ito sa bagong terminal window para tapusin ang pag-sign in"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc para bumalik"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter para mag-sign in · E para sa GitHub Enterprise · Esc para bumalik"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domain ng enterprise: "
+auth.enterprise_hint_footer: "  Enter para mag-sign in · Esc para gamitin ang github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pindutin ang Enter para subukang muli, o Esc para gamitin ang github.com. Mga karaniwang sanhi: maling na-type o hindi maabot na domain, nag-expire na code, o walang access sa Copilot ang iyong account sa host na iyon."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pindutin ang Enter para subukang muli, o Esc para bumalik."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Nag-iisip…"

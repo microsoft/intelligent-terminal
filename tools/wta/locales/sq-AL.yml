@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kodi u kopjua në clipboard — ngjiteni në shfletues
 auth.sign_in_prompt: "Identifikohuni për të përdorur agjentin:"
 auth.card_connect: "  Lidh %{name} për të aktivizuar veçoritë e agjentit"
 auth.button_sign_in_github: "[ Identifikohu me GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Identifikohu me %{name} ]"
-auth.hint_footer: "  Shtypni Enter për t'u identifikuar, Esc për t'u kthyer"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Shtypni Enter për të kopjuar komandën e identifikimit, pastaj ngjiteni në një dritare të re terminali për të përfunduar identifikimin"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc për t'u kthyer prapa"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = identifikohu · E = GitHub Enterprise · Esc = kthehu prapa"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domeni Enterprise: "
+auth.enterprise_hint_footer: "  Enter = identifikohu · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Shtypni Enter për të riprovuar, ose Esc për github.com. Shkaqe të zakonshme: domen i shkruar gabim ose i paarritshëm, kod i skaduar, ose mungesë e aksesit Copilot në atë pritës."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Shtypni Enter për të riprovuar, ose Esc për t'u kthyer prapa."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Po mendoj..."

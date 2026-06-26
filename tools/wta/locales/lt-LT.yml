@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Kodas nukopijuotas į iškarpinę — įklijuokite jį
 auth.sign_in_prompt: "Prisijunkite, kad galėtumėte naudoti savo agentą:"
 auth.card_connect: "  Prijunkite %{name}, kad įgalintumėte agento funkcijas"
 auth.button_sign_in_github: "[ Prisijungti su GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prisijungti su %{name} ]"
-auth.hint_footer: "  Paspauskite Enter, kad prisijungtumėte, Esc, kad grįžtumėte atgal"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Paspauskite Enter, kad nukopijuotumėte prisijungimo komandą, tada įklijuokite ją naujame terminalo lange, kad baigtumėte prisijungimą"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc = grįžti"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = prisijungti · E = GitHub Enterprise · Esc = grįžti"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domenas: "
+auth.enterprise_hint_footer: "  Enter = prisijungti · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Paspauskite Enter, kad bandytumėte dar kartą, arba Esc, kad naudotumėte github.com. Dažnos priežastys: neteisingai įvestas arba nepasiekiamas domenas, nebegaliojantis kodas arba nėra Copilot prieigos tame pagrindiniame kompiuteryje."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Paspauskite Enter, kad bandytumėte dar kartą, arba Esc, kad grįžtumėte."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mąsto..."

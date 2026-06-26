@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Koden er kopiert til utklippstavla — lim han inn i n
 auth.sign_in_prompt: "Logg inn for å bruke agenten din:"
 auth.card_connect: "  Kopla til %{name} for å aktivere agentfunksjonar"
 auth.button_sign_in_github: "[ Logg inn med GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Logg inn med %{name} ]"
-auth.hint_footer: "  Trykk Enter for å logge inn, Esc for å gå tilbake"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Trykk Enter for å kopiere påloggingskommandoen, og lim han deretter inn i eit nytt terminalvindauge for å fullføre pålogginga"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc for å gå tilbake"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter for å logge på · E for GitHub Enterprise · Esc for å gå tilbake"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-domene: "
+auth.enterprise_hint_footer: "  Enter for å logge på · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Trykk Enter for å prøve på nytt, eller Esc for github.com. Vanlege årsaker: eit feilskrive eller utilgjengeleg domene, ein utgått kode eller ingen Copilot-tilgang på den verten."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Trykk Enter for å prøve på nytt, eller Esc for å gå tilbake."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Tenkjer..."

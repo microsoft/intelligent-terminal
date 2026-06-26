@@ -38,8 +38,14 @@ auth.code_copied_hint: "  Код скопирован в буфер обмена
 auth.sign_in_prompt: "Войдите, чтобы использовать агента:"
 auth.card_connect: "  Подключите %{name} для включения функций агента"
 auth.button_sign_in_github: "[ Войти через GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Войти через %{name} ]"
-auth.hint_footer: "  Нажмите Enter для входа, Esc для возврата"  # {Locked="Enter","Esc"}
+auth.button_sign_in_with: "[ Copy sign-in command ]"
+auth.hint_footer: "  Нажмите Enter, чтобы скопировать команду входа, затем вставьте её в новом окне терминала для завершения входа"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc, чтобы вернуться"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter для входа · E для GitHub Enterprise · Esc, чтобы вернуться"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Домен GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter для входа · Esc для github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Нажмите Enter, чтобы повторить попытку, или Esc для github.com. Распространённые причины: опечатка в домене или недоступный домен, истёкший код либо отсутствие доступа Copilot на этом узле."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Нажмите Enter, чтобы повторить попытку, или Esc, чтобы вернуться."  # {Locked="Enter","Esc"}
 
 # ── Представление чата (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Думаю…"
