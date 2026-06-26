@@ -72,6 +72,10 @@ input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "disconnected"
+# Title shown on the input box border when one or more clipboard images are
+# queued to send with the next prompt (Alt+V). %{items} is a comma-separated
+# list like "[1] screenshot, [2] photo.png".
+input.image_attachments: "📎 Images: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -153,8 +157,8 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh)"
 # Status badge when agent session is actively processing
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
@@ -191,6 +195,13 @@ system.stopped_max_tokens: "The response was cut off after reaching the model's 
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
 system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."  # Shown when the user presses Enter to submit a new prompt while the agent is still processing the previous one on the same tab.
+# Shown when the user presses Alt+V but the clipboard holds no image.
+system.image_clipboard_empty: "No image on the clipboard to paste."
+# Shown when the user presses Alt+V but the connected agent doesn't accept image input.
+system.image_not_supported: "This agent doesn't support image input."
+# Shown after Alt+V successfully queues a clipboard image. %{label} is a short
+# source label (a file name, or "screenshot"/"image"). Press Enter to send.
+system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.

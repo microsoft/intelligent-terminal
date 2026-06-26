@@ -54,6 +54,7 @@ chat.turn_executed: "→ 已执行: %{title}"
 input.placeholder.connected: "随意提问，/ 查看命令.."  # {Locked="/"}
 input.placeholder.connecting: "连接中..."
 input.placeholder.disconnected: "已断开"
+input.image_attachments: "📎 图片: %{items}"  # {Locked="📎","%{items}"}
 
 # ── 命令弹出窗口 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 斜杠命令前缀，必须保持 ASCII
@@ -102,8 +103,8 @@ agent.custom.auth_hint: "请确保 %{name} 已安装并位于 PATH 上。"  # {L
 
 # ── 智能体视图 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "加载中..."
-# {Locked="Enter","Esc","↑","↓"} - 组合键，不翻译
-agents.footer_hint: "(↑ ↓ 导航 • Enter 启动会话 • Esc 退出)"
+# {Locked="Enter","Esc","F5","↑","↓"} - 组合键，不翻译
+agents.footer_hint: "(↑ ↓ 导航 • Enter 启动会话 • Esc 退出 • F5 刷新)"
 agents.status.active: "活动"
 agents.status.waiting_for_input: "等待输入"
 agents.status.error: "错误"
@@ -127,6 +128,9 @@ system.stopped_max_tokens: "达到模型的输出上限后，回复被截断。"
 system.stopped_max_turn_requests: "达到本轮的请求上限后，智能体已停止。"
 system.stopped_refusal: "智能体拒绝继续处理此请求。"
 system.agent_busy: "智能体正忙于此标签页 — 请等待当前提示完成。"
+system.image_clipboard_empty: "剪贴板上没有可粘贴的图片。"
+system.image_not_supported: "此智能体不支持图像输入。"
+system.image_pasted: "已附加图片（%{label}）。按 Enter 发送。"  # {Locked="%{label}","Enter"}
 system.resuming_session: "正在恢复会话 %{session_id}..."
 system.unknown_command: "未知命令 \"%{command}\" — 已作为提示发送。键入 /help 查看列表。"  # {Locked="/help"}
 system.busy_use_stop: "请等待当前提示完成，或先执行 /stop。"  # {Locked="/stop"}

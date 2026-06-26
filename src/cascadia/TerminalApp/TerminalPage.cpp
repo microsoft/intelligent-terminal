@@ -1797,6 +1797,16 @@ namespace winrt::TerminalApp::implementation
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
 
+        // If master is degraded (died unexpectedly, not yet recovered via
+        // /restart), AcquirePane opened this pane without respawning master.
+        // Tell the helper so it comes up directly in the disconnected view
+        // (only /restart available) instead of spinning on the dead pipe.
+        if (shared.IsDegraded())
+        {
+            helperCmd.append(L" --assume-master-down");
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: master degraded — helper starts disconnected (--assume-master-down)");
+        }
+
         // The helper-side cmdline mirrors the per-pane subset of the
         // legacy spawn's cmdline. The master already owns --agent /
         // --acp-model / --delegate-* / --no-autofix / --language as
@@ -2109,8 +2119,33 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                // Visible in chat view — switch into sessions view.
+                // Visible in chat view — switch into sessions view, and move
+                // keyboard focus onto the agent pane so Esc / arrows / Enter
+                // reach the wta TUI immediately. Without this the bottom-bar
+                // button keeps focus and the first Esc is swallowed until the
+                // user clicks the pane once. Deferred to a low-priority tick:
+                // a synchronous Programmatic focus set during a button click
+                // is undone when the pointer-up restores focus to the button
+                // (same race RestoreStashedAgentPane works around). The
+                // stashed branch above doesn't need this — its echo runs
+                // through OnAgentStateChanged → RestoreStashedAgentPane, which
+                // already re-focuses after the pane is re-attached.
                 _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
+                if (const auto termControl = agentContent.GetTermControl())
+                {
+                    if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+                    {
+                        auto weakControl = winrt::make_weak(termControl);
+                        dispatcher.TryEnqueue(
+                            winrt::Windows::System::DispatcherQueuePriority::Low,
+                            [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                                }
+                            });
+                    }
+                }
             }
             _UpdateBottomBarState();
             return;
@@ -4513,10 +4548,32 @@ namespace winrt::TerminalApp::implementation
             // AcquirePane, which lazily spawns when _process is invalid.
         }
 
-        // Reopen the active tab's pane immediately so the user sees
-        // continuity. Tabs that had a pane but aren't active need to be
-        // toggled open again by the user — same UX as _RebuildAgentStack.
-        _OpenOrReuseAgentPane(false, L"RestartAgent");
+        // Reconnect EVERY tab that had an agent pane, not just the active one
+        // — a /restart recovers the whole stack, so a user who restarts from
+        // one pane shouldn't have to re-toggle every other tab's pane by hand.
+        // The active tab is reopened visible (continuity); the rest are
+        // re-warmed stashed, so their helpers reconnect to the fresh master in
+        // the background and the panes restore as soon as the user switches to
+        // them. Recovery sessions aren't resumed (master is brand new with an
+        // empty registry), so chat history starts fresh — same as before.
+        const auto activeTab = _GetFocusedTabImpl();
+        for (const auto& tabImpl : tabsThatHadAgentPane)
+        {
+            const bool isActive = activeTab && activeTab == tabImpl;
+            if (isActive)
+            {
+                // Active tab: reopen visible via the normal path.
+                _OpenOrReuseAgentPane(false, L"RestartAgent");
+            }
+            else
+            {
+                // Background tab: re-warm a stashed helper so it reconnects
+                // now and the pane restores when the user switches over.
+                _AutoCreateHiddenAgentPaneShared(tabImpl,
+                                                 /*intoSessionsView*/ false,
+                                                 /*autoStash*/ true);
+            }
+        }
     }
 
     // Inbound event from WTA: {method:"restart_agent_pane",

@@ -11,7 +11,6 @@ use unicode_width::UnicodeWidthStr;
 use crate::agent_sessions::{
     AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
 };
-use crate::app::HistoryLoadState;
 use crate::session_registry::SessionInfo;
 use crate::ui::shimmer;
 
@@ -33,7 +32,6 @@ pub fn render(
     reg: &AgentSessionRegistry,
     snapshot: Option<&[SessionInfo]>,
     list_state: &mut ListState,
-    history_load_state: HistoryLoadState,
     activity_frame: usize,
     cli_filter: Option<&CliSource>,
     // MVP origin filter — `ShellOnly` by default, see
@@ -42,16 +40,12 @@ pub fn render(
     // up with the cursor / Enter dispatch model. Caller threads the
     // stored `app.sessions_origin_filter`.
     origin_filter: OriginFilter,
-    // True iff the session management view is waiting on its first `session/list`
-    // snapshot from master (snapshot is currently empty AND a refetch
-    // request is in flight). Without this signal we have no way to
-    // distinguish "view just opened, master hasn't responded yet" from
-    // "view loaded, there really are zero sessions" — `open_agents_view`
-    // primes `snapshot = Some(Vec::new())` so the historical
-    // `!snapshot.is_some()` heuristic for the loading shimmer is always
-    // false after PR #73. Caller (ui::layout) computes this from
-    // `tab.agents_view.refetch_in_flight && snapshot.is_empty()`.
-    awaiting_first_snapshot: bool,
+    // True while the loading shimmer should replace the list: either waiting on
+    // the first `session/list` snapshot from master (empty placeholder + a
+    // refetch in flight) OR an F5 rescan is in flight, so a refresh is visible
+    // even when the list already has rows. Caller (ui::layout) computes it from
+    // `refetch_in_flight && (snapshot.is_empty() || rescan_in_flight)`.
+    show_loading: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -174,29 +168,16 @@ pub fn render(
         )).collect::<Vec<_>>(),
         area_w = area.width,
         area_h = area.height,
-        load_state = ?history_load_state,
         "rendering agents view"
     );
 
-    // While the lazy history scan is in flight, replace the whole list
-    // with a single shimmer-styled loading row. Showing live rows alongside
-    // a dim "loading…" hint led users to think the list was complete (only
-    // the 1 live session) and dismiss the view before the scan finished.
-    //
-    // Two distinct "we don't have any rows to show yet" sources trigger
-    // the shimmer:
-    //   * Legacy `!using_snapshot` path: registry-driven render with the
-    //     on-disk history scan still in progress (pre-PR-#73 behaviour,
-    //     kept for completeness — `using_snapshot` is now always true
-    //     when the view is open).
-    //   * Snapshot path: session management view was just opened, master hasn't yet replied
-    //     to our `session/list` refetch, and the placeholder snapshot
-    //     is still the empty Vec primed by `open_agents_view_for_tab`.
-    //     Without this branch the user sees a blank list (no shimmer,
-    //     no rows) and can't tell loading from "really empty".
-    let snapshot_loading = awaiting_first_snapshot && sorted.is_empty();
-    let legacy_loading = !using_snapshot && history_load_state == HistoryLoadState::Loading;
-    if snapshot_loading || legacy_loading {
+    // While loading — the first `session/list` snapshot, or an F5 rescan —
+    // replace the whole list with a single shimmer-styled loading row. Showing
+    // live rows alongside a dim "loading…" hint led users to think the list was
+    // complete and dismiss the view before the snapshot arrived; replacing the
+    // list also gives F5 an unmistakable "refreshing now" signal even when rows
+    // are already present.
+    if show_loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
@@ -496,6 +477,12 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 /// is live, and historical rows benefit because their badge area is
 /// empty.
 fn origin_prefix_for(s: &AgentSession) -> Option<String> {
+    // WSL rows get a bracketed `WSL-<distro>` tag (e.g. "[WSL-Ubuntu] ") so
+    // the user can tell in-distro sessions from host ones. WSL rows are never
+    // AgentPane, so this branch is exclusive with the one below.
+    if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
+        return Some(format!("[WSL-{distro}] "));
+    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -886,8 +873,32 @@ mod tests {
             attention_reason: None,
             log_path:         None,
             origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
         };
         assert_eq!(cli_suffix_for(&s, true),  "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());
+    }
+
+    #[test]
+    fn origin_prefix_shows_distro_for_wsl_rows() {
+        let s = AgentSession {
+            key:              "abc".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "hi".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
+            location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        };
+        assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
     }
 }

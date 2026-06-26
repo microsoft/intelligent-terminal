@@ -7,6 +7,8 @@
 
 #include "../src/inc/unicode.hpp"
 
+#include <atomic>
+
 using namespace Microsoft::Terminal::Core;
 using namespace Microsoft::Console::Render;
 using namespace Microsoft::Console::Types;
@@ -232,6 +234,29 @@ void Terminal::SetWorkingDirectory(std::wstring_view uri)
     }
 
     _workingDirectory = uri;
+}
+
+void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shellVersion)
+{
+    _assertLocked();
+
+    // Telemetry is logged once per process. `logged` is function-static
+    // (shared across all Terminal instances, which hold *different* locks),
+    // so the `_assertLocked()` above does NOT serialize it — use an atomic
+    // exchange to make the one-shot gate race-free.
+    static std::atomic<bool> logged{ false };
+    if (!logged.exchange(true))
+    {
+        TraceLoggingWrite(
+            g_hCTerminalCoreProvider,
+            "ShellIntegrationShellTypeSet",
+            TraceLoggingDescription("The shell reported its identity via OSC 9001;ShellType"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+    }
+
+    _shellName = shellName;
+    _shellVersion = shellVersion;
 }
 
 void Terminal::PlayMidiNote(const int noteNumber, const int velocity, const std::chrono::microseconds duration)

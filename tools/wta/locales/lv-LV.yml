@@ -58,6 +58,7 @@ chat.turn_executed: "→ izpildīts: %{title}"
 input.placeholder.connected: "Jautājiet jebko, / komandām.."  # {Locked="/"}
 input.placeholder.connecting: "savienojas..."
 input.placeholder.disconnected: "atvienots"
+input.image_attachments: "📎 Attēli: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Pārliecinieties, ka %{name} ir instalēts un atrodas j
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ielādē..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju • Esc lai izietu)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju • Esc lai izietu • F5 lai atsvaidzinātu)"
 agents.status.active: "Aktīvs"
 agents.status.waiting_for_input: "Gaida ievadi"
 agents.status.error: "Kļūda"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Atbilde tika apcirsta pēc modeļa izvades ierobežo
 system.stopped_max_turn_requests: "Aģents apstājās pēc tā pieprasījumu ierobežojuma sasniegšanas šim gājienam."
 system.stopped_refusal: "Aģents atteicās turpināt šo pieprasījumu."
 system.agent_busy: "Aģents šajā cilnē ir aizņemts — uzgaidiet, līdz pašreizējā uzvedne tiek pabeigta."
+system.image_clipboard_empty: "Starpliktuvē nav attēla, ko ielīmēt."
+system.image_not_supported: "Šis aģents neatbalsta attēlu ievadi."
+system.image_pasted: "Attēls pievienots (%{label}). Nospiediet Enter, lai nosūtītu."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Tiek atsākta sesija %{session_id}..."
 system.unknown_command: "Nezināma komanda \"%{command}\" — nosūtīta kā uzvedne. Sarakstam ierakstiet /help."  # {Locked="/help"}
 system.busy_use_stop: "Uzgaidiet, līdz pašreizējā uzvedne tiek pabeigta, vai vispirms izmantojiet /stop."  # {Locked="/stop"}

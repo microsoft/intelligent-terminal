@@ -248,6 +248,8 @@ static Json::Value _toJson(const Protocol::PaneInfo& p)
     v["size"]["rows"] = p.Rows;
     v["size"]["columns"] = p.Columns;
     v["cwd"] = winrt::to_string(p.Cwd);
+    v["shell"] = winrt::to_string(p.Shell);
+    v["shell_version"] = winrt::to_string(p.ShellVersion);
     return v;
 }
 

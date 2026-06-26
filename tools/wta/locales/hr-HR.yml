@@ -58,6 +58,7 @@ chat.turn_executed: "→ izvršeno: %{title}"
 input.placeholder.connected: "Pitajte bilo što, / za naredbe.."  # {Locked="/"}
 input.placeholder.connecting: "povezivanje..."
 input.placeholder.disconnected: "prekinuta veza"
+input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -114,8 +115,8 @@ agent.custom.auth_hint: "Provjerite je li %{name} instaliran i nalazi li se u PA
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Učitavanje..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za navigaciju • Enter za pokretanje sesije • Esc za izlaz)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za navigaciju • Enter za pokretanje sesije • Esc za izlaz • F5 za osvježavanje)"
 agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čeka unos"
 agents.status.error: "Pogreška"
@@ -139,6 +140,9 @@ system.stopped_max_tokens: "Odgovor je odrezan nakon dosezanja izlaznog ogranič
 system.stopped_max_turn_requests: "Agent se zaustavio nakon dosezanja ograničenja zahtjeva za ovaj potez."
 system.stopped_refusal: "Agent je odbio nastaviti s ovim zahtjevom."
 system.agent_busy: "Agent je zauzet na ovoj kartici — pričekajte da se trenutni upit dovrši."
+system.image_clipboard_empty: "Na međuspremniku nema slike za lijepljenje."
+system.image_not_supported: "Ovaj agent ne podržava unos slika."
+system.image_pasted: "Slika je priložena (%{label}). Pritisnite Enter za slanje."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Nastavlja se sesija %{session_id}..."
 system.unknown_command: "Nepoznata naredba \"%{command}\" — poslana kao upit. Upišite /help za popis."  # {Locked="/help"}
 system.busy_use_stop: "Pričekajte da se trenutni upit dovrši ili najprije upotrijebite /stop."  # {Locked="/stop"}

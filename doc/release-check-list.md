@@ -48,9 +48,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `[UT~]` `[E2E]` **Copilot without install:** Copilot appears as an available/default choice, is labeled as needing install, and the setup path installs or clearly explains how to install it. _(UT: registry/policy filter.)_
 - [ ] `[UT~]` `[E2E]` **Copilot preinstalled:** Copilot appears as installed; saving does not reinstall unnecessarily; opening the agent pane uses Copilot successfully.
-- [ ] `[UT~]` `[E2E]` **Claude installed:** Claude appears only when available; selecting it saves correctly; Node/npx requirement guidance appears when relevant.
-- [ ] `[UT~]` `[E2E]` **Codex installed:** Codex appears only when available; selecting it saves correctly; Node/npx requirement guidance appears when relevant.
-- [ ] `[UT~]` `[E2E]` **Gemini installed:** Gemini appears only when available; selecting it saves correctly and can connect in agent-pane mode.
+- [ ] `[UT~]` `[E2E]` **Non-Copilot agents appear when installed:** Claude/Codex/Gemini appear as selectable only when installed; selecting one saves correctly and can connect in agent-pane mode; Node/npx requirement guidance appears when relevant.
 - [ ] `[UT~]` `[E2E]` **Unavailable non-Copilot agents:** Claude/Codex/Gemini that are not installed do not appear as broken selectable options.
 - [ ] `[UT✓]` `[E2E]` **Agent selection persists:** The selected agent remains selected after FRE completion and app restart. _(UT: `BuiltInAcpAgentRoundtrips`.)_
 
@@ -127,9 +125,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `[E2E]` `[MANUAL]` **Copilot chat works:** User can send a prompt and Copilot responds successfully.
 - [ ] `[UT~]` `[E2E]` **Copilot missing CLI path works:** Missing Copilot shows actionable setup/auth guidance, not a silent failure. _(UT: registry install hint.)_
-- [ ] `[E2E]` `[MANUAL]` **Claude chat works:** User can send a prompt and Claude responds successfully through the ACP adapter.
-- [ ] `[E2E]` `[MANUAL]` **Codex chat works:** User can send a prompt and Codex responds successfully through the ACP adapter.
-- [ ] `[E2E]` `[MANUAL]` **Gemini chat works:** User can send a prompt and Gemini responds successfully.
+- [ ] `[E2E]` **Non-Copilot agents chat works:** Each installed+authenticated non-Copilot built-in agent (Claude/Codex/Gemini) connects through its ACP adapter and answers a prompt. _(One consolidated matrix case — all built-in agents share the same agent-pane/ACP path, so per-agent behavioural depth is covered by the Copilot suites.)_
 - [ ] `[UT~]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `AgentFailure::AuthRequired` classification; in-pane auth screen render via `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message`.)_
 - [ ] `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
 
@@ -193,10 +189,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Reject/dismiss works:** User can dismiss an autofix suggestion without side effects. _(UT: `trigger_echo_pane_clears_when_state_returns_to_idle`.)_
 - [ ] `[UT✓]` `[E2E]` **Autofix target pane is correct:** Failure in one pane does not offer/run a fix in the wrong pane. _(UT: target-tab routing — busy-pane tests + `autofix_still_triggers_for_non_agent_pane`.)_
 - [ ] `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot returns a useful suggestion.
-- [ ] `[E2E]` `[MANUAL]` **Autofix with Claude works:** Claude returns a useful suggestion.
-- [ ] `[E2E]` `[MANUAL]` **Autofix with Codex works:** Codex returns a useful suggestion.
-- [ ] `[E2E]` `[MANUAL]` **Autofix with Gemini works:** Gemini returns a useful suggestion.
-- [ ] `[E2E]` **Autofix with custom ACP agent works:** Custom agent-pane command can receive autofix prompts and respond.
+- [ ] `[E2E]` **Autofix with non-Copilot agents works:** Autofix produces a usable suggestion with a non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent — same path as Copilot, covered once across the available agents.
 
 ### Autofix across layout changes
 
@@ -237,7 +230,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Restore old agent-pane session:** Supported agent-pane sessions resume through agent-pane/session-load path when enabled. _(UT: `ResumeInAgentPane` decision.)_
 - [ ] `[UT✓]` `[E2E]` **Unsupported restore is clear:** Unknown CLI, missing resume support, or missing on-disk session shows a clear not-resumable message. _(UT: `NotResumable` reasons.)_
 - [ ] `[UT✓]` `[E2E]` **Enter behavior works:** Enter performs the expected focus/resume action.
-- [ ] `[UT✓]` `[E2E]` **Shift+Enter behavior works:** Shift+Enter performs the alternate resume path for dead sessions and same focus path for live sessions. _(UT: `decide_enter_action` shift.)_
+- [ ] `[UT✓]` **Shift+Enter behavior works:** Shift+Enter performs the alternate resume path for dead sessions and same focus path for live sessions. _(UT: `decide_enter_action` shift + `shift_enter_on_class_a_live_row_focuses`. Not E2E: Live-row Shift+Enter dispatches FocusPane — moves WT focus to the session's pane, it does NOT dismiss the view — and the MVP picker shows only Class B shell sessions whose panes are usually already closed, so there is no stable E2E observable.)_
 
 ### Session-management scope and custom agents
 
@@ -259,9 +252,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Command palette prompt launches delegate:** Typing a request and pressing Enter creates a delegate task.
 - [ ] `[E2E]` **Command palette cancel is safe:** Esc/cancel closes the palette without launching a delegate.
 - [ ] `[E2E]` `[MANUAL]` **Delegate with Copilot works:** Copilot delegate task starts and responds.
-- [ ] `[E2E]` `[MANUAL]` **Delegate with Claude works:** Claude delegate task starts and responds if supported by delegate mode.
-- [ ] `[E2E]` `[MANUAL]` **Delegate with Codex works:** Codex delegate task starts and responds if supported by delegate mode.
-- [ ] `[E2E]` `[MANUAL]` **Delegate with Gemini works:** Gemini delegate task starts and responds if supported by delegate mode.
+- [ ] `[E2E]` `[MANUAL]` **Delegate with non-Copilot agents works:** Claude/Codex/Gemini delegate tasks start and respond where supported by delegate mode.
 - [ ] `[UT~]` `[E2E]` **Delegate errors are actionable:** Missing CLI/auth errors are clear.
 
 ## 6. Custom agents
@@ -276,10 +267,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Edit custom ACP agent:** Editing updates the command used by new agent panes.
 - [ ] `[UT~]` `[E2E]` **Delete custom ACP agent:** Deleting returns to a valid built-in/default selection.
 - [ ] `[UT~]` `[E2E]` **Model selection visible:** Model picker/textbox remains visible when custom agent is selected.
-- [ ] `[E2E]` **Custom direct chat works:** Agent pane can talk to the custom ACP agent.
-- [ ] `[E2E]` **Custom command request works:** Custom agent can request a command/tool action and the UI handles it.
-- [ ] `[E2E]` **Custom insert/run works:** Insert into pane and run in pane work with custom agent requests.
-- [ ] `[E2E]` **Custom autofix works:** Autofix can use the custom ACP agent when configured as the agent-pane provider.
+- [ ] `[E2E]` **Custom agent runs the standard agent-pane behaviours:** A configured custom ACP agent can chat, request a command/tool action, insert/run into the pane, and drive autofix — the same agent-pane behaviours verified in depth with Copilot.
 - [ ] `[UT~]` `[E2E]` **Custom failure is safe:** Bad command, missing executable, or non-ACP behavior shows a clear error and does not crash Terminal. _(UT: failure classification.)_
 
 ### Custom delegate agent
@@ -312,10 +300,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `[E2E]` **Install hooks from FRE works:** Session-management toggle can install supported hooks during first run.
 - [ ] `[E2E]` **Install hooks from Settings works:** Install hooks button works after FRE.
-- [ ] `[E2E]` **Copilot hook install works:** Copilot hook is installed or reports why it cannot be installed.
-- [ ] `[E2E]` **Claude hook install works:** Claude hook is installed or reports why it cannot be installed.
-- [ ] `[E2E]` **Gemini hook install works:** Gemini hook is installed or reports why it cannot be installed.
-- [ ] `[E2E]` **Codex hook behavior is understood:** Codex hook/session support is tested according to the current implementation.
+- [ ] `[E2E]` **Per-CLI hook install works:** Each supported CLI (Copilot/Claude/Gemini) installs its hook or reports why it can't; Codex hook/session support behaves per the current implementation.
 - [ ] `[E2E]` **Hook remove works:** Removing a hook disables future session tracking for that CLI.
 - [ ] `[UT✓]` `[E2E]` **Disabled plugin is respected:** Disabled agent plugin is skipped and not force-enabled. _(UT: `decide_skip_when_disabled`.)_
 - [ ] `[UT✓]` `[E2E]` **Hook auto-upgrade works:** After package upgrade, previously installed hooks are updated silently when bundle version changes. _(UT: `decide_upgrade` + `upgrade_state` round-trip.)_

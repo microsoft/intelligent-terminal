@@ -58,6 +58,7 @@ chat.turn_executed: "→ executed: %{title}"
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 input.placeholder.disconnected: "disconnected"
+input.image_attachments: "📎 Images: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
 agents.status.error: "Error"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "The response was cut off after reaching the model's 
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
 system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."
+system.image_clipboard_empty: "No image on the clipboard to paste."
+system.image_not_supported: "This agent doesn't support image input."
+system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Resuming session %{session_id}..."
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."

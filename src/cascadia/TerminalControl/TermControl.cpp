@@ -2550,6 +2550,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _core.WorkingDirectory();
     }
 
+    hstring TermControl::ShellName() const
+    {
+        return _core.ShellName();
+    }
+
+    hstring TermControl::ShellVersion() const
+    {
+        return _core.ShellVersion();
+    }
+
     bool TermControl::BracketedPasteEnabled() const noexcept
     {
         return _core.BracketedPasteEnabled();

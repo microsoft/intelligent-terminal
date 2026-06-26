@@ -58,6 +58,8 @@ chat.turn_executed: "→ ተፈጽሟል: %{title}"
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 input.placeholder.disconnected: "disconnected"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 ምስሎች: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -106,8 +108,8 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
 agents.status.error: "Error"
@@ -131,6 +133,10 @@ system.stopped_max_tokens: "ምላሹ የሞዴሉ የውፅዓት ገደብ ላ
 system.stopped_max_turn_requests: "ወኪሉ ለዚህ ዙር የጥያቄ ገደቡ ላይ ከደረሰ በኋላ ቆሟል።"
 system.stopped_refusal: "ወኪሉ በዚህ ጥያቄ መቀጠል አልፈለገም።"
 system.agent_busy: "Agent በዚህ ትር ላይ በስራ ላይ ነው — የአሁኑ ጥያቄ እስኪያልቅ ይጠብቁ።"
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "በቅንጥብ ሰሌዳው ላይ ለመለጠፍ ምስል የለም።"
+system.image_not_supported: "ይህ agent የምስል ግቤትን አይደግፍም።"
+system.image_pasted: "ምስል ተያይዟል (%{label})። ለመላክ Enter ይጫኑ።"  # {Locked="%{label}","Enter"}
 system.resuming_session: "ክፍለ ጊዜ %{session_id} እንደገና በመቀጠል ላይ..."
 system.unknown_command: "ያልታወቀ ትዕዛዝ \"%{command}\" — እንደ ጥያቄ ተልኳል። ዝርዝሩን ለማየት /help ይተይቡ።"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "የአሁኑ ጥያቄ እስኪያልቅ ይጠብቁ፣ ወይም መጀመሪያ /stop ያድርጉ።"  # {Locked="/stop"} — slash-command name.

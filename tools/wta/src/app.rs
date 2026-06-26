@@ -25,19 +25,15 @@ struct DeferredAcpParams {
     master_ext_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>>,
     shell_mgr: Arc<crate::shell::ShellManager>,
     wt_connected: bool,
-    /// Pipe-mode marker. When `Some`, [`App::try_start_acp`] reconnects
-    /// via [`run_acp_client_over_pipe`] instead of the direct
-    /// [`run_acp_client`] path. Pre-stashed at boot in helper mode
-    /// (main.rs) so that a post-FRE-login reconnect goes back through
-    /// wta-master — without this, the reconnected helper would spawn
-    /// its own copilot CLI subprocess directly, master would never see
-    /// it, and ext-methods like `intellterm.wta/sessions/list` would
-    /// fail with "Method not found" (the ACP SDK forwards unknown
-    /// extensions to the agent with a `_` prefix, and the agent CLI
-    /// doesn't know about master-side extensions).
+    /// Master pipe name for a pipe-mode reconnect. Pre-stashed at boot in
+    /// helper mode (main.rs) so that a post-FRE-login reconnect via
+    /// [`App::try_start_acp`] goes back through wta-master over
+    /// `run_acp_client_over_pipe`. Always `Some` in the shipped product
+    /// (wta only runs as a wta-master-attached helper); a `None` here is a
+    /// defensive error path since direct-agent mode was removed.
     master_pipe_name: Option<String>,
     /// Owner tab id for pipe-mode reconnect (mirrors the original
-    /// `--owner-tab-id` CLI arg). Unused in direct mode.
+    /// `--owner-tab-id` CLI arg).
     owner_tab_id: Option<String>,
 }
 
@@ -277,6 +273,29 @@ impl PreflightResult {
 /// - `FirstRun` / `SwitchAgent`: one `SelectAgent` per known agent.
 /// - `AgentMissing` / `AgentError`: diagnostic options for the current agent
 ///   (reinstall, install manually, sign in, switch) depending on what failed.
+/// True for the auth failures a post-login reconnect can hit when the shared
+/// master CLI was spawned with a stale token: the plain `AuthRequired`, AND the
+/// `HandshakeFailed { stage: NewSession }` that the pipe client wraps a
+/// still-`AuthRequired` `new_session` into after a *successful* `authenticate`
+/// (the Copilot CLI does not refresh its in-process auth on `authenticate`, so
+/// only respawning it recovers — see `run_acp_client_over_pipe`).
+///
+/// Deliberately does NOT match `HandshakeFailed { stage: Authenticate }`: that
+/// is a genuine `authenticate` RPC rejection or timeout (the credentials were
+/// not accepted / the agent hung), which a master restart would not fix — it
+/// routes to the sign-in screen via the normal `AgentError` path instead.
+fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
+    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+    matches!(
+        failure,
+        AgentFailure::AuthRequired { .. }
+            | AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::NewSession,
+                ..
+            }
+    )
+}
+
 pub fn build_setup_options(
     reason: &SetupReason,
     current_agent_status: Option<&crate::agent_check::AgentStatus>,
@@ -1116,6 +1135,11 @@ pub enum AppEvent {
         /// error before opening a new tab when the agent can't
         /// rehydrate ACP sessions.
         load_session_supported: bool,
+        /// Whether the agent advertised the `image` prompt capability
+        /// (`promptCapabilities.image`) in its initialize response. Gates the
+        /// Alt+V image-paste handler so the user gets a clear message instead
+        /// of silently sending an image the agent will reject.
+        image_supported: bool,
     },
     /// A new ACP session has been created and bound to a tab. Carries the
     /// per-tab model list (each ACP session can advertise its own).
@@ -1272,6 +1296,26 @@ pub enum AppEvent {
         agent_id: String,
         success: bool,
     },
+    /// Post-login auth recovery: a genuine post-login reconnect (helper/pipe
+    /// mode) for an External-auth agent STILL failed auth, which means the
+    /// shared long-lived master CLI was spawned with a stale token and
+    /// `authenticate` can't refresh it. The handler shows a transient
+    /// "Reconnecting…" and fires `restart_agent_stack` so a fresh master
+    /// (which re-reads the now-valid on-disk token) takes over.
+    PostLoginAuthRecovery {
+        failure: crate::protocol::acp::failure::AgentFailure,
+        tab_id: Option<String>,
+        agent_id: String,
+    },
+    /// Dead-man fallback for `PostLoginAuthRecovery`: a successful restart
+    /// tears this helper down before this fires; if it DOES fire (restart
+    /// dropped/slow), surface the sign-in screen instead of stranding the user
+    /// on a perpetual "Reconnecting…". `generation` pins this to the specific
+    /// recovery that armed it, so a stale timer can't act on a later state.
+    AuthRecoveryTimedOut {
+        agent_id: String,
+        generation: u64,
+    },
     /// Result of `preflight::check_agent` run by main.rs before the TUI
     /// loop starts. If `all_passed()` is false the App switches into
     /// `AppMode::Setup` so the user can install / authenticate the CLI.
@@ -1281,13 +1325,6 @@ pub enum AppEvent {
     /// Posting via the main loop keeps `agent_sessions` access single-threaded
     /// and lets `tracing::*` calls emit on a stable thread.
     AgentSessionEvent(crate::agent_sessions::SessionEvent),
-    /// Historical agent sessions scanned off the main thread by a
-    /// `spawn_blocking` task wrapping `history_loader::load_all()`. Posted
-    /// instead of running the scan inline so a large `~/.copilot/session-state`
-    /// (hundreds of dirs, each with an `events.jsonl` to sniff) doesn't block
-    /// the LocalSet — which would otherwise stall `run_acp_client`,
-    /// the first frame, and therefore the user-visible "connecting" state.
-    HistoricalSessionsLoaded(Vec<crate::agent_sessions::AgentSession>),
     /// Initial bootstrap of the alive-session mirror from master, in
     /// response to the helper's startup `session/list` request. The
     /// payload replaces any existing entries and flips `alive_loaded`
@@ -1306,18 +1343,10 @@ pub enum AppEvent {
     AliveSessionRemoved(agent_client_protocol::SessionId),
     /// Apply an "upgrade Historical/Ended → Live" join between the
     /// historical-row registry (`agent_sessions`) and the alive-session
-    /// mirror. Posted from either of two places:
-    ///
-    ///   * `AliveSnapshotLoaded` (master's bootstrap reply) — the
-    ///     handler converts each `SessionInfo` into a `(sid, pane)`
-    ///     pair, dispatches `AliveJoinUpgrade`, and lets the main
-    ///     loop apply it serialized w.r.t. other agent-sessions
-    ///     mutations.
-    ///   * `HistoricalSessionsLoaded` (background `history_loader::load_all`)
-    ///     — the handler spawns a one-shot async task to snapshot the
-    ///     current alive registry and posts this event so the join can
-    ///     happen even when the on-disk scan finishes after the alive
-    ///     bootstrap.
+    /// mirror. Posted from `AliveSnapshotLoaded` (master's bootstrap
+    /// reply): the handler converts each `SessionInfo` into a `(sid, pane)`
+    /// pair, dispatches `AliveJoinUpgrade`, and lets the main loop apply it
+    /// serialized w.r.t. other agent-sessions mutations.
     ///
     /// See [`crate::agent_sessions::AgentSessionRegistry::apply_alive_session_join`].
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
@@ -1494,6 +1523,11 @@ pub struct TabSession {
     // cursor, and slash-command popup across switches.
     pub input: String,
     pub cursor_pos: usize,
+    /// Images captured from the clipboard via Alt+V, waiting to be sent with
+    /// the next prompt. Rendered as `[image #N]` chips above the input; drained
+    /// into the `PromptSubmission` on Enter and cleared after submit, and on
+    /// `/clear` / `/new` / session reset via `clear_chat_history`.
+    pub pending_images: Vec<crate::clipboard_image::PastedImage>,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
@@ -1541,6 +1575,19 @@ pub struct TabSession {
     // C++-originated `set_agent_state` requests (hotkey/button toggles)
     // and by wta-internal events like Ctrl+C×2 reset.
     pub pane_open: bool,
+
+    // Pre-entry pane visibility, remembered when the user opens the
+    // session-management (Agents) view so Esc can restore *that* state rather
+    // than always landing on an open chat pane:
+    //   * `Some(false)` — entered from a folded (stashed) pane → Esc re-folds.
+    //   * `Some(true)`  — entered from an expanded chat pane → Esc returns to it.
+    //   * `None`        — not currently in / entering the Agents view.
+    // Captured in `open_agents_view_for_tab`, read by the Esc handler, cleared
+    // in `close_agents_view_for_tab`. The capture is reliable because the C++
+    // `set_agent_state` request applies `view` before `pane_open`: an unstash
+    // sends `{view:sessions, pane_open:true}`, but the view switch (and thus
+    // our snapshot) runs while `pane_open` still holds the old `false`.
+    pub agents_view_prev_pane_open: Option<bool>,
 }
 
 impl TabSession {
@@ -1626,6 +1673,9 @@ impl TabSession {
         self.selection_visible_pending = false;
         self.turn = TurnState::Idle;
         self.clear_recommendations();
+        // Drop any clipboard image queued but not yet sent — a wiped/fresh
+        // conversation must not carry a stale attachment into the next prompt.
+        self.pending_images.clear();
     }
 
     /// Flush pending user/agent replay buffers at a turn boundary during
@@ -1896,6 +1946,20 @@ pub struct App {
     event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
+    /// Set by LoginComplete success — consumed once by try_start_acp to pass
+    /// `post_login_reconnect=true` to the pipe-mode ACP client. This ensures
+    /// the authenticate RPC is only sent on genuine post-login reconnects, not
+    /// on agent-switch / retry / install-complete reconnects that also go
+    /// through try_start_acp.
+    needs_post_login_authenticate: bool,
+    /// Monotonic id for the in-flight post-login auth recovery. Bumped each
+    /// time `PostLoginAuthRecovery` arms its 8s dead-man timer, and bumped
+    /// again on a successful `AgentConnected`. The `AuthRecoveryTimedOut`
+    /// fallback only fires if its captured generation still matches — so a
+    /// stale timer from an earlier recovery (or one whose connection already
+    /// succeeded) cannot force the sign-in screen onto a later, unrelated
+    /// `Connecting` state.
+    auth_recovery_generation: u64,
     /// Agent ID selected by user (FRE/preflight) — sent to C++ once connected.
     pending_agent_selection: Option<String>,
     /// Show first-run welcome hint until user sends first message.
@@ -1945,6 +2009,17 @@ pub struct App {
     // state (the command-completion candidates as the user types `/he…`)
     // lives on `TabSession`.
     pub help_overlay_visible: bool,
+    /// True once the helper's ACP transport to wta-master is lost
+    /// (`AgentFailure::TransportLost` — master died/crashed/was killed). The
+    /// helper has no in-process reconnect, so every slash command except
+    /// `/restart` would only fail against the dead pipe. While this is set the
+    /// command popup is filtered down to just `/restart` (other commands are
+    /// hidden, not greyed), and typing/Entering any other command is refused
+    /// with the reconnect hint. `/restart` is the one recovery that routes via
+    /// `wtcli publish` → C++ `SharedWta::Restart` (a path that doesn't touch
+    /// the dead pipe). Cleared when a fresh connection reaches `Connected`
+    /// (e.g. the post-sign-in reconnect).
+    pub transport_lost: bool,
     // Debug panel
     pub debug_messages: Vec<DebugMessage>,
     pub show_debug_panel: bool,
@@ -1988,18 +2063,16 @@ pub struct App {
     /// session list itself is global; only the *picker view* (open state
     /// + selected row) lives per-tab on `TabSession`.
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
-    /// Tracks the lazy load of historical sessions. Flipped to Loading
-    /// on first session management-view open; flipped to Loaded when
-    /// `HistoricalSessionsLoaded` arrives. The agents_view reads this to
-    /// render a "Loading..." row instead of an empty list during the
-    /// scan.
-    pub history_load_state: HistoryLoadState,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
     /// session management view's Shift+Enter handler to short-circuit
     /// with a clear error before opening a new tab when the agent
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
+    /// Whether the connected ACP agent advertised the `image` prompt
+    /// capability (`promptCapabilities.image`). Gates the Alt+V image-paste
+    /// handler. Set on `AgentConnected`.
+    pub agent_supports_image: bool,
     /// Origin filter for the `/sessions` picker. Captured once at
     /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
     /// stable for the lifetime of this helper process. Read by
@@ -2107,33 +2180,22 @@ pub struct AgentsViewState {
     pub dirty: bool,
     pub next_request_id: u64,
     pub latest_request_id: Option<u64>,
+    /// Set by F5 in the session view to request a master-side disk re-scan
+    /// (`load_for_cli`) on the next dispatched `sessions/list`. Sticky across
+    /// in-flight coalescing: only cleared when a request is actually built, so
+    /// an F5 pressed while a poll is in flight still rescans on the trailing
+    /// refetch. Reset on view close.
+    pub pending_rescan: bool,
+    /// True while an F5 rescan request is in flight (set when dispatched,
+    /// cleared when the response/failure lands). Drives the loading shimmer for
+    /// the whole refresh so F5 has visible feedback even when the list already
+    /// has rows — a normal 5s poll leaves it false and never flashes loading.
+    pub rescan_in_flight: bool,
 }
 
-/// Lazy-load tracking for the historical `agent_sessions` registry.
-///
-/// `history_loader::load_all()` scans `~/.copilot/session-state`,
-/// `~/.claude/projects`, `~/.gemini/tmp` and reads `events.jsonl`
-/// from each Copilot session to sniff the wta-internal autofix
-/// fingerprint. On a populated machine that's hundreds of file
-/// opens — observed ~10 seconds.
-///
-/// Doing that eagerly on every wta spawn (including every model
-/// switch, which kills the old wta and starts a new one) is wasted
-/// work — the data is only consumed by the agent session view. We
-/// defer the scan to the first Ctrl+Shift+/ press and cache the result for
-/// the rest of this wta's lifetime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HistoryLoadState {
-    NotStarted,
-    Loading,
-    Loaded,
-}
-
-impl Default for HistoryLoadState {
-    fn default() -> Self {
-        HistoryLoadState::NotStarted
-    }
-}
+// (Historical-session load-state tracking was removed: the helper no longer
+// scans on-disk history; the session view renders from master's `session/list`
+// snapshot. See doc/specs/per-cli-history-filtering.md.)
 
 /// Reverse of `CliSource::from_agent_id` — yields the lowercase CLI id
 /// used by the command-synthesis template and dispatch routing.
@@ -2177,6 +2239,7 @@ pub(crate) fn session_info_to_agent_session(
         attention_reason: info.attention_reason.clone(),
         log_path: None,
         origin,
+        location: info.location.clone(),
     }
 }
 
@@ -2205,6 +2268,8 @@ impl App {
             auth: None,
             event_tx: None,
             pending_acp_start: false,
+            needs_post_login_authenticate: false,
+            auth_recovery_generation: 0,
             pending_agent_selection: None,
             show_welcome_hint: false,
             deferred_acp: None,
@@ -2235,6 +2300,7 @@ impl App {
             master_request_tx,
             debug_capture_enabled,
             help_overlay_visible: false,
+            transport_lost: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
             debug_scroll: 0,
@@ -2248,8 +2314,8 @@ impl App {
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
-            history_load_state: HistoryLoadState::NotStarted,
             agent_supports_load_session: false,
+            agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
             install_request_tx: None,
             agent_event_tx: None,
@@ -2271,62 +2337,19 @@ impl App {
         }
     }
 
-    /// Store ACP launch parameters for deferred start (after login).
-    pub fn set_acp_params(
-        &mut self,
-        agent_cmd: String,
-        acp_model: Option<String>,
-        prompt_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
-        cancel_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>,
-        new_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>,
-        load_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::LoadSessionForTab>,
-        drop_session_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::DropSessionRequest>,
-        rename_session_rx: mpsc::UnboundedReceiver<
-            crate::protocol::acp::client::RenameSessionRequest,
-        >,
-        restart_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::RestartRequest>,
-        master_ext_rx: mpsc::UnboundedReceiver<crate::protocol::acp::client::MasterExtRequest>,
-        shell_mgr: Arc<crate::shell::ShellManager>,
-        wt_connected: bool,
-    ) {
-        self.deferred_acp = Some(DeferredAcpParams {
-            agent_cmd,
-            acp_model,
-            prompt_rx: Some(prompt_rx),
-            cancel_rx: Some(cancel_rx),
-            new_session_rx: Some(new_session_rx),
-            load_session_rx: Some(load_session_rx),
-            drop_session_rx: Some(drop_session_rx),
-            rename_session_rx: Some(rename_session_rx),
-            restart_rx: Some(restart_rx),
-            master_ext_rx: Some(master_ext_rx),
-            shell_mgr,
-            wt_connected,
-            master_pipe_name: None,
-            owner_tab_id: None,
-        });
-    }
-
     /// Stash pipe-mode launch parameters on App so that a post-FRE-login
     /// reconnect via [`Self::try_start_acp`] goes back through
-    /// [`run_acp_client_over_pipe`] (talking to wta-master) instead of
-    /// the direct [`run_acp_client`] path (which would spawn its own
-    /// copilot CLI subprocess and bypass master entirely).
+    /// `run_acp_client_over_pipe` (talking to wta-master).
     ///
     /// The bug this guards against: in helper mode (`--connect-master`),
     /// the initial `run_acp_client_over_pipe` task fails immediately with
     /// `Authentication required` if the user is in FRE / not yet logged
     /// in. The helper falls into the setup screen, the user logs in, and
     /// `LoginComplete` fires `try_start_acp`. Without this pre-stash,
-    /// `LoginComplete` finds `deferred_acp.is_none()` and synthesizes a
-    /// direct-mode `DeferredAcpParams`, then `try_start_acp` calls
-    /// `run_acp_client` — bypassing master. The resulting helper:
-    ///   * never registers with master (no `HelperId` in master log),
-    ///   * gets `Method not found` for every `intellterm.wta/...`
-    ///     ext-request (the ACP SDK forwards them to the agent CLI
-    ///     prefixed with `_`, and the agent doesn't know them),
-    ///   * has `session_hook` events that go nowhere (the channel's
-    ///     receiver was already consumed by the dead pipe-mode task).
+    /// `LoginComplete` finds `deferred_acp.is_none()` and `try_start_acp`
+    /// has no pipe name to reconnect with — the agent pane never comes
+    /// back. With it, `try_start_acp` reuses the stashed pipe name to
+    /// re-attach to master.
     ///
     /// All `_rx` fields are seeded `None`; `try_start_acp` creates fresh
     /// channels on reconnect and re-binds the `_tx` halves on App, plus
@@ -2371,16 +2394,18 @@ impl App {
     /// half on `self.session_hook_tx`, because the original receiver was
     /// consumed (and dropped) by the dead initial pipe-mode task.
     ///
-    /// **Direct-mode branch.** When `master_pipe_name.is_none()` we keep
-    /// the legacy behavior: spawn [`run_acp_client`], which runs its own
-    /// agent CLI subprocess. This is the FRE path for non-helper
-    /// invocations (`wta` launched without `--connect-master`).
+    /// **No-pipe branch.** When `master_pipe_name.is_none()` we surface a
+    /// defensive `AgentError` rather than starting an agent: direct-agent
+    /// mode was removed, so wta only runs as a wta-master-attached helper
+    /// and a missing pipe here means a wiring bug.
     pub fn try_start_acp(&mut self) {
         if !self.pending_acp_start {
             return;
         }
         self.pending_acp_start = false;
-        tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), "try_start_acp triggered");
+        let post_login_auth = self.needs_post_login_authenticate;
+        self.needs_post_login_authenticate = false;
+        tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
@@ -2454,6 +2479,12 @@ impl App {
                         pipe = %pipe_name,
                         "try_start_acp: reconnecting via master pipe"
                     );
+                    // Captured for post-login auth recovery: who failed (agent)
+                    // and which tab, so a still-auth-failing post-login
+                    // reconnect can request a fresh master targeting that tab.
+                    // Taken before `owner_tab_opt` is moved into the client.
+                    let recovery_tab_id = owner_tab_opt.clone();
+                    let recovery_agent_id = self.current_agent_id.clone();
                     let event_tx_for_pipe = event_tx.clone();
                     tokio::task::spawn_local(async move {
                         if let Err(e) =
@@ -2474,6 +2505,7 @@ impl App {
                                 master_ext_rx,
                                 shell_mgr,
                                 wt_connected,
+                                post_login_auth, // only true on genuine LoginComplete reconnects
                             )
                             .await
                         {
@@ -2486,37 +2518,66 @@ impl App {
                                 &e,
                                 crate::protocol::acp::failure::HandshakeStage::Initialize,
                             );
-                            let _ = event_tx_for_pipe.send(AppEvent::AgentError {
-                                session_id: None,
-                                failure,
-                                message: format!(
-                                    "helper ACP transport failed on reconnect: {e:#}"
-                                ),
-                            });
+                            // A post-login reconnect for an External-auth agent
+                            // that STILL fails auth means the long-lived shared
+                            // master CLI is poisoned and `authenticate` won't
+                            // refresh it. Request a fresh master (auth recovery)
+                            // instead of looping back to the sign-in screen.
+                            // Match BOTH the plain AuthRequired and the post-
+                            // login HandshakeFailed{NewSession} the client
+                            // wraps a still-AuthRequired new_session into.
+                            let is_external = matches!(
+                                crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
+                                    .acp_auth_flow,
+                                crate::agent_registry::AcpAuthFlow::External
+                            );
+                            if post_login_auth
+                                && is_external
+                                && is_post_login_auth_failure(&failure)
+                            {
+                                tracing::warn!(
+                                    target: "auth_recovery",
+                                    agent_id = %recovery_agent_id,
+                                    tab_id = ?recovery_tab_id,
+                                    "post-login reconnect still auth-failing on shared master CLI; requesting auth recovery"
+                                );
+                                let _ = event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
+                                    failure,
+                                    tab_id: recovery_tab_id.clone(),
+                                    agent_id: recovery_agent_id.clone(),
+                                });
+                            } else {
+                                let _ = event_tx_for_pipe.send(AppEvent::AgentError {
+                                    session_id: None,
+                                    failure,
+                                    message: format!(
+                                        "helper ACP transport failed on reconnect: {e:#}"
+                                    ),
+                                });
+                            }
                         }
                     });
                 } else {
-                    // Direct-mode reconnect (non-helper FRE path).
-                    // Resolve the agent executable path (bare "copilot" may not
-                    // be on PATH in packaged apps — use WinGet Links fallback).
-                    let agent_cmd = resolve_agent_cmd(&params.agent_cmd);
-                    let owner_tab_id = self.tab_id.clone();
-                    tokio::task::spawn_local(crate::protocol::acp::client::run_acp_client(
-                        agent_cmd,
-                        acp_model,
-                        owner_tab_id,
-                        event_tx,
-                        prompt_rx,
-                        cancel_rx,
-                        new_session_rx,
-                        load_session_rx,
-                        drop_session_rx,
-                        rename_session_rx,
-                        restart_rx,
-                        master_ext_rx,
-                        shell_mgr,
-                        wt_connected,
-                    ));
+                    // Unreachable in the shipped product: wta only runs as a
+                    // wta-master-attached helper, so deferred reconnect params
+                    // always carry a master pipe name. Direct-agent mode was
+                    // removed; surface a clear error rather than panicking if
+                    // we somehow reach here with no pipe.
+                    tracing::error!(
+                        target: "acp",
+                        "try_start_acp: no master pipe in deferred params — \
+                         direct-agent mode was removed; cannot start ACP client"
+                    );
+                    let _ = event_tx.send(AppEvent::AgentError {
+                        session_id: None,
+                        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+                            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+                            detail: "missing wta-master connection".to_string(),
+                        },
+                        message: "Agent pane could not start: missing wta-master \
+                                  connection (direct mode is no longer supported)."
+                            .to_string(),
+                    });
                 }
             }
         }
@@ -2876,6 +2937,11 @@ impl App {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
+        // WSL rows can only resume via the CLI `--resume` flag *inside*
+        // the distro. ACP `session/load` (the Shift target for Class B
+        // dead rows) can't rehydrate a Linux session into a host agent
+        // pane, so collapse Shift to Enter — both route to ResumeCliFlag.
+        let shift = shift && !s.location.is_wsl();
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
         // Claude / Codex / Copilot / Gemini (all four CLIs accept some
@@ -3105,7 +3171,9 @@ impl App {
         // artefacts at startup, *then* validate the `--resume`
         // argument and exit with an error — leaving phantom artefacts
         // behind for the next session-load to surface again.
-        if !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key) {
+        if !s.location.is_wsl()
+            && !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key)
+        {
             tracing::warn!(
                 target: "agents_view",
                 key = %s.key,
@@ -3136,7 +3204,28 @@ impl App {
         }
 
         let key = s.key.clone();
-        let commandline = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        let resume_invocation = format!("{} {} {}", cli_id, profile.resume_flag, key);
+        // WSL rows run the distro's own CLI *inside* the distro. Two
+        // WSL/cmd quirks shape this command line:
+        //   * The distro name is **not** quoted. `wsl -d "Ubuntu"` fails with
+        //     WSL_E_DISTRO_NOT_FOUND when the command runs under the
+        //     `cmd /c echo … && …` banner wrapper — cmd/wsl don't strip the
+        //     quotes off `-d`, so wsl looks for a distro literally named
+        //     `"Ubuntu"`. Distro names from `wsl -l` are space-free, so bare
+        //     `-d <distro>` is safe. The `--cd` path keeps its quotes (it can
+        //     contain spaces and quoting works fine there).
+        //   * The CLI is launched through a **login shell** (`bash -lc`) so the
+        //     user's PATH is set up — a snap-installed Copilot lives in
+        //     `/snap/bin`, which a bare `wsl -- copilot` misses ("command not
+        //     found"). A login shell sources the profile that adds it.
+        let login_invocation = format!("bash -lc \"{resume_invocation}\"");
+        let commandline = match &s.location {
+            crate::agent_sessions::SessionLocation::Wsl { distro } => match linux_cwd_arg(&s.cwd) {
+                Some(cwd) => format!("wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"),
+                None => format!("wsl -d {distro} -- {login_invocation}"),
+            },
+            crate::agent_sessions::SessionLocation::Host => resume_invocation,
+        };
 
         // Per-CLI session stores are keyed by an encoding of the *current*
         // working directory (e.g. Claude looks under
@@ -3172,7 +3261,13 @@ impl App {
         let raw_cwd_string = s.cwd.to_string_lossy().to_string();
         // Drop stale cwd so wtcli falls back to the profile default
         // rather than failing CreateProcessW with ERROR_DIRECTORY.
-        let valid_cwd = crate::cwd_util::validate_starting_directory(&s.cwd);
+        // WSL rows use `wsl --cd` inside the distro command; passing
+        // the Linux path as a Windows `-d` flag to wtcli would fail.
+        let valid_cwd = if s.location.is_wsl() {
+            None
+        } else {
+            crate::cwd_util::validate_starting_directory(&s.cwd)
+        };
         if valid_cwd.is_none() && !raw_cwd_string.is_empty() {
             tracing::warn!(
                 target: "agents_view",
@@ -3181,10 +3276,24 @@ impl App {
             );
         }
         let short_key: String = key.chars().take(8).collect();
-        let launch_commandline = format!(
-            "cmd /c echo \x1b[2;37mResuming {} session {}...\x1b[0m && {}",
-            cli_id, short_key, commandline
-        );
+        // Loading banner shown in the new pane while the CLI cold-starts.
+        // WSL rows also name the distro ("Resuming copilot session abc-123
+        // in Ubuntu (WSL)...") so the user can see which distro is being
+        // entered; host rows keep just the short session id. A WSL session
+        // only appears in the list because its distro was already started and
+        // scanned, so it is running at resume time — a "starting the distro…"
+        // hint would usually be wrong. (WSL2 can auto-shut-down an idle distro
+        // later, but a frequently-wrong hint is worse than none.)
+        let banner = match &s.location {
+            crate::agent_sessions::SessionLocation::Wsl { distro } => {
+                format!("Resuming {cli_id} session {short_key} in {distro} (WSL)...")
+            }
+            crate::agent_sessions::SessionLocation::Host => {
+                format!("Resuming {cli_id} session {short_key}...")
+            }
+        };
+        let launch_commandline =
+            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
             "-c".to_string(),
@@ -3472,6 +3581,12 @@ impl App {
         let rows_available = !self.agents_rows_for_tab(&tab_id).is_empty();
         {
             let tab = self.tab_mut(&tab_id);
+            // Snapshot the pre-entry pane visibility so Esc can restore it
+            // (a folded pane re-folds, an expanded chat pane stays open).
+            // Read before any mutation below: at this point `pane_open` still
+            // holds the value from before this transition (see the field docs
+            // on `agents_view_prev_pane_open`).
+            tab.agents_view_prev_pane_open = Some(tab.pane_open);
             tab.current_view = View::Agents;
             tab.agents_view.snapshot = Some(Vec::new());
             tab.agents_view.dirty = false;
@@ -3490,6 +3605,9 @@ impl App {
         tab.agents_view.refetch_in_flight = false;
         tab.agents_view.dirty = false;
         tab.agents_view.focused_sid = None;
+        tab.agents_view.pending_rescan = false;
+        tab.agents_view.rescan_in_flight = false;
+        tab.agents_view_prev_pane_open = None;
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
@@ -3507,7 +3625,15 @@ impl App {
             tab.agents_view.next_request_id = tab.agents_view.next_request_id.wrapping_add(1);
             let request_id = tab.agents_view.next_request_id;
             tab.agents_view.latest_request_id = Some(request_id);
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id }
+            // Consume the sticky F5 rescan intent only when we actually build a
+            // request; if we coalesced (in-flight) above, it stays set so the
+            // trailing refetch carries it.
+            let rescan = std::mem::take(&mut tab.agents_view.pending_rescan);
+            // Mirror onto rescan_in_flight so the loading shimmer shows for the
+            // whole F5 refresh (a normal poll keeps this false). Cleared when
+            // the response / failure lands.
+            tab.agents_view.rescan_in_flight = rescan;
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, rescan }
         };
         let _ = self.master_request_tx.send(request);
     }
@@ -3548,6 +3674,7 @@ impl App {
                 } else {
                     tab.agents_view.snapshot = Some(sessions.clone());
                     tab.agents_view.refetch_in_flight = false;
+                    tab.agents_view.rescan_in_flight = false;
                     let dirty = tab.agents_view.dirty;
                     tab.agents_view.dirty = false;
                     dirty
@@ -3584,6 +3711,7 @@ impl App {
                     false
                 } else {
                     tab.agents_view.refetch_in_flight = false;
+                    tab.agents_view.rescan_in_flight = false;
                     let dirty = tab.agents_view.dirty;
                     tab.agents_view.dirty = false;
                     dirty
@@ -3710,45 +3838,6 @@ impl App {
 
     pub fn set_event_tx(&mut self, tx: mpsc::UnboundedSender<AppEvent>) {
         self.event_tx = Some(tx);
-    }
-
-    /// First-call: spawn a blocking task to scan `~/.copilot`, `~/.claude`,
-    /// `~/.gemini` for historical agent sessions and merge the result into
-    /// `agent_sessions` via `AppEvent::HistoricalSessionsLoaded`. Subsequent
-    /// calls are no-ops — the registry is cached for this wta's lifetime.
-    ///
-    /// Called eagerly from `run_acp_app` right after `set_event_tx` so the
-    /// scan starts overlapping with ACP startup and is usually done by the
-    /// time the user first opens the agent session view. Also called defensively
-    /// from the `/sessions` toggle in case startup raced ahead of
-    /// `set_event_tx` (Setup/FRE mode — `event_tx` not yet wired, so the
-    /// eager call early-returns and the Ctrl+Shift+/ press picks it up).
-    ///
-    /// Pre-eager-load this was strictly lazy because each wta restart
-    /// (model switch, new agent pane) re-pays the ~10s scan. The eager
-    /// kick is gated to the ACP TUI mode for the same reason — short-lived
-    /// modes (`delegate`, `mcp`, CLI helpers) never call this.
-    pub fn ensure_history_loaded(&mut self) {
-        if self.history_load_state != HistoryLoadState::NotStarted {
-            return;
-        }
-        let Some(tx) = self.event_tx.clone() else {
-            // No event channel yet — Setup mode at startup. The first Ctrl+Shift+/
-            // press post-FRE will retry. Safe to leave state as NotStarted.
-            return;
-        };
-        self.history_load_state = HistoryLoadState::Loading;
-        tokio::task::spawn_blocking(move || {
-            let scan_started = std::time::Instant::now();
-            let sessions = crate::history_loader::load_all();
-            tracing::info!(
-                target: "history_loader",
-                count = sessions.len(),
-                elapsed_ms = scan_started.elapsed().as_millis() as u64,
-                "background history scan complete (lazy)"
-            );
-            let _ = tx.send(AppEvent::HistoricalSessionsLoaded(sessions));
-        });
     }
 
     fn spawn_login(&self, agent_id: &str, login_command: &str) {
@@ -4404,9 +4493,10 @@ impl App {
             AppEvent::AgentInstallComplete => "agent_install_complete",
             AppEvent::LoginProgress { .. } => "login_progress",
             AppEvent::LoginComplete { .. } => "login_complete",
+            AppEvent::PostLoginAuthRecovery { .. } => "post_login_auth_recovery",
+            AppEvent::AuthRecoveryTimedOut { .. } => "auth_recovery_timed_out",
             AppEvent::PreflightComplete(_) => "preflight_complete",
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
-            AppEvent::HistoricalSessionsLoaded(_) => "historical_sessions_loaded",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
             AppEvent::AliveSessionAdded(_) => "alive_session_added",
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
@@ -4437,6 +4527,60 @@ impl App {
         )
     }
 
+    /// Render the sign-in / setup screen for `agent_id` (the
+    /// `SetupReason::AgentError` flavor). Used by the `AuthRecoveryTimedOut`
+    /// dead-man fallback so a dropped/slow auth-recovery restart still lands
+    /// the user on an actionable sign-in screen (mirrors the `AgentError`
+    /// auth-fallback path).
+    fn show_signin_setup_screen(&mut self, agent_id: String) {
+        tracing::info!("show_signin_setup_screen: agent_id={}", agent_id);
+        let profile = crate::agent_registry::lookup_profile(&agent_id);
+        let agent_status = crate::agent_check::check_agent(profile.id);
+        let all_agents = crate::agent_check::check_all_agents();
+        let reason = SetupReason::AgentError;
+        let options = build_setup_options(&reason, Some(&agent_status), &all_agents);
+        self.mode = AppMode::Setup;
+        self.state = ConnectionState::Disconnected;
+        self.auth = None;
+        self.setup = Some(SetupState {
+            reason,
+            selected_index: 0,
+            preflight: PreflightResult {
+                agent_id: profile.id.to_string(),
+                display_name: profile.display_name.to_string(),
+                // Reflect the CLI's real presence (we just computed
+                // `agent_status`) instead of hard-coding "found" — on the
+                // dead-man fallback the CLI may genuinely be the problem.
+                cli_status: if agent_status.cli_found {
+                    CheckStatus::Passed
+                } else {
+                    CheckStatus::Failed(t!("agent.status.not_found").into_owned())
+                },
+                cli_path: agent_status.cli_path.clone(),
+                auth_status: CheckStatus::Failed(
+                    t!("system.authentication_failed").into_owned(),
+                ),
+                install_hint: profile.install_hint.to_string(),
+                install_url: String::new(),
+                auth_hint: profile.auth_hint.to_string(),
+            },
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options,
+            title: t!("setup.title.sign_in").into_owned(),
+            subtitle: if profile.id == "copilot" {
+                t!("setup.subtitle.copilot_auth", agent = profile.display_name)
+                    .into_owned()
+            } else {
+                t!("setup.subtitle.agent_auth", agent = profile.display_name)
+                    .into_owned()
+            },
+        });
+        let tab = self.current_tab_mut();
+        tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+    }
+
     fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
@@ -4452,11 +4596,11 @@ impl App {
                 }
                 // Setup-mode spinner: ticks while we're showing the wizard
                 // (e.g. spinning during a `winget install` background job).
-                // Also advance while the agents-view history scan is in
-                // flight so the "Loading" shimmer keeps animating.
+                // Also advance while the agents view waits on its first
+                // session/list snapshot so the "Loading" shimmer keeps animating.
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
-                    || self.history_load_state == HistoryLoadState::Loading
+                    || self.agents_view_awaiting_snapshot()
                     // Keep the connecting indicator animating during the
                     // pipe-connect → ACP init → session/new handshake so a cold
                     // start (which can run tens of seconds) doesn't look frozen
@@ -4506,6 +4650,7 @@ impl App {
                 available_models,
                 current_model_id,
                 load_session_supported,
+                image_supported,
             } => {
                 self.agent_name = name;
                 self.agent_model = model;
@@ -4514,7 +4659,15 @@ impl App {
                 self.available_models = available_models.clone();
                 self.current_model_id = current_model_id.clone();
                 self.agent_supports_load_session = load_session_supported;
+                self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
+                // A successful connect resolves any in-flight auth recovery:
+                // bump the generation so a still-pending dead-man timer becomes
+                // stale and can't later force the sign-in screen.
+                self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
+                // A live connection cancels the degraded latch (e.g. the
+                // post-sign-in reconnect that goes back through master).
+                self.transport_lost = false;
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
                 if self.mode == AppMode::Setup {
@@ -4680,6 +4833,17 @@ impl App {
                     return;
                 }
 
+                // The transport to master is gone — latch the degraded state
+                // so the slash-command popup greys out everything but
+                // /restart (the only command that can recover without the
+                // dead pipe). Cleared on the next Connected.
+                if matches!(
+                    failure,
+                    crate::protocol::acp::failure::AgentFailure::TransportLost
+                ) {
+                    self.transport_lost = true;
+                }
+
                 let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
@@ -4757,6 +4921,109 @@ impl App {
                     if !is_duplicate {
                         tab.messages.push(ChatMessage::Error(message));
                     }
+                }
+            }
+            AppEvent::PostLoginAuthRecovery {
+                failure,
+                tab_id,
+                agent_id,
+            } => {
+                tracing::warn!(
+                    target: "auth_recovery",
+                    failure_class = failure.class(),
+                    tab_id = ?tab_id,
+                    agent_id = %agent_id,
+                    "post-login auth recovery: shared master CLI still AuthRequired \
+                     after a successful login; reconnecting via a fresh master \
+                     (restart_agent_stack)"
+                );
+                let resolved = if !agent_id.is_empty() {
+                    agent_id.clone()
+                } else {
+                    "copilot".to_string()
+                };
+                // Pin this recovery to a fresh generation so a stale dead-man
+                // timer (from an earlier recovery, or one whose reconnect later
+                // succeeds — see AgentConnected) can't fire onto an unrelated
+                // Connecting state.
+                self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
+                let recovery_generation = self.auth_recovery_generation;
+                // (i) Transient "Reconnecting…" — NOT the sign-in screen. The
+                // restart below tears this pane down + respawns it, so the
+                // common (successful) case never flashes the setup screen
+                // between login and the fresh pane connecting. Only a dropped/
+                // slow restart leaves us alive long enough for the
+                // `AuthRecoveryTimedOut` fallback path to surface the sign-in screen.
+                self.mode = AppMode::Chat;
+                self.setup = None;
+                self.auth = None;
+                self.state =
+                    ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
+                {
+                    let tab = self.current_tab_mut();
+                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                }
+                // (ii) Request a fresh master CLI. The long-lived shared CLI
+                // cached its unauthenticated state at spawn and `authenticate`
+                // does not refresh it; only a respawn (which re-reads the now
+                // valid on-disk credential) recovers. Reuse the tested
+                // `/restart` machinery; `tab_id` lets C++ reopen the failing
+                // tab rather than the active one.
+                let evt = serde_json::json!({
+                    "type": "event",
+                    "method": "restart_agent_stack",
+                    "params": { "reason": "auth_recovery", "tab_id": tab_id },
+                });
+                send_wt_protocol_event(evt.to_string());
+                // (iii) Dead-man fallback: if the restart actually respawned
+                // this pane, this helper process is gone before the timer
+                // fires. If it survives (dropped/slow restart), surface the
+                // sign-in screen so the user isn't stranded on "Reconnecting…".
+                // Guarded on a live async runtime so unit tests (no LocalSet)
+                // don't panic in `spawn_local`.
+                if let Some(ref tx) = self.event_tx {
+                    if tokio::runtime::Handle::try_current().is_ok() {
+                        let tx = tx.clone();
+                        tokio::task::spawn_local(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                            let _ = tx.send(AppEvent::AuthRecoveryTimedOut {
+                                agent_id: resolved,
+                                generation: recovery_generation,
+                            });
+                        });
+                    }
+                }
+            }
+            AppEvent::AuthRecoveryTimedOut {
+                agent_id,
+                generation,
+            } => {
+                // Only reached when the auth-recovery restart did NOT tear this
+                // pane down within the window (dropped/slow delivery) — a
+                // successful restart kills this helper process first. Surface
+                // the sign-in fallback so the user can retry instead of being
+                // stranded on a perpetual "Reconnecting…".
+                //
+                // The generation guard drops a stale timer: if a newer recovery
+                // started, or the reconnect already succeeded (AgentConnected
+                // bumps the generation), this no longer matches the current
+                // recovery and must not force the sign-in screen.
+                if generation == self.auth_recovery_generation
+                    && self.mode != AppMode::Setup
+                    && matches!(self.state, ConnectionState::Connecting(_))
+                {
+                    tracing::warn!(
+                        target: "auth_recovery",
+                        agent_id = %agent_id,
+                        "auth-recovery restart did not take effect within the window; \
+                         falling back to the sign-in screen"
+                    );
+                    let resolved = if !agent_id.is_empty() {
+                        agent_id
+                    } else {
+                        "copilot".to_string()
+                    };
+                    self.show_signin_setup_screen(resolved);
                 }
             }
             AppEvent::AgentSoftStop { session_id, reason } => {
@@ -5024,55 +5291,6 @@ impl App {
                 self.publish_session_hook(hook_event);
                 if let Some(k) = key_to_prune {
                     crate::app::prune_phantom_session_if_ended(&mut self.agent_sessions, &k);
-                }
-            }
-            AppEvent::HistoricalSessionsLoaded(sessions) => {
-                tracing::info!(
-                    target: "history_loader",
-                    count = sessions.len(),
-                    "historical sessions merged from background scan"
-                );
-                self.agent_sessions.merge_historical(sessions);
-                self.history_load_state = HistoryLoadState::Loaded;
-
-                // B-9: kick off an async snapshot of the alive mirror and
-                // post `AliveJoinUpgrade` so rows whose ACP session_id is
-                // still alive (e.g. this WTA process attached to an
-                // existing master in another WT window and never saw the
-                // SessionStarted hook) get upgraded Historical → Live.
-                // Skip until alive_loaded so we don't run the join over
-                // an empty registry on cold startup — the AliveSnapshotLoaded
-                // handler will fire its own join when bootstrap returns.
-                if self.alive_loaded.load(std::sync::atomic::Ordering::Relaxed) {
-                    if let Some(tx) = self.event_tx.clone() {
-                        let reg = std::sync::Arc::clone(&self.alive);
-                        tokio::task::spawn_local(async move {
-                            let items = reg.snapshot().await;
-                            let tuples: Vec<(String, Option<String>)> = items
-                                .into_iter()
-                                .map(|i| (i.session_id.0.to_string(), i.pane_session_id))
-                                .collect();
-                            let _ = tx.send(AppEvent::AliveJoinUpgrade(tuples));
-                        });
-                    }
-                }
-
-                // If the user is already on the agent session view (e.g. they were
-                // dropped there by --initial-view sessions, or they pressed
-                // Ctrl+Shift+/ before the scan finished) and nothing
-                // is selected yet, seed selection on row 0 so Enter
-                // activates immediately. Mirrors the session management enter-Agents path.
-                if self.current_tab().current_view == View::Agents
-                    && self.current_tab().agents_list_state.selected().is_none()
-                    && !self
-                        .agent_sessions
-                        .iter_sorted_with_filters(
-                            self.current_cli_filter().as_ref(),
-                            self.sessions_origin_filter,
-                        )
-                        .is_empty()
-                {
-                    self.current_tab_mut().agents_list_state.select(Some(0));
                 }
             }
             AppEvent::AliveSnapshotLoaded(items) => {
@@ -5631,14 +5849,6 @@ impl App {
                                     self.show_welcome_hint = false;
                                     set_welcome_shown_in_state();
                                 }
-                                let entering_agents = self
-                                    .tab_sessions
-                                    .get(&target_tab)
-                                    .map(|t| t.current_view != View::Agents)
-                                    .unwrap_or(true);
-                                if entering_agents {
-                                    self.ensure_history_loaded();
-                                }
                                 self.open_agents_view_for_tab(target_tab.clone());
                             }
                             "chat" => {
@@ -6178,6 +6388,7 @@ impl App {
                         });
                     }
                     self.pending_acp_start = true;
+                    self.needs_post_login_authenticate = true;
                     self.auth = None;
                 } else {
                     // Login failed — show auth screen again
@@ -6202,10 +6413,6 @@ impl App {
             AppEvent::RevealTick => self.has_reveal_backlog(),
             AppEvent::AgentMessageChunk { .. } => true,
             AppEvent::DebugPipeMessage(_) => self.show_debug_panel,
-            // History only affects the agent session view; chat doesn't read it.
-            // A redraw is cheap enough that we don't bother gating on which
-            // view is showing — pay the one frame.
-            AppEvent::HistoricalSessionsLoaded(_) => true,
             _ => true,
         }
     }
@@ -6488,8 +6695,44 @@ impl App {
                 }
                 KeyCode::Esc => {
                     let tab_id = self.active_tab_key().to_string();
-                    self.close_agents_view_for_tab(&tab_id);
+                    // Restore the pane visibility the user had *before* they
+                    // entered session management. Read before any mutation.
+                    // Falls back to "stay open" (the legacy Esc behaviour) if
+                    // nothing was captured.
+                    let restore_open = self
+                        .current_tab()
+                        .agents_view_prev_pane_open
+                        .unwrap_or(true);
+                    if restore_open {
+                        // Entered from an expanded chat pane → return to it:
+                        // switch the TUI back to chat, leave the pane visible.
+                        self.close_agents_view_for_tab(&tab_id);
+                        self.tab_mut(&tab_id).pane_open = true;
+                    } else {
+                        // Entered from a folded (stashed) pane → re-fold.
+                        // Deliberately do NOT switch to chat here: if we did,
+                        // the helper would re-render the chat view for a frame
+                        // while the pane is still on screen, so the user sees
+                        // the agent pane flash before C++ stashes it. Keeping
+                        // the session list rendered lets the pane stash
+                        // straight from it. Clear the snapshot so a later
+                        // re-entry re-captures; the lingering Agents view
+                        // self-heals to chat on the next chat-toggle open.
+                        let tab = self.tab_mut(&tab_id);
+                        tab.pane_open = false;
+                        tab.agents_view_prev_pane_open = None;
+                    }
                     self.project_active_tab_state();
+                }
+                KeyCode::F(5) => {
+                    // Refresh: ask master to re-scan the on-disk historical
+                    // session logs (load_for_cli) like the startup seed, then
+                    // re-list. The sticky pending_rescan flag is consumed when
+                    // schedule actually dispatches, so it survives in-flight
+                    // coalescing.
+                    let tab_id = self.active_tab_key().to_string();
+                    self.tab_mut(&tab_id).agents_view.pending_rescan = true;
+                    self.schedule_agents_refetch_for_tab(&tab_id);
                 }
                 _ => {}
             }
@@ -6859,7 +7102,8 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if !self.current_tab().input.is_empty()
+                if (!self.current_tab().input.is_empty()
+                    || !self.current_tab().pending_images.is_empty())
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -6874,6 +7118,8 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     let text = std::mem::take(&mut tab.input);
+                    // Drain any Alt+V images queued for this prompt.
+                    let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
                     tab.refresh_command_popup();
                     // `session_id` may be None on a brand-new tab whose ACP
@@ -6895,7 +7141,27 @@ impl App {
                         cwd: None,
                         source_pane_id: None,
                     };
-                    let prompt = PromptSubmission::new(text.clone(), Some(pane_context));
+                    // The echoed user message shows a marker for each queued
+                    // image; the ACP text block stays raw (the image rides as a
+                    // separate ContentBlock::Image).
+                    let display_text = if images.is_empty() {
+                        text.clone()
+                    } else {
+                        let items = images
+                            .iter()
+                            .enumerate()
+                            .map(|(i, im)| format!("[{}] {}", i + 1, im.label))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let marker = t!("input.image_attachments", items = items).into_owned();
+                        if text.is_empty() {
+                            marker
+                        } else {
+                            format!("{text}\n{marker}")
+                        }
+                    };
+                    let prompt =
+                        PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,
@@ -6908,7 +7174,7 @@ impl App {
                     }
                     let submitted = SubmittedPrompt {
                         id: prompt.id,
-                        text: text.clone(),
+                        text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
                         autofix: None,
                     };
@@ -6955,6 +7221,11 @@ impl App {
             KeyCode::PageDown => {
                 self.current_tab_mut().chat_scroll.by(-10);
             }
+            KeyCode::Char('v') | KeyCode::Char('V')
+                if key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.handle_paste_image();
+            }
             KeyCode::Char(c) => {
                 // Only type into the input when it is the live caret target.
                 // When a recommendation/permission card or a past turn is
@@ -6974,11 +7245,68 @@ impl App {
         self.current_tab_mut().scroll_to_bottom();
     }
 
+    /// Alt+V: capture an image from the Windows clipboard and queue it to send
+    /// with the next prompt. Gated on the input being the live caret target and
+    /// on the agent advertising the `image` prompt capability — otherwise the
+    /// user gets a clear system message instead of a silently-rejected image.
+    fn handle_paste_image(&mut self) {
+        if !self.current_tab().input_has_nav_focus() {
+            return;
+        }
+        if !self.agent_supports_image {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.image_not_supported").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        match crate::clipboard_image::read_clipboard_image() {
+            Some(image) => {
+                let label = image.label.clone();
+                let tab = self.current_tab_mut();
+                tab.pending_images.push(image);
+                tab.messages.push(ChatMessage::System(
+                    t!("system.image_pasted", label = label).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.image_clipboard_empty").into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    /// True while the open agents view should show the loading shimmer: either
+    /// waiting on its first `session/list` reply from master (empty placeholder
+    /// snapshot + refetch in flight) or while an F5 rescan is in flight. Drives
+    /// the shimmer animation tick so a refresh is visible.
+    fn agents_view_awaiting_snapshot(&self) -> bool {
+        let tab = self.current_tab();
+        if tab.current_view != View::Agents {
+            return false;
+        }
+        // First-snapshot OR an F5 rescan; a normal 5s poll keeps
+        // rescan_in_flight false so it doesn't flash the shimmer.
+        tab.agents_view.refetch_in_flight
+            && (tab
+                .agents_view
+                .snapshot
+                .as_deref()
+                .map(|s| s.is_empty())
+                .unwrap_or(false)
+                || tab.agents_view.rescan_in_flight)
+    }
+
     fn has_activity_indicator(&self) -> bool {
         if self.mode == AppMode::Setup || self.mode == AppMode::Auth {
             return true; // spinner always ticks in setup/auth mode
         }
-        if self.history_load_state == HistoryLoadState::Loading {
+        if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
         let tab = self.current_tab();
@@ -7024,14 +7352,35 @@ impl App {
     pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
         let tab = self.current_tab();
         if tab.command_popup_candidates.is_empty() {
-            None
-        } else {
-            Some(crate::ui::PopupState {
-                candidates: &tab.command_popup_candidates,
-                selected: tab.command_popup_selected,
-                current_model: self.current_model_display(),
-            })
+            return None;
         }
+        // When the transport to master is lost, only /restart can run — so the
+        // popup simply doesn't show the other commands (rather than greying
+        // them). Collapse the candidate list to /restart if it's among the
+        // prefix matches; otherwise show nothing (the typed prefix excludes
+        // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
+        // Normal path borrows the tab's list (no per-frame allocation on the
+        // render hot path); only the degraded filter allocates.
+        let candidates: std::borrow::Cow<'_, [&'static crate::commands::CommandSpec]> =
+            if self.transport_lost {
+                let filtered: Vec<&'static crate::commands::CommandSpec> = tab
+                    .command_popup_candidates
+                    .iter()
+                    .copied()
+                    .filter(|s| s.kind == crate::commands::CommandKind::Restart)
+                    .collect();
+                if filtered.is_empty() {
+                    return None;
+                }
+                std::borrow::Cow::Owned(filtered)
+            } else {
+                std::borrow::Cow::Borrowed(tab.command_popup_candidates.as_slice())
+            };
+        Some(crate::ui::PopupState {
+            candidates,
+            selected: tab.command_popup_selected,
+            current_model: self.current_model_display(),
+        })
     }
 
     /// Display label for the active pane's effective model — its per-pane
@@ -7060,8 +7409,28 @@ impl App {
         Some(name)
     }
 
+    /// Whether the command popup is *effectively* visible — i.e. actually
+    /// rendered. This is the same condition `command_popup_state()` uses to
+    /// decide whether to draw, so key handlers gate on the real on-screen
+    /// state: in degraded mode the candidate list is filtered to `/restart`,
+    /// so when the typed prefix excludes it (e.g. `/new`) nothing is drawn and
+    /// this returns false — the Up/Down/Tab/Enter arms then fall through to
+    /// their normal behavior instead of swallowing the key against an
+    /// invisible popup.
     fn command_popup_visible(&self) -> bool {
-        self.current_tab().command_popup_visible()
+        if !self.current_tab().command_popup_visible() {
+            return false;
+        }
+        if self.transport_lost {
+            // Only /restart is offered; if the prefix excludes it the popup
+            // isn't drawn.
+            return self
+                .current_tab()
+                .command_popup_candidates
+                .iter()
+                .any(|s| s.kind == crate::commands::CommandKind::Restart);
+        }
+        true
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not
@@ -7105,14 +7474,35 @@ impl App {
         //    `/he` → /help) and never submits the raw text as a prompt, so
         //    this arm is always consumed even if there is no selection.
         if self.command_popup_visible() {
-            if let Some(spec) = self.current_tab().selected_command_spec() {
-                let parsed = ParsedCommand {
-                    kind: spec.kind,
-                    spec,
-                    rest: String::new(),
-                };
-                self.current_tab_mut().clear_input();
-                self.handle_slash_command(parsed);
+            // When the transport to master is lost, only /restart is runnable
+            // (everything else would hit the dead pipe). Pick the /restart
+            // spec if it's in the filtered candidate list; otherwise there's
+            // nothing to run, so consume Enter and show the reconnect hint.
+            let spec = if self.transport_lost {
+                self.current_tab()
+                    .command_popup_candidates
+                    .iter()
+                    .copied()
+                    .find(|s| s.kind == CommandKind::Restart)
+            } else {
+                self.current_tab().selected_command_spec()
+            };
+            match spec {
+                Some(spec) => {
+                    let parsed = ParsedCommand {
+                        kind: spec.kind,
+                        spec,
+                        rest: String::new(),
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                }
+                None => {
+                    self.current_tab_mut().clear_input();
+                    if self.transport_lost {
+                        self.push_degraded_command_hint();
+                    }
+                }
             }
             return true;
         }
@@ -7123,6 +7513,13 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
+                // Degraded: a typed command other than /restart can't run
+                // against the dead pipe — swallow it with the reconnect hint.
+                if self.transport_lost && cmd.kind != CommandKind::Restart {
+                    self.current_tab_mut().clear_input();
+                    self.push_degraded_command_hint();
+                    return true;
+                }
                 self.current_tab_mut().clear_input();
                 self.handle_slash_command(cmd);
                 true
@@ -7140,6 +7537,15 @@ impl App {
         }
     }
 
+    /// Append the localized "connection to the agent was lost — /restart to
+    /// reconnect" line to the active tab. Shown when the user invokes any
+    /// slash command other than /restart while the transport to master is
+    /// down (reuses the existing `connection.lost` string).
+    fn push_degraded_command_hint(&mut self) {
+        let msg = t!("connection.lost").into_owned();
+        self.current_tab_mut().messages.push(ChatMessage::System(msg));
+    }
+
     /// Dispatch a parsed slash-command. The Enter handler is responsible
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
@@ -7150,6 +7556,16 @@ impl App {
             in_flight,
             "dispatch"
         );
+
+        // Transport to master is lost — only /restart can recover (it routes
+        // via wtcli→COM, not the dead pipe). Refuse everything else with the
+        // reconnect hint so a command can never silently fail against a dead
+        // connection. This is the defensive backstop; the Enter handler and
+        // greyed popup already steer the user here.
+        if self.transport_lost && cmd.kind != CommandKind::Restart {
+            self.push_degraded_command_hint();
+            return;
+        }
 
         // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
         // single command can be read and unit-tested in isolation. `in_flight`
@@ -7359,10 +7775,6 @@ impl App {
         // Per-tab — only flips the active tab's view state.
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
-        // session management path also kicks the lazy history scan here. Without this,
-        // /sessions left the registry empty and rendered a blank view
-        // forever (state stuck at NotStarted, no Loading row, no rows).
-        self.ensure_history_loaded();
         self.project_active_tab_state();
     }
 
@@ -7974,6 +8386,16 @@ impl App {
         }
         self.current_tab_mut().selection_visible_pending = false;
     }
+}
+
+/// Return the cwd to hand to `wsl --cd` — only when it's an absolute
+/// Linux path (starts with `/`). A Windows path, empty cwd, or a path
+/// containing a double-quote (which would break the quoted `--cd "…"`
+/// argument) yields `None`, so WSL falls back to the distro's `$HOME`.
+fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
+    let s = cwd.to_string_lossy();
+    let s = s.trim();
+    (s.starts_with('/') && !s.contains('"')).then(|| s.to_string())
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -11208,6 +11630,76 @@ mod tests {
         assert_eq!(rows[0].key, "shell-key");
     }
 
+    /// The PRODUCTION snapshot path (master pushed `sessions/list` response
+    /// into `agents_view.snapshot`) must preserve the `Wsl` location in every
+    /// `AgentSession` produced by `agents_rows_for_tab`.
+    ///
+    /// This is the regression test that would have caught the original bug:
+    /// `session_info_to_agent_session` hardcoded `location: Host`, so WSL
+    /// rows crossing the master→helper boundary silently lost their distro
+    /// stamp.  The fix carries `location` through `SessionInfo`; this test
+    /// guards that fix forever.
+    #[test]
+    fn agents_rows_snapshot_preserves_wsl_location() {
+        use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+        let mut app = test_app();
+        // Use `All` to bypass the MVP ShellOnly filter — we want to confirm
+        // location preservation regardless of origin filtering.
+        app.sessions_origin_filter = OriginFilter::All;
+
+        let mut info = session_info_for_test("wsl-1");
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        assert_eq!(rows.len(), 1, "expected one row; got: {rows:?}");
+        assert!(
+            rows[0].location.is_wsl(),
+            "snapshot path must preserve WSL location; got: {:?}",
+            rows[0].location
+        );
+        assert_eq!(
+            rows[0].location,
+            SessionLocation::Wsl { distro: "Ubuntu".into() },
+            "distro name must round-trip through session_info_to_agent_session"
+        );
+    }
+
+    /// End-to-end render proof: a WSL `SessionInfo` in the `/sessions`
+    /// snapshot must actually paint its bracketed distro tag (`[WSL-Ubuntu]`)
+    /// on screen. `agents_rows_snapshot_preserves_wsl_location` proves the
+    /// data path and `origin_prefix_shows_distro_for_wsl_rows` proves the
+    /// prefix builder; this closes the loop through `crate::ui::render` so a
+    /// regression in `agents_view::render`'s own `session_info_to_agent_session`
+    /// conversion (a *second* call site, separate from `agents_rows_for_tab`)
+    /// can't silently drop the tag.
+    #[test]
+    fn render_sessions_view_paints_wsl_distro_tag() {
+        use crate::agent_sessions::{OriginFilter, SessionLocation};
+
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.sessions_origin_filter = OriginFilter::All;
+
+        let mut info = session_info_for_test("wsl-render-1");
+        info.title = Some("hack on wsl".into());
+        info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
+        info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("[WSL-Ubuntu]"),
+            "the /sessions view must paint the bracketed WSL distro tag; rendered:\n{text}"
+        );
+    }
+
     /// `resolve_sessions_origin_filter` reads the `WTA_SESSIONS_SHOW_AGENT_PANE`
     /// env var. With it unset (or 0/false) the MVP default
     /// (`ShellOnly`) wins; with it set to a truthy value we flip to
@@ -11244,7 +11736,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let first_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11262,7 +11754,7 @@ mod tests {
             Some(agent_client_protocol::SessionId::new("b"));
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11295,7 +11787,7 @@ mod tests {
             app.handle_event(AppEvent::SessionsChanged);
         }
         let first_req = match master_rx.try_recv().expect("one in-flight refetch") {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11330,7 +11822,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let first_req = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11354,7 +11846,7 @@ mod tests {
         // Kick a second refetch and report it as failed.
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().expect("second refetch sent") {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11396,7 +11888,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let req_id = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11433,7 +11925,7 @@ mod tests {
         let (mut app, mut master_rx) = test_app_with_master_rx();
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
         let _stale = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11446,7 +11938,7 @@ mod tests {
         });
         app.handle_event(AppEvent::SessionsChanged);
         let _fresh = match master_rx.try_recv().unwrap() {
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id } => {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
                 request_id
             }
             other => panic!("expected SessionsList, got {other:?}"),
@@ -11458,6 +11950,67 @@ mod tests {
         assert!(
             app.current_tab().agents_view.refetch_in_flight,
             "stale failure must not clear the fresh in-flight gate"
+        );
+    }
+
+    /// The loading-shimmer signal: true only while the agents view is open
+    /// and waiting on its first `session/list` reply (empty placeholder
+    /// snapshot + in-flight refetch). Replaces the removed on-disk-scan
+    /// `HistoryLoadState::Loading` signal.
+    #[test]
+    fn agents_view_awaiting_snapshot_tracks_first_session_list() {
+        let (mut app, _master_rx) = test_app_with_master_rx();
+        // Chat view → never awaiting (the shimmer is agents-view only).
+        assert!(!app.agents_view_awaiting_snapshot());
+
+        // Opening the agents view primes an empty placeholder snapshot and an
+        // in-flight refetch — exactly the loading-shimmer window.
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        assert!(
+            app.agents_view_awaiting_snapshot(),
+            "awaiting the first session/list snapshot right after open"
+        );
+
+        // A non-empty snapshot (master replied with rows) ends the awaiting
+        // state even while a follow-up refetch is in flight.
+        app.current_tab_mut().agents_view.snapshot = Some(vec![session_info_for_test("a")]);
+        assert!(!app.agents_view_awaiting_snapshot());
+
+        // An empty reply with the refetch finished is the genuine empty
+        // state, not loading.
+        app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+        assert!(!app.agents_view_awaiting_snapshot());
+    }
+
+    #[test]
+    fn agents_view_loading_shows_during_f5_rescan() {
+        let (mut app, _master_rx) = test_app_with_master_rx();
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        // First snapshot landed: rows present, fetch settled — not loading.
+        app.current_tab_mut().agents_view.snapshot = Some(vec![session_info_for_test("a")]);
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+        assert!(!app.agents_view_awaiting_snapshot(), "a settled list is not loading");
+
+        // F5 dispatches a rescan: the loading shimmer must show even though the
+        // list already has rows, so the refresh is visible.
+        app.current_tab_mut().agents_view.pending_rescan = true;
+        app.schedule_agents_refetch_for_tab(DEFAULT_TAB_ID);
+        assert!(
+            app.agents_view_awaiting_snapshot(),
+            "F5 rescan must show the loading shimmer even with rows present"
+        );
+
+        // The rescan response clears it back to the settled list.
+        let rid = app
+            .current_tab()
+            .agents_view
+            .latest_request_id
+            .expect("a request was dispatched");
+        app.handle_agents_snapshot_loaded(rid, vec![session_info_for_test("a")]);
+        assert!(
+            !app.agents_view_awaiting_snapshot(),
+            "loading clears once the rescan response lands"
         );
     }
 
@@ -11502,6 +12055,127 @@ mod tests {
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
         assert_eq!(cmd.session_id.as_deref(), Some("a"));
+    }
+
+    // F5 in the session-management view refetches the session list (footer
+    // hint: "F5 to refresh"). When no fetch is in flight it dispatches a
+    // fresh sessions/list request to master.
+    #[test]
+    fn f5_in_session_view_refetches_sessions() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let tab_id = app.active_tab_key().to_string();
+        app.open_agents_view_for_tab(tab_id);
+
+        // The open-time refetch must be snapshot-only (no disk rescan).
+        match master_rx.try_recv().expect("open requests sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan, .. } => {
+                assert!(!rescan, "view-open refetch must not rescan");
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
+        // Clear the in-flight flag so the F5 refetch dispatches fresh.
+        app.current_tab_mut().agents_view.refetch_in_flight = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+
+        match master_rx.try_recv().expect("F5 must request sessions/list") {
+            crate::protocol::acp::client::MasterExtRequest::SessionsList { rescan, .. } => {
+                assert!(rescan, "F5 must request a master-side disk rescan");
+            }
+            other => panic!("expected SessionsList, got {other:?}"),
+        }
+    }
+
+    // Esc out of the session-management (Agents) view restores the pane
+    // visibility the user had *before* they entered it, rather than always
+    // leaving an open chat pane behind. Two cases mirror the two ways the
+    // view is reached (see `open_agents_view_for_tab` + the Esc handler).
+
+    #[test]
+    fn esc_from_session_view_refolds_when_entered_from_folded_pane() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // Pane starts folded (stashed): pane_open == false.
+        app.tab_mut(&tab_id).pane_open = false;
+
+        // Reproduce the C++ "unstash into sessions" request, which applies
+        // `view` before `pane_open`: the view switch snapshots the pre-message
+        // `pane_open=false`, then the pane is marked open while sessions show.
+        app.open_agents_view_for_tab(tab_id.clone());
+        app.tab_mut(&tab_id).pane_open = true;
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        // Re-folds: pane hidden. The view is intentionally left on Agents
+        // (not switched to Chat) so the pane stashes straight from the
+        // session list without flashing the chat view for a frame first.
+        assert!(
+            !app.current_tab().pane_open,
+            "Esc from a pane that was folded before session management must re-fold it"
+        );
+        assert_eq!(
+            app.current_tab().current_view,
+            View::Agents,
+            "fold-restore must not switch to chat (would flash before stashing)"
+        );
+        assert_eq!(
+            app.current_tab().agents_view_prev_pane_open, None,
+            "the snapshot must be cleared after Esc so a re-entry re-captures"
+        );
+    }
+
+    #[test]
+    fn esc_from_session_view_keeps_pane_open_when_entered_from_chat() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // Pane is already an expanded chat pane: pane_open == true. The
+        // chat->sessions request keeps pane_open=true, so the snapshot is
+        // Some(true) and Esc must leave the pane open.
+        app.tab_mut(&tab_id).pane_open = true;
+        app.open_agents_view_for_tab(tab_id.clone());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.current_tab().current_view, View::Chat);
+        assert!(
+            app.current_tab().pane_open,
+            "Esc from an expanded chat pane must return to it (stay open)"
+        );
+    }
+
+    // A pane folded *from within* the sessions view (fold keeps current_view ==
+    // Agents) and then reopened must re-snapshot the now-folded state, so a
+    // later Esc re-folds instead of using a stale "was open" snapshot.
+    #[test]
+    fn esc_reuses_latest_snapshot_after_fold_from_session_view() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // 1. Enter sessions from an open chat pane -> snapshot Some(true).
+        app.tab_mut(&tab_id).pane_open = true;
+        app.open_agents_view_for_tab(tab_id.clone());
+
+        // 2. Fold while staying in the sessions view (current_view unchanged).
+        app.tab_mut(&tab_id).pane_open = false;
+
+        // 3. Reopen sessions (C++ unstash echo) -> must re-snapshot Some(false).
+        app.open_agents_view_for_tab(tab_id.clone());
+        app.tab_mut(&tab_id).pane_open = true;
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(
+            !app.current_tab().pane_open,
+            "the second entry must capture the folded state, so Esc re-folds"
+        );
     }
 
     #[test]
@@ -12563,6 +13237,170 @@ mod tests {
             .filter(|m| matches!(m, ChatMessage::Error(s) if *s == lost))
             .count();
         assert_eq!(n, 1, "identical connection.lost must not duplicate");
+    }
+
+    /// `is_post_login_auth_failure` must catch BOTH the plain `AuthRequired`
+    /// and the `HandshakeFailed { NewSession }` the pipe client wraps a
+    /// still-AuthRequired post-login `new_session` into — `is_auth()` alone
+    /// would miss the latter and the auth recovery would never fire. It must
+    /// NOT match `HandshakeFailed { Authenticate }` (a genuine authenticate
+    /// RPC rejection/timeout) — that routes to sign-in, not a master restart.
+    #[test]
+    fn post_login_auth_failure_matches_auth_required_and_handshake_new_session() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+        assert!(is_post_login_auth_failure(&AgentFailure::AuthRequired {
+            message: "auth".to_string()
+        }));
+        assert!(is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::NewSession,
+            detail: "still auth after authenticate".to_string()
+        }));
+        // An authenticate-RPC rejection/timeout must NOT trigger auth recovery
+        // (a master restart can't fix bad credentials) — it routes to sign-in.
+        assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::Authenticate,
+            detail: "authenticate rejected/timed out".to_string()
+        }));
+        // A non-auth handshake stage must NOT trigger auth recovery.
+        assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::Initialize,
+            detail: "boom".to_string()
+        }));
+    }
+
+    /// `PostLoginAuthRecovery` shows a transient "Reconnecting…" (NOT the
+    /// sign-in screen, so there is no flash), and the `AuthRecoveryTimedOut`
+    /// dead-man only falls back to the sign-in screen if the restart never
+    /// took effect (this helper survived the window).
+    #[test]
+    fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
+        let mut app = test_app();
+        app.handle_event(AppEvent::PostLoginAuthRecovery {
+            failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+                message: "auth".to_string(),
+            },
+            tab_id: None,
+            agent_id: "copilot".to_string(),
+        });
+        // Common case: transient Reconnecting, NOT the setup screen (no flash).
+        assert!(
+            !matches!(app.mode, AppMode::Setup),
+            "recovery must NOT flash the sign-in screen"
+        );
+        assert!(
+            matches!(app.state, ConnectionState::Connecting(_)),
+            "recovery must show a transient Reconnecting state"
+        );
+        let generation = app.auth_recovery_generation;
+        // A STALE timer (older generation) must be ignored — it must not force
+        // the sign-in screen onto the current Connecting state.
+        app.handle_event(AppEvent::AuthRecoveryTimedOut {
+            agent_id: "copilot".to_string(),
+            generation: generation.wrapping_sub(1),
+        });
+        assert!(
+            !matches!(app.mode, AppMode::Setup),
+            "a stale-generation timeout must be ignored"
+        );
+        // Dead-man fallback (restart never took effect) → sign-in screen.
+        app.handle_event(AppEvent::AuthRecoveryTimedOut {
+            agent_id: "copilot".to_string(),
+            generation,
+        });
+        assert!(
+            matches!(app.mode, AppMode::Setup),
+            "timeout fallback must surface the sign-in screen"
+        );
+    }
+
+    /// The degraded latch (`App::transport_lost`) drives the slash-command
+    /// greying. It must arm on a transport loss and stay armed (the helper has
+    /// no in-process reconnect), so the popup keeps refusing everything but
+    /// /restart until recovery.
+    #[test]
+    fn transport_lost_latch_arms_on_transport_loss() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        assert!(!app.transport_lost, "fresh app is not degraded");
+
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
+            message: t!("connection.lost").into_owned(),
+        });
+
+        assert!(
+            app.transport_lost,
+            "a transport loss must arm the degraded latch"
+        );
+    }
+
+    /// A non-transport failure (a one-off protocol error) must NOT arm the
+    /// latch — the session is still alive, so commands stay enabled.
+    #[test]
+    fn protocol_error_does_not_arm_degraded_latch() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+                code: -32603,
+                message: "bad params".to_string(),
+            },
+            message: "protocol error".to_string(),
+        });
+
+        assert!(
+            !app.transport_lost,
+            "a non-transport protocol error must not degrade the pane"
+        );
+    }
+
+    /// An auth failure routes to sign-in, not the dead-transport path, so it
+    /// must not arm the degraded latch (otherwise the post-sign-in pane would
+    /// wrongly grey out its commands).
+    #[test]
+    fn auth_failure_does_not_arm_degraded_latch() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        app.handle_event(AppEvent::AgentError {
+            session_id: None,
+            failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+                message: "authentication required".to_string(),
+            },
+            message: "authentication required".to_string(),
+        });
+
+        assert!(
+            !app.transport_lost,
+            "an auth failure must not arm the degraded latch"
+        );
+    }
+
+    /// A fresh connection (e.g. the post-sign-in reconnect that goes back
+    /// through master) must clear the latch so commands re-enable.
+    #[test]
+    fn agent_connected_clears_degraded_latch() {
+        let mut app = test_app();
+        app.transport_lost = true;
+
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Copilot".to_string(),
+            model: None,
+            version: None,
+            session_id: "sid-fresh".to_string(),
+            available_models: Vec::new(),
+            current_model_id: None,
+            load_session_supported: true,
+            image_supported: false,
+        });
+
+        assert!(
+            !app.transport_lost,
+            "reaching Connected must clear the degraded latch"
+        );
     }
 
     /// Auth failures must reach the sign-in screen, not get flattened to a dead
@@ -14051,7 +14889,54 @@ mod tests {
         );
     }
 
-    /// Render: a surfaced recommendation card with a `Send` action must paint
+    /// Alt+V when the agent did not advertise the `image` prompt capability
+    /// must no-op the paste and surface a clear system message rather than
+    /// queueing an image the agent would reject.
+    #[test]
+    fn alt_v_without_image_capability_shows_not_supported_message() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.agent_supports_image = false;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::ALT));
+
+        let want = t!("system.image_not_supported").into_owned();
+        let tab = app.current_tab();
+        assert!(
+            tab.messages
+                .iter()
+                .any(|m| matches!(m, ChatMessage::System(s) if *s == want)),
+            "Alt+V without image capability must push the not-supported message"
+        );
+        assert!(
+            tab.pending_images.is_empty(),
+            "no image should be queued when the capability is missing"
+        );
+    }
+
+    /// Render: queued Alt+V images surface as the input-box title so the user
+    /// can see what will be sent.
+    #[test]
+    fn input_box_titles_queued_images() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut()
+            .pending_images
+            .push(crate::clipboard_image::PastedImage {
+                data_base64: "AAA=".into(),
+                mime_type: "image/png".into(),
+                label: "screenshot".into(),
+            });
+
+        let text = render_to_text(&mut app, 80, 30);
+        assert!(
+            text.contains("screenshot"),
+            "the input box must title queued images; rendered:\n{text}"
+        );
+    }
+
+
     /// the action's command body (the card shows the command, not the choice
     /// `title` field, which only surfaces for action-less choices) plus the
     /// run-command button. Lifts `ui/recommendations.rs` (reached only when
@@ -15209,5 +16094,52 @@ mod tests {
     fn known_cli_id_returns_none_for_unknown_variant() {
         use crate::agent_sessions::CliSource;
         assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    }
+
+    #[test]
+    fn enter_on_wsl_history_row_resumes_inside_distro() {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let row = crate::agent_sessions::AgentSession {
+            key:              "abc-123".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "t".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u/proj"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
+            location:         SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        };
+        let mut app = test_app();
+        app.agent_sessions.merge_historical(vec![row]);
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().agents_list_state.select(Some(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let cmd = app
+            .last_dispatched_command_for_test()
+            .expect("a command was dispatched");
+        assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
+        let argv = cmd.argv.join(" ");
+        assert!(
+            argv.contains("wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""),
+            "expected in-distro resume; argv: {argv}"
+        );
+        // The loading banner keeps the short session id and also names the
+        // distro for WSL rows.
+        assert!(
+            argv.contains("Resuming copilot session abc-123 in Ubuntu (WSL)"),
+            "expected distro-named WSL banner; argv: {argv}"
+        );
+        // WSL rows must not also pass the Windows `-d <cwd>` flag.
+        assert!(!argv.contains(" -d /home"), "WSL row must not pass Windows -d cwd");
     }
 }

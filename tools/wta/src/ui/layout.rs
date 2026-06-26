@@ -47,36 +47,33 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // the whole App and conflict with &app.agent_sessions).
     if app.current_tab().current_view == View::Agents {
         let tab_id = app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_string();
-        let load_state = app.history_load_state;
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
         let origin_filter = app.sessions_origin_filter;
         let tab = app.tab_sessions.entry(tab_id).or_default();
-        // Show the loading shimmer while we're waiting on the very first
-        // `session/list` response from master. `open_agents_view_for_tab`
-        // primes snapshot to `Some(Vec::new())` *and* sets
-        // `refetch_in_flight = true`, so this flag is true exactly until
-        // master returns either a populated list (clears refetch_in_flight,
-        // shimmer turns into rows) or an empty list (clears
-        // refetch_in_flight, shimmer turns into the genuine empty state).
-        let awaiting_first_snapshot = tab.agents_view.refetch_in_flight
-            && tab
+        // Show the loading shimmer while waiting on the very first
+        // `session/list` response from master (empty placeholder snapshot +
+        // refetch in flight) OR while an F5 rescan is in flight — so F5 gives
+        // visible feedback even when the list already has rows. A normal 5s
+        // poll keeps `rescan_in_flight` false and therefore does not flash it.
+        let show_loading = tab.agents_view.refetch_in_flight
+            && (tab
                 .agents_view
                 .snapshot
                 .as_deref()
                 .map(|s| s.is_empty())
-                .unwrap_or(false);
+                .unwrap_or(false)
+                || tab.agents_view.rescan_in_flight);
         agents_view::render(
             frame,
             area,
             &app.agent_sessions,
             tab.agents_view.snapshot.as_deref(),
             &mut tab.agents_list_state,
-            load_state,
             activity_frame,
             cli_filter.as_ref(),
             origin_filter,
-            awaiting_first_snapshot,
+            show_loading,
         );
         return;
     }

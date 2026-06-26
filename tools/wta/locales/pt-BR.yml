@@ -58,6 +58,7 @@ chat.turn_executed: "→ executado: %{title}"
 input.placeholder.connected: "Pergunte qualquer coisa, / para comandos.."  # {Locked="/"}
 input.placeholder.connecting: "Conectando..."
 input.placeholder.disconnected: "Desconectado"
+input.image_attachments: "📎 Imagens: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Popup de comandos (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefixo de comando de barra, deve permanecer em ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Certifique-se de que %{name} esteja instalado e no PATH
 
 # ── Visualização de agentes (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Carregando..."
-# {Locked="Enter","Esc","↑","↓"} - combinações de teclas, não traduzir
-agents.footer_hint: "(↑ ↓ para navegar • Enter para iniciar sessão • Esc para sair)"
+# {Locked="Enter","Esc","F5","↑","↓"} - combinações de teclas, não traduzir
+agents.footer_hint: "(↑ ↓ para navegar • Enter para iniciar sessão • Esc para sair • F5 para atualizar)"
 agents.status.active: "Ativo"
 agents.status.waiting_for_input: "Aguardando entrada"
 agents.status.error: "Erro"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "A resposta foi cortada após atingir o limite de sa�
 system.stopped_max_turn_requests: "O agente parou após atingir o limite de solicitações para esta vez."
 system.stopped_refusal: "O agente recusou-se a continuar com esta solicitação."
 system.agent_busy: "O agente está ocupado nesta guia — aguarde o término do prompt atual."
+system.image_clipboard_empty: "Não há imagem na área de transferência para colar."
+system.image_not_supported: "Este agente não dá suporte à entrada de imagem."
+system.image_pasted: "Imagem anexada (%{label}). Pressione Enter para enviar."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Retomando a sessão %{session_id}..."
 system.unknown_command: "Comando desconhecido \"%{command}\" — enviado como prompt. Digite /help para ver a lista."
 system.busy_use_stop: "Aguarde o término do prompt atual ou use /stop primeiro."

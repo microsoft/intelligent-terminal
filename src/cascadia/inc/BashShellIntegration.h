@@ -34,7 +34,13 @@
 
 namespace Microsoft::Terminal::ShellIntegration::Bash
 {
-    inline constexpr int kVersion = 1;
+    // v2: added OSC 9001;ShellType emission (bash/WSL self-reports identity
+    // each prompt). Bumped from v1 so existing users — whose ~/.bashrc
+    // already references the v1 script byte-for-byte — get the new script
+    // rewritten in; without the bump the orchestrator's block-match early-
+    // out would leave the stale v1 script (no ShellType) in place. WSL
+    // inherits this version via WslBashFlavor.
+    inline constexpr int kVersion = 2;
 
     inline std::wstring ScriptFileName()
     {
@@ -113,9 +119,15 @@ __IT_SHELLINTEG_INSTALLED=1
 #
 # "${PROMPT_COMMAND[@]}" expands to one element on a scalar var, zero
 # elements when unset, and N elements on an array -- the same loop
-# handles bash 3.2+ scalar and bash 5.1+ array uniformly.
+# handles bash 3.2+ scalar and bash 5.1+ array uniformly. The
+# ${PROMPT_COMMAND[@]+...} alternate-value guard keeps it `set -u`
+# safe: when PROMPT_COMMAND is unset the whole expansion collapses to
+# nothing instead of tripping "unbound variable" on bash 3.2 (a plain
+# "${PROMPT_COMMAND[@]}" errors there). ${PROMPT_COMMAND:-} can't be
+# used: scalar ${VAR:-} defaulting only sees element [0] of an array,
+# which is exactly the empty-slot case this loop exists to handle.
 __IT_SHELLINTEG_USER_PC=""
-for __it_pc_entry in "${PROMPT_COMMAND[@]}"; do
+for __it_pc_entry in ${PROMPT_COMMAND[@]+"${PROMPT_COMMAND[@]}"}; do
     [ -z "$__it_pc_entry" ] && continue
     if [ -z "$__IT_SHELLINTEG_USER_PC" ]; then
         __IT_SHELLINTEG_USER_PC="$__it_pc_entry"
@@ -137,6 +149,15 @@ __it_shellinteg_prompt() {
     # CWD reporting for those directories. The unquoted form parses
     # cleanly regardless of path contents.
     printf '\033]133;D;%s\007\033]133;A\007\033]9;9;%s\007' "$__ec" "${PWD:-}"
+    # OSC 9001;ShellType — report shell identity each prompt so the terminal
+    # always knows which shell owns the pane, even after a nested shell exits.
+    # Under WSL, $WSL_DISTRO_NAME is set so we report "wsl:<distro>"; plain
+    # (Git) bash reports "bash".
+    if [ -n "${WSL_DISTRO_NAME:-}" ]; then
+        printf '\033]9001;ShellType;wsl:%s;%s\007' "$WSL_DISTRO_NAME" "${BASH_VERSION:-}"
+    else
+        printf '\033]9001;ShellType;bash;%s\007' "${BASH_VERSION:-}"
+    fi
     if [ -n "$__IT_SHELLINTEG_USER_PC" ]; then
         # Restore $? for the user's PROMPT_COMMAND so hooks like
         # `local ec=$?` at its top still see the real exit code

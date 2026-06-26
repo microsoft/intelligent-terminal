@@ -145,6 +145,7 @@ nsummary
 NTMTo
 ntwo
 ntx
+nullglob
 Nushell
 obra
 Oids
@@ -211,6 +212,7 @@ screenshots
 serde
 servicebus
 sessionless
+shopt
 shrx
 shtx
 sidechain

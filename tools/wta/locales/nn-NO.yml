@@ -58,6 +58,7 @@ chat.turn_executed: "→ utført: %{title}"
 input.placeholder.connected: "Spør om kva som helst, / for kommandoar.."  # {Locked="/"}
 input.placeholder.connecting: "koplar til..."
 input.placeholder.disconnected: "fråkopla"
+input.image_attachments: "📎 Bilete: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -106,8 +107,8 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Lastar..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte • F5 for å oppdatere)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Ventar på inndata"
 agents.status.error: "Feil"
@@ -131,6 +132,9 @@ system.stopped_max_tokens: "Svaret blei avkorta etter at utdatagrensa til modell
 system.stopped_max_turn_requests: "Agenten stoppa etter at førespurnadsgrensa for denne runden blei nådd."
 system.stopped_refusal: "Agenten avviste å halde fram med denne førespurnaden."
 system.agent_busy: "Agenten er oppteken i denne fana — vent til gjeldande ledetekst er ferdig."
+system.image_clipboard_empty: "Det finst ikkje noko bilete på utklippstavla å lime inn."
+system.image_not_supported: "Denne agenten støttar ikkje bileteinndata."
+system.image_pasted: "Bilete lagt ved (%{label}). Trykk Enter for å sende."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Held fram med økta %{session_id}..."
 system.unknown_command: "Ukjend kommando \"%{command}\" — send som ledetekst. Skriv /help for lista."
 system.busy_use_stop: "Vent til gjeldande ledetekst er ferdig, eller bruk /stop først."

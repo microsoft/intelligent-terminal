@@ -2,55 +2,87 @@
 
 ## What is WTA?
 
-WTA (Windows Terminal Agent) is a Rust binary that bridges AI agent protocols with Windows Terminal.
-It provides three interfaces:
+WTA (Windows Terminal Agent) is a Rust binary that bridges AI agent CLIs with
+Windows Terminal. It is built around a **helper + master** architecture (see
+`doc/specs/Multi-window-agent-pane.md`) and runs in one of three roles, selected
+at startup by flags / subcommands — **there is no standalone agent / TUI mode and
+no MCP server**; bare `wta` with neither `--master` nor `--connect-master` exits
+with an error.
 
-- **ACP client** (default) -- TUI that spawns an agent CLI (Copilot, Claude, Gemini, Codex, or a custom command) and communicates over ACP via stdio JSON-RPC.
-- **MCP server** (`wta mcp`) -- headless tool server that an external agent calls to interact with shells and Windows Terminal.
-- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`, etc.) -- thin commands for humans and agents that can shell out. Direct keystroke injection is not exposed by the CLI.
+- **`wta-master`** (`--master <pipe>`, spawned once by the C++ `SharedWta`
+  singleton) -- the ACP **multiplexer**. Owns the *single* `ACP/stdio`
+  connection to the agent CLI subprocess (Copilot, Claude, Gemini, Codex, or a
+  custom command), listens on a named pipe, and fans per-helper ACP sessions
+  onto that one agent CLI. Implementation: `src/master/mod.rs`.
+- **`wta-helper`** (`--connect-master <pipe>`, spawned once per agent pane by
+  Windows Terminal) -- the per-pane **TUI**. Drives the ratatui chat UI (`app.rs`)
+  but, instead of spawning its own agent CLI, speaks ACP/JSON-RPC to master over
+  the pipe. *From the helper's perspective, master is the agent.* Entry:
+  `src/helper/mod.rs` → `run_default_tui_over_pipe`.
+- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`,
+  `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
+  and for agents that can shell out. Direct keystroke injection is not exposed by
+  the CLI. Dispatched in `src/main.rs`.
 
-ACP and MCP modes share `ShellManager`, which routes operations to either local subprocesses or Windows Terminal panes. WT pane operations use a `WtChannel` abstraction with a single implementation today:
+The helper side owns `ShellManager`, which services the agent CLI's ACP
+`create_terminal` / permission requests by routing to either a local subprocess
+or a Windows Terminal pane. WT pane operations use a `WtChannel` abstraction with
+a single implementation today:
 
-- `CliChannel` shells out to `wtcli.exe`, which calls WT's COM `IProtocolServer`. All WT operations — including `send_input` (via `wtcli send-keys`) — go through this path.
+- `CliChannel` shells out to `wtcli.exe`, which calls WT's COM `IProtocolServer`.
+  All WT operations — including `send_input` (via `wtcli send-keys`) — go through
+  this path.
 
 ## System Diagram
 
 ```
- Agent CLI (copilot/claude)     External agent       Human / AI shell-out
-       |  ACP/stdio                  |  MCP/stdio         |  CLI helpers
-       v                             v                    v
- +-----------+                +-----------+        +-------------+
- | ACP Mode  |                | MCP Mode  |        | CLI Mode    |
- | (TUI)     |                | (headless)|        | (one-shot)  |
- | client.rs |                | server.rs |        | main.rs     |
- +-----+-----+                +-----+-----+        +------+------+
-       |                             |                     |
-       +---------------+-------------+                     |
-                       |                                   |
-                 ShellManager                              |
-                       |                                   |
-                  CliChannel <-------------------------+---+
-                       |
-                       v
-              wtcli.exe -> COM IProtocolServer
-                       |
-                       v
-              TerminalProtocolComServer
-                       |
-                       v
-              Windows Terminal
+            Windows Terminal (WindowEmperor, one WT process)
+              |  spawns once (SharedWta)      |  spawns per agent pane
+              |  --master <pipe>              |  --connect-master <pipe>
+              v                               v
+        +--------------+   named pipe   +------------------+
+        | wta-master   |<-------------->| wta-helper       |  (one per pane)
+        | (singleton)  |  ACP/JSON-RPC  | TUI: app.rs +    |
+        | master/mod.rs|                | helper/mod.rs    |
+        +------+-------+                +--------+---------+
+               |  ACP/stdio                      |  ShellManager
+               v                                 |  (create_terminal /
+         Agent CLI                               |   permission)
+      (copilot/claude/                           v
+       gemini/codex)                        CliChannel
+                                                 |
+ Human / agent shell-out:                        v
+   wta <subcommand>  ----------------->  wtcli.exe -> COM IProtocolServer
+   (main.rs CLI helpers)                         |
+                                                 v
+                                    TerminalProtocolComServer
+                                                 |
+                                                 v
+                                         Windows Terminal
 ```
 
 ## Protocol Stack
 
 ### ACP (Agent Client Protocol)
 
-WTA acts as an ACP **client**. It spawns an agent CLI as a child process and speaks JSON-RPC 2.0 over stdin/stdout.
+ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on **two hops**,
+because of the helper+master split:
 
-- Crate: `agent-client-protocol = "0.10"`
-- Implementation: `src/protocol/acp/client.rs`
-- The agent sends requests (`create_terminal`, `request_permission`, etc.) and WTA handles them.
-- Session notifications flow from agent to WTA: message chunks, tool calls, plans, and status changes.
+- **master ↔ agent CLI** (stdio): master is the ACP **client** of the agent CLI
+  subprocess — the same role legacy single-process wta used to play. It spawns
+  the agent CLI and owns its stdin/stdout.
+- **helper ↔ master** (named pipe): master is an ACP **agent** (server) to each
+  helper, and the helper is the ACP **client**. Master forwards helper requests
+  to the agent CLI and routes inbound `session_notification`s back to the helper
+  that owns the session (`session_to_helper` map in `src/master/mod.rs`).
+
+Implementations: agent-CLI client + helper-side `WtaClient` in
+`src/protocol/acp/client.rs`; the master multiplexer in `src/master/mod.rs`.
+
+The agent sends requests (`create_terminal`, `request_permission`, etc.) which
+ultimately land on the owning helper's `WtaClient`; session notifications
+(message chunks, tool calls, plans, status changes) flow agent CLI → master →
+helper.
 
 Key ACP message types handled:
 
@@ -58,33 +90,6 @@ Key ACP message types handled:
 - `request_permission` -- permission dialog with options (allow/reject)
 - `create_terminal` / `terminal_output` / `wait_for_terminal_exit` -- agent-managed shells
 - `release_terminal` / `kill_terminal` -- cleanup
-
-### MCP (Model Context Protocol)
-
-WTA acts as an MCP **server**. An external agent calls tools exposed by WTA over stdio.
-
-- Crate: `rmcp = "1.1"` with `#[tool_router]` / `#[tool_handler]` macros
-- Implementation: `src/protocol/mcp/server.rs`
-
-Tools exposed:
-
-| Category | Tool | Description |
-|----------|------|-------------|
-| Shell | `run_command` | Execute command, return stdout and exit code |
-| Shell | `create_terminal` | Spawn persistent terminal session |
-| Shell | `get_terminal_output` | Read buffered output |
-| Shell | `wait_for_terminal` | Block until exit |
-| Shell | `kill_terminal` | Terminate session |
-| WT Query | `wt_list_windows` | All WT windows |
-| WT Query | `wt_list_tabs` | Tabs in a window |
-| WT Query | `wt_list_panes` | Panes in a tab |
-| WT Query | `wt_get_active_pane` | Currently focused pane |
-| WT Query | `wt_read_pane_output` | Terminal buffer text |
-| WT Query | `wt_get_process_status` | Running/exit status |
-| WT Control | `wt_create_tab` | Create new tab |
-| WT Control | `wt_split_pane` | Split a pane |
-| WT Control | `wt_send_input` | Type text into a pane via `wtcli send-keys` / COM `SendInput` |
-| WT Control | `wt_close_pane` | Close a pane |
 
 ### WT COM Protocol
 
@@ -106,7 +111,10 @@ The COM surface exposes reads and mutations, including `list_*`, `read_pane_outp
 wta --agent "copilot --acp --stdio"
 ```
 
-WTA generates an MCP config file at startup pointing to `wta mcp` and injects it with Copilot's `--additional-mcp-config` option.
+Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`, not
+by the helper. The agent reaches Windows Terminal by shelling out to the `wta` /
+`wtcli` CLI helpers (which call WT's COM `IProtocolServer`); WTA no longer
+generates an MCP config or runs an MCP server for the agent.
 
 ### Claude and Codex
 
@@ -165,21 +173,34 @@ WTA discovers which WT pane it is running in by PID matching:
 
 ## Logging
 
-WTA writes structured logs under the Intelligent Terminal runtime directory:
+WTA writes structured logs under the package-private log dir, in a per-version
+subfolder keyed by the package version:
 
 ```
-%LOCALAPPDATA%\IntelligentTerminal\logs\
+…\Packages\<PFN>\LocalCache\Local\IntelligentTerminal\logs\<pkgver>\   (packaged)
+%LOCALAPPDATA%\IntelligentTerminal\logs\                                (unpackaged / dev)
 ```
 
-When running packaged, `%LOCALAPPDATA%` is redirected to the package sandbox.
+Per-process logs in the helper+master architecture:
 
-Current process logs include:
+- `wta-main_master.log` -- `wta-master`: agent CLI spawn, pipe accept loop,
+  per-helper routing, `session_to_helper` updates, agent CLI exit detection
+- `wta-main_helper-{pid}.log` -- each `wta-helper` (one file per PID): pipe
+  connect, ACP initialize, `session/new`, prompts, agent responses, TUI lifecycle
+- `wta-cli.log` -- short-lived CLI helpers (`list-*`, `capture-pane`, `listen`,
+  `sessions`, …); daily-rotated, 3-day retention
+- `wta-delegate.log` -- `wta delegate` (`?<prompt>` delegation)
+- `wta-probe.log` -- `probe-models`
+- `wta-install-hooks.log` -- `hooks install` / uninstall
+- `wta-ensure-host.log` -- WT-side background ensure-running / SharedWta lifecycle
+- `wta-acp-debug.log` -- low-level ACP JSON-RPC wire trace
 
-- `wta-main.log` -- default ACP TUI mode
-- `wta-delegate.log` -- `wta delegate`
-- `wta-install-hooks.log` -- hook installation and removal
+Two files in the same dir are written by **non-Rust** producers:
+`terminal-agent-pane.log` (C++ `AgentPaneLog`) and `hook-trace.log` (PowerShell
+hooks). See the repo-level architecture notes for the full storage layout.
 
-The log level is controlled by `WTA_LOG`; if unset, WTA defaults to a debug filter in `logging.rs`.
+The log level is controlled by `WTA_LOG` (or `RUST_LOG`); if unset, debug builds
+default to `debug` and release builds to `info` (`logging::default_filter_directive`).
 
 ## Build Rule
 
@@ -215,7 +236,6 @@ green build says nothing about the tests.
 | Crate | Version | Purpose |
 |-------|---------|---------|
 | `agent-client-protocol` | 0.10 | ACP client library |
-| `rmcp` | 1.1 | MCP server framework |
 | `tokio` | 1 | Async runtime |
 | `ratatui` | 0.30 | TUI rendering |
 | `crossterm` | 0.29 | Terminal I/O |
