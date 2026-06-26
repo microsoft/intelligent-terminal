@@ -76,21 +76,16 @@ on:
 
 permissions: {}
 
-# Workaround for the archival of check-spelling/check-spelling (archived 2026-06-16).
-# On archival the maintainer flipped the action's runtime security poll (secpoll)
-# to return the advisory 'Sorry' for v0.0.26 -- the final release -- which fatally
-# cancels the workflow (exit 200) on every repo pinned to it. There is no fixed
-# version to upgrade to. The action exposes an `ignore_security_advisory` input,
-# but v0.0.26 never maps it into the secpoll step's environment, so passing it via
-# `with:` is silently dropped. secpoll reads the INPUT_IGNORE_SECURITY_ADVISORY env
-# var directly, so we set it here (composite action steps inherit workflow-level
-# env). The value must exactly match the advisory text 'Sorry'. This keeps the
-# (still-executable) archived action running. Caveat: if check-spelling.dev is ever
-# taken down, secpoll's lookup returns empty/NXDOMAIN and this var being set will
-# instead make secpoll fail ("...but there is no security advisory") -- at which
-# point this workflow must be reworked (remove the checker or pin a maintained fork).
-env:
-  INPUT_IGNORE_SECURITY_ADVISORY: Sorry
+# Note on the archived action: check-spelling/check-spelling was archived 2026-06-16
+# and is pinned at v0.0.26 (cfb6f7e). The action's runtime security poll (secpoll)
+# no longer returns any advisory for v0.0.26, so the action runs normally with no
+# workaround -- exactly like upstream microsoft/PowerToys, which is pinned to the
+# same SHA. We previously set `INPUT_IGNORE_SECURITY_ADVISORY: Sorry` to suppress a
+# transient 'Sorry' advisory, but that advisory was retracted; with no advisory
+# present, setting that env makes secpoll fatally fail ("ignore_security_advisory
+# was set to 'Sorry' but there is no security advisory for version 0.0.26", exit
+# 200), so it has been removed. If a real advisory is ever (re)published, either
+# remove the checker or pin a maintained fork.
 
 jobs:
   spelling:
