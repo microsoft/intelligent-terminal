@@ -2181,7 +2181,7 @@ pub struct AgentsViewState {
     /// Set by F5 in the session view to request a master-side disk re-scan
     /// (`load_for_cli`) on the next dispatched `sessions/list`. Sticky across
     /// in-flight coalescing: only cleared when a request is actually built, so
-    /// an F5 pressed while a poll is in flight still rescans on the trailing
+    /// an F5 pressed while a poll is in flight still re-scans on the trailing
     /// refetch. Reset on view close.
     pub pending_rescan: bool,
     /// True while an F5 rescan request is in flight (set when dispatched,

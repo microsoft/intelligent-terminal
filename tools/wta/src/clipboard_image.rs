@@ -49,7 +49,7 @@ const BI_BITFIELDS: u32 = 3;
 /// corrupted or hostile `GlobalSize` could otherwise drive an unbounded
 /// allocation (OOM) in the helper just from an Alt+V keypress. 256 MiB is far
 /// above any realistic screenshot DIB (a 4K 32-bpp frame is ~33 MiB) yet bounds
-/// the worst case. Oversized payloads are treated as non-pastable.
+/// the worst case. Oversized payloads are rejected (too large to paste).
 #[cfg(windows)]
 const MAX_CLIPBOARD_BYTES: usize = 256 * 1024 * 1024;
 
@@ -354,27 +354,27 @@ pub(crate) unsafe fn set_clipboard_dib(dib: &[u8]) -> bool {
     if OpenClipboard(std::ptr::null_mut()) == 0 {
         return false;
     }
-    // Wipe any pre-existing content so the read is deterministic (only our DIB).
+    // Wipe any preexisting content so the read is deterministic (only our DIB).
     EmptyClipboard();
-    let hmem = GlobalAlloc(GMEM_MOVEABLE, dib.len());
-    if hmem.is_null() {
+    let handle = GlobalAlloc(GMEM_MOVEABLE, dib.len());
+    if handle.is_null() {
         CloseClipboard();
         return false;
     }
-    let ptr = GlobalLock(hmem);
+    let ptr = GlobalLock(handle);
     if ptr.is_null() {
         // Ownership was not handed to the clipboard — free our allocation.
-        GlobalFree(hmem);
+        GlobalFree(handle);
         CloseClipboard();
         return false;
     }
     std::ptr::copy_nonoverlapping(dib.as_ptr(), ptr as *mut u8, dib.len());
-    GlobalUnlock(hmem);
-    // On success the system takes ownership of `hmem`; on failure it does not,
+    GlobalUnlock(handle);
+    // On success the system takes ownership of `handle`; on failure it does not,
     // so we must free it ourselves to avoid leaking the allocation.
-    let placed = !SetClipboardData(CF_DIB, hmem as _).is_null();
+    let placed = !SetClipboardData(CF_DIB, handle as _).is_null();
     if !placed {
-        GlobalFree(hmem);
+        GlobalFree(handle);
     }
     CloseClipboard();
     placed
@@ -421,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn dib_offbits_accounts_for_palette() {
+    fn dib_off_bits_accounts_for_palette() {
         // 8-bpp indexed bitmap with a full 256-entry palette.
         let mut dib = Vec::new();
         dib.extend_from_slice(&40u32.to_le_bytes()); // biSize
