@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "এজেন্ট %{name} — "
 auth.checking_authentication: "  %{spinner} প্রমাণীকরণ পরীক্ষা করা হচ্ছে..."
 auth.waiting_for_authorization: "  %{spinner} অনুমোদনের জন্য অপেক্ষা করা হচ্ছে..."
 auth.code_copied_hint: "  কোড ক্লিপবোর্ডে কপি করা হয়েছে — আপনার ব্রাউজারে পেস্ট করুন।"
+auth.device_code_prompt: "%{url} এ যান এবং কোড লিখুন: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "আপনার এজেন্ট ব্যবহার করতে সাইন ইন করুন:"
 auth.card_connect: "  এজেন্ট বৈশিষ্ট্য সক্রিয় করতে %{name} সংযুক্ত করুন"
-auth.button_sign_in_github: "[ GitHub দিয়ে সাইন ইন করুন ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  সাইন-ইন কমান্ড কপি করতে Enter টিপুন, তারপর সাইন ইন শেষ করতে এটি একটি নতুন টার্মিনাল উইন্ডোতে পেস্ট করুন"  # {Locked="Enter"}
 auth.hint_footer_back: "  ফিরে যেতে Esc"  # {Locked="Esc"}
 auth.enterprise_prompt: "  সাইন ইন করতে Enter · GitHub Enterprise-এর জন্য E · ফিরে যেতে Esc"  # {Locked="Enter","E","Esc"}

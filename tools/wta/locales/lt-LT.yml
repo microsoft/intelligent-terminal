@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Tikrinama autentifikacija..."
 auth.waiting_for_authorization: "  %{spinner} Laukiama autorizavimo..."
 auth.code_copied_hint: "  Kodas nukopijuotas į iškarpinę — įklijuokite jį naršyklėje."
+auth.device_code_prompt: "Apsilankykite %{url} ir įveskite kodą: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Prisijunkite, kad galėtumėte naudoti savo agentą:"
 auth.card_connect: "  Prijunkite %{name}, kad įgalintumėte agento funkcijas"
-auth.button_sign_in_github: "[ Prisijungti su GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  Paspauskite Enter, kad nukopijuotumėte prisijungimo komandą, tada įklijuokite ją naujame terminalo lange, kad baigtumėte prisijungimą"  # {Locked="Enter"}
 auth.hint_footer_back: "  Esc = grįžti"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = prisijungti · E = GitHub Enterprise · Esc = grįžti"  # {Locked="Enter","E","Esc"}

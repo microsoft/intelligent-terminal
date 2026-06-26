@@ -39,10 +39,9 @@ auth.agent_selected_with_status: "Ագենտի %{name} — "
 auth.checking_authentication: "  %{spinner} Նույնականացման ստուգում..."
 auth.waiting_for_authorization: "  %{spinner} Լիազորացման սպասում..."
 auth.code_copied_hint: "  Կոդը պատճենվեց — տեղադրեք այն ձեր բրաուզերում։"
+auth.device_code_prompt: "Այցելեք %{url} և մուտքագրեք կոդը՝ %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Մուտք գործեք՝ ձեր ագենտն օգտագործելու համար՝"
 auth.card_connect: "  Միացրեք %{name}՝ ագենտի հնարավորությունները միացնելու համար"
-auth.button_sign_in_github: "[ Մուտք գործել GitHub-ի միջոցով ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  Սեղմեք Enter՝ մուտքի հրամանը պատճենելու համար, ապա տեղադրեք այն նոր տերմինալի պատուհանում՝ մուտքն ավարտելու համար"  # {Locked="Enter"}
 auth.hint_footer_back: "  Esc՝ վերադառնալու համար"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter՝ մուտք գործելու համար · E՝ GitHub Enterprise-ի համար · Esc՝ վերադառնալու համար"  # {Locked="Enter","E","Esc"}

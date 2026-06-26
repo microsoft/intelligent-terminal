@@ -6429,8 +6429,12 @@ impl App {
                 // code to the clipboard.
                 if let Some(ref mut auth) = self.auth {
                     if auth.checking {
-                        auth.status_message =
-                            format!("Visit {} and enter code: {}", verify_url, device_code);
+                        auth.status_message = t!(
+                            "auth.device_code_prompt",
+                            url = verify_url.as_str(),
+                            code = device_code.as_str()
+                        )
+                        .into_owned();
                         // Copy device code to clipboard
                         #[cfg(windows)]
                         {
@@ -15006,11 +15010,10 @@ mod tests {
             text.contains(&back_probe),
             "non-copilot card must paint the Esc hint ({back:?}); rendered:\n{text}"
         );
-        // No sign-in button is painted.
-        let button = t!("auth.button_sign_in_with", name = "Claude").into_owned();
+        // No sign-in button is painted (the button was removed for all agents).
         assert!(
-            !text.contains(&button),
-            "non-copilot card must not paint a sign-in button ({button:?}); rendered:\n{text}"
+            !text.contains("[ Copy sign-in command ]") && !text.contains("[ Sign in with"),
+            "non-copilot card must not paint a sign-in button; rendered:\n{text}"
         );
 
         // After Enter the command is copied: the status replaces the

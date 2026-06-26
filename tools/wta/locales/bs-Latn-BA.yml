@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "CLI agent %{name} — "
 auth.checking_authentication: "  %{spinner} Provjera autentifikacije..."
 auth.waiting_for_authorization: "  %{spinner} Čekanje na autorizaciju..."
 auth.code_copied_hint: "  Kod je kopiran u međuspremnik — zalijepite ga u pregledač."
+auth.device_code_prompt: "Posjetite %{url} i unesite kod: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Prijavite se da biste koristili svog agenta:"
 auth.card_connect: "  Povežite %{name} da biste omogućili funkcije agenta"
-auth.button_sign_in_github: "[ Prijavi se preko GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  Pritisnite Enter da kopirate komandu za prijavu, zatim je zalijepite u novi prozor terminala da dovršite prijavu"  # {Locked="Enter"}
 auth.hint_footer_back: "  Esc za povratak"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter za prijavu · E za GitHub Enterprise · Esc za povratak"  # {Locked="Enter","E","Esc"}

@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "ఏజెంట్ %{name} — "
 auth.checking_authentication: "  %{spinner} ప్రమాణీకరణ తనిఖీ చేయబడుతోంది..."
 auth.waiting_for_authorization: "  %{spinner} అధికారం కోసం వేచి ఉంది..."
 auth.code_copied_hint: "  కోడ్ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది — మీ బ్రౌజర్‌లో పేస్ట్ చేయండి."
+auth.device_code_prompt: "%{url}ను సందర్శించి కోడ్‌ను నమోదు చేయండి: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "మీ ఏజెంట్‌ను ఉపయోగించడానికి సైన్ ఇన్ చేయండి:"
 auth.card_connect: "  ఏజెంట్ ఫీచర్లను ఎనేబుల్ చేయడానికి %{name} ను కనెక్ట్ చేయండి"
-auth.button_sign_in_github: "[ GitHub తో సైన్ ఇన్ చేయండి ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  సైన్-ఇన్ కమాండ్‌ను కాపీ చేయడానికి Enter నొక్కండి, ఆపై సైన్ ఇన్ పూర్తి చేయడానికి దాన్ని కొత్త టెర్మినల్ విండోలో పేస్ట్ చేయండి"  # {Locked="Enter"}
 auth.hint_footer_back: "  వెనక్కి వెళ్లడానికి Esc"  # {Locked="Esc"}
 auth.enterprise_prompt: "  సైన్ ఇన్ చేయడానికి Enter · GitHub Enterprise కోసం E · వెనక్కి వెళ్లడానికి Esc"  # {Locked="Enter","E","Esc"}

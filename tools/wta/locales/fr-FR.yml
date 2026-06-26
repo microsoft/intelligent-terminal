@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "CLI d'agent %{name} — "
 auth.checking_authentication: "  %{spinner} Vérification de l'authentification..."
 auth.waiting_for_authorization: "  %{spinner} En attente de l'autorisation..."
 auth.code_copied_hint: "  Code copié dans le presse-papiers — collez-le dans votre navigateur."
+auth.device_code_prompt: "Visitez %{url} et entrez le code : %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Connectez-vous pour utiliser votre agent :"
 auth.card_connect: "  Connecter %{name} pour activer les fonctionnalités de l'agent"
-auth.button_sign_in_github: "[ Se connecter avec GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  Appuyez sur Enter pour copier la commande de connexion, puis collez-la dans une nouvelle fenêtre de terminal pour terminer la connexion"  # {Locked="Enter"}
 auth.hint_footer_back: "  Esc pour revenir en arrière"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter pour vous connecter · E pour GitHub Enterprise · Esc pour revenir en arrière"  # {Locked="Enter","E","Esc"}

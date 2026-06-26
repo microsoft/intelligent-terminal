@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "CLI agent %{name} — "
 auth.checking_authentication: "  %{spinner} Se verifică autentificarea..."
 auth.waiting_for_authorization: "  %{spinner} Se așteaptă autorizarea..."
 auth.code_copied_hint: "  Codul a fost copiat în clipboard — inserați-l în browser."
+auth.device_code_prompt: "Accesați %{url} și introduceți codul: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Conectați-vă pentru a utiliza agentul:"
 auth.card_connect: "  Conectați %{name} pentru a activa funcțiile agentului"
-auth.button_sign_in_github: "[ Conectare cu GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  Apăsați Enter pentru a copia comanda de conectare, apoi lipiți-o într-o fereastră nouă de terminal pentru a finaliza conectarea"  # {Locked="Enter"}
 auth.hint_footer_back: "  Esc pentru a reveni"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter pentru conectare · E pentru GitHub Enterprise · Esc pentru a reveni"  # {Locked="Enter","E","Esc"}

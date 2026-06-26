@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} ກຳລັງກວດສອບການຢືນຢັນຕົວຕົນ..."
 auth.waiting_for_authorization: "  %{spinner} ກຳລັງລໍຖ້າການອະນຸຍາດ..."
 auth.code_copied_hint: "ລະຫັດຖືກຄັດລອກແລ້ວ — ໃຫ້ວາງໃນຕົວທ່ອງເວັບຂອງທ່ານ།"
+auth.device_code_prompt: "ໄປທີ່ %{url} ແລ້ວປ້ອນລະຫັດ: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "ເຂົ້າສູ່ລະບົບເພື່ອໃຊ້ agent ຂອງທ່ານ:"
 auth.card_connect: "ເຊື່ອມຕໍ່ %{name} ເພື່ອເປີດໃຊ້ຄວາມສາມາດຂອງ agent"
-auth.button_sign_in_github: "[ ເຂົ້າສູ່ລະບົບດ້ວຍ GitHub ]"
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  ກົດ Enter ເພື່ອສຳເນົາຄຳສັ່ງເຂົ້າສູ່ລະບົບ ແລ້ວວາງໃນໜ້າຕ່າງ terminal ໃໝ່ເພື່ອເຮັດການເຂົ້າສູ່ລະບົບໃຫ້ສຳເລັດ"  # {Locked="Enter"}
 auth.hint_footer_back: "  Esc ເພື່ອກັບຄືນ"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter ເພື່ອເຂົ້າສູ່ລະບົບ · E ສຳລັບ GitHub Enterprise · Esc ເພື່ອກັບຄືນ"  # {Locked="Enter","E","Esc"}

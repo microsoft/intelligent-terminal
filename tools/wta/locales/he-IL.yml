@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "CLI הסוכן %{name} — "
 auth.checking_authentication: "  %{spinner} בודק אימות..."
 auth.waiting_for_authorization: "  %{spinner} ממתין לאישור..."
 auth.code_copied_hint: "  הקוד הועתק ללוח — הדבק אותו בדפדפן."
+auth.device_code_prompt: "עבור אל %{url} והזן את הקוד: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "היכנס כדי להשתמש בסוכן שלך:"
 auth.card_connect: "  חבר את %{name} כדי לאפשר תכונות סוכן"
-auth.button_sign_in_github: "[ היכנס באמצעות GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  הקש Enter כדי להעתיק את פקודת הכניסה, ולאחר מכן הדבק אותה בחלון מסוף חדש כדי לסיים את הכניסה"  # {Locked="Enter"}
 auth.hint_footer_back: "  הקש Esc כדי לחזור"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter לכניסה · E עבור GitHub Enterprise · Esc כדי לחזור"  # {Locked="Enter","E","Esc"}

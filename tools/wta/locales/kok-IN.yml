@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "एजेंट %{name} — "
 auth.checking_authentication: "  %{spinner} प्रमाणीकरण तपासता..."
 auth.waiting_for_authorization: "  %{spinner} अधिकृततायेची वाट पळयता..."
 auth.code_copied_hint: "  कोड क्लिपबोर्डार कॉपी जालो — तुमच्या ब्राउझरांत पेस्ट करात."
+auth.device_code_prompt: "%{url} क भेट दिवन कोड प्रविष्ट करात: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "तुमचो एजेंट वापरपाक साइन इन करात:"
 auth.card_connect: "  एजेंट वैशिश्ट्यां सक्रिय करपाक %{name} जोडात"
-auth.button_sign_in_github: "[ GitHub वरवीं साइन इन करात ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  सायन-इन कमांड कॉपी करपाक Enter दामात, उपरांत सायन इन पुराय करपाक तो नव्या टर्मिनल विंडोंत पेस्ट करात"  # {Locked="Enter"}
 auth.hint_footer_back: "  फाटीं वचपाक Esc"  # {Locked="Esc"}
 auth.enterprise_prompt: "  सायन इन करपाक Enter · GitHub Enterprise खातीर E · फाटीं वचपाक Esc"  # {Locked="Enter","E","Esc"}

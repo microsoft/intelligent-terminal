@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "Агент %{name} — "
 auth.checking_authentication: "  %{spinner} Аутентификация тикшерелә..."
 auth.waiting_for_authorization: "  %{spinner} Авторизация көтелә..."
 auth.code_copied_hint: "  Код буферга күчерелде — браузерга куегыз."
+auth.device_code_prompt: "%{url} адресына керегез һәм кодны кертегез: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Агентыгызны куллану өчен керегез:"
 auth.card_connect: "  Агент мөмкинлекләрен кушу өчен %{name} тоташтырыгыз"
-auth.button_sign_in_github: "[ GitHub аша керү ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  Керү әмерен күчерү өчен Enter төймәсенә басыгыз, аннары керүне тәмамлау өчен аны яңа терминал тәрәзәсенә куегыз"  # {Locked="Enter"}
 auth.hint_footer_back: "  Кире кайту өчен Esc"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Керү өчен Enter · GitHub Enterprise өчен E · кире кайту өчен Esc"  # {Locked="Enter","E","Esc"}

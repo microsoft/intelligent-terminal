@@ -35,10 +35,9 @@ auth.agent_selected_with_status: "ኤጅንት %{name} — "
 auth.checking_authentication: "  %{spinner} ማረጋገጥ በመፈተሽ..."
 auth.waiting_for_authorization: "  %{spinner} ፍቃድ በመጠበቅ..."
 auth.code_copied_hint: "ኮዱ ተቀድቷል — በአስሳሽዎ ላይ ይለጥፉት።"
+auth.device_code_prompt: "ወደ %{url} ይሂዱ እና ኮዱን ያስገቡ፦ %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "ኤጅንትዎን ለመጠቀም ይግቡ፡"
 auth.card_connect: "የኤጅንት ባህሪያትን ለማንቃት %{name} ይጋኙ"
-auth.button_sign_in_github: "[ በ GitHub ይግቡ ]"
-auth.button_sign_in_with: "[ Copy sign-in command ]"
 auth.hint_footer: "  የመግቢያ ትእዛዙን ለመቅዳት Enter ይጫኑ፣ ከዚያ መግባቱን ለማጠናቀቅ በአዲስ ተርሚናል መስኮት ውስጥ ይለጥፉት"  # {Locked="Enter"}
 auth.hint_footer_back: "  ለመመለስ Esc"  # {Locked="Esc"}
 auth.enterprise_prompt: "  ለመግባት Enter · GitHub Enterprise ለመጠቀም E · ለመመለስ Esc"  # {Locked="Enter","E","Esc"}
