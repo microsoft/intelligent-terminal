@@ -614,10 +614,9 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| "en-US".to_string());
     rust_i18n::set_locale(&normalize_locale(&locale));
 
-    // Register the WTA ETW TraceLogging provider once per process.
-    // WTA registers under the SAME provider GUID as the C++ side
-    // (`Microsoft.Windows.Terminal.App` / `g_hTerminalAppProvider`) so
-    // listeners see a single merged event stream. See tools/wta/src/telemetry.rs.
+    // Register WTA's own ETW TraceLogging provider once per process. WTA uses
+    // its own provider (`Microsoft.Windows.Terminal.WTA`), separate from the
+    // C++ side. See tools/wta/src/telemetry.rs.
     telemetry::register();
 
     // Legacy flags first (backward compat)

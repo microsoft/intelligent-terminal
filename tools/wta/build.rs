@@ -1,51 +1,29 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 //
-// Build-time codegen: derive the ETW provider name and the four
-// `MICROSOFT_KEYWORD_*` / `PDT_*` numeric stubs from the C++ side, so the
-// Rust telemetry surface stays in lockstep with the C++ telemetry surface
-// without a second set of literals.
+// Build-time codegen for the WTA ETW TraceLogging provider.
 //
-// Sources read:
-//   - ../../src/cascadia/TerminalApp/init.cpp       (provider name)
-//   - ../../dep/telemetry/ProjectTelemetry.h        (four numeric stubs)
+// WTA registers its OWN provider, `Microsoft.Windows.Terminal.WTA`; it must not
+// reuse TerminalApp's `Microsoft.Windows.Terminal.App` provider. The Microsoft
+// telemetry group GUID + keyword/privacy values come from `ProjectTelemetry.h`,
+// resolved the same way the C++ include path does (`src\inc` before `dep`):
+//   - src/inc/telemetry/ProjectTelemetry.h  real header overlaid by the
+//                                           `terminal-internals` package (official builds)
+//   - dep/telemetry/ProjectTelemetry.h      OSS stub fallback (placeholder group
+//                                           GUID + zero keyword/privacy => not collected)
+// For the overlay to exist at cargo-build time, the pipeline downloads
+// `terminal-internals` in `beforeRustBuildSteps` (before `cargo build`).
 //
-// These are the same two files an internal-build overlay (the
-// `Microsoft.Windows.Terminal.Versioning` NuGet `Setup.ps1`) rewrites. By
-// reading them here at build time we get exactly one source of truth for
-// both languages: whatever the overlay (or OSS) leaves on disk at
-// pipeline-cargo-build time is what the resulting `wta.exe` reports.
-//
-// In OSS the resulting `telemetry_codegen.rs` looks like:
-//
-//   tracelogging::define_provider!(
-//       AGENT_PROVIDER,
-//       "Microsoft.Windows.Terminal.App",
-//       group_id("9aa7a361-583f-4c09-b1f1-cea1ef5863b0")
-//   );
-//   #[allow(dead_code)] pub const MICROSOFT_KEYWORD_MEASURES: u64       = 0x0;
-//   #[allow(dead_code)] pub const MICROSOFT_KEYWORD_TELEMETRY: u64      = 0x0;
-//   pub const PDT_PRODUCT_AND_SERVICE_USAGE: u64                        = 0x0;
-//   pub const PDT_PRODUCT_AND_SERVICE_PERFORMANCE: u64                  = 0x0;
-//
-// The Microsoft telemetry group GUID
-// (`9aa7a361-583f-4c09-b1f1-cea1ef5863b0`) is a public, well-known
-// constant pinned both here and on the C++ side
-// (`TraceLoggingOptionMicrosoftTelemetry`).
-//
-// We deliberately use no external build-dependencies (no `regex` crate).
-// Five fixed lookups against two small files — hand-rolled scanning is
-// simpler to audit and keeps the build closure flat.
+// No external build-dependencies (no `regex` crate): hand-rolled scanning of one
+// small header keeps the build closure flat.
 
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Microsoft Telemetry option group GUID — public well-known constant,
-/// identical in OSS and Microsoft-internal builds. Mirrors the C++ macro
-/// `TraceLoggingOptionMicrosoftTelemetry()` defined in
-/// `dep/telemetry/ProjectTelemetry.h`.
-const MICROSOFT_TELEMETRY_GROUP_GUID: &str = "9aa7a361-583f-4c09-b1f1-cea1ef5863b0";
+/// WTA's own ETW provider name; the `tracelogging` crate derives the matching
+/// GUID `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}` from it.
+const PROVIDER_NAME: &str = "Microsoft.Windows.Terminal.WTA";
 
 fn main() {
     // Set the default thread stack size to 8 MB on Windows debug builds.
@@ -73,14 +51,19 @@ fn main() {
         .unwrap_or_else(|| panic!("could not derive repo root from {}", manifest_dir.display()))
         .to_path_buf();
 
-    let init_cpp = repo_root.join("src/cascadia/TerminalApp/init.cpp");
-    let proj_tel_h = repo_root.join("dep/telemetry/ProjectTelemetry.h");
+    // Resolve the telemetry header the same way the C++ include path does
+    // (`src\inc` before `dep`): real header overlaid at `src/inc/...` by the
+    // `terminal-internals` package in official builds; OSS falls back to the stub.
+    let overlay = repo_root.join("src/inc/telemetry/ProjectTelemetry.h");
+    let stub = repo_root.join("dep/telemetry/ProjectTelemetry.h");
+    let proj_tel_h = if overlay.exists() { overlay.clone() } else { stub.clone() };
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed={}", init_cpp.display());
-    println!("cargo:rerun-if-changed={}", proj_tel_h.display());
+    println!("cargo:rerun-if-changed={}", overlay.display());
+    println!("cargo:rerun-if-changed={}", stub.display());
 
-    let provider_name = extract_provider_name(&init_cpp);
+    let provider_name = PROVIDER_NAME;
+    let group_guid = parse_group_guid(&proj_tel_h);
     let keyword_measures = extract_define_u64(&proj_tel_h, "MICROSOFT_KEYWORD_MEASURES");
     let keyword_telemetry = extract_define_u64(&proj_tel_h, "MICROSOFT_KEYWORD_TELEMETRY");
     let privacy_usage = extract_define_u64(&proj_tel_h, "PDT_ProductAndServiceUsage");
@@ -90,7 +73,6 @@ fn main() {
     let out_path = out_dir.join("telemetry_codegen.rs");
     let generated = format!(
         "// Generated by build.rs from:\n\
-         //   {init_cpp}\n\
          //   {proj_tel_h}\n\
          // Do not edit by hand.\n\
          \n\
@@ -106,10 +88,9 @@ fn main() {
          pub const MICROSOFT_KEYWORD_TELEMETRY: u64 = {keyword_telemetry:#x};\n\
          pub const PDT_PRODUCT_AND_SERVICE_USAGE: u64 = {privacy_usage:#x};\n\
          pub const PDT_PRODUCT_AND_SERVICE_PERFORMANCE: u64 = {privacy_perf:#x};\n",
-        init_cpp = init_cpp.display(),
         proj_tel_h = proj_tel_h.display(),
         provider_name = provider_name,
-        group_id = MICROSOFT_TELEMETRY_GROUP_GUID,
+        group_id = group_guid,
         keyword_measures = keyword_measures,
         keyword_telemetry = keyword_telemetry,
         privacy_usage = privacy_usage,
@@ -120,48 +101,25 @@ fn main() {
     });
 }
 
-/// Read the provider name from a `TRACELOGGING_DEFINE_PROVIDER(...)`
-/// invocation. The macro spans multiple lines:
-///
-/// ```c
-/// TRACELOGGING_DEFINE_PROVIDER(
-///     g_hTerminalAppProvider,
-///     "Microsoft.Windows.Terminal.App",
-///     (0x..., ...),
-///     TraceLoggingOptionMicrosoftTelemetry());
-/// ```
-///
-/// Strategy: find the macro literal, then locate the first double-quoted
-/// string that follows. Panics with a clear message on miss so the build
-/// fails loudly rather than silently emitting the wrong provider name.
-fn extract_provider_name(path: &Path) -> String {
-    let text = fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let macro_name = "TRACELOGGING_DEFINE_PROVIDER";
-    let macro_pos = text.find(macro_name).unwrap_or_else(|| {
-        panic!(
-            "{macro_name} not found in {}; the file layout this build.rs depends on has changed",
-            path.display()
-        )
-    });
-    // Find the first '"' after the macro opens. We tolerate any whitespace
-    // / comments / identifier (the handle name) and the comma before the
-    // string literal.
-    let after_macro = &text[macro_pos + macro_name.len()..];
-    let first_quote = after_macro.find('"').unwrap_or_else(|| {
-        panic!(
-            "no string literal found after {macro_name} in {}",
-            path.display()
-        )
-    });
-    let after_quote = &after_macro[first_quote + 1..];
-    let closing = after_quote.find('"').unwrap_or_else(|| {
-        panic!(
-            "unterminated string literal after {macro_name} in {}",
-            path.display()
-        )
-    });
-    after_quote[..closing].to_string()
+/// Extract the Microsoft telemetry group GUID from the
+/// `TraceLoggingOptionGroup(0x.., 0x.., ...)` macro (11 hex fields: u32, u16,
+/// u16, then 8 bytes). Any malformation panics -> build fails.
+fn parse_group_guid(path: &Path) -> String {
+    let text = fs::read_to_string(path).unwrap();
+    let inner = text
+        .split_once("TraceLoggingOptionGroup(")
+        .and_then(|(_, r)| r.split_once(')'))
+        .unwrap_or_else(|| panic!("group GUID macro not found in {}", path.display()))
+        .0;
+    let f: Vec<u64> = inner
+        .split(',')
+        .map(|p| u64::from_str_radix(p.trim().trim_start_matches("0x"), 16).unwrap())
+        .collect();
+    assert_eq!(f.len(), 11, "group GUID: expected 11 fields, got {}", f.len());
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10]
+    )
 }
 
 /// Parse a `#define NAME <integer>` line, accepting common C numeric
