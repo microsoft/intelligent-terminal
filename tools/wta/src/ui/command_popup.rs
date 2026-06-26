@@ -26,6 +26,9 @@ pub struct PopupState<'a> {
     /// (transport-lost) case it collapses to just `/restart` (the popup simply
     /// *doesn't show the other commands* rather than greying them).
     pub candidates: Cow<'a, [&'static CommandSpec]>,
+    /// Argument-value rows (e.g. specialist names for `/as <partial>`). When
+    /// non-empty these are rendered *instead of* the command rows.
+    pub arg_candidates: &'a [String],
     pub selected: usize,
     /// Effective model for the active pane (per-pane `/model` override, else
     /// the global one). Appended to the `/model` row so the user sees what
@@ -37,8 +40,13 @@ pub struct PopupState<'a> {
 /// Render the autocomplete popup just above `input_area`. If there isn't
 /// enough room above, fall back to anchoring just below.
 ///
-/// No-op when `state.candidates` is empty.
+/// No-op when there is nothing to show.
 pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) {
+    // Argument-value mode (e.g. `/as <partial>`): render the matching values.
+    if !state.arg_candidates.is_empty() {
+        render_arg_popup(frame, &state, input_area);
+        return;
+    }
     if state.candidates.is_empty() {
         return;
     }
@@ -82,11 +90,34 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
-/// Which row the command popup highlights: the user's cursor index, clamped
-/// into range. `None` for an empty list. The degraded (transport-lost) case
-/// needs no special handling here — the App pre-filters the candidate list to
-/// just `/restart`, so the normal clamp lands on it. Pure so it can be
-/// unit-tested without a render frame.
+/// Render the argument-value popup (e.g. specialist names for `/as <partial>`)
+/// using the same anchored list chrome as the command popup.
+fn render_arg_popup(frame: &mut Frame, state: &PopupState<'_>, input_area: Rect) {
+    let visible = state.arg_candidates.len().min(POPUP_MAX_VISIBLE) as u16;
+    let area = popup::anchored_above(frame, input_area, visible);
+
+    frame.render_widget(Clear, area);
+
+    let items: Vec<ListItem> = state
+        .arg_candidates
+        .iter()
+        .map(|name| ListItem::new(Line::from(Span::styled(format!(" {name}"), theme::INPUT_TEXT))))
+        .collect();
+
+    let list = List::new(items)
+        .block(popup::block(t!("commands.as.popup_title").into_owned()))
+        .highlight_style(theme::SELECTED)
+        .highlight_symbol("> ");
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(
+        state.selected.min(state.arg_candidates.len().saturating_sub(1)),
+    ));
+
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+
 pub(crate) fn popup_highlight(
     candidates: &[&'static CommandSpec],
     selected: usize,

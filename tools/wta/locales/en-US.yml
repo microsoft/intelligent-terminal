@@ -93,6 +93,7 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.as.summary: "Switch Agent Specialist — load a different .md prompt for this pane (/as <name>)"  # {Locked="/as","<name>",".md"} - Slash command shown in the command popup; "Agent Specialist" is the user-facing name for switchable prompt .md files.
+commands.as.popup_title: "specialists"  # Title of the autocomplete dropdown that lists the agent specialist names while the user types /as. {Locked="/as"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────

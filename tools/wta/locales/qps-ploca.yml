@@ -218,3 +218,4 @@ system.persona_source_copilot: "Copilot"  # Group heading in `/as` for GitHub Co
 system.persona_source_claude: "Claude"  # Group heading in `/as` for Claude Code `.claude/agents/**/*.md` specialists (repo + `~/.claude/agents`).
 system.persona_source_gemini: "Gemini"  # Group heading in `/as` for Gemini CLI `.gemini/agents/**/*.md` specialists (repo + `~/.gemini/agents`).
 system.persona_source_codex: "Codex"  # Group heading in `/as` for Codex CLI `.codex/agents/**/*.md` specialists (repo + `~/.codex/agents`).
+commands.as.popup_title: "specialists"  # Title of the autocomplete dropdown that lists the agent specialist names while the user types /as. {Locked="/as"}

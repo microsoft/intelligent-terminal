@@ -42,26 +42,23 @@ pub(crate) struct SpecialistEntry {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpecialistSource {
-    /// From WTA's runtime `prompts/` directory.
-    Wta,
     /// From Copilot CLI agent files.
     Copilot,
     /// From Claude Code agent files.
     Claude,
     /// From Gemini CLI agent files.
     Gemini,
-    /// From Codex CLI prompt files.
+    /// From Codex CLI agent files.
     Codex,
 }
 
 impl SpecialistSource {
     fn sort_rank(self) -> u8 {
         match self {
-            Self::Wta => 0,
-            Self::Copilot => 1,
-            Self::Claude => 2,
-            Self::Gemini => 3,
-            Self::Codex => 4,
+            Self::Copilot => 0,
+            Self::Claude => 1,
+            Self::Gemini => 2,
+            Self::Codex => 3,
         }
     }
 
@@ -123,26 +120,17 @@ pub(crate) fn load_planner_prompt_template_named(name: Option<&str>) -> PlannerP
     )
 }
 
-pub(crate) fn list_specialists() -> Vec<String> {
-    list_specialists_from_root(runtime_prompt_root().as_deref())
-}
-
-pub(crate) fn discover_specialists(cwd: &Path) -> Vec<SpecialistEntry> {
-    let repo_root = find_git_repo_root(cwd);
+pub(crate) fn discover_specialists(cwd: Option<&Path>) -> Vec<SpecialistEntry> {
+    let repo_root = cwd.and_then(find_git_repo_root);
     let home_dir = home_dir();
-    let roots = specialist_roots(
-        cwd,
-        repo_root.as_deref(),
-        home_dir.as_deref(),
-        runtime_prompt_root().as_deref(),
-    );
-    discover_specialists_from_roots(&roots, runtime_prompt_root().as_deref())
+    let roots = specialist_roots(repo_root.as_deref(), home_dir.as_deref());
+    discover_specialists_from_roots(&roots)
 }
 
-/// Keep only WTA specialists plus those belonging to the active agent CLI.
-/// The agent pane runs a single CLI, so its `/as` list is scoped to that
-/// agent's `.<cli>/agents` files. An unknown / custom agent (`active == None`)
-/// has no `.x/agents` convention, so only WTA specialists remain.
+/// Keep only specialists belonging to the active agent CLI. The agent pane
+/// runs a single CLI, so its `/as` list is scoped to that agent's
+/// `.<cli>/agents` files. An unknown / custom agent (`active == None`) has no
+/// `.x/agents` convention, so nothing is offered.
 ///
 /// Pure (no env / IO) so it is unit-testable in isolation.
 pub(crate) fn scope_specialists_to_agent(
@@ -151,7 +139,7 @@ pub(crate) fn scope_specialists_to_agent(
 ) -> Vec<SpecialistEntry> {
     specialists
         .into_iter()
-        .filter(|entry| entry.source == SpecialistSource::Wta || Some(entry.source) == active)
+        .filter(|entry| Some(entry.source) == active)
         .collect()
 }
 
@@ -274,31 +262,15 @@ fn load_planner_prompt_template_from_root(
     }
 }
 
-fn list_specialists_from_root(prompt_root: Option<&Path>) -> Vec<String> {
-    let roots = specialist_roots(Path::new("."), None, None, prompt_root);
-    let mut specialists = discover_specialists_from_roots(&roots, prompt_root)
-        .into_iter()
-        .filter(|entry| entry.source == SpecialistSource::Wta)
-        .map(|entry| entry.display_name)
-        .collect::<Vec<_>>();
-
-    specialists.sort_by(|left, right| compare_specialist_names(left, right));
-    specialists.dedup();
-    specialists
-}
-
 /// Single source of truth for specialist discovery locations.
 ///
 /// Every supported agent CLI follows the same convention: agent definition
 /// files live in `.<cli>/agents/**/*.md` at the repo level and
 /// `~/.<cli>/agents/**/*.md` at the user level. The `**/*.md` glob also
-/// matches Copilot's `*.agent.md` files (they still end in `.md`). WTA's own
-/// runtime `prompts/` directory is treated the same way.
+/// matches Copilot's `*.agent.md` files (they still end in `.md`).
 fn specialist_roots(
-    cwd: &Path,
     repo_root: Option<&Path>,
     home_dir: Option<&Path>,
-    prompt_root: Option<&Path>,
 ) -> Vec<SpecialistRoot> {
     /// `(source, dot-directory)` for each CLI's `agents` folder.
     const CLI_AGENT_DIRS: &[(SpecialistSource, &str)] = &[
@@ -332,39 +304,20 @@ fn specialist_roots(
         }
     }
 
-    // WTA's own runtime prompts directory.
-    if let Some(prompt_root) = prompt_root {
-        roots.push(SpecialistRoot::agents_dir(
-            SpecialistSource::Wta,
-            prompt_root.to_path_buf(),
-            0,
-        ));
-    }
-
-    let _ = cwd;
     roots
 }
 
-fn discover_specialists_from_roots(
-    roots: &[SpecialistRoot],
-    prompt_root: Option<&Path>,
-) -> Vec<SpecialistEntry> {
+fn discover_specialists_from_roots(roots: &[SpecialistRoot]) -> Vec<SpecialistEntry> {
     let mut specialists = Vec::new();
 
     for root in roots {
         scan_specialist_root(&mut specialists, root);
     }
 
-    ensure_default_wta_specialist(&mut specialists, prompt_root);
-
     specialists.sort_by(|left, right| {
         left.source
             .sort_rank()
             .cmp(&right.source.sort_rank())
-            .then_with(|| {
-                wta_default_rank(&left.display_name, left.source)
-                    .cmp(&wta_default_rank(&right.display_name, right.source))
-            })
             .then_with(|| {
                 left.display_name
                     .to_ascii_lowercase()
@@ -376,10 +329,6 @@ fn discover_specialists_from_roots(
 }
 
 fn scan_specialist_root(specialists: &mut Vec<SpecialistEntry>, root: &SpecialistRoot) {
-    if root.source == SpecialistSource::Wta {
-        let _ = seed_prompt_files(&root.path, EMBEDDED_DEFAULT_PROMPT);
-    }
-
     scan_specialist_dir(specialists, root.source, &root.path, ".md", root.max_depth);
 }
 
@@ -425,9 +374,6 @@ fn push_specialist_file_if_allowed(
             return;
         }
     }
-    if should_skip_specialist_file(source, file_name) {
-        return;
-    }
 
     let display_name = specialist_display_name_from_path(path);
     if specialists.iter().any(|entry| {
@@ -443,36 +389,6 @@ fn push_specialist_file_if_allowed(
     });
 }
 
-fn should_skip_specialist_file(source: SpecialistSource, file_name: &str) -> bool {
-    source == SpecialistSource::Wta
-        && (!file_name.ends_with(".md")
-            || file_name.ends_with(".default.md")
-            || file_name.starts_with("auto-fix"))
-}
-
-fn ensure_default_wta_specialist(
-    specialists: &mut Vec<SpecialistEntry>,
-    prompt_root: Option<&Path>,
-) {
-    if specialists.iter().any(|entry| {
-        entry.source == SpecialistSource::Wta
-            && entry
-                .display_name
-                .eq_ignore_ascii_case(DEFAULT_SPECIALIST_NAME)
-    }) {
-        return;
-    }
-
-    let default_path = prompt_root
-        .map(|root| root.join(USER_PROMPT_FILE_NAME))
-        .unwrap_or_else(|| PathBuf::from(USER_PROMPT_FILE_NAME));
-    specialists.push(SpecialistEntry {
-        display_name: DEFAULT_SPECIALIST_NAME.to_string(),
-        path: default_path,
-        source: SpecialistSource::Wta,
-    });
-}
-
 fn specialist_display_name_from_path(path: &Path) -> String {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -480,21 +396,6 @@ fn specialist_display_name_from_path(path: &Path) -> String {
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| path.display().to_string())
-}
-
-fn compare_specialist_names(left: &str, right: &str) -> std::cmp::Ordering {
-    wta_default_rank(left, SpecialistSource::Wta)
-        .cmp(&wta_default_rank(right, SpecialistSource::Wta))
-        .then_with(|| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()))
-        .then_with(|| left.cmp(right))
-}
-
-fn wta_default_rank(name: &str, source: SpecialistSource) -> u8 {
-    if source == SpecialistSource::Wta && name.eq_ignore_ascii_case(DEFAULT_SPECIALIST_NAME) {
-        0
-    } else {
-        1
-    }
 }
 
 fn named_specialist_path(prompt_root: &Path, name: Option<&str>) -> Option<PathBuf> {
@@ -666,12 +567,12 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_specialists_from_roots, find_git_repo_root, list_specialists_from_root,
+        discover_specialists_from_roots, find_git_repo_root,
         load_planner_prompt_template_from_root, load_planner_prompt_template_named,
         load_specialist_by_path, merge_runtime_sections, scope_specialists_to_agent,
         specialist_display_name_for_selection, specialist_display_name_from_path,
         specialist_path_from_selection, specialist_roots, strip_specialist_extension,
-        SpecialistEntry, SpecialistSource, DEFAULT_SPECIALIST_NAME, DEFAULT_PROMPT_FILE_NAME,
+        SpecialistEntry, SpecialistSource, DEFAULT_PROMPT_FILE_NAME,
         RUNTIME_CONTEXT_MARKER, SPECIALIST_SCAN_DEPTH, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
@@ -854,29 +755,6 @@ mod tests {
     }
 
     #[test]
-    fn list_specialists_excludes_defaults_and_autofix_files() {
-        let prompt_root = temp_prompt_root("list-specialists");
-        fs::create_dir_all(&prompt_root).unwrap();
-        fs::write(prompt_root.join("devops.md"), "devops").unwrap();
-        fs::write(prompt_root.join("security.md"), "security").unwrap();
-        fs::write(prompt_root.join("security.default.md"), "ignored").unwrap();
-        fs::write(prompt_root.join("auto-fix-custom.md"), "ignored").unwrap();
-
-        let specialists = list_specialists_from_root(Some(&prompt_root));
-
-        assert_eq!(
-            specialists,
-            vec![
-                DEFAULT_SPECIALIST_NAME.to_string(),
-                "devops".to_string(),
-                "security".to_string()
-            ]
-        );
-
-        let _ = fs::remove_dir_all(prompt_root);
-    }
-
-    #[test]
     fn load_specialist_by_path_reads_markdown_and_uses_specialist_source_label() {
         let prompt_root = temp_prompt_root("load-specialist-path");
         fs::create_dir_all(&prompt_root).unwrap();
@@ -899,10 +777,8 @@ mod tests {
     fn specialist_roots_centralize_uniform_agents_dirs() {
         let repo_root = temp_prompt_root("roots-repo");
         let home_root = temp_prompt_root("roots-home");
-        let prompt_root = repo_root.join("wta-prompts");
-        let cwd = repo_root.join("src");
 
-        let roots = specialist_roots(&cwd, Some(&repo_root), Some(&home_root), Some(&prompt_root));
+        let roots = specialist_roots(Some(&repo_root), Some(&home_root));
         let summary = roots
             .iter()
             .map(|root| (root.source, root.path.clone(), root.max_depth))
@@ -953,7 +829,6 @@ mod tests {
                     home_root.join(".codex").join("agents"),
                     SPECIALIST_SCAN_DEPTH,
                 ),
-                (SpecialistSource::Wta, prompt_root, 0),
             ]
         );
     }
@@ -962,20 +837,14 @@ mod tests {
     fn discover_specialists_scans_correct_locations_and_preserves_precedence() {
         let repo_root = temp_prompt_root("cwd-discovery");
         let home_root = temp_prompt_root("home-discovery");
-        let prompt_root = repo_root.join("wta-prompts");
-        let nested_cwd = repo_root.join("src").join("nested");
 
-        fs::create_dir_all(repo_root.join(".git")).unwrap();
         fs::create_dir_all(repo_root.join(".claude").join("agents")).unwrap();
         fs::create_dir_all(repo_root.join(".codex").join("agents")).unwrap();
         fs::create_dir_all(home_root.join(".copilot").join("agents")).unwrap();
         fs::create_dir_all(home_root.join(".claude").join("agents")).unwrap();
         fs::create_dir_all(home_root.join(".gemini").join("agents")).unwrap();
         fs::create_dir_all(home_root.join(".codex").join("agents")).unwrap();
-        fs::create_dir_all(&nested_cwd).unwrap();
-        fs::create_dir_all(&prompt_root).unwrap();
 
-        fs::write(prompt_root.join("devops.md"), "devops").unwrap();
         // Copilot's `.agent.md` files still end in `.md`, so the uniform
         // `**/*.md` scan picks them up.
         fs::write(
@@ -1014,8 +883,8 @@ mod tests {
         )
         .unwrap();
 
-        let roots = specialist_roots(&nested_cwd, Some(&repo_root), Some(&home_root), Some(&prompt_root));
-        let specialists = discover_specialists_from_roots(&roots, Some(&prompt_root));
+        let roots = specialist_roots(Some(&repo_root), Some(&home_root));
+        let specialists = discover_specialists_from_roots(&roots);
 
         let summary = specialists
             .iter()
@@ -1025,8 +894,6 @@ mod tests {
         assert_eq!(
             summary,
             vec![
-                (SpecialistSource::Wta, DEFAULT_SPECIALIST_NAME.to_string()),
-                (SpecialistSource::Wta, "devops".to_string()),
                 (SpecialistSource::Copilot, "user".to_string()),
                 (SpecialistSource::Claude, "reviewer".to_string()),
                 (SpecialistSource::Claude, "user-claude".to_string()),
@@ -1036,6 +903,7 @@ mod tests {
             ]
         );
 
+        // Repo entry wins over the same-named user entry (repo scanned first).
         let reviewer = specialists
             .iter()
             .find(|entry| entry.source == SpecialistSource::Claude && entry.display_name == "reviewer")
@@ -1060,9 +928,8 @@ mod tests {
     }
 
     #[test]
-    fn scope_specialists_keeps_wta_and_active_agent_only() {
+    fn scope_specialists_keeps_active_agent_only() {
         let all = vec![
-            entry(SpecialistSource::Wta, "terminal-agent"),
             entry(SpecialistSource::Copilot, "cop"),
             entry(SpecialistSource::Claude, "cla"),
             entry(SpecialistSource::Gemini, "gem"),
@@ -1071,12 +938,11 @@ mod tests {
 
         let scoped = scope_specialists_to_agent(all.clone(), Some(SpecialistSource::Claude));
         let names: Vec<_> = scoped.iter().map(|e| e.display_name.as_str()).collect();
-        assert_eq!(names, vec!["terminal-agent", "cla"]);
+        assert_eq!(names, vec!["cla"]);
 
-        // Unknown / custom agent → WTA only.
-        let wta_only = scope_specialists_to_agent(all, None);
-        let names: Vec<_> = wta_only.iter().map(|e| e.display_name.as_str()).collect();
-        assert_eq!(names, vec!["terminal-agent"]);
+        // Unknown / custom agent → nothing offered.
+        let none = scope_specialists_to_agent(all, None);
+        assert!(none.is_empty());
     }
 
     #[test]

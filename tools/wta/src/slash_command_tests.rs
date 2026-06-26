@@ -294,18 +294,25 @@ fn slash_model_direct_switch_sets_override() {
 }
 
 #[test]
-fn slash_as_lists_available_specialists() {
+fn slash_as_lists_header_when_no_specialists() {
+    // Active agent with no agent files anywhere → just the header, no rows.
+    let repo_root = temp_repo_root("persona-empty");
+    fs::create_dir_all(repo_root.join(".git")).unwrap();
     let mut app = test_app();
+    app.current_agent_id = "claude".to_string();
+    app.source_cwd = Some(repo_root.to_string_lossy().into_owned());
 
     run_slash(&mut app, "as");
 
     match app.current_tab().messages.last() {
         Some(ChatMessage::System(msg)) => {
-            assert!(msg.contains("terminal-agent"));
-            assert!(msg.contains("active"));
+            assert!(msg.contains("Available Agent Specialists"), "got: {msg}");
+            assert!(!msg.contains("• "), "expected no rows, got: {msg}");
         }
         other => panic!("expected specialist list message, got {other:?}"),
     }
+
+    let _ = fs::remove_dir_all(repo_root);
 }
 
 #[test]
@@ -336,10 +343,8 @@ fn slash_as_lists_discovered_specialists_grouped_by_source() {
 
     match app.current_tab().messages.last() {
         Some(ChatMessage::System(msg)) => {
-            // Active agent is Claude → only Custom (WTA) + Claude groups show.
-            assert!(msg.contains("  Custom:"), "got: {msg}");
+            // Active agent is Claude → only the Claude group shows.
             assert!(msg.contains("  Claude:"), "got: {msg}");
-            assert!(msg.contains("• terminal-agent"), "got: {msg}");
             assert!(msg.contains("• claude-dev"), "got: {msg}");
             // The other CLI's agents are scoped out.
             assert!(!msg.contains("  Codex:"), "got: {msg}");
@@ -409,6 +414,45 @@ fn slash_as_switches_discovered_specialist_by_path() {
         Some(ChatMessage::System(msg)) => assert!(msg.contains("reviewer")),
         other => panic!("expected switch confirmation, got {other:?}"),
     }
+
+    let _ = fs::remove_dir_all(repo_root);
+}
+
+#[test]
+fn slash_as_arg_dropdown_lists_and_filters_specialists() {
+    let repo_root = temp_repo_root("persona-arg-dropdown");
+    fs::create_dir_all(repo_root.join(".git")).unwrap();
+    let claude_dir = repo_root.join(".claude").join("agents");
+    fs::create_dir_all(&claude_dir).unwrap();
+    fs::write(claude_dir.join("reviewer.md"), "# R").unwrap();
+    fs::write(claude_dir.join("researcher.md"), "# Re").unwrap();
+    fs::write(claude_dir.join("builder.md"), "# B").unwrap();
+
+    let mut app = test_app();
+    app.current_agent_id = "claude".to_string();
+    app.source_cwd = Some(repo_root.to_string_lossy().into_owned());
+
+    // Typing "/as " (with the trailing space) opens the value dropdown with
+    // all specialists, alphabetical.
+    app.current_tab_mut().input = "/as ".to_string();
+    app.refresh_command_arg_candidates();
+    assert_eq!(
+        app.current_tab().command_arg_candidates,
+        vec![
+            "builder".to_string(),
+            "researcher".to_string(),
+            "reviewer".to_string()
+        ]
+    );
+    assert!(app.current_tab().command_popup_visible());
+
+    // Typing a prefix filters it.
+    app.current_tab_mut().input = "/as re".to_string();
+    app.refresh_command_arg_candidates();
+    assert_eq!(
+        app.current_tab().command_arg_candidates,
+        vec!["researcher".to_string(), "reviewer".to_string()]
+    );
 
     let _ = fs::remove_dir_all(repo_root);
 }

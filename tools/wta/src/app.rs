@@ -1478,6 +1478,12 @@ pub struct TabSession {
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
     pub command_popup_candidates: Vec<&'static CommandSpec>,
+    /// Argument-value suggestions for the active command (currently only
+    /// `/as <partial>`): the alphabetically-sorted specialist names matching
+    /// what the user has typed after the command. When non-empty the popup
+    /// shows these *values* instead of command names. Computed at the App
+    /// level (it needs the active agent + cwd) by `refresh_command_arg_candidates`.
+    pub command_arg_candidates: Vec<String>,
     /// Index into [`Self::command_popup_candidates`]. Clamped on every
     /// mutation that could shrink the list.
     pub command_popup_selected: usize,
@@ -1746,6 +1752,7 @@ impl TabSession {
     pub fn clear_input(&mut self) {
         self.input.clear();
         self.cursor_pos = 0;
+        self.command_arg_candidates.clear();
         self.refresh_command_popup();
     }
 
@@ -1828,15 +1835,36 @@ impl TabSession {
         } else {
             self.command_popup_candidates.clear();
         }
-        if self.command_popup_candidates.is_empty() {
+        // Command-name candidates and argument-value candidates are mutually
+        // exclusive (you're either typing the name or its argument), so a
+        // fresh name match means there are no arg suggestions.
+        if !self.command_popup_candidates.is_empty() {
+            self.command_arg_candidates.clear();
+        }
+        self.clamp_popup_selected();
+    }
+
+    /// Number of rows in whichever popup channel is active. Argument-value
+    /// suggestions take precedence over command-name candidates.
+    fn popup_active_len(&self) -> usize {
+        if !self.command_arg_candidates.is_empty() {
+            self.command_arg_candidates.len()
+        } else {
+            self.command_popup_candidates.len()
+        }
+    }
+
+    fn clamp_popup_selected(&mut self) {
+        let len = self.popup_active_len();
+        if len == 0 {
             self.command_popup_selected = 0;
-        } else if self.command_popup_selected >= self.command_popup_candidates.len() {
-            self.command_popup_selected = self.command_popup_candidates.len() - 1;
+        } else if self.command_popup_selected >= len {
+            self.command_popup_selected = len - 1;
         }
     }
 
     pub fn command_popup_visible(&self) -> bool {
-        !self.command_popup_candidates.is_empty()
+        self.popup_active_len() > 0
     }
 
     pub fn command_popup_up(&mut self) {
@@ -1846,7 +1874,7 @@ impl TabSession {
     }
 
     pub fn command_popup_down(&mut self) {
-        if self.command_popup_selected + 1 < self.command_popup_candidates.len() {
+        if self.command_popup_selected + 1 < self.popup_active_len() {
             self.command_popup_selected += 1;
         }
     }
@@ -1857,11 +1885,25 @@ impl TabSession {
             .copied()
     }
 
-    /// Tab-completion: replace the input buffer with `/<name> ` (with a
-    /// trailing space if the command takes args; otherwise just the
-    /// name) and reset the cursor to the end. Triggered by Tab when the
-    /// popup is visible.
+    /// The highlighted argument-value suggestion (e.g. a specialist name),
+    /// or `None` when the arg popup isn't active.
+    pub fn selected_command_arg(&self) -> Option<&str> {
+        self.command_arg_candidates
+            .get(self.command_popup_selected)
+            .map(String::as_str)
+    }
+
+    /// Tab-completion. In argument-value mode, replace the typed partial with
+    /// the highlighted value (`/as <name>`, no trailing space — ready to run).
+    /// Otherwise complete the command name (`/<name> ` if it takes args).
     pub fn accept_command_popup_completion(&mut self) {
+        if let Some(value) = self.selected_command_arg().map(str::to_string) {
+            self.input = format!("/as {value}");
+            self.cursor_pos = self.input.len();
+            self.command_arg_candidates.clear();
+            self.command_popup_selected = 0;
+            return;
+        }
         if let Some(spec) = self.selected_command_spec() {
             self.input = if spec.takes_args {
                 format!("/{} ", spec.name)
@@ -2608,26 +2650,16 @@ impl App {
         active: Option<&str>,
         entry: &crate::protocol::acp::prompt::SpecialistEntry,
     ) -> bool {
-        use crate::protocol::acp::prompt::{DEFAULT_SPECIALIST_NAME, SpecialistSource};
-
         match active {
-            None => {
-                entry.source == SpecialistSource::Wta
-                    && entry.display_name.eq_ignore_ascii_case(DEFAULT_SPECIALIST_NAME)
-            }
-            Some(active) if entry.source == SpecialistSource::Wta => Self::canonical_persona_name(active)
-                .as_deref()
-                .unwrap_or(DEFAULT_SPECIALIST_NAME)
-                .eq_ignore_ascii_case(&entry.display_name),
+            // No active persona means the agent is on its built-in default,
+            // which has no discovered agent-file row to mark.
+            None => false,
             Some(active) => Path::new(active) == entry.path.as_path(),
         }
     }
 
     fn persona_source_label(source: crate::protocol::acp::prompt::SpecialistSource) -> String {
         match source {
-            crate::protocol::acp::prompt::SpecialistSource::Wta => {
-                t!("system.persona_source_custom").into_owned()
-            }
             crate::protocol::acp::prompt::SpecialistSource::Copilot => {
                 t!("system.persona_source_copilot").into_owned()
             }
@@ -2643,45 +2675,17 @@ impl App {
         }
     }
 
-    fn canonical_persona_name(name: &str) -> Option<String> {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        let stem = trimmed
-            .strip_suffix(".agent.md")
-            .or_else(|| trimmed.strip_suffix(".toml"))
-            .or_else(|| trimmed.strip_suffix(".md"))
-            .unwrap_or(trimmed);
-        if stem.eq_ignore_ascii_case(crate::protocol::acp::prompt::DEFAULT_SPECIALIST_NAME) {
-            None
-        } else {
-            Some(stem.to_string())
-        }
-    }
-
     /// `/as [name]` — list Agent Specialists or switch the active specialist
     /// for this tab. Switching takes effect on the next prompt and forces a
     /// fresh ACP session so the new system prompt lands on a clean conversation.
     fn cmd_persona(&mut self, arg: String, in_flight: bool) {
         // The agent pane runs one CLI; scope discovery to that agent's
-        // `.<cli>/agents` dirs (plus WTA's own prompts). An unknown / custom
-        // agent has no `.x/agents` convention, so only WTA specialists show.
+        // `.<cli>/agents` dirs (repo root + `~/.<cli>/agents`). An unknown /
+        // custom agent has no `.x/agents` convention, so nothing is offered.
         let active_source =
             crate::protocol::acp::prompt::SpecialistSource::from_agent_id(&self.current_agent_id);
-        let discovered = self
-            .active_specialist_cwd()
-            .map(crate::protocol::acp::prompt::discover_specialists)
-            .unwrap_or_else(|| {
-                crate::protocol::acp::prompt::list_specialists()
-                    .into_iter()
-                    .map(|display_name| crate::protocol::acp::prompt::SpecialistEntry {
-                        display_name,
-                        path: Path::new("").to_path_buf(),
-                        source: crate::protocol::acp::prompt::SpecialistSource::Wta,
-                    })
-                    .collect()
-            });
+        let discovered =
+            crate::protocol::acp::prompt::discover_specialists(self.active_specialist_cwd());
         let personas =
             crate::protocol::acp::prompt::scope_specialists_to_agent(discovered, active_source);
         let arg = arg.trim().to_string();
@@ -2759,12 +2763,8 @@ impl App {
         }
 
         let tab = self.current_tab_mut();
-        tab.active_persona = match selected.source {
-            crate::protocol::acp::prompt::SpecialistSource::Wta => {
-                Self::canonical_persona_name(&selected.display_name)
-            }
-            _ => Some(selected.path.to_string_lossy().into_owned()),
-        };
+        // Every discovered specialist is a real agent file; switch by its path.
+        tab.active_persona = Some(selected.path.to_string_lossy().into_owned());
         tab.needs_new_session = true;
         tab.clear_chat_history();
         tab.completed_turns.clear();
@@ -2780,7 +2780,36 @@ impl App {
         tab.scroll_to_bottom();
     }
 
-    /// Open the picker on the active tab, pre-selecting the model the pane is
+    /// Recompute the `/as <partial>` value suggestions for the active tab and
+    /// store them on the tab so popup navigation and rendering can read them.
+    /// Cleared unless the input is in `/as ` argument mode and the transport
+    /// is healthy (a `/as` switch can't run while the master pipe is dead).
+    /// Call this after every input edit, alongside `refresh_command_popup`.
+    fn refresh_command_arg_candidates(&mut self) {
+        let candidates = if self.transport_lost {
+            Vec::new()
+        } else if let Some(partial) = as_arg_partial(&self.current_tab().input) {
+            let active = crate::protocol::acp::prompt::SpecialistSource::from_agent_id(
+                &self.current_agent_id,
+            );
+            let discovered =
+                crate::protocol::acp::prompt::discover_specialists(self.active_specialist_cwd());
+            let scoped =
+                crate::protocol::acp::prompt::scope_specialists_to_agent(discovered, active);
+            let names = scoped
+                .into_iter()
+                .map(|entry| entry.display_name)
+                .collect::<Vec<_>>();
+            filter_and_sort_specialist_names(names, &partial)
+        } else {
+            Vec::new()
+        };
+        let tab = self.current_tab_mut();
+        tab.command_arg_candidates = candidates;
+        tab.clamp_popup_selected();
+    }
+
+
     /// currently effectively on (so Enter is a confirm and arrows move
     /// relative to "here"). Mirrors `current_model_display`'s precedence:
     /// per-pane override, then the agent's reported `current_model_id`, then
@@ -6809,6 +6838,10 @@ impl App {
             }
             KeyCode::Tab if self.command_popup_visible() => {
                 self.current_tab_mut().accept_command_popup_completion();
+                // If Tab completed the `/as` command name (now `/as `), open
+                // the value dropdown immediately rather than waiting for the
+                // next keystroke.
+                self.refresh_command_arg_candidates();
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 // Input editing only acts when the input is the live caret
@@ -6942,16 +6975,19 @@ impl App {
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_word_before_cursor();
+                    self.refresh_command_arg_candidates();
                 }
             }
             KeyCode::Backspace => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_before_cursor();
+                    self.refresh_command_arg_candidates();
                 }
             }
             KeyCode::Delete => {
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().delete_at_cursor();
+                    self.refresh_command_arg_candidates();
                 }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -6987,6 +7023,7 @@ impl App {
                 // Esc, or Tab/Shift+Tab back past the ends, to return focus.
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().insert_input_char(c);
+                    self.refresh_command_arg_candidates();
                 }
             }
             _ => {}
@@ -7064,6 +7101,16 @@ impl App {
     /// popup should not be drawn this frame. Reads from the active tab.
     pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
         let tab = self.current_tab();
+        // Argument-value popup (`/as <partial>`) takes precedence and renders
+        // the matching specialist names instead of command rows.
+        if !tab.command_arg_candidates.is_empty() {
+            return Some(crate::ui::PopupState {
+                candidates: std::borrow::Cow::Borrowed(&[]),
+                arg_candidates: &tab.command_arg_candidates,
+                selected: tab.command_popup_selected,
+                current_model: None,
+            });
+        }
         if tab.command_popup_candidates.is_empty() {
             return None;
         }
@@ -7091,6 +7138,7 @@ impl App {
             };
         Some(crate::ui::PopupState {
             candidates,
+            arg_candidates: &[],
             selected: tab.command_popup_selected,
             current_model: self.current_model_display(),
         })
@@ -7183,6 +7231,21 @@ impl App {
     /// the popup swallowed Enter); `false` means the caller should continue to
     /// the normal prompt-submission path with the input intact.
     fn try_handle_slash_on_enter(&mut self) -> bool {
+        // 0. Argument-value popup (`/as <partial>`): Enter commits the
+        //    highlighted specialist and runs `/as <name>`. Checked before the
+        //    command-name popup because in arg mode there is no command-name
+        //    candidate to fall back on.
+        if let Some(value) = self.current_tab().selected_command_arg().map(str::to_string) {
+            self.current_tab_mut().clear_input();
+            let spec = commands::lookup("as").expect("/as is a registered command");
+            self.handle_slash_command(ParsedCommand {
+                kind: spec.kind,
+                spec,
+                rest: value,
+            });
+            return true;
+        }
+
         // 1. Popup open: Enter commits the highlighted command (`/`, `/h`,
         //    `/he` → /help) and never submits the raw text as a prompt, so
         //    this arm is always consumed even if there is no selection.
@@ -9408,6 +9471,36 @@ fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {
     clamped
 }
 
+/// When the input is `/as` followed by whitespace, return the argument text
+/// typed so far (leading whitespace trimmed; may be empty). Drives the `/as`
+/// value autocomplete. Returns `None` when the line isn't in `/as` argument
+/// mode — including bare `/as` with no space yet, where the command-name
+/// popup is the one showing.
+fn as_arg_partial(input: &str) -> Option<String> {
+    let trimmed = input.trim_start();
+    let rest = trimmed.strip_prefix('/')?;
+    let idx = rest.find(char::is_whitespace)?;
+    let (name, arg) = rest.split_at(idx);
+    if !name.eq_ignore_ascii_case("as") {
+        return None;
+    }
+    Some(arg.trim_start().to_string())
+}
+
+/// Filter specialist display names to those starting with `partial`
+/// (case-insensitive) and sort them alphabetically. Pure, for unit testing.
+fn filter_and_sort_specialist_names(mut names: Vec<String>, partial: &str) -> Vec<String> {
+    let needle = partial.trim().to_ascii_lowercase();
+    names.retain(|name| name.to_ascii_lowercase().starts_with(&needle));
+    names.sort_by(|a, b| {
+        a.to_ascii_lowercase()
+            .cmp(&b.to_ascii_lowercase())
+            .then_with(|| a.cmp(b))
+    });
+    names.dedup();
+    names
+}
+
 fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
     let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
     if cursor_pos == 0 {
@@ -9541,6 +9634,39 @@ mod tests {
         let r2 = PreflightResult::passed_for_custom_agent("some-unknown-id");
         assert_eq!(r2.display_name, "some-unknown-id");
         assert!(r2.all_passed());
+    }
+
+    #[test]
+    fn as_arg_partial_detects_arg_mode() {
+        // Bare `/as` (no space) is command-name mode, not arg mode.
+        assert_eq!(as_arg_partial("/as"), None);
+        // A trailing space switches to arg mode with an empty partial.
+        assert_eq!(as_arg_partial("/as "), Some(String::new()));
+        assert_eq!(as_arg_partial("/as cla"), Some("cla".to_string()));
+        assert_eq!(as_arg_partial("  /AS  Rev"), Some("Rev".to_string()));
+        // Other commands are not `/as` arg mode.
+        assert_eq!(as_arg_partial("/model gpt"), None);
+        assert_eq!(as_arg_partial("hello world"), None);
+    }
+
+    #[test]
+    fn filter_and_sort_specialist_names_prefixes_alphabetically() {
+        let names = vec![
+            "reviewer".to_string(),
+            "Builder".to_string(),
+            "researcher".to_string(),
+            "deployer".to_string(),
+        ];
+        // Empty partial keeps all, alphabetical (case-insensitive).
+        assert_eq!(
+            filter_and_sort_specialist_names(names.clone(), ""),
+            vec!["Builder", "deployer", "researcher", "reviewer"]
+        );
+        // Prefix filter is case-insensitive.
+        assert_eq!(
+            filter_and_sort_specialist_names(names, "re"),
+            vec!["researcher", "reviewer"]
+        );
     }
 
     // Helper to create an App for testing (avoids needing real channels for simple state tests).
