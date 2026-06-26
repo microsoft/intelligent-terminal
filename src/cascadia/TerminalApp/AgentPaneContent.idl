@@ -38,5 +38,11 @@ namespace TerminalApp
         // subscribes to refresh the window-level bottom bar when the firing
         // pane belongs to the active tab.
         event Windows.Foundation.TypedEventHandler<AgentPaneContent, Object> StateChanged;
+
+        // Raised when the user picks an agent from the agent-bar chip flyout.
+        // The payload is the chosen agent id (e.g. "claude" / "gemini").
+        // TerminalPage finds the owning tab, records it as a per-tab agent
+        // override, and rebuilds just that tab's agent pane.
+        event Windows.Foundation.TypedEventHandler<AgentPaneContent, String> AgentSwitchRequested;
     }
 }

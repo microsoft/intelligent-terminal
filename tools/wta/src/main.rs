@@ -156,6 +156,21 @@ struct Cli {
     #[arg(long)]
     agent_id: Option<String>,
 
+    /// Master-only allowlist of agent ids a helper may request over the
+    /// pipe (the GPO-filtered set; built by TerminalPage::
+    /// _BuildSharedWtaExtraArgs from `FilteredAcpAgents()`). The master
+    /// reconstructs a helper's requested agent command from its declared
+    /// `agent_id` ONLY when that id is in this set — never executing a
+    /// command string sent over the pipe. An id outside the set (or a
+    /// custom/unknown id) falls back to `--agent` / `--agent-id`. An *absent*
+    /// flag means "no host allowlist" (manual runs, older hosts): the master
+    /// accepts any *known* agent id. A *present* flag is honored fail-closed —
+    /// even when it filters down to nothing, every helper-selected id is then
+    /// blocked (all panes fall back to the default) rather than widening back
+    /// to accept-any. Hidden; helper ignores it.
+    #[arg(long, hide = true, value_name = "IDS", value_delimiter = ',')]
+    allowed_agent_ids: Vec<String>,
+
     /// Model override for the ACP agent. Sent via ACP setSessionModel after
     /// handshake. Used by adapter-style launches (claude, codex via npx)
     /// where the model can't be passed on the command line; native ACP
@@ -2462,12 +2477,18 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = cli.acp_model.clone();
+                // Per-tab agent identity passed through to the multi-agent
+                // master via the initialize handshake. The helper has had
+                // this on its `Cli` all along; pre-multi-agent it dropped
+                // it (master owned the single agent CLI).
+                let agent_id = cli.agent_id.clone();
                 let owner_tab = cli.owner_tab_id.clone();
                 let initial_load_sid = cli.initial_load_session_id.clone();
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        agent_id,
                         owner_tab,
                         initial_load_sid,
                         event_tx_for_pipe.clone(),
@@ -2599,7 +2620,7 @@ async fn run_acp_app(
                 );
                 let agent_id = canonical_id.as_str();
                 let preflight_result = if agent_id.starts_with("custom:")
-                    || agent_registry::lookup_profile_by_id(agent_id).id == "unknown"
+                    || !agent_registry::is_known_id(agent_id)
                 {
                     // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
                     // shell function, …); a PATH probe would lie. The real spawn produces

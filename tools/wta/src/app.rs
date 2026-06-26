@@ -2460,6 +2460,14 @@ impl App {
                 let wt_connected = params.wt_connected;
                 let pipe_name_opt = params.master_pipe_name.clone();
                 let owner_tab_opt = params.owner_tab_id.clone();
+                // Per-tab agent identity for the multi-agent master: declare
+                // which agent this reconnecting helper wants. Derived from the
+                // configured agent_cmd — the master reconstructs the command
+                // from the id and never executes a string off the pipe.
+                let agent_cmd_opt = Some(params.agent_cmd.clone()).filter(|s| !s.trim().is_empty());
+                let agent_id_opt = agent_cmd_opt
+                    .as_deref()
+                    .map(|c| crate::agent_registry::resolve_agent_id_from_cmd(c).to_string());
 
                 if let Some(pipe_name) = pipe_name_opt {
                     // Pipe-mode reconnect (helper after FRE login).
@@ -2489,6 +2497,7 @@ impl App {
                             crate::protocol::acp::client::run_acp_client_over_pipe(
                                 pipe_name,
                                 acp_model,
+                                agent_id_opt,
                                 owner_tab_opt,
                                 None, // initial_load_session_id: already handled by the dead initial task
                                 event_tx_for_pipe.clone(),

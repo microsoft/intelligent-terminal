@@ -1,6 +1,34 @@
 @echo off
 cd /d "%~dp0"
-set MSBUILD="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"
+
+rem Resolve MSBuild robustly instead of hard-coding one VS edition/drive:
+rem   1. honor an externally supplied MSBUILD env var (CI / custom installs);
+rem   2. otherwise locate it via vswhere, which works across Community /
+rem      Professional / Enterprise / Build Tools and non-default install drives.
+rem The value is stored UNQUOTED and quoted at each call site below.
+rem Guard the vswhere call with `if exist`: on minimal/custom installs that
+rem lack vswhere.exe, calling it would print a confusing error and leave
+rem MSBUILD unset; skipping it lets the clear message below handle the case.
+if not defined MSBUILD (
+    if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" (
+        for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe`) do set "MSBUILD=%%i"
+    )
+)
+if not defined MSBUILD (
+    echo Could not locate MSBuild. Install the "MSBuild" VS component, or set the MSBUILD env var to your MSBuild.exe path.
+    exit /b 1
+)
+rem Strip any surrounding/literal quotes a caller may have baked into the
+rem MSBUILD env var (e.g. set MSBUILD="C:\...\MSBuild.exe"). A path can't
+rem contain a double-quote, so dropping them all is safe — and it stops the
+rem existence check and the quoted call sites below from seeing doubled
+rem quotes (`""C:\...""`), which would spuriously fail.
+set MSBUILD=%MSBUILD:"=%
+if not exist "%MSBUILD%" (
+    echo MSBUILD points to a missing file: "%MSBUILD%"
+    exit /b 1
+)
+
 set SOLUTION_DIR=%CD%\
 set COMMON=/p:Platform=x64 /p:Configuration=Release /p:WindowsTerminalBranding=Dev /p:SolutionDir=%SOLUTION_DIR% /m /nologo
 
@@ -16,21 +44,21 @@ rem Profile / Globals WinRT projection. If we don't pin its build ahead
 rem of consumer projects, cppwinrt can scan a stale older winmd elsewhere
 rem and generate consumer projections missing newer members (e.g.
 rem DragDropDelimiter), producing C2039 in TerminalSettingsAppAdapterLib.
-%MSBUILD% src\cascadia\TerminalSettingsModel\Microsoft.Terminal.Settings.ModelLib.vcxproj %COMMON% >> _build_msix_x64.log 2>&1
+"%MSBUILD%" src\cascadia\TerminalSettingsModel\Microsoft.Terminal.Settings.ModelLib.vcxproj %COMMON% >> _build_msix_x64.log 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo Settings Model build failed: %ERRORLEVEL%
     exit /b %ERRORLEVEL%
 )
 
 rem Build Settings Editor next (generates XBF files)
-%MSBUILD% src\cascadia\TerminalSettingsEditor\Microsoft.Terminal.Settings.Editor.vcxproj %COMMON% >> _build_msix_x64.log 2>&1
+"%MSBUILD%" src\cascadia\TerminalSettingsEditor\Microsoft.Terminal.Settings.Editor.vcxproj %COMMON% >> _build_msix_x64.log 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo Settings Editor build failed: %ERRORLEVEL%
     exit /b %ERRORLEVEL%
 )
 
 rem Now build the full package
-%MSBUILD% src\cascadia\CascadiaPackage\CascadiaPackage.wapproj %COMMON% /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Never >> _build_msix_x64.log 2>&1
+"%MSBUILD%" src\cascadia\CascadiaPackage\CascadiaPackage.wapproj %COMMON% /p:GenerateAppxPackageOnBuild=true /p:AppxBundle=Never >> _build_msix_x64.log 2>&1
 set BUILD_EXIT=%ERRORLEVEL%
 echo Exit code: %BUILD_EXIT%
 exit /b %BUILD_EXIT%

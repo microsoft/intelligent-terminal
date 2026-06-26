@@ -37,6 +37,27 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
     pub pane_session_id: Option<String>,
+    /// Legacy/advisory full command line. **The master no longer spawns
+    /// this** — it is a security hazard to execute an arbitrary string
+    /// arriving over the pipe (any same-user process could connect and
+    /// drive process creation). The master selects the agent from
+    /// `agent_id` and reconstructs the command itself. Kept on the wire
+    /// only for diagnostics / back-compat; helpers no longer set it.
+    pub agent_cmd: Option<String>,
+    /// Canonical agent id (`copilot` / `claude` / `gemini` / …) the
+    /// helper's tab wants. **This is the authoritative selector**: the
+    /// master reconstructs the agent command internally from this id
+    /// (`agent_registry::build_acp_command`) and never executes a string
+    /// supplied over the pipe. Also stamps the per-session `cli_source`
+    /// so the F2 view labels each row with its real CLI. `None` on older
+    /// helpers — master then falls back to its own `--agent` default.
+    pub agent_id: Option<String>,
+    /// Model override the tab wants (e.g. `gpt-5`). Folded into the
+    /// reconstructed command by `build_acp_command` for agents that
+    /// take a `--model` flag (adapter agents ignore it and receive the
+    /// model later via `setSessionModel`). Carried as its own field
+    /// because the master no longer trusts `agent_cmd` to carry it.
+    pub model: Option<String>,
     /// The WT tab StableId (`--owner-tab-id`) of the agent pane that
     /// owns this session. Carried so master can address per-tab events
     /// (notably `restart_agent_pane` on helper crash recovery) by the
@@ -46,8 +67,23 @@ pub struct WtaMeta {
 }
 
 impl WtaMeta {
+    /// `true` when no field carries a meaningful value. A field counts as
+    /// empty when it is `None` **or** holds a whitespace-only string — the
+    /// same trim-based notion of emptiness that `extract_wta_meta` /
+    /// `inject_wta_meta` use when dropping fields on the wire. Without the
+    /// trim check a `Some("   ")` would make `is_empty()` return `false`
+    /// while `inject_wta_meta` still serialized nothing, leaving the two
+    /// views of "empty" inconsistent (and `inject_wta_meta`'s early-out
+    /// keyed off a value the wire never reflects).
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none() && self.owner_tab_id.is_none()
+        fn blank(field: &Option<String>) -> bool {
+            field.as_deref().map_or(true, |s| s.trim().is_empty())
+        }
+        blank(&self.pane_session_id)
+            && blank(&self.agent_cmd)
+            && blank(&self.agent_id)
+            && blank(&self.model)
+            && blank(&self.owner_tab_id)
     }
 }
 
@@ -74,16 +110,24 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
     let Some(serde_json::Value::Object(obj)) = wta_val else {
         return WtaMeta::default();
     };
+    // Treat empty / whitespace-only values as absent (`None`) rather than
+    // `Some("")`: an empty string on the wire would otherwise make
+    // `WtaMeta::is_empty()` return false and keep `_meta.wta` alive for a
+    // semantically-empty field. Mirrors the helper's injection-side filter
+    // (`.filter(|s| !s.trim().is_empty())`) so values round-trip the same
+    // way in both directions.
+    let str_field = |key: &str| {
+        obj.get(key)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .map(String::from)
+    };
     WtaMeta {
-        pane_session_id: obj
-            .get("pane_session_id")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        owner_tab_id: obj
-            .get("owner_tab_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
+        pane_session_id: str_field("pane_session_id"),
+        agent_cmd: str_field("agent_cmd"),
+        agent_id: str_field("agent_id"),
+        model: str_field("model"),
+        owner_tab_id: str_field("owner_tab_id"),
     }
 }
 
@@ -100,20 +144,31 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
     if wta.is_empty() {
         return;
     }
-    let map = meta.get_or_insert_with(serde_json::Map::new);
+    // Mirror `extract_wta_meta`'s filter: only serialize fields whose value
+    // is non-empty after trimming. A whitespace-only `Some(" ")` (which any
+    // caller could construct) would otherwise be written as a real field —
+    // reintroducing the "semantically empty but present `_meta.wta`" problem
+    // that `extract_wta_meta` exists to avoid, and flipping
+    // `WtaMeta::is_empty()` off on the wire. Values then round-trip the same
+    // way in both directions.
     let mut wta_obj = serde_json::Map::new();
-    if let Some(pid) = &wta.pane_session_id {
-        wta_obj.insert(
-            "pane_session_id".to_string(),
-            serde_json::Value::String(pid.clone()),
-        );
+    let mut put = |key: &str, val: &Option<String>| {
+        if let Some(s) = val.as_ref().filter(|s| !s.trim().is_empty()) {
+            wta_obj.insert(key.to_string(), serde_json::Value::String(s.clone()));
+        }
+    };
+    put("pane_session_id", &wta.pane_session_id);
+    put("agent_cmd", &wta.agent_cmd);
+    put("agent_id", &wta.agent_id);
+    put("model", &wta.model);
+    put("owner_tab_id", &wta.owner_tab_id);
+    // Every field was absent/whitespace-only after filtering — nothing
+    // meaningful to attach, so don't litter the wire with an empty
+    // `_meta.wta` object (a strict downstream implementer might reject it).
+    if wta_obj.is_empty() {
+        return;
     }
-    if let Some(tab) = &wta.owner_tab_id {
-        wta_obj.insert(
-            "owner_tab_id".to_string(),
-            serde_json::Value::String(tab.clone()),
-        );
-    }
+    let map = meta.get_or_insert_with(serde_json::Map::new);
     map.insert(
         WTA_META_NAMESPACE.to_string(),
         serde_json::Value::Object(wta_obj),
@@ -1385,8 +1440,7 @@ pub async fn apply_ext_notification(
         // and never mutate the registry. A future master may broadcast
         // notifications we don't recognise — silently ignoring them
         // keeps the helper forward-compatible.
-        WtaExtNotification::SessionsChanged
-        | WtaExtNotification::Unknown
+        WtaExtNotification::Unknown
         | WtaExtNotification::MalformedParams { .. } => {}
     }
     parsed
@@ -2726,12 +2780,123 @@ mod tests {
         let original = WtaMeta {
             pane_session_id: Some("pane-X".to_string()),
             owner_tab_id: Some("{tab-owner-X}".to_string()),
+            ..Default::default()
         };
         let mut meta: Option<acp::Meta> = None;
         inject_wta_meta(&mut meta, &original);
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "round-trip preserves data");
         assert!(meta.is_none(), "round-trip ends with empty meta");
+    }
+
+    #[test]
+    fn inject_then_extract_round_trips_agent_identity() {
+        // The multi-agent master selects + reconstructs the CLI from
+        // `agent_id` (+ `model`) carried on the helper's `initialize`
+        // handshake. Guard the wire round-trip of all three identity
+        // fields, including `model` (which used to ride inside
+        // `agent_cmd` and now travels on its own).
+        let original = WtaMeta {
+            agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp".to_string()),
+            agent_id: Some("gemini".to_string()),
+            model: Some("gemini-2.5-pro".to_string()),
+            ..Default::default()
+        };
+        let mut meta: Option<acp::Meta> = None;
+        inject_wta_meta(&mut meta, &original);
+        let parsed = extract_wta_meta(&mut meta);
+        assert_eq!(parsed, original, "agent identity survives the wire");
+    }
+
+    #[test]
+    fn extract_drops_empty_and_whitespace_string_fields_to_none() {
+        // An empty / whitespace-only value on the wire must parse back to
+        // `None`, not `Some("")` — otherwise `WtaMeta::is_empty()` stays
+        // false and a semantically-empty `_meta.wta` is kept alive on the
+        // wire and in registry rows.
+        let mut map = serde_json::Map::new();
+        map.insert(
+            WTA_META_NAMESPACE.to_string(),
+            serde_json::json!({
+                "pane_session_id": "",
+                "agent_cmd": "",
+                "agent_id": "   ",
+                "model": "\t",
+                "owner_tab_id": " ",
+            }),
+        );
+        let mut meta: Option<acp::Meta> = Some(map);
+        let parsed = extract_wta_meta(&mut meta);
+        assert_eq!(parsed, WtaMeta::default(), "all-blank fields ⇒ default");
+        assert!(parsed.is_empty(), "is_empty() true for all-blank input");
+        assert!(meta.is_none(), "_meta with only-blank wta collapses to None");
+    }
+
+    #[test]
+    fn inject_drops_whitespace_only_string_fields() {
+        // `inject_wta_meta` must mirror `extract_wta_meta`: a whitespace-only
+        // `Some(" ")` is semantically empty and must not be serialized as a
+        // real field (that would flip `is_empty()` off on the wire and keep an
+        // empty `_meta.wta` alive). When *every* field is blank, no `_meta.wta`
+        // is attached at all.
+        let mut meta: Option<acp::Meta> = None;
+        inject_wta_meta(
+            &mut meta,
+            &WtaMeta {
+                pane_session_id: Some("  ".to_string()),
+                agent_cmd: Some(String::new()),
+                agent_id: Some("\t".to_string()),
+                model: Some(" ".to_string()),
+                owner_tab_id: Some("\n".to_string()),
+            },
+        );
+        assert!(meta.is_none(), "all-blank meta ⇒ no _meta.wta on the wire");
+
+        // A blank field alongside a real one drops only the blank; the real
+        // value survives and round-trips.
+        let mut meta2: Option<acp::Meta> = None;
+        inject_wta_meta(
+            &mut meta2,
+            &WtaMeta {
+                agent_id: Some("claude".to_string()),
+                model: Some("   ".to_string()),
+                ..Default::default()
+            },
+        );
+        let parsed = extract_wta_meta(&mut meta2);
+        assert_eq!(parsed.agent_id.as_deref(), Some("claude"), "real id kept");
+        assert_eq!(parsed.model, None, "blank model dropped on inject");
+    }
+
+    #[test]
+    fn is_empty_treats_whitespace_only_fields_as_empty() {
+        // `is_empty()` must use the same trim-based notion of emptiness as
+        // `extract_wta_meta` / `inject_wta_meta`. A `Some("   ")` is dropped on
+        // the wire, so it must also count as empty here — otherwise the two
+        // views of "empty" disagree and `inject_wta_meta`'s `is_empty()`
+        // early-out keys off a value the wire never reflects.
+        assert!(WtaMeta::default().is_empty(), "all-None is empty");
+        assert!(
+            WtaMeta {
+                pane_session_id: Some("  ".to_string()),
+                agent_cmd: Some(String::new()),
+                agent_id: Some("\t".to_string()),
+                model: Some(" ".to_string()),
+                owner_tab_id: Some("\n".to_string()),
+            }
+            .is_empty(),
+            "all-whitespace fields ⇒ empty"
+        );
+        // A single real value flips it back to non-empty.
+        assert!(
+            !WtaMeta {
+                agent_id: Some("claude".to_string()),
+                model: Some("   ".to_string()),
+                ..Default::default()
+            }
+            .is_empty(),
+            "one real field ⇒ not empty"
+        );
     }
 
     // ── apply_ext_notification ──────────────────────────────────────

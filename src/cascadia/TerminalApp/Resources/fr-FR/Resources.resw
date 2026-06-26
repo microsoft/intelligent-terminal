@@ -1201,6 +1201,10 @@
     <value>Sessions d’agent</value>
     <comment>Titre du volet quand la gestion des sessions est active.</comment>
   </data>
+  <data name="AgentPane_SwitchAgentAutomationName" xml:space="preserve">
+    <value>Changer d’agent</value>
+    <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>
+  </data>
   <data name="AgentPane_SessionsTitleFormat" xml:space="preserve">
     <value>Sessions d’agent : {0}</value>
     <comment>Titre du volet. {0} = nom de l’agent.</comment>

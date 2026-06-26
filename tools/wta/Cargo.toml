@@ -27,6 +27,8 @@ serde = { version = "1", features = ["derive"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_Storage_Packaging_Appx",
     "Win32_System_DataExchange",
     "Win32_System_Environment",
