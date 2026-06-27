@@ -15,7 +15,7 @@
 //! 2. A cheap in-process `which` pre-gate: if the token resolves as a plain
 //!    PATH program, the failure was *not* a not-found, so nothing is injected
 //!    and no subprocess is spawned (the common case — failed build/test/git).
-//! 3. Otherwise enumerate the shell's real command list once
+//! 3. Otherwise, enumerate the shell's real command list once
 //!    (`Get-Command …`) and, if the token still doesn't resolve, rank the
 //!    list by Damerau-Levenshtein ([`rank_near_matches`]) to surface the
 //!    closest existing commands.

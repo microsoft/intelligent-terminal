@@ -42,8 +42,10 @@ copyable
 crossterm
 Crossterm
 CWDs
+damerau
 dcs
 Dedented
+dedups
 demotable
 deselection
 desync
@@ -126,6 +128,7 @@ mojibake
 mpsc
 mru
 mrx
+msc
 mtimes
 muxer
 myproj
@@ -226,6 +229,7 @@ splitw
 ssh
 SSZ
 stakeholders
+strsim
 submittable
 subpage
 subpages
