@@ -91,15 +91,18 @@ pub(crate) trait ContextProvider: Send + Sync {
 /// sections appear in the prompt; mutually-exclusive planner / autofix
 /// providers self-gate via [`ContextProvider::applies`], so the same chain
 /// serves both turn kinds.
-pub(crate) fn default_providers() -> Vec<Box<dyn ContextProvider>> {
-    vec![
+///
+/// Every provider is a zero-sized, stateless unit struct, so the chain is a
+/// `&'static` slice of const-promoted instances — no per-prompt allocation.
+pub(crate) fn default_providers() -> &'static [&'static dyn ContextProvider] {
+    &[
         // Planner turns.
-        Box::new(DelegateAgentsProvider),
-        Box::new(TerminalContextProvider),
+        &DelegateAgentsProvider,
+        &TerminalContextProvider,
         // Autofix turns.
-        Box::new(ShellContextProvider),
-        Box::new(TerminalOutputProvider),
-        Box::new(CommandNotFoundProvider),
+        &ShellContextProvider,
+        &TerminalOutputProvider,
+        &CommandNotFoundProvider,
     ]
 }
 
