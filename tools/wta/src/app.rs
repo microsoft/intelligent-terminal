@@ -2863,18 +2863,44 @@ impl App {
             .find(|m| m.id == model_id)
             .map(|m| (m.name.clone(), m.kind == crate::agent::ModelKind::Local))
             .unwrap_or_else(|| (model_id.clone(), false));
-        let current_local = self.currently_local();
 
-        // A switch can stay live (ACP `set_session_model`) only when BOTH ends
-        // are cloud — `COPILOT_MODEL` / the BYOK provider env are read by the
-        // agent CLI only at startup, so any switch touching a local model
+        // The client does not decide cloud-vs-local mechanics — it asks the
+        // agent for a switch plan, keyed only on model *kinds*. `Respawn` means
+        // the picked or current model is env-pinned at process start (any
+        // local boundary); `Live` is a cloud→cloud `set_session_model`.
+        let picked_kind = if picked_local {
+            crate::agent::ModelKind::Local
+        } else {
+            crate::agent::ModelKind::Cloud
+        };
+        let current_kind = if self.currently_local() {
+            crate::agent::ModelKind::Local
+        } else {
+            crate::agent::ModelKind::Cloud
+        };
+        let plan = crate::agent::agent_for_id(&self.current_agent_id)
+            .map(|a| a.plan_switch(current_kind, picked_kind))
+            .unwrap_or(crate::agent::SwitchPlan::Live);
+
+        // A switch can stay live (ACP `set_session_model`) only when the agent
+        // reports `Live` — `COPILOT_MODEL` / the BYOK provider env are read by
+        // the agent CLI only at startup, so any switch touching a local model
         // requires reconfiguring the env and respawning the agent CLI.
-        if picked_local || current_local {
+        if plan == crate::agent::SwitchPlan::Respawn {
             // Persist the pick so the freshly-spawned master applies the right
             // provider env (see `llm_provider::spawn_provider`), then trigger
             // the stack restart. All agent panes reset to a fresh session.
+            // Record the concrete runtime: probe which local runtime serves the
+            // pick, falling back to Foundry (the env-sourced local path) when a
+            // local pick can't be attributed to a running daemon.
+            let runtime = if picked_local {
+                crate::model_runtime::runtime_for_model(&model_id)
+                    .unwrap_or(crate::model_runtime::RuntimeId::Foundry)
+            } else {
+                crate::model_runtime::RuntimeId::Cloud
+            };
             let selection = crate::llm_provider::ProviderSelection {
-                local: picked_local,
+                runtime,
                 model: Some(model_id.clone()),
             };
             let _ = crate::llm_provider::save_selection(&selection);
@@ -2893,7 +2919,7 @@ impl App {
         // Cloud → cloud: live switch via `set_session_model`. Keep the persisted
         // selection in sync so the pick survives a later respawn / IT restart.
         let _ = crate::llm_provider::save_selection(&crate::llm_provider::ProviderSelection {
-            local: false,
+            runtime: crate::model_runtime::RuntimeId::Cloud,
             model: Some(model_id.clone()),
         });
         let session_id = {
@@ -4766,7 +4792,7 @@ impl App {
                 // reapplied here (guarded to models the agent actually
                 // advertises, and skipped when already active).
                 if let Some(selection) = crate::llm_provider::load_selection() {
-                    if !selection.local {
+                    if selection.runtime == crate::model_runtime::RuntimeId::Cloud {
                         if let Some(picked) =
                             selection.model.filter(|m| !m.trim().is_empty())
                         {

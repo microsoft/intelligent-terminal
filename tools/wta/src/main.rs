@@ -20,6 +20,7 @@ mod helper;
 mod history_loader;
 mod llm_provider;
 mod logging;
+mod model_runtime;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;

@@ -92,11 +92,12 @@ impl LlmProviderConfig {
 /// helper writes it on a pick, then triggers the stack restart; the freshly
 /// spawned master reads it back in [`spawn_provider`] and applies the right
 /// env to the new agent CLI.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProviderSelection {
-    /// `true` when the user picked a local (BYOK) model; `false` for a cloud
-    /// model (which forces the BYOK env *off* on the next spawn).
-    pub local: bool,
+    /// Which runtime serves the picked model. `Cloud` forces the BYOK env
+    /// *off* on the next spawn; a local runtime (`Ollama`/`Foundry`) supplies
+    /// the provider endpoint to route to.
+    pub runtime: crate::model_runtime::RuntimeId,
     /// The picked model id (the `COPILOT_MODEL` to pin for local; the cloud
     /// catalog id to re-select for cloud).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,27 +168,42 @@ pub enum SpawnProvider {
 /// * No selection → the prior behavior: `Local` when the env is active, else
 ///   `Inherit`.
 pub fn spawn_provider() -> SpawnProvider {
-    resolve_spawn_provider(load_selection(), LlmProviderConfig::from_env())
+    let selection = load_selection();
+    // Resolve the selected runtime's provider config (Ollama's fixed endpoint,
+    // Foundry's env endpoint). `None` for cloud / no model / unconfigured local.
+    let runtime_cfg = selection.as_ref().and_then(|sel| {
+        let model = sel.model.as_deref().filter(|m| !m.trim().is_empty())?;
+        crate::model_runtime::runtime_provider_config(sel.runtime, model)
+    });
+    resolve_spawn_provider(selection, runtime_cfg, LlmProviderConfig::from_env())
 }
 
-/// Pure resolution of the spawn-time provider plan from an explicit selection +
-/// the ambient env config. Split out from [`spawn_provider`] so it can be unit
-/// tested without touching the process-shared on-disk selection file.
+/// Pure resolution of the spawn-time provider plan from an explicit selection,
+/// the runtime-resolved provider config, and the ambient env config. Split out
+/// from [`spawn_provider`] so it can be unit tested without touching the
+/// process-shared on-disk selection file or live runtimes.
 fn resolve_spawn_provider(
     selection: Option<ProviderSelection>,
+    runtime_cfg: Option<LlmProviderConfig>,
     env_cfg: LlmProviderConfig,
 ) -> SpawnProvider {
+    use crate::model_runtime::RuntimeId;
     match selection {
-        Some(sel) if !sel.local => SpawnProvider::Cloud,
+        Some(sel) if sel.runtime == RuntimeId::Cloud => SpawnProvider::Cloud,
         Some(sel) => {
-            let mut cfg = env_cfg;
-            if let Some(model) = sel.model.filter(|m| !m.trim().is_empty()) {
-                cfg.model = Some(model);
-            }
-            if cfg.is_active() {
-                SpawnProvider::Local(cfg)
-            } else {
-                SpawnProvider::Inherit
+            // Prefer the runtime-resolved config; fall back to the ambient env
+            // with the picked model overlaid (so a stale-but-active env still
+            // routes when the runtime can't supply a config of its own).
+            let cfg = runtime_cfg.or_else(|| {
+                let mut cfg = env_cfg;
+                if let Some(model) = sel.model.filter(|m| !m.trim().is_empty()) {
+                    cfg.model = Some(model);
+                }
+                Some(cfg)
+            });
+            match cfg {
+                Some(cfg) if cfg.is_active() => SpawnProvider::Local(cfg),
+                _ => SpawnProvider::Inherit,
             }
         }
         None => {
@@ -480,7 +496,7 @@ mod tests {
     #[test]
     fn provider_selection_roundtrips_through_json() {
         let sel = ProviderSelection {
-            local: true,
+            runtime: crate::model_runtime::RuntimeId::Ollama,
             model: Some("qwen2.5-coder-7b".to_string()),
         };
         let json = serde_json::to_string(&sel).unwrap();
@@ -491,7 +507,7 @@ mod tests {
     #[test]
     fn provider_selection_omits_absent_model() {
         let sel = ProviderSelection {
-            local: false,
+            runtime: crate::model_runtime::RuntimeId::Cloud,
             model: None,
         };
         let json = serde_json::to_string(&sel).unwrap();
@@ -502,19 +518,47 @@ mod tests {
     fn cloud_selection_forces_cloud_ignoring_active_env() {
         // Even with an active local env, an explicit cloud pick wins.
         let sel = Some(ProviderSelection {
-            local: false,
+            runtime: crate::model_runtime::RuntimeId::Cloud,
             model: Some("gpt-5.5".to_string()),
         });
-        assert_eq!(resolve_spawn_provider(sel, local_cfg()), SpawnProvider::Cloud);
+        assert_eq!(
+            resolve_spawn_provider(sel, None, local_cfg()),
+            SpawnProvider::Cloud
+        );
     }
 
     #[test]
-    fn local_selection_overrides_env_model() {
+    fn local_selection_prefers_runtime_config() {
+        // The runtime-resolved config wins over the ambient env fallback.
         let sel = Some(ProviderSelection {
-            local: true,
+            runtime: crate::model_runtime::RuntimeId::Ollama,
             model: Some("picked-model".to_string()),
         });
-        match resolve_spawn_provider(sel, local_cfg()) {
+        let runtime_cfg = Some(LlmProviderConfig {
+            base_url: Some("http://127.0.0.1:11434/v1".to_string()),
+            api_key: Some("ollama".to_string()),
+            provider_type: Some("openai".to_string()),
+            model: Some("picked-model".to_string()),
+            offline: false,
+        });
+        match resolve_spawn_provider(sel, runtime_cfg, local_cfg()) {
+            SpawnProvider::Local(cfg) => {
+                assert_eq!(cfg.model.as_deref(), Some("picked-model"));
+                assert_eq!(cfg.base_url.as_deref(), Some("http://127.0.0.1:11434/v1"));
+            }
+            other => panic!("expected Local, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn local_selection_falls_back_to_env_model_when_runtime_has_none() {
+        // No runtime config (e.g. Foundry with no env endpoint resolved here) →
+        // fall back to the ambient env with the picked model overlaid.
+        let sel = Some(ProviderSelection {
+            runtime: crate::model_runtime::RuntimeId::Foundry,
+            model: Some("picked-model".to_string()),
+        });
+        match resolve_spawn_provider(sel, None, local_cfg()) {
             SpawnProvider::Local(cfg) => {
                 assert_eq!(cfg.model.as_deref(), Some("picked-model"));
                 assert_eq!(cfg.base_url.as_deref(), Some("http://127.0.0.1:5/v1"));
@@ -525,13 +569,14 @@ mod tests {
 
     #[test]
     fn local_selection_without_endpoint_degrades_to_inherit() {
-        // A local pick is meaningless without a provider endpoint configured.
+        // A local pick is meaningless without a provider endpoint configured
+        // (no runtime config and an inactive ambient env).
         let sel = Some(ProviderSelection {
-            local: true,
+            runtime: crate::model_runtime::RuntimeId::Foundry,
             model: Some("picked-model".to_string()),
         });
         assert_eq!(
-            resolve_spawn_provider(sel, LlmProviderConfig::default()),
+            resolve_spawn_provider(sel, None, LlmProviderConfig::default()),
             SpawnProvider::Inherit
         );
     }
@@ -539,11 +584,11 @@ mod tests {
     #[test]
     fn no_selection_falls_back_to_env() {
         assert_eq!(
-            resolve_spawn_provider(None, local_cfg()),
+            resolve_spawn_provider(None, None, local_cfg()),
             SpawnProvider::Local(local_cfg())
         );
         assert_eq!(
-            resolve_spawn_provider(None, LlmProviderConfig::default()),
+            resolve_spawn_provider(None, None, LlmProviderConfig::default()),
             SpawnProvider::Inherit
         );
     }

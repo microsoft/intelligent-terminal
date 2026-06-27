@@ -83,8 +83,7 @@ pub struct ModelEntry {
 }
 
 /// The model view the UI should present for an agent: the selectable list, the
-/// active model id, and whether runtime switching is even possible.
-///
+/// active model id, and whether runtime switching is even possible.///
 /// Produced by [`Agent::resolve_models`]. For most agents this is exactly what
 /// the ACP layer advertised (`new_session.models`); a provider that pins its
 /// model out-of-band (Copilot BYOK's `COPILOT_MODEL`) replaces the list with
@@ -97,6 +96,21 @@ pub struct ModelCatalog {
     /// process and `session/set_model` cannot change it (e.g. BYOK pins the
     /// model via env at copilot startup). The UI disables switching.
     pub switchable: bool,
+}
+
+/// How a `/model` switch must be carried out, decided by the agent rather than
+/// the client. This is the seam that keeps `app.rs` from branching on
+/// cloud-vs-local: the client hands the agent the current and picked model
+/// kinds and gets back an executable plan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwitchPlan {
+    /// Switch live within the running agent session via ACP `set_session_model`.
+    /// The agent process keeps running and the session is preserved.
+    Live,
+    /// Reconfigure the agent's provider env and respawn the agent CLI. Required
+    /// whenever a switch touches a model the agent pins at process start (any
+    /// transition crossing the cloud/local boundary, or local↔local).
+    Respawn,
 }
 
 /// The current user's home directory (`%USERPROFILE%`), used by per-agent
@@ -189,6 +203,22 @@ pub trait Agent {
         acp
     }
 
+    /// Decide how to carry out a `/model` switch from `current` to `picked`,
+    /// expressed purely in terms of model *kinds* so the client never has to
+    /// know the cloud/local mechanics. The default crosses into [`SwitchPlan::Respawn`]
+    /// whenever either end is [`ModelKind::Local`] — because a local model is
+    /// pinned via the agent's provider env at process start and `set_model`
+    /// cannot reach it — and stays [`SwitchPlan::Live`] for a cloud→cloud
+    /// switch. Agents with no BYOK contract never produce `Local` entries, so
+    /// they always get `Live`.
+    fn plan_switch(&self, current: ModelKind, picked: ModelKind) -> SwitchPlan {
+        if current == ModelKind::Local || picked == ModelKind::Local {
+            SwitchPlan::Respawn
+        } else {
+            SwitchPlan::Live
+        }
+    }
+
     /// Whether this agent has a wired-up BYOK (bring-your-own-LLM) env
     /// contract — i.e. [`Agent::byok_env`] can translate an
     /// [`LlmProviderConfig`] into env vars its CLI understands. Defaults to
@@ -217,7 +247,6 @@ pub trait Agent {
     }
 
     /// The full set of environment variable *names* this agent reads for BYOK.
-    ///
     /// Used to force an agent back to its hosted/cloud backend on respawn: when
     /// the user switches a pinned local model to a cloud one, the spawner must
     /// *remove* these vars from the child so an ambient (e.g. machine-scoped)
@@ -310,5 +339,17 @@ mod tests {
         assert_eq!(agent_for_id("claude").unwrap().login_subcommand(), "login");
         assert_eq!(agent_for_id("codex").unwrap().login_subcommand(), "auth");
         assert_eq!(agent_for_id("gemini").unwrap().login_subcommand(), "auth login");
+    }
+
+    #[test]
+    fn plan_switch_respawns_on_any_local_boundary() {
+        use ModelKind::{Cloud, Local};
+        let copilot = agent_for_id("copilot").unwrap();
+        // cloud→cloud is the only live switch; every transition that touches a
+        // local model must respawn the agent CLI (env-pinned at startup).
+        assert_eq!(copilot.plan_switch(Cloud, Cloud), SwitchPlan::Live);
+        assert_eq!(copilot.plan_switch(Cloud, Local), SwitchPlan::Respawn);
+        assert_eq!(copilot.plan_switch(Local, Cloud), SwitchPlan::Respawn);
+        assert_eq!(copilot.plan_switch(Local, Local), SwitchPlan::Respawn);
     }
 }

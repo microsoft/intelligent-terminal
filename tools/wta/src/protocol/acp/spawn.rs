@@ -154,6 +154,23 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
         let agent = crate::agent::agent_for_id(agent_id);
         match crate::llm_provider::spawn_provider() {
             crate::llm_provider::SpawnProvider::Local(cfg) => {
+                // Fill the gap copilot's limited local support leaves open: copilot
+                // won't launch the local backend, so ensure the selected runtime's
+                // daemon is running before pointing the agent CLI at it. Best-effort
+                // — a failure (e.g. Ollama not installed) is logged, not fatal; the
+                // agent CLI will then surface its own connection error.
+                if let Some(sel) = crate::llm_provider::load_selection() {
+                    if let Err(e) =
+                        crate::model_runtime::runtime_for_id(sel.runtime).ensure_running()
+                    {
+                        tracing::warn!(
+                            target: "model_runtime",
+                            runtime = ?sel.runtime,
+                            error = %e,
+                            "ensure_running failed before agent spawn"
+                        );
+                    }
+                }
                 if let Some(agent) = agent {
                     for (key, value) in agent.byok_env(&cfg) {
                         cmd.env(key, value);
