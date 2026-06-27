@@ -1049,10 +1049,10 @@ async fn resolve_pane_by_session_id(
 ) -> Option<serde_json::Value> {
     let windows = shell_mgr.wt_list_windows().await.ok()?;
     for win in windows.get("windows")?.as_array()? {
-        let Some(window_id) = win.get("window_id").and_then(|v| v.as_str()) else {
+        let Some(window_id) = json_str_or_num(win.get("window_id")) else {
             continue;
         };
-        let Ok(tabs) = shell_mgr.wt_list_tabs(window_id).await else {
+        let Ok(tabs) = shell_mgr.wt_list_tabs(&window_id).await else {
             continue;
         };
         let Some(tabs_arr) = tabs.get("tabs").and_then(|v| v.as_array()) else {
@@ -4084,8 +4084,8 @@ mod tests {
     ) -> crate::shell::ShellManager {
         crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
             active_pane: active,
-            windows: Some(serde_json::json!({ "windows": [{ "window_id": "w1" }] })),
-            tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": "0" }] })),
+            windows: Some(serde_json::json!({ "windows": [{ "window_id": 1 }] })),
+            tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": 0 }] })),
             panes: Some(serde_json::json!({ "panes": [source_pane] })),
         }))
     }

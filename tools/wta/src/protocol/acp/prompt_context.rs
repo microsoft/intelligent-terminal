@@ -345,13 +345,10 @@ mod tests {
 
         // Non-PowerShell shell: feature is PowerShell-only in v1.
         let bash = ContextRequest {
+            is_autofix: true,
             shell_exe: Some("bash"),
-            ..ContextRequest {
-                is_autofix: true,
-                shell_exe: Some("bash"),
-                terminal_output: Some("gti status"),
-                ..req_planner(&mgr, true)
-            }
+            terminal_output: Some("gti status"),
+            ..req_planner(&mgr, true)
         };
         assert!(!CommandNotFoundProvider.applies(&bash));
 
