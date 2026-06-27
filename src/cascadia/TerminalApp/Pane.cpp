@@ -139,15 +139,36 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
         return { .args = {}, .firstPane = shared_from_this(), .focusedPaneId = std::nullopt, .panesCreated = 0 };
     }
 
-    // Agent panes participate in cross-window move; their conpty + helper
-    // child survive via the ContentId reattach mechanism (see _MakePane), and
-    // the helper process is unchanged across the drag. Persistence (the
-    // BuildStartupKind::Persist path) is the SessionId rehydration mechanism
-    // — `TerminalPaneContent::GetNewTerminalArgs(BuildStartupKind::Persist)`
-    // emits the pane's persisted SessionId, and the terminal layer rebinds
-    // the saved session on restore. There is no longer a per-window agent
-    // singleton to special-case, so we let the agent pane serialize through
-    // the normal split-pane path.
+    // Agent panes participate in cross-window move (Content / MovePane); their
+    // conpty + helper child survive via the ContentId reattach mechanism (see
+    // _MakePane), and the helper process is unchanged across the drag.
+    //
+    // Persistence (BuildStartupKind::Persist, i.e. app restart) is different:
+    // an agent pane's command line is session-specific (it points at the
+    // previous run's wta-master named pipe and an owner-tab-id that no longer
+    // exist), and after a restart there is no live master / helper / conpty
+    // session left to rehydrate. Replaying that saved command line launches a
+    // broken `wta --connect-master <dead-pipe>` that fails its ACP transport
+    // and, combined with the per-tab pre-warmed agent pane each restored tab
+    // already re-creates, leaves the window littered with dead panes (#275).
+    //
+    // So we never persist agent panes into the saved window layout: when one
+    // child of this split is an agent-pane leaf, collapse the split and only
+    // serialize the other child. The user can re-open the agent pane after
+    // restore to get a fresh one.
+    if (kind == BuildStartupKind::Persist)
+    {
+        const auto firstIsAgentLeaf = _firstChild->_IsLeaf() && _firstChild->_isAgentPane;
+        const auto secondIsAgentLeaf = _secondChild->_IsLeaf() && _secondChild->_isAgentPane;
+        if (firstIsAgentLeaf && !secondIsAgentLeaf)
+        {
+            return _secondChild->BuildStartupActions(currentId, nextId, kind);
+        }
+        if (secondIsAgentLeaf && !firstIsAgentLeaf)
+        {
+            return _firstChild->BuildStartupActions(currentId, nextId, kind);
+        }
+    }
 
     auto buildSplitPane = [&](auto newPane) {
         ActionAndArgs actionAndArgs;

@@ -88,6 +88,52 @@ function Stop-AppInstances {
     Start-Sleep -Milliseconds 500
 }
 
+function Stop-StaleItInstances {
+    <#
+    .SYNOPSIS
+        Close any leftover Intelligent Terminal windows (BOTH the store and dev packages)
+        before a test launches.
+    .DESCRIPTION
+        The harness OWNS every Intelligent Terminal window for the duration of a run: this
+        unconditionally closes/kills ALL running IT windows (store + dev) at launch time — not
+        only crashed-test leftovers, but also a window a developer started by hand, and even the
+        IT window hosting the current shell if the tests are launched from inside Intelligent
+        Terminal. So do NOT run this suite from an IT window you want to keep. (The user's stock
+        Windows Terminal is never touched — its image lives under Microsoft.WindowsTerminal_*,
+        which never matches the *IntelligentTerminal* install-location filter below.)
+
+        Any IT window already running at launch is treated as a leftover from a previous test
+        whose AfterAll/Stop-Terminal didn't run (e.g. a BeforeAll that threw). Such a leftover
+        causes two real flakes:
+          * the single-instance AUMID launch hands off to the stale (often half-initialised)
+            window instead of starting fresh, so the harness attaches to a broken instance and
+            `new-tab` returns CreateTab E_FAIL (0x80004005);
+          * the store and dev packages share one per-brand COM CLSID, so a stale window of the
+            OTHER package steals wtcli's CoCreateInstance and misroutes every protocol call.
+        Closing all IT windows first makes each launch deterministic and freshly-owned.
+    #>
+    [CmdletBinding()] param([int]$GraceSec = 6)
+    $locs = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' } |
+            ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
+    if (-not $locs) { return }
+    $find = {
+        Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object {
+            $path = $null; try { $path = $_.Path } catch {}
+            $path -and ($locs | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })
+        }
+    }
+    $procs = @(& $find)
+    if (-not $procs.Count) { return }
+    Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale IT instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
+    foreach ($p in $procs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
+    Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition { -not @(& $find).Count } | Out-Null
+    foreach ($p in @(& $find)) {
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$($p.Id)"
+    }
+    Start-Sleep -Milliseconds 500   # let the OS tear down the shared COM monarch registration
+}
+
 function Get-ItTestPackage {
     <#
     .SYNOPSIS
@@ -112,11 +158,10 @@ function Start-Terminal {
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
-    .PARAMETER ColdStart Terminate any running instance of this package first so a FRESH
-                         monarch starts and re-reads state.json (required for the FRE to show;
-                         a running monarch caches ApplicationState and ignores the file).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
-                         Implies -ColdStart. COM resolution is best-effort in this mode.
+                         COM resolution is best-effort in this mode. A fresh monarch is always
+                         started (see Stop-StaleItInstances below), which is what lets the FRE
+                         re-read state.json — a running monarch caches ApplicationState.
     #>
     [CmdletBinding()]
     param(
@@ -124,7 +169,6 @@ function Start-Terminal {
         [hashtable]$Settings,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
-        [switch]$ColdStart,
         [switch]$ShowFre,
         [int]$TimeoutSec = 60
     )
@@ -134,9 +178,14 @@ function Start-Terminal {
     # Per-run framework log file under TEMP.
     $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
-    # Cold start FIRST: kill any existing monarch BEFORE writing config, so its
-    # flush-on-exit can't overwrite the FRE/settings values we're about to write.
-    if ($ColdStart -or $ShowFre) { Stop-AppInstances -App $app }
+    # Always clear leftover IT instances (store + dev) BEFORE writing config: a stale window
+    # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
+    # CreateTab E_FAIL 0x80004005) or steal the shared per-brand COM CLSID and misroute wtcli.
+    # Doing it before config write also stops a closing monarch's flush from clobbering the
+    # FRE/settings values we are about to write. This ALWAYS enforces cold-start semantics (a
+    # fresh monarch re-reads state.json); -ShowFre separately controls whether the FRE overlay
+    # is left showing.
+    Stop-StaleItInstances
 
     if ($Backup) { Backup-WtConfig -App $app }
     if ($ShowFre) { Reset-Fre -App $app | Out-Null }
@@ -272,7 +321,7 @@ function Start-TerminalFre {
     #>
     [CmdletBinding()]
     param([string]$Package = (Get-ItTestPackage), [int]$TimeoutSec = 60)
-    return (Start-Terminal -Package $Package -ColdStart -ShowFre -Backup $true -TimeoutSec $TimeoutSec)
+    return (Start-Terminal -Package $Package -ShowFre -Backup $true -TimeoutSec $TimeoutSec)
 }
 
 function Reset-TerminalState {

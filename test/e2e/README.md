@@ -12,25 +12,30 @@ environment. Current status (run on the Store package):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
-| `Feature.Packaging.Tests.ps1` | §9 packaging/protocol + §10 logging | 16 |
+| `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 13 |
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
-| `Feature.SessionList.Tests.ps1` | session view, session states, view switching, focus/restore | 11 (+1 skip) |
-| `Feature.AgentRestart.Tests.ps1` | agent restart after settings change, Shift+Enter focus | 2 |
+| `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
+| `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |
+| `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure) + non-integrated cmd.exe safety | 3 |
+| `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
+| `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
 **Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
-**Test status: 79 feature cases pass + 1 documented skip** (`wta sessions list` is
+**Test status: 89 feature cases pass + 2 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
-cases plus the deterministic settings/persistence assertions. **92 checklist items are
-environment-blocked** and tracked but not automated: other agent CLIs
-(Claude/Codex/Gemini/custom); multi-window drag; hook/CLI install; policy locks; IME/paste;
-WT window-level keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane
-hotkeys — not injectable via UIA/send-keys in this harness); and manual release-sign-off
-gates.
+cases plus the deterministic settings/persistence assertions. Remaining
+environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
+**other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
+auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,
+else skips); custom agents; multi-window drag; hook/CLI install; policy locks; IME/paste; WSL
+autofix (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
+keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane hotkeys — not
+injectable via UIA/send-keys in this harness); and manual release-sign-off gates.
 
 ## What it gives you
 

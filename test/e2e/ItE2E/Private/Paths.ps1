@@ -15,6 +15,16 @@ $script:ItKnownFamilies = [ordered]@{
     Dev   = 'IntelligentTerminal_rd9vj3e6a2mbr'
 }
 
+# Which brand CLSID a known package family registers (TerminalProtocolComServer.h brands).
+# The Store package ships the Release brand; the dev sideload ships the Dev brand. This lets
+# Resolve-WtComClsid probe the CORRECT brand for the package under test instead of blindly
+# taking the first responder — critical when BOTH Store and Dev are installed, since otherwise
+# probing Release first cold-launches the (window-less) Store server and misroutes wtcli.
+$script:ItFamilyBrand = @{
+    'Microsoft.IntelligentTerminal_8wekyb3d8bbwe' = 'Release'
+    'IntelligentTerminal_rd9vj3e6a2mbr'           = 'Dev'
+}
+
 function Get-ItRepoRoot {
     <# Walk up from the module until we find the git root (best-effort). #>
     $d = $PSScriptRoot
@@ -153,14 +163,23 @@ function Resolve-WtComClsid {
     $wtcli = $App.WtcliPath
     if (-not $wtcli) { throw "wtcli not resolved for $($App.Package)." }
 
+    # Probe the brand that THIS package registers (Store=Release, Dev=Dev). When both packages
+    # are installed they share the COM activation namespace, so blindly taking the first
+    # responding brand can cold-launch the OTHER package's window-less server and latch onto the
+    # wrong CLSID (→ later GetActivePane 0x80004005). For a KNOWN package family we therefore
+    # probe ONLY its brand (the Wait-Until retry absorbs startup); an unknown/custom family falls
+    # back to scanning every brand.
+    $expectedBrand = $script:ItFamilyBrand[$App.Package]
+    $probeOrder = if ($expectedBrand) { @($expectedBrand) } else { @($script:ItBrandClsids.Keys) }
+
     $found = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 1 -Because "a brand CLSID that wtcli can connect to" -Quiet -Condition {
-        foreach ($brand in $script:ItBrandClsids.Keys) {
+        foreach ($brand in $probeOrder) {
             $clsid = $script:ItBrandClsids[$brand]
             $r = Invoke-Native -FilePath $wtcli -Arguments @('--json', 'list-windows') -TimeoutSec 8 -Environment @{ WT_COM_CLSID = $clsid }
             if ($r.ExitCode -eq 0) {
                 $j = $r.StdOut | ConvertFrom-JsonSafe
                 if ($null -ne $j -and $null -ne $j.windows) {
-                    Write-ItLog -Level INFO -Message "Resolved COM CLSID brand=$brand clsid=$clsid"
+                    Write-ItLog -Level INFO -Message "Resolved COM CLSID brand=$brand clsid=$clsid (expected=$expectedBrand)"
                     return $clsid
                 }
             }

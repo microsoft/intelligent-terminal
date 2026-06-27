@@ -32,11 +32,16 @@ auth.agent_selected_with_status: "智能體 %{name} — "
 auth.checking_authentication: "  %{spinner} 正在檢查驗證..."
 auth.waiting_for_authorization: "  %{spinner} 正在等待授權..."
 auth.code_copied_hint: "  代碼已複製到剪貼簿 — 請在瀏覽器中貼上。"
+auth.device_code_prompt: "造訪 %{url} 並輸入代碼：%{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "登入以使用您的智能體："
 auth.card_connect: "  連接 %{name} 以啟用智能體功能"
-auth.button_sign_in_github: "[ 使用 GitHub 登入 ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ 使用 %{name} 登入 ]"
-auth.hint_footer: "  按 Enter 登入，按 Esc 返回"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  按 Enter 複製登入命令，然後貼到新的終端機視窗中執行以完成登入"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc 返回"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter 登入 · E 使用 GitHub Enterprise · Esc 返回"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  企業網域："
+auth.enterprise_hint_footer: "  Enter 登入 · Esc 改用 github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  按 Enter 重試，或按 Esc 改用 github.com。常見原因：網域拼字錯誤或無法連線、裝置碼已過期，或你的帳戶在該主機沒有 Copilot 存取權。"  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  按 Enter 重試，或按 Esc 返回。"  # {Locked="Enter","Esc"}
 
 # ── 聊天檢視 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"

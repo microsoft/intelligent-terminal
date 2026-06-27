@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI агент %{name} — "
 auth.checking_authentication: "  %{spinner} Провјера аутентификације..."
 auth.waiting_for_authorization: "  %{spinner} Чекање на ауторизацију..."
 auth.code_copied_hint: "  Код је копиран у међуспремник — налијепите га у прегледач."
+auth.device_code_prompt: "Посјетите %{url} и унесите код: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Пријавите се да бисте користили свог агента:"
 auth.card_connect: "  Повежите %{name} да бисте омогућили функције агента"
-auth.button_sign_in_github: "[ Пријави се преко GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Пријави се преко %{name} ]"
-auth.hint_footer: "  Притисните Enter за пријаву, Esc за повратак"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Притисните Enter да бисте копирали команду за пријављивање, а затим је налијепите у нови прозор терминала да бисте довршили пријављивање"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc за повратак"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter за пријављивање · E за GitHub Enterprise · Esc за повратак"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Домен GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter за пријављивање · Esc за github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Притисните Enter да бисте покушали поново или Esc за github.com. Уобичајени узроци: погрешно унесен или недоступан домен, истекао код или нема приступа Copilot на том хосту."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Притисните Enter да бисте покушали поново или Esc за повратак."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Размишљам…"

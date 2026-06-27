@@ -105,13 +105,15 @@ pub fn has_credential(agent_id: &str) -> bool {
 
     match agent_id {
         "copilot" => {
-            std::process::Command::new("cmd")
+            let found = std::process::Command::new("cmd")
                 .args(["/C", "cmdkey /list | findstr /i copilot-cli"])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
                 .output()
                 .map(|o| !o.stdout.is_empty())
-                .unwrap_or(false)
+                .unwrap_or(false);
+            tracing::debug!(target: "agent_check", agent = "copilot", found, "copilot credential check (cmdkey)");
+            found
         }
         "claude" => {
             let path = home.join(".claude").join(".credentials.json");
@@ -158,7 +160,12 @@ pub fn run_auth_command(command: &str) -> Option<bool> {
 }
 
 /// Build the login command for an agent, resolving the full executable path.
-pub fn build_login_cmd(agent_id: &str) -> String {
+///
+/// For Copilot, an optional GitHub Enterprise host (e.g. `"mycompany.ghe.com"`)
+/// is appended as `--host https://<domain>` so users on a GHE / `ghe.com`
+/// tenant can sign in (mirroring the CLI's own `copilot login --host …`).
+/// Other agents ignore `enterprise_host`.
+pub fn build_login_cmd(agent_id: &str, enterprise_host: Option<&str>) -> String {
     let exe_path = find_exe(agent_id)
         .unwrap_or_else(|| agent_id.to_string());
 
@@ -169,11 +176,81 @@ pub fn build_login_cmd(agent_id: &str) -> String {
         _ => "login",
     };
 
-    if exe_path.contains(' ') {
-        format!("\"{}\" {}", exe_path, subcommand)
+    // Only Copilot supports a custom enterprise host on the login command.
+    let host_arg = if agent_id == "copilot" {
+        enterprise_host
+            .and_then(normalize_enterprise_host)
+            .map(|h| format!(" --host https://{}", h))
+            .unwrap_or_default()
     } else {
-        format!("{} {}", exe_path, subcommand)
+        String::new()
+    };
+
+    if exe_path.contains(' ') {
+        format!("\"{}\" {}{}", exe_path, subcommand, host_arg)
+    } else {
+        format!("{} {}{}", exe_path, subcommand, host_arg)
     }
+}
+
+/// Normalize a user-entered GitHub Enterprise domain into a bare host suitable
+/// for `--host https://<host>`. Strips any scheme (case-insensitively) and any
+/// path/query/fragment, keeping only `host[:port]`. An empty value or plain
+/// `github.com` means "no enterprise host" (returns `None`).
+pub fn normalize_enterprise_host(raw: &str) -> Option<String> {
+    let mut host = raw.trim();
+    // Strip an optional scheme, case-insensitively (so `HTTPS://…` works too).
+    for scheme in ["https://", "http://"] {
+        if host.len() >= scheme.len() && host[..scheme.len()].eq_ignore_ascii_case(scheme) {
+            host = &host[scheme.len()..];
+            break;
+        }
+    }
+    // Keep only the authority (`host[:port]`); drop any path/query/fragment so a
+    // pasted full URL like `corp.ghe.com/foo` doesn't leak into the command or
+    // the device-verification URL.
+    let host = host.split(['/', '?', '#']).next().unwrap_or("").trim();
+    if host.is_empty() || host.eq_ignore_ascii_case("github.com") {
+        None
+    } else {
+        Some(host.to_string())
+    }
+}
+
+/// Path to the small JSON file that persists Copilot auth preferences (the
+/// last-used GitHub Enterprise host). Lives in the package-private state root
+/// alongside the WT app's own settings.
+fn copilot_auth_config_path() -> Option<std::path::PathBuf> {
+    crate::runtime_paths::intelligent_terminal_root().map(|r| r.join("copilot-auth.json"))
+}
+
+/// Load the persisted Copilot GitHub Enterprise host, if any.
+pub fn load_copilot_enterprise_host() -> Option<String> {
+    let path = copilot_auth_config_path()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let host = parsed
+        .get("enterpriseHost")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    tracing::debug!(target: "agent_check", host = ?host, "loaded copilot enterprise host");
+    host
+}
+
+/// Persist (or clear) the Copilot GitHub Enterprise host for next time.
+pub fn save_copilot_enterprise_host(host: &str) {
+    let Some(path) = copilot_auth_config_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let body = serde_json::json!({ "enterpriseHost": host });
+    if let Ok(text) = serde_json::to_string_pretty(&body) {
+        let _ = std::fs::write(&path, text);
+    }
+    tracing::debug!(target: "agent_check", host = %host, "saved copilot enterprise host");
 }
 
 /// Install an agent via winget. Streams output lines through `on_line` callback.
@@ -468,4 +545,98 @@ mod tests {
         assert_eq!(merged, r"C:\Reg;C:\OnlyAtRuntime");
     }
 
+    #[test]
+    fn normalize_enterprise_host_strips_scheme_and_rejects_default() {
+        assert_eq!(
+            normalize_enterprise_host("mycompany.ghe.com"),
+            Some("mycompany.ghe.com".to_string())
+        );
+        assert_eq!(
+            normalize_enterprise_host("  mycompany.ghe.com  "),
+            Some("mycompany.ghe.com".to_string())
+        );
+        assert_eq!(
+            normalize_enterprise_host("https://mycompany.ghe.com/"),
+            Some("mycompany.ghe.com".to_string())
+        );
+        assert_eq!(
+            normalize_enterprise_host("http://mycompany.ghe.com"),
+            Some("mycompany.ghe.com".to_string())
+        );
+        // Empty, whitespace, or plain github.com mean "no enterprise host".
+        assert_eq!(normalize_enterprise_host(""), None);
+        assert_eq!(normalize_enterprise_host("   "), None);
+        assert_eq!(normalize_enterprise_host("github.com"), None);
+        assert_eq!(normalize_enterprise_host("GitHub.com"), None);
+    }
+
+    /// Hardening (review fix ③): an uppercase scheme must still be stripped, a
+    /// pasted full URL must keep only `host[:port]` (dropping any path/query),
+    /// and a `github.com` with scheme/path is still the default (None).
+    #[test]
+    fn normalize_enterprise_host_strips_uppercase_scheme_and_path() {
+        assert_eq!(
+            normalize_enterprise_host("HTTPS://corp.ghe.com"),
+            Some("corp.ghe.com".to_string())
+        );
+        assert_eq!(
+            normalize_enterprise_host("https://corp.ghe.com/some/path"),
+            Some("corp.ghe.com".to_string())
+        );
+        assert_eq!(
+            normalize_enterprise_host("corp.ghe.com/foo"),
+            Some("corp.ghe.com".to_string())
+        );
+        // A port is part of the authority and must be preserved.
+        assert_eq!(
+            normalize_enterprise_host("corp.ghe.com:8443"),
+            Some("corp.ghe.com:8443".to_string())
+        );
+        assert_eq!(
+            normalize_enterprise_host("https://corp.ghe.com:8443/x?y#z"),
+            Some("corp.ghe.com:8443".to_string())
+        );
+        // github.com with a scheme/path is still the default (no enterprise).
+        assert_eq!(normalize_enterprise_host("github.com/foo"), None);
+        assert_eq!(normalize_enterprise_host("HTTP://GitHub.com"), None);
+    }
+
+    #[test]
+    fn build_login_cmd_copilot_appends_enterprise_host() {
+        // exe path may resolve to a full path on dev machines, so assert on
+        // the suffix / substring rather than an exact string.
+        let base = build_login_cmd("copilot", None);
+        assert!(base.trim_end().ends_with("login"), "default copilot: {base}");
+        assert!(!base.contains("--host"), "default must not add --host: {base}");
+
+        let ghe = build_login_cmd("copilot", Some("mycompany.ghe.com"));
+        assert!(
+            ghe.contains("login --host https://mycompany.ghe.com"),
+            "GHE login: {ghe}"
+        );
+
+        // A scheme-prefixed domain is normalized (no double scheme).
+        let ghe2 = build_login_cmd("copilot", Some("https://corp.ghe.com/"));
+        assert!(
+            ghe2.contains("login --host https://corp.ghe.com"),
+            "normalized GHE login: {ghe2}"
+        );
+        assert!(!ghe2.contains("https://https://"), "no double scheme: {ghe2}");
+
+        // Plain github.com is the default — no --host.
+        let gh = build_login_cmd("copilot", Some("github.com"));
+        assert!(!gh.contains("--host"), "github.com must not add --host: {gh}");
+    }
+
+    #[test]
+    fn build_login_cmd_non_copilot_ignores_host() {
+        // Only Copilot honors an enterprise host; other agents never get one.
+        let claude = build_login_cmd("claude", Some("mycompany.ghe.com"));
+        assert!(!claude.contains("--host"), "claude must ignore host: {claude}");
+        assert!(claude.contains("login"), "claude login: {claude}");
+
+        let codex = build_login_cmd("codex", Some("mycompany.ghe.com"));
+        assert!(codex.contains("auth"), "codex auth: {codex}");
+        assert!(!codex.contains("--host"), "codex must ignore host: {codex}");
+    }
 }

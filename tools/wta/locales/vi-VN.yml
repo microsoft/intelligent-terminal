@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI tác nhân AI %{name} — "
 auth.checking_authentication: "  %{spinner} Đang kiểm tra xác thực..."
 auth.waiting_for_authorization: "  %{spinner} Đang chờ ủy quyền..."
 auth.code_copied_hint: "  Mã đã được sao chép vào bộ nhớ tạm — hãy dán vào trình duyệt của bạn."
+auth.device_code_prompt: "Truy cập %{url} và nhập mã: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Đăng nhập để sử dụng tác nhân AI của bạn:"
 auth.card_connect: "  Kết nối %{name} để bật tính năng tác nhân AI"
-auth.button_sign_in_github: "[ Đăng nhập bằng GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Đăng nhập bằng %{name} ]"
-auth.hint_footer: "  Nhấn Enter để đăng nhập, Esc để quay lại"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Nhấn Enter để sao chép lệnh đăng nhập, rồi dán lệnh đó vào cửa sổ terminal mới để hoàn tất đăng nhập"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc để quay lại"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter để đăng nhập · E để dùng GitHub Enterprise · Esc để quay lại"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Miền doanh nghiệp: "
+auth.enterprise_hint_footer: "  Enter để đăng nhập · Esc để dùng github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Nhấn Enter để thử lại hoặc Esc để dùng github.com. Nguyên nhân thường gặp: nhập sai miền hoặc miền không truy cập được, mã đã hết hạn, hoặc tài khoản của bạn không có quyền truy cập Copilot trên máy chủ đó."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Nhấn Enter để thử lại hoặc Esc để quay lại."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Đang suy nghĩ…"

@@ -1,5 +1,5 @@
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::App;
 
@@ -60,40 +60,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             )));
         }
     } else {
-        if auth.status_message.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("auth.agent_selected", name = &auth.agent_name).into_owned(),
-                    Style::new().fg(Color::Reset),
-                ),
-            ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("auth.agent_selected_with_status", name = &auth.agent_name).into_owned(),
-                    Style::new().fg(Color::Reset),
-                ),
-                Span::styled(
-                    &auth.status_message,
-                    Style::new().fg(Color::Yellow),
-                ),
-            ]));
-        }
-
-        lines.push(Line::from(""));
-
-        lines.push(Line::from(vec![
-            Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-            Span::styled(
-                t!("auth.sign_in_prompt").into_owned(),
-                Style::new().fg(Color::Reset),
-            ),
-        ]));
-
-        lines.push(Line::from(""));
-
+        // Concise header: a single line (which agent + why). Any failure
+        // status is shown at the *bottom* of the screen, not here.
         lines.push(Line::from(Span::styled(
             t!("auth.card_connect", name = &auth.agent_name).into_owned(),
             Style::new().fg(Color::Reset),
@@ -101,26 +69,72 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
         lines.push(Line::from(""));
 
-        let button_text = if auth.agent_name.contains("Copilot") {
-            t!("auth.button_sign_in_github").into_owned()
+        // Footer. For Copilot it carries the GitHub Enterprise affordance —
+        // collapsed it's just an "E" key hint; expanded it shows the domain
+        // input plus a github.com fallback hint. For other agents the sign-in
+        // is a copy-the-command flow: before sign-in show the copy/paste
+        // instruction; after Enter (command copied) replace it with the
+        // "command copied — retry" status, then an Esc hint.
+        if auth.agent_id == "copilot" {
+            if auth.enterprise_mode {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        t!("auth.enterprise_domain_label").into_owned(),
+                        Style::new().fg(Color::Reset),
+                    ),
+                    Span::styled(
+                        format!("{}\u{2588}", auth.enterprise_host),
+                        Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    t!("auth.enterprise_hint_footer").into_owned(),
+                    DIM_TEXT,
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    t!("auth.enterprise_prompt").into_owned(),
+                    DIM_TEXT,
+                )));
+            }
+            // Failure feedback at the bottom: a prior attempt set status_message
+            // (e.g. an unreachable enterprise host). Show the reason in yellow
+            // followed by a dim, situation-specific guidance line.
+            if !auth.status_message.is_empty() {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", auth.status_message),
+                    Style::new().fg(Color::Yellow),
+                )));
+                let help = if auth.enterprise_mode {
+                    t!("auth.login_failed_help_enterprise").into_owned()
+                } else {
+                    t!("auth.login_failed_help_default").into_owned()
+                };
+                lines.push(Line::from(Span::styled(help, DIM_TEXT)));
+            }
         } else {
-            t!("auth.button_sign_in_with", name = &auth.agent_name).into_owned()
-        };
-        lines.push(Line::from(vec![
-            Span::raw("                          "),
-            Span::styled(
-                button_text,
-                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-            ),
-        ]));
-
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            t!("auth.hint_footer").into_owned(),
-            DIM_TEXT,
-        )));
+            if auth.status_message.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    t!("auth.hint_footer").into_owned(),
+                    DIM_TEXT,
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", auth.status_message),
+                    Style::new().fg(Color::Yellow),
+                )));
+            }
+            lines.push(Line::from(Span::styled(
+                t!("auth.hint_footer_back").into_owned(),
+                DIM_TEXT,
+            )));
+        }
     }
 
-    let paragraph = Paragraph::new(lines).alignment(crate::rtl::text_alignment());
+    let paragraph = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .alignment(crate::rtl::text_alignment());
     frame.render_widget(paragraph, area);
 }

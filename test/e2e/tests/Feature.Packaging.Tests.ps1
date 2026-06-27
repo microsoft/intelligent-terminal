@@ -19,19 +19,38 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Packaged wta.exe is present (co-located in the install dir)' {
-        $script:app.WtaPath | Should -Match 'WindowsApps'
+        # Co-located = resolved from the package InstallLocation (WindowsApps for an installed
+        # Store package, or the run-from-layout AppX dir for a Dev/F5 build) — NOT the stray
+        # unpackaged tools\wta\target fallback, which would lack package identity for COM.
+        $script:app.WtaPath | Should -BeLike "$($script:app.InstallLocation)*"
+        $script:app.WtaPath | Should -Not -Match 'tools[\\/]wta[\\/]target'
         Test-Path $script:app.WtaPath | Should -BeTrue
     }
     It 'Packaged identity works (wtcli reaches COM via brand CLSID)' {
         $script:app.ComClsid | Should -Match '^\{[0-9A-Fa-f-]+\}$'
         @(Get-WtWindows -App $script:app).Count | Should -BeGreaterThan 0
     }
-    It 'Wrong unpackaged WTA is not used (resolved binary is in the package)' {
-        $script:app.WtcliPath | Should -Match 'WindowsApps'
+    It 'Packaged wtcli is co-located in the package (no unpackaged fallback)' {
+        # Co-location is the guarantee: wtcli must resolve from the package InstallLocation
+        # (WindowsApps for Store, or the Dev layout AppX dir), NOT its non-packaged fallbacks —
+        # for wtcli that's a PATH-resolved standalone (Get-Command wtcli) or
+        # bin/x64/{Debug,Release}/wtcli/wtcli.exe (cli_channel.rs), none of which live under the
+        # InstallLocation. So -BeLike InstallLocation* alone fully covers it (no tools\wta\target
+        # check here — that's wta.exe's fallback, asserted in the wta.exe case above).
+        $script:app.WtcliPath | Should -BeLike "$($script:app.InstallLocation)*"
     }
     It 'WT_COM_CLSID resolves to a live server' {
         # Probing the brand CLSID succeeded during Start-Terminal; re-confirm a call works.
         { Invoke-WtCli -App $script:app -Arguments @('active-pane') } | Should -Not -Throw
+    }
+    It 'WT_COM_CLSID is injected into pane shells' {
+        # WT injects WT_COM_CLSID into every pane's shell environment so a co-located
+        # wtcli/agent can discover the per-brand COM server. Read it back from the active
+        # PowerShell pane and assert it is a braced CLSID (not empty / unset).
+        $sid = (Get-ActivePane -App $script:app).session_id
+        $out = Invoke-RunCommand -App $script:app -SessionId $sid `
+            -Command 'Write-Output "CLSIDENV=$env:WT_COM_CLSID"' -SettleSec 8
+        $out | Should -Match 'CLSIDENV=\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}'
     }
     It 'wtcli list-panes works' {
         @(Get-WtPanes -App $script:app).Count | Should -BeGreaterThan 0
@@ -105,5 +124,41 @@ Describe 'Feature §10 Diagnostics + logging' -Tag 'Feature' -Skip:(-not $script
     }
     It 'Early startup failures would be logged (master log has startup entries)' {
         (Get-ItLogText -App $script:app -Name 'wta-main_master.log') | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Feature §10 log retention' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    # Isolated: this case restarts the build, so it owns its own app lifecycle.
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        $script:staleDir = $null
+    }
+    AfterAll {
+        if ($script:staleDir -and (Test-Path $script:staleDir)) {
+            Remove-Item $script:staleDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if ($script:app) { Stop-Terminal -App $script:app }
+    }
+
+    It 'Old log cleanup is safe (running version survives; stale version dirs are pruned)' {
+        $curDir = Get-ItLogDir -App $script:app
+        $curDir | Should -Not -BeNullOrEmpty
+        # Sentinel inside the CURRENT (running) version dir — must survive a restart.
+        $sentinel = Join-Path $curDir 'retention-sentinel.log'
+        Set-Content -LiteralPath $sentinel -Value 'keep-me' -Encoding utf8
+        # A stale OTHER-version dir — startup housekeeping should prune it wholesale.
+        $script:staleDir = Join-Path $script:app.LogRootDir '0.0.0.1'
+        New-Item -ItemType Directory -Path $script:staleDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:staleDir 'old.log') -Value 'prune-me' -Encoding utf8
+
+        # Restart the build: the new wta-master startup runs prune_old_version_dirs, which keeps
+        # only the current version's dir and deletes every other version dir wholesale.
+        Stop-Terminal -App $script:app
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
+        Test-Until -TimeoutSec 25 -IntervalSec 1 -Condition { -not (Test-Path $script:staleDir) } | Out-Null
+
+        Test-Path $sentinel        | Should -BeTrue   # running version's logs were NOT deleted
+        Test-Path $script:staleDir | Should -BeFalse  # stale version dir was pruned
     }
 }

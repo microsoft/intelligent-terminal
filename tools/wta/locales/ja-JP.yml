@@ -32,11 +32,16 @@ auth.agent_selected_with_status: "エージェント %{name} — "
 auth.checking_authentication: "  %{spinner} 認証を確認中..."
 auth.waiting_for_authorization: "  %{spinner} 承認を待機中..."
 auth.code_copied_hint: "  コードがクリップボードにコピーされました — ブラウザーに貼り付けてください。"
+auth.device_code_prompt: "%{url} にアクセスし、コード %{code} を入力してください"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "エージェントを使用するにはサインインしてください:"
 auth.card_connect: "  %{name} を接続してエージェント機能を有効にする"
-auth.button_sign_in_github: "[ GitHub でサインイン ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} でサインイン ]"
-auth.hint_footer: "  Enter でサインイン、Esc で戻る"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Enter を押してサインイン コマンドをコピーし、新しいターミナル ウィンドウに貼り付けて実行し、サインインを完了します"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc で戻る"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter でサインイン · E で GitHub Enterprise を使用 · Esc で戻る"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  エンタープライズ ドメイン: "
+auth.enterprise_hint_footer: "  Enter でサインイン · Esc で github.com を使用"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Enter を押して再試行するか、Esc で github.com を使用します。一般的な原因: ドメインの入力ミスまたは到達不能、コードの有効期限切れ、またはそのホストでアカウントに Copilot へのアクセス権がないこと。"  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Enter を押して再試行するか、Esc で戻ります。"  # {Locked="Enter","Esc"}
 
 # ── チャット ビュー (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "考え中…"

@@ -9,6 +9,7 @@ APPLYTOSUBMENUS
 appxrecipe
 bitfield
 bitfields
+BITMAPFILEHEADER
 BUILDBRANCH
 BUILDMSG
 BUILDNUMBER
@@ -125,6 +126,7 @@ overridable
 PAGESCROLL
 PALLOC
 PATINVERT
+Pels
 PICKFOLDERS
 PINPUT
 pmr
@@ -194,6 +196,7 @@ virtualalloc
 wcsnicmp
 wcsnlen
 WDJ
+wingdi
 winhttp
 wininet
 winmain
@@ -230,5 +233,6 @@ xtree
 xutility
 YIcon
 YMax
+YPels
 zstring
 zwstring

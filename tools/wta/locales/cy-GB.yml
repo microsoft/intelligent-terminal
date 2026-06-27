@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI asiant %{name} — "
 auth.checking_authentication: "  %{spinner} Yn gwirio dilysiad..."
 auth.waiting_for_authorization: "  %{spinner} Yn aros am awdurdodiad..."
 auth.code_copied_hint: "  Cod wedi'i gopïo i'r clipfwrdd — gludiwch ef yn eich porwr."
+auth.device_code_prompt: "Ewch i %{url} a rhowch y cod: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Mewngofnodwch i ddefnyddio'ch asiant:"
 auth.card_connect: "  Cysylltwch %{name} i alluogi nodweddion asiant"
-auth.button_sign_in_github: "[ Mewngofnodi gyda GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Mewngofnodi gyda %{name} ]"
-auth.hint_footer: "  Pwyswch Enter i fewngofnodi, Esc i fynd yn ôl"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Pwyswch Enter i gopïo'r gorchymyn mewngofnodi, yna gludwch ef mewn ffenestr derfynell newydd i orffen mewngofnodi"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc i fynd yn ôl"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = mewngofnodi · E = GitHub Enterprise · Esc = mynd yn ôl"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Parth Enterprise: "
+auth.enterprise_hint_footer: "  Enter = mewngofnodi · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pwyswch Enter i roi cynnig arall, neu Esc ar gyfer github.com. Achosion cyffredin: parth wedi'i deipio'n anghywir neu na ellir ei gyrraedd, cod sydd wedi dod i ben, neu ddim mynediad Copilot ar y gwesteiwr hwnnw."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pwyswch Enter i roi cynnig arall, neu Esc i fynd yn ôl."  # {Locked="Enter","Esc"}
 
 # ── Golwg sgwrs (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Yn meddwl…"

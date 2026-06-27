@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Kontrola ověření..."
 auth.waiting_for_authorization: "  %{spinner} Čekání na autorizaci..."
 auth.code_copied_hint: "  Kód zkopírován do schránky — vložte ho v prohlížeči."
+auth.device_code_prompt: "Navštivte %{url} a zadejte kód: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Přihlaste se, abyste mohli používat agenta:"
 auth.card_connect: "  Připojit %{name} pro povolení funkcí agenta"
-auth.button_sign_in_github: "[ Přihlásit se přes GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Přihlásit se přes %{name} ]"
-auth.hint_footer: "  Stiskněte Enter pro přihlášení, Esc pro návrat"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Stisknutím Enter zkopírujte příkaz pro přihlášení a pak ho vložte do nového okna terminálu, abyste dokončili přihlášení"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc pro návrat"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter pro přihlášení · E pro GitHub Enterprise · Esc pro návrat"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Doména GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter pro přihlášení · Esc pro github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Stisknutím Enter to zkuste znovu, nebo Esc pro github.com. Běžné příčiny: chybně zadaná nebo nedostupná doména, kód s vypršenou platností nebo chybějící přístup Copilot na tomto hostiteli."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Stisknutím Enter to zkuste znovu, nebo Esc pro návrat."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Přemýšlím..."

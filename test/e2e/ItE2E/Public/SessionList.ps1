@@ -3,21 +3,45 @@
 # (live + historical) in the agent pane. Navigate ↑/↓, Enter launches/resumes, Esc exits.
 # Like all agent-pane UI, it's TEXT captured via Get-AgentPaneText.
 
+function Get-SessionViewRenderRegex {
+    <#
+    .SYNOPSIS
+        Regex that detects the rendered session view, robust across locales AND pane widths. The
+        view's footer hint (agents.footer_hint) is drawn in BOTH the loading and populated branches
+        (ui/agents_view.rs render_footer_hint), so it's the reliable "view is open" signal — but it
+        is end-truncated to the pane width (render_footer_hint → trunc), so the full localized line
+        may not appear. EVERY bundled locale leads the hint with the invariant nav arrows "↑ ↓"
+        (e.g. en "(↑ ↓ to navigate …)", zh "(↑ ↓ 导航 …)"), and being at the start they survive
+        truncation — so match those. The en-US footer words are an extra fallback.
+    #>
+    [CmdletBinding()] param()
+    '↑\s*↓|to launch session|to exit|No sessions|navigate'
+}
+
 function Open-SessionList {
     <#
     .SYNOPSIS
         Open the session-management view in the agent pane (via SessionToggleButton) and
         wait until the list renders. Returns the agent pane session object.
+    .NOTES
+        SessionToggleButton is a TOGGLE: if the view is already open (or a click lands during a
+        transition) a single press can CLOSE it, leaving us in chat view. So we verify the list
+        actually rendered and re-toggle up to a few times instead of trusting one click.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 20)
     process {
         Open-AgentPane -App $App | Out-Null
         $sess = Get-AgentPaneSession -App $App
-        Invoke-UiElement -App $App -Selector 'SessionToggleButton' -TimeoutSec 10 | Out-Null
-        Wait-Until -TimeoutSec $TimeoutSec -Because "the session list to render" -Condition {
-            (Get-AgentPaneText -App $App -MaxLines 50) -match 'to launch session|to exit|No sessions|navigate'
-        } | Out-Null
-        $sess
+        $renderRe = Get-SessionViewRenderRegex
+        $shownNow = { (Get-AgentPaneText -App $App -MaxLines 50) -match $renderRe }
+        $perTry = [Math]::Max(3, [int]($TimeoutSec / 3))
+        for ($try = 0; $try -lt 3; $try++) {
+            # Already open? Don't toggle (that would CLOSE it). Otherwise press and verify.
+            if (& $shownNow) { return $sess }
+            Invoke-UiElement -App $App -Selector 'SessionToggleButton' -TimeoutSec 10 | Out-Null
+            if (Test-Until -TimeoutSec $perTry -IntervalSec 0.5 -Condition $shownNow) { return $sess }
+        }
+        throw "Open-SessionList: the session view did not render after 3 toggles (${TimeoutSec}s)."
     }
 }
 
@@ -32,11 +56,12 @@ function Close-SessionList {
 }
 
 function Test-SessionListShown {
-    <# Is the session-management view currently displayed? #>
+    <# Is the session-management view currently displayed? (locale-robust footer-hint match) #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 5)
     process {
+        $renderRe = Get-SessionViewRenderRegex
         Test-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Condition {
-            (Get-AgentPaneText -App $App -MaxLines 50) -match 'to launch session|Enter to launch|No sessions'
+            (Get-AgentPaneText -App $App -MaxLines 50) -match $renderRe
         }
     }
 }

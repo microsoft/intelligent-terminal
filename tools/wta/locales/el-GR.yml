@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI παράγοντα %{name} — "
 auth.checking_authentication: "  %{spinner} Έλεγχος ταυτοποίησης..."
 auth.waiting_for_authorization: "  %{spinner} Αναμονή εξουσιοδότησης..."
 auth.code_copied_hint: "  Ο κωδικός αντιγράφηκε στο πρόχειρο — επικολλήστε τον στο πρόγραμμα περιήγησης."
+auth.device_code_prompt: "Επισκεφθείτε τη διεύθυνση %{url} και εισαγάγετε τον κωδικό: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Συνδεθείτε για να χρησιμοποιήσετε τον παράγοντα:"
 auth.card_connect: "  Συνδέστε το %{name} για ενεργοποίηση λειτουργιών παράγοντα"
-auth.button_sign_in_github: "[ Σύνδεση με GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Σύνδεση με %{name} ]"
-auth.hint_footer: "  Πατήστε Enter για σύνδεση, Esc για επιστροφή"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Πατήστε Enter για να αντιγράψετε την εντολή εισόδου και, στη συνέχεια, επικολλήστε την σε ένα νέο παράθυρο τερματικού για να ολοκληρώσετε την είσοδο"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc για επιστροφή"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = είσοδος · E = GitHub Enterprise · Esc = επιστροφή"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Τομέας Enterprise: "
+auth.enterprise_hint_footer: "  Enter = είσοδος · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Πατήστε Enter για να δοκιμάσετε ξανά ή Esc για github.com. Συνήθεις αιτίες: λανθασμένος ή μη προσβάσιμος τομέας, ληγμένος κωδικός ή απουσία πρόσβασης Copilot σε αυτόν τον κεντρικό υπολογιστή."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Πατήστε Enter για να δοκιμάσετε ξανά ή Esc για επιστροφή."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Σκέφτομαι…"

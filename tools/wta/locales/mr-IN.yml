@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "एजंट %{name} — "
 auth.checking_authentication: "  %{spinner} प्रमाणीकरण तपासले जात आहे..."
 auth.waiting_for_authorization: "  %{spinner} प्राधिकरणाची प्रतीक्षा आहे..."
 auth.code_copied_hint: "  कोड क्लिपबोर्डवर कॉपी केला — तुमच्या ब्राउझरमध्ये पेस्ट करा."
+auth.device_code_prompt: "%{url} ला भेट द्या आणि कोड प्रविष्ट करा: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "तुमचा एजंट वापरण्यासाठी साइन इन करा:"
 auth.card_connect: "  एजंट वैशिष्ट्ये सक्षम करण्यासाठी %{name} कनेक्ट करा"
-auth.button_sign_in_github: "[ GitHub ने साइन इन करा ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} ने साइन इन करा ]"
-auth.hint_footer: "  साइन इन करण्यासाठी Enter दाबा, मागे जाण्यासाठी Esc दाबा"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  साइन-इन कमांड कॉपी करण्यासाठी Enter दाबा, नंतर साइन इन पूर्ण करण्यासाठी तो नवीन टर्मिनल विंडोमध्ये पेस्ट करा"  # {Locked="Enter"}
+auth.hint_footer_back: "  मागे जाण्यासाठी Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  साइन इन करण्यासाठी Enter · GitHub Enterprise साठी E · मागे जाण्यासाठी Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise डोमेन: "
+auth.enterprise_hint_footer: "  साइन इन करण्यासाठी Enter · github.com साठी Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  पुन्हा प्रयत्न करण्यासाठी Enter दाबा, किंवा github.com साठी Esc. सामान्य कारणे: चुकीचा टाइप केलेला किंवा पोहोचता न येणारा डोमेन, कालबाह्य झालेला कोड, किंवा त्या होस्टवर Copilot प्रवेश नसणे."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  पुन्हा प्रयत्न करण्यासाठी Enter दाबा, किंवा मागे जाण्यासाठी Esc."  # {Locked="Enter","Esc"}
 
 # ── चॅट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "विचार करत आहे…"

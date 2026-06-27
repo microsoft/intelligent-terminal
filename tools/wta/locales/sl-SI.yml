@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI agenta %{name} — "
 auth.checking_authentication: "  %{spinner} Preverjanje pristnosti..."
 auth.waiting_for_authorization: "  %{spinner} Čakanje na avtorizacijo..."
 auth.code_copied_hint: "  Koda kopirana v odložišče — prilepite jo v brskalnik."
+auth.device_code_prompt: "Obiščite %{url} in vnesite kodo: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Prijavite se za uporabo agenta:"
 auth.card_connect: "  Povežite %{name} za omogočanje funkcij agenta"
-auth.button_sign_in_github: "[ Prijava z GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prijava z %{name} ]"
-auth.hint_footer: "  Pritisnite Enter za prijavo, Esc za vrnitev"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Pritisnite Enter, da kopirate ukaz za prijavo, nato ga prilepite v novo okno terminala, da dokončate prijavo"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc za nazaj"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter za prijavo · E za GitHub Enterprise · Esc za nazaj"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domena GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter za prijavo · Esc za github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pritisnite Enter za ponovni poskus ali Esc za github.com. Pogosti vzroki: napačno vnesena ali nedosegljiva domena, potekla koda ali brez dostopa Copilot na tem gostitelju."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pritisnite Enter za ponovni poskus ali Esc za nazaj."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam..."

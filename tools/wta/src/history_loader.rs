@@ -2945,11 +2945,11 @@ mod tests {
     fn codex_user_text_is_synthetic_recognizes_bare_and_dir_headings() {
         // Project AGENTS.md (directory=Some) -> "# AGENTS.md instructions for <dir>".
         assert!(codex_user_text_is_synthetic(
-            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\n be concise \n</INSTRUCTIONS>"
         ));
         // Global ~/.codex/AGENTS.md (directory=None) -> bare "# AGENTS.md instructions".
         assert!(codex_user_text_is_synthetic(
-            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\n be concise \n</INSTRUCTIONS>"
         ));
         // Bare heading with nothing after it, and with tolerated leading space.
         assert!(codex_user_text_is_synthetic("# AGENTS.md instructions"));
@@ -3002,7 +3002,7 @@ mod tests {
 \"content\":[{{\"text\":\"<environment_context>cwd=C:/proj</environment_context>\"}}]}}}}\n");
         let agents = format!(
             "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\nbody\\n</INSTRUCTIONS>\"}}]}}}}\n");
+\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
         write_file(&path, &(codex_meta_line(id, "2026-05-28T17:00:00Z", "C:/proj") + &env + &agents));
         assert_eq!(load_codex(&home).len(), 0,
                    "meta + env_context + bare AGENTS.md injection alone must be phantom");
