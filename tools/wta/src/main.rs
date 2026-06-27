@@ -480,6 +480,18 @@ enum Command {
         #[arg(long)]
         agent: String,
     },
+
+    /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
+    /// `session/list` (`list_sessions`) and print what it returns.
+    /// Used to evaluate whether ACP session enumeration can replace
+    /// reading on-disk transcripts. Prints a pretty JSON object to
+    /// stdout; on error: non-zero exit, message on stderr.
+    ProbeSessions {
+        /// Full agent cmdline, same shape as `--agent` (e.g.
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
+        #[arg(long)]
+        agent: String,
+    },
 }
 
 
@@ -876,6 +888,9 @@ async fn main() -> Result<()> {
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
+        // ── ACP session/list probe (diagnostic) ──
+        Some(Command::ProbeSessions { agent }) => run_probe_sessions(&agent).await,
+
         // ── No subcommand: a singleton-service mode, or an error. There
         //    is no standalone/default ACP TUI mode — the direct agent-spawn
         //    path was removed, so bare `wta` always runs as a WT-launched
@@ -935,6 +950,7 @@ fn process_label(cli: &Cli) -> String {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
+        Some(Command::ProbeSessions { .. }) => "probe".to_string(),
         Some(Command::Hooks {
             action: HooksAction::Install { .. },
         }) => "install-hooks".to_string(),
@@ -985,6 +1001,43 @@ async fn run_probe_models(agent: &str) -> Result<()> {
     // when they notice their pipes are broken.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     // Flush the file appender — process::exit skips the guard drop.
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Drive [`protocol::acp::probe::probe_sessions`] on a tokio `LocalSet`
+/// (the ACP client connection is `!Send`), print the result as pretty
+/// JSON to stdout, force-exit. Diagnostic-only: evaluates whether an
+/// agent CLI answers ACP `session/list` and what it returns.
+async fn run_probe_sessions(agent: &str) -> Result<()> {
+    tracing::info!("probe-sessions start: agent={}", agent);
+
+    let local = tokio::task::LocalSet::new();
+    let result = match local
+        .run_until(protocol::acp::probe::probe_sessions(agent))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("probe-sessions failed: {:#}", e);
+            eprintln!("probe-sessions failed: {:#}", e);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            logging::shutdown_flush();
+            std::process::exit(1);
+        }
+    };
+    tracing::info!(
+        "probe-sessions ok: list_ok={} sessions={} err={:?}",
+        result.list_sessions_ok,
+        result.sessions.len(),
+        result.list_sessions_error
+    );
+    let payload = serde_json::to_string_pretty(&result).context("serialize session probe")?;
+    println!("{payload}");
+
+    // Same force-exit rationale as run_probe_models (orphan npx/node
+    // grandchildren keep the tokio reactor blocked on drop).
+    let _ = std::io::Write::flush(&mut std::io::stdout());
     logging::shutdown_flush();
     std::process::exit(0);
 }
