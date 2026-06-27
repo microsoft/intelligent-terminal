@@ -50,7 +50,7 @@ When the failure is an unrecognized / not-found command (in any language), never
 ```
 
 ```json
-{"action": "explain", "title": "No such command: frobnicate", "explanation": "`frobnicate` isn't recognized — there's no command by that name in this shell, and nothing close to it.\n\n**Why no auto-fix:** there's no obvious intended command to run.\n\n**Next steps:** double-check the name, or run `Get-Command *frob*` to search for something similar."}
+{"action": "explain", "title": "No such command: frobnicate", "explanation": "`frobnicate` isn't recognized — there's no command by that name in this shell, and no near-match was found.\n\n**Why no auto-fix:** there's no obvious intended command to run.\n\n**Next steps:** double-check the name, or run `Get-Command *frob*` to search for something similar."}
 ```
 
 ```json

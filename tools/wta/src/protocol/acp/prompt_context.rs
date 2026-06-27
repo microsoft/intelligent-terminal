@@ -41,10 +41,12 @@ pub(crate) struct ContextRequest<'a> {
     /// Shell manager for providers that query WT directly (planner terminal
     /// context).
     pub shell_mgr: &'a ShellManager,
-    /// Autofix only: the resolved active pane JSON, or `None` when WT is not
+    /// Autofix only: the JSON of the pane whose shell/cwd describe the failing
+    /// command (the source pane — for error-triggered autofix this can be a
+    /// pane in a non-focused tab, not the active pane). `None` when WT is not
     /// connected / no pane resolved.
-    pub active_pane: Option<&'a serde_json::Value>,
-    /// Autofix only: the canonical shell exe of the active pane
+    pub context_pane: Option<&'a serde_json::Value>,
+    /// Autofix only: the canonical shell exe of the failing pane
     /// (`pwsh.exe` / `cmd.exe` / `wsl.exe` …), from its pid.
     pub shell_exe: Option<&'a str>,
     /// Autofix only: the failing pane's last `[command + output]` buffer.
@@ -162,12 +164,12 @@ impl ContextProvider for ShellContextProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        req.is_autofix && req.active_pane.is_some()
+        req.is_autofix && req.context_pane.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let active = req.active_pane?;
-        let cwd = active
+        let pane = req.context_pane?;
+        let cwd = pane
             .get("cwd")
             .and_then(|v| v.as_str())
             .unwrap_or("")
@@ -270,7 +272,7 @@ mod tests {
             is_autofix: false,
             wt_connected,
             shell_mgr: mgr,
-            active_pane: None,
+            context_pane: None,
             shell_exe: None,
             terminal_output: None,
         }
@@ -313,18 +315,18 @@ mod tests {
     }
 
     #[test]
-    fn shell_context_requires_autofix_with_active_pane() {
+    fn shell_context_requires_autofix_with_context_pane() {
         let mgr = ShellManager::new();
         let pane = serde_json::json!({ "cwd": "C:\\proj" });
         let with_pane = ContextRequest {
             is_autofix: true,
-            active_pane: Some(&pane),
+            context_pane: Some(&pane),
             ..req_planner(&mgr, true)
         };
         assert!(ShellContextProvider.applies(&with_pane));
         // Planner turn never ships the autofix shell header.
         let planner = ContextRequest {
-            active_pane: Some(&pane),
+            context_pane: Some(&pane),
             ..req_planner(&mgr, true)
         };
         assert!(!ShellContextProvider.applies(&planner));

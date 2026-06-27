@@ -1030,6 +1030,25 @@ fn shell_from_active(active: &serde_json::Value) -> Option<String> {
         .and_then(|pid| process_image_name(pid as u32))
 }
 
+/// Resolve a pane's full JSON (`shell`, `cwd`, `session_id`, `pid`, …) by its
+/// session id within a tab, via `list_panes`. Used by error-triggered autofix,
+/// where the failing pane can live in a non-focused tab and so is **not** the
+/// active pane returned by `get_active_pane`. Returns `None` when the tab/pane
+/// can't be resolved (channel error, tab closed, no matching pane).
+async fn resolve_pane_in_tab(
+    shell_mgr: &ShellManager,
+    tab_id: &str,
+    pane_id: &str,
+) -> Option<serde_json::Value> {
+    let panes = shell_mgr.wt_list_panes(tab_id).await.ok()?;
+    panes
+        .get("panes")?
+        .as_array()?
+        .iter()
+        .find(|p| json_str_or_num(p.get("session_id")).as_deref() == Some(pane_id))
+        .cloned()
+}
+
 pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
@@ -1137,27 +1156,17 @@ async fn build_prompt_text(
     );
 
     // ── Shared context resolution ───────────────────────────────────────────
-    // Autofix turns read the active pane, its canonical shell, and the failing
-    // pane's last output once; the providers below borrow these from the
-    // `ContextRequest`. Planner turns need none of it (their providers query
-    // the shell manager directly). Resolving here also keeps the
-    // `resolved_fix_pane` side-output — which is plumbing, not prompt context —
-    // out of the provider chain.
-    let mut active_pane: Option<serde_json::Value> = None;
+    // Autofix turns resolve the failing pane, its canonical shell, and its last
+    // output once; the providers below borrow these from the `ContextRequest`.
+    // Planner turns need none of it (their providers query the shell manager
+    // directly). Resolving here also keeps the `resolved_fix_pane` side-output
+    // — which is plumbing, not prompt context — out of the provider chain.
+    let mut context_pane: Option<serde_json::Value> = None;
     let mut shell_exe: Option<String> = None;
     let mut terminal_output: Option<String> = None;
 
     if is_autofix && wt_connected {
-        // Resolve the active pane once: it supplies the shell-context header
-        // and — for a manual `/fix`, which carries no explicit `source_pane_id`
-        // — doubles as the source-pane resolver. WT's GetActivePane already
-        // maps the agent pane to the user's working pane, so this is the same
-        // target the error-triggered path gets from its notification.
         let active = shell_mgr.wt_get_active_pane().await.ok();
-        // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's
-        // pid — load-bearing for both the shell-context header and the
-        // command-not-found near-match gate.
-        shell_exe = active.as_ref().and_then(shell_from_active);
 
         // Explicit source pane (error-triggered autofix) wins; otherwise fall
         // back to the resolved active working pane (`/fix`). An active pane that
@@ -1183,6 +1192,26 @@ async fn build_prompt_text(
             resolved_fix_pane = source_pane_id.clone();
         }
 
+        // The pane whose shell/cwd describe the FAILING command — drives the
+        // `### Shell Context` header and the command-not-found near-match gate.
+        // For a manual `/fix` the active pane IS the source. But error-triggered
+        // autofix can fire for a pane in a *non-focused* tab, so deriving the
+        // shell from `wt_get_active_pane()` would describe the wrong pane (e.g.
+        // a failing pwsh pane while bash is active) and mis-gate the near-match.
+        // Resolve the explicit source pane's JSON by id from its tab; fall back
+        // to the active pane if that lookup can't resolve it.
+        let source_tab_id = pane_context.and_then(|ctx| ctx.tab_id.as_deref());
+        context_pane = match (explicit_source.as_deref(), source_tab_id) {
+            (Some(src), Some(tab)) => resolve_pane_in_tab(shell_mgr, tab, src)
+                .await
+                .or_else(|| active.clone()),
+            _ => active.clone(),
+        };
+        // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) of the failing
+        // pane — load-bearing for both the shell-context header and the
+        // command-not-found near-match gate.
+        shell_exe = context_pane.as_ref().and_then(shell_from_active);
+
         if let Some(source_pane_id) = source_pane_id {
             tracing::debug!(
                 target: "acp.terminal_context",
@@ -1199,7 +1228,6 @@ async fn build_prompt_text(
             )
             .await;
         }
-        active_pane = active;
     }
 
     // ── Provider-driven section assembly ────────────────────────────────────
@@ -1211,7 +1239,7 @@ async fn build_prompt_text(
         is_autofix,
         wt_connected,
         shell_mgr,
-        active_pane: active_pane.as_ref(),
+        context_pane: context_pane.as_ref(),
         shell_exe: shell_exe.as_deref(),
         terminal_output: terminal_output.as_deref(),
     };
@@ -3968,11 +3996,13 @@ mod tests {
     // ── terminal-context / prompt assembly ──────────────────────────────────
 
     /// Minimal [`WtChannel`] that answers `get_active_pane` with a canned pane
-    /// and errors every other request. `read_pane_last_message` degrades to
-    /// `None` on those errors, which is all the assembly tests need (no buffer
-    /// content is asserted).
+    /// and `list_panes` with a canned `{panes:[…]}` payload; every other request
+    /// errors. `read_pane_last_message` degrades to `None` on those errors,
+    /// which is all the assembly tests need (no buffer content is asserted).
     struct MockWtChannel {
         active_pane: serde_json::Value,
+        /// Optional `{ "panes": [ … ] }` response for `list_panes`.
+        list_panes: Option<serde_json::Value>,
     }
 
     #[async_trait::async_trait]
@@ -3984,6 +4014,10 @@ mod tests {
         ) -> anyhow::Result<serde_json::Value> {
             match method {
                 "get_active_pane" => Ok(self.active_pane.clone()),
+                "list_panes" => self
+                    .list_panes
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no list_panes scripted")),
                 other => Err(anyhow::anyhow!("MockWtChannel: unhandled method {other}")),
             }
         }
@@ -3993,8 +4027,20 @@ mod tests {
     }
 
     fn shell_mgr_with_pane(active: serde_json::Value) -> crate::shell::ShellManager {
-        crate::shell::ShellManager::new()
-            .with_wt_channel(std::sync::Arc::new(MockWtChannel { active_pane: active }))
+        crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
+            active_pane: active,
+            list_panes: None,
+        }))
+    }
+
+    fn shell_mgr_with_pane_and_tab(
+        active: serde_json::Value,
+        list_panes: serde_json::Value,
+    ) -> crate::shell::ShellManager {
+        crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
+            active_pane: active,
+            list_panes: Some(list_panes),
+        }))
     }
 
     #[tokio::test]
@@ -4170,6 +4216,59 @@ mod tests {
         assert!(
             fix_pane.is_none(),
             "error-triggered autofix carries its source; resolved_fix_pane stays None"
+        );
+    }
+
+    /// Regression: error-triggered autofix whose failing pane lives in a
+    /// **non-focused** tab must describe *that* pane's shell/cwd in
+    /// `### Shell Context`, not the currently-active pane's. Deriving the shell
+    /// from `get_active_pane` here would mis-describe the failing command (and
+    /// mis-gate the not-found near-match — e.g. a failing pwsh pane while bash
+    /// is active). The source pane is resolved by id from its tab via
+    /// `list_panes`.
+    #[tokio::test]
+    async fn build_prompt_text_autofix_uses_source_pane_shell_not_active_pane() {
+        // Active pane is bash in a different cwd…
+        let active = serde_json::json!({
+            "session_id": "active-pane",
+            "shell": "bash",
+            "cwd": "C:\\activedir",
+            "is_agent_pane": false,
+        });
+        // …while the failing pane (in tab-1) is pwsh.
+        let list_panes = serde_json::json!({
+            "panes": [
+                {
+                    "session_id": "src-pane",
+                    "shell": "pwsh.exe",
+                    "cwd": "C:\\srcdir",
+                    "is_agent_pane": false,
+                }
+            ]
+        });
+        let mgr = shell_mgr_with_pane_and_tab(active, list_panes);
+        let ctx = crate::pane_context::PaneContext {
+            tab_id: Some("tab-1".to_string()),
+            source_pane_id: Some("src-pane".to_string()),
+            ..Default::default()
+        };
+        let (prompt, _s, _d, _f) =
+            super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
+        assert!(prompt.contains("### Shell Context"), "got: {prompt}");
+        // The shell-context JSON must carry the SOURCE pane's shell + cwd…
+        assert!(
+            prompt.contains("\"shell\":\"pwsh.exe\""),
+            "shell context must use the source pane's shell (pwsh); got: {prompt}"
+        );
+        assert!(
+            prompt.contains("\"cwd\":\"C:\\\\srcdir\""),
+            "shell context must use the source pane's cwd (srcdir); got: {prompt}"
+        );
+        // …and never the active pane's. (Check the JSON key:value form, not a
+        // bare word — the prompt template legitimately mentions `bash`.)
+        assert!(
+            !prompt.contains("\"shell\":\"bash\"") && !prompt.contains("activedir"),
+            "the active pane's shell/cwd must NOT leak into shell context; got: {prompt}"
         );
     }
 
