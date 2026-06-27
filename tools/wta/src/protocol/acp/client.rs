@@ -1031,22 +1031,54 @@ fn shell_from_active(active: &serde_json::Value) -> Option<String> {
 }
 
 /// Resolve a pane's full JSON (`shell`, `cwd`, `session_id`, `pid`, …) by its
-/// session id within a tab, via `list_panes`. Used by error-triggered autofix,
-/// where the failing pane can live in a non-focused tab and so is **not** the
-/// active pane returned by `get_active_pane`. Returns `None` when the tab/pane
-/// can't be resolved (channel error, tab closed, no matching pane).
-async fn resolve_pane_in_tab(
+/// **session id**, enumerating windows → tabs → panes via the protocol. Used by
+/// error-triggered autofix, where the failing pane can live in a non-focused
+/// tab and so is **not** the active pane returned by `get_active_pane`.
+///
+/// We deliberately resolve by session id rather than scoping `list_panes` to a
+/// tab: in autofix `PaneContext.tab_id` is the WT tab *StableId* (see
+/// `WtNotification.tab_id`), not the numeric protocol tab index that
+/// `list_panes` expects, so scoping by it would never match and would silently
+/// fall back to the wrong (active) pane. Enumerating by session id — using each
+/// tab's protocol `tab_id` from `list_tabs` for the inner `list_panes` call —
+/// sidesteps the id-space mismatch entirely. Returns `None` when no pane
+/// matches (channel error, pane closed).
+async fn resolve_pane_by_session_id(
     shell_mgr: &ShellManager,
-    tab_id: &str,
-    pane_id: &str,
+    session_id: &str,
 ) -> Option<serde_json::Value> {
-    let panes = shell_mgr.wt_list_panes(tab_id).await.ok()?;
-    panes
-        .get("panes")?
-        .as_array()?
-        .iter()
-        .find(|p| json_str_or_num(p.get("session_id")).as_deref() == Some(pane_id))
-        .cloned()
+    let windows = shell_mgr.wt_list_windows().await.ok()?;
+    for win in windows.get("windows")?.as_array()? {
+        let Some(window_id) = win.get("window_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Ok(tabs) = shell_mgr.wt_list_tabs(window_id).await else {
+            continue;
+        };
+        let Some(tabs_arr) = tabs.get("tabs").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for tab in tabs_arr {
+            // Protocol tab index (from `list_tabs`), which `list_panes` accepts
+            // — NOT the autofix StableId.
+            let Some(tab_id) = json_str_or_num(tab.get("tab_id")) else {
+                continue;
+            };
+            let Ok(panes) = shell_mgr.wt_list_panes(&tab_id).await else {
+                continue;
+            };
+            let Some(panes_arr) = panes.get("panes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            if let Some(pane) = panes_arr
+                .iter()
+                .find(|p| json_str_or_num(p.get("session_id")).as_deref() == Some(session_id))
+            {
+                return Some(pane.clone());
+            }
+        }
+    }
+    None
 }
 
 pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
@@ -1198,14 +1230,15 @@ async fn build_prompt_text(
         // autofix can fire for a pane in a *non-focused* tab, so deriving the
         // shell from `wt_get_active_pane()` would describe the wrong pane (e.g.
         // a failing pwsh pane while bash is active) and mis-gate the near-match.
-        // Resolve the explicit source pane's JSON by id from its tab; fall back
-        // to the active pane if that lookup can't resolve it.
-        let source_tab_id = pane_context.and_then(|ctx| ctx.tab_id.as_deref());
-        context_pane = match (explicit_source.as_deref(), source_tab_id) {
-            (Some(src), Some(tab)) => resolve_pane_in_tab(shell_mgr, tab, src)
+        // Resolve the explicit source pane's JSON by *session id* (not by
+        // `PaneContext.tab_id`, which in autofix is a StableId `list_panes`
+        // won't accept — see `resolve_pane_by_session_id`); fall back to the
+        // active pane if that lookup can't resolve it.
+        context_pane = match explicit_source.as_deref() {
+            Some(src) => resolve_pane_by_session_id(shell_mgr, src)
                 .await
                 .or_else(|| active.clone()),
-            _ => active.clone(),
+            None => active.clone(),
         };
         // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) of the failing
         // pane — load-bearing for both the shell-context header and the
@@ -3996,13 +4029,17 @@ mod tests {
     // ── terminal-context / prompt assembly ──────────────────────────────────
 
     /// Minimal [`WtChannel`] that answers `get_active_pane` with a canned pane
-    /// and `list_panes` with a canned `{panes:[…]}` payload; every other request
-    /// errors. `read_pane_last_message` degrades to `None` on those errors,
-    /// which is all the assembly tests need (no buffer content is asserted).
+    /// and the `list_windows`/`list_tabs`/`list_panes` enumeration with canned
+    /// payloads; every other request errors. `read_pane_last_message` degrades
+    /// to `None` on those errors, which is all the assembly tests need (no
+    /// buffer content is asserted).
     struct MockWtChannel {
         active_pane: serde_json::Value,
-        /// Optional `{ "panes": [ … ] }` response for `list_panes`.
-        list_panes: Option<serde_json::Value>,
+        /// Optional enumeration topology for `resolve_pane_by_session_id`:
+        /// `{ "windows": […] }`, `{ "tabs": […] }`, `{ "panes": […] }`.
+        windows: Option<serde_json::Value>,
+        tabs: Option<serde_json::Value>,
+        panes: Option<serde_json::Value>,
     }
 
     #[async_trait::async_trait]
@@ -4012,12 +4049,15 @@ mod tests {
             method: &str,
             _params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
+            let scripted = |v: &Option<serde_json::Value>, what: &str| {
+                v.clone()
+                    .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no {what} scripted"))
+            };
             match method {
                 "get_active_pane" => Ok(self.active_pane.clone()),
-                "list_panes" => self
-                    .list_panes
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no list_panes scripted")),
+                "list_windows" => scripted(&self.windows, "list_windows"),
+                "list_tabs" => scripted(&self.tabs, "list_tabs"),
+                "list_panes" => scripted(&self.panes, "list_panes"),
                 other => Err(anyhow::anyhow!("MockWtChannel: unhandled method {other}")),
             }
         }
@@ -4029,17 +4069,24 @@ mod tests {
     fn shell_mgr_with_pane(active: serde_json::Value) -> crate::shell::ShellManager {
         crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
             active_pane: active,
-            list_panes: None,
+            windows: None,
+            tabs: None,
+            panes: None,
         }))
     }
 
-    fn shell_mgr_with_pane_and_tab(
+    /// Shell manager whose enumeration (`list_windows`→`list_tabs`→`list_panes`)
+    /// resolves to a single window/tab containing `source_pane`, so
+    /// `resolve_pane_by_session_id` can find the failing pane.
+    fn shell_mgr_with_source_pane(
         active: serde_json::Value,
-        list_panes: serde_json::Value,
+        source_pane: serde_json::Value,
     ) -> crate::shell::ShellManager {
         crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
             active_pane: active,
-            list_panes: Some(list_panes),
+            windows: Some(serde_json::json!({ "windows": [{ "window_id": "w1" }] })),
+            tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": "0" }] })),
+            panes: Some(serde_json::json!({ "panes": [source_pane] })),
         }))
     }
 
@@ -4224,8 +4271,9 @@ mod tests {
     /// `### Shell Context`, not the currently-active pane's. Deriving the shell
     /// from `get_active_pane` here would mis-describe the failing command (and
     /// mis-gate the not-found near-match — e.g. a failing pwsh pane while bash
-    /// is active). The source pane is resolved by id from its tab via
-    /// `list_panes`.
+    /// is active). The source pane is resolved by **session id** (enumerating
+    /// windows→tabs→panes), so it works even though `PaneContext.tab_id` is a
+    /// StableId that `list_panes` won't accept.
     #[tokio::test]
     async fn build_prompt_text_autofix_uses_source_pane_shell_not_active_pane() {
         // Active pane is bash in a different cwd…
@@ -4235,20 +4283,18 @@ mod tests {
             "cwd": "C:\\activedir",
             "is_agent_pane": false,
         });
-        // …while the failing pane (in tab-1) is pwsh.
-        let list_panes = serde_json::json!({
-            "panes": [
-                {
-                    "session_id": "src-pane",
-                    "shell": "pwsh.exe",
-                    "cwd": "C:\\srcdir",
-                    "is_agent_pane": false,
-                }
-            ]
+        // …while the failing pane (found via session-id enumeration) is pwsh.
+        let source_pane = serde_json::json!({
+            "session_id": "src-pane",
+            "shell": "pwsh.exe",
+            "cwd": "C:\\srcdir",
+            "is_agent_pane": false,
         });
-        let mgr = shell_mgr_with_pane_and_tab(active, list_panes);
+        let mgr = shell_mgr_with_source_pane(active, source_pane);
         let ctx = crate::pane_context::PaneContext {
-            tab_id: Some("tab-1".to_string()),
+            // A StableId, as autofix supplies — deliberately NOT usable with
+            // `list_panes`; resolution must succeed via session id regardless.
+            tab_id: Some("stable-tab-xyz".to_string()),
             source_pane_id: Some("src-pane".to_string()),
             ..Default::default()
         };
