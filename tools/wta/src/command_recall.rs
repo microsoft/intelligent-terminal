@@ -87,10 +87,14 @@ pub fn extract_command_token(content: &str) -> Option<String> {
         token = rest;
     }
     let token = token.trim_matches(|c| c == '"' || c == '\'');
+    // A command chained without whitespace (`gti;git`, `gti|less`, `gti&&echo`)
+    // leaves the statement/pipeline separator stuck to the token. Keep only the
+    // command name so the existence gate and near-match ranking aren't thrown
+    // off by trailing punctuation (command names never contain `;` `|` `&`).
+    let token = token.split([';', '|', '&']).next().unwrap_or(token);
     // After peeling `&`, an explicit / relative path is still not a bare PATH
     // command, so a near-match suggestion wouldn't apply.
     if token.is_empty()
-        || token.starts_with('&')
         || token.starts_with('.')
         || token.contains('\\')
         || token.contains('/')
@@ -319,6 +323,21 @@ mod tests {
         // A bare `&` with nothing after it is nothing to suggest.
         assert_eq!(extract_command_token("&"), None);
         assert_eq!(extract_command_token("& "), None);
+    }
+
+    #[test]
+    fn extract_token_strips_chained_separators() {
+        // A command chained without whitespace keeps the separator stuck to the
+        // token; only the command name should survive so the gate/ranking stay
+        // clean.
+        assert_eq!(extract_command_token("gti;git status").as_deref(), Some("gti"));
+        assert_eq!(extract_command_token("gti| less").as_deref(), Some("gti"));
+        assert_eq!(extract_command_token("gti|less").as_deref(), Some("gti"));
+        assert_eq!(extract_command_token("gti&&echo done").as_deref(), Some("gti"));
+        // Trailing separator with a space still resolves to the bare command.
+        assert_eq!(extract_command_token("gti ; git").as_deref(), Some("gti"));
+        // A leading separator leaves nothing to suggest.
+        assert_eq!(extract_command_token(";foo"), None);
     }
 
     #[test]
