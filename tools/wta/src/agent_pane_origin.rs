@@ -177,6 +177,14 @@ fn default_index_paths() -> Vec<PathBuf> {
 }
 
 fn installed_package_index_paths() -> Vec<PathBuf> {
+    // Memoize the `%LOCALAPPDATA%\Packages` walk for the process lifetime:
+    // `load_default_set` calls this on every routed event in unpackaged/dev mode,
+    // and the relevant package directories don't change mid-run.
+    static CACHE: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(installed_package_index_paths_uncached).clone()
+}
+
+fn installed_package_index_paths_uncached() -> Vec<PathBuf> {
     let Some(local) = std::env::var_os("LOCALAPPDATA")
         .or_else(|| std::env::var_os("APPDATA"))
         .map(PathBuf::from)

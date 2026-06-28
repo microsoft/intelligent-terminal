@@ -10,7 +10,7 @@
 //!
 //! This replaces the earlier tar-based scan (the removed
 //! `crate::wsl::scan_running_distros`); see
-//! `doc/specs/wsl-acp-session-list-feasibility.md`.
+//! `doc/specs/session-history-via-acp.md`.
 //!
 //! **Async by design (plan D).** The scan runs on the master's existing
 //! tokio `LocalSet` (the ACP 0.10 connection is `!Send`) — no temporary
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn maps_acp_session_to_historical_wsl_row() {
-        let mut info = session_info("abc-123", "/home/yuazha");
+        let mut info = session_info("abc-123", "/home/user");
         info.title = Some("Introduction To Debian".to_string());
         info.updated_at = Some("2026-06-24T04:42:14.588Z".to_string());
 
@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(row.key, "abc-123");
         assert_eq!(row.cli_source, CliSource::Copilot);
         assert_eq!(row.title, "Introduction To Debian");
-        assert_eq!(row.cwd, PathBuf::from("/home/yuazha"));
+        assert_eq!(row.cwd, PathBuf::from("/home/user"));
         assert_eq!(row.status, AgentStatus::Historical);
         assert_eq!(
             row.location,

@@ -8,7 +8,7 @@
 //!
 //! This module used to also tar a distro's agent-CLI transcripts to the
 //! host and parse them; that file-reading path was replaced by ACP
-//! `session/list` — see `doc/specs/wsl-acp-session-list-feasibility.md`.
+//! `session/list` — see `doc/specs/session-history-via-acp.md`.
 
 use std::time::Duration;
 

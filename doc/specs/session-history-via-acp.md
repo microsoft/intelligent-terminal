@@ -182,8 +182,8 @@ Versions observed: copilot 1.0.64–1.0.66, claude-agent-acp 0.52.0, codex-acp
 0.16.0, gemini-cli 0.46.0. Each supporting CLI returns **structured** rows
 (`session_id`, `cwd`, `title`, `updated_at`) parsed by the CLI itself — no
 host-side jsonl parsing. **Gemini does not implement the capability**, and its CLI
-is dropping ACP upstream, so it is **out of scope** — the reason there is no
-file-reading fallback to keep alive for it.
+is dropping ACP upstream, so it is **out of scope** — the reason no file-reading
+fallback is kept for it.
 
 ### 2. `session/list` returns full on-disk history, not just live sessions — and only *real* sessions
 
@@ -261,7 +261,7 @@ wta probe-sessions --agent "gemini --experimental-acp"        # list: None
 
 # WSL, raw single-CLI probe (login shell needed; a no-space wrapper avoids
 # spawn_agent_process's split_whitespace):
-#   ~/acp.sh = #!/bin/bash\nexec copilot --acp --stdio
+#   ~/acp.sh is a 2-line script: line 1 "#!/bin/bash", line 2 "exec copilot --acp --stdio"
 wta probe-sessions --agent "wsl -d Debian -- bash -lc /home/<user>/acp.sh"
 
 # Production paths (what seeds the session view), mapped + Class-A filtered:
@@ -291,7 +291,7 @@ Diagnostic log (drains the child CLI's stderr — decisive for the WSL traps):
 
 ## Implementation status
 
-Implemented and verified on `dev/yuazha/wsl-acp-session-list`:
+Implemented and verified on the feature branch:
 
 - `wsl_acp.rs` — `scan_running_distros_acp(cli)`: per running distro, per
   ACP-capable CLI, ACP `initialize` + `session/list`, mapped to WSL rows.

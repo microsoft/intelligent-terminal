@@ -4456,7 +4456,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_synthetic_titles_from_noops_when_id_absent() {
+    async fn refresh_synthetic_titles_from_skips_when_id_absent() {
         let state = make_state();
         let mut row = crate::session_registry::SessionInfo::new(
             acp::SessionId::new("sid-missing".to_string()),

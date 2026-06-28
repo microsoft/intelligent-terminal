@@ -1106,7 +1106,13 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
             .await;
             let _ = spawned.child.start_kill();
             let (_init, list_result) = result?;
-            let sessions = list_result.map_err(anyhow::Error::msg)?;
+            // session/list unsupported (e.g. `Method not found`) is the production
+            // "empty history, no fallback" case — surface it as `[]` + exit 0, not a
+            // diagnostic failure. A genuine spawn/init error still propagates above.
+            let sessions = list_result.unwrap_or_else(|e| {
+                tracing::info!("probe-host-sessions: session/list unavailable ({e}); returning []");
+                Vec::new()
+            });
             let idx = crate::agent_pane_origin::load_default_set();
             Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
                 &sessions,
