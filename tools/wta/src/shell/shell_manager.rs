@@ -139,6 +139,14 @@ impl ShellManager {
         // Create in background so it doesn't steal focus from wta's TUI
         params.insert("background".into(), true.into());
 
+        if let Ok(active) = self.wt_get_active_pane().await {
+            if let Some(profile) = active.get("profile").and_then(|v| v.as_str()) {
+                if !profile.is_empty() {
+                    params.insert("profile".into(), profile.into());
+                }
+            }
+        }
+
         let result = wt
             .request("create_tab", serde_json::Value::Object(params))
             .await?;

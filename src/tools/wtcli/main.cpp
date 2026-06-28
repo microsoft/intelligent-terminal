@@ -455,15 +455,16 @@ int main()
     });
 
     // ── new-tab ──
-    std::string newTabCommand, newTabTitle, newTabCwd;
+    std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");
     newTabCmd->add_option("-c,--command", newTabCommand, "Command to run");
     newTabCmd->add_option("-n,--title", newTabTitle, "Tab title");
     newTabCmd->add_option("-d,--cwd", newTabCwd, "Starting directory");
+    newTabCmd->add_option("-p,--profile", newTabProfile, "Profile");
     newTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        wil::unique_bstr profile{ Bstr("") }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
+        wil::unique_bstr profile{ Bstr(newTabProfile) }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
             return server->CreateTab(0, profile.get(), command.get(), title.get(), cwd.get(), false, true, j);
