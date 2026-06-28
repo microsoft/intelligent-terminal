@@ -225,53 +225,6 @@ pub async fn load_for_cli_async(cli_filter: Option<CliSource>) -> Vec<AgentSessi
     out
 }
 
-/// Best-effort title lookup for a single live session. Reads the same
-/// per-CLI on-disk artefacts that `load_all` scans, but only for the
-/// specific `key`. Used to upgrade synthetic titles (cwd basename) into
-/// real ones (workspace.yaml name / first user prompt) once the CLI
-/// has had a chance to write that data — typically a few seconds after
-/// the first hook event arrives. Returns `None` if no usable title is
-/// on disk (caller keeps whatever synthetic title it had).
-pub fn lookup_title_for_session(cli: CliSource, key: &str) -> Option<String> {
-    let home = home_dir()?;
-    lookup_title_for_session_in(&home, cli, key)
-}
-
-/// Testable variant of [`lookup_title_for_session`] that accepts a
-/// caller-supplied `home` directory. Production code uses the
-/// `USERPROFILE` / `HOME` env var via `home_dir()`; tests pin a tmp
-/// dir without racing on env mutation. Returns `None` for CLIs whose
-/// titles aren't sourced from on-disk artefacts (`Unknown`).
-pub fn lookup_title_for_session_in(
-    home: &Path,
-    cli: CliSource,
-    key: &str,
-) -> Option<String> {
-    match cli {
-        CliSource::Copilot => copilot_title_for_key(home, key),
-        CliSource::Claude  => claude_title_for_key(home, key),
-        CliSource::Gemini  => gemini_title_for_key(home, key),
-        CliSource::Codex   => codex_title_for_key(home, key),
-        CliSource::Unknown(_) => None,
-    }
-}
-
-fn copilot_title_for_key(home: &Path, key: &str) -> Option<String> {
-    let dir = home.join(".copilot").join("session-state").join(key);
-    let workspace = dir.join("workspace.yaml");
-    let yaml = fs::read_to_string(&workspace).ok()?;
-    // Copilot writes the session title to `name`. `summary` is a removed
-    // legacy field kept only as a fallback for very old sessions that may
-    // still carry it; current workspace.yaml files have only `name`.
-    parse_simple_yaml(&yaml, "name").filter(|s| !s.is_empty())
-        .or_else(|| parse_simple_yaml(&yaml, "summary").filter(|s| !s.is_empty()))
-}
-
-fn claude_title_for_key(home: &Path, key: &str) -> Option<String> {
-    claude_jsonl_path_for_key(home, key)
-        .and_then(|p| first_user_text_jsonl(&p, ClaudeOrGemini::Claude))
-}
-
 /// Locate the on-disk Claude JSONL for `key` by scanning every
 /// `~/.claude/projects/<encoded-cwd>/` directory for a `<key>.jsonl`
 /// file. Returns `None` when no matching file exists.
@@ -284,11 +237,6 @@ pub(crate) fn claude_jsonl_path_for_key(home: &Path, key: &str) -> Option<PathBu
         if candidate.is_file() { return Some(candidate); }
     }
     None
-}
-
-fn gemini_title_for_key(home: &Path, key: &str) -> Option<String> {
-    gemini_jsonl_path_for_key(home, key)
-        .and_then(|p| first_user_text_jsonl(&p, ClaudeOrGemini::Gemini))
 }
 
 /// Locate the on-disk Gemini JSONL whose first-line `sessionId` matches
@@ -1157,11 +1105,6 @@ fn codex_user_text_is_synthetic(text: &str) -> bool {
                 || rest.starts_with('\r')
                 || rest.starts_with(" for ")
         })
-}
-
-pub fn codex_title_for_key(home: &Path, key: &str) -> Option<String> {
-    let path = find_codex_rollout_by_id(home, key)?;
-    codex_title_from_file(&path)
 }
 
 /// Read a Codex session's working directory from its rollout `session_meta`
@@ -3063,30 +3006,6 @@ mod tests {
         let home = tmp_root("codex-strict-missing");
         assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Codex, "no-id"));
         let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn codex_title_for_key_finds_user_message() {
-        let home = tmp_root("codex-title-by-key");
-        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
-        fs::create_dir_all(&dir).unwrap();
-        let id = "cafebabe-1111-2222-3333-444444444444";
-        let path = dir.join(format!("rollout-2026-05-28T12-00-00-{}.jsonl", id));
-        write_file(&path,
-            &format!("{{\"timestamp\":\"2026-05-28T12:00:00Z\",\"type\":\"session_meta\",\
-\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T12:00:00Z\",\
-\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n\
-{{\"timestamp\":\"2026-05-28T12:00:05Z\",\"type\":\"event_msg\",\
-\"payload\":{{\"type\":\"user_message\",\"message\":\"refactor the parser\"}}}}\n"));
-        assert_eq!(codex_title_for_key(&home, id).as_deref(), Some("refactor the parser"));
-        fs::remove_dir_all(&home).ok();
-    }
-
-    #[test]
-    fn codex_title_for_key_returns_none_for_unknown_id() {
-        let home = tmp_root("codex-title-missing");
-        assert_eq!(codex_title_for_key(&home, "no-such-id"), None);
-        fs::remove_dir_all(&home).ok();
     }
 
     #[test]

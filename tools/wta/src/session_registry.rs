@@ -901,6 +901,21 @@ impl InMemoryRegistry {
     }
 }
 
+/// A title is "synthetic" (not the CLI's real chat title) when it's missing,
+/// empty, or just the cwd basename — the placeholder a born-bound session
+/// starts with before the CLI writes its generated name.
+pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
+    let cwd_leaf = info
+        .cwd
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    match info.title.as_deref() {
+        None | Some("") => true,
+        Some(t) => t == cwd_leaf,
+    }
+}
+
 #[async_trait::async_trait]
 impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
@@ -975,16 +990,7 @@ impl SessionRegistry for InMemoryRegistry {
         let Some(entry) = guard.sessions.get_mut(sid) else {
             return false;
         };
-        let cwd_leaf = entry
-            .cwd
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        let is_synthetic = match entry.title.as_deref() {
-            None | Some("") => true,
-            Some(t) => t == cwd_leaf,
-        };
-        if !is_synthetic {
+        if !title_is_synthetic(entry) {
             return false;
         }
         if entry.title.as_deref() == Some(candidate) {
@@ -1597,6 +1603,14 @@ mod tests {
         let mut s = SessionInfo::new(acp::SessionId::new(id.to_string()), PathBuf::from(cwd));
         s.title = title.map(str::to_owned);
         s
+    }
+
+    #[test]
+    fn title_is_synthetic_detects_missing_empty_and_cwd_basename() {
+        assert!(title_is_synthetic(&info_with("s-none", "/repo/proj", None)));
+        assert!(title_is_synthetic(&info_with("s-empty", "/repo/proj", Some(""))));
+        assert!(title_is_synthetic(&info_with("s-leaf", "/repo/proj", Some("proj"))));
+        assert!(!title_is_synthetic(&info_with("s-real", "/repo/proj", Some("Real Title"))));
     }
 
     #[tokio::test]

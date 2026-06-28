@@ -815,17 +815,6 @@ where
         }
     }
 
-    // Upgrade synthetic title from disk if the CLI has now written one.
-    if reg.title_is_synthetic(&key_for_refresh) {
-        if let Some(cli) = reg.cli_source_for(&key_for_refresh) {
-            if let Some(disk_title) =
-                crate::history_loader::lookup_title_for_session(cli, &key_for_refresh)
-            {
-                reg.upgrade_title_if_synthetic(&key_for_refresh, &disk_title);
-            }
-        }
-    }
-
     let dirty = reg.take_dirty();
     tracing::info!(
         target: "agent_route",
