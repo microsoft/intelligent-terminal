@@ -25,6 +25,7 @@ mod proc_bind;
 mod protocol;
 mod rtl;
 mod runtime_paths;
+mod session_history;
 mod session_mgmt;
 mod session_registry;
 mod session_watcher;
@@ -494,6 +495,16 @@ enum Command {
         agent: String,
     },
 
+    /// Diagnostic: spawn an agent CLI, call ACP `session/list`, filter
+    /// agent-pane-origin rows, and print the host history rows WTA would
+    /// seed from the already-running master agent.
+    ProbeHostSessions {
+        /// Full agent cmdline, same shape as `--agent` (e.g.
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
+        #[arg(long)]
+        agent: String,
+    },
+
     /// Diagnostic: run the production WSL history scan
     /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
     /// currently-running distros and print the discovered sessions as
@@ -906,6 +917,9 @@ async fn main() -> Result<()> {
         // ── ACP session/list probe (diagnostic) ──
         Some(Command::ProbeSessions { agent }) => run_probe_sessions(&agent).await,
 
+        // ── Filtered host ACP history probe (diagnostic) ──
+        Some(Command::ProbeHostSessions { agent }) => run_probe_host_sessions(&agent).await,
+
         // ── WSL ACP history-scan probe (diagnostic) ──
         Some(Command::ProbeWslSessions { cli }) => run_probe_wsl_sessions(cli.as_deref()).await,
 
@@ -969,6 +983,7 @@ fn process_label(cli: &Cli) -> String {
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
         Some(Command::ProbeSessions { .. }) => "probe".to_string(),
+        Some(Command::ProbeHostSessions { .. }) => "probe".to_string(),
         Some(Command::ProbeWslSessions { .. }) => "probe".to_string(),
         Some(Command::Hooks {
             action: HooksAction::Install { .. },
@@ -1056,6 +1071,63 @@ async fn run_probe_sessions(agent: &str) -> Result<()> {
 
     // Same force-exit rationale as run_probe_models (orphan npx/node
     // grandchildren keep the tokio reactor blocked on drop).
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Diagnostic host-history smoke test: run one ACP CLI, fetch
+/// `session/list`, apply the production Class-A filter, and print the
+/// rows in the same compact shape used by the WSL probe.
+async fn run_probe_host_sessions(agent: &str) -> Result<()> {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use std::time::Duration;
+
+    tracing::info!("probe-host-sessions start: agent={}", agent);
+
+    let local = tokio::task::LocalSet::new();
+    let rows = local
+        .run_until(async move {
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
+            let label = format!("host:{}", crate::session_history::cli_label(&CliSource::Copilot));
+            let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
+            let result = crate::protocol::acp::session_list::fetch_session_list(
+                &mut spawned.child,
+                &label,
+                init_timeout,
+                Duration::from_secs(10),
+            )
+            .await;
+            let _ = spawned.child.start_kill();
+            let (_init, list_result) = result?;
+            let sessions = list_result.map_err(anyhow::Error::msg)?;
+            let idx = crate::agent_pane_origin::load_default_set();
+            Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
+                &sessions,
+                &idx,
+                SessionLocation::Host,
+                &CliSource::Copilot,
+            ))
+        })
+        .await?;
+
+    let json: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "key": r.key,
+                "cli": format!("{:?}", r.cli_source),
+                "title": r.title,
+                "cwd": r.cwd.to_string_lossy(),
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).context("serialize host session probe")?
+    );
+
+    tracing::info!("probe-host-sessions ok: {} row(s)", rows.len());
     let _ = std::io::Write::flush(&mut std::io::stdout());
     logging::shutdown_flush();
     std::process::exit(0);

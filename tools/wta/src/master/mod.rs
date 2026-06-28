@@ -194,6 +194,10 @@ struct MasterStateInner {
     /// connection happens strictly after that, so the `get()` in
     /// `HelperHandler::initialize` always sees `Some(_)`.
     cached_init_resp: OnceLock<acp::InitializeResponse>,
+    /// The agent CLI connection, set once after startup `initialize`.
+    /// Used to source HOST session history via `session/list` instead of
+    /// reading the CLI's on-disk files.
+    agent_conn: OnceLock<std::sync::Arc<acp::ClientSideConnection>>,
     /// The CLI provider master is multiplexing. Resolved once at
     /// startup from `cli.agent` via `agent_registry::resolve_agent_id_from_cmd`.
     /// Used to stamp `cli_source` on every SessionInfo upserted from
@@ -1134,16 +1138,12 @@ impl acp::Agent for HelperHandler {
         self.agent_conn.set_session_config_option(args).await
     }
 
-    /// Answer `session/list` from our own live-session registry instead
-    /// of forwarding to the agent CLI.
-    ///
-    /// Rationale: the only live-session view that matters to the
-    /// Terminal session management panel is "what's wired up through
-    /// master right now" — agent-CLI-side dormant history is exposed
-    /// separately through `agent-pane-sessions.jsonl` + per-CLI
-    /// `<cli> --resume`. Forwarding to the agent CLI would conflate
-    /// the two and re-introduce the cross-CLI variance we built
-    /// `agent-pane-sessions.jsonl` to escape.
+    /// Answer `session/list` from our own registry (NOT by proxying the
+    /// helper's call to the agent CLI). The registry holds both live
+    /// sessions and the historical rows seeded at startup / rescan from
+    /// the agent's own `session/list` (host) and `wsl_acp` (WSL),
+    /// Class-A-filtered by the `agent_pane_origin` index. Proxying the
+    /// helper's call directly would bypass that merge + filter.
     ///
     /// The response carries our `pane_session_id` inside the standard
     /// `_meta.wta` namespace so the helper can join it with WT pane
@@ -1605,51 +1605,12 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         cached_init_resp: OnceLock::new(),
+        agent_conn: OnceLock::new(),
         cli_source,
         helper_meta: Mutex::new(HashMap::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         live_panes_cache: Mutex::new(None),
-    });
-
-    // Seed the registry with historical sessions scanned from
-    // `~/.copilot/`, `~/.claude/`, `~/.gemini/` so `wta sessions list`
-    // and helper session management viewers see the full set, not just live sessions
-    // created via `session/new` after master booted. Disk scan can take
-    // ~100ms-1s for users with many sessions, so we run it in
-    // spawn_blocking and broadcast `sessions/changed` once when done.
-    // Helpers that have session management view open at that moment will refetch and pick
-    // up the historicals; helpers that open session management view later will see them on
-    // the next `sessions/list` call.
-    let inner_for_history = Arc::clone(&inner);
-    // The session view only shows the current agent's CLI, so seed the
-    // registry with just that CLI's history. `None` (custom / unrecognized
-    // agent) scans all four, matching the view's all-CLI behavior.
-    let history_cli = inner.cli_source.clone();
-    tokio::task::spawn_local(async move {
-        let scan_started = std::time::Instant::now();
-        // Host on-disk history (blocking, off-thread) joined with WSL
-        // in-distro history (async ACP `session/list`). Host panics are
-        // absorbed inside `load_for_cli_async` (degrade to WSL-only).
-        let sessions = crate::history_loader::load_for_cli_async(history_cli).await;
-        let count = sessions.len();
-        for s in &sessions {
-            let info = crate::session_registry::agent_session_to_session_info(s);
-            inner_for_history.registry.upsert_if_absent(info).await;
-        }
-        tracing::info!(
-            target: "master_history",
-            count,
-            elapsed_ms = scan_started.elapsed().as_millis() as u64,
-            "master-side history scan complete; broadcasting sessions/changed"
-        );
-        if count > 0 {
-            broadcast_ext_to_helpers(
-                &inner_for_history,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
-        }
     });
 
     // ── Hookless Class-B session watcher ──────────────────────────────
@@ -1837,6 +1798,37 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // is idempotent on already-populated cells — we ignore the
     // returned Err.)
     let _ = inner.cached_init_resp.set(init_resp.clone());
+    let _ = inner.agent_conn.set(std::sync::Arc::clone(&agent_conn));
+
+    // Seed the registry with historical sessions sourced from ACP
+    // `session/list` (host = the already-running agent; WSL = per-distro
+    // spawn). No on-disk CLI parsing. Runs after init so the capability +
+    // connection are ready.
+    {
+        let inner_for_history = std::sync::Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            let scan_started = std::time::Instant::now();
+            let sessions = seed_history_via_acp(&inner_for_history).await;
+            let count = sessions.len();
+            for s in &sessions {
+                let info = crate::session_registry::agent_session_to_session_info(s);
+                inner_for_history.registry.upsert_if_absent(info).await;
+            }
+            tracing::info!(
+                target: "master_history",
+                count,
+                elapsed_ms = scan_started.elapsed().as_millis() as u64,
+                "master ACP history seed complete; broadcasting sessions/changed"
+            );
+            if count > 0 {
+                broadcast_ext_to_helpers(
+                    &inner_for_history,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+        });
+    }
 
     // 4. Open the named pipe and accept helper connections.
     let mut server = ServerOptions::new()
@@ -2188,6 +2180,74 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
+/// Host history from the already-running agent's `session/list`, gated on
+/// the `sessionCapabilities.list` capability. Empty when unsupported
+/// (Gemini, non-ACP custom) — no on-disk fallback by design.
+async fn host_history_via_acp(
+    state: &MasterStateInner,
+) -> Vec<crate::agent_sessions::AgentSession> {
+    let Some(init) = state.cached_init_resp.get() else {
+        return Vec::new();
+    };
+    if init.agent_capabilities.session_capabilities.list.is_none() {
+        return Vec::new();
+    }
+    let Some(conn) = state.agent_conn.get() else {
+        return Vec::new();
+    };
+    let cli = state
+        .cli_source
+        .clone()
+        .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()));
+    host_rows_from_conn(conn, &cli).await
+}
+
+async fn host_rows_from_conn(
+    conn: &acp::ClientSideConnection,
+    cli: &crate::agent_sessions::CliSource,
+) -> Vec<crate::agent_sessions::AgentSession> {
+    use acp::Agent as _;
+
+    let resp = match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        conn.list_sessions(acp::ListSessionsRequest::new()),
+    )
+    .await
+    {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            tracing::debug!(target: "master_history", "host session/list error: {e}");
+            return Vec::new();
+        }
+        Err(_) => {
+            tracing::warn!(target: "master_history", "host session/list timed out");
+            return Vec::new();
+        }
+    };
+    let idx = crate::agent_pane_origin::load_default_set();
+    crate::session_history::classify_and_map(
+        &resp.sessions,
+        &idx,
+        crate::agent_sessions::SessionLocation::Host,
+        cli,
+    )
+}
+
+/// Host (ACP) + WSL (ACP) historical sessions, merged.
+async fn seed_history_via_acp(
+    state: &MasterStateInner,
+) -> Vec<crate::agent_sessions::AgentSession> {
+    let host = host_history_via_acp(state).await;
+    let wsl = if crate::history_loader::wsl_sessions_enabled() {
+        crate::wsl_acp::scan_running_distros_acp(state.cli_source.as_ref()).await
+    } else {
+        Vec::new()
+    };
+    let mut out = host;
+    out.extend(wsl);
+    out
+}
+
 /// Pure async handler for the `intellterm.wta/sessions/list` ExtRequest.
 async fn handle_sessions_list(
     state: &MasterStateInner,
@@ -2231,14 +2291,8 @@ where
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    // F5 refresh: re-scan historical sessions and upsert them, exactly like
-    // the startup history seed. Host on-disk history runs on the blocking
-    // pool; WSL in-distro history runs as async ACP `session/list` — both
-    // joined inside `load_for_cli_async`. On host-scan panic it degrades to
-    // WSL-only rather than erroring the request.
     if parsed.rescan {
-        let cli = state.cli_source.clone();
-        let sessions = crate::history_loader::load_for_cli_async(cli).await;
+        let sessions = seed_history_via_acp(state).await;
         let count = sessions.len();
         for s in &sessions {
             let info = crate::session_registry::agent_session_to_session_info(s);
@@ -2247,14 +2301,8 @@ where
         tracing::info!(
             target: "master_history",
             count,
-            "sessions/list rescan: reloaded historical sessions (host + WSL)"
+            "sessions/list rescan: reloaded historical sessions (host+WSL via ACP)"
         );
-        // Tell every helper with the session view open to refetch, so the
-        // freshly-loaded historical rows surface immediately in all
-        // windows/tabs — matching the startup history scan's broadcast
-        // instead of waiting up to 5s for the next periodic poll. The
-        // triggered refetches are rescan=false snapshots: they neither
-        // re-scan disk nor re-broadcast, so there's no feedback loop.
         broadcast_ext_to_helpers(
             state,
             crate::session_registry::build_sessions_changed_notification(),
@@ -3249,6 +3297,7 @@ mod tests {
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
             cached_init_resp: OnceLock::new(),
+            agent_conn: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
@@ -4162,6 +4211,7 @@ mod tests {
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),
             cached_init_resp: OnceLock::new(),
+            agent_conn: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),

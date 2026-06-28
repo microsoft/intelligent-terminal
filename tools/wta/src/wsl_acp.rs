@@ -23,8 +23,8 @@
 //! auto-boots its VM (GH#9541), so we never do it — distro enumeration
 //! reuses [`crate::wsl::running_distros`].
 
-use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
-use std::time::{Duration, SystemTime};
+use crate::agent_sessions::{AgentSession, CliSource};
+use std::time::Duration;
 
 /// Per-`(distro, CLI)` ACP `initialize` budget. WSL adds a `wsl.exe` hop
 /// and a login shell, and snap-packaged CLIs (Ubuntu's default copilot)
@@ -105,7 +105,7 @@ async fn list_distro_cli_sessions(distro: &str, cli: &CliSource) -> Vec<AgentSes
         }
     };
 
-    let label = format!("wsl:{distro}:{}", cli_label(cli));
+    let label = format!("wsl:{distro}:{}", crate::session_history::cli_label(cli));
     let result = crate::protocol::acp::session_list::fetch_session_list(
         &mut child,
         &label,
@@ -118,10 +118,17 @@ async fn list_distro_cli_sessions(distro: &str, cli: &CliSource) -> Vec<AgentSes
     let _ = child.start_kill();
 
     match result {
-        Ok((_init, Ok(sessions))) => sessions
-            .iter()
-            .map(|s| acp_session_to_agent_session(s, distro, cli))
-            .collect(),
+        Ok((_init, Ok(sessions))) => {
+            let idx = crate::agent_pane_origin::load_default_set();
+            crate::session_history::classify_and_map(
+                &sessions,
+                &idx,
+                crate::agent_sessions::SessionLocation::Wsl {
+                    distro: distro.to_string(),
+                },
+                cli,
+            )
+        }
         Ok((_init, Err(reason))) => {
             tracing::debug!(target: "wsl_acp", distro, cli = ?cli, "session/list unavailable: {reason}");
             Vec::new()
@@ -145,17 +152,6 @@ fn acp_command_for(cli: &CliSource) -> Option<String> {
         CliSource::Gemini | CliSource::Unknown(_) => return None,
     };
     Some(crate::agent_registry::build_acp_command(id, None))
-}
-
-/// Stable short label for a CLI (logs + title fallback).
-fn cli_label(cli: &CliSource) -> &'static str {
-    match cli {
-        CliSource::Copilot => "copilot",
-        CliSource::Claude => "claude",
-        CliSource::Codex => "codex",
-        CliSource::Gemini => "gemini",
-        CliSource::Unknown(_) => "agent",
-    }
 }
 
 /// Argv for `wsl -d <distro> -- bash -lc "<acp_cmd>"`.
@@ -187,60 +183,30 @@ fn spawn_wsl_acp(distro: &str, acp_cmd: &str) -> std::io::Result<tokio::process:
         .spawn()
 }
 
-/// Map an ACP `SessionInfo` to a historical [`AgentSession`] stamped with
-/// the originating distro. Pure — unit-testable without spawning ACP.
-fn acp_session_to_agent_session(
-    info: &agent_client_protocol::SessionInfo,
-    distro: &str,
-    cli: &CliSource,
-) -> AgentSession {
-    let key = info.session_id.to_string();
-    // ACP gives an ISO-8601 `updated_at`; reuse the host parser. Missing /
-    // malformed timestamps sort oldest rather than dropping the row.
-    let last = info
-        .updated_at
-        .as_deref()
-        .and_then(crate::history_loader::parse_iso_to_system_time)
-        .unwrap_or(SystemTime::UNIX_EPOCH);
-    let title = info
-        .title
-        .clone()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| crate::history_loader::short_id(&key, cli_label(cli)));
-
-    AgentSession {
-        key,
-        cli_source: cli.clone(),
-        pane_session_id: None,
-        window_id: None,
-        tab_id: None,
-        title,
-        // ACP reports the in-distro working directory (e.g. `/home/u` or
-        // `/mnt/c/...`); WSL resume (`app.rs`) treats `cwd` as a Linux path
-        // for `Wsl` rows.
-        cwd: info.cwd.clone(),
-        started_at: last,
-        last_activity_at: last,
-        status: AgentStatus::Historical,
-        last_error: None,
-        current_tool: None,
-        attention_reason: None,
-        log_path: None,
-        origin: SessionOrigin::default(),
-        location: SessionLocation::Wsl {
-            distro: distro.to_string(),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
     use agent_client_protocol as acp;
     use std::path::PathBuf;
+    use std::time::SystemTime;
 
     fn session_info(id: &str, cwd: &str) -> acp::SessionInfo {
         acp::SessionInfo::new(acp::SessionId::new(id.to_string()), PathBuf::from(cwd))
+    }
+
+    fn map_wsl_session(
+        info: &acp::SessionInfo,
+        distro: &str,
+        cli: &CliSource,
+    ) -> AgentSession {
+        crate::session_history::acp_session_to_agent_session(
+            info,
+            SessionLocation::Wsl {
+                distro: distro.to_string(),
+            },
+            cli,
+        )
     }
 
     #[test]
@@ -309,7 +275,7 @@ mod tests {
         info.title = Some("Introduction To Debian".to_string());
         info.updated_at = Some("2026-06-24T04:42:14.588Z".to_string());
 
-        let row = acp_session_to_agent_session(&info, "Debian", &CliSource::Copilot);
+        let row = map_wsl_session(&info, "Debian", &CliSource::Copilot);
 
         assert_eq!(row.key, "abc-123");
         assert_eq!(row.cli_source, CliSource::Copilot);
@@ -331,7 +297,7 @@ mod tests {
     #[test]
     fn missing_title_falls_back_to_short_id() {
         let info = session_info("0123456789abcdef", "/mnt/c/Users/u");
-        let row = acp_session_to_agent_session(&info, "Ubuntu", &CliSource::Claude);
+        let row = map_wsl_session(&info, "Ubuntu", &CliSource::Claude);
         // short_id = "<cli> <first 8 chars>".
         assert_eq!(row.title, "claude 01234567");
     }
@@ -340,7 +306,7 @@ mod tests {
     fn empty_title_falls_back_to_short_id() {
         let mut info = session_info("abcdefgh-rest", "/home/u");
         info.title = Some(String::new());
-        let row = acp_session_to_agent_session(&info, "Ubuntu", &CliSource::Codex);
+        let row = map_wsl_session(&info, "Ubuntu", &CliSource::Codex);
         assert_eq!(row.title, "codex abcdefgh");
     }
 
@@ -348,7 +314,7 @@ mod tests {
     fn malformed_updated_at_sorts_oldest_not_dropped() {
         let mut info = session_info("k", "/home/u");
         info.updated_at = Some("not-a-timestamp".to_string());
-        let row = acp_session_to_agent_session(&info, "Ubuntu", &CliSource::Copilot);
+        let row = map_wsl_session(&info, "Ubuntu", &CliSource::Copilot);
         assert_eq!(row.last_activity_at, SystemTime::UNIX_EPOCH);
     }
 }

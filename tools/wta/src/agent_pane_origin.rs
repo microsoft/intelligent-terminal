@@ -137,6 +137,11 @@ pub fn append_to(
 /// errors out to the caller, which lets `history_loader` proceed even on
 /// a fresh install or after a manual delete.
 ///
+/// Unpackaged dev binaries also merge the installed Intelligent Terminal
+/// package's LocalState index when present. That keeps diagnostics such as
+/// `probe-host-sessions` using the same Class-A filter as the packaged app
+/// that actually created the agent-pane sessions.
+///
 /// Use this when the caller only needs membership-check. For callers that
 /// need the per-record `pane_session_id` (e.g. post-restart reconcile),
 /// see [`load_default_records`].
@@ -153,8 +158,56 @@ pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
 /// (notably `pane_session_id` for v2 entries). Duplicate `session_id`s
 /// collapse to the last-written record. Empty map on any IO error.
 pub fn load_default_records() -> HashMap<String, OriginRecord> {
-    let Some(path) = default_index_path() else { return HashMap::new() };
-    load_records_from(&path)
+    let mut out = HashMap::new();
+    for path in default_index_paths() {
+        out.extend(load_records_from(&path));
+    }
+    out
+}
+
+fn default_index_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(path) = default_index_path() {
+        paths.push(path);
+    }
+    if crate::runtime_paths::current_package_family_name().is_none() {
+        paths.extend(installed_package_index_paths());
+    }
+    paths
+}
+
+fn installed_package_index_paths() -> Vec<PathBuf> {
+    let Some(local) = std::env::var_os("LOCALAPPDATA")
+        .or_else(|| std::env::var_os("APPDATA"))
+        .map(PathBuf::from)
+    else {
+        return Vec::new();
+    };
+    let packages = local.join("Packages");
+    let Ok(entries) = std::fs::read_dir(packages) else {
+        return Vec::new();
+    };
+    let mut dev = Vec::new();
+    let mut store = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let path = entry
+            .path()
+            .join("LocalState")
+            .join("IntelligentTerminal")
+            .join(INDEX_FILENAME);
+        if !path.exists() {
+            continue;
+        }
+        if name.starts_with("IntelligentTerminal_") {
+            dev.push(path);
+        } else if name.starts_with("Microsoft.IntelligentTerminal_") {
+            store.push(path);
+        }
+    }
+    dev.extend(store);
+    dev
 }
 
 /// Same as [`load_default_records`] but against a caller-supplied path.
