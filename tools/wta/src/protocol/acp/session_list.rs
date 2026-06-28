@@ -153,8 +153,10 @@ pub(crate) async fn fetch_session_list(
     )
     .await
     {
-        Err(_) => Err(format!("session/list timed out after {list_timeout:?}")),
-        Ok(Err(e)) => Err(format!("{e}")),
+        Err(_) => Err(format!(
+            "session/list timed out after {list_timeout:?} (agent={client_label})"
+        )),
+        Ok(Err(e)) => Err(format!("session/list failed (agent={client_label}): {e}")),
         Ok(Ok(resp)) => Ok(resp.sessions),
     };
 

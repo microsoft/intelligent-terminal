@@ -56,9 +56,20 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
         return Vec::new();
     }
 
-    let mut out = Vec::new();
-    for distro in &distros {
-        for c in &clis {
+    // Run the (distro × CLI) probes with bounded concurrency so one wedged
+    // distro/CLI can't stall the whole scan: each pair is still capped by the
+    // init/list timeouts; this just stops those timeouts from summing serially.
+    // `buffer_unordered` polls on the current task (no spawn), so the `!Send`
+    // ACP connections are fine on the master's LocalSet.
+    use futures::stream::StreamExt as _;
+    const WSL_SCAN_CONCURRENCY: usize = 4;
+    let pairs: Vec<(&String, &CliSource)> = distros
+        .iter()
+        .flat_map(|d| clis.iter().map(move |c| (d, c)))
+        .collect();
+
+    futures::stream::iter(pairs)
+        .map(|(distro, c)| async move {
             let rows = list_distro_cli_sessions(distro, c).await;
             tracing::info!(
                 target: "wsl_acp",
@@ -67,10 +78,11 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
                 rows = rows.len(),
                 "scanned distro/cli over ACP"
             );
-            out.extend(rows);
-        }
-    }
-    out
+            rows
+        })
+        .buffer_unordered(WSL_SCAN_CONCURRENCY)
+        .concat()
+        .await
 }
 
 /// Which CLIs to query for a given filter. Known ACP-capable CLIs map to

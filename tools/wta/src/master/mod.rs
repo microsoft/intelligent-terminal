@@ -2236,32 +2236,36 @@ async fn host_titles_via_acp(
     }
 
     use acp::Agent as _;
-    let resp = match tokio::time::timeout(
+    // Compute the title map (empty on error/timeout) and cache it under a fresh
+    // timestamp on EVERY path — including failures. Negative-caching the empty
+    // result for the TTL window stops a persistent session/list error or a hung
+    // agent from re-issuing a fresh 5s `list_sessions` on every hook/watcher
+    // event (which would defeat the debounce the cache exists to provide).
+    let titles: std::collections::HashMap<String, String> = match tokio::time::timeout(
         std::time::Duration::from_secs(5),
         conn.list_sessions(acp::ListSessionsRequest::new()),
     )
     .await
     {
-        Ok(Ok(r)) => r,
+        Ok(Ok(resp)) => resp
+            .sessions
+            .into_iter()
+            .filter_map(|row| {
+                row.title
+                    .filter(|title| !title.is_empty())
+                    .map(|title| (row.session_id.to_string(), title))
+            })
+            .collect(),
         Ok(Err(e)) => {
             tracing::debug!(target: "master_history", "host session/list title error: {e}");
-            return std::collections::HashMap::new();
+            std::collections::HashMap::new()
         }
         Err(_) => {
             tracing::warn!(target: "master_history", "host session/list title refresh timed out");
-            return std::collections::HashMap::new();
+            std::collections::HashMap::new()
         }
     };
 
-    let titles: std::collections::HashMap<String, String> = resp
-        .sessions
-        .into_iter()
-        .filter_map(|row| {
-            row.title
-                .filter(|title| !title.is_empty())
-                .map(|title| (row.session_id.to_string(), title))
-        })
-        .collect();
     *state.host_titles_cache.lock().await = Some((std::time::Instant::now(), titles.clone()));
     titles
 }
