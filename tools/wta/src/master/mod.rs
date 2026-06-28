@@ -256,6 +256,11 @@ struct MasterStateInner {
     /// couple seconds so a startup burst of session files triggers at most one
     /// COM walk. `None` until first populated.
     live_panes_cache: Mutex<Option<(std::time::Instant, HashSet<String>)>>,
+    /// Short-TTL cache of the connected agent's `session/list` titles
+    /// (session_id → title). A burst of hook/watcher events for a still-synthetic
+    /// row shares one `list_sessions` round-trip instead of issuing one per
+    /// event. Mirrors `live_panes_cache`.
+    host_titles_cache: Mutex<Option<(std::time::Instant, std::collections::HashMap<String, String>)>>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -1611,6 +1616,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         live_panes_cache: Mutex::new(None),
+        host_titles_cache: Mutex::new(None),
     });
 
     // ── Hookless Class-B session watcher ──────────────────────────────
@@ -2219,6 +2225,16 @@ async fn host_titles_via_acp(
         return std::collections::HashMap::new();
     };
 
+    const TITLES_TTL: std::time::Duration = std::time::Duration::from_secs(2);
+    {
+        let cache = state.host_titles_cache.lock().await;
+        if let Some((at, map)) = cache.as_ref() {
+            if at.elapsed() < TITLES_TTL {
+                return map.clone();
+            }
+        }
+    }
+
     use acp::Agent as _;
     let resp = match tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -2237,14 +2253,17 @@ async fn host_titles_via_acp(
         }
     };
 
-    resp.sessions
+    let titles: std::collections::HashMap<String, String> = resp
+        .sessions
         .into_iter()
         .filter_map(|row| {
             row.title
                 .filter(|title| !title.is_empty())
                 .map(|title| (row.session_id.to_string(), title))
         })
-        .collect()
+        .collect();
+    *state.host_titles_cache.lock().await = Some((std::time::Instant::now(), titles.clone()));
+    titles
 }
 
 async fn host_rows_from_conn(
@@ -2954,6 +2973,24 @@ async fn refresh_synthetic_titles_from(
     changed
 }
 
+/// Whether `info`'s row can be title-refreshed from the connected agent's
+/// `session/list`. The agent enumerates only ITS OWN cli's sessions, so a row
+/// stamped with a *different* known cli (e.g. a machine-wide watched claude
+/// session while master multiplexes copilot) can never appear in it — skip it
+/// rather than issue a per-event round-trip that can't match. Such cross-cli
+/// titles are no longer upgraded — an accepted consequence of dropping the
+/// per-cli on-disk title reads. A `None` cli on either side is treated as
+/// "attempt" (the lookup simply no-ops when the id is absent).
+fn row_refreshable_by_connected_agent(
+    info: &crate::session_registry::SessionInfo,
+    conn_cli: Option<&crate::agent_sessions::CliSource>,
+) -> bool {
+    match (info.cli_source.as_ref(), conn_cli) {
+        (Some(row_cli), Some(conn_cli)) => row_cli == conn_cli,
+        _ => true,
+    }
+}
+
 /// ACP replacement for the former on-disk single-session title refresh. Cheap
 /// early-out: only fetch the agent's session/list when this row is synthetic.
 async fn try_refresh_title_via_acp(
@@ -2964,6 +3001,9 @@ async fn try_refresh_title_via_acp(
         return false;
     };
     if !crate::session_registry::title_is_synthetic(&info) {
+        return false;
+    }
+    if !row_refreshable_by_connected_agent(&info, state.cli_source.as_ref()) {
         return false;
     }
     let titles = host_titles_via_acp(state).await;
@@ -3280,6 +3320,7 @@ mod tests {
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
             live_panes_cache: Mutex::new(None),
+            host_titles_cache: Mutex::new(None),
         })
     }
 
@@ -4151,6 +4192,7 @@ mod tests {
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
             live_panes_cache: Mutex::new(None),
+            host_titles_cache: Mutex::new(None),
         })
     }
 
@@ -4437,6 +4479,25 @@ mod tests {
                 .as_deref(),
             Some("project")
         );
+    }
+
+    #[test]
+    fn row_refreshable_skips_only_definitively_cross_cli() {
+        use crate::agent_sessions::CliSource;
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("s".to_string()),
+            std::path::PathBuf::from("/x"),
+        );
+        // Same known cli → refreshable.
+        row.cli_source = Some(CliSource::Copilot);
+        assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+        // Different known cli → skipped (the connected agent can't enumerate it).
+        assert!(!row_refreshable_by_connected_agent(&row, Some(&CliSource::Claude)));
+        // Unknown cli on either side → attempt (never skip).
+        row.cli_source = None;
+        assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+        row.cli_source = Some(CliSource::Copilot);
+        assert!(row_refreshable_by_connected_agent(&row, None));
     }
 
     #[test]
