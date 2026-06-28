@@ -59,20 +59,16 @@
 // under `<UUID>/<name>.json`. We only pick up `session-*.json` at the
 // top level.)
 //
-// Sort each list by last_activity desc; cap each CLI at MAX_PER_CLI.
-
-use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::agent_sessions::{AgentSession, AgentStatus, CliSource};
-
-/// Per-CLI discovery-phase acquisition cap: at most this many newest
-/// candidates survive `select_top_candidates` into the expensive content
-/// parse. It bounds phase-2 IO, so it is a pre-filter threshold — not a
-/// guaranteed post-filter row count. See `select_top_candidates`.
+/// Shared upper bound used by session discovery/probe flows that need a
+/// conservative per-CLI cap. ACP `session/list` now owns history rows, but
+/// the constant remains the cross-module limit for related session work.
+#[allow(dead_code)]
 pub(crate) const MAX_PER_CLI: usize = 50;
+#[allow(dead_code)]
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
 /// Upper bound on bytes read by the `*_has_real_content` classifiers
@@ -101,128 +97,6 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
         ),
         Err(_) => true,
     }
-}
-
-/// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
-/// / non-JSONL transcript that is one giant line with no newline can't pull
-/// an unbounded amount into memory during the *cheap* phase. A real header
-/// line is a single small JSON object; a read that hits this cap without a
-/// newline yields truncated text that fails the downstream JSON parse, so
-/// the candidate is skipped (treated as unparseable).
-const HEADER_LINE_BYTES_CAP: u64 = 64 * 1024;
-
-/// Decide which per-CLI loaders to run for a given filter.
-///
-/// The session management view only ever shows the current agent's CLI, so
-/// callers that know their CLI pass it to avoid scanning (and parsing) the
-/// other three CLIs' transcripts. `None` — or a custom / unrecognized agent
-/// (`CliSource::Unknown`) — scans everything, matching the view, which shows
-/// all CLIs when `current_cli_filter()` is `None`.
-fn cli_scan_flags(cli_filter: Option<&CliSource>) -> (bool, bool, bool, bool) {
-    match cli_filter {
-        Some(CliSource::Copilot) => (true, false, false, false),
-        Some(CliSource::Claude) => (false, true, false, false),
-        Some(CliSource::Gemini) => (false, false, true, false),
-        Some(CliSource::Codex) => (false, false, false, true),
-        None | Some(CliSource::Unknown(_)) => (true, true, true, true),
-    }
-}
-
-/// Scan **host** on-disk session history (the Windows user profile),
-/// restricted to a single CLI when `cli_filter` is `Some(known)`. See
-/// [`cli_scan_flags`] for the dispatch rules (custom / unknown agents
-/// scan all four).
-///
-/// WSL in-distro sessions are **not** included here — they are fetched
-/// separately over ACP by [`crate::wsl_acp`] and joined in
-/// [`load_for_cli_async`]. This function is synchronous (blocking disk
-/// IO) and is meant to run under `spawn_blocking`.
-pub fn load_host_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
-    let scan_started = std::time::Instant::now();
-    let mut out = Vec::new();
-
-    let Some(home) = home_dir() else { return out };
-
-    // Load the agent-pane (Class A) index once. Each per-CLI loader uses it
-    // to skip WTA-created agent-pane sessions in its cheap discovery phase,
-    // *before* paying for any content read — these are hidden from the
-    // session picker (MVP `OriginFilter::ShellOnly`) and their live variants
-    // are tracked via `new_session`, not this disk scan, so dropping the
-    // historical ones here is safe. This is what keeps the expensive parse
-    // off Gemini's many seeded-prompt agent-pane phantoms.
-    let agent_pane_index = crate::agent_pane_origin::load_default_set();
-
-    // Each loader already caps at MAX_PER_CLI; take_n is a defensive no-op.
-    let (cop, cla, gem, cod) = cli_scan_flags(cli_filter);
-    if cop {
-        out.extend(take_n(load_copilot_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    }
-    if cla {
-        out.extend(take_n(load_claude_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    }
-    if gem {
-        out.extend(take_n(load_gemini_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    }
-    if cod {
-        out.extend(take_n(load_codex_indexed(&home, &agent_pane_index), MAX_PER_CLI));
-    }
-
-    // Single low-overhead timing line for this scan. Kept at debug: the
-    // master startup caller already emits an info-level scan-complete with
-    // `elapsed_ms`, so info here would just duplicate that in release builds.
-    tracing::debug!(
-        target: "history_loader",
-        cli = ?cli_filter,
-        total_ms = scan_started.elapsed().as_secs_f64() * 1000.0,
-        rows = out.len(),
-        "history scan complete"
-    );
-    out
-}
-
-/// Full historical scan for `cli`: host on-disk history joined with WSL
-/// in-distro history.
-///
-/// This is the **master-facing** entry point — it owns the host/WSL split
-/// so the call sites don't duplicate it:
-/// * host history is blocking disk IO → [`load_host_for_cli`] run under
-///   `spawn_blocking`;
-/// * WSL history is async ACP (`session/list` per running distro) →
-///   [`crate::wsl_acp::scan_running_distros_acp`], gated by
-///   [`wsl_sessions_enabled`].
-///
-/// The two run concurrently and are merged (WSL rows first, then host).
-/// A panic in the host scan is logged and degraded to WSL-only results
-/// rather than propagated.
-///
-/// **Must be called from within a tokio `LocalSet`**: the WSL ACP
-/// connection is `!Send` and spawns its IO pump via `spawn_local`. The
-/// master loop runs on a `LocalSet`, so both call sites satisfy this.
-pub async fn load_for_cli_async(cli_filter: Option<CliSource>) -> Vec<AgentSession> {
-    // Host scan: blocking disk walk, off the LocalSet onto the blocking pool.
-    let host_cli = cli_filter.clone();
-    let host = tokio::task::spawn_blocking(move || load_host_for_cli(host_cli.as_ref()));
-
-    // WSL scan: async ACP, inline on the current LocalSet (connection is !Send).
-    let wsl = async {
-        if wsl_sessions_enabled() {
-            crate::wsl_acp::scan_running_distros_acp(cli_filter.as_ref()).await
-        } else {
-            Vec::new()
-        }
-    };
-
-    let (host_res, wsl_rows) = tokio::join!(host, wsl);
-    let mut out = wsl_rows;
-    match host_res {
-        Ok(host_rows) => out.extend(host_rows),
-        Err(e) => tracing::warn!(
-            target: "history_loader",
-            error = %e,
-            "host history scan task panicked; returning WSL-only results"
-        ),
-    }
-    out
 }
 
 /// Locate the on-disk Claude JSONL for `key` by scanning every
@@ -261,9 +135,14 @@ pub(crate) fn gemini_jsonl_path_for_key(home: &Path, key: &str) -> Option<PathBu
     None
 }
 
-fn take_n(mut v: Vec<AgentSession>, n: usize) -> Vec<AgentSession> {
-    v.truncate(n);
-    v
+/// Top-level Gemini chat files are `~/.gemini/tmp/<slug>/chats/session-*.jsonl`.
+/// Files inside a per-subagent `<UUID>/` subdirectory are NOT session files
+/// and must be skipped.
+fn is_gemini_session_file(p: &Path) -> bool {
+    if !p.is_file() { return false; }
+    let Some(name) = p.file_name().and_then(|n| n.to_str()) else { return false; };
+    if !name.starts_with("session-") { return false; }
+    name.ends_with(".jsonl")
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -405,441 +284,10 @@ fn codex_key_has_definite_resumable_content_in(home: &Path, id: &str) -> bool {
     }
 }
 
-// ─── Two-phase scan helpers ─────────────────────────────────────────────
-//
-// Each per-CLI loader runs in two phases:
-//   1. cheap discovery — enumerate session artefacts with minimal IO,
-//      collecting a `Candidate` (id + sort signal + path). Class A
-//      (agent-pane) sessions are dropped here via the index, before any
-//      content is read.
-//   2. expensive parse — only for the newest `MAX_PER_CLI` survivors:
-//      phantom filtering, title, and cwd extraction.
-//
-// This bounds `load_all`'s content reads at ~`MAX_PER_CLI` per CLI instead
-// of "every file on disk", which on a populated machine is the difference
-// between ~50 reads and several hundred (the bulk being WTA's own
-// agent-pane phantoms — Gemini in particular writes a seeded-prompt
-// snapshot per pre-warm that costs an 8 KB read to classify).
-
-/// A lightweight session candidate from a loader's cheap discovery phase.
-/// Carries only what the Class A skip and the mtime top-N selection need;
-/// the expensive content parse runs later, for survivors only.
-struct Candidate {
-    /// Session key / id — used for the agent-pane (Class A) index lookup
-    /// and becomes the row key.
-    id: String,
-    /// Last-activity signal used to rank candidates newest-first.
-    sort_time: SystemTime,
-    /// Path to the session artefact: the session-state dir for Copilot,
-    /// the transcript file for Claude / Gemini / Codex.
-    path: PathBuf,
-    /// cwd already extracted by the cheap phase (Codex reads it from the
-    /// `session_meta` first line). `None` for CLIs that derive cwd during
-    /// the expensive phase.
-    cwd: Option<PathBuf>,
-}
-
-/// Drop Class A (agent-pane) candidates, rank the rest newest-first, and
-/// keep at most `n`. This is the cheap pre-filter that lets the expensive
-/// content parse touch only the most-recent `n` shell-pane sessions per
-/// CLI instead of every file on disk.
-///
-/// `n` is a *discovery-phase acquisition cap*, not a guaranteed result
-/// count. The caller's phase-2 content filter — which drops phantom
-/// sessions that hold no real turn — runs *after* this truncation, so the
-/// final row count can be fewer than `n` when some of the newest `n`
-/// candidates turn out to be phantoms. That is intentional: keeping the
-/// truncation ahead of the content read bounds phase-2 at `n` content
-/// reads per CLI. We deliberately do not back-fill from older candidates
-/// to top the result back up to `n`.
-fn select_top_candidates(
-    mut candidates: Vec<Candidate>,
-    agent_pane_index: &HashSet<String>,
-    n: usize,
-) -> Vec<Candidate> {
-    candidates.retain(|c| !agent_pane_index.contains(&c.id));
-    candidates.sort_by(|a, b| b.sort_time.cmp(&a.sort_time));
-    candidates.truncate(n);
-    candidates
-}
-
-/// Read only the first non-empty line of a file, stopping at the first
-/// newline instead of slurping a fixed-size prefix. Used by the cheap
-/// discovery phase to pull a session id / header out of Gemini and Codex
-/// transcripts without reading the whole (potentially multi-MB) file.
-fn read_first_line(path: &Path) -> Option<String> {
-    use std::io::{BufRead, BufReader, Read};
-    let file = fs::File::open(path).ok()?;
-    // Bound the read so a corrupt / non-JSONL file that is one giant line
-    // with no newline can't slurp unbounded bytes during the cheap
-    // discovery phase. See `HEADER_LINE_BYTES_CAP`.
-    let mut reader = BufReader::new(file.take(HEADER_LINE_BYTES_CAP));
-    let mut line = String::new();
-    loop {
-        line.clear();
-        let n = reader.read_line(&mut line).ok()?;
-        if n == 0 {
-            return None; // EOF (or cap reached) with no non-empty line
-        }
-        if !line.trim().is_empty() {
-            return Some(line);
-        }
-    }
-}
-
-// ─── Copilot ────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-fn load_copilot(home: &Path) -> Vec<AgentSession> {
-    load_copilot_indexed(home, &HashSet::new())
-}
-
-fn load_copilot_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<AgentSession> {
-    let base = home.join(".copilot").join("session-state");
-    let Ok(rd) = fs::read_dir(&base) else { return Vec::new() };
-
-    // Phase 1 (cheap): one dir scan + stat per session. The phantom filter
-    // here is stat-only — a non-empty `events.jsonl` marks "the user did
-    // something" — so Copilot's many never-used pre-warm dirs (which only
-    // ever get a `workspace.yaml`) are dropped without reading any content.
-    // Whenever WT (or wta itself) spawns a Copilot CLI process — agent-pane
-    // back-end, `?prompt` delegate, coordinator — it eagerly creates
-    // `~/.copilot/session-state/<UUID>/workspace.yaml` before the user types
-    // anything; if the user never interacts, no `events.jsonl` is written.
-    let mut candidates = Vec::new();
-    for entry in rd.flatten() {
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) { continue; }
-        let dir = entry.path();
-        let id = match dir.file_name().and_then(|n| n.to_str()) {
-            Some(s) if !s.is_empty() => s.to_string(),
-            _ => continue,
-        };
-        let events = dir.join("events.jsonl");
-        let has_real_activity = events.metadata()
-            .map(|m| m.is_file() && m.len() > 0)
-            .unwrap_or(false);
-        if !has_real_activity { continue; }
-        let last_activity = events.metadata()
-            .and_then(|m| m.modified()).ok()
-            .or_else(|| dir.join("workspace.yaml").metadata().and_then(|m| m.modified()).ok())
-            .unwrap_or(SystemTime::UNIX_EPOCH);
-        candidates.push(Candidate { id, sort_time: last_activity, path: dir, cwd: None });
-    }
-
-    // Phase 2 (expensive): read `workspace.yaml` for title + cwd, newest
-    // `MAX_PER_CLI` shell-pane sessions only.
-    let mut out = Vec::new();
-    for c in select_top_candidates(candidates, agent_pane_index, MAX_PER_CLI) {
-        let dir = c.path;
-        let workspace = dir.join("workspace.yaml");
-        let events = dir.join("events.jsonl");
-        let started_at = workspace.metadata()
-            .and_then(|m| m.modified()).ok()
-            .unwrap_or(c.sort_time);
-        let yaml = fs::read_to_string(&workspace).unwrap_or_default();
-        let cwd = parse_simple_yaml(&yaml, "cwd")
-            .map(PathBuf::from)
-            .unwrap_or_default();
-        // Copilot writes the session title to `name`; `summary` is a removed
-        // legacy field kept only as a fallback for very old sessions. Fall
-        // back to a short id when neither is present yet.
-        let title = parse_simple_yaml(&yaml, "name")
-            .filter(|s| !s.is_empty())
-            .or_else(|| parse_simple_yaml(&yaml, "summary").filter(|s| !s.is_empty()))
-            .unwrap_or_else(|| short_id(&c.id, "copilot"));
-
-        out.push(AgentSession {
-            key:               c.id,
-            cli_source:        CliSource::Copilot,
-            pane_session_id:   None,
-            window_id:         None,
-            tab_id:            None,
-            title,
-            cwd,
-            started_at,
-            last_activity_at:  c.sort_time,
-            status:            AgentStatus::Historical,
-            last_error:        None,
-            current_tool:      None,
-            attention_reason:  None,
-            log_path:          Some(events),
-            origin:            crate::agent_sessions::SessionOrigin::default(),
-            location:          crate::agent_sessions::SessionLocation::Host,
-        });
-    }
-    out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-    out
-}
-
-// ─── Claude ─────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-fn load_claude(home: &Path) -> Vec<AgentSession> {
-    load_claude_indexed(home, &HashSet::new())
-}
-
-fn load_claude_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<AgentSession> {
-    let base = home.join(".claude").join("projects");
-    let Ok(rd) = fs::read_dir(&base) else { return Vec::new() };
-
-    // Phase 1 (cheap): enumerate transcripts; id = filename stem, sort by
-    // mtime. No content is read here — Claude phantoms (e.g. `/model` then
-    // Ctrl+D) can only be told apart by content, so that filter is deferred
-    // to phase 2.
-    let mut candidates = Vec::new();
-    for proj_entry in rd.flatten() {
-        let proj_dir = proj_entry.path();
-        let is_project = proj_dir.file_name()
-            .and_then(|n| n.to_str())
-            .map(|s| s != "memory")
-            .unwrap_or(false);
-        if !is_project { continue; }
-        let Ok(files) = fs::read_dir(&proj_dir) else { continue };
-        for f in files.flatten() {
-            let path = f.path();
-            if path.is_dir() { continue; }
-            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") { continue; }
-            let id = match path.file_stem().and_then(|n| n.to_str()) {
-                Some(s) if !s.is_empty() => s.to_string(),
-                _ => continue,
-            };
-            let sort_time = path.metadata().and_then(|m| m.modified()).ok()
-                .unwrap_or(SystemTime::UNIX_EPOCH);
-            candidates.push(Candidate { id, sort_time, path, cwd: None });
-        }
-    }
-
-    // Phase 2 (expensive): content read for the newest `MAX_PER_CLI` only.
-    let mut out = Vec::new();
-    for c in select_top_candidates(candidates, agent_pane_index, MAX_PER_CLI) {
-        let path = c.path;
-        // Reproduces the "ghost Claude session" bug: launching `claude` and
-        // exiting without typing a real prompt (e.g. just running `/model`
-        // then Ctrl+D) still leaves a JSONL on disk, but `claude --resume
-        // <id>` rejects it with `No conversation found with session ID:
-        // <id>`. Mirror the Copilot ghost-session filter so these rows never
-        // appear in the session management view, where Enter would dead-end.
-        if !claude_session_has_real_content(&path) { continue; }
-        // Claude's directory-name encoding (`\` -> `-`) is lossy: paths whose
-        // segments contain `-` can't be recovered from the directory name
-        // alone. Use it only as a fallback — prefer the per-record `cwd`
-        // embedded in the JSONL, which preserves the original path verbatim.
-        let cwd_fallback = path.parent()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .map(decode_claude_cwd)
-            .unwrap_or_default();
-        let title = first_user_text_jsonl(&path, ClaudeOrGemini::Claude)
-            .unwrap_or_else(|| short_id(&c.id, "claude"));
-        let cwd = read_cwd_from_claude_jsonl(&path).unwrap_or(cwd_fallback);
-
-        out.push(AgentSession {
-            key:               c.id,
-            cli_source:        CliSource::Claude,
-            location:          crate::agent_sessions::SessionLocation::Host,
-            pane_session_id:   None,
-            window_id:         None,
-            tab_id:            None,
-            title,
-            cwd,
-            started_at:        c.sort_time,
-            last_activity_at:  c.sort_time,
-            status:            AgentStatus::Historical,
-            last_error:        None,
-            current_tool:      None,
-            attention_reason:  None,
-            log_path:          Some(path),
-            origin:            crate::agent_sessions::SessionOrigin::default(),
-        });
-    }
-    out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-    out
-}
-
-// ─── Gemini ─────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-fn load_gemini(home: &Path) -> Vec<AgentSession> {
-    load_gemini_indexed(home, &HashSet::new())
-}
-
-fn load_gemini_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<AgentSession> {
-    let tmp = home.join(".gemini").join("tmp");
-    let Ok(rd) = fs::read_dir(&tmp) else { return Vec::new() };
-
-    let projects_json = home.join(".gemini").join("projects.json");
-    let cwd_lookup    = parse_gemini_projects(&projects_json);
-
-    // Phase 1 (cheap): read only line 1 of each transcript to pull the
-    // sessionId (Gemini doesn't put it in the filename); sort by mtime.
-    // This is the key win — Gemini's seeded-prompt agent-pane phantoms are
-    // identified by id and skipped here in `select_top_candidates`, instead
-    // of each costing a full `gemini_jsonl_has_real_content` scan.
-    let mut candidates = Vec::new();
-    for proj_entry in rd.flatten() {
-        if !proj_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) { continue; }
-        let chats = proj_entry.path().join("chats");
-        let Ok(files) = fs::read_dir(&chats) else { continue };
-        for f in files.flatten() {
-            let path = f.path();
-            if !is_gemini_session_file(&path) { continue; }
-            // A JSONL with content must have a resolvable `sessionId` in its
-            // header; if we can't parse it, skip rather than synthesise an
-            // un-resumable key (Enter on such rows used to silently no-op).
-            let Some(sid) = gemini_session_id_from_header(&path) else { continue; };
-            let sort_time = path.metadata().and_then(|m| m.modified()).ok()
-                .unwrap_or(SystemTime::UNIX_EPOCH);
-            candidates.push(Candidate { id: sid, sort_time, path, cwd: None });
-        }
-    }
-
-    // Phase 2 (expensive): phantom filter + title for the newest
-    // `MAX_PER_CLI` only.
-    let mut out = Vec::new();
-    for c in select_top_candidates(candidates, agent_pane_index, MAX_PER_CLI) {
-        let path = c.path;
-        // Drop phantom Gemini sessions: opening `gemini` and exiting without
-        // exchanging a turn leaves a JSONL containing only header line(s) —
-        // `gemini --resume <id>` would reject it. Mirrors the Claude and
-        // Copilot loader-side filters.
-        if !gemini_jsonl_has_real_content(&path) { continue; }
-        // cwd: `~/.gemini/tmp/<slug>/chats/session-*.jsonl` → look up <slug>.
-        let cwd = path.parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .and_then(|slug| cwd_lookup.get(slug).cloned())
-            .unwrap_or_default();
-        let title = first_user_text_jsonl(&path, ClaudeOrGemini::Gemini)
-            .unwrap_or_else(|| short_id(&c.id, "gemini"));
-
-        out.push(AgentSession {
-            key:               c.id,
-            cli_source:        CliSource::Gemini,
-            location:          crate::agent_sessions::SessionLocation::Host,
-            pane_session_id:   None,
-            window_id:         None,
-            tab_id:            None,
-            title,
-            cwd,
-            started_at:        c.sort_time,
-            last_activity_at:  c.sort_time,
-            status:            AgentStatus::Historical,
-            last_error:        None,
-            current_tool:      None,
-            attention_reason:  None,
-            log_path:          Some(path),
-            origin:            crate::agent_sessions::SessionOrigin::default(),
-        });
-    }
-    out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-    out
-}
-
-/// Extract a Gemini session's `sessionId` from its header (first non-empty
-/// line) with a single cheap line read. A header line carries `sessionId`
-/// and no `type` field; a leading record that has a `type` field means the
-/// header is missing or not first, so we skip it (matches `parse_gemini_meta`).
-fn gemini_session_id_from_header(path: &Path) -> Option<String> {
-    let line = read_first_line(path)?;
-    let val: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-    if val.get("type").is_some() {
-        return None;
-    }
-    val.get("sessionId").and_then(|v| v.as_str()).map(String::from)
-}
-
-/// Top-level Gemini chat files are `~/.gemini/tmp/<slug>/chats/session-*.jsonl`.
-/// Files inside a per-subagent `<UUID>/` subdirectory are NOT session files
-/// and must be skipped.
-fn is_gemini_session_file(p: &Path) -> bool {
-    if !p.is_file() { return false; }
-    let Some(name) = p.file_name().and_then(|n| n.to_str()) else { return false; };
-    if !name.starts_with("session-") { return false; }
-    name.ends_with(".jsonl")
-}
-
-// ─── Codex ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-fn load_codex(home: &Path) -> Vec<AgentSession> {
-    load_codex_indexed(home, &HashSet::new())
-}
-
-fn load_codex_indexed(home: &Path, agent_pane_index: &HashSet<String>) -> Vec<AgentSession> {
-    let root = home.join(".codex").join("sessions");
-    let Ok(years) = fs::read_dir(&root) else { return Vec::new() };
-
-    // Phase 1 (cheap): read only the `session_meta` first line of each
-    // rollout to get id + cwd + timestamp + subagent flag. Subagent forks
-    // are dropped here; Class A is dropped in `select_top_candidates`.
-    let mut candidates = Vec::new();
-    for y in years.flatten() {
-        let Ok(months) = fs::read_dir(y.path()) else { continue };
-        for m in months.flatten() {
-            let Ok(days) = fs::read_dir(m.path()) else { continue };
-            for d in days.flatten() {
-                let Ok(files) = fs::read_dir(d.path()) else { continue };
-                for f in files.flatten() {
-                    let path = f.path();
-                    let Some(name) = path.file_name().and_then(|s| s.to_str()) else { continue };
-                    if !name.starts_with("rollout-") || !name.ends_with(".jsonl") { continue; }
-                    let Some(meta) = read_codex_session_meta(&path) else { continue; };
-                    // Skip Codex internal multi-agent subagent forks: they get
-                    // their own rollout file but inherit the parent's history
-                    // (same title) and are not user-facing sessions.
-                    if meta.is_subagent { continue; }
-                    let sort_time = meta.timestamp
-                        .or_else(|| fs::metadata(&path).and_then(|m| m.modified()).ok())
-                        .unwrap_or_else(SystemTime::now);
-                    candidates.push(Candidate {
-                        id: meta.id,
-                        sort_time,
-                        path,
-                        cwd: Some(meta.cwd),
-                    });
-                }
-            }
-        }
-    }
-
-    // Phase 2 (expensive): full-content phantom filter + title for the
-    // newest `MAX_PER_CLI` only. cwd was already read in phase 1.
-    let mut out = Vec::new();
-    for c in select_top_candidates(candidates, agent_pane_index, MAX_PER_CLI) {
-        let path = c.path;
-        if !codex_session_has_real_content(&path) { continue; }
-        let title = codex_title_from_file(&path)
-            .unwrap_or_else(|| short_id(&c.id, "codex"));
-        let cwd = c.cwd.unwrap_or_default();
-        out.push(AgentSession {
-            key:               c.id,
-            cli_source:        CliSource::Codex,
-            location:          crate::agent_sessions::SessionLocation::Host,
-            pane_session_id:   None,
-            window_id:         None,
-            tab_id:            None,
-            title,
-            cwd,
-            started_at:        c.sort_time,
-            last_activity_at:  c.sort_time,
-            status:            AgentStatus::Historical,
-            last_error:        None,
-            current_tool:      None,
-            attention_reason:  None,
-            log_path:          Some(path),
-            origin:            crate::agent_sessions::SessionOrigin::default(),
-        });
-    }
-    out.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-    out
-}
+// ─── Codex per-key helpers ──────────────────────────────────────────────
 
 struct CodexSessionMeta {
-    id:          String,
-    cwd:         PathBuf,
-    timestamp:   Option<SystemTime>,
-    is_subagent: bool,
+    id: String,
 }
 
 fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
@@ -851,12 +299,8 @@ fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
     if v.get("type")?.as_str()? != "session_meta" { return None; }
     let payload = v.get("payload")?;
-    let ts_str = payload.get("timestamp").and_then(|s| s.as_str());
     Some(CodexSessionMeta {
-        id:          payload.get("id")?.as_str()?.to_string(),
-        cwd:         PathBuf::from(payload.get("cwd")?.as_str()?),
-        timestamp:   ts_str.and_then(parse_iso_to_system_time),
-        is_subagent: codex_payload_is_subagent(payload),
+        id: payload.get("id")?.as_str()?.to_string(),
     })
 }
 
@@ -912,46 +356,6 @@ fn codex_session_has_real_content(path: &Path) -> bool {
         }
     }
     false
-}
-
-fn codex_title_from_file(path: &Path) -> Option<String> {
-    let lines = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP)?;
-    for line in lines {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
-        let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
-        match ty {
-            "event_msg" => {
-                let Some(payload) = v.get("payload") else { continue };
-                let pty = payload.get("type").and_then(|s| s.as_str()).unwrap_or("");
-                if pty == "user_message" {
-                    let msg = payload.get("message").and_then(|s| s.as_str()).unwrap_or("");
-                    let title = first_nonblank_line(msg);
-                    if !title.is_empty() { return Some(title); }
-                }
-            }
-            "response_item" => {
-                let Some(payload) = v.get("payload") else { continue };
-                let role = payload.get("role").and_then(|s| s.as_str()).unwrap_or("");
-                if role == "user" {
-                    let text = payload.get("content")
-                        .and_then(|c| c.get(0))
-                        .and_then(|c0| c0.get("text"))
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("");
-                    if !codex_user_text_is_synthetic(text) {
-                        let title = first_nonblank_line(text);
-                        if !title.is_empty() { return Some(title); }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn first_nonblank_line(raw: &str) -> String {
-    raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string()
 }
 
 /// Is this codex user-role `content.text` a *synthetic* record codex injects
@@ -1055,7 +459,7 @@ pub(crate) fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf>
 /// (never panics).
 pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     let s = s.trim();
-    
+
     // Detect and parse timezone offset (+HH:MM or -HH:MM, or Z for UTC)
     let offset_seconds = if s.ends_with('Z') {
         0
@@ -1088,7 +492,7 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     } else {
         0
     };
-    
+
     // Determine the core portion to parse (strip Z or offset)
     let core = if s.ends_with('Z') {
         s.strip_suffix('Z')?
@@ -1097,7 +501,7 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     } else {
         s.get(..19)?
     };
-    
+
     // Split at 'T' → date + time
     let (date_part, time_part) = core.split_once('T')?;
     let mut date_iter = date_part.split('-');
@@ -1133,18 +537,18 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     }
     let days_in_month: [u64; 12] = [31, if is_leap(year) { 29 } else { 28 },
         31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    
+
     // Validate month bounds
     if month < 1 || month > 12 {
         return None;
     }
-    
+
     // Validate day bounds
     let days_in_current_month = days_in_month[(month - 1) as usize];
     if day < 1 || day > days_in_current_month {
         return None;
     }
-    
+
     let mut total_days = days_before_year(year) - days_before_year(1970);
     for i in 0..(month - 1) as usize {
         total_days += days_in_month[i];
@@ -1153,7 +557,7 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     let mut secs = (total_days * 86400 + hour * 3600 + min * 60 + sec) as i64;
     // Subtract offset to convert from local time to UTC
     secs -= offset_seconds as i64;
-    
+
     if secs < 0 {
         return None;
     }
@@ -1175,6 +579,7 @@ pub(crate) fn short_id(id: &str, cli: &str) -> String {
 /// `summary:` fields this way, and a naive line read would otherwise
 /// surface the literal `|-` indicator instead of the prose. Does NOT
 /// support nested mapping structures.
+#[allow(dead_code)]
 pub(crate) fn parse_simple_yaml(text: &str, key: &str) -> Option<String> {
     let mut lines = text.lines().enumerate().peekable();
     while let Some((_, line)) = lines.next() {
@@ -1209,6 +614,7 @@ pub(crate) fn parse_simple_yaml(text: &str, key: &str) -> Option<String> {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 enum BlockScalarStyle {
     /// `|` — keep newlines, default chomping (single trailing newline kept).
     LiteralClip,
@@ -1224,6 +630,7 @@ enum BlockScalarStyle {
     FoldedKeep,
 }
 
+#[allow(dead_code)]
 fn block_scalar_style(inline: &str) -> Option<BlockScalarStyle> {
     // Strip a trailing `#`-comment if present so `summary: |- # note` parses.
     let head = inline.split('#').next().unwrap_or("").trim_end();
@@ -1248,6 +655,7 @@ fn block_scalar_style(inline: &str) -> Option<BlockScalarStyle> {
 /// (rendered as `\n`). Literal styles (`|`) keep every line as-is.
 /// Chomping (`-` strip / `+` keep / default clip) controls trailing
 /// newlines, matching YAML 1.2 §8.1.1.
+#[allow(dead_code)]
 fn read_block_scalar<'a, I>(
     iter:       &mut std::iter::Peekable<I>,
     key_indent: usize,
@@ -1288,6 +696,7 @@ where
     join_block(&raw, style)
 }
 
+#[allow(dead_code)]
 fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
     use BlockScalarStyle::*;
     let folded = matches!(style, FoldedClip | FoldedStrip | FoldedKeep);
@@ -1370,21 +779,6 @@ pub(crate) fn decode_claude_cwd(encoded: &str) -> PathBuf {
     PathBuf::from(encoded)
 }
 
-/// Parse `~/.gemini/projects.json` `{projects: {<cwd>: <name>}}`.
-/// Returns map of project_name -> cwd (reversed direction).
-pub(crate) fn parse_gemini_projects(path: &Path) -> HashMap<String, PathBuf> {
-    let mut out = HashMap::new();
-    let Ok(text) = fs::read_to_string(path) else { return out };
-    let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) else { return out };
-    let Some(map) = val.get("projects").and_then(|v| v.as_object()) else { return out };
-    for (cwd_str, name_val) in map {
-        if let Some(name) = name_val.as_str() {
-            out.insert(name.to_string(), PathBuf::from(cwd_str));
-        }
-    }
-    out
-}
-
 /// Read the first non-empty JSONL line of a Gemini session file and extract
 /// `sessionId`. Timestamps are not exposed by Gemini's JSONL header — the
 /// caller falls back to file mtime for `last_activity`.
@@ -1403,10 +797,12 @@ pub(crate) fn parse_gemini_meta(path: &Path) -> (Option<String>, Option<SystemTi
 }
 
 #[derive(Copy, Clone)]
+#[allow(dead_code)]
 enum ClaudeOrGemini { Claude, Gemini }
 
 /// Best-effort: scan first chunk of JSONL for a user-message line and
 /// return its text content, truncated to 60 chars.
+#[allow(dead_code)]
 fn first_user_text_jsonl(path: &Path, kind: ClaudeOrGemini) -> Option<String> {
     let text = read_first_bytes(path, TITLE_TAIL_BYTES).ok()?;
     for line in text.lines() {
@@ -1433,6 +829,7 @@ fn first_user_text_jsonl(path: &Path, kind: ClaudeOrGemini) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
 fn extract_claude_user_text(v: &serde_json::Value) -> Option<String> {
     let msg = v.get("message")?;
     if let Some(s) = msg.get("content").and_then(|c| c.as_str()) {
@@ -1449,33 +846,12 @@ fn extract_claude_user_text(v: &serde_json::Value) -> Option<String> {
         .or_else(|| v.get("content").and_then(|c| c.as_str()).map(String::from))
 }
 
+#[allow(dead_code)]
 fn extract_gemini_user_text(v: &serde_json::Value) -> Option<String> {
     let arr = v.get("content")?.as_array()?;
     for part in arr {
         if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
             return Some(t.to_string());
-        }
-    }
-    None
-}
-
-/// Read the first non-empty `cwd` string from a Claude JSONL session
-/// file. Claude writes a `cwd` field on every assistant/user/system
-/// record, so the first record that carries one gives us the original
-/// working directory verbatim — without going through the lossy
-/// directory-name encoding that maps `\` and `-` to the same character.
-fn read_cwd_from_claude_jsonl(path: &Path) -> Option<PathBuf> {
-    let text = read_first_bytes(path, TITLE_TAIL_BYTES).ok()?;
-    for line in text.lines() {
-        if line.trim().is_empty() { continue; }
-        let val: serde_json::Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        if let Some(s) = val.get("cwd").and_then(|v| v.as_str()) {
-            if !s.is_empty() {
-                return Some(PathBuf::from(s));
-            }
         }
     }
     None
@@ -1577,6 +953,7 @@ fn stream_jsonl_lines(
     Some(reader.lines().filter_map(|r| r.ok()))
 }
 
+#[allow(dead_code)]
 fn truncate_chars(s: &str, n: usize) -> String {
     if s.chars().count() <= n { return s.to_string(); }
     let mut out: String = s.chars().take(n.saturating_sub(1)).collect();
@@ -1747,239 +1124,21 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn copilot_loader_picks_up_session_dir() {
-        let home = tmp_root("copilot-home");
-        let sid = "11111111-2222-3333-4444-555555555555";
-        let dir = home.join(".copilot").join("session-state").join(sid);
-        fs::create_dir_all(&dir).unwrap();
-        write_file(&dir.join("workspace.yaml"),
-            "id: 11111111-2222-3333-4444-555555555555\n\
-             cwd: C:\\Users\\me\\proj\n\
-             summary: Refactor parser\n\
-             summary_count: 1\n");
-        write_file(&dir.join("events.jsonl"),
-            "{\"type\":\"session.start\",\"data\":{}}\n");
 
-        let v = load_copilot(&home);
-        assert_eq!(v.len(), 1);
-        let s = &v[0];
-        assert_eq!(s.key, sid);
-        assert_eq!(s.cli_source, CliSource::Copilot);
-        assert_eq!(s.title, "Refactor parser");
-        assert_eq!(s.cwd, PathBuf::from("C:\\Users\\me\\proj"));
-        assert_eq!(s.status, AgentStatus::Historical);
-        // `load_copilot` is the index-free test shim
-        // (`load_copilot_indexed(.., &empty_index)`): the loader never
-        // consults the agent-pane index itself. The real scan threads the
-        // index through `select_top_candidates`, which *skips* Class A
-        // candidates up front rather than stamping origin afterward. So
-        // scanner output here always defaults to Unknown regardless of any
-        // index that may exist in the host's real %LOCALAPPDATA%.
-        assert_eq!(s.origin, crate::agent_sessions::SessionOrigin::Unknown);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn copilot_loader_falls_back_to_short_id_when_no_summary() {
-        let home = tmp_root("copilot-noname");
-        let sid = "abcdef01-aaaa-bbbb-cccc-dddddddddddd";
-        let dir = home.join(".copilot").join("session-state").join(sid);
-        fs::create_dir_all(&dir).unwrap();
-        write_file(&dir.join("workspace.yaml"),
-            "id: abcdef01-aaaa-bbbb-cccc-dddddddddddd\n\
-             cwd: D:\\x\n\
-             user_named: false\n\
-             summary_count: 0\n");
-        // events.jsonl must exist (and be non-empty) for the loader to
-        // accept the entry — see `copilot_loader_skips_ephemeral_session_with_no_events`.
-        write_file(&dir.join("events.jsonl"), "{\"type\":\"session.start\"}\n");
 
-        let v = load_copilot(&home);
-        assert_eq!(v.len(), 1);
-        assert_eq!(v[0].title, "copilot abcdef01");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn copilot_loader_skips_ephemeral_session_with_no_events() {
-        // Reproduces the "ghost session at top of session management view" bug: every time WT
-        // (or wta itself) spawns a Copilot CLI process — e.g. as the
-        // back-end for an agent pane or for a `?prompt` delegate — that
-        // process eagerly creates `~/.copilot/session-state/<UUID>/workspace.yaml`
-        // (171 bytes of stub metadata) before the user types anything.
-        // If the user never interacts, no `events.jsonl` is ever written.
-        // These dirs would otherwise dominate the top of session management view (most-recent
-        // last_activity) on the next WT restart. Loader must skip them.
-        let home = tmp_root("copilot-ghost");
-        let base = home.join(".copilot").join("session-state");
 
-        // Real session — has events.jsonl with content.
-        let real = "11111111-1111-1111-1111-111111111111";
-        let dir_real = base.join(real);
-        fs::create_dir_all(&dir_real).unwrap();
-        write_file(&dir_real.join("workspace.yaml"),
-            "id: 11111111-1111-1111-1111-111111111111\ncwd: C:\\proj\nsummary: Real Work\n");
-        write_file(&dir_real.join("events.jsonl"),
-            "{\"type\":\"session.start\"}\n");
 
-        // Ghost session — workspace.yaml only, no events.jsonl.
-        let ghost = "22222222-2222-2222-2222-222222222222";
-        let dir_ghost = base.join(ghost);
-        fs::create_dir_all(&dir_ghost).unwrap();
-        write_file(&dir_ghost.join("workspace.yaml"),
-            "id: 22222222-2222-2222-2222-222222222222\ncwd: C:\\Users\\me\n");
 
-        // Ghost session — empty events.jsonl (touched but never written).
-        let ghost_empty = "33333333-3333-3333-3333-333333333333";
-        let dir_ghost_empty = base.join(ghost_empty);
-        fs::create_dir_all(&dir_ghost_empty).unwrap();
-        write_file(&dir_ghost_empty.join("workspace.yaml"),
-            "id: 33333333-3333-3333-3333-333333333333\ncwd: C:\\Users\\me\n");
-        write_file(&dir_ghost_empty.join("events.jsonl"), "");
 
-        let v = load_copilot(&home);
-        assert_eq!(v.len(), 1, "only the real session should be loaded");
-        assert_eq!(v[0].key, real);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn claude_loader_picks_up_jsonl_files_and_skips_memory() {
-        let home = tmp_root("claude-home");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
-        fs::create_dir_all(&proj).unwrap();
-        write_file(&proj.join("aaaa-bbbb-cccc.jsonl"),
-            "{\"type\":\"user\",\"message\":{\"content\":\"Hello there\"}}\n\
-             {\"type\":\"assistant\",\"message\":{\"content\":\"Hi!\"}}\n");
 
-        // memory project must be skipped
-        let mem = projects.join("memory");
-        fs::create_dir_all(&mem).unwrap();
-        write_file(&mem.join("xxx.jsonl"), "{\"type\":\"user\"}\n");
 
-        let v = load_claude(&home);
-        assert_eq!(v.len(), 1);
-        let s = &v[0];
-        assert_eq!(s.key, "aaaa-bbbb-cccc");
-        assert_eq!(s.cli_source, CliSource::Claude);
-        assert_eq!(s.cwd, PathBuf::from("C:\\Users\\me\\myproj"));
-        assert_eq!(s.title, "Hello there");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn claude_loader_prefers_in_file_cwd_over_lossy_dirname() {
-        // Real-world: a project whose final segment contains a `-`
-        // (e.g. `agentic-terminal`) round-trips to the same encoded
-        // dirname as `agentic\terminal`, so the dirname alone can't
-        // recover the original path. The JSONL records carry the true
-        // cwd verbatim.
-        let home = tmp_root("claude-cwd-from-jsonl");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-codes-agentic-terminal");
-        fs::create_dir_all(&proj).unwrap();
-        write_file(&proj.join("ssss-tttt.jsonl"),
-            "{\"type\":\"permission-mode\",\"sessionId\":\"ssss-tttt\"}\n\
-             {\"type\":\"user\",\"cwd\":\"C:\\\\Users\\\\me\\\\codes\\\\agentic-terminal\",\"message\":{\"content\":\"hi\"}}\n");
 
-        let v = load_claude(&home);
-        assert_eq!(v.len(), 1);
-        assert_eq!(
-            v[0].cwd,
-            PathBuf::from("C:\\Users\\me\\codes\\agentic-terminal"),
-            "cwd from JSONL must beat lossy dirname decoding",
-        );
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn claude_loader_falls_back_to_dirname_when_jsonl_has_no_cwd() {
-        // When records carry no `cwd` field the loader still works,
-        // landing on the lossy decoded dirname. Acceptable because no
-        // better source of truth is available.
-        let home = tmp_root("claude-cwd-fallback");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-myproj");
-        fs::create_dir_all(&proj).unwrap();
-        write_file(&proj.join("oooo-pppp.jsonl"),
-            "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n");
 
-        let v = load_claude(&home);
-        assert_eq!(v.len(), 1);
-        assert_eq!(v[0].cwd, PathBuf::from("C:\\Users\\me\\myproj"));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn claude_loader_skips_phantom_session_with_only_meta_records() {
-        // Reproduces the "ghost Claude session" bug: launching `claude`
-        // and exiting (e.g. after just running `/model`, or with no
-        // input at all) leaves a JSONL on disk that contains only meta
-        // records — permission-mode, file-history-snapshot, isMeta
-        // caveat, the slash-command echo + its captured stdout, and a
-        // last-prompt footer. `claude --resume <id>` rejects these with
-        // `No conversation found with session ID: <id>`, so the row
-        // would dead-end on Enter in the session management view.
-        // Loader must skip them; only the real session should appear.
-        let home = tmp_root("claude-phantom");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-
-        // Real session — has a non-meta user message Claude can resume.
-        let real = "aaaaaaaa-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", real)),
-            "{\"type\":\"permission-mode\",\"sessionId\":\"aaaaaaaa-1111-2222-3333-444444444444\"}\n\
-             {\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello world\"},\
-               \"sessionId\":\"aaaaaaaa-1111-2222-3333-444444444444\"}\n");
-
-        // Phantom session — exactly the shape Claude writes when the
-        // user opens the CLI, runs `/model`, and exits without typing
-        // a real prompt. Has user records, but they're all meta or
-        // slash-command echoes.
-        let phantom = "bbbbbbbb-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", phantom)),
-            "{\"type\":\"permission-mode\",\"sessionId\":\"bbbbbbbb-1111-2222-3333-444444444444\"}\n\
-             {\"type\":\"file-history-snapshot\",\"messageId\":\"x\",\"snapshot\":{\"trackedFileBackups\":{}}}\n\
-             {\"type\":\"user\",\"isMeta\":true,\"message\":{\"role\":\"user\",\"content\":\"<local-command-caveat>Caveat: ...</local-command-caveat>\"}}\n\
-             {\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"<command-name>/model</command-name>\"}}\n\
-             {\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"<local-command-stdout>Set model to Opus</local-command-stdout>\"}}\n\
-             {\"type\":\"last-prompt\",\"sessionId\":\"bbbbbbbb-1111-2222-3333-444444444444\"}\n");
-
-        // Phantom session — totally empty JSONL (file touched but
-        // nothing written before exit).
-        let phantom_empty = "cccccccc-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", phantom_empty)), "");
-
-        let v = load_claude(&home);
-        assert_eq!(v.len(), 1, "only the real session should survive; got {:?}",
-            v.iter().map(|s| s.key.clone()).collect::<Vec<_>>());
-        assert_eq!(v[0].key, real);
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn claude_loader_keeps_session_with_only_assistant_reply() {
-        // Defensive: a session whose only conversational record is an
-        // `assistant` line (e.g. user closed Claude mid-stream before
-        // the user-message flush completed, but the assistant chunk
-        // had already landed) is still resumable by Claude — keep it.
-        let home = tmp_root("claude-assistant-only");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-        let sid = "dddddddd-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", sid)),
-            "{\"type\":\"permission-mode\",\"sessionId\":\"dddddddd-1111-2222-3333-444444444444\"}\n\
-             {\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"hi back\"}}\n");
-
-        let v = load_claude(&home);
-        assert_eq!(v.len(), 1);
-        assert_eq!(v[0].key, sid);
-        let _ = fs::remove_dir_all(&home);
-    }
 
     #[test]
     fn claude_session_real_content_scans_past_large_early_meta_record() {
@@ -2016,16 +1175,14 @@ mod tests {
              {big_meta}\n\
              {real_user}\n"
         );
-        write_file(&proj.join(format!("{}.jsonl", sid)), &contents);
+        let path = proj.join(format!("{}.jsonl", sid));
+        write_file(&path, &contents);
 
-        let v = load_claude(&home);
-        assert_eq!(
-            v.len(), 1,
+        assert!(
+            claude_session_has_real_content(&path),
             "session must NOT be misclassified as phantom when real \
-             content lives past a 64 KB early meta record; got {:?}",
-            v.iter().map(|s| s.key.clone()).collect::<Vec<_>>()
+             content lives past a 64 KB early meta record"
         );
-        assert_eq!(v[0].key, sid);
         let _ = fs::remove_dir_all(&home);
     }
 
@@ -2149,273 +1306,33 @@ mod tests {
         let _ = fs::remove_dir_all(&home);
     }
 
-    #[test]
-    fn gemini_loader_picks_up_session_files_and_resolves_cwd() {
-        let home = tmp_root("gemini-home");
-        write_file(&home.join(".gemini").join("projects.json"),
-            r#"{"projects":{"C:\\Users\\me\\proj":"meproj"}}"#);
-        let chats = home.join(".gemini").join("tmp").join("meproj").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        // Gemini JSONL: first line is the session header, subsequent lines
-        // are individual messages.
-        write_file(&chats.join("session-2026-05-03T10-47-abcd.jsonl"),
-            "{\"sessionId\":\"abcd-1234\",\"projectHash\":\"x\",\"startTime\":\"2026-05-03T10:47:50Z\",\"kind\":\"main\"}\n\
-             {\"type\":\"info\",\"content\":\"version up\"}\n\
-             {\"type\":\"user\",\"content\":[{\"text\":\"explain build system\"}]}\n");
-        // Per-subagent files in nested subdirectories must NOT be picked up.
-        let subdir = chats.join("aaaa-bbbb");
-        fs::create_dir_all(&subdir).unwrap();
-        write_file(&subdir.join("inner.jsonl"), "{}\n");
 
-        let v = load_gemini(&home);
-        assert_eq!(v.len(), 1, "expected exactly one Gemini session, got {:?}",
-            v.iter().map(|s| (s.key.clone(), s.title.clone())).collect::<Vec<_>>());
-        let s = &v[0];
-        assert_eq!(s.key, "abcd-1234");
-        assert_eq!(s.cli_source, CliSource::Gemini);
-        assert_eq!(s.cwd, PathBuf::from("C:\\Users\\me\\proj"));
-        assert_eq!(s.title, "explain build system");
-        assert_eq!(s.status, AgentStatus::Historical);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn gemini_loader_rejects_legacy_dot_json_files() {
-        // Single-object `.json` was a transient layout. Latest Gemini went
-        // back to `.jsonl`, so loader must NOT pick up `.json` files (they
-        // would parse as one massive JSON line and confuse `parse_gemini_meta`).
-        let home = tmp_root("gemini-home-rejects-json");
-        write_file(&home.join(".gemini").join("projects.json"),
-            r#"{"projects":{"C:\\proj":"p"}}"#);
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        write_file(&chats.join("session-2026-05-03T10-47-abcd.json"),
-            "{\"sessionId\":\"json-id\",\"messages\":[]}");
-        let v = load_gemini(&home);
-        assert!(v.is_empty(), "`.json` files must be ignored: got {:?}",
-            v.iter().map(|s| s.key.clone()).collect::<Vec<_>>());
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn gemini_loader_skips_files_not_starting_with_session_prefix() {
-        let home = tmp_root("gemini-home-skip");
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        write_file(&chats.join("notes.jsonl"),
-            "{\"sessionId\":\"x\"}\n");
 
-        let v = load_gemini(&home);
-        assert!(v.is_empty(), "non-session-prefixed files must be ignored");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn gemini_loader_skips_phantom_header_only_sessions() {
-        // Reproduces the in-the-wild Gemini phantom-session bug:
-        // opening `gemini` and exiting immediately leaves a JSONL
-        // on disk containing only the session header line (228 bytes)
-        // — or sometimes two duplicate header lines (456 bytes). The
-        // loader used to surface these in session management view with the synthetic title
-        // `gemini <8-char>` (because `first_user_text_jsonl` returned
-        // None), and Enter on them would launch
-        // `gemini --resume <id>` and dead-end.
-        let home = tmp_root("gemini-phantom-header-only");
-        write_file(&home.join(".gemini").join("projects.json"),
-            r#"{"projects":{"C:\\proj":"p"}}"#);
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
 
-        // Phantom: single header line, no `type` field anywhere.
-        write_file(&chats.join("session-2026-05-24T09-01-phantom.jsonl"),
-            "{\"sessionId\":\"aaaaaaaa-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
 
-        // Phantom: two duplicate header lines (the 456-byte shape).
-        write_file(&chats.join("session-2026-05-24T09-01-a5e06b8a.jsonl"),
-            "{\"sessionId\":\"a5e06b8a-28a1-4e64-9802-f8b4572e832d\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:43.027Z\",\"kind\":\"main\"}\n\
-             {\"sessionId\":\"a5e06b8a-28a1-4e64-9802-f8b4572e832d\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:43.039Z\",\"kind\":\"main\"}\n");
 
-        // Real: header + at least one record carrying a `type` field.
-        write_file(&chats.join("session-2026-05-24T10-00-real.jsonl"),
-            "{\"sessionId\":\"eeeeeeee-2222-3333-4444-555555555555\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
-             {\"type\":\"user\",\"content\":[{\"text\":\"hello\"}]}\n");
 
-        let v = load_gemini(&home);
-        assert_eq!(v.len(), 1,
-            "only the real session should survive; got {:?}",
-            v.iter().map(|s| s.key.clone()).collect::<Vec<_>>());
-        assert_eq!(v[0].key, "eeeeeeee-2222-3333-4444-555555555555");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn gemini_loader_keeps_session_with_info_record_only() {
-        // Defensive: a session that has a `type:"info"` line but no
-        // `type:"user"` (e.g. Gemini emitted a startup notice and the
-        // user exited before typing) is still listed — the title
-        // falls back to `gemini <8-char>` but the row at least has
-        // *some* real content beyond the header, and Gemini's own
-        // `--resume` may still load it. Don't over-filter.
-        let home = tmp_root("gemini-info-only");
-        write_file(&home.join(".gemini").join("projects.json"),
-            r#"{"projects":{"C:\\proj":"p"}}"#);
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        write_file(&chats.join("session-2026-05-24T10-00-info.jsonl"),
-            "{\"sessionId\":\"cccccccc-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
-             {\"type\":\"info\",\"content\":\"Update successful!\"}\n");
-        let v = load_gemini(&home);
-        assert_eq!(v.len(), 1);
-        assert_eq!(v[0].key, "cccccccc-1111-2222-3333-444444444444");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn loaders_are_ok_when_directory_missing() {
-        let nowhere = std::env::temp_dir().join("definitely-not-here-zzzzzz");
-        // Should not panic; should return empty.
-        assert!(load_copilot(&nowhere).is_empty());
-        assert!(load_claude(&nowhere).is_empty());
-        assert!(load_gemini(&nowhere).is_empty());
-    }
 
-    #[test]
-    fn copilot_sessions_sorted_newest_first() {
-        let home = tmp_root("copilot-sort");
-        let base = home.join(".copilot").join("session-state");
 
-        for (i, sid) in ["s-1", "s-2", "s-3"].iter().enumerate() {
-            let d = base.join(sid);
-            fs::create_dir_all(&d).unwrap();
-            write_file(&d.join("workspace.yaml"),
-                &format!("id: {}\ncwd: C:\\proj\nsummary: title-{}\n", sid, i));
-            write_file(&d.join("events.jsonl"), "{}\n");
-            // Stagger mtimes by overwriting the events file with a slight delay
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
 
-        let v = load_copilot(&home);
-        assert_eq!(v.len(), 3);
-        assert!(v[0].last_activity_at >= v[1].last_activity_at);
-        assert!(v[1].last_activity_at >= v[2].last_activity_at);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn select_top_candidates_skips_class_a_sorts_and_truncates() {
-        use std::time::Duration;
-        let at = |secs: u64| SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
-        let mk = |id: &str, secs: u64| Candidate {
-            id: id.to_string(),
-            sort_time: at(secs),
-            path: PathBuf::from(id),
-            cwd: None,
-        };
-        let mut index = HashSet::new();
-        index.insert("class-a".to_string());
 
-        let candidates = vec![
-            mk("old", 100),
-            mk("class-a", 999), // newest, but Class A → must be dropped
-            mk("new", 300),
-            mk("mid", 200),
-        ];
-        let top = select_top_candidates(candidates, &index, 2);
-        // Class A dropped, remaining sorted newest-first, truncated to 2.
-        assert_eq!(
-            top.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
-            ["new", "mid"]
-        );
-    }
 
-    #[test]
-    fn cli_scan_flags_selects_one_loader_per_known_cli() {
-        assert_eq!(cli_scan_flags(Some(&CliSource::Copilot)), (true, false, false, false));
-        assert_eq!(cli_scan_flags(Some(&CliSource::Claude)), (false, true, false, false));
-        assert_eq!(cli_scan_flags(Some(&CliSource::Gemini)), (false, false, true, false));
-        assert_eq!(cli_scan_flags(Some(&CliSource::Codex)), (false, false, false, true));
-    }
 
-    #[test]
-    fn cli_scan_flags_scans_all_for_none_or_custom_agent() {
-        // None (no resolvable CLI) and a custom/unknown agent both scan all
-        // four — matching the view, which shows every CLI when the
-        // current_cli_filter() is None.
-        assert_eq!(cli_scan_flags(None), (true, true, true, true));
-        assert_eq!(
-            cli_scan_flags(Some(&CliSource::Unknown("custom:my-agent".to_string()))),
-            (true, true, true, true)
-        );
-    }
 
-    #[test]
-    fn load_copilot_indexed_skips_agent_pane_sessions() {
-        let home = tmp_root("copilot-class-a");
-        let base = home.join(".copilot").join("session-state");
-        for sid in ["shell-1", "agent-pane-1"] {
-            let d = base.join(sid);
-            fs::create_dir_all(&d).unwrap();
-            write_file(&d.join("workspace.yaml"), &format!("id: {sid}\ncwd: C:\\proj\nsummary: t\n"));
-            write_file(&d.join("events.jsonl"), "{}\n");
-        }
-        let mut index = HashSet::new();
-        index.insert("agent-pane-1".to_string());
 
-        let v = load_copilot_indexed(&home, &index);
-        assert_eq!(v.len(), 1, "the agent-pane (Class A) session must be skipped");
-        assert_eq!(v[0].key, "shell-1");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn read_first_line_returns_first_non_empty_line() {
-        let home = tmp_root("first-line");
-        let p = home.join("f.jsonl");
-        write_file(&p, "\n\n  \n{\"a\":1}\n{\"b\":2}\n");
-        assert_eq!(read_first_line(&p).as_deref().map(str::trim), Some("{\"a\":1}"));
-        let empty = home.join("empty.jsonl");
-        write_file(&empty, "");
-        assert!(read_first_line(&empty).is_none());
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn read_first_line_caps_oversize_unterminated_line() {
-        // A corrupt / non-JSONL file that is one giant line with no newline
-        // must not be slurped whole: the read is bounded at
-        // HEADER_LINE_BYTES_CAP, so we get back at most the cap (the
-        // truncated text then fails the downstream JSON header parse).
-        let home = tmp_root("first-line-cap");
-        let p = home.join("giant.jsonl");
-        let giant = "x".repeat(HEADER_LINE_BYTES_CAP as usize + 4096);
-        write_file(&p, &giant);
-        let got = read_first_line(&p).expect("returns the bounded prefix");
-        assert!(
-            got.len() <= HEADER_LINE_BYTES_CAP as usize,
-            "read_first_line must cap the read, got {} bytes",
-            got.len()
-        );
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn gemini_session_id_from_header_reads_header_only() {
-        let home = tmp_root("gem-header");
-        // Header (sessionId, no `type`) on line 1 → returns the id without
-        // reading the rest of the (potentially huge) transcript.
-        let p = home.join("session-x.jsonl");
-        write_file(
-            &p,
-            "{\"sessionId\":\"abc-123\",\"projectHash\":\"h\",\"kind\":\"main\"}\n\
-             {\"id\":\"m\",\"type\":\"user\",\"content\":\"hi\"}\n",
-        );
-        assert_eq!(gemini_session_id_from_header(&p).as_deref(), Some("abc-123"));
-        // First line is a `type` record (no header) → None (matches parse_gemini_meta).
-        let p2 = home.join("session-y.jsonl");
-        write_file(&p2, "{\"id\":\"m\",\"type\":\"user\",\"content\":\"hi\"}\n");
-        assert!(gemini_session_id_from_header(&p2).is_none());
-        let _ = fs::remove_dir_all(&home);
-    }
+
+
+
+
 
     // ─── Codex tests ────────────────────────────────────────────────────
 
@@ -2446,61 +1363,11 @@ mod tests {
 \"payload\":{{\"type\":\"user_message\",\"message\":\"{text}\"}}}}\n")
     }
 
-    #[test]
-    fn load_codex_returns_one_row_per_real_rollout_file() {
-        let home = tmp_root("load-codex-basic");
-        let id = "11111111-2222-3333-4444-555555555555";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T10-30-00", id);
-        let body = codex_meta_line(id, "2026-05-28T10:30:00Z", "C:/work/proj")
-            + &codex_user_msg_line("2026-05-28T10:30:05Z", "summarize this repo");
-        write_file(&path, &body);
-        let rows = load_codex(&home);
-        assert_eq!(rows.len(), 1, "expected one row, got {:?}", rows);
-        let row = &rows[0];
-        assert_eq!(row.cli_source, crate::agent_sessions::CliSource::Codex);
-        assert_eq!(row.key, id, "key must be the rollout UUID");
-        assert_eq!(row.cwd, PathBuf::from("C:/work/proj"));
-        assert!(row.title.contains("summarize this repo"));
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn load_codex_skips_phantom_meta_only_files() {
-        let home = tmp_root("load-codex-phantom");
-        let id = "deadbeef-2222-3333-4444-555555555555";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T11-00-00", id);
-        write_file(&path, &codex_meta_line(id, "2026-05-28T11:00:00Z", "C:/x"));
-        assert_eq!(load_codex(&home).len(), 0, "phantom (meta-only) must be filtered out");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn load_codex_skips_subagent_fork() {
-        // Codex's multi_agent_v1/spawn_agent forks a child thread that gets its
-        // own rollout (source.subagent) and inherits the parent's first user
-        // message — so it has an identical title. It is a codex-internal worker,
-        // not a user session, and must not appear as a (duplicate) row.
-        let home = tmp_root("load-codex-subagent");
-        let parent = "11111111-2222-3333-4444-555555555555";
-        let child  = "99999999-2222-3333-4444-555555555555";
-        let pp = codex_session_path(&home, "2026", "06", "10", "2026-06-10T13-14-32", parent);
-        write_file(
-            &pp,
-            &(codex_meta_line(parent, "2026-06-10T13:14:32Z", "C:/w")
-                + &codex_user_msg_line("2026-06-10T13:14:43Z", "start new tab agent pane session")),
-        );
-        let cp = codex_session_path(&home, "2026", "06", "10", "2026-06-10T13-15-12", child);
-        write_file(
-            &cp,
-            &(codex_subagent_meta_line(child, parent, "2026-06-10T13:15:12Z", "C:/w")
-                + &codex_user_msg_line("2026-06-10T13:15:12Z", "start new tab agent pane session")),
-        );
 
-        let rows = load_codex(&home);
-        assert_eq!(rows.len(), 1, "subagent fork must be filtered, got {:?}", rows);
-        assert_eq!(rows[0].key, parent, "only the top-level session should survive");
-        let _ = fs::remove_dir_all(&home);
-    }
+
+
 
     #[test]
     fn codex_payload_is_subagent_discriminates_source() {
@@ -2510,42 +1377,9 @@ mod tests {
         assert!(codex_payload_is_subagent(&sub), "source.subagent must be detected");
     }
 
-    #[test]
-    fn load_codex_skips_phantom_meta_plus_env_context_only() {
-        let home = tmp_root("load-codex-env-only");
-        let id = "deadbeef-3333-3333-3333-333333333333";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T11-30-00", id);
-        let env_line = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"<environment_context>cwd=C:/x</environment_context>\"}}]}}}}\n");
-        write_file(&path, &(codex_meta_line(id, "2026-05-28T11:30:00Z", "C:/x") + &env_line));
-        assert_eq!(load_codex(&home).len(), 0,
-                   "meta + environment_context wrapper alone must be classified phantom");
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn load_codex_orders_newest_first_by_payload_timestamp() {
-        let home = tmp_root("load-codex-order");
-        for (i, ts) in [
-            (0u32, "2026-05-28T10:00:00Z"),
-            (1u32, "2026-05-28T10:05:00Z"),
-            (2u32, "2026-05-28T10:10:00Z"),
-        ] {
-            let id = format!("aaaaaaaa-{:04}-3333-4444-555555555555", i);
-            let iso = ts.replace(':', "-").trim_end_matches('Z').to_string();
-            let path = codex_session_path(&home, "2026", "05", "28", &iso, &id);
-            write_file(&path,
-                &(codex_meta_line(&id, ts, "C:/x")
-                  + &codex_user_msg_line(ts, &format!("prompt {i}"))));
-        }
-        let rows = load_codex(&home);
-        assert_eq!(rows.len(), 3);
-        assert!(rows[0].title.contains("prompt 2"),
-                "newest first; got titles {:?}",
-                rows.iter().map(|r| &r.title).collect::<Vec<_>>());
-        let _ = fs::remove_dir_all(&home);
-    }
+
+
 
     #[test]
     fn codex_session_has_real_content_is_conservative_on_io_error() {
@@ -2578,69 +1412,11 @@ mod tests {
         let _ = fs::remove_dir_all(&home);
     }
 
-    #[test]
-    fn codex_title_falls_back_to_response_item_user_skipping_env_context() {
-        let home = tmp_root("codex-title-fallback");
-        let id = "abcdef00-3333-3333-3333-333333333333";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T13-00-00", id);
-        let env = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"<environment_context>cwd=C:/x</environment_context>\"}}]}}}}\n");
-        let real = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"refactor the parser\"}}]}}}}\n");
-        write_file(&path, &(codex_meta_line(id, "2026-05-28T13:00:00Z", "C:/x") + &env + &real));
-        let rows = load_codex(&home);
-        assert_eq!(rows.len(), 1);
-        assert!(rows[0].title.contains("refactor the parser"),
-                "got title: {:?}", rows[0].title);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn codex_title_skips_injected_agents_md_instructions() {
-        // codex auto-loads AGENTS.md when the cwd has one and prepends it as a
-        // synthetic user-role response_item ("# AGENTS.md instructions for …")
-        // BEFORE the real prompt. It must not become the session title — the
-        // real prompt must win. Regression for the 69-char AGENTS.md-heading
-        // title seen on sessions run inside the intelligent-terminal repo.
-        let home = tmp_root("codex-title-agents-md");
-        let id = "abcdef00-4444-4444-4444-444444444444";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T14-00-00", id);
-        let agents = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"# AGENTS.md instructions for C:/proj\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
-        let real = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"friday is wonderful\"}}]}}}}\n");
-        write_file(&path, &(codex_meta_line(id, "2026-05-28T14:00:00Z", "C:/proj") + &agents + &real));
-        let rows = load_codex(&home);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].title, "friday is wonderful",
-                   "AGENTS.md injection must be skipped; got: {:?}", rows[0].title);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn codex_session_with_only_injected_context_is_phantom() {
-        // meta + <environment_context> + AGENTS.md injection, but no real user
-        // turn → phantom (must not surface as a resumable session titled with a
-        // doc heading). Guards the shared `codex_user_text_is_synthetic` used by
-        // `codex_session_has_real_content`.
-        let home = tmp_root("codex-phantom-agents-md");
-        let id = "abcdef00-5555-5555-5555-555555555555";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T15-00-00", id);
-        let env = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"<environment_context>cwd=C:/proj</environment_context>\"}}]}}}}\n");
-        let agents = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"# AGENTS.md instructions for C:/proj\"}}]}}}}\n");
-        write_file(&path, &(codex_meta_line(id, "2026-05-28T15:00:00Z", "C:/proj") + &env + &agents));
-        assert_eq!(load_codex(&home).len(), 0,
-                   "meta + env_context + AGENTS.md injection alone must be phantom");
-        let _ = fs::remove_dir_all(&home);
-    }
+
+
+
 
     #[test]
     fn codex_user_text_is_synthetic_recognizes_bare_and_dir_headings() {
@@ -2667,48 +1443,9 @@ mod tests {
         assert!(!codex_user_text_is_synthetic("fix the build"));
     }
 
-    #[test]
-    fn codex_title_skips_injected_bare_agents_md_instructions() {
-        // A GLOBAL ~/.codex/AGENTS.md makes codex emit the *bare* heading
-        // "# AGENTS.md instructions" (directory=None) before the real prompt —
-        // issue #339's still-leaking variant (the "for <dir>" form was already
-        // skipped). The real prompt must still win the title.
-        let home = tmp_root("codex-title-bare-agents-md");
-        let id = "abcdef00-6666-6666-6666-666666666666";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T16-00-00", id);
-        let agents = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\n be concise \\n</INSTRUCTIONS>\"}}]}}}}\n");
-        let real = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"fix the build\"}}]}}}}\n");
-        write_file(&path, &(codex_meta_line(id, "2026-05-28T16:00:00Z", "C:/proj") + &agents + &real));
-        let rows = load_codex(&home);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].title, "fix the build",
-                   "bare AGENTS.md injection must be skipped; got: {:?}", rows[0].title);
-        let _ = fs::remove_dir_all(&home);
-    }
 
-    #[test]
-    fn codex_session_with_only_bare_agents_md_is_phantom() {
-        // meta + <environment_context> + *bare* AGENTS.md injection, no real user
-        // turn → phantom. Guards codex_user_text_is_synthetic on the
-        // global-AGENTS.md form via codex_session_has_real_content.
-        let home = tmp_root("codex-phantom-bare-agents-md");
-        let id = "abcdef00-7777-7777-7777-777777777777";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T17-00-00", id);
-        let env = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"<environment_context>cwd=C:/proj</environment_context>\"}}]}}}}\n");
-        let agents = format!(
-            "{{\"type\":\"response_item\",\"payload\":{{\"role\":\"user\",\
-\"content\":[{{\"text\":\"# AGENTS.md instructions\\n\\n<INSTRUCTIONS>\\nbody\\n</INSTRUCTIONS>\"}}]}}}}\n");
-        write_file(&path, &(codex_meta_line(id, "2026-05-28T17:00:00Z", "C:/proj") + &env + &agents));
-        assert_eq!(load_codex(&home).len(), 0,
-                   "meta + env_context + bare AGENTS.md injection alone must be phantom");
-        let _ = fs::remove_dir_all(&home);
-    }
+
+
 
     #[test]
     fn codex_strict_probe_returns_false_when_artefact_missing() {

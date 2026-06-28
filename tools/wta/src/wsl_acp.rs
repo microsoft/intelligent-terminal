@@ -73,10 +73,10 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
     out
 }
 
-/// Which CLIs to query for a given filter. Mirrors
-/// [`crate::history_loader`]'s `cli_scan_flags` but **excludes Gemini**
-/// (no ACP `session/list`) and custom/unknown agents (no known ACP
-/// launch command).
+/// Which CLIs to query for a given filter. Known ACP-capable CLIs map to
+/// themselves; `None` scans all ACP-capable built-ins. Gemini is excluded
+/// because it has no ACP `session/list`, and custom/unknown agents are
+/// excluded because WTA has no known launch command for them.
 fn clis_to_scan(cli: Option<&CliSource>) -> Vec<CliSource> {
     match cli {
         Some(CliSource::Copilot) => vec![CliSource::Copilot],
