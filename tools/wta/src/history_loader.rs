@@ -103,39 +103,6 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
     }
 }
 
-/// Run the per-CLI scanners against a specific `home` (the real user
-/// profile for host rows, or a temp `$HOME`-mirror extracted from a WSL
-/// distro), restricted to a single CLI when `cli_filter` is `Some(known)`
-/// (see [`cli_scan_flags`]). Caps each CLI at [`MAX_PER_CLI`]. Used by the
-/// WSL scan (`crate::wsl`) to reuse the host parsers verbatim over an
-/// extracted distro `$HOME`; the host path goes through [`load_for_cli`].
-///
-/// Filtering here — *before* the parse — means a CLI the view isn't showing
-/// is never parsed, so the WSL scan doesn't pay to read + parse the other
-/// three CLIs' transcripts out of the extracted mirror just to discard them.
-pub(crate) fn load_all_in(home: &Path, cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
-    // The WSL temp `$HOME` has no agent-pane (Class A) sessions, so pass an
-    // empty index to the production `_indexed` loaders (the bare wrappers are
-    // test-only). Reuses the host parsers verbatim over the extracted distro
-    // home.
-    let empty = HashSet::new();
-    let (cop, cla, gem, cod) = cli_scan_flags(cli_filter);
-    let mut out = Vec::new();
-    if cop {
-        out.extend(take_n(load_copilot_indexed(home, &empty), MAX_PER_CLI));
-    }
-    if cla {
-        out.extend(take_n(load_claude_indexed(home, &empty), MAX_PER_CLI));
-    }
-    if gem {
-        out.extend(take_n(load_gemini_indexed(home, &empty), MAX_PER_CLI));
-    }
-    if cod {
-        out.extend(take_n(load_codex_indexed(home, &empty), MAX_PER_CLI));
-    }
-    out
-}
-
 /// Cap the discovery-phase first-line read (`read_first_line`) so a corrupt
 /// / non-JSONL transcript that is one giant line with no newline can't pull
 /// an unbounded amount into memory during the *cheap* phase. A real header
@@ -161,24 +128,18 @@ fn cli_scan_flags(cli_filter: Option<&CliSource>) -> (bool, bool, bool, bool) {
     }
 }
 
-/// Scan on-disk session history, restricted to a single CLI when
-/// `cli_filter` is `Some(known)`. See [`cli_scan_flags`] for the dispatch
-/// rules (custom / unknown agents scan all four).
-pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
+/// Scan **host** on-disk session history (the Windows user profile),
+/// restricted to a single CLI when `cli_filter` is `Some(known)`. See
+/// [`cli_scan_flags`] for the dispatch rules (custom / unknown agents
+/// scan all four).
+///
+/// WSL in-distro sessions are **not** included here — they are fetched
+/// separately over ACP by [`crate::wsl_acp`] and joined in
+/// [`load_for_cli_async`]. This function is synchronous (blocking disk
+/// IO) and is meant to run under `spawn_blocking`.
+pub fn load_host_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
     let scan_started = std::time::Instant::now();
     let mut out = Vec::new();
-
-    // WSL historical sessions (in-distro, **running** distros only — fast,
-    // no VM boot). Scanned before the host-home early return because they
-    // live in the distro's own `$HOME`, independent of the Windows profile.
-    // Stopped (non-running) distros are intentionally skipped: reading one
-    // boots its WSL VM, which is too costly to do just to build a list.
-    if wsl_sessions_enabled() {
-        // Filtering happens inside the parse (`load_all_in` via
-        // `cli_scan_flags`), so an unselected CLI's transcripts are never
-        // parsed out of the extracted mirror — no post-hoc retain needed.
-        out.extend(crate::wsl::scan_running_distros(cli_filter));
-    }
 
     let Some(home) = home_dir() else { return out };
 
@@ -216,6 +177,51 @@ pub fn load_for_cli(cli_filter: Option<&CliSource>) -> Vec<AgentSession> {
         rows = out.len(),
         "history scan complete"
     );
+    out
+}
+
+/// Full historical scan for `cli`: host on-disk history joined with WSL
+/// in-distro history.
+///
+/// This is the **master-facing** entry point — it owns the host/WSL split
+/// so the call sites don't duplicate it:
+/// * host history is blocking disk IO → [`load_host_for_cli`] run under
+///   `spawn_blocking`;
+/// * WSL history is async ACP (`session/list` per running distro) →
+///   [`crate::wsl_acp::scan_running_distros_acp`], gated by
+///   [`wsl_sessions_enabled`].
+///
+/// The two run concurrently and are merged (WSL rows first, then host).
+/// A panic in the host scan is logged and degraded to WSL-only results
+/// rather than propagated.
+///
+/// **Must be called from within a tokio `LocalSet`**: the WSL ACP
+/// connection is `!Send` and spawns its IO pump via `spawn_local`. The
+/// master loop runs on a `LocalSet`, so both call sites satisfy this.
+pub async fn load_for_cli_async(cli_filter: Option<CliSource>) -> Vec<AgentSession> {
+    // Host scan: blocking disk walk, off the LocalSet onto the blocking pool.
+    let host_cli = cli_filter.clone();
+    let host = tokio::task::spawn_blocking(move || load_host_for_cli(host_cli.as_ref()));
+
+    // WSL scan: async ACP, inline on the current LocalSet (connection is !Send).
+    let wsl = async {
+        if wsl_sessions_enabled() {
+            crate::wsl_acp::scan_running_distros_acp(cli_filter.as_ref()).await
+        } else {
+            Vec::new()
+        }
+    };
+
+    let (host_res, wsl_rows) = tokio::join!(host, wsl);
+    let mut out = wsl_rows;
+    match host_res {
+        Ok(host_rows) => out.extend(host_rows),
+        Err(e) => tracing::warn!(
+            target: "history_loader",
+            error = %e,
+            "host history scan task panicked; returning WSL-only results"
+        ),
+    }
     out
 }
 
@@ -1218,7 +1224,7 @@ pub(crate) fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf>
 /// numeric offset variants (`±HH:MM`), e.g. `2026-05-27T10:53:09+08:00`.
 /// Returns `None` for any out-of-range / overflowing / malformed input
 /// (never panics).
-fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
+pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
     let s = s.trim();
     
     // Detect and parse timezone offset (+HH:MM or -HH:MM, or Z for UTC)
@@ -1329,7 +1335,7 @@ fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
-fn short_id(id: &str, cli: &str) -> String {
+pub(crate) fn short_id(id: &str, cli: &str) -> String {
     let head: String = id.chars().take(8).collect();
     format!("{} {}", cli, head)
 }

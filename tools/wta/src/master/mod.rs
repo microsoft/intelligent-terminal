@@ -1628,21 +1628,10 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let history_cli = inner.cli_source.clone();
     tokio::task::spawn_local(async move {
         let scan_started = std::time::Instant::now();
-        let sessions = match tokio::task::spawn_blocking(move || {
-            crate::history_loader::load_for_cli(history_cli.as_ref())
-        })
-        .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(
-                    target: "master_history",
-                    error = %e,
-                    "history scan task panicked; registry will not include historicals"
-                );
-                return;
-            }
-        };
+        // Host on-disk history (blocking, off-thread) joined with WSL
+        // in-distro history (async ACP `session/list`). Host panics are
+        // absorbed inside `load_for_cli_async` (degrade to WSL-only).
+        let sessions = crate::history_loader::load_for_cli_async(history_cli).await;
         let count = sessions.len();
         for s in &sessions {
             let info = crate::session_registry::agent_session_to_session_info(s);
@@ -2242,48 +2231,35 @@ where
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    // F5 refresh: re-scan the on-disk historical session logs and upsert them,
-    // exactly like the startup history seed. Run the blocking disk walk off the
-    // LocalSet so master stays responsive; on failure fall through to the
-    // cached snapshot rather than erroring the request.
+    // F5 refresh: re-scan historical sessions and upsert them, exactly like
+    // the startup history seed. Host on-disk history runs on the blocking
+    // pool; WSL in-distro history runs as async ACP `session/list` — both
+    // joined inside `load_for_cli_async`. On host-scan panic it degrades to
+    // WSL-only rather than erroring the request.
     if parsed.rescan {
         let cli = state.cli_source.clone();
-        match tokio::task::spawn_blocking(move || {
-            crate::history_loader::load_for_cli(cli.as_ref())
-        })
-        .await
-        {
-            Ok(sessions) => {
-                let count = sessions.len();
-                for s in &sessions {
-                    let info = crate::session_registry::agent_session_to_session_info(s);
-                    state.registry.upsert_if_absent(info).await;
-                }
-                tracing::info!(
-                    target: "master_history",
-                    count,
-                    "sessions/list rescan: reloaded historical sessions from disk"
-                );
-                // Tell every helper with the session view open to refetch, so
-                // the freshly-loaded historical rows surface immediately in all
-                // windows/tabs — matching the startup history scan's broadcast
-                // instead of waiting up to 5s for the next periodic poll. The
-                // triggered refetches are rescan=false snapshots: they neither
-                // re-scan disk nor re-broadcast, so there's no feedback loop.
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    target: "master_history",
-                    error = %e,
-                    "sessions/list rescan task panicked; returning cached registry"
-                );
-            }
+        let sessions = crate::history_loader::load_for_cli_async(cli).await;
+        let count = sessions.len();
+        for s in &sessions {
+            let info = crate::session_registry::agent_session_to_session_info(s);
+            state.registry.upsert_if_absent(info).await;
         }
+        tracing::info!(
+            target: "master_history",
+            count,
+            "sessions/list rescan: reloaded historical sessions (host + WSL)"
+        );
+        // Tell every helper with the session view open to refetch, so the
+        // freshly-loaded historical rows surface immediately in all
+        // windows/tabs — matching the startup history scan's broadcast
+        // instead of waiting up to 5s for the next periodic poll. The
+        // triggered refetches are rescan=false snapshots: they neither
+        // re-scan disk nor re-broadcast, so there's no feedback loop.
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
     }
 
     for row in state.registry.snapshot().await {

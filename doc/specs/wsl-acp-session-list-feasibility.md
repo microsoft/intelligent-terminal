@@ -199,16 +199,43 @@ history once this lands):
 ## Appendix: reproduce
 
 ```text
-# Windows host:
+# Windows host (raw per-CLI probe):
 wta probe-sessions --agent "copilot --acp --stdio"
 wta probe-sessions --agent "npx -y @agentclientprotocol/claude-agent-acp"
 wta probe-sessions --agent "npx -y @zed-industries/codex-acp"
 wta probe-sessions --agent "gemini --experimental-acp"        # list: None
 
-# WSL (npm CLI; persistent login-shell wrapper required):
+# WSL, raw single-CLI probe (login shell needed; a no-space wrapper avoids
+# spawn_agent_process's split_whitespace):
 #   ~/acp.sh = #!/bin/bash\nexec copilot --acp --stdio
 wta probe-sessions --agent "wsl -d Debian -- bash -lc /home/<user>/acp.sh"
+
+# Production path (what seeds /sessions): runs the real wsl_acp scan over
+# every running distro for the ACP-capable CLIs, prints the mapped rows.
+wta probe-wsl-sessions                 # copilot + claude + codex
+wta probe-wsl-sessions --cli copilot   # one CLI
 ```
 
 Diagnostic log (drains the child CLI's stderr — decisive for the WSL traps):
 `%LOCALAPPDATA%\IntelligentTerminal\logs\wta-probe.log`.
+
+## Implementation status
+
+The recommended ACP-only design was implemented (plan D — async WSL scan on
+the master's `LocalSet`, no `block_on`):
+
+- `tools/wta/src/wsl_acp.rs` — `scan_running_distros_acp(cli)`: per running
+  distro, per ACP-capable CLI, spawn `wsl -d <d> -- bash -lc "<cli> --acp …"`,
+  ACP `initialize` + `session/list`, map to `AgentSession`/`SessionLocation::Wsl`.
+- `tools/wta/src/protocol/acp/session_list.rs` — `fetch_session_list`, the
+  shared ACP `initialize`+`session/list` exchange (used by both the probe and
+  the production scan).
+- `history_loader::load_for_cli_async` joins host (blocking) + WSL (async); the
+  former `load_for_cli` is now host-only `load_host_for_cli`. The tar machinery
+  in `wsl.rs` (and `history_loader::load_all_in`) was removed.
+- Both master call sites (startup seed + `sessions/list` rescan) call the async
+  entry, so **Q2** falls out: the existing 5 s `SessionsChanged` periodic
+  refetch re-scans WSL with no extra mechanism.
+- `wta probe-wsl-sessions` exercises the production path end-to-end. Smoke-tested
+  against a running Ubuntu (snap copilot): 4 historical rows returned.
+

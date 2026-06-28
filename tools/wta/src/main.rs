@@ -36,6 +36,7 @@ mod theme;
 mod ui;
 mod ui_trace;
 mod wsl;
+mod wsl_acp;
 
 use acp::Agent as _;
 use agent_client_protocol as acp;
@@ -492,6 +493,20 @@ enum Command {
         #[arg(long)]
         agent: String,
     },
+
+    /// Diagnostic: run the production WSL history scan
+    /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
+    /// currently-running distros and print the discovered sessions as
+    /// JSON. Exercises the real `wsl.exe` spawn + ACP `session/list` path
+    /// that seeds the `/sessions` view. Prints `[]` when no distro is
+    /// running or none answer.
+    ProbeWslSessions {
+        /// Restrict to one CLI (`copilot` | `claude` | `codex`). Omitted
+        /// scans the three ACP-capable built-ins (Gemini has no
+        /// `session/list`).
+        #[arg(long)]
+        cli: Option<String>,
+    },
 }
 
 
@@ -891,6 +906,9 @@ async fn main() -> Result<()> {
         // ── ACP session/list probe (diagnostic) ──
         Some(Command::ProbeSessions { agent }) => run_probe_sessions(&agent).await,
 
+        // ── WSL ACP history-scan probe (diagnostic) ──
+        Some(Command::ProbeWslSessions { cli }) => run_probe_wsl_sessions(cli.as_deref()).await,
+
         // ── No subcommand: a singleton-service mode, or an error. There
         //    is no standalone/default ACP TUI mode — the direct agent-spawn
         //    path was removed, so bare `wta` always runs as a WT-launched
@@ -951,6 +969,7 @@ fn process_label(cli: &Cli) -> String {
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
         Some(Command::ProbeSessions { .. }) => "probe".to_string(),
+        Some(Command::ProbeWslSessions { .. }) => "probe".to_string(),
         Some(Command::Hooks {
             action: HooksAction::Install { .. },
         }) => "install-hooks".to_string(),
@@ -1037,6 +1056,54 @@ async fn run_probe_sessions(agent: &str) -> Result<()> {
 
     // Same force-exit rationale as run_probe_models (orphan npx/node
     // grandchildren keep the tokio reactor blocked on drop).
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Drive the production WSL ACP history scan
+/// ([`wsl_acp::scan_running_distros_acp`]) on a tokio `LocalSet` (the ACP
+/// connection is `!Send`) and print the discovered sessions as JSON.
+/// Diagnostic-only: exercises the real `wsl.exe` spawn + `session/list`
+/// path that seeds the `/sessions` view.
+async fn run_probe_wsl_sessions(cli: Option<&str>) -> Result<()> {
+    use crate::agent_sessions::CliSource;
+    tracing::info!("probe-wsl-sessions start: cli={:?}", cli);
+
+    let filter: Option<CliSource> = match cli {
+        None => None,
+        Some("copilot") => Some(CliSource::Copilot),
+        Some("claude") => Some(CliSource::Claude),
+        Some("codex") => Some(CliSource::Codex),
+        Some("gemini") => Some(CliSource::Gemini),
+        Some(other) => Some(CliSource::Unknown(other.to_string())),
+    };
+
+    let local = tokio::task::LocalSet::new();
+    let rows = local
+        .run_until(crate::wsl_acp::scan_running_distros_acp(filter.as_ref()))
+        .await;
+
+    let json: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "key": r.key,
+                "cli": format!("{:?}", r.cli_source),
+                "title": r.title,
+                "cwd": r.cwd.to_string_lossy(),
+                "distro": r.location.distro(),
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).context("serialize WSL session probe")?
+    );
+
+    tracing::info!("probe-wsl-sessions ok: {} row(s)", rows.len());
+    // Force-exit like the other probes: a distro CLI may leave orphan
+    // grandchildren that keep the tokio reactor blocked on drop.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     logging::shutdown_flush();
     std::process::exit(0);
