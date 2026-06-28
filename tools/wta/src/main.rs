@@ -1085,11 +1085,17 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
 
     tracing::info!("probe-host-sessions start: agent={}", agent);
 
+    // Resolve the CliSource from the agent command so the probe labels and
+    // classifies rows the way production seeding does (which uses the real
+    // `state.cli_source`), instead of assuming Copilot for every agent.
+    let cli_source =
+        CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(agent)));
+
     let local = tokio::task::LocalSet::new();
-    let rows = local
-        .run_until(async move {
+    let rows = match local
+        .run_until(async {
             let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
-            let label = format!("host:{}", crate::session_history::cli_label(&CliSource::Copilot));
+            let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
             let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
             let result = crate::protocol::acp::session_list::fetch_session_list(
                 &mut spawned.child,
@@ -1106,10 +1112,22 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
                 &sessions,
                 &idx,
                 SessionLocation::Host,
-                &CliSource::Copilot,
+                &cli_source,
             ))
         })
-        .await?;
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // Same force-exit rationale as run_probe_sessions: orphan npx/node
+            // grandchildren keep the tokio reactor blocked ~35s on drop.
+            tracing::error!("probe-host-sessions failed: {:#}", e);
+            eprintln!("probe-host-sessions failed: {:#}", e);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            logging::shutdown_flush();
+            std::process::exit(1);
+        }
+    };
 
     let json: Vec<_> = rows
         .iter()
