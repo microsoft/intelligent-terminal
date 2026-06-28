@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "Ügynök %{name} — "
 auth.checking_authentication: "  %{spinner} Hitelesítés ellenőrzése..."
 auth.waiting_for_authorization: "  %{spinner} Várakozás az engedélyezésre..."
 auth.code_copied_hint: "  A kód a vágólapra másolva — illessze be a böngészőben."
+auth.device_code_prompt: "Keresse fel a következőt: %{url}, és adja meg a kódot: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Jelentkezzen be az ügynök használatához:"
 auth.card_connect: "  Csatlakoztassa a(z) %{name} ügynököt az ügynökfunkciók engedélyezéséhez"
-auth.button_sign_in_github: "[ Bejelentkezés GitHub fiókkal ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Bejelentkezés a következővel: %{name} ]"
-auth.hint_footer: "  Nyomja meg az Entert a bejelentkezéshez, az Esc-et a visszalépéshez"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Nyomja meg az Enter billentyűt a bejelentkezési parancs másolásához, majd illessze be egy új terminálablakba a bejelentkezés befejezéséhez"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc = visszalépés"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = bejelentkezés · E = GitHub Enterprise · Esc = visszalépés"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-tartomány: "
+auth.enterprise_hint_footer: "  Enter = bejelentkezés · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Nyomja meg az Enter billentyűt az újrapróbálkozáshoz, vagy az Esc billentyűt a github.com használatához. Gyakori okok: elírt vagy elérhetetlen tartomány, lejárt kód, vagy nincs Copilot-hozzáférés ezen a gazdagépen."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Nyomja meg az Enter billentyűt az újrapróbálkozáshoz, vagy az Esc billentyűt a visszalépéshez."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Gondolkodás..."

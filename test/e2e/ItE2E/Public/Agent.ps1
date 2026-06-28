@@ -66,29 +66,166 @@ function Set-AgentPaneFocus {
     }
 }
 
+function Get-WtaLocalizedTextRegex {
+    <#
+    .SYNOPSIS
+        Case-insensitive regex matching the value of a wta localization key across EVERY bundled
+        locale (tools/wta/locales/*.yml), so assertions on localized UI text work on non-en-US
+        machines (the running binary renders one locale; matching any locale's value covers it).
+        Each value is normalized by stripping a trailing " (…)" key-hint and trailing "." run
+        (e.g. "Select model (↑ ↓ • Enter • Esc)" -> "Select model", "Ask anything, / for
+        commands.." -> "Ask anything, / for commands"). Cached per key. Returns $null when the
+        bundle/key can't be read so callers can fall back to an en-US literal.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Key)
+    if (-not $script:WtaLocaleRegexCache) { $script:WtaLocaleRegexCache = @{} }
+    if ($script:WtaLocaleRegexCache.ContainsKey($Key)) { return $script:WtaLocaleRegexCache[$Key] }
+    $result = $null
+    try {
+        $localeDir = Join-Path $PSScriptRoot '..\..\..\..\tools\wta\locales'
+        if (Test-Path $localeDir) {
+            $escKey = [regex]::Escape($Key)
+            $pats = Select-String -Path (Join-Path $localeDir '*.yml') -Pattern ('^\s*' + $escKey + ':\s*(\S.*)$') |
+                ForEach-Object {
+                    $raw = $_.Matches[0].Groups[1].Value.Trim()
+                    # YAML scalar: double-quoted (ignoring a trailing # comment / Locked hint),
+                    # single-quoted (with '' escaping), or a bare scalar (strip a trailing # comment).
+                    if ($raw -match '^"((?:[^"\\]|\\.)*)"') {
+                        # Unescape YAML double-quoted escapes (\" \\ \n \t \r) so the regex matches
+                        # the RENDERED text, not literal backslashes (e.g. setup.subtitle.* use \").
+                        $val = [regex]::Replace($Matches[1], '\\(.)', {
+                            param($m)
+                            switch ($m.Groups[1].Value) {
+                                'n' { "`n" } 't' { "`t" } 'r' { "`r" }
+                                default { $m.Groups[1].Value }  # \" -> " , \\ -> \ , \x -> x
+                            }
+                        })
+                    }
+                    elseif ($raw -match "^'((?:[^']|'')*)'") { $val = ($Matches[1] -replace "''", "'") }
+                    else { $val = ($raw -replace '\s+#.*$', '').Trim() }
+                    # Drop a trailing " (…)" key-hint and "." run. Require whitespace BEFORE the
+                    # parenthesized hint (\s+\() so a value that is ENTIRELY parenthesized — e.g.
+                    # agents.footer_hint "(↑ ↓ … Esc to exit …)" — is preserved intact instead of
+                    # being stripped to an empty string.
+                    $val -replace '\s+\([^)]*\)\s*$', '' -replace '\.+\s*$', ''
+                } |
+                Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
+            $pats = @($pats)
+            if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
+        }
+    }
+    catch { $result = $null }
+    $script:WtaLocaleRegexCache[$Key] = $result
+    $result
+}
+
+function Get-RecommendationCardRegex {
+    <#
+    .SYNOPSIS
+        Regex matching EITHER recommendation/autofix-card button label ("[ Run command ]" /
+        "Insert in Terminal"), localized across ALL bundled wta locales (en-US fallback). Used to
+        detect that a card is shown, so card-presence checks work on non-en-US machines.
+    #>
+    [CmdletBinding()] param()
+    $parts = @(
+        (Get-WtaLocalizedTextRegex -Key 'recommendations.button_run_command'),
+        (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
+    ) | Where-Object { $_ }
+    if ($parts.Count) { ($parts -join '|') } else { 'Run command|Insert in Terminal' }
+}
+
+function Get-AgentConnectedPlaceholderRegex {
+    <#
+    .SYNOPSIS
+        Case-insensitive regex matching the connected input placeholder of ANY bundled wta
+        locale, so Wait-AgentReady works on non-en-US machines (the placeholder is localized
+        via input.placeholder.connected — see tools/wta/locales/*.yml + ui/input.rs). Degrades
+        to the en-US literal if the bundle can't be read (e.g. running outside a repo checkout).
+    #>
+    [CmdletBinding()] param()
+    $re = Get-WtaLocalizedTextRegex -Key 'input.placeholder.connected'
+    if ($re) { $re } else { '(?i)Ask anything.*for commands' }
+}
+
 function Wait-AgentReady {
     <#
     .SYNOPSIS
-        Open the agent pane and wait until its helper's ACP session is connected (anti-flake
-        gate before autofix/prompt assertions). Signals (best-effort, any-of): an
-        agent_state_changed event reaching a ready state, or a helper-log connect marker.
+        Wait until the agent pane is USER-VISIBLY connected and ready for input: its chat input
+        shows the connected placeholder ("Ask anything, / for commands.."), which the TUI
+        renders ONLY in ConnectionState::Connected (tools/wta/src/ui/input.rs:62). Returns
+        $true when ready, $false on a logged auth/fatal failure or on timeout.
+    .DESCRIPTION
+        Readiness is judged by the rendered, user-visible ready state — NOT by an internal
+        session-registry artifact (agent-pane-sessions.jsonl). Gating on the registry would be
+        "verifying a feature with that same feature": if the registry breaks, the gate would
+        false-ready or hang and mask the bug. The connecting ("connecting...") and disconnected
+        ("disconnected") placeholders are distinct strings, so matching the connected one is a
+        clean Connected-only signal. It returns the instant the connected input is observed —
+        deterministic, not a fixed delay — and covers both the initial connect and a reconnect
+        after /restart or a settings-driven rebuild. A logged auth/fatal failure short-circuits
+        so a genuinely-failed connect fails fast instead of burning the whole timeout.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 60)
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 90)
     process {
         Open-AgentPane -App $App | Out-Null
-        $listener = Start-WtEventListener -App $App -EventFilter 'agent*'
-        try {
-            $ready = Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Quiet -Because "agent ACP connected" -Condition {
-                # Any agent_event means the helper/ACP pipeline is live; or a helper-log marker.
-                if (Get-WtEvents -Listener $listener -Predicate { $_.method -eq 'agent_event' }) { return $true }
-                $log = Get-ItLogText -App $App -Name 'wta-main_helper-*.log' -SinceStart
-                if ($log -match 'session/new|acp_initialize|Connected') { return $true }
-                $false
+        $readyRe = Get-AgentConnectedPlaceholderRegex
+        $deadline = (Get-Date).AddSeconds($TimeoutSec)
+        $nextLogCheck = Get-Date
+        do {
+            # The connected input placeholder is the user-visible "ready to chat" signal. It is
+            # localized (input.placeholder.connected), so $readyRe matches the connected
+            # placeholder of ANY bundled wta locale — never just the en-US string — to stay
+            # robust on non-en-US machines. The connecting/disconnected placeholders are distinct
+            # per locale, so this remains a clean Connected-only signal.
+            if ((Get-AgentPaneText -App $App -MaxLines 50) -match $readyRe) { return $true }
+            # Throttle the fail-fast log read to every ~2s (UI placeholder is still polled at
+            # 500ms): Get-ItLogText re-reads the whole appended slice each call and the helper log
+            # grows while connecting, so reading it every loop would be O(n²) IO on long waits.
+            if ((Get-Date) -ge $nextLogCheck) {
+                # Read the NEWEST helper log file in FULL (not -SinceStart). The helper is pre-warmed
+                # during tab init, so an auth/fatal failure can be logged BEFORE Start-Terminal
+                # captures the -SinceStart offset — -SinceStart would then miss it and we'd burn the
+                # whole timeout. The newest wta-main_helper-*.log is this launch's helper (fresh PID
+                # → fresh file, since Stop-StaleItInstances killed any prior terminal), so reading it
+                # from the top catches the early failure without false-matching a previous run's log.
+                $log = ''
+                $dir = Get-ItLogDir -App $App
+                if ($dir) {
+                    $helperLog = Get-ChildItem $dir -Filter 'wta-main_helper-*.log' -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($helperLog) {
+                        # Shared read: the helper has the file open for writing, so use a
+                        # FileShare.ReadWrite stream (plain Get-Content -Raw can hit a sharing
+                        # violation), matching how Get-ItLogText reads live logs. Disposing the
+                        # StreamReader also disposes the underlying FileStream.
+                        try {
+                            $fs = [System.IO.FileStream]::new($helperLog.FullName, 'Open', 'Read', 'ReadWrite')
+                            try {
+                                $sr = [System.IO.StreamReader]::new($fs)
+                                try { $log = $sr.ReadToEnd() } finally { $sr.Dispose() }
+                            }
+                            finally { $fs.Dispose() }  # also disposes $fs if the StreamReader ctor threw
+                        }
+                        catch { $log = '' }
+                    }
+                }
+                # Fail-fast on a logged fatal connect failure. Match the STRUCTURED tracing fields,
+                # not bare substrings: the helper logs the typed failure as `class=auth_required`
+                # (app.rs; tracing may quote the &str value → `class="auth_required"`, so the quote
+                # is optional) and `non_compliant_auth=true` (failure.rs string-fallback). Requiring
+                # the `class=`/`…=true` prefix avoids a false-trigger from those tokens appearing in
+                # an unrelated field/value. NOT the message "agent failure" (also fires for a benign
+                # cancel). The helper process exit is `exiting with error`.
+                if ($log -match 'exiting with error|class="?auth_required|non_compliant_auth=true') {
+                    Write-ItLog -Level WARN -Message "Wait-AgentReady: helper logged an auth/fatal connect failure; not ready."
+                    return $false
+                }
+                $nextLogCheck = (Get-Date).AddSeconds(2)
             }
-            if (-not $ready) { Write-ItLog -Level WARN -Message "Wait-AgentReady: no explicit connect signal within ${TimeoutSec}s." }
-            $ready
-        }
-        finally { Stop-WtEventListener -Listener $listener }
+            Start-Sleep -Milliseconds 500
+        } while ((Get-Date) -lt $deadline)
+        Write-ItLog -Level WARN -Message "Wait-AgentReady: agent pane never showed the connected input within ${TimeoutSec}s."
+        return $false
     }
 }
 

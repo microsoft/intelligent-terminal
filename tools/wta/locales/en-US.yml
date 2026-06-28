@@ -42,11 +42,16 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Checking authentication..."
 auth.waiting_for_authorization: "  %{spinner} Waiting for authorization..."
 auth.code_copied_hint: "  Code copied to clipboard — paste it in your browser."
+auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Sign in to use your agent:"
 auth.card_connect: "  Connect %{name} to enable agent features"
-auth.button_sign_in_github: "[ Sign in with GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Sign in with %{name} ]"
-auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Press Enter to copy the sign-in command, then paste it in a new terminal window to finish signing in"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc to go back"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domain: "
+auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Press Enter to retry, or Esc for github.com. Common causes: a mistyped or unreachable domain, an expired code, or no Copilot access on that host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"

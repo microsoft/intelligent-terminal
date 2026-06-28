@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "Агент %{name} — "
 auth.checking_authentication: "  %{spinner} Аутентификация тикшерелә..."
 auth.waiting_for_authorization: "  %{spinner} Авторизация көтелә..."
 auth.code_copied_hint: "  Код буферга күчерелде — браузерга куегыз."
+auth.device_code_prompt: "%{url} адресына керегез һәм кодны кертегез: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Агентыгызны куллану өчен керегез:"
 auth.card_connect: "  Агент мөмкинлекләрен кушу өчен %{name} тоташтырыгыз"
-auth.button_sign_in_github: "[ GitHub аша керү ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} аша керү ]"
-auth.hint_footer: "  Керү өчен Enter, артка кайту өчен Esc басыгыз"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Керү әмерен күчерү өчен Enter төймәсенә басыгыз, аннары керүне тәмамлау өчен аны яңа терминал тәрәзәсенә куегыз"  # {Locked="Enter"}
+auth.hint_footer_back: "  Кире кайту өчен Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Керү өчен Enter · GitHub Enterprise өчен E · кире кайту өчен Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise домены: "
+auth.enterprise_hint_footer: "  Керү өчен Enter · github.com өчен Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Кабатлап карау өчен Enter төймәсенә басыгыз, яки github.com өчен Esc. Еш очрый торган сәбәпләр: ялгыш язылган яки тоташып булмый торган домен, вакыты чыккан код, яки бу хостта Copilot мөмкинлеге юк."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Кабатлап карау өчен Enter төймәсенә басыгыз, яки кире кайту өчен Esc."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Уйлыйм…"

@@ -15,7 +15,7 @@ foreach ($scope in @('Private', 'Public')) {
 $publicFns = @(
     # Harness
     'Resolve-ItApp', 'Resolve-WtComClsid', 'Get-ItTestPackage', 'Start-Terminal', 'Start-TerminalClean', 'Stop-Terminal',
-    'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Get-WtProcessesForApp', 'Stop-AppInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
+    'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Get-WtProcessesForApp', 'Stop-AppInstances', 'Stop-StaleItInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
     # Core (useful in tests)
     'Wait-Until', 'Test-Until', 'Invoke-Native', 'Write-ItLog', 'ConvertFrom-JsonSafe',
     # Wt
@@ -36,9 +36,9 @@ $publicFns = @(
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',
     # Agent / Autofix / Sessions
-    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Send-AgentPrompt', 'Wait-AgentState',
+    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-WtaLocalizedTextRegex', 'Get-RecommendationCardRegex', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSession', 'Get-AgentPaneText',
-    'Send-AgentKey', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',
+    'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',
     'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Set-ClipboardImage',

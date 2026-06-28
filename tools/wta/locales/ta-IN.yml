@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "ஏஜெண்ட் %{name} — "
 auth.checking_authentication: "  %{spinner} அங்கீகாரம் சரிபார்க்கப்படுகிறது..."
 auth.waiting_for_authorization: "  %{spinner} அங்கீகாரத்திற்காகக் காத்திருக்கிறது..."
 auth.code_copied_hint: "  குறியீடு கிளிப்போர்டுக்கு நகலெடுக்கப்பட்டது — உங்கள் உலாவியில் ஒட்டவும்."
+auth.device_code_prompt: "%{url} ஐப் பார்வையிட்டு குறியீட்டை உள்ளிடவும்: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "உங்கள் முகவரைப் பயன்படுத்த உள்நுழையவும்:"
 auth.card_connect: "  ஏஜெண்ட் அம்சங்களை இயக்க %{name}-ஐ இணைக்கவும்"
-auth.button_sign_in_github: "[ GitHub மூலம் உள்நுழையவும் ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} மூலம் உள்நுழையவும் ]"
-auth.hint_footer: "  உள்நுழைய Enter அழுத்தவும், திரும்பிச் செல்ல Esc அழுத்தவும்"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  உள்நுழைவு கட்டளையை நகலெடுக்க Enter ஐ அழுத்தவும், பின்னர் உள்நுழைவை முடிக்க அதை புதிய டெர்மினல் சாளரத்தில் ஒட்டவும்"  # {Locked="Enter"}
+auth.hint_footer_back: "  பின்செல்ல Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  உள்நுழைய Enter · GitHub Enterprise க்கு E · பின்செல்ல Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise டொமைன்: "
+auth.enterprise_hint_footer: "  உள்நுழைய Enter · github.com க்கு Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  மீண்டும் முயற்சிக்க Enter ஐ அழுத்தவும், அல்லது github.com க்கு Esc. பொதுவான காரணங்கள்: தவறாக தட்டச்சு செய்யப்பட்ட அல்லது அணுக முடியாத டொமைன், காலாவதியான குறியீடு, அல்லது அந்த ஹோஸ்டில் Copilot அணுகல் இல்லாமை."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  மீண்டும் முயற்சிக்க Enter ஐ அழுத்தவும், அல்லது பின்செல்ல Esc."  # {Locked="Enter","Esc"}
 
 # ── அரட்டைக் காட்சி (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "யோசிக்கிறது…"

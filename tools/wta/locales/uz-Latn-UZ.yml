@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Autentifikatsiya tekshirilmoqda..."
 auth.waiting_for_authorization: "  %{spinner} Avtorizatsiya kutilmoqda..."
 auth.code_copied_hint: "  Kod buferga nusxalandi — brauzeringizga joylang."
+auth.device_code_prompt: "%{url} manziliga kiring va kodni kiriting: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Agentingizdan foydalanish uchun tizimga kiring:"
 auth.card_connect: "  Agent xususiyatlarini yoqish uchun %{name} ulang"
-auth.button_sign_in_github: "[ GitHub orqali kirish ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} orqali kirish ]"
-auth.hint_footer: "  Tizimga kirish uchun Enter, orqaga qaytish uchun Esc bosing"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Kirish buyrug‘ini nusxalash uchun Enter tugmasini bosing, keyin kirishni yakunlash uchun uni yangi terminal oynasiga joylashtiring"  # {Locked="Enter"}
+auth.hint_footer_back: "  Orqaga qaytish uchun Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Kirish uchun Enter · GitHub Enterprise uchun E · orqaga qaytish uchun Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domeni: "
+auth.enterprise_hint_footer: "  Kirish uchun Enter · github.com uchun Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Qayta urinish uchun Enter tugmasini bosing yoki github.com uchun Esc. Keng tarqalgan sabablar: noto‘g‘ri yozilgan yoki ulanib bo‘lmaydigan domen, muddati tugagan kod yoki o‘sha hostda Copilot ruxsati yo‘q."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Qayta urinish uchun Enter tugmasini bosing yoki orqaga qaytish uchun Esc."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Oʻylayapman…"

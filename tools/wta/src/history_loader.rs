@@ -1422,11 +1422,11 @@ mod tests {
     fn codex_user_text_is_synthetic_recognizes_bare_and_dir_headings() {
         // Project AGENTS.md (directory=Some) -> "# AGENTS.md instructions for <dir>".
         assert!(codex_user_text_is_synthetic(
-            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\n be concise \n</INSTRUCTIONS>"
         ));
         // Global ~/.codex/AGENTS.md (directory=None) -> bare "# AGENTS.md instructions".
         assert!(codex_user_text_is_synthetic(
-            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\n be concise \n</INSTRUCTIONS>"
         ));
         // Bare heading with nothing after it, and with tolerated leading space.
         assert!(codex_user_text_is_synthetic("# AGENTS.md instructions"));

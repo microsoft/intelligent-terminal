@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "एजेंट %{name} — "
 auth.checking_authentication: "  %{spinner} प्रमाणीकरण जाँचा जा रहा है..."
 auth.waiting_for_authorization: "  %{spinner} प्राधिकरण की प्रतीक्षा हो रही है..."
 auth.code_copied_hint: "  कोड क्लिपबोर्ड पर कॉपी किया गया — इसे अपने ब्राउज़र में पेस्ट करें।"
+auth.device_code_prompt: "%{url} पर जाएँ और कोड दर्ज करें: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "अपने एजेंट का उपयोग करने के लिए साइन इन करें:"
 auth.card_connect: "  एजेंट सुविधाएँ सक्षम करने के लिए %{name} कनेक्ट करें"
-auth.button_sign_in_github: "[ GitHub से साइन इन करें ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} से साइन इन करें ]"
-auth.hint_footer: "  साइन इन के लिए Enter दबाएँ, वापस जाने के लिए Esc दबाएँ"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  साइन-इन कमांड कॉपी करने के लिए Enter दबाएँ, फिर साइन इन पूरा करने के लिए उसे नई टर्मिनल विंडो में चिपकाएँ"  # {Locked="Enter"}
+auth.hint_footer_back: "  वापस जाने के लिए Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  साइन इन करने के लिए Enter · GitHub Enterprise के लिए E · वापस जाने के लिए Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise डोमेन: "
+auth.enterprise_hint_footer: "  साइन इन करने के लिए Enter · github.com के लिए Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  फिर से प्रयास करने के लिए Enter दबाएँ, या github.com के लिए Esc. सामान्य कारण: गलत टाइप किया गया या पहुँच से बाहर डोमेन, समाप्त कोड, या उस होस्ट पर Copilot पहुँच न होना."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  फिर से प्रयास करने के लिए Enter दबाएँ, या वापस जाने के लिए Esc."  # {Locked="Enter","Esc"}
 
 # ── चैट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "सोच रहा है…"
