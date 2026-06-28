@@ -274,61 +274,7 @@ fn home_dir() -> Option<PathBuf> {
 
 // ─── Per-CLI resumability probes ────────────────────────────────────────
 
-/// Dispatch [`agent_key_is_resumable_on_disk_in`] against the real user
-/// home. Returns `true` (conservative — allow the resume to proceed) if
-/// `$USERPROFILE`/`$HOME` is unavailable, so the absence of a home
-/// directory doesn't silently block all resume attempts.
-///
-/// The per-CLI semantics are:
-///
-///   * **Claude**:  the JSONL must contain at least one non-meta,
-///                  non-slash-command user record OR any assistant
-///                  record. `claude --resume <id>` rejects sessions
-///                  without those with
-///                  `No conversation found with session ID: <id>`.
-///
-///   * **Copilot**: `~/.copilot/session-state/<id>/events.jsonl` must
-///                  exist and be non-empty. `copilot --resume=<id>`
-///                  rejects sessions without events with
-///                  `Error: No session, task, or name matched '<id>'`.
-///
-///   * **Gemini**:  the JSONL must contain at least one record beyond
-///                  the session-header line (i.e. the user actually
-///                  exchanged a turn — header-only sessions are the
-///                  result of opening `gemini` and immediately exiting).
-///
-///   * Anything else (unknown CLI / synthetic pane-keyed sessions):
-///                  resumability is undefined; return `true` so the
-///                  pre-launch guard never blocks them.
-///
-/// Always returns `true` for keys that don't have any on-disk artefact
-/// — those may be in-flight (flush not yet landed) or live in some
-/// other home, and we let the CLI itself validate.
-pub fn key_is_resumable_on_disk(cli: &crate::agent_sessions::CliSource, key: &str) -> bool {
-    match home_dir() {
-        Some(h) => key_is_resumable_on_disk_in(&h, cli, key),
-        None    => true,
-    }
-}
-
-/// Testable variant: dispatches against a caller-supplied home so unit
-/// tests can pin a tmp dir without racing on `USERPROFILE` mutation.
-pub(crate) fn key_is_resumable_on_disk_in(
-    home: &Path,
-    cli: &crate::agent_sessions::CliSource,
-    key: &str,
-) -> bool {
-    use crate::agent_sessions::CliSource;
-    match cli {
-        CliSource::Claude  => claude_key_is_resumable_on_disk_in(home, key),
-        CliSource::Codex   => codex_key_is_resumable_on_disk_in(home, key),
-        CliSource::Copilot => copilot_key_is_resumable_on_disk_in(home, key),
-        CliSource::Gemini  => gemini_key_is_resumable_on_disk_in(home, key),
-        CliSource::Unknown(_) => true,
-    }
-}
-
-/// **Strict** variant of [`key_is_resumable_on_disk`]: treats a
+/// Strict resumable-content probe: treats a
 /// missing on-disk artefact as definite evidence of a phantom
 /// session. Use this in flows where the row is *already in wta's
 /// live registry* (so we know the session really existed in this
@@ -340,9 +286,8 @@ pub(crate) fn key_is_resumable_on_disk_in(
 /// JSONL under `~/.claude/projects/...` for that session id (it
 /// flushes only when there's something to flush), so a follow-up
 /// `claude --resume <id>` would fail with
-/// `No conversation found with session ID: <id>`. The lenient
-/// [`key_is_resumable_on_disk`] would defer to Claude here (and
-/// leave the row stuck), but the row's lifecycle is fully observed
+/// `No conversation found with session ID: <id>`. In this live-prune
+/// flow, the row's lifecycle is fully observed
 /// in-process — the absence of any JSONL is conclusive, so strict
 /// returns `false` and the prune drops the row immediately.
 pub fn key_has_definite_resumable_content(
@@ -352,7 +297,7 @@ pub fn key_has_definite_resumable_content(
     match home_dir() {
         Some(h) => key_has_definite_resumable_content_in(&h, cli, key),
         // No home → can't probe. Be conservative and leave the row
-        // alone (mirrors the lenient probe's default).
+        // alone.
         None    => true,
     }
 }
@@ -373,8 +318,7 @@ pub(crate) fn key_has_definite_resumable_content_in(
     }
 }
 
-/// Strict counterpart of [`claude_key_is_resumable_on_disk_in`]:
-/// missing JSONL → `false` (treat as phantom). See
+/// Claude live-prune probe: missing JSONL → `false` (treat as phantom). See
 /// [`key_has_definite_resumable_content`].
 pub(crate) fn claude_key_has_definite_resumable_content_in(
     home: &Path,
@@ -386,8 +330,8 @@ pub(crate) fn claude_key_has_definite_resumable_content_in(
     }
 }
 
-/// Strict counterpart of [`copilot_key_is_resumable_on_disk_in`]:
-/// missing session-state dir → `false` (treat as phantom). For the
+/// Copilot live-prune probe: missing session-state dir → `false`.
+/// Treat a missing dir as phantom. For the
 /// live-tracked case this is rare in practice — Copilot eagerly
 /// creates `workspace.yaml` on launch — but the strict check covers
 /// the edge case symmetrically.
@@ -403,8 +347,7 @@ pub(crate) fn copilot_key_has_definite_resumable_content_in(
         .unwrap_or(false)
 }
 
-/// Strict counterpart of [`gemini_key_is_resumable_on_disk_in`]:
-/// missing JSONL → `false` (treat as phantom).
+/// Gemini live-prune probe: missing JSONL → `false` (treat as phantom).
 pub(crate) fn gemini_key_has_definite_resumable_content_in(
     home: &Path,
     key: &str,
@@ -417,23 +360,6 @@ pub(crate) fn gemini_key_has_definite_resumable_content_in(
 
 // ─── Claude per-key helpers ─────────────────────────────────────────────
 
-/// Returns `true` iff Claude's on-disk JSONL for `key` either doesn't
-/// exist (defer to Claude's own validation) OR exists and contains at
-/// least one record `claude --resume <key>` would treat as real
-/// conversational content. Returns `false` only when a JSONL exists
-/// but consists solely of meta records — the precise "phantom" pattern
-/// `claude --resume` rejects with
-/// `No conversation found with session ID: <id>`.
-pub(crate) fn claude_key_is_resumable_on_disk_in(home: &Path, key: &str) -> bool {
-    match claude_jsonl_path_for_key(home, key) {
-        // No JSONL — could be a fresh session that hasn't flushed, a
-        // test fixture, or a session in some other home directory.
-        // Conservatively treat as resumable.
-        None    => true,
-        Some(p) => claude_session_has_real_content(&p),
-    }
-}
-
 // ─── Copilot per-key helpers ────────────────────────────────────────────
 
 /// Resolve the Copilot session-state directory for `key`.
@@ -442,40 +368,7 @@ pub(crate) fn copilot_session_dir_for_key(home: &Path, key: &str) -> PathBuf {
     home.join(".copilot").join("session-state").join(key)
 }
 
-/// Returns `true` iff Copilot's on-disk session state for `key` is
-/// missing (defer to Copilot) OR has a non-empty `events.jsonl` (the
-/// same marker `load_copilot` uses to decide whether a session is real
-/// vs. ephemeral). Returns `false` only when the session dir exists
-/// but `events.jsonl` is missing or zero-bytes — the precise phantom
-/// pattern `copilot --resume=<id>` rejects with
-/// `Error: No session, task, or name matched '<id>'`.
-pub(crate) fn copilot_key_is_resumable_on_disk_in(home: &Path, key: &str) -> bool {
-    let dir = copilot_session_dir_for_key(home, key);
-    // No directory at all → defer to Copilot (parallels the Claude
-    // "JSONL missing" branch).
-    if !dir.is_dir() { return true; }
-    let events = dir.join("events.jsonl");
-    events.metadata()
-        .map(|m| m.is_file() && m.len() > 0)
-        .unwrap_or(false)
-}
-
 // ─── Gemini per-key helpers ─────────────────────────────────────────────
-
-/// Returns `true` iff Gemini's on-disk JSONL for `key` is missing
-/// (defer to Gemini) OR has at least one non-header record. The
-/// header line is the first non-empty JSON object carrying a
-/// top-level `sessionId` field; everything else (`type:"user"`,
-/// `type:"tool"`, `type:"info"`, ...) counts as real activity.
-/// Returns `false` only when the JSONL exists and contains nothing
-/// but header line(s) — the pattern Gemini writes when the user
-/// opens the CLI and immediately exits without exchanging a turn.
-pub(crate) fn gemini_key_is_resumable_on_disk_in(home: &Path, key: &str) -> bool {
-    match gemini_jsonl_path_for_key(home, key) {
-        None    => true,
-        Some(p) => gemini_jsonl_has_real_content(&p),
-    }
-}
 
 /// Returns `true` iff the Gemini JSONL at `path` contains at least
 /// one record carrying a `type` field (i.e. user / tool / info
@@ -504,13 +397,6 @@ pub(crate) fn gemini_jsonl_has_real_content(path: &Path) -> bool {
 }
 
 // ─── Codex per-key helpers ──────────────────────────────────────────────
-
-fn codex_key_is_resumable_on_disk_in(home: &Path, id: &str) -> bool {
-    match find_codex_rollout_by_id(home, id) {
-        None => true,
-        Some(path) => codex_session_has_real_content(&path),
-    }
-}
 
 fn codex_key_has_definite_resumable_content_in(home: &Path, id: &str) -> bool {
     match find_codex_rollout_by_id(home, id) {
@@ -2170,153 +2056,19 @@ mod tests {
         let _ = fs::remove_dir_all(&home);
     }
 
-    // ─── Per-CLI resumability probe ─────────────────────────────────
-
-    #[test]
-    fn key_resumable_returns_true_when_artefact_missing_for_all_clis() {
-        // Missing on-disk artefact → "defer to CLI" (true) so fresh
-        // in-memory rows / test fixtures aren't blocked preemptively.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("resumable-missing-all-clis");
-        for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
-            assert!(
-                key_is_resumable_on_disk_in(&home, &cli, "no-such-id"),
-                "{:?} should defer to CLI when on-disk artefact is missing",
-                cli
-            );
-        }
-        // Unknown CLI: always true (we don't know how to check it).
-        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Unknown("codex".into()), "x"));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn claude_key_resumable_returns_false_for_phantom_jsonl_with_only_meta() {
-        // Tight repro of the Claude "phantom session" bug.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("claude-resumable-phantom");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-        let key = "ffffffff-2222-3333-4444-555555555555";
-        write_file(&proj.join(format!("{}.jsonl", key)),
-            "{\"type\":\"permission-mode\",\"sessionId\":\"ffffffff-2222-3333-4444-555555555555\"}\n\
-             {\"type\":\"file-history-snapshot\",\"messageId\":\"x\",\"snapshot\":{\"trackedFileBackups\":{}}}\n\
-             {\"type\":\"user\",\"isMeta\":true,\"message\":{\"role\":\"user\",\"content\":\"<local-command-caveat>...</local-command-caveat>\"}}\n\
-             {\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"<command-name>/model</command-name>\"}}\n\
-             {\"type\":\"last-prompt\",\"sessionId\":\"ffffffff-2222-3333-4444-555555555555\"}\n");
-        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Claude, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn claude_key_resumable_returns_true_for_real_jsonl() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("claude-resumable-real");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-        let key = "eeeeeeee-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", key)),
-            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}\n\
-             {\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}\n");
-        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Claude, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn copilot_key_resumable_returns_false_when_events_jsonl_missing() {
-        // Tight repro of the Copilot "phantom session" bug: opening
-        // `copilot` and exiting immediately writes a workspace.yaml
-        // (171 bytes of stub) but no events.jsonl. Pressing Enter on
-        // the resulting Ended row would launch `copilot --resume=<id>`
-        // and dead-end on
-        // `Error: No session, task, or name matched '<id>'`.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("copilot-resumable-phantom");
-        let key = "55ce9f84-3a48-40d5-91d7-983e74dbe29c";
-        let dir = home.join(".copilot").join("session-state").join(key);
-        fs::create_dir_all(&dir).unwrap();
-        write_file(&dir.join("workspace.yaml"),
-            "id: 55ce9f84-3a48-40d5-91d7-983e74dbe29c\ncwd: C:\\Users\\me\nsummary_count: 0\n");
-        // No events.jsonl.
-        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Copilot, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn copilot_key_resumable_returns_false_when_events_jsonl_empty() {
-        // Variant: events.jsonl exists but is zero-bytes (touched but
-        // never written). Same UX failure as the missing-file case.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("copilot-resumable-empty-events");
-        let key = "00000000-0000-0000-0000-000000000abc";
-        let dir = home.join(".copilot").join("session-state").join(key);
-        fs::create_dir_all(&dir).unwrap();
-        write_file(&dir.join("workspace.yaml"), "id: x\ncwd: C:\\x\n");
-        write_file(&dir.join("events.jsonl"), "");
-        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Copilot, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn copilot_key_resumable_returns_true_when_events_jsonl_has_content() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("copilot-resumable-real");
-        let key = "11111111-1111-1111-1111-111111111111";
-        let dir = home.join(".copilot").join("session-state").join(key);
-        fs::create_dir_all(&dir).unwrap();
-        write_file(&dir.join("workspace.yaml"), "id: x\ncwd: C:\\x\nsummary: Real Work\n");
-        write_file(&dir.join("events.jsonl"), "{\"type\":\"session.start\"}\n");
-        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Copilot, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn gemini_key_resumable_returns_false_for_header_only_jsonl() {
-        // Tight repro of the Gemini "phantom session" bug: opening
-        // `gemini` and exiting immediately writes only the session
-        // header line — no user/tool exchange. Real on-disk evidence
-        // from the bug report: a 228-byte file containing just the
-        // sessionId / startTime header.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("gemini-resumable-phantom");
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        let key = "aaaaaaaa-24c2-4d75-9f4b-57017e7e6cc0";
-        write_file(&chats.join("session-2026-05-24T09-01-phantom.jsonl"),
-            "{\"sessionId\":\"aaaaaaaa-24c2-4d75-9f4b-57017e7e6cc0\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T09:01:40.254Z\",\"kind\":\"main\"}\n");
-        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Gemini, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn gemini_key_resumable_returns_true_when_jsonl_has_user_record() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("gemini-resumable-real");
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        let key = "abcd1234-1111-2222-3333-444444444444";
-        write_file(&chats.join("session-2026-05-24T10-00-abcd.jsonl"),
-            "{\"sessionId\":\"abcd1234-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n\
-             {\"type\":\"user\",\"content\":[{\"text\":\"hi\"}]}\n");
-        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Gemini, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
     // ─── Strict probe (used by the live-registry prune) ─────────────
 
     #[test]
     fn strict_probe_returns_false_when_artefact_missing_for_managed_clis() {
         // The strict probe is the one the post-`SessionStopped` /
         // post-`PaneClosed` prune uses. Its contract differs from
-        // `key_is_resumable_on_disk_in` precisely on the
-        // missing-artefact case: a live-tracked row whose CLI never
+        // the old picker pre-launch guard on the missing-artefact
+        // case: a live-tracked row whose CLI never
         // wrote anything to disk is conclusively a phantom (the most
         // common shape is ACP-launched `claude` that the user exits
         // without typing — Claude writes no JSONL at all). This is
-        // exactly the path the lenient probe gets wrong, leaving the
-        // row stuck Ended in session management view.
+        // exactly the path that would otherwise leave the row stuck
+        // Ended in session management view.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("strict-probe-missing");
         for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
@@ -2338,8 +2090,8 @@ mod tests {
     #[test]
     fn strict_probe_returns_true_for_real_claude_jsonl() {
         // Symmetric check: when the JSONL exists and has real
-        // content, the strict probe agrees with the lenient one
-        // (resumable). This is the no-false-positive guard for the
+        // content, the strict probe reports resumable. This is the
+        // no-false-positive guard for the
         // prune.
         use crate::agent_sessions::CliSource;
         let home = tmp_root("strict-probe-real-claude");
@@ -2955,48 +2707,6 @@ mod tests {
         write_file(&path, &(codex_meta_line(id, "2026-05-28T17:00:00Z", "C:/proj") + &env + &agents));
         assert_eq!(load_codex(&home).len(), 0,
                    "meta + env_context + bare AGENTS.md injection alone must be phantom");
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn codex_key_resumable_returns_true_when_artefact_missing() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("codex-resumable-missing");
-        // Lenient probe: missing on-disk artefact defers to CLI (true)
-        // so fresh in-memory rows aren't blocked preemptively.
-        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Codex, "no-such-id"));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn codex_key_resumable_returns_false_for_meta_only_jsonl() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("codex-resumable-phantom");
-        let id = "ffffffff-2222-3333-4444-555555555555";
-        // Build the meta-only file inline. The path shape is:
-        //   home/.codex/sessions/2026/05/28/rollout-2026-05-28T10-00-00-<id>.jsonl
-        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(format!("rollout-2026-05-28T10-00-00-{}.jsonl", id));
-        let meta = format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T10:00:00Z\",\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n");
-        fs::write(&path, meta).unwrap();
-        assert!(!key_is_resumable_on_disk_in(&home, &CliSource::Codex, id));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn codex_key_resumable_returns_true_for_jsonl_with_user_message() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("codex-resumable-real");
-        let id = "abcdef00-2222-3333-4444-555555555555";
-        let dir = home.join(".codex").join("sessions").join("2026").join("05").join("28");
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join(format!("rollout-2026-05-28T10-30-00-{}.jsonl", id));
-        let content = format!(
-            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"2026-05-28T10:30:00Z\",\"cwd\":\"C:/x\",\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n\
-{{\"type\":\"event_msg\",\"payload\":{{\"type\":\"user_message\",\"message\":\"hi\"}}}}\n");
-        fs::write(&path, content).unwrap();
-        assert!(key_is_resumable_on_disk_in(&home, &CliSource::Codex, id));
         let _ = fs::remove_dir_all(&home);
     }
 

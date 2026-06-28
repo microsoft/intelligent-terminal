@@ -2898,7 +2898,7 @@ impl App {
     /// `(origin, liveness, cli, capabilities, shift)` to one of
     /// `Focus | ResumeInAgentPane | ResumeCliFlag | NotResumable`.
     /// All side effects (system messages, wtcli spawn, optimistic
-    /// state flips, phantom guards) live on the dispatch side here
+    /// state flips) live on the dispatch side here
     /// or in the existing [`Self::dispatch_resume`] /
     /// [`Self::dispatch_resume_in_agent_pane`] helpers we call into.
     ///
@@ -2967,14 +2967,14 @@ impl App {
             }
             EnterAction::ResumeInAgentPane { .. } => {
                 // dispatch_resume_in_agent_pane owns the loadSession
-                // capability gate (also re-checked) + phantom guard +
-                // optimistic ResumeDispatched + emit
+                // capability gate (also re-checked),
+                // optimistic ResumeDispatched, and emit
                 // resume_in_new_agent_tab to WT.
                 self.dispatch_resume_in_agent_pane(s);
             }
             EnterAction::ResumeCliFlag { .. } => {
-                // dispatch_resume owns the resume-flag check + phantom
-                // guard + optimistic ResumeDispatched + new-tab spawn.
+                // dispatch_resume owns the resume-flag check,
+                // optimistic ResumeDispatched, and new-tab spawn.
                 self.dispatch_resume(s);
             }
             EnterAction::NotResumable { reason } => {
@@ -3145,48 +3145,6 @@ impl App {
                 cli = %cli_id,
                 "dispatch_resume: CLI does not advertise a resume flag, skipping",
             );
-            return;
-        }
-
-        // Belt-and-suspenders phantom-session guard. The session-end
-        // and pane-closed routes already prune phantoms via
-        // `prune_phantom_session_if_ended`, but if any path slips
-        // through (e.g. session loaded from disk that wasn't filtered,
-        // race on artefact flush, manual CLI invocation outside of an
-        // agent pane), avoid launching `<cli> --resume <id>` here. The
-        // CLI itself would otherwise allocate fresh session
-        // artefacts at startup, *then* validate the `--resume`
-        // argument and exit with an error — leaving phantom artefacts
-        // behind for the next session-load to surface again.
-        if !s.location.is_wsl()
-            && !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key)
-        {
-            tracing::warn!(
-                target: "agents_view",
-                key = %s.key,
-                cli = %cli_id,
-                "dispatch_resume: refusing to resume phantom session (no on-disk content); pruning row",
-            );
-            let short_key: String = s.key.chars().take(8).collect();
-            let msg = t!(
-                "system.cannot_resume_phantom_via_flag",
-                agent = profile.display_name,
-                session_id = short_key.as_str()
-            )
-            .into_owned();
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(msg));
-            tab.scroll_to_bottom();
-            let key_to_remove = s.key.clone();
-            self.agent_sessions.remove(&key_to_remove);
-            #[cfg(test)]
-            {
-                self.last_dispatched_command = Some(DispatchedCommand {
-                    kind: DispatchedCommandKind::NewTabResume,
-                    session_id: Some(key_to_remove),
-                    argv: vec!["resume".to_string(), "--phantom-skipped".to_string()],
-                });
-            }
             return;
         }
 
@@ -3410,52 +3368,6 @@ impl App {
                     argv: vec![
                         "resume_in_new_agent_tab".to_string(),
                         "--unsupported".to_string(),
-                    ],
-                });
-            }
-            return;
-        }
-
-        // Mirror dispatch_resume's belt-and-suspenders phantom guard.
-        // Without this, Shift+Enter on a row whose on-disk artefact
-        // has no resumable content would open a new tab + reconcile
-        // the agent pane onto it, then dead-end inside the agent with
-        // a JSON-RPC `loadSession` error (the agent's own session
-        // store can't find the id). Preempt that round trip and drop
-        // the row in place, same as plain Enter.
-        if !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key) {
-            tracing::warn!(
-                target: "agents_view",
-                key = %s.key,
-                cli = ?s.cli_source,
-                "dispatch_resume_in_agent_pane: refusing to load phantom session; pruning row",
-            );
-            let short_key: String = s.key.chars().take(8).collect();
-            let agent_display: String = match known_cli_id(&s.cli_source) {
-                Some(id) => crate::agent_registry::lookup_profile_by_id(id)
-                    .display_name
-                    .to_string(),
-                None => t!("system.fallback.this_agent").into_owned(),
-            };
-            let msg = t!(
-                "system.cannot_resume_phantom_via_load",
-                agent = agent_display.as_str(),
-                session_id = short_key.as_str()
-            )
-            .into_owned();
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(msg));
-            tab.scroll_to_bottom();
-            let key_to_remove = s.key.clone();
-            self.agent_sessions.remove(&key_to_remove);
-            #[cfg(test)]
-            {
-                self.last_dispatched_command = Some(DispatchedCommand {
-                    kind: DispatchedCommandKind::ResumeInAgentPane,
-                    session_id: Some(key_to_remove),
-                    argv: vec![
-                        "resume_in_new_agent_tab".to_string(),
-                        "--phantom-skipped".to_string(),
                     ],
                 });
             }
@@ -12574,10 +12486,7 @@ mod tests {
         app.current_tab_mut().agents_list_state.select(Some(0));
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
 
-        // dispatch_resume internally guards on phantom-on-disk content
-        // (the artefact for "abc-class-a-shift" does not exist), so we
-        // observe the NewTabResume dispatch with the phantom-skipped
-        // sentinel argv. What matters here is that Shift+Enter on
+        // What matters here is that Shift+Enter on
         // Class A dead routed through dispatch_resume (the CLI flag
         // path), NOT dispatch_resume_in_agent_pane.
         let cmd = app
@@ -12931,78 +12840,6 @@ mod tests {
             !reg.has_session(&key.to_string()),
             "prune must drop an Ended Claude row whose on-disk \
              artefacts are absent (strict-probe contract)",
-        );
-    }
-
-    #[test]
-    fn shift_enter_history_row_short_circuits_when_session_is_phantom() {
-        // Belt-and-suspenders: the Shift+Enter path
-        // (resume_in_new_agent_tab → ACP loadSession) also gates on
-        // the phantom check. Without it, the user pressing Shift+Enter
-        // on a row whose CLI artefacts indicate "no conversation"
-        // would burn a new WT tab + reconcile the agent pane onto it,
-        // then dead-end inside the agent on a loadSession error.
-        //
-        // We can't easily inject a fake `key_is_resumable_on_disk`
-        // into `dispatch_resume_in_agent_pane` (it calls the global
-        // helper directly), but we CAN exercise the path by using a
-        // key whose CLI artefact does exist on disk and is phantom.
-        // Instead of that filesystem dependency, this test asserts
-        // the simpler invariant: when the probe returns false in
-        // production code, the dispatched command is the
-        // `--phantom-skipped` shape (not the real
-        // resume_in_new_agent_tab). The full check is covered by
-        // history_loader tests; here we exercise the App-level
-        // routing.
-        //
-        // Sanity check via the dispatched-command tape: when the
-        // capability gate fails (loadSession unsupported), the tape
-        // shows `--unsupported`. The phantom branch should likewise
-        // tag the tape with `--phantom-skipped`. This mirrors the
-        // existing test for the unsupported branch.
-        //
-        // (Direct fully-integrated test of the phantom branch
-        // requires manipulating the real home filesystem; covered
-        // by the existing history_loader tests for the probe and
-        // the prune tests above. This is documentation of the
-        // contract.)
-        use crate::agent_sessions::{CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut app = test_app();
-        // Mark loadSession supported so the capability gate doesn't
-        // preempt the phantom check.
-        app.agent_supports_load_session = true;
-        // Use a CLI source for which the real ~/.claude/projects
-        // can't have this UUID. The probe falls through to "no
-        // JSONL → defer to CLI" (true), so the phantom branch does
-        // NOT fire and we get the normal resume_in_new_agent_tab
-        // dispatch. This proves the no-false-positive case.
-        app.agent_sessions.apply(SessionEvent::SessionStarted {
-            key: "abc-this-uuid-is-not-on-disk-anywhere-9999".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/work/proj"),
-            title: "t".into(),
-        });
-        app.agent_sessions.apply(SessionEvent::SessionStopped {
-            key: "abc-this-uuid-is-not-on-disk-anywhere-9999".into(),
-            reason: "user_exit".into(),
-        });
-        app.current_tab_mut().current_view = View::Agents;
-        app.current_tab_mut().agents_list_state.select(Some(0));
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-        let cmd = app
-            .last_dispatched_command_for_test()
-            .expect("a command was dispatched");
-        // Probe returned true ("no JSONL on disk → defer to CLI"), so
-        // the normal dispatch goes through, NOT the phantom-skipped
-        // path. The argv should contain --cwd, not --phantom-skipped.
-        let argv = cmd.argv.join(" ");
-        assert!(
-            !argv.contains("--phantom-skipped"),
-            "no-on-disk-artefact case must NOT short-circuit as phantom; argv: {}",
-            argv
         );
     }
 
