@@ -431,15 +431,15 @@ fn port_open(host: &str, port: u16, timeout: std::time::Duration) -> bool {
 }
 
 /// The local runtimes to aggregate, in display order. Ollama leads (fixed,
-/// zero-config endpoint) followed by the SDK-backed Foundry runtime with an
-/// env fallback for explicit OpenAI-compatible endpoints.
+/// zero-config endpoint) followed by the Foundry runtime (probed via the
+/// `foundry` CLI) with an env fallback for explicit OpenAI-compatible endpoints.
 pub fn local_runtimes() -> Vec<Box<dyn ModelRuntime>> {
     vec![Box::new(OllamaRuntime), Box::new(FoundryRuntime::detect())]
 }
 
 /// Resolve the concrete [`ModelRuntime`] for a [`RuntimeId`]. Local runtimes are
-/// sourced the same way [`local_runtimes`] builds them (Foundry via SDK when
-/// available, otherwise the ambient env fallback). Used by the spawner to
+/// sourced the same way [`local_runtimes`] builds them (Foundry via the `foundry`
+/// CLI when available, otherwise the ambient env fallback). Used by the spawner to
 /// translate a persisted [`RuntimeId`] selection into the provider env for the
 /// next agent-CLI spawn.
 pub fn runtime_for_id(id: RuntimeId) -> Box<dyn ModelRuntime> {
