@@ -14291,7 +14291,7 @@ mod tests {
     async fn mock_agent_reply_streams_into_app_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let local = tokio::task::LocalSet::new();
         local
@@ -14299,7 +14299,7 @@ mod tests {
                 // Borrow the acp-module harness: deterministic mock wired to a
                 // real WtaClient over an in-memory duplex.
                 let (conn, mut event_rx, _seen) = connect_mock_agent();
-                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                     .await
                     .expect("initialize failed");
                 let session = conn
@@ -14359,10 +14359,10 @@ mod tests {
     async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
-        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
             .await
             .expect("initialize failed");
         let session = conn
@@ -14528,13 +14528,13 @@ mod tests {
     async fn tool_call_surfaces_card_in_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
                 let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
-                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                     .await
                     .expect("initialize failed");
                 let session = conn
@@ -14611,11 +14611,11 @@ mod tests {
     /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
     /// owns the `App`.
     async fn app_after_prompt(
-        conn: &agent_client_protocol::ClientSideConnection,
+        conn: &crate::protocol::acp::conn::ClientLink,
     ) {
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
-        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+        
+        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
             .await
             .expect("initialize failed");
         let session = conn

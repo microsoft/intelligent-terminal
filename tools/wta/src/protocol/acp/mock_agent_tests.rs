@@ -20,9 +20,9 @@ use super::{
     PromptSubmission, RenameSessionRequest, TemplateMemo,
 };
 use crate::app::AppEvent;
+use crate::protocol::acp::conn;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
-use agent_client_protocol::{Agent as _, Client as _};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -55,8 +55,9 @@ enum MockBehavior {
 /// moved into `AgentSideConnection::new`, so it gets its own connection handle
 /// via a `OnceCell` populated immediately afterwards). `prompt` uses it to
 /// stream replies / request permission, exactly like a real agent does.
+#[derive(Clone)]
 struct MockAgent {
-    conn: Arc<OnceCell<Arc<acp::AgentSideConnection>>>,
+    conn: Arc<OnceCell<conn::AgentLink>>,
     behavior: MockBehavior,
     /// Side-channel: every prompt's user text.
     seen_prompts: Arc<Mutex<Vec<String>>>,
@@ -88,8 +89,7 @@ fn first_text(blocks: &[acp::schema::v1::ContentBlock]) -> String {
         .unwrap_or_default()
 }
 
-#[async_trait::async_trait(?Send)]
-impl acp::Agent for MockAgent {
+impl MockAgent {
     async fn initialize(
         &self,
         args: acp::schema::v1::InitializeRequest,
@@ -142,7 +142,7 @@ impl acp::Agent for MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                                acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
                                     reply.as_str().into(),
                                 )),
                             ))
@@ -154,22 +154,22 @@ impl acp::Agent for MockAgent {
                     tokio::task::spawn_local(async move {
                         let req = acp::schema::v1::RequestPermissionRequest::new(
                             sid,
-                            acp::ToolCallUpdate::new(
-                                acp::ToolCallId::new("mock-tool-1"),
-                                acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+                            acp::schema::v1::ToolCallUpdate::new(
+                                acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
                             ),
                             // Allow first so a default-selected (index 0) Enter
                             // means "allow"; reject is index 1.
                             vec![
-                                acp::PermissionOption::new(
-                                    acp::PermissionOptionId::new("allow-once"),
+                                acp::schema::v1::PermissionOption::new(
+                                    acp::schema::v1::PermissionOptionId::new("allow-once"),
                                     "Allow once",
-                                    acp::PermissionOptionKind::AllowOnce,
+                                    acp::schema::v1::PermissionOptionKind::AllowOnce,
                                 ),
-                                acp::PermissionOption::new(
-                                    acp::PermissionOptionId::new("reject-once"),
+                                acp::schema::v1::PermissionOption::new(
+                                    acp::schema::v1::PermissionOptionId::new("reject-once"),
                                     "Reject",
-                                    acp::PermissionOptionKind::RejectOnce,
+                                    acp::schema::v1::PermissionOptionKind::RejectOnce,
                                 ),
                             ],
                         );
@@ -190,8 +190,8 @@ impl acp::Agent for MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::ToolCall(acp::ToolCall::new(
-                                    acp::ToolCallId::new("mock-tool-1"),
+                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     "Run: echo hi",
                                 )),
                             ))
@@ -203,8 +203,8 @@ impl acp::Agent for MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid.clone(),
-                                acp::schema::v1::SessionUpdate::ToolCall(acp::ToolCall::new(
-                                    acp::ToolCallId::new("mock-tool-1"),
+                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     "Run: echo hi",
                                 )),
                             ))
@@ -212,10 +212,10 @@ impl acp::Agent for MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                                    acp::ToolCallId::new("mock-tool-1"),
-                                    acp::ToolCallUpdateFields::new()
-                                        .status(acp::ToolCallStatus::Completed),
+                                acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                    acp::schema::v1::ToolCallUpdateFields::new()
+                                        .status(acp::schema::v1::ToolCallStatus::Completed),
                                 )),
                             ))
                             .await;
@@ -226,15 +226,15 @@ impl acp::Agent for MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::Plan(acp::Plan::new(vec![
-                                    acp::PlanEntry::new(
+                                acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(vec![
+                                    acp::schema::v1::PlanEntry::new(
                                         "Step one",
-                                        acp::PlanEntryPriority::Medium,
+                                        acp::schema::v1::PlanEntryPriority::Medium,
                                         acp::schema::v1::PlanEntryStatus::InProgress,
                                     ),
-                                    acp::PlanEntry::new(
+                                    acp::schema::v1::PlanEntry::new(
                                         "Step two",
-                                        acp::PlanEntryPriority::Low,
+                                        acp::schema::v1::PlanEntryPriority::Low,
                                         acp::schema::v1::PlanEntryStatus::Pending,
                                     ),
                                 ])),
@@ -248,7 +248,7 @@ impl acp::Agent for MockAgent {
                             let _ = conn
                                 .session_notification(acp::schema::v1::SessionNotification::new(
                                     sid.clone(),
-                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
                                         part.into(),
                                     )),
                                 ))
@@ -292,7 +292,7 @@ impl acp::Agent for MockAgent {
 fn connect_with(
     behavior: MockBehavior,
 ) -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Vec<String>>>,
     Arc<Mutex<Option<String>>>,
@@ -307,7 +307,7 @@ fn connect_with(
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
-    let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
+    let conn_cell: Arc<OnceCell<conn::AgentLink>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
         behavior,
@@ -319,52 +319,82 @@ fn connect_with(
         slow_load: Arc::new(AtomicBool::new(false)),
     };
 
-    // Bidirectional in-memory pipe. Each half is split into read/write and
-    // adapted from tokio to futures I/O (same shape as the production pipe path
-    // in `run_acp_client_over_pipe`).
+    let client_conn = spawn_mock_pair(wta, mock, &conn_cell);
+    (client_conn, event_rx, seen_prompts, permission_outcome)
+}
+
+/// Wire a `WtaClient` (client) to a `MockAgent` (agent) over an in-memory duplex
+/// using the 1.0 builder model, spawn both I/O loops, hand the mock its
+/// `AgentLink`, and return the client `ClientLink`. Must run inside a `LocalSet`.
+fn spawn_mock_pair(
+    wta: WtaClient,
+    mock: MockAgent,
+    conn_cell: &Arc<OnceCell<conn::AgentLink>>,
+) -> conn::ClientLink {
     let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
     let (wta_r, wta_w) = tokio::io::split(wta_io);
     let (mock_r, mock_w) = tokio::io::split(mock_io);
 
-    let (client_conn, client_io) = acp::ClientSideConnection::new(
-        wta,
-        wta_w.compat_write(),
-        wta_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
+    let client_builder = acp::Client
+        .builder()
+        .name("mock-wta")
+        .on_receive_request({ let c = wta.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
+            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+            match req {
+                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
+                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
+                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
+                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
+                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
+                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let c = wta.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
+            if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif { let _ = c.session_notification(n).await; }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+    let (client_conn, client_io) =
+        conn::spawn_client(client_builder, conn::byte_streams(wta_w.compat_write(), wta_r.compat()));
 
-    let (agent_conn, agent_io) = acp::AgentSideConnection::new(
-        mock,
-        mock_w.compat_write(),
-        mock_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
+    let agent_builder = acp::Agent
+        .builder()
+        .name("mock-agent")
+        .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
+            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+            match req {
+                Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
+                Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
+                Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
+                Q::LoadSessionRequest(a) => conn::respond_enum(responder, m.load_session(a).await.map(R::LoadSessionResponse)),
+                Q::PromptRequest(a) => conn::respond_enum(responder, m.prompt(a).await.map(R::PromptResponse)),
+                Q::ExtMethodRequest(_) => conn::respond_enum(
+                    responder,
+                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
+                        serde_json::value::to_raw_value(&serde_json::Value::Null).unwrap().into(),
+                    ))),
+                ),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let m = mock.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let m = m.clone(); async move {
+            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = m.cancel(n).await; }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+    let (agent_conn, agent_io) =
+        conn::spawn_agent(agent_builder, conn::byte_streams(mock_w.compat_write(), mock_r.compat()));
 
-    // Hand the mock its own connection so `prompt` can stream / request permission.
-    assert!(
-        conn_cell.set(Arc::new(agent_conn)).is_ok(),
-        "mock agent connection cell must be set exactly once"
-    );
-
-    tokio::task::spawn_local(async move {
-        let _ = client_io.await;
-    });
-    tokio::task::spawn_local(async move {
-        let _ = agent_io.await;
-    });
-
-    (client_conn, event_rx, seen_prompts, permission_outcome)
+    assert!(conn_cell.set(agent_conn).is_ok(), "mock agent connection cell must be set exactly once");
+    tokio::task::spawn_local(async move { let _ = client_io.await; });
+    tokio::task::spawn_local(async move { let _ = agent_io.await; });
+    client_conn
 }
 
 /// Happy-path harness: the mock streams a deterministic reply on each prompt.
 /// Returns the client connection, the `AppEvent` receiver, and the seen-prompts
 /// side-channel.
 pub(crate) fn connect_mock_agent() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Vec<String>>>,
 ) {
@@ -376,7 +406,7 @@ pub(crate) fn connect_mock_agent() -> (
 /// on each prompt and records the selected outcome. Returns the client
 /// connection, the `AppEvent` receiver, and the permission-outcome side-channel.
 pub(crate) fn connect_mock_agent_asking_permission() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Option<String>>>,
 ) {
@@ -387,7 +417,7 @@ pub(crate) fn connect_mock_agent_asking_permission() -> (
 /// Tool-call harness: the mock streams a `ToolCall` (a proposed command) on each
 /// prompt. Returns the client connection and the `AppEvent` receiver.
 pub(crate) fn connect_mock_agent_proposing_tool() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposeToolCall);
@@ -397,7 +427,7 @@ pub(crate) fn connect_mock_agent_proposing_tool() -> (
 /// Tool-call lifecycle harness: streams a `ToolCall` then a
 /// `ToolCallUpdate(Completed)`.
 pub(crate) fn connect_mock_agent_completing_tool() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ToolThenComplete);
@@ -406,7 +436,7 @@ pub(crate) fn connect_mock_agent_completing_tool() -> (
 
 /// Plan harness: the mock streams a `Plan` with two entries.
 pub(crate) fn connect_mock_agent_proposing_plan() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposePlan);
@@ -415,7 +445,7 @@ pub(crate) fn connect_mock_agent_proposing_plan() -> (
 
 /// Streaming harness: the mock streams the reply in two chunks.
 pub(crate) fn connect_mock_agent_streaming_two_chunks() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::StreamTwoChunks);
@@ -446,7 +476,7 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
             let (client_conn, mut event_rx, seen_prompts) = connect_mock_agent();
 
             client_conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
             let session = client_conn
@@ -493,7 +523,7 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 /// the dispatcher threads into prompt assembly. `seen_prompts` is the
 /// agent-side record of every assembled prompt that reached the wire.
 pub(crate) struct DispatchHarness {
-    pub conn: Arc<acp::ClientSideConnection>,
+    pub conn: conn::ClientLink,
     pub event_tx: mpsc::UnboundedSender<AppEvent>,
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub shell_mgr: Arc<ShellManager>,
@@ -533,7 +563,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
     let slow_load = Arc::new(AtomicBool::new(false));
-    let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
+    let conn_cell: Arc<OnceCell<conn::AgentLink>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
         behavior,
@@ -545,39 +575,10 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         slow_load: slow_load.clone(),
     };
 
-    let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
-    let (wta_r, wta_w) = tokio::io::split(wta_io);
-    let (mock_r, mock_w) = tokio::io::split(mock_io);
-
-    let (client_conn, client_io) = acp::ClientSideConnection::new(
-        wta,
-        wta_w.compat_write(),
-        wta_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
-    let (agent_conn, agent_io) = acp::AgentSideConnection::new(
-        mock,
-        mock_w.compat_write(),
-        mock_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
-    assert!(
-        conn_cell.set(Arc::new(agent_conn)).is_ok(),
-        "mock agent connection cell must be set exactly once"
-    );
-    tokio::task::spawn_local(async move {
-        let _ = client_io.await;
-    });
-    tokio::task::spawn_local(async move {
-        let _ = agent_io.await;
-    });
+    let client_conn = spawn_mock_pair(wta, mock, &conn_cell);
 
     DispatchHarness {
-        conn: Arc::new(client_conn),
+        conn: client_conn,
         event_tx,
         event_rx,
         shell_mgr,
@@ -674,7 +675,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             // Handshake so the lazy `new_session` inside the dispatcher succeeds.
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
 
@@ -781,7 +782,7 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
 
@@ -845,7 +846,7 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
             // Make the mock reject session establishment.
@@ -900,7 +901,7 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
 
@@ -1574,7 +1575,7 @@ async fn session_notification_routes_agent_thought_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new("thinking".into())),
+            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::schema::v1::ContentChunk::new("thinking".into())),
         ))
         .await
         .unwrap();
@@ -1595,7 +1596,7 @@ async fn session_notification_routes_user_message_replay_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::ContentChunk::new("prior prompt".into())),
+            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new("prior prompt".into())),
         ))
         .await
         .unwrap();
@@ -1615,8 +1616,8 @@ async fn session_notification_routes_tool_call() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCall(acp::ToolCall::new(
-                acp::ToolCallId::new("tc-1"),
+            acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
                 "Run: echo hi",
             )),
         ))
@@ -1646,9 +1647,9 @@ async fn session_notification_routes_tool_call_update_status_only() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                acp::ToolCallId::new("tc-1"),
-                acp::ToolCallUpdateFields::new().status(acp::ToolCallStatus::Completed),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new().status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await
@@ -1676,10 +1677,10 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                acp::ToolCallId::new("tc-1"),
-                acp::ToolCallUpdateFields::new()
-                    .status(acp::ToolCallStatus::Failed)
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Failed)
                     .raw_output(serde_json::json!({
                         "message": "The user rejected this tool call."
                     })),
@@ -1706,9 +1707,9 @@ async fn session_notification_tool_call_update_without_status_is_dropped() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                acp::ToolCallId::new("tc-1"),
-                acp::ToolCallUpdateFields::new(),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new(),
             )),
         ))
         .await
@@ -1727,20 +1728,20 @@ async fn session_notification_routes_plan_with_status_mapping() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::Plan(acp::Plan::new(vec![
-                acp::PlanEntry::new(
+            acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(vec![
+                acp::schema::v1::PlanEntry::new(
                     "Step one",
-                    acp::PlanEntryPriority::Medium,
+                    acp::schema::v1::PlanEntryPriority::Medium,
                     acp::schema::v1::PlanEntryStatus::InProgress,
                 ),
-                acp::PlanEntry::new(
+                acp::schema::v1::PlanEntry::new(
                     "Step two",
-                    acp::PlanEntryPriority::Low,
+                    acp::schema::v1::PlanEntryPriority::Low,
                     acp::schema::v1::PlanEntryStatus::Completed,
                 ),
-                acp::PlanEntry::new(
+                acp::schema::v1::PlanEntry::new(
                     "Step three",
-                    acp::PlanEntryPriority::Low,
+                    acp::schema::v1::PlanEntryPriority::Low,
                     acp::schema::v1::PlanEntryStatus::Pending,
                 ),
             ])),
@@ -1775,14 +1776,14 @@ async fn session_notification_routes_plan_with_status_mapping() {
 fn permission_request(sid: &str) -> acp::schema::v1::RequestPermissionRequest {
     acp::schema::v1::RequestPermissionRequest::new(
         acp::schema::v1::SessionId::new(sid),
-        acp::ToolCallUpdate::new(
-            acp::ToolCallId::new("mock-tool-1"),
-            acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("mock-tool-1"),
+            acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
         ),
-        vec![acp::PermissionOption::new(
-            acp::PermissionOptionId::new("allow-once"),
+        vec![acp::schema::v1::PermissionOption::new(
+            acp::schema::v1::PermissionOptionId::new("allow-once"),
             "Allow once",
-            acp::PermissionOptionKind::AllowOnce,
+            acp::schema::v1::PermissionOptionKind::AllowOnce,
         )],
     )
 }

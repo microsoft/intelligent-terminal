@@ -13,7 +13,7 @@
 //!   - `check_all_agents`  — check_agent for all known agents
 //!   - `ensure_installed`  — find_exe → install if missing → refresh_path → find_exe
 
-use crate::agent_registry::{self, AgentProfile, KNOWN_AGENTS};
+use crate::agent_registry::{self, KNOWN_AGENTS};
 
 // ─── Data types ─────────────────────────────────────────────────────────────
 

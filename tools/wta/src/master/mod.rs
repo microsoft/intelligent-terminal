@@ -37,7 +37,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock, Weak};
+use std::sync::{Arc, OnceLock};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
 /// streaming during a single agent turn; well above what a healthy
@@ -49,8 +49,6 @@ const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
-use acp::Agent as _;
-use acp::Client as _;
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
@@ -58,6 +56,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::spawn_agent_process;
 use crate::Cli;
 
@@ -87,7 +86,7 @@ pub(crate) struct HelperId(u64);
 struct HelperRoute {
     helper_id: HelperId,
     notif_tx: mpsc::Sender<acp::schema::v1::SessionNotification>,
-    forwarder: Option<Arc<acp::AgentSideConnection>>,
+    forwarder: Option<conn::AgentLink>,
     /// Per-route counter for back-pressure log rate-limiting.
     ///
     /// Chunk-streaming during a single agent turn is high-rate, so if
@@ -278,6 +277,7 @@ pub(crate) struct HelperRecoveryMeta {
 /// then runs the same handler it ran pre-helper-split (TUI permission
 /// UI, `ShellManager`, etc.). The agent CLI sees the helper's
 /// response as if master had answered directly.
+#[derive(Clone)]
 struct MasterClient {
     state: Arc<MasterStateInner>,
 }
@@ -294,7 +294,7 @@ impl MasterClient {
         &self,
         sid: &acp::schema::v1::SessionId,
         op: &'static str,
-    ) -> acp::Result<(HelperId, Arc<acp::AgentSideConnection>)> {
+    ) -> acp::Result<(HelperId, conn::AgentLink)> {
         let entry = {
             let map = self.state.session_to_helper.lock().await;
             map.get(sid).cloned()
@@ -334,8 +334,7 @@ impl MasterClient {
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl acp::Client for MasterClient {
+impl MasterClient {
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
@@ -518,8 +517,8 @@ impl acp::Client for MasterClient {
 
     async fn write_text_file(
         &self,
-        args: acp::WriteTextFileRequest,
-    ) -> acp::Result<acp::WriteTextFileResponse> {
+        args: acp::schema::v1::WriteTextFileRequest,
+    ) -> acp::Result<acp::schema::v1::WriteTextFileResponse> {
         let sid = args.session_id.clone();
         let (helper_id, forwarder) = self.route_for(&sid, "write_text_file").await?;
         tracing::info!(
@@ -570,7 +569,7 @@ impl acp::Client for MasterClient {
 
     async fn terminal_output(
         &self,
-        args: acp::TerminalOutputRequest,
+        args: acp::schema::v1::TerminalOutputRequest,
     ) -> acp::Result<acp::schema::v1::TerminalOutputResponse> {
         let sid = args.session_id.clone();
         let (helper_id, forwarder) = self.route_for(&sid, "terminal_output").await?;
@@ -606,7 +605,7 @@ impl acp::Client for MasterClient {
 
     async fn wait_for_terminal_exit(
         &self,
-        args: acp::WaitForTerminalExitRequest,
+        args: acp::schema::v1::WaitForTerminalExitRequest,
     ) -> acp::Result<acp::schema::v1::WaitForTerminalExitResponse> {
         let sid = args.session_id.clone();
         let (helper_id, forwarder) = self.route_for(&sid, "wait_for_terminal_exit").await?;
@@ -661,9 +660,10 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
 
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
 /// Each helper gets its own `HelperHandler` instance.
+#[derive(Clone)]
 struct HelperHandler {
     helper_id: HelperId,
-    agent_conn: Arc<acp::ClientSideConnection>,
+    agent_conn: conn::ClientLink,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -692,7 +692,7 @@ struct HelperHandler {
     /// `serve_helper` populates this slot strictly before `handle_io`
     /// starts polling, so any inbound request observed by a handler
     /// sees a populated slot.
-    agent_side_slot: Arc<OnceLock<Weak<acp::AgentSideConnection>>>,
+    agent_side_slot: Arc<OnceLock<conn::AgentLink>>,
 }
 
 impl HelperHandler {
@@ -707,8 +707,8 @@ impl HelperHandler {
     ///   * `Weak::upgrade` returns `None` — the conn has already been
     ///     dropped (helper disconnect path); we have no way to route
     ///     a fresh request anyway.
-    fn forwarder_for_route(&self, op: &'static str) -> acp::Result<Arc<acp::AgentSideConnection>> {
-        let weak = self.agent_side_slot.get().ok_or_else(|| {
+    fn forwarder_for_route(&self, op: &'static str) -> acp::Result<conn::AgentLink> {
+        let link = self.agent_side_slot.get().ok_or_else(|| {
             tracing::error!(
                 target: "master",
                 op = op,
@@ -718,15 +718,7 @@ impl HelperHandler {
             acp::Error::internal_error()
                 .data(serde_json::json!("agent_side_slot not yet set"))
         })?;
-        weak.upgrade().ok_or_else(|| {
-            tracing::warn!(
-                target: "master",
-                op = op,
-                helper_id = ?self.helper_id,
-                "helper AgentSideConnection already dropped — cannot route new request"
-            );
-            acp::Error::internal_error().data(serde_json::json!("helper connection dropped"))
-        })
+        Ok(link.clone())
     }
 
     async fn forward_new_session_to_agent(
@@ -772,8 +764,7 @@ impl HelperHandler {
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl acp::Agent for HelperHandler {
+impl HelperHandler {
     async fn initialize(
         &self,
         args: acp::schema::v1::InitializeRequest,
@@ -937,15 +928,9 @@ impl acp::Agent for HelperHandler {
         // which model is really in effect — the acp-client current_model_id
         // line is debug-only. The explicit case is already covered by the
         // "forwarding set_session_model" log.
-        let agent_current_model = resp
-            .models
-            .as_ref()
-            .map(|state| state.current_model_id.0.to_string());
-        let agent_model_count = resp
-            .models
-            .as_ref()
-            .map(|state| state.available_models.len())
-            .unwrap_or(0);
+        let (agent_models, agent_current_model) =
+            crate::protocol::acp::model_select::models_from_new_session(&resp);
+        let agent_model_count = agent_models.len();
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1078,8 +1063,8 @@ impl acp::Agent for HelperHandler {
 
     async fn set_session_mode(
         &self,
-        args: acp::SetSessionModeRequest,
-    ) -> acp::Result<acp::SetSessionModeResponse> {
+        args: acp::schema::v1::SetSessionModeRequest,
+    ) -> acp::Result<acp::schema::v1::SetSessionModeResponse> {
         self.agent_conn.set_session_mode(args).await
     }
 
@@ -1100,8 +1085,8 @@ impl acp::Agent for HelperHandler {
     // (Mode = Agent/Plan/Autopilot vs Model = haiku/sonnet/opus).
     async fn set_session_model(
         &self,
-        args: acp::schema::v1::SetSessionModelRequest,
-    ) -> acp::Result<acp::schema::v1::SetSessionModelResponse> {
+        args: crate::protocol::acp::conn::SetSessionModelRequest,
+    ) -> acp::Result<crate::protocol::acp::conn::SetSessionModelResponse> {
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1755,10 +1740,30 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let client = MasterClient {
         state: Arc::clone(&inner),
     };
-    let (conn, handle_io) = acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
-    let agent_conn = Arc::new(conn);
+    let builder = acp::Client
+        .builder()
+        .name("wta-master")
+        .on_receive_request({ let c = client.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
+            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+            match req {
+                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
+                Q::WriteTextFileRequest(a) => conn::respond_enum(responder, c.write_text_file(a).await.map(R::WriteTextFileResponse)),
+                Q::ReadTextFileRequest(a) => conn::respond_enum(responder, c.read_text_file(a).await.map(R::ReadTextFileResponse)),
+                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
+                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
+                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
+                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
+                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let c = client.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
+            if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif { let _ = c.session_notification(n).await; }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+    let (conn, handle_io) =
+        conn::spawn_client(builder, conn::byte_streams(outgoing, incoming));
+    let agent_conn = conn;
 
     // The ACP I/O loop ending (clean or error) means the master can no
     // longer talk to the agent CLI — same liveness problem as a child
@@ -1797,7 +1802,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let init_result = tokio::time::timeout(
         std::time::Duration::from_secs(init_timeout_secs),
         agent_conn.initialize(
-            acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::V1)
+            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
                 .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
                 .client_info(
                     acp::schema::v1::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
@@ -1908,7 +1913,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
             })?,
         );
 
-        let agent_conn = Arc::clone(&agent_conn);
+        let agent_conn = agent_conn.clone();
         let inner = Arc::clone(&inner);
         let live_helpers = Arc::clone(&live_helpers);
         tokio::task::spawn_local(async move {
@@ -1939,7 +1944,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 async fn serve_helper(
     helper_id: HelperId,
     pipe: NamedPipeServer,
-    agent_conn: Arc<acp::ClientSideConnection>,
+    agent_conn: conn::ClientLink,
     state: Arc<MasterStateInner>,
 ) -> Result<()> {
     tracing::info!(target: "master", helper_id = ?helper_id, "helper connected");
@@ -1969,7 +1974,7 @@ async fn serve_helper(
     // conn owns the handler, the handler owns this slot — if the
     // slot held a strong `Arc` back to the conn, the conn could
     // never drop after helper disconnect.
-    let agent_side_slot: Arc<OnceLock<Weak<acp::AgentSideConnection>>> = Arc::new(OnceLock::new());
+    let agent_side_slot: Arc<OnceLock<conn::AgentLink>> = Arc::new(OnceLock::new());
 
     let handler = HelperHandler {
         helper_id,
@@ -1983,18 +1988,35 @@ async fn serve_helper(
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
 
+    let builder = acp::Agent
+        .builder()
+        .name("wta-master-helper")
+        .on_receive_request({ let h = handler.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let h = h.clone(); async move {
+            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+            match req {
+                Q::InitializeRequest(a) => conn::respond_enum(responder, h.initialize(a).await.map(R::InitializeResponse)),
+                Q::AuthenticateRequest(a) => conn::respond_enum(responder, h.authenticate(a).await.map(R::AuthenticateResponse)),
+                Q::NewSessionRequest(a) => conn::respond_enum(responder, h.new_session(a).await.map(R::NewSessionResponse)),
+                Q::LoadSessionRequest(a) => conn::respond_enum(responder, h.load_session(a).await.map(R::LoadSessionResponse)),
+                Q::SetSessionModeRequest(a) => conn::respond_enum(responder, h.set_session_mode(a).await.map(R::SetSessionModeResponse)),
+                Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(responder, h.set_session_config_option(a).await.map(R::SetSessionConfigOptionResponse)),
+                Q::ListSessionsRequest(a) => conn::respond_enum(responder, h.list_sessions(a).await.map(R::ListSessionsResponse)),
+                Q::PromptRequest(a) => conn::respond_enum(responder, h.prompt(a).await.map(R::PromptResponse)),
+                Q::ExtMethodRequest(a) => conn::respond_enum(responder, h.ext_method(a).await.map(R::ExtMethodResponse)),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let h = handler.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let h = h.clone(); async move {
+            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = h.cancel(n).await; }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+
     let (agent_side_conn, handle_io) =
-        acp::AgentSideConnection::new(handler, outgoing, incoming, |fut| {
-            tokio::task::spawn_local(fut);
-        });
-    let agent_side_conn = Arc::new(agent_side_conn);
-    // Populate BEFORE `handle_io.await` (below) so any inbound
-    // request the agent CLI sends is guaranteed to see a populated
-    // slot. `set` returns `Err` only if already-set, which can't
-    // happen here. `Arc::downgrade` so the slot holds a `Weak` —
-    // see the field comment on `HelperHandler::agent_side_slot` for
-    // why a strong `Arc` here would leak the conn.
-    let _ = agent_side_slot.set(Arc::downgrade(&agent_side_conn));
+        conn::spawn_agent(builder, conn::byte_streams(outgoing, incoming));
+    // Populate BEFORE the I/O loop drives any inbound request so handlers see a
+    // ready forwarder. The link is cheap-Clone (`ConnectionTo` handle), so no
+    // Arc/Weak cycle worry like the old object connection.
+    let _ = agent_side_slot.set(agent_side_conn.clone());
 
     tokio::pin!(handle_io);
     let result = loop {
@@ -3210,59 +3232,30 @@ async fn handle_session_focus(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use acp::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
+    use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-    struct NoopClient;
-
-    #[async_trait::async_trait(?Send)]
-    impl acp::Client for NoopClient {
-        async fn request_permission(
-            &self,
-            _args: acp::schema::v1::RequestPermissionRequest,
-        ) -> acp::Result<acp::schema::v1::RequestPermissionResponse> {
-            Err(acp::Error::method_not_found())
-        }
-
-        async fn session_notification(
-            &self,
-            _args: acp::schema::v1::SessionNotification,
-        ) -> acp::Result<()> {
-            Ok(())
-        }
-    }
-
+    #[derive(Clone)]
     struct PendingNewSessionAgent;
 
-    #[async_trait::async_trait(?Send)]
-    impl acp::Agent for PendingNewSessionAgent {
+    impl PendingNewSessionAgent {
         async fn initialize(
             &self,
             _args: acp::schema::v1::InitializeRequest,
         ) -> acp::Result<acp::schema::v1::InitializeResponse> {
-            Ok(acp::schema::v1::InitializeResponse::new(acp::schema::v1::ProtocolVersion::V1))
+            Ok(acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1))
         }
-
         async fn authenticate(
             &self,
             _args: acp::schema::v1::AuthenticateRequest,
         ) -> acp::Result<acp::schema::v1::AuthenticateResponse> {
             Ok(acp::schema::v1::AuthenticateResponse::new())
         }
-
         async fn new_session(
             &self,
             _args: acp::schema::v1::NewSessionRequest,
         ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
             futures::future::pending().await
-        }
-
-        async fn prompt(&self, _args: acp::schema::v1::PromptRequest) -> acp::Result<acp::schema::v1::PromptResponse> {
-            Err(acp::Error::method_not_found())
-        }
-
-        async fn cancel(&self, _args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
-            Ok(())
         }
     }
 
@@ -3281,36 +3274,35 @@ mod tests {
         })
     }
 
-    fn client_connection_to_pending_new_session_agent() -> Arc<acp::ClientSideConnection> {
+    fn client_connection_to_pending_new_session_agent() -> conn::ClientLink {
         let (client_pipe, agent_pipe) = tokio::io::duplex(4096);
         let (client_read, client_write) = tokio::io::split(client_pipe);
         let (agent_read, agent_write) = tokio::io::split(agent_pipe);
 
-        let (_agent_conn, agent_io) = acp::AgentSideConnection::new(
-            PendingNewSessionAgent,
-            agent_write.compat_write(),
-            agent_read.compat(),
-            |fut| {
-                tokio::task::spawn_local(fut);
-            },
-        );
-        tokio::task::spawn_local(async move {
-            let _ = agent_io.await;
-        });
+        let mock = PendingNewSessionAgent;
+        let agent_builder = acp::Agent
+            .builder()
+            .name("pending-agent")
+            .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
+                use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+                match req {
+                    Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
+                    Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
+                    Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
+                    _ => responder.respond_with_error(acp::Error::method_not_found()),
+                }
+            } } }, acp::on_receive_request!());
+        let (_agent_conn, agent_io) =
+            conn::spawn_agent(agent_builder, conn::byte_streams(agent_write.compat_write(), agent_read.compat()));
+        tokio::task::spawn_local(async move { let _ = agent_io.await; });
 
-        let (client_conn, client_io) = acp::ClientSideConnection::new(
-            NoopClient,
-            client_write.compat_write(),
-            client_read.compat(),
-            |fut| {
-                tokio::task::spawn_local(fut);
-            },
+        let (client_conn, client_io) = conn::spawn_client(
+            acp::Client.builder().name("noop-client"),
+            conn::byte_streams(client_write.compat_write(), client_read.compat()),
         );
-        tokio::task::spawn_local(async move {
-            let _ = client_io.await;
-        });
+        tokio::task::spawn_local(async move { let _ = client_io.await; });
 
-        Arc::new(client_conn)
+        client_conn
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -3898,7 +3890,7 @@ mod tests {
     /// thinking the master doesn't support terminals at all).
     #[tokio::test]
     async fn master_client_create_terminal_unknown_session_returns_internal_error() {
-        use acp::Client as _;
+        
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),

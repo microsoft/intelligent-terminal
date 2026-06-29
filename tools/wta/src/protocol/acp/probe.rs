@@ -16,7 +16,6 @@
 //!
 //! On error: non-zero exit, message on stderr, no JSON on stdout.
 
-use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
 use serde::Serialize;
@@ -25,66 +24,13 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app::AcpModelInfo;
+use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::spawn_agent_process;
 
 #[derive(Serialize)]
 pub struct ProbeResult {
     pub available_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
-}
-
-/// Stub `acp::Client`. We only drive `initialize` + `new_session`,
-/// which don't trigger server→client calls — every method here is a
-/// fail-fast safety net rather than a real implementation.
-struct ProbeClient;
-
-#[async_trait::async_trait(?Send)]
-impl acp::Client for ProbeClient {
-    async fn request_permission(
-        &self,
-        _: acp::schema::v1::RequestPermissionRequest,
-    ) -> acp::Result<acp::schema::v1::RequestPermissionResponse> {
-        Err(acp::Error::internal_error().data("probe-models does not handle permissions".to_string()))
-    }
-
-    async fn session_notification(&self, _: acp::schema::v1::SessionNotification) -> acp::Result<()> {
-        Ok(())
-    }
-
-    async fn create_terminal(
-        &self,
-        _: acp::schema::v1::CreateTerminalRequest,
-    ) -> acp::Result<acp::schema::v1::CreateTerminalResponse> {
-        Err(acp::Error::internal_error().data("probe-models does not create terminals".to_string()))
-    }
-
-    async fn terminal_output(
-        &self,
-        _: acp::TerminalOutputRequest,
-    ) -> acp::Result<acp::schema::v1::TerminalOutputResponse> {
-        Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
-    }
-
-    async fn wait_for_terminal_exit(
-        &self,
-        _: acp::WaitForTerminalExitRequest,
-    ) -> acp::Result<acp::schema::v1::WaitForTerminalExitResponse> {
-        Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
-    }
-
-    async fn release_terminal(
-        &self,
-        _: acp::schema::v1::ReleaseTerminalRequest,
-    ) -> acp::Result<acp::schema::v1::ReleaseTerminalResponse> {
-        Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
-    }
-
-    async fn kill_terminal(
-        &self,
-        _: acp::schema::v1::KillTerminalRequest,
-    ) -> acp::Result<acp::schema::v1::KillTerminalResponse> {
-        Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
-    }
 }
 
 /// `agent_cmd` is the full cmdline as passed to `--agent` in the agent
@@ -113,9 +59,7 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
     }
 
     let (conn, handle_io) =
-        acp::ClientSideConnection::new(ProbeClient, outgoing, incoming, |fut| {
-            tokio::task::spawn_local(fut);
-        });
+        conn::spawn_client(acp::Client.builder().name("wta-probe"), conn::byte_streams(outgoing, incoming));
 
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
@@ -129,7 +73,7 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
     // Cached adapters complete in <2s.
     let init_timeout_secs: u64 = if spawned.is_npx { 25 } else { 10 };
 
-    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::V1)
+    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
         .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
         .client_info(
             acp::schema::v1::Implementation::new("wta-probe", env!("CARGO_PKG_VERSION"))

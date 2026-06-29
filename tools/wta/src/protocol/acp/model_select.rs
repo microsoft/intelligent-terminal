@@ -18,7 +18,6 @@
 use std::sync::RwLock;
 
 use agent_client_protocol as acp;
-use agent_client_protocol::Agent as _;
 
 use crate::app::AcpModelInfo;
 
@@ -57,20 +56,6 @@ fn record_channel_config(config_id: &str) {
 pub(crate) fn models_from_new_session(
     resp: &acp::schema::v1::NewSessionResponse,
 ) -> (Vec<AcpModelInfo>, Option<String>) {
-    if let Some(state) = &resp.models {
-        record_channel_legacy();
-        let models = state
-            .available_models
-            .iter()
-            .map(|m| AcpModelInfo {
-                id: m.model_id.0.to_string(),
-                name: m.name.clone(),
-                description: m.description.clone(),
-            })
-            .collect();
-        return (models, Some(state.current_model_id.0.to_string()));
-    }
-
     if let Some(opts) = &resp.config_options {
         if let Some((config_id, models, current)) = model_option_from_config(opts) {
             record_channel_config(&config_id);
@@ -130,7 +115,7 @@ fn model_option_from_config(
 /// `session/set_config_option` depending on the channel recorded by
 /// [`models_from_new_session`].
 pub(crate) async fn apply_session_model(
-    conn: &acp::ClientSideConnection,
+    conn: &crate::protocol::acp::conn::ClientLink,
     session_id: acp::schema::v1::SessionId,
     model_id: String,
 ) -> acp::Result<()> {
@@ -145,7 +130,7 @@ pub(crate) async fn apply_session_model(
             .await
             .map(|_| ()),
         ModelSwitchChannel::Legacy => conn
-            .set_session_model(acp::schema::v1::SetSessionModelRequest::new(session_id, model_id))
+            .set_session_model(crate::protocol::acp::conn::SetSessionModelRequest::new(session_id, model_id))
             .await
             .map(|_| ()),
     }
@@ -214,14 +199,14 @@ mod tests {
             }
         );
 
-        // 2. Legacy `models` field wins when present, channel flips back.
+        // 2. Legacy `models` field was removed in schema 1.1 — a payload that
+        //    only carries it (unknown to the deserializer) now yields no models;
+        //    the config-option channel from step 1 stays recorded.
         let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(LEGACY_NEW_SESSION).expect("valid new_session");
         let (models, current) = models_from_new_session(&resp);
-        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["gpt-5.5", "gpt-5.4"]);
-        assert_eq!(current.as_deref(), Some("gpt-5.5"));
-        assert_eq!(*MODEL_SWITCH.read().unwrap(), ModelSwitchChannel::Legacy);
+        assert!(models.is_empty());
+        assert_eq!(current, None);
 
         // 3. Neither channel present → empty list, no current model.
         let resp: acp::schema::v1::NewSessionResponse =

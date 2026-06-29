@@ -1,7 +1,7 @@
 use super::failure::AgentFailure;
+use super::conn;
 use super::prompt;
 use super::soft_stop::SoftStopReason;
-use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -1434,6 +1434,7 @@ struct ClientState {
 }
 
 /// Our Client trait implementation — handles incoming agent requests and notifications.
+#[derive(Clone)]
 struct WtaClient {
     state: Arc<ClientState>,
 }
@@ -1449,8 +1450,7 @@ fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str 
     }
 }
 
-#[async_trait::async_trait(?Send)]
-impl acp::Client for WtaClient {
+impl WtaClient {
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
@@ -1665,7 +1665,7 @@ impl acp::Client for WtaClient {
 
     async fn terminal_output(
         &self,
-        args: acp::TerminalOutputRequest,
+        args: acp::schema::v1::TerminalOutputRequest,
     ) -> acp::Result<acp::schema::v1::TerminalOutputResponse> {
         match self
             .state
@@ -1686,7 +1686,7 @@ impl acp::Client for WtaClient {
 
     async fn wait_for_terminal_exit(
         &self,
-        args: acp::WaitForTerminalExitRequest,
+        args: acp::schema::v1::WaitForTerminalExitRequest,
     ) -> acp::Result<acp::schema::v1::WaitForTerminalExitResponse> {
         let tid = args.terminal_id.to_string();
         let session_id = args.session_id.0.to_string();
@@ -1925,7 +1925,7 @@ async fn handle_load_failure(
     old_sid: Option<&acp::schema::v1::SessionId>,
     tab_id: String,
     cwd: std::path::PathBuf,
-    conn: Arc<acp::ClientSideConnection>,
+    conn: conn::ClientLink,
     tab_to_session: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     error_message: String,
@@ -2124,9 +2124,33 @@ pub async fn run_acp_client_over_pipe(
         state: state.clone(),
     };
 
-    let (conn, handle_io) = acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
+    let builder = acp::Client
+        .builder()
+        .name("wta-helper")
+        .on_receive_request({ let c = client.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
+            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+            match req {
+                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
+                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
+                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
+                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
+                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
+                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let c = client.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
+            use acp::schema::v1::AgentNotification as N;
+            match notif {
+                N::SessionNotification(n) => { let _ = c.session_notification(n).await; }
+                N::ExtNotification(n) => { let _ = c.ext_notification(n).await; }
+                _ => {}
+            }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+
+    let (conn, handle_io) =
+        conn::spawn_client(builder, conn::byte_streams(outgoing, incoming));
     startup_probe.log("ACP client connection created (over pipe)");
 
     let io_probe = startup_probe.clone();
@@ -2171,7 +2195,7 @@ pub async fn run_acp_client_over_pipe(
     startup_probe.log("Initializing ACP (over pipe)");
     let init_started = std::time::Instant::now();
     let init_future = conn.initialize(
-        acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::V1)
+        acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
             .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
             .client_info(
                 acp::schema::v1::Implementation::new("wta-helper", env!("CARGO_PKG_VERSION"))
@@ -2570,7 +2594,7 @@ pub async fn run_acp_client_over_pipe(
                 let _ = event_tx.send(AppEvent::SessionsChanged);
             }
             Some(event) = session_hook_rx.recv() => {
-                let conn_for_hook = Arc::clone(&conn);
+                let conn_for_hook = conn.clone();
                 tokio::task::spawn_local(async move {
                     let req = crate::session_registry::build_session_hook_request(&event);
                     match conn_for_hook.ext_method(req).await {
@@ -2683,11 +2707,11 @@ pub async fn run_acp_client_over_pipe(
 #[allow(clippy::too_many_arguments)]
 fn dispatch_master_ext_request(
     req: MasterExtRequest,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
 ) {
-    let conn = Arc::clone(conn);
+    let conn = conn.clone();
     let event_tx = event_tx.clone();
     let tab_to_session = Arc::clone(tab_to_session);
     tokio::task::spawn_local(async move {
@@ -2865,7 +2889,7 @@ fn dispatch_master_ext_request(
 #[allow(clippy::too_many_arguments)]
 fn dispatch_load_session(
     req: LoadSessionForTab,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
@@ -2882,7 +2906,7 @@ fn dispatch_load_session(
         timeout_ms = timeout.as_millis() as u64,
         "load_session requested"
     );
-    let conn = Arc::clone(conn);
+    let conn = conn.clone();
     let tab_to_session = Arc::clone(tab_to_session);
     let cancel_signals = Arc::clone(cancel_signals);
     let event_tx = event_tx.clone();
@@ -3029,7 +3053,7 @@ async fn dispatch_load_failure(
     old_sid: Option<&acp::schema::v1::SessionId>,
     tab_id: &str,
     cwd: &std::path::Path,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     message: String,
@@ -3039,7 +3063,7 @@ async fn dispatch_load_failure(
             old_sid,
             tab_id.to_string(),
             cwd.to_path_buf(),
-            Arc::clone(conn),
+            conn.clone(),
             Arc::clone(tab_to_session),
             event_tx.clone(),
             message,
@@ -3070,7 +3094,7 @@ async fn dispatch_load_failure(
 #[allow(clippy::too_many_arguments)]
 fn dispatch_new_session(
     req: NewSessionForTab,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
@@ -3084,7 +3108,7 @@ fn dispatch_new_session(
         tab = %req.tab_id,
         "new_session requested"
     );
-    let conn = Arc::clone(conn);
+    let conn = conn.clone();
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
@@ -3177,7 +3201,7 @@ fn dispatch_new_session(
 /// `run_acp_client_over_pipe`.
 fn dispatch_drop_session(
     req: DropSessionRequest,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
@@ -3187,7 +3211,7 @@ fn dispatch_drop_session(
         tab = %req.tab_id,
         "drop_session requested (no replacement)"
     );
-    let conn = Arc::clone(conn);
+    let conn = conn.clone();
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
@@ -3227,7 +3251,7 @@ fn dispatch_drop_session(
 /// `run_acp_client_over_pipe`.
 fn dispatch_cancel(
     req: CancelRequest,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
 ) {
     let session_id_str = req.session_id.clone();
@@ -3239,7 +3263,7 @@ fn dispatch_cancel(
     }
     // Best-effort agent notification. Spawned so the loop stays
     // responsive even if the agent is slow to ack.
-    let conn_for_cancel = Arc::clone(conn);
+    let conn_for_cancel = conn.clone();
     tokio::task::spawn_local(async move {
         let session_id = acp::schema::v1::SessionId::new(session_id_str.clone());
         if let Err(e) = conn_for_cancel
@@ -3299,7 +3323,7 @@ fn build_prompt_content(
 
 fn dispatch_prompt(
     prompt: PromptSubmission,
-    conn: &Arc<acp::ClientSideConnection>,
+    conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
@@ -3326,7 +3350,7 @@ fn dispatch_prompt(
         }
     }
 
-    let conn_task = Arc::clone(conn);
+    let conn_task = conn.clone();
     let tab_to_session_task = Arc::clone(tab_to_session);
     let template_memo_task = template_memo.clone();
     let in_flight_tabs_task = Arc::clone(in_flight_tabs);
@@ -3358,7 +3382,7 @@ fn dispatch_prompt(
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_prompt_body(
     prompt: PromptSubmission,
-    conn_task: Arc<acp::ClientSideConnection>,
+    conn_task: conn::ClientLink,
     tab_to_session_task: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: TemplateMemo,
     in_flight_tabs_task: Arc<std::sync::Mutex<HashSet<String>>>,
@@ -3419,21 +3443,8 @@ async fn dispatch_prompt_body(
                 );
                 crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
             }
-            let (per_tab_models, per_tab_current) = match &new_session.models {
-                Some(state) => {
-                    let models: Vec<crate::app::AcpModelInfo> = state
-                        .available_models
-                        .iter()
-                        .map(|m| crate::app::AcpModelInfo {
-                            id: m.model_id.0.to_string(),
-                            name: m.name.clone(),
-                            description: m.description.clone(),
-                        })
-                        .collect();
-                    (models, Some(state.current_model_id.0.to_string()))
-                }
-                None => (Vec::new(), None),
-            };
+            let (per_tab_models, per_tab_current) =
+                crate::protocol::acp::model_select::models_from_new_session(&new_session);
             let _ = event_tx_task.send(AppEvent::SessionAttached {
                 tab_id: tab_key_task.clone(),
                 session_id: new_sid.to_string(),
@@ -4325,7 +4336,7 @@ mod tests {
             INTELLTERM_METHOD_SESSION_REMOVED,
         };
         use crate::shell::ShellManager;
-        use agent_client_protocol::{self as acp, Client};
+        use agent_client_protocol::{self as acp};
         use std::path::PathBuf;
         use std::sync::Arc;
         use tokio::sync::mpsc;

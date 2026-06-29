@@ -160,18 +160,18 @@ pub fn to_acp_session_info(info: &SessionInfo) -> acp::schema::v1::SessionInfo {
 
 /// ExtNotification method for "a new session was just bound to a
 /// helper inside this master".
-pub const INTELLTERM_METHOD_SESSION_ADDED: &str = "intellterm.wta/session_added";
+pub const INTELLTERM_METHOD_SESSION_ADDED: &str = "_intellterm.wta/session_added";
 
 /// ExtNotification method for "a session previously announced via
 /// `session_added` is gone" (helper disconnect, load_session rollback,
 /// future explicit close).
-pub const INTELLTERM_METHOD_SESSION_REMOVED: &str = "intellterm.wta/session_removed";
+pub const INTELLTERM_METHOD_SESSION_REMOVED: &str = "_intellterm.wta/session_removed";
 
 /// ExtNotification method for "master's session registry changed; refetch if interested".
-pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "intellterm.wta/sessions/changed";
+pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/changed";
 
 /// ExtRequest method for fetching the master's full session registry snapshot.
-pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "intellterm.wta/sessions/list";
+pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
 
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
@@ -334,7 +334,7 @@ pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNot
 // ─── intellterm.wta/session_resume_dispatched ────────────────────────────────
 
 pub const INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED: &str =
-    "intellterm.wta/session_resume_dispatched";
+    "_intellterm.wta/session_resume_dispatched";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionResumeDispatchedParams {
@@ -370,7 +370,7 @@ pub fn parse_session_resume_dispatched_response(
 
 // ─── intellterm.wta/session_focus ────────────────────────────────────────────
 
-pub const INTELLTERM_METHOD_SESSION_FOCUS: &str = "intellterm.wta/session_focus";
+pub const INTELLTERM_METHOD_SESSION_FOCUS: &str = "_intellterm.wta/session_focus";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionFocusParams {
@@ -420,7 +420,7 @@ pub fn parse_session_focus_response(
 /// focus operations directly — all focus traffic funnels through
 /// master so a single in-memory map (the master's registry) is the
 /// authority on "which pane owns which sid".
-pub const INTELLTERM_METHOD_FOCUS_SESSION: &str = "intellterm.wta/focus_session";
+pub const INTELLTERM_METHOD_FOCUS_SESSION: &str = "_intellterm.wta/focus_session";
 
 /// Wire payload for [`INTELLTERM_METHOD_FOCUS_SESSION`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -450,7 +450,7 @@ pub fn parse_focus_session_params(
 // ─── intellterm.wta/session_hook ─────────────────────────────────────────────
 
 /// ExtRequest method for "helper observed a SessionEvent; master should apply it".
-pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "intellterm.wta/session_hook";
+pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "_intellterm.wta/session_hook";
 
 /// ExtRequest method for a #266 *born-bound* registration — a WTA-launched CLI
 /// session (delegate `?<prompt>` / resume) that IT bound to its pane at launch.
@@ -458,7 +458,7 @@ pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "intellterm.wta/session_hook";
 /// *binding-only* (`born_bound`) rather than hook-owned: with no real hook
 /// installed the file watcher may still supply activity/status for it (never
 /// re-binding). A later real `session_hook` event moves it to hook-owned.
-pub const INTELLTERM_METHOD_SESSION_BORN_BOUND: &str = "intellterm.wta/session_born_bound";
+pub const INTELLTERM_METHOD_SESSION_BORN_BOUND: &str = "_intellterm.wta/session_born_bound";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(untagged)]

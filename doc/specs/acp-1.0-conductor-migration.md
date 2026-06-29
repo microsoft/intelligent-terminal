@@ -616,9 +616,18 @@ Branch `dev/yuazha/acp-1.0-phase0`. Build/test from the **worktree root** (not
 errors, all structural. **No `agent-client-protocol-tokio`** (stuck at 0.11.1,
 needs core ^0.11): use core `acp::AcpAgent`/`Stdio`/`ByteStreams`.
 
-**TODO — chunks 2-4 (47 errors):** `master/mod.rs` 22, `client.rs` 15, `main.rs`
-6, `probe.rs` 6, `model_select.rs` 3. Patterns:
-- `acp::ClientSideConnection/AgentSideConnection` (removed) → `acp::Client/Agent.builder().on_receive_*(...).connect_with(ByteStreams::new(out,in), |cx| ...)`
-- `conn.new_session()/prompt()/initialize()/cancel().await` → `cx.send_request(req).block_task().await` / `SessionBuilder`
-- 5× `impl acp::Client/Agent` → builder callbacks (WtaClient, HelperHandler, MasterClient, NoopClient, PendingNewSessionAgent)
-- remove `LocalSet`/`spawn_local`/`handle_io`; master is a `Proxy/Conductor` (N:1 multiplexer stays bespoke); then `mock_agent_tests.rs` harness; then `cargo test` → 1017.
+**Done — chunk 2/4 = chunks 2-4 bucket (build + 1017 tests green):** All 47 errors cleared. Connection
+model confined to a compat shim `protocol/acp/conn.rs` (`ClientLink`/`AgentLink`
+wrap `ConnectionTo`, `spawn_client`/`spawn_agent` return link + handle_io; cell
+filled by `connect_with` so call sites keep `conn.method().await`). `impl
+Client/Agent` (WtaClient/MasterClient/HelperHandler/MockAgent/PendingAgent) →
+`on_receive_request/on_receive_notification` enum dispatch (`ClientRequest`/
+`AgentRequest`, response enums serialize to `Value`). N:1 multiplexer stays
+bespoke. **set_session_model** removed in schema 1.1 → re-declared locally; model
+list is config-option only. **ext** (`ext_method`/`ext_notification`) only enum-
+falls-through for `_`-prefixed methods in 1.0, so all `intellterm.wta/*` were
+prefixed `_intellterm.wta/*`. `ProtocolVersion` → `acp::schema::ProtocolVersion`.
+
+**TODO — beyond Phase 0:** clear residual dead-code warnings; revisit conductor
+proxy abstraction (future-considerations) and MCP-over-ACP — these are Phase 1-3,
+not part of this 0.10→1.0 bucket.
