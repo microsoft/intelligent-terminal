@@ -158,8 +158,7 @@ async fn dispatch(tools: &[Arc<dyn Tool>], req: &serde_json::Value) -> Option<se
     let result = match method {
         "initialize" => {
             // Echo the client's requested protocolVersion when present (spec
-            // negotiation), else advertise ours. Default to 2025-03-26 if the
-            // field is absent (HTTP clients without an explicit version).
+            // negotiation), else advertise our own (`PROTOCOL_VERSION`).
             let version = req
                 .get("params")
                 .and_then(|p| p.get("protocolVersion"))
