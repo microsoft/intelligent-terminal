@@ -75,12 +75,6 @@ pub struct ClientLink {
 }
 
 impl ClientLink {
-    pub fn new(cx: acp::ConnectionTo<acp::Agent>) -> Self {
-        let cell = std::sync::Arc::new(std::sync::OnceLock::new());
-        let _ = cell.set(cx);
-        Self { cell }
-    }
-
     fn cx(&self) -> impl std::future::Future<Output = acp::ConnectionTo<acp::Agent>> + '_ {
         async move {
             loop {
@@ -161,12 +155,6 @@ pub struct AgentLink {
 }
 
 impl AgentLink {
-    pub fn new(cx: acp::ConnectionTo<acp::Client>) -> Self {
-        let cell = std::sync::Arc::new(std::sync::OnceLock::new());
-        let _ = cell.set(cx);
-        Self { cell }
-    }
-
     fn cx(&self) -> impl std::future::Future<Output = acp::ConnectionTo<acp::Client>> + '_ {
         async move {
             loop {

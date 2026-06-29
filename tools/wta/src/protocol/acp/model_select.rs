@@ -39,10 +39,6 @@ enum ModelSwitchChannel {
 /// mutable cell overwritten on every extraction, not a write-once latch.
 static MODEL_SWITCH: RwLock<ModelSwitchChannel> = RwLock::new(ModelSwitchChannel::Legacy);
 
-fn record_channel_legacy() {
-    *MODEL_SWITCH.write().unwrap() = ModelSwitchChannel::Legacy;
-}
-
 fn record_channel_config(config_id: &str) {
     *MODEL_SWITCH.write().unwrap() = ModelSwitchChannel::Config {
         config_id: config_id.to_string(),
