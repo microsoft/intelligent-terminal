@@ -81,6 +81,16 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
         if content_len > MAX_BODY {
             return Ok(()); // body too large — drop
         }
+        // Enforce POST: this is a single JSON-RPC POST endpoint. Anything else
+        // → 405, don't treat the payload as a body.
+        let is_post = std::str::from_utf8(&buf[..headers_end])
+            .ok()
+            .and_then(|s| s.split_whitespace().next())
+            .is_some_and(|m| m.eq_ignore_ascii_case("POST"));
+        if !is_post {
+            write_json(&mut stream, 405, "").await?;
+            return Ok(());
+        }
         let body_start = headers_end;
         while buf.len() < body_start + content_len {
             let mut chunk = [0u8; 4096];
@@ -184,7 +194,12 @@ fn content_length(headers: &[u8]) -> usize {
 }
 
 async fn write_json(stream: &mut TcpStream, status: u16, body: &str) -> std::io::Result<()> {
-    let reason = if status == 200 { "OK" } else { "Accepted" };
+    let reason = match status {
+        200 => "OK",
+        202 => "Accepted",
+        405 => "Method Not Allowed",
+        _ => "OK",
+    };
     let resp = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: keep-alive\r\n\r\n{body}",
         body.len()

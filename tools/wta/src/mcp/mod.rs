@@ -47,9 +47,10 @@ fn endpoint_file_path() -> Option<std::path::PathBuf> {
 }
 
 /// Start the shared MCP server and publish its URL for helpers. Best-effort:
-/// returns `None` if binding fails (callers just don't offer MCP). The publish
-/// is atomic (temp + rename) so a helper never reads a half-written URL, and a
-/// failed bind clears any stale file so helpers don't inject a dead endpoint.
+/// returns `None` if binding fails (callers just don't offer MCP). Publish is a
+/// direct write of the short URL (readers trim and skip empty, so a partial
+/// read is harmless); a failed bind/write clears the file so helpers degrade to
+/// no-MCP rather than injecting a stale/dead endpoint.
 pub async fn start_and_publish() -> Option<McpEndpoint> {
     let path = endpoint_file_path();
     let ep = match serve(default_registry()).await {
