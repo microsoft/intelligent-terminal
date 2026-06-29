@@ -1,4 +1,4 @@
-//! Model-runtime abstraction — the per-backend lifecycle + discovery seam.
+﻿//! Model-runtime abstraction — the per-backend lifecycle + discovery seam.
 //!
 //! Where [`crate::llm_provider`] models a single *generic* backend config and
 //! [`crate::agent`] owns how an agent CLI *expresses* that config, this module
@@ -28,9 +28,6 @@
 //! local model providers without extra config.
 
 use std::collections::HashSet;
-use std::future::Future;
-
-use foundry_local_sdk::{FoundryLocalConfig, FoundryLocalManager};
 
 use crate::agent::{ModelCatalog, ModelEntry, ModelKind};
 use crate::llm_provider::{discover_local_models, LlmProviderConfig};
@@ -123,10 +120,10 @@ impl ModelRuntime for CloudRuntime {
     }
 }
 
-/// Microsoft Foundry Local, discovered through the Rust SDK when cached local
-/// models are available. This keeps the provider zero-config in the common
-/// local case while still honoring an explicit provider URL when the user sets
-/// one.
+/// Microsoft Foundry Local, discovered by shelling out to the `foundry` CLI
+/// (no native DLL dependency). `foundry cache ls` lists locally downloaded
+/// models; `foundry service status` / `foundry service start` manage the
+/// OpenAI-compatible HTTP service.
 pub struct FoundryRuntime {
     cfg: Option<LlmProviderConfig>,
     cached_models: Vec<String>,
@@ -141,8 +138,8 @@ impl FoundryRuntime {
         }
     }
 
-    /// Probe the Foundry Local SDK for cached models, falling back to the
-    /// ambient env when no SDK-managed models are present.
+    /// Probe `foundry cache ls` for locally downloaded models, falling back to
+    /// the ambient env when nothing is cached or the CLI is absent.
     pub fn detect() -> Self {
         let cached_models = foundry_cached_model_ids();
         if !cached_models.is_empty() {
@@ -222,26 +219,27 @@ impl ModelRuntime for FoundryRuntime {
             return Ok(());
         }
 
-        foundry_service_base_url().map(|_| ()).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Foundry Local service did not become ready",
-            )
-        })
+        // `foundry service start` is idempotent when the service is already running.
+        let result = std::process::Command::new("foundry")
+            .args(["service", "start"])
+            .output();
+
+        match result {
+            Ok(o) if o.status.success() => Ok(()),
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("foundry service start failed: {stderr}"),
+                ))
+            }
+            Err(e) => Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("foundry CLI not found: {e}"),
+            )),
+        }
     }
 }
-
-/// Ollama, the widely-adopted local model runner. Auto-probed at its fixed
-/// default endpoint `http://127.0.0.1:11434` — no env configuration needed, so
-/// a running Ollama daemon surfaces its models in the picker automatically
-/// (the gap copilot's limited local support leaves open). Ollama exposes an
-/// OpenAI-compatible API, so the same generic discovery + BYOK env path works.
-pub struct OllamaRuntime;
-
-/// Ollama's fixed localhost endpoint (OpenAI-compatible surface under `/v1`).
-const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434/v1";
-/// Cheap reachability probe budget for the daemon TCP connect.
-const OLLAMA_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 
 fn foundry_cfg_from_env() -> Option<LlmProviderConfig> {
     let cfg = LlmProviderConfig::from_env();
@@ -252,91 +250,103 @@ fn foundry_cfg_from_env() -> Option<LlmProviderConfig> {
     }
 }
 
+/// Run `foundry cache ls` and parse out model IDs for locally downloaded models.
 fn foundry_cached_model_ids() -> Vec<String> {
-    let Some(manager) = foundry_manager() else {
-        return Vec::new();
+    let output = match std::process::Command::new("foundry")
+        .args(["cache", "ls"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::debug!(target: "model_runtime", error = %e, "Foundry Local: `foundry` CLI not found");
+            return Vec::new();
+        }
     };
 
-    let result = foundry_block_on_result(async {
-        let models = manager.catalog().get_cached_models().await?;
-        Ok::<_, foundry_local_sdk::FoundryLocalError>(
-            models
-                .into_iter()
-                .map(|model| model.id().to_string())
-                .collect::<Vec<_>>(),
-        )
-    });
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-    match result {
-        Some(ref ids) if !ids.is_empty() => {
-            tracing::info!(
-                target: "model_runtime",
-                count = ids.len(),
-                ids = ?ids,
-                "Foundry Local: cached models found"
-            );
-        }
-        Some(_) => {
-            tracing::info!(
-                target: "model_runtime",
-                "Foundry Local: SDK initialized but no cached models found (use `foundry model download <model>` to cache one)"
-            );
-        }
-        None => {
-            tracing::warn!(
-                target: "model_runtime",
-                "Foundry Local: get_cached_models() failed"
-            );
-        }
-    }
+    // Output format:
+    //   Models cached on device:
+    //      Alias                         Model ID
+    //   💾 qwen2.5-coder-7b              qwen2.5-coder-7b-instruct-generic-cpu:4
+    //
+    // Model IDs always contain ':' (tag separator) or '/' (org/name).
+    let ids: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty()
+                || trimmed.starts_with("Models cached")
+                || trimmed.starts_with("Alias")
+            {
+                return None;
+            }
+            let id = trimmed.split_whitespace().last()?;
+            if id.contains(':') || id.contains('/') {
+                Some(id.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    result.unwrap_or_default()
-}
-
-fn foundry_manager() -> Option<&'static FoundryLocalManager> {
-    match FoundryLocalManager::create(FoundryLocalConfig::new("intelligent_terminal")) {
-        Ok(manager) => {
-            tracing::info!(target: "model_runtime", "Foundry Local: SDK manager initialized successfully");
-            Some(manager)
-        }
-        Err(e) => {
-            tracing::warn!(
-                target: "model_runtime",
-                error = %e,
-                "Foundry Local: SDK manager init failed — Foundry Local may not be installed"
-            );
-            None
-        }
-    }
-}
-
-fn foundry_block_on_result<T, E>(
-    future: impl Future<Output = std::result::Result<T, E>>,
-) -> Option<T> {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future).ok())
+    if ids.is_empty() {
+        tracing::info!(
+            target: "model_runtime",
+            "Foundry Local: CLI available but no cached models (use `foundry model run <model>` to download one)"
+        );
     } else {
-        tokio::runtime::Runtime::new().ok()?.block_on(future).ok()
+        tracing::info!(
+            target: "model_runtime",
+            count = ids.len(),
+            ids = ?ids,
+            "Foundry Local: cached models found via CLI"
+        );
     }
+
+    ids
 }
 
+/// Query `foundry service status` for the running service base URL.
+/// Returns something like `http://127.0.0.1:53677/v1`.
 fn foundry_service_base_url() -> Option<String> {
-    let manager = foundry_manager()?;
-    if manager
-        .urls()
-        .ok()
-        .filter(|urls| !urls.is_empty())
-        .is_none()
-    {
-        foundry_block_on_result(manager.start_web_service())?;
+    let output = std::process::Command::new("foundry")
+        .args(["service", "status"])
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse from: "🟢 Model management service is running on http://127.0.0.1:PORT/openai/status"
+    for line in stdout.lines() {
+        if let Some(idx) = line.find("http://") {
+            let url_part = &line[idx..];
+            let raw_url = url_part.split_whitespace().next().unwrap_or(url_part);
+            let base = raw_url
+                .trim_end_matches('/')
+                .split("/openai")
+                .next()
+                .unwrap_or("")
+                .trim_end_matches('/');
+            if !base.is_empty() {
+                return Some(format!("{base}/v1"));
+            }
+        }
     }
-    foundry_base_url_from_urls(&manager.urls().ok()?)
+
+    tracing::warn!(target: "model_runtime", "Foundry Local: service not running (call ensure_running first)");
+    None
 }
 
-fn foundry_base_url_from_urls(urls: &[String]) -> Option<String> {
-    urls.first()
-        .map(|url| format!("{}{}", url.trim_end_matches('/'), "/v1"))
-}
+/// Ollama, the widely-adopted local model runner. Auto-probed at its fixed
+/// default endpoint `http://127.0.0.1:11434` — no env configuration needed, so
+/// a running Ollama daemon surfaces its models in the picker automatically.
+pub struct OllamaRuntime;
+
+/// Ollama's fixed localhost endpoint (OpenAI-compatible surface under `/v1`).
+const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+/// Cheap reachability probe budget for the daemon TCP connect.
+const OLLAMA_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 
 impl ModelRuntime for OllamaRuntime {
     fn id(&self) -> RuntimeId {

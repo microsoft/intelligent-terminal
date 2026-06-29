@@ -510,36 +510,6 @@ if (-not (Test-Path $resolvedWtaExePath -PathType Leaf)) {
 Write-Status "Injecting wta.exe into the unpackaged payload ..."
 Copy-Item -Path $resolvedWtaExePath -Destination (Join-Path $payloadRoot 'wta.exe') -Force
 
-# Foundry Local SDK native DLLs — the SDK loads these via libloading from the
-# same directory as wta.exe (discovery order: config path → FOUNDRY_NATIVE_DIR
-# baked at compile time → next to the executable). The DLLs were downloaded by
-# foundry-local-sdk's build.rs into OUT_DIR; we copy them here so they are
-# co-located with wta.exe in the installed layout without depending on the
-# Foundry Local application being installed system-wide.
-$foundryBuildDir = Join-Path $repoRoot ("tools\wta\target\{0}\release\build" -f $rustTarget)
-$foundryDllDir = Get-ChildItem $foundryBuildDir -Directory -Filter "foundry-local-sdk-*" -ErrorAction SilentlyContinue |
-    Select-Object -First 1 |
-    ForEach-Object { Join-Path $_.FullName 'out' }
-if ($foundryDllDir -and (Test-Path $foundryDllDir)) {
-    $foundryDlls = @(
-        'Microsoft.AI.Foundry.Local.Core.dll',
-        'onnxruntime.dll',
-        'onnxruntime-genai.dll',
-        'onnxruntime_providers_shared.dll'
-    )
-    foreach ($dll in $foundryDlls) {
-        $src = Join-Path $foundryDllDir $dll
-        if (Test-Path $src -PathType Leaf) {
-            Write-Status "Injecting Foundry SDK DLL: $dll ..."
-            Copy-Item -Path $src -Destination (Join-Path $payloadRoot $dll) -Force
-        } else {
-            Write-Warning "Foundry SDK DLL not found (skipping): $src"
-        }
-    }
-} else {
-    Write-Warning "foundry-local-sdk build output not found at $foundryBuildDir — Foundry Local model discovery will not work."
-}
-
 # wtcli.exe is built by MSBuild (C++) alongside the Terminal.  wta.exe discovers
 # it as a sibling, so it must be co-located in the installed layout.
 $wtcliSource = Join-Path $repoRoot ("bin\{0}\{1}\wtcli\wtcli.exe" -f $Platform, $Configuration)
