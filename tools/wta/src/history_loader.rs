@@ -63,11 +63,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// Shared upper bound used by session discovery/probe flows that need a
-/// conservative per-CLI cap. ACP `session/list` now owns history rows, but
-/// the constant remains the cross-module limit for related session work.
-#[allow(dead_code)]
-pub(crate) const MAX_PER_CLI: usize = 50;
 #[allow(dead_code)]
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
