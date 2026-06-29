@@ -61,5 +61,8 @@ pub async fn start_and_publish() -> Option<McpEndpoint> {
 /// started one (MCP unavailable → degrade to in-process autofix only).
 pub fn published_url() -> Option<String> {
     let p = endpoint_file_path()?;
-    std::fs::read_to_string(p).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::fs::read_to_string(p)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }

@@ -155,7 +155,10 @@ fn content_length(headers: &[u8]) -> usize {
         .ok()
         .and_then(|s| {
             s.lines()
-                .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("content-length")))
+                .find_map(|l| {
+                    l.split_once(':')
+                        .filter(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
+                })
                 .and_then(|(_, v)| v.trim().parse::<usize>().ok())
         })
         .unwrap_or(0)
@@ -178,13 +181,36 @@ mod tests {
     #[tokio::test]
     async fn initialize_and_tools_list_and_call() {
         let tools = default_registry();
-        let init = dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize"})).await.unwrap();
+        let init = dispatch(
+            &tools,
+            &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize"}),
+        )
+        .await
+        .unwrap();
         assert_eq!(init["result"]["protocolVersion"], PROTOCOL_VERSION);
-        let list = dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).await.unwrap();
-        let names: Vec<_> = list["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-        assert!(names.contains(&"resolve_command".to_string()), "got {names:?}");
+        let list = dispatch(
+            &tools,
+            &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        )
+        .await
+        .unwrap();
+        let names: Vec<_> = list["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(
+            names.contains(&"resolve_command".to_string()),
+            "got {names:?}"
+        );
         // Notification → no response.
-        assert!(dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})).await.is_none());
+        assert!(dispatch(
+            &tools,
+            &serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+        )
+        .await
+        .is_none());
         // Unknown tool → error result.
         let bad = dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"nope","arguments":{}}})).await.unwrap();
         assert_eq!(bad["error"]["code"], -32602);
@@ -192,7 +218,10 @@ mod tests {
 
     #[test]
     fn content_length_parses_case_insensitive() {
-        assert_eq!(content_length(b"POST /mcp\r\nContent-Length: 42\r\n\r\n"), 42);
+        assert_eq!(
+            content_length(b"POST /mcp\r\nContent-Length: 42\r\n\r\n"),
+            42
+        );
         assert_eq!(content_length(b"x\r\ncontent-length:7\r\n\r\n"), 7);
     }
 }
