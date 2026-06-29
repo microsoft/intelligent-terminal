@@ -1,9 +1,3 @@
----
-created on: 2026-06-25
-last updated: 2026-06-27
-issue id: TBD
----
-
 # ACP 1.0 conductor migration — abstracting the master/helper plane onto the standard proxy/conductor model
 
 ## Abstract
@@ -606,7 +600,7 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 
 ## Implementation status (Phase 0)
 
-Branch `dev/yuazha/acp-1.0-phase0`. Build/test from the **worktree root** (not
+Branch `dev/<alias>/acp-1.0-phase0`. Build/test from the **worktree root** (not
 `tools/wta/src` — that dir's `rust-toolchain.toml` pins an uninstalled channel):
 `cargo build --manifest-path tools/wta/Cargo.toml`. Baseline = 1017 tests.
 

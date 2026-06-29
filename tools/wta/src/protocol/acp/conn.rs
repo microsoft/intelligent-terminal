@@ -66,80 +66,105 @@ impl SetSessionModelRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, acp::JsonRpcResponse)]
 pub struct SetSessionModelResponse {}
 
+/// Shared readiness cell: `connect_with` fills `slot` then notifies; if the
+/// connection task ends before filling it (handshake/transport failure), `failed`
+/// is set + notified so waiters surface an error instead of spinning forever.
+#[derive(Debug)]
+struct Ready<T> {
+    slot: std::sync::OnceLock<T>,
+    failed: std::sync::atomic::AtomicBool,
+    notify: tokio::sync::Notify,
+}
+
+impl<T> Default for Ready<T> {
+    fn default() -> Self {
+        Self {
+            slot: std::sync::OnceLock::new(),
+            failed: std::sync::atomic::AtomicBool::new(false),
+            notify: tokio::sync::Notify::new(),
+        }
+    }
+}
+
+async fn await_ready<T: Clone>(ready: &Ready<T>) -> acp::Result<T> {
+    loop {
+        // Register interest before checking so a fill/fail between the check and
+        // the await can't be missed (Notify drops un-awaited permits otherwise).
+        let notified = ready.notify.notified();
+        if let Some(v) = ready.slot.get() {
+            return Ok(v.clone());
+        }
+        if ready.failed.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(acp::Error::internal_error().data("ACP connection setup failed before ready"));
+        }
+        notified.await;
+    }
+}
+
 /// Client-side connection handle (talks to an agent CLI or to master). The
 /// connection is delivered asynchronously from `connect_with`'s main closure, so
 /// it lives behind a shared cell that `spawn_client` fills before the handshake.
 #[derive(Clone, Debug)]
 pub struct ClientLink {
-    cell: std::sync::Arc<std::sync::OnceLock<acp::ConnectionTo<acp::Agent>>>,
+    cell: std::sync::Arc<Ready<acp::ConnectionTo<acp::Agent>>>,
 }
 
 impl ClientLink {
-    fn cx(&self) -> impl std::future::Future<Output = acp::ConnectionTo<acp::Agent>> + '_ {
-        async move {
-            loop {
-                if let Some(c) = self.cell.get() {
-                    return c.clone();
-                }
-                tokio::task::yield_now().await;
-            }
-        }
+    async fn cx(&self) -> acp::Result<acp::ConnectionTo<acp::Agent>> {
+        await_ready(&self.cell).await
     }
 
     pub async fn initialize(&self, req: InitializeRequest) -> acp::Result<InitializeResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn authenticate(&self, req: AuthenticateRequest) -> acp::Result<AuthenticateResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn new_session(&self, req: NewSessionRequest) -> acp::Result<NewSessionResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn load_session(&self, req: LoadSessionRequest) -> acp::Result<LoadSessionResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn prompt(&self, req: PromptRequest) -> acp::Result<PromptResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn cancel(&self, notif: CancelNotification) -> acp::Result<()> {
-        self.cx().await.send_notification(notif)
+        self.cx().await?.send_notification(notif)
     }
 
     pub async fn set_session_mode(
         &self,
         req: SetSessionModeRequest,
     ) -> acp::Result<SetSessionModeResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn set_session_model(
         &self,
         req: SetSessionModelRequest,
     ) -> acp::Result<SetSessionModelResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn set_session_config_option(
         &self,
         req: SetSessionConfigOptionRequest,
     ) -> acp::Result<SetSessionConfigOptionResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn list_sessions(&self, req: ListSessionsRequest) -> acp::Result<ListSessionsResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn ext_method(&self, req: ExtRequest) -> acp::Result<ExtResponse> {
-        let value = self
-            .cx()
-            .await
-            .send_request(v1::ClientRequest::ExtMethodRequest(req))
+        let value = self.cx().await?.send_request(v1::ClientRequest::ExtMethodRequest(req))
             .block_task()
             .await?;
         serde_json::from_value(value)
@@ -151,81 +176,74 @@ impl ClientLink {
 /// requests and the two outbound notifications.
 #[derive(Clone, Debug)]
 pub struct AgentLink {
-    cell: std::sync::Arc<std::sync::OnceLock<acp::ConnectionTo<acp::Client>>>,
+    cell: std::sync::Arc<Ready<acp::ConnectionTo<acp::Client>>>,
 }
 
 impl AgentLink {
-    fn cx(&self) -> impl std::future::Future<Output = acp::ConnectionTo<acp::Client>> + '_ {
-        async move {
-            loop {
-                if let Some(c) = self.cell.get() {
-                    return c.clone();
-                }
-                tokio::task::yield_now().await;
-            }
-        }
+    async fn cx(&self) -> acp::Result<acp::ConnectionTo<acp::Client>> {
+        await_ready(&self.cell).await
     }
 
     pub async fn request_permission(
         &self,
         req: RequestPermissionRequest,
     ) -> acp::Result<RequestPermissionResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn write_text_file(
         &self,
         req: WriteTextFileRequest,
     ) -> acp::Result<WriteTextFileResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn read_text_file(
         &self,
         req: ReadTextFileRequest,
     ) -> acp::Result<ReadTextFileResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn create_terminal(
         &self,
         req: CreateTerminalRequest,
     ) -> acp::Result<CreateTerminalResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn terminal_output(
         &self,
         req: TerminalOutputRequest,
     ) -> acp::Result<TerminalOutputResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn release_terminal(
         &self,
         req: ReleaseTerminalRequest,
     ) -> acp::Result<ReleaseTerminalResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn wait_for_terminal_exit(
         &self,
         req: WaitForTerminalExitRequest,
     ) -> acp::Result<WaitForTerminalExitResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn kill_terminal(&self, req: KillTerminalRequest) -> acp::Result<KillTerminalResponse> {
-        self.cx().await.send_request(req).block_task().await
+        self.cx().await?.send_request(req).block_task().await
     }
 
     pub async fn session_notification(&self, notif: SessionNotification) -> acp::Result<()> {
-        self.cx().await.send_notification(notif)
+        self.cx().await?.send_notification(notif)
     }
 
     pub async fn ext_notification(&self, notif: ExtNotification) -> acp::Result<()> {
         self.cx()
-            .await
+            .await?
             .send_notification(v1::AgentNotification::ExtNotification(notif))
     }
 }
@@ -241,19 +259,30 @@ where
     H: acp::HandleDispatchFrom<acp::Agent> + 'static,
     Run: acp::RunWithConnectionTo<acp::Agent> + 'static,
 {
-    let cell = std::sync::Arc::new(std::sync::OnceLock::new());
+    let cell = std::sync::Arc::new(Ready::default());
     let fill = cell.clone();
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
         let result = builder
             .connect_with(transport, async move |cx| {
-                let _ = fill.set(cx.clone());
+                let _ = fill.slot.set(cx.clone());
+                fill.notify.notify_waiters();
                 std::future::pending::<acp::Result<()>>().await
             })
             .await;
         let _ = done_tx.send(result);
     });
-    let handle_io = async move { done_rx.await.unwrap_or(Ok(())) };
+    let handle_io = {
+        let cell = cell.clone();
+        async move {
+            let r = done_rx.await.unwrap_or(Ok(()));
+            // Connection ended; if it never became ready, wake waiters so they
+            // surface an error instead of spinning/blocking forever.
+            cell.failed.store(true, std::sync::atomic::Ordering::Release);
+            cell.notify.notify_waiters();
+            r
+        }
+    };
     (ClientLink { cell }, handle_io)
 }
 
@@ -267,19 +296,28 @@ where
     H: acp::HandleDispatchFrom<acp::Client> + 'static,
     Run: acp::RunWithConnectionTo<acp::Client> + 'static,
 {
-    let cell = std::sync::Arc::new(std::sync::OnceLock::new());
+    let cell = std::sync::Arc::new(Ready::default());
     let fill = cell.clone();
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
         let result = builder
             .connect_with(transport, async move |cx| {
-                let _ = fill.set(cx.clone());
+                let _ = fill.slot.set(cx.clone());
+                fill.notify.notify_waiters();
                 std::future::pending::<acp::Result<()>>().await
             })
             .await;
         let _ = done_tx.send(result);
     });
-    let handle_io = async move { done_rx.await.unwrap_or(Ok(())) };
+    let handle_io = {
+        let cell = cell.clone();
+        async move {
+            let r = done_rx.await.unwrap_or(Ok(()));
+            cell.failed.store(true, std::sync::atomic::Ordering::Release);
+            cell.notify.notify_waiters();
+            r
+        }
+    };
     (AgentLink { cell }, handle_io)
 }
 
