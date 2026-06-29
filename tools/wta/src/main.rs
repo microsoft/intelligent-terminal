@@ -20,6 +20,7 @@ mod logging;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
+mod mcp;
 mod osc52;
 mod pane_context;
 mod proc_bind;
