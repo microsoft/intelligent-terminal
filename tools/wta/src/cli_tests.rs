@@ -100,7 +100,7 @@ fn sessions_list_cli_parses_origin_agent_pane() {
 #[test]
 fn sessions_json_lines_prints_one_session_info_per_line() {
     let mut row = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-json"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-json"),
         std::path::PathBuf::from("C:\\repo"),
     );
     row.status = Some(agent_sessions::AgentStatus::Working);
@@ -120,7 +120,7 @@ fn sessions_json_lines_prints_one_session_info_per_line() {
 #[test]
 fn sessions_table_prints_header_and_rows() {
     let mut row = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-table"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-table"),
         std::path::PathBuf::from("C:\\repo"),
     );
     row.title = Some("fix build".into());
@@ -147,12 +147,12 @@ fn sessions_table_prints_header_and_rows() {
 #[test]
 fn sessions_table_renders_origin_labels() {
     let mut shell = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-shell"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-shell"),
         std::path::PathBuf::from("C:\\repo"),
     );
     shell.origin = Some(agent_sessions::SessionOrigin::Unknown);
     let mut pane = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-pane"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-pane"),
         std::path::PathBuf::from("C:\\repo"),
     );
     pane.origin = Some(agent_sessions::SessionOrigin::AgentPane);
@@ -165,12 +165,12 @@ fn sessions_table_renders_origin_labels() {
 #[test]
 fn sessions_table_renders_location_labels() {
     let mut host = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-host"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-host"),
         std::path::PathBuf::from("C:\\repo"),
     );
     host.location = agent_sessions::SessionLocation::Host;
     let mut wsl = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-wsl"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-wsl"),
         std::path::PathBuf::from("/home/u"),
     );
     wsl.location = agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".into() };
@@ -193,7 +193,7 @@ fn format_epoch_ms_utc_known_values() {
 #[test]
 fn updated_label_falls_back_to_last_activity_ms() {
     let mut s = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-u"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-u"),
         std::path::PathBuf::from("/home/u"),
     );
     // No updated_at, but an epoch-ms activity stamp -> formatted, not "-".

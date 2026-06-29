@@ -1213,12 +1213,12 @@ struct SessionsCliClient;
 impl acp::Client for SessionsCliClient {
     async fn request_permission(
         &self,
-        _args: acp::RequestPermissionRequest,
-    ) -> acp::Result<acp::RequestPermissionResponse> {
+        _args: acp::schema::v1::RequestPermissionRequest,
+    ) -> acp::Result<acp::schema::v1::RequestPermissionResponse> {
         Err(acp::Error::internal_error().data("sessions CLI cannot answer permission requests"))
     }
 
-    async fn session_notification(&self, _args: acp::SessionNotification) -> acp::Result<()> {
+    async fn session_notification(&self, _args: acp::schema::v1::SessionNotification) -> acp::Result<()> {
         Ok(())
     }
 }
@@ -1269,10 +1269,10 @@ async fn fetch_sessions_from_master(
 
     let init_started = std::time::Instant::now();
     let init_result = conn.initialize(
-        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-            .client_capabilities(acp::ClientCapabilities::new())
+        acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::V1)
+            .client_capabilities(acp::schema::v1::ClientCapabilities::new())
             .client_info(
-                acp::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
+                acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
                     .title("Windows Terminal Agent sessions CLI"),
             ),
     )
@@ -1347,10 +1347,10 @@ async fn register_launched_session_with_master(
             });
 
             conn.initialize(
-                acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-                    .client_capabilities(acp::ClientCapabilities::new())
+                acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::V1)
+                    .client_capabilities(acp::schema::v1::ClientCapabilities::new())
                     .client_info(
-                        acp::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
+                        acp::schema::v1::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
                             .title("Windows Terminal Agent delegate"),
                     ),
             )

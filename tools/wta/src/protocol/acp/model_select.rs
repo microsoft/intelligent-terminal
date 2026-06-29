@@ -55,7 +55,7 @@ fn record_channel_config(config_id: &str) {
 /// `Select` with `category == Model`. Records the switch channel as a side
 /// effect so [`apply_session_model`] later dispatches correctly.
 pub(crate) fn models_from_new_session(
-    resp: &acp::NewSessionResponse,
+    resp: &acp::schema::v1::NewSessionResponse,
 ) -> (Vec<AcpModelInfo>, Option<String>) {
     if let Some(state) = &resp.models {
         record_channel_legacy();
@@ -84,27 +84,27 @@ pub(crate) fn models_from_new_session(
 /// Find the model selector among a session's config options and flatten it
 /// into `(config_id, models, current_model_id)`.
 fn model_option_from_config(
-    opts: &[acp::SessionConfigOption],
+    opts: &[acp::schema::v1::SessionConfigOption],
 ) -> Option<(String, Vec<AcpModelInfo>, Option<String>)> {
     // Pick the first option that is BOTH a model selector AND a Select. A
     // plain `find` on the category/id alone would bail out if a same-named
     // non-Select entry happened to come first, hiding a valid Select later in
     // the list.
     let (opt, sel) = opts.iter().find_map(|o| {
-        let is_model = matches!(o.category, Some(acp::SessionConfigOptionCategory::Model))
+        let is_model = matches!(o.category, Some(acp::schema::v1::SessionConfigOptionCategory::Model))
             || o.id.0.as_ref() == "model";
         if !is_model {
             return None;
         }
         match &o.kind {
-            acp::SessionConfigKind::Select(sel) => Some((o, sel)),
+            acp::schema::v1::SessionConfigKind::Select(sel) => Some((o, sel)),
             _ => None,
         }
     })?;
 
-    let flat: Vec<&acp::SessionConfigSelectOption> = match &sel.options {
-        acp::SessionConfigSelectOptions::Ungrouped(v) => v.iter().collect(),
-        acp::SessionConfigSelectOptions::Grouped(groups) => {
+    let flat: Vec<&acp::schema::v1::SessionConfigSelectOption> = match &sel.options {
+        acp::schema::v1::SessionConfigSelectOptions::Ungrouped(v) => v.iter().collect(),
+        acp::schema::v1::SessionConfigSelectOptions::Grouped(groups) => {
             groups.iter().flat_map(|g| g.options.iter()).collect()
         }
         _ => return None,
@@ -131,7 +131,7 @@ fn model_option_from_config(
 /// [`models_from_new_session`].
 pub(crate) async fn apply_session_model(
     conn: &acp::ClientSideConnection,
-    session_id: acp::SessionId,
+    session_id: acp::schema::v1::SessionId,
     model_id: String,
 ) -> acp::Result<()> {
     // Snapshot under the read lock and release it before the await — the lock
@@ -139,13 +139,13 @@ pub(crate) async fn apply_session_model(
     let channel = MODEL_SWITCH.read().unwrap().clone();
     match channel {
         ModelSwitchChannel::Config { config_id } => conn
-            .set_session_config_option(acp::SetSessionConfigOptionRequest::new(
+            .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
                 session_id, config_id, model_id,
             ))
             .await
             .map(|_| ()),
         ModelSwitchChannel::Legacy => conn
-            .set_session_model(acp::SetSessionModelRequest::new(session_id, model_id))
+            .set_session_model(acp::schema::v1::SetSessionModelRequest::new(session_id, model_id))
             .await
             .map(|_| ()),
     }
@@ -199,7 +199,7 @@ mod tests {
 
         // 1. New claude-agent-acp: models come from configOptions[category=model]
         //    and the switch channel flips to config-option.
-        let resp: acp::NewSessionResponse =
+        let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(CLAUDE_AGENT_ACP_NEW_SESSION).expect("valid new_session");
         let (models, current) = models_from_new_session(&resp);
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
@@ -215,7 +215,7 @@ mod tests {
         );
 
         // 2. Legacy `models` field wins when present, channel flips back.
-        let resp: acp::NewSessionResponse =
+        let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(LEGACY_NEW_SESSION).expect("valid new_session");
         let (models, current) = models_from_new_session(&resp);
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(*MODEL_SWITCH.read().unwrap(), ModelSwitchChannel::Legacy);
 
         // 3. Neither channel present → empty list, no current model.
-        let resp: acp::NewSessionResponse =
+        let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(r#"{"sessionId": "bare"}"#).expect("valid new_session");
         let (models, current) = models_from_new_session(&resp);
         assert!(models.is_empty());
@@ -247,7 +247,7 @@ mod tests {
                 }
             ]
         }"#;
-        let resp: acp::NewSessionResponse =
+        let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(by_category).expect("valid new_session");
         let (models, current) = models_from_new_session(&resp);
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();

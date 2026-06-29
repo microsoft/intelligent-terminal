@@ -42,47 +42,47 @@ struct ProbeClient;
 impl acp::Client for ProbeClient {
     async fn request_permission(
         &self,
-        _: acp::RequestPermissionRequest,
-    ) -> acp::Result<acp::RequestPermissionResponse> {
+        _: acp::schema::v1::RequestPermissionRequest,
+    ) -> acp::Result<acp::schema::v1::RequestPermissionResponse> {
         Err(acp::Error::internal_error().data("probe-models does not handle permissions".to_string()))
     }
 
-    async fn session_notification(&self, _: acp::SessionNotification) -> acp::Result<()> {
+    async fn session_notification(&self, _: acp::schema::v1::SessionNotification) -> acp::Result<()> {
         Ok(())
     }
 
     async fn create_terminal(
         &self,
-        _: acp::CreateTerminalRequest,
-    ) -> acp::Result<acp::CreateTerminalResponse> {
+        _: acp::schema::v1::CreateTerminalRequest,
+    ) -> acp::Result<acp::schema::v1::CreateTerminalResponse> {
         Err(acp::Error::internal_error().data("probe-models does not create terminals".to_string()))
     }
 
     async fn terminal_output(
         &self,
         _: acp::TerminalOutputRequest,
-    ) -> acp::Result<acp::TerminalOutputResponse> {
+    ) -> acp::Result<acp::schema::v1::TerminalOutputResponse> {
         Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
     }
 
     async fn wait_for_terminal_exit(
         &self,
         _: acp::WaitForTerminalExitRequest,
-    ) -> acp::Result<acp::WaitForTerminalExitResponse> {
+    ) -> acp::Result<acp::schema::v1::WaitForTerminalExitResponse> {
         Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
     }
 
     async fn release_terminal(
         &self,
-        _: acp::ReleaseTerminalRequest,
-    ) -> acp::Result<acp::ReleaseTerminalResponse> {
+        _: acp::schema::v1::ReleaseTerminalRequest,
+    ) -> acp::Result<acp::schema::v1::ReleaseTerminalResponse> {
         Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
     }
 
     async fn kill_terminal(
         &self,
-        _: acp::KillTerminalRequest,
-    ) -> acp::Result<acp::KillTerminalResponse> {
+        _: acp::schema::v1::KillTerminalRequest,
+    ) -> acp::Result<acp::schema::v1::KillTerminalResponse> {
         Err(acp::Error::internal_error().data("probe-models does not run terminals".to_string()))
     }
 }
@@ -129,10 +129,10 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
     // Cached adapters complete in <2s.
     let init_timeout_secs: u64 = if spawned.is_npx { 25 } else { 10 };
 
-    let init_req = acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-        .client_capabilities(acp::ClientCapabilities::new().terminal(true))
+    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::v1::ProtocolVersion::V1)
+        .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
         .client_info(
-            acp::Implementation::new("wta-probe", env!("CARGO_PKG_VERSION"))
+            acp::schema::v1::Implementation::new("wta-probe", env!("CARGO_PKG_VERSION"))
                 .title("WTA Model Probe"),
         );
     let init_started = std::time::Instant::now();
@@ -167,7 +167,7 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
     let session_started = std::time::Instant::now();
     let session_result = tokio::time::timeout(
         Duration::from_secs(10),
-        conn.new_session(acp::NewSessionRequest::new(cwd)),
+        conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
     )
     .await;
     let session_id = session_result
