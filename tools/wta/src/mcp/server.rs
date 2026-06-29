@@ -122,20 +122,55 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
     }
 }
 
+/// In-flight `tools/call` tasks by request id, so `notifications/cancelled` can
+/// abort a running tool (spec: the client owns timeouts and cancels; the server
+/// honors it). Short-lived; entries are removed when the call finishes.
+static CANCELS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, tokio::task::AbortHandle>>,
+> = std::sync::OnceLock::new();
+
+fn cancels(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, tokio::task::AbortHandle>> {
+    CANCELS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
 /// Dispatch a JSON-RPC request. `None` for notifications (no `id`).
 async fn dispatch(tools: &[Arc<dyn Tool>], req: &serde_json::Value) -> Option<serde_json::Value> {
     let id = req.get("id").cloned();
     let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+    // Cancellation is a notification — abort the in-flight tool call, ack only.
+    if method == "notifications/cancelled" {
+        if let Some(rid) = req.get("params").and_then(|p| p.get("requestId")) {
+            if let Some(h) = cancels()
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&rid.to_string()).cloned())
+            {
+                h.abort();
+            }
+        }
+        return None;
+    }
     if id.is_none() {
         return None; // notification (e.g. notifications/initialized) — ack only
     }
     let id = id.unwrap();
     let result = match method {
-        "initialize" => serde_json::json!({
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": { "tools": {} },
-            "serverInfo": { "name": "wta", "version": env!("CARGO_PKG_VERSION") }
-        }),
+        "initialize" => {
+            // Echo the client's requested protocolVersion when present (spec
+            // negotiation), else advertise ours. Default to 2025-03-26 if the
+            // field is absent (HTTP clients without an explicit version).
+            let version = req
+                .get("params")
+                .and_then(|p| p.get("protocolVersion"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(PROTOCOL_VERSION);
+            serde_json::json!({
+                "protocolVersion": version,
+                "capabilities": { "tools": {} },
+                "serverInfo": { "name": "wta", "version": env!("CARGO_PKG_VERSION") }
+            })
+        }
         "ping" => serde_json::json!({}),
         "tools/list" => serde_json::json!({
             "tools": tools.iter().map(|t| serde_json::json!({
@@ -150,23 +185,34 @@ async fn dispatch(tools: &[Arc<dyn Tool>], req: &serde_json::Value) -> Option<se
                 .and_then(|p| p.get("name"))
                 .and_then(|n| n.as_str())
                 .unwrap_or("");
-            let empty = serde_json::json!({});
             let args = req
                 .get("params")
                 .and_then(|p| p.get("arguments"))
-                .unwrap_or(&empty);
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
             match tools.iter().find(|t| t.name() == name) {
                 None => return Some(error_obj(id, -32602, &format!("unknown tool: {name}"))),
-                Some(tool) => match tool.call(args).await {
-                    Ok(text) => serde_json::json!({
-                        "content": [{ "type": "text", "text": text }],
-                        "isError": false
-                    }),
-                    Err(msg) => serde_json::json!({
-                        "content": [{ "type": "text", "text": msg }],
-                        "isError": true
-                    }),
-                },
+                Some(tool) => {
+                    // Run abortable so notifications/cancelled can stop it.
+                    let key = id.to_string();
+                    let tool = tool.clone();
+                    let jh = tokio::spawn(async move { tool.call(&args).await });
+                    cancels()
+                        .lock()
+                        .unwrap()
+                        .insert(key.clone(), jh.abort_handle());
+                    let r = jh.await;
+                    cancels().lock().unwrap().remove(&key);
+                    match r {
+                        Ok(Ok(text)) => {
+                            serde_json::json!({ "content": [{ "type": "text", "text": text }], "isError": false })
+                        }
+                        Ok(Err(msg)) => {
+                            serde_json::json!({ "content": [{ "type": "text", "text": msg }], "isError": true })
+                        }
+                        Err(_) => return None, // cancelled — client already moved on
+                    }
+                }
             }
         }
         other => return Some(error_obj(id, -32601, &format!("method not found: {other}"))),
@@ -225,6 +271,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(init["result"]["protocolVersion"], PROTOCOL_VERSION);
+        // Echoes the client's requested version (negotiation).
+        let echo = dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2024-11-05"}})).await.unwrap();
+        assert_eq!(echo["result"]["protocolVersion"], "2024-11-05");
         let list = dispatch(
             &tools,
             &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
