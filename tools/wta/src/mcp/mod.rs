@@ -81,8 +81,12 @@ pub async fn start_and_publish() -> Option<McpEndpoint> {
 /// started one (MCP unavailable → degrade to in-process autofix only).
 pub fn published_url() -> Option<String> {
     let p = endpoint_file_path()?;
-    std::fs::read_to_string(p)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    let url = std::fs::read_to_string(p).ok()?.trim().to_string();
+    // Validate shape so a partial/garbage read degrades to no-MCP rather than a
+    // bad endpoint: must be our localhost /mcp URL.
+    if url.starts_with("http://127.0.0.1:") && url.ends_with("/mcp") {
+        Some(url)
+    } else {
+        None
+    }
 }

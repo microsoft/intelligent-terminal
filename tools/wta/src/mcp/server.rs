@@ -81,13 +81,16 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
         if content_len > MAX_BODY {
             return Ok(()); // body too large — drop
         }
-        // Enforce POST: this is a single JSON-RPC POST endpoint. Anything else
+        // Enforce POST /mcp: this is a single JSON-RPC endpoint. Anything else
         // → 405, don't treat the payload as a body.
-        let is_post = std::str::from_utf8(&buf[..headers_end])
+        let mut request_line = std::str::from_utf8(&buf[..headers_end])
             .ok()
-            .and_then(|s| s.split_whitespace().next())
-            .is_some_and(|m| m.eq_ignore_ascii_case("POST"));
-        if !is_post {
+            .and_then(|s| s.lines().next())
+            .unwrap_or("")
+            .split_whitespace();
+        let method = request_line.next().unwrap_or("");
+        let path = request_line.next().unwrap_or("");
+        if !method.eq_ignore_ascii_case("POST") || path != "/mcp" {
             write_json(&mut stream, 405, "").await?;
             return Ok(());
         }
