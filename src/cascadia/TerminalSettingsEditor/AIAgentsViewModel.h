@@ -100,6 +100,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Editor::AcpModelEntry CurrentAcpModelEntry();
         void CurrentAcpModelEntry(const Editor::AcpModelEntry& value);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpModel);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpBaseUrl);
+        bool ShowAcpBaseUrl();
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
         bool AutoErrorDetectionEnabled() const;

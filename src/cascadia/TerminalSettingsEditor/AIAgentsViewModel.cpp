@@ -129,7 +129,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::vector<Editor::AgentEntry> acpEntries;
         for (const auto& a : filteredAcp)
         {
-            if (!_IsAgentInstalled(std::wstring{ a.id }.c_str()))
+            // Native local-model agent ships with WTA — always available.
+            if (std::wstring_view{ a.id } != L"native" && !_IsAgentInstalled(std::wstring{ a.id }.c_str()))
             {
                 continue;
             }
@@ -400,6 +401,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return _IsKnownAgent(_GlobalSettings.AcpAgent());
     }
 
+    bool AIAgentsViewModel::ShowAcpBaseUrl()
+    {
+        // The base-url field only applies to the native local-model agent.
+        if (_isAddingCustomAcpAgent) return false;
+        return _GlobalSettings.AcpAgent() == L"native";
+    }
+
     bool AIAgentsViewModel::ShowDelegateModel()
     {
         // Same rationale as ShowAcpModel: show the row for custom delegate
@@ -474,6 +482,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"IsAddingCustomAcpAgent",
                            L"IsCustomAcpAgentSelected",
                            L"ShowAcpModel",
+                           L"ShowAcpBaseUrl",
                            L"AcpModel");
         }
     }
@@ -1072,6 +1081,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         const auto lower = winrt::to_string(acpAgent);
+
+        if (lower == "native")
+        {
+            std::wstring cmd{ L"wta native-agent" };
+            const auto baseUrl = _GlobalSettings.AcpBaseUrl();
+            if (!baseUrl.empty())
+            {
+                cmd += L" --base-url ";
+                cmd += std::wstring_view{ baseUrl };
+            }
+            const auto acpModel = _GlobalSettings.AcpModel();
+            if (!acpModel.empty())
+            {
+                cmd += L" --model ";
+                cmd += std::wstring_view{ acpModel };
+            }
+            return cmd;
+        }
 
         if (lower == "claude")
         {

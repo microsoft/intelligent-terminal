@@ -358,6 +358,13 @@ fn extract_model_from_token_slice(args: &[String], profile: &AgentProfile) -> Op
 /// Returns the input unchanged if it already has a path separator or extension.
 pub fn resolve_bare_agent_name(bare_name: &str) -> String {
     let trimmed = bare_name.trim().trim_matches('"');
+    // `wta` is the native agent: resolve to our own executable so it works even
+    // when the package dir isn't on PATH (current_exe handles spaces fine).
+    if trimmed.eq_ignore_ascii_case("wta") {
+        if let Ok(exe) = std::env::current_exe() {
+            return exe.to_string_lossy().into_owned();
+        }
+    }
     if trimmed.contains('\\') || trimmed.contains('/') {
         return bare_name.to_string();
     }

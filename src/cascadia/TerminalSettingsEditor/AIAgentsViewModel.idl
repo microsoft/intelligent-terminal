@@ -71,6 +71,8 @@ namespace Microsoft.Terminal.Settings.Editor
         // matching entry (or null when AcpModel doesn't appear in the list).
         AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpBaseUrl);
+        Boolean ShowAcpBaseUrl { get; };
         Boolean ShowDelegateModel { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoErrorDetectionEnabled);

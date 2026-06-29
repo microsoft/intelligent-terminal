@@ -37,11 +37,12 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     // (claude via @agentclientprotocol/claude-agent-acp, codex via
     // @zed-industries/codex-acp).
     // Only these agents can be hosted in an agent pane.
-    inline constexpr std::array<BuiltinAgent, 4> BuiltinAcpAgents{ {
+    inline constexpr std::array<BuiltinAgent, 5> BuiltinAcpAgents{ {
         { L"copilot", L"GitHub Copilot" },
         { L"claude", L"Claude" },
         { L"codex", L"Codex" },
         { L"gemini", L"Gemini" },
+        { L"native", L"Local Model (BYOK)" },
     } };
 
     // Delegate agents. Invoked for `?<prompt>` background delegation and

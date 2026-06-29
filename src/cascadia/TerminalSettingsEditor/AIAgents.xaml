@@ -168,6 +168,15 @@
                 </Grid>
             </local:SettingContainer>
 
+            <!--  Base URL: only for the native local-model agent  -->
+            <local:SettingContainer x:Name="AcpBaseUrl"
+                                    x:Uid="AIAgents_AcpBaseUrl"
+                                    Visibility="{x:Bind ViewModel.ShowAcpBaseUrl, Mode=OneWay}">
+                <TextBox Text="{x:Bind ViewModel.AcpBaseUrl, Mode=TwoWay}"
+                         PlaceholderText="http://127.0.0.1:11434/v1"
+                         Style="{StaticResource TextBoxSettingStyle}" />
+            </local:SettingContainer>
+
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
                                     x:Uid="AIAgents_PanePosition">

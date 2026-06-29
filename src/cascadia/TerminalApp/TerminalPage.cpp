@@ -1057,9 +1057,41 @@ namespace winrt::TerminalApp::implementation
     // fallback route through here.
     static winrt::hstring _BuildAgentCommandLine(
         const winrt::hstring& agentId,
+        const winrt::hstring& model,
+        const winrt::hstring& baseUrl);
+
+    static winrt::hstring _BuildAgentCommandLine(
+        const winrt::hstring& agentId,
         const winrt::hstring& model)
     {
+        return _BuildAgentCommandLine(agentId, model, winrt::hstring{});
+    }
+
+    static winrt::hstring _BuildAgentCommandLine(
+        const winrt::hstring& agentId,
+        const winrt::hstring& model,
+        const winrt::hstring& baseUrl)
+    {
         const auto lower = winrt::to_string(agentId);
+
+        // Native local-model agent: WTA serves ACP itself, backed by an
+        // OpenAI-compatible endpoint. `wta` resolves to our own exe in
+        // wta-master, so the bare program name is fine.
+        if (lower == "native")
+        {
+            std::wstring cmd{ L"wta native-agent" };
+            if (!baseUrl.empty())
+            {
+                cmd += L" --base-url ";
+                cmd += std::wstring_view{ baseUrl };
+            }
+            if (!model.empty())
+            {
+                cmd += L" --model ";
+                cmd += std::wstring_view{ model };
+            }
+            return winrt::hstring{ cmd };
+        }
 
         // Adapter-style launches: claude/codex CLIs don't speak ACP themselves.
         if (lower == "claude")
@@ -1111,7 +1143,7 @@ namespace winrt::TerminalApp::implementation
                 const auto detected = detectFallback();
                 if (!detected.empty())
                 {
-                    return _BuildAgentCommandLine(detected, globals.AcpModel());
+                    return _BuildAgentCommandLine(detected, globals.AcpModel(), globals.AcpBaseUrl());
                 }
             }
             return winrt::hstring{};
@@ -1124,7 +1156,7 @@ namespace winrt::TerminalApp::implementation
             if (!customCmd.empty()) return customCmd;
         }
 
-        return _BuildAgentCommandLine(acpAgent, globals.AcpModel());
+        return _BuildAgentCommandLine(acpAgent, globals.AcpModel(), globals.AcpBaseUrl());
     }
 
     // Resolve the effective delegate agent name from structured settings.

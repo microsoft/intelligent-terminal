@@ -268,6 +268,11 @@ pub trait Agent {
 /// unrecognized id (e.g. a `custom:` agent) it falls back to the legacy
 /// credential check so existing behavior is preserved.
 pub fn auth_needed_for(id: &str) -> bool {
+    // The native local-model agent is BYOK: it talks to a local/OpenAI-compatible
+    // endpoint and never needs a GitHub/cloud login.
+    if id.eq_ignore_ascii_case("native") || id.eq_ignore_ascii_case("wta") {
+        return false;
+    }
     match agent_for_id(id) {
         Some(agent) => agent.auth_needed(),
         None => !crate::agent_check::has_credential(id),

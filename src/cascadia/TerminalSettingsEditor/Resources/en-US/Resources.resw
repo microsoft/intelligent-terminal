@@ -744,6 +744,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Choose the model used by this agent.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data>
+  <data name="AIAgents_AcpBaseUrl.Header" xml:space="preserve">
+    <value>Endpoint URL</value>
+    <comment>Header for the setting that specifies the OpenAI-compatible base URL for the local-model agent.</comment>
+  </data>
+  <data name="AIAgents_AcpBaseUrl.HelpText" xml:space="preserve">
+    <value>OpenAI-compatible endpoint for the local model, e.g. Ollama or Foundry Local.</value>
+    <comment>Supplementary description for the endpoint URL setting.</comment>
+  </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>Agent</value>
     <comment>Header for the setting that specifies which agent handles command palette / on-demand requests.
