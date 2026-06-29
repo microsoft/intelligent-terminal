@@ -196,7 +196,7 @@ pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec
         return None;
     }
 
-    let names = enumerate_powershell_commands(shell_exe).await?;
+    let names = cached_powershell_commands(shell_exe).await?;
 
     // Full existence gate: the token may resolve as a cmdlet / function /
     // alias / external `.ps1` that `which` can't see. If so, it wasn't a
@@ -211,6 +211,34 @@ pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec
     } else {
         Some(matches)
     }
+}
+
+/// Process-lifetime cache of the enumerated command list, keyed by shell exe +
+/// current `PATH`. Enumerating the shell costs a `pwsh -NoProfile` subprocess
+/// (~hundreds of ms cold-start); the command set is effectively static for the
+/// helper's lifetime, so cache it. By design we do NOT detect mid-session
+/// installs — a newly added command shows up only after the tab/helper restarts.
+/// Keying on `PATH` keeps tests isolated (each sets its own `PATH` → fresh key).
+static COMMAND_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>>,
+> = std::sync::OnceLock::new();
+
+/// Cached wrapper over [`enumerate_powershell_commands`]; see [`COMMAND_CACHE`].
+async fn cached_powershell_commands(shell_exe: &str) -> Option<std::sync::Arc<Vec<String>>> {
+    let cache = COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let key = format!(
+        "{}|{}",
+        shell_exe.to_ascii_lowercase(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    if let Some(hit) = cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
+        return Some(hit);
+    }
+    let names = std::sync::Arc::new(enumerate_powershell_commands(shell_exe).await?);
+    if let Ok(mut m) = cache.lock() {
+        m.insert(key, names.clone());
+    }
+    Some(names)
 }
 
 /// Enumerate the shell's command names (cmdlets, applications, external
