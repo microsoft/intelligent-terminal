@@ -65,11 +65,10 @@ pub async fn start_and_publish() -> Option<McpEndpoint> {
         if let Some(dir) = p.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let tmp = p.with_extension("txt.tmp");
-        let ok = std::fs::write(&tmp, &ep.url).is_ok() && std::fs::rename(&tmp, p).is_ok();
-        if !ok {
-            // Don't leave a stale URL helpers would inject as a dead endpoint.
-            let _ = std::fs::remove_file(&tmp);
+        // Direct write — the payload is a single short URL line; readers trim and
+        // drop empties, so a partial read is harmless. On failure clear the file
+        // so helpers degrade to no-MCP instead of injecting a stale/dead URL.
+        if std::fs::write(p, &ep.url).is_err() {
             let _ = std::fs::remove_file(p);
             tracing::warn!(target: "mcp", "failed to publish endpoint; cleared stale file");
         }
