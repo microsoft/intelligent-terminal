@@ -2006,7 +2006,7 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
                 Some(serde_json::Value::Number(n)) => n.to_string(),
                 _ => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str).await.ok()?;
+            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(window_id)).await.ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {

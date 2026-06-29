@@ -51,12 +51,19 @@ pub async fn serve(tools: Vec<Arc<dyn Tool>>) -> Option<McpEndpoint> {
 /// Read HTTP/1.1 POST requests (keep-alive) on one connection, dispatch the
 /// JSON-RPC body, write back a JSON response.
 async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> std::io::Result<()> {
+    // Caps to keep a misbehaving/hostile local peer from forcing unbounded
+    // memory growth: headers and body are both bounded; over-cap → close.
+    const MAX_HEADERS: usize = 16 * 1024;
+    const MAX_BODY: usize = 1024 * 1024;
     let mut buf = Vec::with_capacity(8192);
     loop {
         // Read until headers complete, then the declared body.
         let (headers_end, content_len) = loop {
             if let Some(end) = find_headers_end(&buf) {
                 break (end, content_length(&buf[..end]));
+            }
+            if buf.len() > MAX_HEADERS {
+                return Ok(()); // headers too large — drop
             }
             let mut chunk = [0u8; 4096];
             let n = stream.read(&mut chunk).await?;
@@ -65,6 +72,9 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
             }
             buf.extend_from_slice(&chunk[..n]);
         };
+        if content_len > MAX_BODY {
+            return Ok(()); // body too large — drop
+        }
         let body_start = headers_end;
         while buf.len() < body_start + content_len {
             let mut chunk = [0u8; 4096];

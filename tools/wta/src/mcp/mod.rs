@@ -47,12 +47,28 @@ fn endpoint_file_path() -> Option<std::path::PathBuf> {
 }
 
 /// Start the shared MCP server and publish its URL for helpers. Best-effort:
-/// returns `None` if binding fails (callers just don't offer MCP).
+/// returns `None` if binding fails (callers just don't offer MCP). The publish
+/// is atomic (temp + rename) so a helper never reads a half-written URL, and a
+/// failed bind clears any stale file so helpers don't inject a dead endpoint.
 pub async fn start_and_publish() -> Option<McpEndpoint> {
-    let ep = serve(default_registry()).await?;
-    if let Some(p) = endpoint_file_path() {
-        let _ = std::fs::create_dir_all(p.parent()?);
-        let _ = std::fs::write(&p, &ep.url);
+    let path = endpoint_file_path();
+    let ep = match serve(default_registry()).await {
+        Some(e) => e,
+        None => {
+            if let Some(p) = &path {
+                let _ = std::fs::remove_file(p);
+            }
+            return None;
+        }
+    };
+    if let Some(p) = &path {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let tmp = p.with_extension("txt.tmp");
+        if std::fs::write(&tmp, &ep.url).is_ok() {
+            let _ = std::fs::rename(&tmp, p);
+        }
     }
     Some(ep)
 }

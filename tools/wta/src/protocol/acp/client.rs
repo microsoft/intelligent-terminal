@@ -1064,7 +1064,7 @@ async fn resolve_pane_by_session_id(
             let Some(tab_id) = json_str_or_num(tab.get("tab_id")) else {
                 continue;
             };
-            let Ok(panes) = shell_mgr.wt_list_panes(&tab_id).await else {
+            let Ok(panes) = shell_mgr.wt_list_panes(&tab_id, Some(window_id.as_str())).await else {
                 continue;
             };
             let Some(panes_arr) = panes.get("panes").and_then(|v| v.as_array()) else {
