@@ -2195,7 +2195,7 @@ async fn host_history_via_acp(
         .cli_source
         .clone()
         .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()));
-    host_rows_from_conn(conn, &cli).await
+    host_rows_from_conn(state, conn, &cli).await
 }
 
 /// Raw host `session/list` as session_id → title, UNFILTERED (includes Class-A
@@ -2261,6 +2261,7 @@ async fn host_titles_via_acp(
 }
 
 async fn host_rows_from_conn(
+    state: &MasterStateInner,
     conn: &acp::ClientSideConnection,
     cli: &crate::agent_sessions::CliSource,
 ) -> Vec<crate::agent_sessions::AgentSession> {
@@ -2282,7 +2283,15 @@ async fn host_rows_from_conn(
             return Vec::new();
         }
     };
-    let idx = crate::agent_pane_origin::load_default_set();
+    // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
+    // *after* session/new lands, so a just-created pane session can be returned by
+    // session/list before its index line exists, leaking a phantom historical row.
+    // Master routes every session/new, so its live `session_to_helper` keys are the
+    // authoritative live-pane set — union them in to close that race.
+    let mut idx = crate::agent_pane_origin::load_default_set();
+    for sid in state.session_to_helper.lock().await.keys() {
+        idx.insert(sid.0.to_string());
+    }
     crate::session_history::classify_and_map(
         &resp.sessions,
         &idx,
