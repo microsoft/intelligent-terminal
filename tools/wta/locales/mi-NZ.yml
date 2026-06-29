@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Nau mai ki Iho Atamai!"
 setup.title.agent_missing: "Kaore i kitea te agent"
 setup.title.agent_error: "I rahua te hononga agent"
-setup.title.switch_agent: "Huri agent"
 setup.title.not_available: "Kaore te agent e watea"
 setup.title.sign_in: "Me takiuru"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Me whakamanatu to agent \"%{agent}\". Whaia nga hi
 setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru mā te agent, kātahi ka kōwhiria \"Kua takiuru au\" i raro. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Kōwhiria te agent taunoa hei whakamahi i roto i Iho Atamai. Ka taea e koe te"
-setup.description.fre_line2: "haere ki Settings hei whirihiri me te whakarite i to wahi mahi."
 
 setup.option.install: "Tauta ano i a %{agent}"
 setup.option.install_hint: "(Ka tautahia aunoa)"
@@ -23,7 +19,6 @@ setup.option.signin: "Takiuru ki %{agent}"
 setup.option.retry_detection: "Ngana anō"
 setup.option.retry_auth: "Kua takiuru au — ngana anō ki te hono"
 setup.option.retry_connection: "Ngana anō ki te hono"
-setup.option.switch_to: "Huri ki %{agent}"
 setup.status.installing: "E tauta ana..."
 setup.status.install_failed: "I rahua te tauta: "
 setup.status.installing_winget: " E tauta ana ma winget..."

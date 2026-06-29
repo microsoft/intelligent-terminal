@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Tervetuloa Älykäs Pääteiin!"
 setup.title.agent_missing: "Agenttia ei löytynyt"
 setup.title.agent_error: "Yhteys agenttiin epäonnistui"
-setup.title.switch_agent: "Vaihda agentti"
 setup.title.not_available: "Agentti ei ole käytettävissä"
 setup.title.sign_in: "Kirjautuminen vaaditaan"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaud
 setup.subtitle.agent_auth: "Agenttisi \"%{agent}\" vaatii todennuksen. Kirjaudu sisään agentin kautta ja valitse sitten alta \"Olen kirjautunut sisään\". Vaihtaaksesi agenttia siirry kohtaan Älykäs Pääte Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Valitse oletusagentti, jota haluat käyttää Älykäs Pääteissa. Voit"
-setup.description.fre_line2: "siirtyä kohtaan Settings määrittääksesi ja ottaaksesi käyttöön työtilasi."
 
 setup.option.install: "Asenna %{agent}"
 setup.option.install_hint: "(Asennetaan automaattisesti)"
@@ -23,7 +19,6 @@ setup.option.signin: "Kirjaudu sisään palveluun %{agent}"
 setup.option.retry_detection: "Yritä uudelleen"
 setup.option.retry_auth: "Olen kirjautunut sisään — yritä yhdistää uudelleen"
 setup.option.retry_connection: "Yritä yhdistää uudelleen"
-setup.option.switch_to: "Vaihda: %{agent}"
 setup.status.installing: "Asennetaan..."
 setup.status.install_failed: "Asennus epäonnistui: "
 setup.status.installing_winget: " Asennetaan winget-paketinhallinnan kautta..."

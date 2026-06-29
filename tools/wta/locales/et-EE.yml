@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Tere tulemast Nutikas Terminali!"
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
-setup.title.switch_agent: "Vaheta agenti"
 setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgi
 setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Nutikas Terminalis. Saate"
-setup.description.fre_line2: "avada Settings, et oma tööruumi seadistada ja konfigureerida."
 
 setup.option.install: "Installi %{agent}"
 setup.option.install_hint: "(Installitakse automaatselt)"
@@ -23,7 +19,6 @@ setup.option.signin: "Logi sisse teenusesse %{agent}"
 setup.option.retry_detection: "Proovi uuesti"
 setup.option.retry_auth: "Olen sisse loginud — proovi uuesti ühendust luua"
 setup.option.retry_connection: "Proovi uuesti ühendust luua"
-setup.option.switch_to: "Lülitu üle: %{agent}"
 setup.status.installing: "Installimine..."
 setup.status.install_failed: "Installimine nurjus: "
 setup.status.installing_winget: " Installimine winget kaudu..."

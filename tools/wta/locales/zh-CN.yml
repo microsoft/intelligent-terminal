@@ -1,8 +1,6 @@
 # 设置界面标题
-setup.title.first_run: "欢迎使用智能终端！"
 setup.title.agent_missing: "未找到智能体"
 setup.title.agent_error: "智能体连接失败"
-setup.title.switch_agent: "切换智能体"
 setup.title.not_available: "智能体不可用"
 setup.title.sign_in: "需要登录"
 
@@ -11,8 +9,6 @@ setup.subtitle.copilot_missing: "您的智能体 \"%{agent}\" 尚未安装。请
 setup.subtitle.agent_missing: "您的智能体 \"%{agent}\" 尚未安装。请手动重新安装，然后重试。如需切换智能体，请前往智能终端 Settings > Agent。"
 setup.subtitle.copilot_auth: "您的智能体 \"%{agent}\" 需要身份验证。请按照以下步骤登录。如需切换智能体，请前往智能终端 Settings > Agent。"
 setup.subtitle.agent_auth: "您的智能体 \"%{agent}\" 需要身份验证。请通过智能体登录，然后选择下方的 \"我已登录\"。如需切换智能体，请前往智能终端 Settings > Agent。"
-setup.description.fre_line1: "选择您要在智能终端中使用的默认智能体。您可以"
-setup.description.fre_line2: "前往设置来配置和设定您的工作区。"
 
 setup.option.install: "安装 %{agent}"
 setup.option.install_hint: "（将自动安装）"
@@ -20,7 +16,6 @@ setup.option.signin: "登录 %{agent}"
 setup.option.retry_detection: "重试"
 setup.option.retry_auth: "我已登录 — 重试连接"
 setup.option.retry_connection: "重试连接"
-setup.option.switch_to: "切换到 %{agent}"
 setup.status.installing: "安装中..."
 setup.status.install_failed: "安装失败："
 setup.status.installing_winget: " 正在通过 winget 安装..."

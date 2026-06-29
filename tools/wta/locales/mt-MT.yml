@@ -1,9 +1,7 @@
 # Titli tal-iskrin tas-setup
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Merħba fl-Terminal Intelliġenti!"
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
-setup.title.switch_agent: "Ibdel l-aġent"
 setup.title.not_available: "L-aġent mhuwiex disponibbli"
 setup.title.sign_in: "Hemm bżonn li tidħol"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentika
 setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-aġent, imbagħad agħżel \"Dħalt\" hawn taħt. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Agħżel l-aġent awtomatiku li tixtieq tuża fl-Terminal Intelliġenti. Tista'"
-setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
 
 setup.option.install: "Installa %{agent}"
 setup.option.install_hint: "(Se jiġi installat awtomatikament)"
@@ -23,7 +19,6 @@ setup.option.signin: "Idħol f'%{agent}"
 setup.option.retry_detection: "Erġa' pprova"
 setup.option.retry_auth: "Dħalt — erġa' pprova tikkonnettja"
 setup.option.retry_connection: "Erġa' pprova tikkonnettja"
-setup.option.switch_to: "Ibdel għal %{agent}"
 setup.status.installing: "Qed jiġi installat..."
 setup.status.install_failed: "L-installazzjoni falliet: "
 setup.status.installing_winget: " Qed jiġi installat permezz ta' winget..."

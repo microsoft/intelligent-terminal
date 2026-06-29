@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Welcome to Intelligent Terminal!"
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
-setup.title.switch_agent: "Switch agent"
 setup.title.not_available: "Agent not available"
 setup.title.sign_in: "Sign in required"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. F
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
-setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
 setup.option.install: "Install %{agent}"
 setup.option.install_hint: "(Will be installed automatically)"
@@ -23,7 +19,6 @@ setup.option.signin: "Sign in to %{agent}"
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
 setup.option.retry_connection: "Try connecting again"
-setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "[Ŵéĺçöḿé ţö Intelligent Terminal!!]"
 setup.title.agent_missing: "[Àğéñţ ñöţ ƒöûñď!!]"
 setup.title.agent_error: "[Àğéñţ çöññéçţïöñ ƒåïĺéď!!]"
-setup.title.switch_agent: "[Ŝŵïţçĥ åğéñţ!!]"
 setup.title.not_available: "[Àğéñţ ñöţ åṽåïĺåƀĺé!!]"
 setup.title.sign_in: "[Ŝïğñ ïñ ŕéqûïŕéď!!]"
 
@@ -15,8 +13,6 @@ setup.subtitle.copilot_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś 
 setup.subtitle.agent_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ṗĺéåśé śïğñ ïñ ṽïå ţĥé åğéñţ, ţĥéñ śéĺéçţ \"Ï'ṽé śïğñéð ïñ\" ɓéĺöŵ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "[Çĥööśé ţĥé ďéƒåûĺţ åğéñţ ÿöû ŵöûĺď ĺïķé ţö ûśé ïñ Intelligent Terminal. Ÿöû çåñ!!!! !!!! !!!! !!!!]"
-setup.description.fre_line2: "[ñåṽïğåţé ţö Settings ţö çöñƒïğûŕé åñď śéţ ûṗ ÿöûŕ ŵöŕķśṗåçé.!!!! !!!! !!!!]"
 
 setup.option.install: "[Ïñśţåĺĺ %{agent}!!]"
 setup.option.install_hint: "[(Ŵïĺĺ ƀé ïñśţåĺĺéď åûţöḿåţïçåĺĺÿ)!!!! !!!!]"
@@ -24,7 +20,6 @@ setup.option.signin: "[Ŝïğñ ïñ ţö %{agent}!!]"
 setup.option.retry_detection: "[Ţŕÿ åğåïñ!!]"
 setup.option.retry_auth: "[Ï'ṽé śïğñéð ïñ — ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!! !!!!]"
 setup.option.retry_connection: "[Ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!!]"
-setup.option.switch_to: "[Ŝŵïţçĥ ţö %{agent}!!]"
 setup.status.installing: "[Îñśţåĺĺïñğ...!!]"
 setup.status.install_failed: "[Îñśţåĺĺ ƒåïĺéď: !!]"
 setup.status.installing_winget: "[ Îñśţåĺĺïñğ ṽïå winget...!!!! !!!!]"

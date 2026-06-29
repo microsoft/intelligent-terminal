@@ -1,9 +1,7 @@
 # Tiotalan sgrìn stèidheachaidh
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Fàilte gu Tèirmineal Glic!"
 setup.title.agent_missing: "Cha deach an àidseant a lorg"
 setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
-setup.title.switch_agent: "Atharraich àidseant"
 setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
 setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh.
 setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron àidseant, an uair sin tagh \"Chlàraich mi a-steach\" gu h-ìosal. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Tagh an àidseant bunaiteach a bu mhath leat a chleachdadh ann an Tèirmineal Glic. 'S urrainn dhut"
-setup.description.fre_line2: "a dhol gu Settings gus an raon-obrach agad a rèiteachadh."
 
 setup.option.install: "Stàlaich %{agent}"
 setup.option.install_hint: "(Thèid a stàladh gu fèin-obrachail)"
@@ -23,7 +19,6 @@ setup.option.signin: "Clàraich a-steach gu %{agent}"
 setup.option.retry_detection: "Feuch a-rithist"
 setup.option.retry_auth: "Chlàraich mi a-steach — feuch ceangal a-rithist"
 setup.option.retry_connection: "Feuch ceangal a-rithist"
-setup.option.switch_to: "Atharraich gu %{agent}"
 setup.status.installing: "Ga stàladh..."
 setup.status.install_failed: "Dh'fhàillig an stàladh: "
 setup.status.installing_winget: " Ga stàladh tro winget..."

@@ -1,9 +1,7 @@
 # Títulos da tela de configuração
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Bem-vindo ao Terminal Inteligente!"
 setup.title.agent_missing: "Agente não encontrado"
 setup.title.agent_error: "Falha na conexão com o agente"
-setup.title.switch_agent: "Trocar agente"
 setup.title.not_available: "Agente não disponível"
 setup.title.sign_in: "Login necessário"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Seu agente \"%{agent}\" requer autenticação. Sig
 setup.subtitle.agent_auth: "Seu agente \"%{agent}\" requer autenticação. Entre pelo agente e selecione \"Já entrei\" abaixo. Para trocar de agente, vá para Configurações do Terminal Inteligente > Agente."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Escolha a CLI de agente padrão que você deseja usar no Terminal Inteligente. Você pode"
-setup.description.fre_line2: "acessar as configurações para configurar e preparar seu espaço de trabalho."
 
 setup.option.install: "Instalar %{agent}"
 setup.option.install_hint: "(Será instalado automaticamente)"
@@ -23,7 +19,6 @@ setup.option.signin: "Entrar em %{agent}"
 setup.option.retry_detection: "Tentar novamente"
 setup.option.retry_auth: "Já entrei — tentar conectar novamente"
 setup.option.retry_connection: "Tentar conectar novamente"
-setup.option.switch_to: "Trocar para %{agent}"
 setup.status.installing: "Instalando..."
 setup.status.install_failed: "Falha na instalação: "
 setup.status.installing_winget: " Instalando via winget..."

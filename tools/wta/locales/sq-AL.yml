@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Mirë se vini në Terminali inteligjent!"
 setup.title.agent_missing: "Agjenti nuk u gjet"
 setup.title.agent_error: "Lidhja me agjentin dështoi"
-setup.title.switch_agent: "Ndrysho agjentin"
 setup.title.not_available: "Agjenti nuk është i disponueshëm"
 setup.title.sign_in: "Kërkohet identifikimi"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqn
 setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes agjentit dhe zgjidhni \"U identifikova\" më poshtë. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Zgjidhni agjentin e paracaktuar që dëshironi të përdorni në Terminali inteligjent. Mund të"
-setup.description.fre_line2: "shkoni te Settings për të konfiguruar hapësirën tuaj të punës."
 
 setup.option.install: "Instalo %{agent}"
 setup.option.install_hint: "(Do të instalohet automatikisht)"
@@ -23,7 +19,6 @@ setup.option.signin: "Identifikohu te %{agent}"
 setup.option.retry_detection: "Provoni përsëri"
 setup.option.retry_auth: "U identifikova — provoni të lidheni përsëri"
 setup.option.retry_connection: "Provoni të lidheni përsëri"
-setup.option.switch_to: "Kalo te %{agent}"
 setup.status.installing: "Po instalohet..."
 setup.status.install_failed: "Instalimi dështoi: "
 setup.status.installing_winget: " Po instalohet përmes winget..."

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Maligayang pagdating sa Matalinong Terminal!"
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
-setup.title.switch_agent: "Palitan ang agent"
 setup.title.not_available: "Hindi available ang agent"
 setup.title.sign_in: "Kailangang mag-sign in"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng 
 setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent, pagkatapos ay piliin ang \"Naka-sign in na ako\" sa ibaba. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pumili ng default na agent CLI na gusto mong gamitin sa Matalinong Terminal. Maaari kang"
-setup.description.fre_line2: "pumunta sa Settings para i-configure at i-set up ang iyong workspace."
 
 setup.option.install: "I-install ang %{agent}"
 setup.option.install_hint: "(Awtomatikong mai-install)"
@@ -23,7 +19,6 @@ setup.option.signin: "Mag-sign in sa %{agent}"
 setup.option.retry_detection: "Subukang muli"
 setup.option.retry_auth: "Naka-sign in na ako — subukang kumonekta muli"
 setup.option.retry_connection: "Subukang kumonekta muli"
-setup.option.switch_to: "Lumipat sa %{agent}"
 setup.status.installing: "Ini-install..."
 setup.status.install_failed: "Nabigo ang pag-install: "
 setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."

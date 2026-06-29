@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Chào mừng bạn đến Đầu cuối thông minh!"
 setup.title.agent_missing: "Không tìm thấy tác nhân AI"
 setup.title.agent_error: "Kết nối tới tác nhân AI thất bại"
-setup.title.switch_agent: "Chuyển tác nhân AI"
 setup.title.not_available: "Tác nhân AI không khả dụng"
 setup.title.sign_in: "Cần đăng nhập"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu 
 setup.subtitle.agent_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Vui lòng đăng nhập qua tác nhân AI, sau đó chọn \"Tôi đã đăng nhập\" bên dưới. Để chuyển tác nhân AI, hãy đi tới Đầu cuối thông minh Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Chọn CLI tác nhân AI mặc định mà bạn muốn sử dụng trong Đầu cuối thông minh. Bạn có thể"
-setup.description.fre_line2: "đi tới Settings để cấu hình và thiết lập không gian làm việc của bạn."
 
 setup.option.install: "Cài đặt %{agent}"
 setup.option.install_hint: "(Sẽ được cài đặt tự động)"
@@ -23,7 +19,6 @@ setup.option.signin: "Đăng nhập vào %{agent}"
 setup.option.retry_detection: "Thử lại"
 setup.option.retry_auth: "Tôi đã đăng nhập — thử kết nối lại"
 setup.option.retry_connection: "Thử kết nối lại"
-setup.option.switch_to: "Chuyển sang %{agent}"
 setup.status.installing: "Đang cài đặt..."
 setup.status.install_failed: "Cài đặt thất bại: "
 setup.status.installing_winget: " Đang cài đặt qua winget..."

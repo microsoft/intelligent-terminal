@@ -1,8 +1,6 @@
 # 설정 화면 제목
-setup.title.first_run: "지능형 터미널에 오신 것을 환영합니다!"
 setup.title.agent_missing: "에이전트를 찾을 수 없음"
 setup.title.agent_error: "에이전트 연결 실패"
-setup.title.switch_agent: "에이전트 전환"
 setup.title.not_available: "에이전트를 사용할 수 없음"
 setup.title.sign_in: "로그인 필요"
 
@@ -11,8 +9,6 @@ setup.subtitle.copilot_missing: "에이전트 \"%{agent}\"이(가) 설치되어 
 setup.subtitle.agent_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 수동으로 다시 설치한 후 재시도하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
 setup.subtitle.copilot_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 아래 단계에 따라 로그인하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
 setup.subtitle.agent_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 에이전트를 통해 로그인한 후 아래에서 \"로그인 완료\"를 선택하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
-setup.description.fre_line1: "지능형 터미널에서 사용할 기본 에이전트를 선택하세요."
-setup.description.fre_line2: "설정으로 이동하여 작업 영역을 구성하고 설정할 수 있습니다."
 
 setup.option.install: "%{agent} 설치"
 setup.option.install_hint: "(자동으로 설치됩니다)"
@@ -20,7 +16,6 @@ setup.option.signin: "%{agent}에 로그인"
 setup.option.retry_detection: "다시 시도"
 setup.option.retry_auth: "로그인 완료 — 다시 연결 시도"
 setup.option.retry_connection: "다시 연결 시도"
-setup.option.switch_to: "%{agent}(으)로 전환"
 setup.status.installing: "설치 중..."
 setup.status.install_failed: "설치 실패: "
 setup.status.installing_winget: " winget을 통해 설치 중..."

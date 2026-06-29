@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Velkomin í Snjallútstöð!"
 setup.title.agent_missing: "Agent fannst ekki"
 setup.title.agent_error: "Tenging við agent mistókst"
-setup.title.switch_agent: "Skipta um agent"
 setup.title.not_available: "Agent er ekki tiltækur"
 setup.title.sign_in: "Innskráning nauðsynleg"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. 
 setup.subtitle.agent_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Skráðu þig inn í gegnum agentinn og veldu svo \"Ég hef skráð mig inn\" hér að neðan. Til að skipta um agent, farðu í Snjallútstöð Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Veldu sjálfgefna agentinn sem þú vilt nota í Snjallútstöð. Þú getur"
-setup.description.fre_line2: "farið í Settings til að stilla og setja upp vinnusvæðið þitt."
 
 setup.option.install: "Setja upp %{agent} aftur"
 setup.option.install_hint: "(Verður sett upp sjálfkrafa)"
@@ -23,7 +19,6 @@ setup.option.signin: "Skrá inn á %{agent}"
 setup.option.retry_detection: "Reyndu aftur"
 setup.option.retry_auth: "Ég hef skráð mig inn — reyndu að tengjast aftur"
 setup.option.retry_connection: "Reyndu að tengjast aftur"
-setup.option.switch_to: "Skipta yfir í %{agent}"
 setup.status.installing: "Set upp..."
 setup.status.install_failed: "Uppsetning mistókst: "
 setup.status.installing_winget: " Set upp í gegnum winget..."

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Laipni lūdzam Viedais Terminālis!"
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
-setup.title.switch_agent: "Mainīt aģentu"
 setup.title.not_available: "Aģents nav pieejams"
 setup.title.sign_in: "Nepieciešama pierakstīšanās"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāci
 setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Izvēlieties noklusējuma aģentu, ko vēlaties izmantot Viedais Terminālis. Varat"
-setup.description.fre_line2: "doties uz Settings, lai konfigurētu un iestatītu savu darbvietu."
 
 setup.option.install: "Instalēt %{agent}"
 setup.option.install_hint: "(Tiks instalēts automātiski)"
@@ -23,7 +19,6 @@ setup.option.signin: "Pierakstīties %{agent}"
 setup.option.retry_detection: "Mēģināt vēlreiz"
 setup.option.retry_auth: "Esmu pierakstījies — mēģināt savienoties vēlreiz"
 setup.option.retry_connection: "Mēģināt savienoties vēlreiz"
-setup.option.switch_to: "Pārslēgties uz %{agent}"
 setup.status.installing: "Instalē..."
 setup.status.install_failed: "Instalēšana neizdevās: "
 setup.status.installing_winget: " Instalē, izmantojot winget..."

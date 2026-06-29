@@ -1,9 +1,7 @@
 # Titres de l'écran de configuration
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Bienvenue dans Terminal Intelligent !"
 setup.title.agent_missing: "Agent introuvable"
 setup.title.agent_error: "Échec de la connexion à l'agent"
-setup.title.switch_agent: "Changer d'agent"
 setup.title.not_available: "Agent non disponible"
 setup.title.sign_in: "Connexion requise"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Votre agent « %{agent} » nécessite une authenti
 setup.subtitle.agent_auth: "Votre agent « %{agent} » nécessite une authentification. Veuillez vous connecter via l'agent, puis sélectionnez « Je me suis connecté » ci-dessous. Pour changer d'agent, accédez aux paramètres Terminal Intelligent > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Choisissez la CLI d'agent par défaut que vous souhaitez utiliser dans Terminal Intelligent. Vous pouvez"
-setup.description.fre_line2: "accéder aux paramètres pour configurer et paramétrer votre espace de travail."
 
 setup.option.install: "Installer %{agent}"
 setup.option.install_hint: "(Sera installé automatiquement)"
@@ -23,7 +19,6 @@ setup.option.signin: "Se connecter à %{agent}"
 setup.option.retry_detection: "Réessayer"
 setup.option.retry_auth: "Je me suis connecté — réessayer de se connecter"
 setup.option.retry_connection: "Réessayer de se connecter"
-setup.option.switch_to: "Passer à %{agent}"
 setup.status.installing: "Installation en cours..."
 setup.status.install_failed: "Échec de l'installation : "
 setup.status.installing_winget: " Installation via winget..."

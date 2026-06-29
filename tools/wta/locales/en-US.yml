@@ -3,11 +3,8 @@
 # "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
 
 # Setup screen titles
-setup.title.first_run: "Welcome to Intelligent Terminal!"
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
-# Button label — verb command to change which AI agent is active
-setup.title.switch_agent: "Switch agent"
 # Title when the configured AI agent is not available
 setup.title.not_available: "Agent not available"
 # Title when authentication is required
@@ -19,9 +16,6 @@ setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please 
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
-setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
-setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
-
 # Button label on setup screen — install the selected agent via winget
 setup.option.install: "Install %{agent}"
 setup.option.install_hint: "(Will be installed automatically)"
@@ -30,8 +24,6 @@ setup.option.signin: "Sign in to %{agent}"
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
 setup.option.retry_connection: "Try connecting again"
-# Button label — switch active AI agent to a different one
-setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."

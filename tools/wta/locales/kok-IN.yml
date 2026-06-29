@@ -1,9 +1,7 @@
 # सेटअप स्क्रीन शीर्षकां
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "इंटेलिजंट टर्मिनल ंत आपलें स्वागत!"
 setup.title.agent_missing: "एजेंट मेळलो ना"
 setup.title.agent_error: "एजेंट कनेक्शन अपेशी जालें"
-setup.title.switch_agent: "एजेंट बदल"
 setup.title.not_available: "एजेंट उपलब्ध ना"
 setup.title.sign_in: "साइन इन आवश्यक"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "तुमच्या एजेंट \"%{agent}\"
 setup.subtitle.agent_auth: "तुमच्या एजंट \"%{agent}\" खातीर प्रमाणीकरण जाय. उपकार करून एजंट वरवीं सायन इन करात, मागीर सकल \"म्हणें सायन इन केलां\" वेंचात. एजंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "इंटेलिजंट टर्मिनल भितर वापरपाक जाय आशिल्लो डीफॉल्ट एजंट निवडात. तुमी"
-setup.description.fre_line2: "तुमचें वर्कस्पेस कॉन्फिगर आनी सेटअप करपाक Settings कडेन वचूंक शकतात."
 
 setup.option.install: "%{agent} परतून इन्स्टॉल करात"
 setup.option.install_hint: "(आपशींच इन्स्टॉल जातलें)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent} ंत साइन इन करात"
 setup.option.retry_detection: "परत यत्न करात"
 setup.option.retry_auth: "म्हणें सायन इन केलां — परत जोडपाक यत्न करात"
 setup.option.retry_connection: "परत जोडपाक यत्न करात"
-setup.option.switch_to: "%{agent} कडेन बदल"
 setup.status.installing: "इन्स्टॉल जाता..."
 setup.status.install_failed: "इन्स्टॉल अपेशी: "
 setup.status.installing_winget: " winget वरवीं इन्स्टॉल जाता..."

@@ -1,9 +1,7 @@
 # عناوین صفحه راه‌اندازی
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "به پایانه هوشمند خوش آمدید!"
 setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
 setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
-setup.title.switch_agent: "تغییر عامل هوش مصنوعی"
 setup.title.not_available: "عامل هوش مصنوعی در دسترس نیست"
 setup.title.sign_in: "ورود به سیستم لازم است"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز
 setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس \"وارد شدم\" را در زیر انتخاب کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "عامل هوش مصنوعی پیش‌فرضی را که می‌خواهید در پایانه هوشمند استفاده کنید انتخاب نمایید. می‌توانید"
-setup.description.fre_line2: "به Settings بروید تا فضای کاری خود را پیکربندی و راه‌اندازی کنید."
 
 setup.option.install: "نصب %{agent}"
 setup.option.install_hint: "(به صورت خودکار نصب خواهد شد)"
@@ -23,7 +19,6 @@ setup.option.signin: "ورود به %{agent}"
 setup.option.retry_detection: "دوباره تلاش کنید"
 setup.option.retry_auth: "وارد شدم — دوباره اتصال را امتحان کنید"
 setup.option.retry_connection: "دوباره اتصال را امتحان کنید"
-setup.option.switch_to: "تغییر به %{agent}"
 setup.status.installing: "در حال نصب..."
 setup.status.install_failed: "نصب ناموفق بود: "
 setup.status.installing_winget: " در حال نصب از طریق winget..."

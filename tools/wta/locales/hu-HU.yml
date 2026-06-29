@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Üdvözli az Intelligens Terminál!"
 setup.title.agent_missing: "Az ügynök nem található"
 setup.title.agent_error: "Az ügynökhöz való kapcsolódás sikertelen"
-setup.title.switch_agent: "Ügynök váltása"
 setup.title.not_available: "Az ügynök nem érhető el"
 setup.title.sign_in: "Bejelentkezés szükséges"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel
 setup.subtitle.agent_auth: "A(z) \"%{agent}\" ügynök hitelesítést igényel. Jelentkezzen be az ügynökön keresztül, majd válassza a \"Bejelentkeztem\" lehetőséget alul. Az ügynök váltásához lépjen a Intelligens Terminál Settings > Agent oldalra."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Válassza ki az Intelligens Terminál alkalmazásban használni kívánt alapértelmezett ügynököt. A"
-setup.description.fre_line2: "Settings oldalon konfigurálhatja és beállíthatja a munkaterületét."
 
 setup.option.install: "%{agent} telepítése"
 setup.option.install_hint: "(Automatikusan telepítve lesz)"
@@ -23,7 +19,6 @@ setup.option.signin: "Bejelentkezés a következőbe: %{agent}"
 setup.option.retry_detection: "Próbálja újra"
 setup.option.retry_auth: "Bejelentkeztem — próbálja újra csatlakozni"
 setup.option.retry_connection: "Próbálja újra csatlakozni"
-setup.option.switch_to: "Váltás erre: %{agent}"
 setup.status.installing: "Telepítés..."
 setup.status.install_failed: "A telepítés sikertelen: "
 setup.status.installing_winget: " Telepítés a winget segítségével..."

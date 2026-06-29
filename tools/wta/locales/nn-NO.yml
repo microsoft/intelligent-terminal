@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Velkomen til Intelligent Terminal!"
 setup.title.agent_missing: "Agenten vart ikkje funnen"
 setup.title.agent_error: "Tilkoplinga til agenten mislukkast"
-setup.title.switch_agent: "Byt agent"
 setup.title.not_available: "Agenten er ikkje tilgjengeleg"
 setup.title.sign_in: "Pålogging er påkravd"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krev autentisering. Følg
 setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krev autentisering. Logg inn via agenten, og vel deretter \"Eg har logga inn\" nedanfor. For å byte agent, gå til Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Vel standardagenten du vil bruke i Intelligent Terminal. Du kan"
-setup.description.fre_line2: "gå til Settings for å konfigurere og setje opp arbeidsområdet ditt."
 
 setup.option.install: "Installer %{agent}"
 setup.option.install_hint: "(Vert installert automatisk)"
@@ -23,7 +19,6 @@ setup.option.signin: "Logg inn på %{agent}"
 setup.option.retry_detection: "Prøv igjen"
 setup.option.retry_auth: "Eg har logga inn — prøv å kople til igjen"
 setup.option.retry_connection: "Prøv å kople til igjen"
-setup.option.switch_to: "Byt til %{agent}"
 setup.status.installing: "Installerer..."
 setup.status.install_failed: "Installasjonen mislukkast: "
 setup.status.installing_winget: " Installerer via winget..."

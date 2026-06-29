@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Velkommen til Intelligent Terminal!"
 setup.title.agent_missing: "Agenten blev ikke fundet"
 setup.title.agent_error: "Forbindelsen til agenten mislykkedes"
-setup.title.switch_agent: "Skift agent"
 setup.title.not_available: "Agenten er ikke tilgængelig"
 setup.title.sign_in: "Log ind påkrævet"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Din agent \"%{agent}\" kræver godkendelse. Følg 
 setup.subtitle.agent_auth: "Din agent \"%{agent}\" kræver godkendelse. Log ind via agenten, og vælg derefter \"Jeg har logget ind\" nedenfor. For at skifte agent, gå til Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Vælg den standardagent, du vil bruge i Intelligent Terminal. Du kan"
-setup.description.fre_line2: "gå til Settings for at konfigurere og opsætte dit arbejdsområde."
 
 setup.option.install: "Installer %{agent}"
 setup.option.install_hint: "(Installeres automatisk)"
@@ -23,7 +19,6 @@ setup.option.signin: "Log ind på %{agent}"
 setup.option.retry_detection: "Prøv igen"
 setup.option.retry_auth: "Jeg har logget ind — prøv at oprette forbindelse igen"
 setup.option.retry_connection: "Prøv at oprette forbindelse igen"
-setup.option.switch_to: "Skift til %{agent}"
 setup.status.installing: "Installerer..."
 setup.status.install_failed: "Installationen mislykkedes: "
 setup.status.installing_winget: " Installerer via winget..."

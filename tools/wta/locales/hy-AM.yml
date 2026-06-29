@@ -3,11 +3,8 @@
 # "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
 
 # Setup screen titles
-setup.title.first_run: "Բարի գալուստ Խելացի տերմինալ!"
 setup.title.agent_missing: "Ագենտը չի գտնվել"
 setup.title.agent_error: "Ագենտին միանալը ձախողվել է"
-# Button label — verb command to change which AI agent is active
-setup.title.switch_agent: "Փոխել ագենտը"
 # Title when the configured AI agent is not available
 setup.title.not_available: "Ագենտը հասանելի չէ"
 # Title when authentication is required
@@ -18,8 +15,6 @@ setup.subtitle.copilot_missing: "Ձեր \"%{agent}\" ագենտը տեղադրվ
 setup.subtitle.agent_missing: "Ձեր \"%{agent}\" ագենտը տեղադրված չէ։ Խնդրում ենք ձեռքով վերատեղադրել և կրկին փորձել։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
 setup.subtitle.copilot_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործելու համար հետեվեք ստորեվ նշված քայլերին։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
 setup.subtitle.agent_auth: "Ձեր \"%{agent}\" ագենտը պահանջում է նույնականացում։ Մուտք գործեք ագենտի միջոցով, ապա ընտրեք ստորև \"Մուտք եմ գործել\"։ Ագենտը փոխելու համար անցեք Խելացի տերմինալ Settings > Agent։"
-setup.description.fre_line1: "Ընտրեք լռելյայն ագենտը, որը ցանկանում եք օգտագործել Խելացի տերմինալ-ում։ Դուք կարող եք"
-setup.description.fre_line2: "անցնել Settings՝ ձեր աշխատական տարածքը կարգավորելու համար։"
 
 setup.option.install: "Տեղադրել %{agent}"
 setup.option.install_hint: "(Կտեղադրվի ինքնաշխատորեն)"
@@ -27,7 +22,6 @@ setup.option.signin: "Մուտք գործել %{agent}"
 setup.option.retry_detection: "Կրկին փորձել"
 setup.option.retry_auth: "Մուտք եմ գործել — կրկին միանալ"
 setup.option.retry_connection: "Կրկին միանալ"
-setup.option.switch_to: "Անցնել %{agent}-ին"
 setup.status.installing: "Տեղադրվում է..."
 setup.status.install_failed: "Տեղադրումը ձախողվեց՝ "
 setup.status.installing_winget: " Տեղադրում winget-ի միջոցով..."

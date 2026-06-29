@@ -1,9 +1,7 @@
 # Teidil scáileán socraithe
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Fáilte go Teirminéal Cliste!"
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
-setup.title.switch_agent: "Athraigh gníomhaire"
 setup.title.not_available: "Níl an gníomhaire ar fáil"
 setup.title.sign_in: "Sínigh isteach riachtanach"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%
 setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin roghnaigh \"Tá mé sínithe isteach\" thíos. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Roghnaigh an gníomhaire réamhshocraithe ba mhaith leat a úsáid in Teirminéal Cliste. Is féidir leat"
-setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
 
 setup.option.install: "Suiteáil %{agent}"
 setup.option.install_hint: "(Suiteálfar go huathoibríoch)"
@@ -23,7 +19,6 @@ setup.option.signin: "Sínigh isteach chuig %{agent}"
 setup.option.retry_detection: "Bain triail eile as"
 setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceangal"
 setup.option.retry_connection: "Bain triail eile as ceangal"
-setup.option.switch_to: "Athraigh go %{agent}"
 setup.status.installing: "Á shuiteáil..."
 setup.status.install_failed: "Theip ar shuiteáil: "
 setup.status.installing_winget: " Á shuiteáil trí winget..."

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "[!! Welco_me to Intelligent Terminal! !!]"
 setup.title.agent_missing: "[!! Age_nt not found !!]"
 setup.title.agent_error: "[!! Age_nt connection failed !!]"
-setup.title.switch_agent: "[!! Swi_tch agent !!]"
 setup.title.not_available: "[!! Age_nt not available !!]"
 setup.title.sign_in: "[!! Sig_n in required !!]"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authenticati
 setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've_ signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "[!! Cho_ose the default agent you would like to use in Intelligent Terminal. You can !!]"
-setup.description.fre_line2: "[!! nav_igate to Settings to configure and set up your workspace. !!]"
 
 setup.option.install: "[!! Ins_tall %{agent} !!]"
 setup.option.install_hint: "[!! (Wi_ll be installed automatically) !!]"
@@ -23,7 +19,6 @@ setup.option.signin: "[!! Sig_n in to %{agent} !!]"
 setup.option.retry_detection: "[!! Try_ again !!]"
 setup.option.retry_auth: "[!! I've_ signed in — try connecting again !!]"
 setup.option.retry_connection: "[!! Try_ connecting again !!]"
-setup.option.switch_to: "[!! Swi_tch to %{agent} !!]"
 setup.status.installing: "[!! Ins_talling... !!]"
 setup.status.install_failed: "[!! Ins_tall failed:  !!]"
 setup.status.installing_winget: "[!!  In_stalling via winget... !!]"

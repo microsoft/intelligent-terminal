@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ!"
 setup.title.agent_missing: "ไม่พบเอเจนต์"
 setup.title.agent_error: "การเชื่อมต่อเอเจนต์ล้มเหลว"
-setup.title.switch_agent: "สลับเอเจนต์"
 setup.title.not_available: "เอเจนต์ไม่พร้อมใช้งาน"
 setup.title.sign_in: "ต้องลงชื่อเข้าใช้"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "เอเจนต์ \"%{agent}\" ของคุ
 setup.subtitle.agent_auth: "เอเจนต์ \"%{agent}\" ของคุณต้องการการยืนยันตัวตน กรุณาลงชื่อเข้าใช้ผ่านเอเจนต์ แล้วเลือก \"ลงชื่อเข้าใช้แล้ว\" ด้านล่าง หากต้องการสลับเอเจนต์ ให้ไปที่ เทอร์มินัลอัจฉริยะ Settings > Agent"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "เลือก CLI เอเจนต์เริ่มต้นที่คุณต้องการใช้ใน เทอร์มินัลอัจฉริยะ คุณสามารถ"
-setup.description.fre_line2: "ไปที่ Settings เพื่อกำหนดค่าและตั้งค่าพื้นที่ทำงานของคุณ"
 
 setup.option.install: "ติดตั้ง %{agent}"
 setup.option.install_hint: "(จะติดตั้งโดยอัตโนมัติ)"
@@ -23,7 +19,6 @@ setup.option.signin: "ลงชื่อเข้าใช้ %{agent}"
 setup.option.retry_detection: "ลองอีกครั้ง"
 setup.option.retry_auth: "ลงชื่อเข้าใช้แล้ว — ลองเชื่อมต่อใหม่"
 setup.option.retry_connection: "ลองเชื่อมต่อใหม่"
-setup.option.switch_to: "สลับไปยัง %{agent}"
 setup.status.installing: "กำลังติดตั้ง..."
 setup.status.install_failed: "ติดตั้งล้มเหลว: "
 setup.status.installing_winget: " กำลังติดตั้งผ่าน winget..."

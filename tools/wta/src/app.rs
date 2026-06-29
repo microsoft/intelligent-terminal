@@ -167,29 +167,23 @@ fn device_verify_url(login_command: &str) -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupReason {
-    FirstRun,
     AgentMissing,
     AgentError,
-    SwitchAgent,
 }
 
 impl SetupReason {
     pub fn from_str(s: &str) -> Self {
         match s {
-            "first-run" => Self::FirstRun,
             "agent-missing" => Self::AgentMissing,
             "agent-error" => Self::AgentError,
-            "switch-agent" => Self::SwitchAgent,
-            _ => Self::FirstRun,
+            _ => Self::AgentError,
         }
     }
 
     pub fn title(&self) -> String {
         match self {
-            Self::FirstRun => t!("setup.title.first_run").into_owned(),
             Self::AgentMissing => t!("setup.title.agent_missing").into_owned(),
             Self::AgentError => t!("setup.title.agent_error").into_owned(),
-            Self::SwitchAgent => t!("setup.title.switch_agent").into_owned(),
         }
     }
 }
@@ -197,10 +191,6 @@ impl SetupReason {
 /// A single option in the unified setup list.
 #[derive(Debug, Clone)]
 pub enum SetupOption {
-    /// FRE: select this agent to use
-    SelectAgent {
-        agent: crate::agent_check::AgentStatus,
-    },
     /// Preflight: reinstall via winget (automatic)
     Install {
         agent_id: String,
@@ -210,10 +200,6 @@ pub enum SetupOption {
     SignIn {
         agent_id: String,
         display_name: String,
-    },
-    /// Preflight: switch to a different agent
-    SwitchAgent {
-        agent: crate::agent_check::AgentStatus,
     },
     /// Preflight: retry connection (custom agent)
     Retry,
@@ -298,11 +284,6 @@ impl PreflightResult {
     }
 }
 
-/// Build the unified setup options list based on the setup reason.
-///
-/// - `FirstRun` / `SwitchAgent`: one `SelectAgent` per known agent.
-/// - `AgentMissing` / `AgentError`: diagnostic options for the current agent
-///   (reinstall, install manually, sign in, switch) depending on what failed.
 /// True for the auth failures a post-login reconnect can hit when the shared
 /// master CLI was spawned with a stale token: the plain `AuthRequired`, AND the
 /// `HandshakeFailed { stage: NewSession }` that the pipe client wraps a
@@ -326,54 +307,44 @@ fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFail
     )
 }
 
+/// Build the diagnostic setup options list based on the configured agent state:
+/// install when the CLI is missing and auto-installable, sign in for Copilot
+/// auth failures, or retry for external-auth / manually repaired cases.
 pub fn build_setup_options(
     reason: &SetupReason,
     current_agent_status: Option<&crate::agent_check::AgentStatus>,
-    all_agents: &[crate::agent_check::AgentStatus],
 ) -> Vec<SetupOption> {
-    match reason {
-        SetupReason::FirstRun | SetupReason::SwitchAgent => {
-            // Show Copilot (always) + any detected agents
-            all_agents
-                .iter()
-                .filter(|a| a.id == "copilot" || a.cli_found)
-                .map(|a| SetupOption::SelectAgent { agent: a.clone() })
-                .collect()
-        }
-        SetupReason::AgentMissing | SetupReason::AgentError => {
-            let mut opts = Vec::new();
-            if let Some(status) = current_agent_status {
-                if !status.cli_found {
-                    // CLI not found — offer install options
-                    if status.can_auto_install() {
-                        opts.push(SetupOption::Install {
-                            agent_id: status.id.clone(),
-                            display_name: status.display_name.clone(),
-                        });
-                    }
-                } else if !status.has_credential || *reason == SetupReason::AgentError {
-                    // CLI found but auth missing or known to have failed
-                    if status.id == "copilot" {
-                        // Copilot: we can drive the device-flow sign-in
-                        opts.push(SetupOption::SignIn {
-                            agent_id: status.id.clone(),
-                            display_name: status.display_name.clone(),
-                        });
-                    } else {
-                        // Other agents: user must sign in externally, then retry
-                        opts.push(SetupOption::Retry);
-                    }
-                }
-                // If custom/unknown agent, offer retry
-                if status.id == "unknown" || (!status.can_auto_install() && !status.cli_found) {
-                    opts.push(SetupOption::Retry);
-                }
+    let mut opts = Vec::new();
+    if let Some(status) = current_agent_status {
+        if !status.cli_found {
+            // CLI not found — offer install options
+            if status.can_auto_install() {
+                opts.push(SetupOption::Install {
+                    agent_id: status.id.clone(),
+                    display_name: status.display_name.clone(),
+                });
+            }
+        } else if !status.has_credential || *reason == SetupReason::AgentError {
+            // CLI found but auth missing or known to have failed
+            if status.id == "copilot" {
+                // Copilot: we can drive the device-flow sign-in
+                opts.push(SetupOption::SignIn {
+                    agent_id: status.id.clone(),
+                    display_name: status.display_name.clone(),
+                });
             } else {
+                // Other agents: user must sign in externally, then retry
                 opts.push(SetupOption::Retry);
             }
-            opts
         }
+        // If custom/unknown agent, offer retry
+        if status.id == "unknown" || (!status.can_auto_install() && !status.cli_found) {
+            opts.push(SetupOption::Retry);
+        }
+    } else {
+        opts.push(SetupOption::Retry);
     }
+    opts
 }
 
 // --- State types ---
@@ -4123,114 +4094,6 @@ impl App {
     fn handle_setup_enter(&mut self, opt: SetupOption) {
         tracing::info!(target: "setup_key", option = ?std::mem::discriminant(&opt), "handle_setup_enter");
         match opt {
-            SetupOption::SelectAgent { agent } | SetupOption::SwitchAgent { agent } => {
-                let agent_id = agent.id.clone();
-                let agent_name = agent.display_name.clone();
-                let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
-                self.current_agent_id = agent_id.clone();
-                tracing::info!(target: "setup_key", agent_id = %agent_id, cli_found = agent.cli_found, has_deferred = self.deferred_acp.is_some(), "SelectAgent/SwitchAgent entered");
-
-                if agent.cli_found {
-                    let has_cred = crate::agent_check::has_credential(&agent_id);
-                    tracing::info!(target: "setup_key", agent_id = %agent_id, has_cred = has_cred, "credential check");
-                    if has_cred {
-                        // Credential found → connect directly
-                        self.update_deferred_acp_agent(&agent_id);
-                        self.mode = AppMode::Chat;
-                        self.state =
-                            ConnectionState::Connecting(t!("connection.starting").into_owned());
-                        // FRE mode uses deferred_acp, preflight mode uses restart_tx
-                        if self.deferred_acp.is_some() {
-                            self.pending_acp_start = true;
-                        } else {
-                            let new_cmd = self.build_agent_cmd(&agent_id);
-                            let _ = self.restart_tx.send(RestartRequest {
-                                agent_cmd: Some(new_cmd),
-                            });
-                        }
-                        self.setup = None;
-                        let (enterprise_mode, enterprise_host) =
-                            copilot_enterprise_prefill(&agent_id);
-                        self.auth = Some(AuthState {
-                            agent_id: agent_id.clone(),
-                            agent_name,
-                            auth_hint: profile.auth_hint.to_string(),
-                            login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                            checking: false,
-                            status_message: String::new(),
-                            enterprise_mode,
-                            enterprise_host,
-                        });
-                    } else {
-                        // No credential → auth screen
-                        self.update_deferred_acp_agent(&agent_id);
-                        self.mode = AppMode::Auth;
-                        self.setup = None;
-                        let (enterprise_mode, enterprise_host) =
-                            copilot_enterprise_prefill(&agent_id);
-                        self.auth = Some(AuthState {
-                            agent_id: agent_id.clone(),
-                            agent_name,
-                            auth_hint: profile.auth_hint.to_string(),
-                            login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                            checking: false,
-                            status_message: String::new(),
-                            enterprise_mode,
-                            enterprise_host,
-                        });
-                    }
-                } else if agent.can_auto_install() {
-                    // Copilot not found → auto-install via winget
-                    if let Some(ref mut setup) = self.setup {
-                        setup.install_in_progress = true;
-                        setup.install_log.clear();
-                        setup.install_error = None;
-                        setup.preflight.agent_id = agent_id.clone();
-                        setup.preflight.display_name = agent_name.clone();
-                    }
-                    if let Some(ref tx) = self.event_tx {
-                        let tx = tx.clone();
-                        let id = agent_id.clone();
-                        tokio::task::spawn_local(async move {
-                            let on_line = |line: String| {
-                                tracing::info!(target: "install", "{}", line);
-                            };
-                            let _ = crate::agent_check::install(&id, on_line).await;
-                            let _ = tx.send(AppEvent::AgentInstallComplete);
-                        });
-                    }
-                } else {
-                    // CLI not found → rebuild setup as AgentMissing for this agent,
-                    // showing install/fix options instead of jumping to auth.
-                    let all_agents = crate::agent_check::check_all_agents();
-                    let agent_status = crate::agent_check::check_agent(&agent_id);
-                    let reason = SetupReason::AgentMissing;
-                    let options = build_setup_options(&reason, Some(&agent_status), &all_agents);
-                    self.mode = AppMode::Setup;
-                    self.setup = Some(SetupState {
-                        reason,
-
-                        selected_index: 0,
-                        preflight: PreflightResult {
-                            agent_id: agent_id.clone(),
-                            display_name: agent_name.clone(),
-                            cli_status: CheckStatus::Failed("Not found".to_string()),
-                            cli_path: None,
-                            auth_status: CheckStatus::Skipped,
-                            install_hint: profile.install_hint.to_string(),
-                            install_url: String::new(),
-                            auth_hint: profile.auth_hint.to_string(),
-                        },
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
-                        options,
-                        title: t!("setup.title.not_available").into_owned(),
-                        subtitle: t!("setup.subtitle.agent_missing", agent = &agent_name)
-                            .into_owned(),
-                    });
-                }
-            }
             SetupOption::Install { agent_id, .. } => {
                 if let Some(ref setup) = self.setup {
                     if setup.install_in_progress {
@@ -4617,9 +4480,8 @@ impl App {
         tracing::info!("show_signin_setup_screen: agent_id={}", agent_id);
         let profile = crate::agent_registry::lookup_profile(&agent_id);
         let agent_status = crate::agent_check::check_agent(profile.id);
-        let all_agents = crate::agent_check::check_all_agents();
         let reason = SetupReason::AgentError;
-        let options = build_setup_options(&reason, Some(&agent_status), &all_agents);
+        let options = build_setup_options(&reason, Some(&agent_status));
         self.mode = AppMode::Setup;
         self.state = ConnectionState::Disconnected;
         self.auth = None;
@@ -4937,9 +4799,8 @@ impl App {
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
                     let agent_status = crate::agent_check::check_agent(profile.id);
-                    let all_agents = crate::agent_check::check_all_agents();
                     let reason = SetupReason::AgentError;
-                    let options = build_setup_options(&reason, Some(&agent_status), &all_agents);
+                    let options = build_setup_options(&reason, Some(&agent_status));
                     self.mode = AppMode::Setup;
                     self.state = ConnectionState::Disconnected;
                     self.auth = None;
@@ -5320,8 +5181,7 @@ impl App {
                 if !result.all_passed() {
                     let reason = SetupReason::AgentMissing;
                     let current_status = crate::agent_check::check_agent(&result.agent_id);
-                    let all_agents = crate::agent_check::check_all_agents();
-                    let options = build_setup_options(&reason, Some(&current_status), &all_agents);
+                    let options = build_setup_options(&reason, Some(&current_status));
                     let title = reason.title().to_string();
                     let subtitle = if current_status.can_auto_install() {
                         t!(
@@ -6343,23 +6203,13 @@ impl App {
                     if status.cli_found {
                         // Install succeeded → proceed to connect or auth
                         let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
-                        let is_fre = self
-                            .setup
-                            .as_ref()
-                            .map(|s| s.reason == SetupReason::FirstRun)
-                            .unwrap_or(false);
 
                         if crate::agent_check::has_credential(&agent_id) {
                             // Has credential → connect directly
-                            if is_fre {
-                                self.update_deferred_acp_agent(&agent_id);
-                                self.pending_acp_start = true;
-                            } else {
-                                let new_cmd = self.build_agent_cmd(&agent_id);
-                                let _ = self.restart_tx.send(RestartRequest {
-                                    agent_cmd: Some(new_cmd),
-                                });
-                            }
+                            let new_cmd = self.build_agent_cmd(&agent_id);
+                            let _ = self.restart_tx.send(RestartRequest {
+                                agent_cmd: Some(new_cmd),
+                            });
                             self.mode = AppMode::Chat;
                             self.state =
                                 ConnectionState::Connecting(t!("connection.starting").into_owned());
@@ -6381,9 +6231,6 @@ impl App {
                             });
                         } else {
                             // No credential → auth screen
-                            if is_fre {
-                                self.update_deferred_acp_agent(&agent_id);
-                            }
                             self.mode = AppMode::Auth;
                             self.setup = None;
                             let (enterprise_mode, enterprise_host) =
@@ -6406,14 +6253,12 @@ impl App {
                 // Install didn't resolve the issue — stay on setup, refresh options
                 if let Some(ref mut setup) = self.setup {
                     setup.install_in_progress = false;
-                    let all_statuses = crate::agent_check::check_all_agents();
                     let current_status = if !agent_id.is_empty() {
                         Some(crate::agent_check::check_agent(&agent_id))
                     } else {
                         None
                     };
-                    setup.options =
-                        build_setup_options(&setup.reason, current_status.as_ref(), &all_statuses);
+                    setup.options = build_setup_options(&setup.reason, current_status.as_ref());
                 }
             }
             AppEvent::LoginProgress {
@@ -6778,12 +6623,10 @@ impl App {
                             .map(|a| a.agent_id.clone())
                             .unwrap_or_default();
                         if !agent_id.is_empty() {
-                            let all_agents = crate::agent_check::check_all_agents();
                             let agent_status = crate::agent_check::check_agent(&agent_id);
                             let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
                             let reason = SetupReason::AgentError;
-                            let options =
-                                build_setup_options(&reason, Some(&agent_status), &all_agents);
+                            let options = build_setup_options(&reason, Some(&agent_status));
                             self.mode = AppMode::Setup;
                             self.setup = Some(SetupState {
                                 reason,
@@ -14861,14 +14704,14 @@ mod tests {
         );
     }
 
-    /// Render: the setup/first-run screen must paint its title and subtitle.
+    /// Render: the setup diagnostic screen must paint its title and subtitle.
     /// Lifts `ui/setup.rs` (reached only via `AppMode::Setup`).
     #[test]
     fn render_setup_screen_shows_title() {
         let mut app = test_app();
         app.mode = AppMode::Setup;
         app.setup = Some(SetupState {
-            reason: SetupReason::FirstRun,
+            reason: SetupReason::AgentError,
             selected_index: 0,
             preflight: PreflightResult::passed_for_custom_agent("custom:qwen"),
             install_in_progress: false,
@@ -15381,9 +15224,6 @@ mod tests {
             install_log: vec!["WINGET_LOG_XYZ".into()],
             install_error: None,
             options: vec![
-                SetupOption::SelectAgent {
-                    agent: agent_status_for_test("copilot", "GitHub Copilot", false),
-                },
                 SetupOption::Install {
                     agent_id: "copilot".into(),
                     display_name: "GitHub Copilot".into(),
@@ -15391,9 +15231,6 @@ mod tests {
                 SetupOption::SignIn {
                     agent_id: "copilot".into(),
                     display_name: "GitHub Copilot".into(),
-                },
-                SetupOption::SwitchAgent {
-                    agent: agent_status_for_test("gemini", "Gemini", true),
                 },
                 SetupOption::Retry,
             ],
@@ -15445,15 +15282,13 @@ mod tests {
         let mut app = test_app();
         app.mode = AppMode::Setup;
         app.setup = Some(SetupState {
-            reason: SetupReason::FirstRun,
+            reason: SetupReason::AgentError,
             selected_index: 0,
             preflight: PreflightResult::passed_for_custom_agent("custom:x"),
             install_in_progress: false,
             install_log: vec!["INFO_LOG_XYZ".into()],
             install_error: None,
-            options: vec![SetupOption::SelectAgent {
-                agent: agent_status_for_test("copilot", "GitHub Copilot", true),
-            }],
+            options: vec![SetupOption::Retry],
             title: "info".into(),
             subtitle: "sub".into(),
         });

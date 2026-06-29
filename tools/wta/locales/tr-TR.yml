@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Akıllı Terminal'e hoş geldiniz!"
 setup.title.agent_missing: "Aracı bulunamadı"
 setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
-setup.title.switch_agent: "Aracı değiştir"
 setup.title.not_available: "Aracı kullanılamıyor"
 setup.title.sign_in: "Oturum açma gerekli"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektir
 setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Akıllı Terminal'de kullanmak istediğiniz varsayılan aracı seçin. Çalışma alanınızı"
-setup.description.fre_line2: "yapılandırmak ve ayarlamak için Settings'e gidebilirsiniz."
 
 setup.option.install: "%{agent} yükle"
 setup.option.install_hint: "(Otomatik olarak yüklenecek)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent} oturumu aç"
 setup.option.retry_detection: "Tekrar dene"
 setup.option.retry_auth: "Oturum açtım — tekrar bağlanmayı dene"
 setup.option.retry_connection: "Tekrar bağlanmayı dene"
-setup.option.switch_to: "%{agent} aracısına geç"
 setup.status.installing: "Yükleniyor..."
 setup.status.install_failed: "Yükleme başarısız: "
 setup.status.installing_winget: " winget üzerinden yükleniyor..."

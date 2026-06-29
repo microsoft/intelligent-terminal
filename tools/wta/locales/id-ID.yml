@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Selamat datang di Terminal Cerdas!"
 setup.title.agent_missing: "Agen AI tidak ditemukan"
 setup.title.agent_error: "Koneksi agen AI gagal"
-setup.title.switch_agent: "Ganti agen AI"
 setup.title.not_available: "Agen AI tidak tersedia"
 setup.title.sign_in: "Perlu masuk"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. 
 setup.subtitle.agent_auth: "Agen AI \"%{agent}\" Anda memerlukan autentikasi. Silakan masuk melalui agen AI, lalu pilih \"Saya sudah masuk\" di bawah. Untuk mengganti agen AI, buka Terminal Cerdas Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pilih CLI agen AI default yang ingin Anda gunakan di Terminal Cerdas. Anda dapat"
-setup.description.fre_line2: "membuka Settings untuk mengonfigurasi dan menyiapkan ruang kerja Anda."
 
 setup.option.install: "Instal %{agent}"
 setup.option.install_hint: "(Akan diinstal secara otomatis)"
@@ -23,7 +19,6 @@ setup.option.signin: "Masuk ke %{agent}"
 setup.option.retry_detection: "Coba lagi"
 setup.option.retry_auth: "Saya sudah masuk — coba sambungkan kembali"
 setup.option.retry_connection: "Coba sambungkan kembali"
-setup.option.switch_to: "Beralih ke %{agent}"
 setup.status.installing: "Menginstal..."
 setup.status.install_failed: "Instalasi gagal: "
 setup.status.installing_winget: " Menginstal melalui winget..."

@@ -1,9 +1,7 @@
 # Títulos da pantalla de configuración
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Benvido a Terminal Intelixente!"
 setup.title.agent_missing: "Non se atopou o axente"
 setup.title.agent_error: "Non se puido conectar co axente"
-setup.title.switch_agent: "Cambiar de axente"
 setup.title.not_available: "O axente non está dispoñible"
 setup.title.sign_in: "Cómpre iniciar sesión"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "O seu axente \"%{agent}\" require autenticación. 
 setup.subtitle.agent_auth: "O seu axente \"%{agent}\" require autenticación. Inicie sesión a través do axente e seleccione \"Xa iniciei sesión\" a continuación. Para cambiar de axente, vaia a Terminal Intelixente Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Escolla o CLI de axente predeterminado que desexa usar en Terminal Intelixente. Pode"
-setup.description.fre_line2: "ir a Settings para configurar o seu espazo de traballo."
 
 setup.option.install: "Instalar %{agent}"
 setup.option.install_hint: "(Instalarase automaticamente)"
@@ -23,7 +19,6 @@ setup.option.signin: "Iniciar sesión en %{agent}"
 setup.option.retry_detection: "Tentar de novo"
 setup.option.retry_auth: "Xa iniciei sesión — tentar conectar de novo"
 setup.option.retry_connection: "Tentar conectar de novo"
-setup.option.switch_to: "Cambiar a %{agent}"
 setup.status.installing: "Instalando..."
 setup.status.install_failed: "Erro na instalación: "
 setup.status.installing_winget: " Instalando mediante winget..."

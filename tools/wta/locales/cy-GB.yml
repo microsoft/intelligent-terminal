@@ -1,9 +1,7 @@
 # Teitlau sgrin gosod
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Croeso i Terfynell Ddeallus!"
 setup.title.agent_missing: "Ni chanfuwyd yr asiant"
 setup.title.agent_error: "Methwyd â chysylltu â'r asiant"
-setup.title.switch_agent: "Newid asiant"
 setup.title.not_available: "Nid yw'r asiant ar gael"
 setup.title.sign_in: "Mae angen mewngofnodi"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Dilynwc
 setup.subtitle.agent_auth: "Mae eich asiant \"%{agent}\" angen dilysu. Mewngofnodwch drwy'r asiant, yna dewiswch \"Rwyf wedi mewngofnodi\" isod. I newid asiantau, ewch i Terfynell Ddeallus Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Dewiswch yr asiant rhagosodedig yr hoffech ei ddefnyddio yn Terfynell Ddeallus. Gallwch"
-setup.description.fre_line2: "lywio i Settings i ffurfweddu a gosod eich gweithle."
 
 setup.option.install: "Gosod %{agent}"
 setup.option.install_hint: "(Bydd yn cael ei osod yn awtomatig)"
@@ -23,7 +19,6 @@ setup.option.signin: "Mewngofnodi i %{agent}"
 setup.option.retry_detection: "Ceisiwch eto"
 setup.option.retry_auth: "Rwyf wedi mewngofnodi — ceisiwch gysylltu eto"
 setup.option.retry_connection: "Ceisiwch gysylltu eto"
-setup.option.switch_to: "Newid i %{agent}"
 setup.status.installing: "Yn gosod..."
 setup.status.install_failed: "Methodd y gosodiad: "
 setup.status.installing_winget: " Yn gosod drwy winget..."

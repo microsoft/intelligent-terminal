@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
 setup.title.agent_missing: "Δεν βρέθηκε ο παράγοντας"
 setup.title.agent_error: "Η σύνδεση με τον παράγοντα απέτυχε"
-setup.title.switch_agent: "Αλλαγή παράγοντα"
 setup.title.not_available: "Ο παράγοντας δεν είναι διαθέσιμος"
 setup.title.sign_in: "Απαιτείται σύνδεση"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απα
 setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του παράγοντα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Επιλέξτε τον προεπιλεγμένο παράγοντα που θέλετε να χρησιμοποιήσετε στο Έξυπνο Τερματικό. Μπορείτε να"
-setup.description.fre_line2: "μεταβείτε στο Settings για ρύθμιση παραμέτρων του χώρου εργασίας σας."
 
 setup.option.install: "Εγκατάσταση %{agent}"
 setup.option.install_hint: "(Θα εγκατασταθεί αυτόματα)"
@@ -23,7 +19,6 @@ setup.option.signin: "Σύνδεση στο %{agent}"
 setup.option.retry_detection: "Δοκιμάστε ξανά"
 setup.option.retry_auth: "Έχω συνδεθεί — δοκιμάστε ξανά τη σύνδεση"
 setup.option.retry_connection: "Δοκιμάστε ξανά τη σύνδεση"
-setup.option.switch_to: "Εναλλαγή σε %{agent}"
 setup.status.installing: "Εγκατάσταση..."
 setup.status.install_failed: "Η εγκατάσταση απέτυχε: "
 setup.status.installing_winget: " Εγκατάσταση μέσω winget..."

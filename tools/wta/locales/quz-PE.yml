@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Allillanchu Yuyaysapa Terminal!"
 setup.title.agent_missing: "Mana agente tarikusqachu"
 setup.title.agent_error: "Agente t'inkiynin mana allinchu"
-setup.title.switch_agent: "Agente t'ikray"
 setup.title.not_available: "Agente mana kanchu"
 setup.title.sign_in: "Qallariy yaykuna"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agentiyki \"%{agent}\" yaykunata munan. Yaykunayki
 setup.subtitle.agent_auth: "Agentiyki \"%{agent}\" yaykunata munan. Agentewan yaykuy, chaymanta uraypi \"Yaykurqaniña\" nisqata akllay. Agente t'ikranapaq Yuyaysapa Terminal Settings > Agent nisqaman riy."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Yuyaysapa Terminal nisqapi llamk'achinaykipaq qallariy agente nisqata akllay. Qamqa"
-setup.description.fre_line2: "Settings nisqaman riy llamk'ana k'itiykita wakichinapaq."
 
 setup.option.install: "%{agent} churay"
 setup.option.install_hint: "(Kikinmanta churakunqa)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent} nisqaman yaykuy"
 setup.option.retry_detection: "Watiqmanta ruwasun"
 setup.option.retry_auth: "Yaykurqaniña — watiqmanta tinkiyta ruwasun"
 setup.option.retry_connection: "Watiqmanta tinkiyta ruwasun"
-setup.option.switch_to: "%{agent} nisqaman t’ikray"
 setup.status.installing: "Churachkan..."
 setup.status.install_failed: "Churay mana allinchu: "
 setup.status.installing_winget: " winget nisqawan churachkan..."

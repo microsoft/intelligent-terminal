@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Bun venit la Terminal Inteligent!"
 setup.title.agent_missing: "Agentul nu a fost găsit"
 setup.title.agent_error: "Conectarea la agent a eșuat"
-setup.title.switch_agent: "Schimbă agentul"
 setup.title.not_available: "Agentul nu este disponibil"
 setup.title.sign_in: "Autentificare necesară"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agentul \"%{agent}\" necesită autentificare. Urma
 setup.subtitle.agent_auth: "Agentul \"%{agent}\" necesită autentificare. Conectați-vă prin agent, apoi selectați \"M-am conectat\" mai jos. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Alegeți agentul implicit pe care doriți să îl utilizați în Terminal Inteligent. Puteți"
-setup.description.fre_line2: "naviga la Settings pentru a configura spațiul de lucru."
 
 setup.option.install: "Instalare %{agent}"
 setup.option.install_hint: "(Va fi instalat automat)"
@@ -23,7 +19,6 @@ setup.option.signin: "Conectare la %{agent}"
 setup.option.retry_detection: "Reîncercați"
 setup.option.retry_auth: "M-am conectat — reîncercați conectarea"
 setup.option.retry_connection: "Reîncercați conectarea"
-setup.option.switch_to: "Comută la %{agent}"
 setup.status.installing: "Se instalează..."
 setup.status.install_failed: "Instalarea a eșuat: "
 setup.status.installing_winget: " Se instalează prin winget..."

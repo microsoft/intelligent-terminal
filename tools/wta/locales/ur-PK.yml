@@ -1,9 +1,7 @@
 # سیٹ اپ اسکرین عنوانات
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "ذہین ٹرمینل میں خوش آمدید!"
 setup.title.agent_missing: "ایجنٹ نہیں ملا"
 setup.title.agent_error: "ایجنٹ کنیکشن ناکام"
-setup.title.switch_agent: "ایجنٹ تبدیل کریں"
 setup.title.not_available: "ایجنٹ دستیاب نہیں ہے"
 setup.title.sign_in: "سائن ان ضروری ہے"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "آپ کے ایجنٹ \"%{agent}\" کو تصدیق 
 setup.subtitle.agent_auth: "آپ کے ایجنٹ \"%{agent}\" کو تصدیق کی ضرورت ہے۔ براہ کرم ایجنٹ کے ذریعے سائن ان کریں، پھر نیچے \"میں نے سائن ان کر لیا\" منتخب کریں۔ ایجنٹ تبدیل کرنے کے لیے ذہین ٹرمینل Settings > Agent پر جائیں۔"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "ذہین ٹرمینل میں استعمال کرنے کے لیے ڈیفالٹ ایجنٹ منتخب کریں۔ آپ"
-setup.description.fre_line2: "اپنی ورک اسپیس کو ترتیب دینے اور سیٹ اپ کرنے کے لیے Settings پر جا سکتے ہیں۔"
 
 setup.option.install: "%{agent} انسٹال کریں"
 setup.option.install_hint: "(خودکار طور پر انسٹال ہو جائے گا)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent} میں سائن ان کریں"
 setup.option.retry_detection: "دوبارہ کوشش کریں"
 setup.option.retry_auth: "میں نے سائن ان کر لیا — دوبارہ جوڑنے کی کوشش کریں"
 setup.option.retry_connection: "دوبارہ جوڑنے کی کوشش کریں"
-setup.option.switch_to: "%{agent} پر سوئچ کریں"
 setup.status.installing: "انسٹال ہو رہا ہے..."
 setup.status.install_failed: "انسٹال ناکام: "
 setup.status.installing_winget: " winget کے ذریعے انسٹال ہو رہا ہے..."

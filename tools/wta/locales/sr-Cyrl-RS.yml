@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Добродошли у Интелигентни Терминал!"
 setup.title.agent_missing: "Агент није пронађен"
 setup.title.agent_error: "Повезивање са агентом није успело"
-setup.title.switch_agent: "Промени агента"
 setup.title.not_available: "Агент није доступан"
 setup.title.sign_in: "Потребна је пријава"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" захтева ау
 setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" захтева аутентификацију. Пријавите се преко агента, па изаберите \"Пријавио/ла сам се\" испод. За промену агента идите у Интелигентни Терминал Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Изаберите подразумеваног агента који желите да користите у Интелигентни Терминал. Можете"
-setup.description.fre_line2: "отићи у Settings да конфигуришете и подесите свој радни простор."
 
 setup.option.install: "Инсталирај %{agent}"
 setup.option.install_hint: "(Биће инсталирано аутоматски)"
@@ -23,7 +19,6 @@ setup.option.signin: "Пријави се у %{agent}"
 setup.option.retry_detection: "Покушај поново"
 setup.option.retry_auth: "Пријавио/ла сам се — покушај поново да се повежеш"
 setup.option.retry_connection: "Покушај поново да се повежеш"
-setup.option.switch_to: "Пребаци на %{agent}"
 setup.status.installing: "Инсталирање..."
 setup.status.install_failed: "Инсталација није успела: "
 setup.status.installing_winget: " Инсталирање преко winget..."

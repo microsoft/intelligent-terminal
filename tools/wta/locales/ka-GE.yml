@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "ჭკვიანი ტერმინალი-ში მოგესალმებით!"
 setup.title.agent_missing: "აგენტი ვერ მოიძებნა"
 setup.title.agent_error: "აგენტთან კავშირი ვერ შედგა"
-setup.title.switch_agent: "აგენტის შეცვლა"
 setup.title.not_available: "აგენტი მიუწვდომელია"
 setup.title.sign_in: "საჭიროა შესვლა"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\"
 setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტით და შემდეგ აირჩიეთ \"შევედი\" ქვემოთ. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "აირჩიეთ ნაგულისხმევი აგენტი, რომლის გამოყენებაც გსურთ ჭკვიანი ტერმინალი-ში. შეგიძლიათ"
-setup.description.fre_line2: "გადახვიდეთ Settings-ში სამუშაო გარემოს კონფიგურაციისთვის."
 
 setup.option.install: "%{agent}-ის დაინსტალირება"
 setup.option.install_hint: "(ავტომატურად დაინსტალირდება)"
@@ -23,7 +19,6 @@ setup.option.signin: "შესვლა %{agent}-ში"
 setup.option.retry_detection: "სცადეთ თავიდან"
 setup.option.retry_auth: "შევედი — კავშირის ხელახლა სცადეთ"
 setup.option.retry_connection: "კავშირის ხელახლა სცადეთ"
-setup.option.switch_to: "გადართვა %{agent}-ზე"
 setup.status.installing: "ინსტალაცია..."
 setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
 setup.status.installing_winget: " winget-ით ინსტალაცია..."

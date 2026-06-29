@@ -1,9 +1,7 @@
 # Заголовки экрана настройки
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Добро пожаловать в Интеллектуальный Терминал!"
 setup.title.agent_missing: "Агент не найден"
 setup.title.agent_error: "Сбой подключения к агенту"
-setup.title.switch_agent: "Сменить агента"
 setup.title.not_available: "Агент недоступен"
 setup.title.sign_in: "Требуется вход"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" требует ау
 setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" требует аутентификации. Войдите через агента, затем выберите \"Я вошёл\" ниже. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Выберите агента по умолчанию для использования в Интеллектуальный Терминал. Вы можете"
-setup.description.fre_line2: "перейти в настройки для настройки рабочей области."
 
 setup.option.install: "Установить %{agent}"
 setup.option.install_hint: "(Будет установлен автоматически)"
@@ -23,7 +19,6 @@ setup.option.signin: "Войти в %{agent}"
 setup.option.retry_detection: "Повторить попытку"
 setup.option.retry_auth: "Я вошёл — попробовать подключиться снова"
 setup.option.retry_connection: "Попробовать подключиться снова"
-setup.option.switch_to: "Переключиться на %{agent}"
 setup.status.installing: "Установка..."
 setup.status.install_failed: "Ошибка установки: "
 setup.status.installing_winget: " Установка через winget..."

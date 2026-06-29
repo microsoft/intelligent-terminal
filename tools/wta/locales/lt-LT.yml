@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Sveiki atvykę į Išmanusis Terminalas!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
-setup.title.switch_agent: "Pakeisti agentą"
 setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifika
 setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Išmanusis Terminalas. Galite"
-setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
 
 setup.option.install: "Įdiegti %{agent}"
 setup.option.install_hint: "(Bus įdiegta automatiškai)"
@@ -23,7 +19,6 @@ setup.option.signin: "Prisijungti prie %{agent}"
 setup.option.retry_detection: "Bandyti dar kartą"
 setup.option.retry_auth: "Prisijungiau — bandyti prisijungti dar kartą"
 setup.option.retry_connection: "Bandyti prisijungti dar kartą"
-setup.option.switch_to: "Perjungti į %{agent}"
 setup.status.installing: "Diegiama..."
 setup.status.install_failed: "Diegimas nepavyko: "
 setup.status.installing_winget: " Diegiama per winget..."

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Selamat datang ke Terminal Pintar!"
 setup.title.agent_missing: "Ejen AI tidak ditemui"
 setup.title.agent_error: "Sambungan ejen AI gagal"
-setup.title.switch_agent: "Tukar ejen AI"
 setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. I
 setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pilih CLI ejen AI lalai yang ingin anda gunakan dalam Terminal Pintar. Anda boleh"
-setup.description.fre_line2: "pergi ke Settings untuk mengkonfigurasi dan menyediakan ruang kerja anda."
 
 setup.option.install: "Pasang %{agent}"
 setup.option.install_hint: "(Akan dipasang secara automatik)"
@@ -23,7 +19,6 @@ setup.option.signin: "Log masuk ke %{agent}"
 setup.option.retry_detection: "Cuba lagi"
 setup.option.retry_auth: "Saya telah log masuk — cuba sambung kembali"
 setup.option.retry_connection: "Cuba sambung kembali"
-setup.option.switch_to: "Tukar ke %{agent}"
 setup.status.installing: "Memasang..."
 setup.status.install_failed: "Pemasangan gagal: "
 setup.status.installing_winget: " Memasang melalui winget..."

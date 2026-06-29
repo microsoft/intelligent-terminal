@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Dobrodošli u Inteligentni Terminal!"
 setup.title.agent_missing: "Agent nije pronađen"
 setup.title.agent_error: "Povezivanje s agentom nije uspjelo"
-setup.title.switch_agent: "Promijeni agenta"
 setup.title.not_available: "Agent nije dostupan"
 setup.title.sign_in: "Potrebna je prijava"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahtijeva autentifikaciju.
 setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahtijeva autentifikaciju. Prijavite se preko agenta, pa odaberite \"Prijavio/la sam se\" ispod. Za promjenu agenta idite u Inteligentni Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Izaberite podrazumijevanog agenta koji želite koristiti u Inteligentni Terminal. Možete"
-setup.description.fre_line2: "otići u Settings da konfigurirate i postavite svoj radni prostor."
 
 setup.option.install: "Instaliraj %{agent}"
 setup.option.install_hint: "(Bit će instalirano automatski)"
@@ -23,7 +19,6 @@ setup.option.signin: "Prijavi se u %{agent}"
 setup.option.retry_detection: "Pokušaj ponovo"
 setup.option.retry_auth: "Prijavio/la sam se — pokušaj ponovo povezati"
 setup.option.retry_connection: "Pokušaj ponovo povezati"
-setup.option.switch_to: "Prebaci na %{agent}"
 setup.status.installing: "Instaliranje..."
 setup.status.install_failed: "Instalacija nije uspjela: "
 setup.status.installing_winget: " Instaliranje preko winget..."

@@ -1,9 +1,7 @@
 # Títols de la pantalla de configuració
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Vos donem la benvinguda a l'Terminal Intel·ligent!"
 setup.title.agent_missing: "No s'ha trobat l'agent"
 setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
-setup.title.switch_agent: "Canvia d'agent"
 setup.title.not_available: "L'agent no està disponible"
 setup.title.sign_in: "Cal iniciar la sessió"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requerix autenticaci�
 setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requerix autenticació. Inicieu la sessió per mitjà de l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per a canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Trieu el CLI d'agent predeterminat que voleu utilitzar en Terminal Intel·ligent. Podeu"
-setup.description.fre_line2: "anar a Settings per a configurar el vostre espai de treball."
 
 setup.option.install: "Instal·la %{agent}"
 setup.option.install_hint: "(S'instal·larà automàticament)"
@@ -23,7 +19,6 @@ setup.option.signin: "Inicia la sessió en %{agent}"
 setup.option.retry_detection: "Torneu a provar"
 setup.option.retry_auth: "He iniciat la sessió — proveu de connectar de nou"
 setup.option.retry_connection: "Proveu de connectar de nou"
-setup.option.switch_to: "Canvia a %{agent}"
 setup.status.installing: "S'està instal·lant..."
 setup.status.install_failed: "Error en la instal·lació: "
 setup.status.installing_winget: " S'està instal·lant per mitjà de winget..."

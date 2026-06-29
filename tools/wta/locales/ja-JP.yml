@@ -1,8 +1,6 @@
 # セットアップ画面タイトル
-setup.title.first_run: "インテリジェント ターミナルへようこそ！"
 setup.title.agent_missing: "エージェントが見つかりません"
 setup.title.agent_error: "エージェントへの接続に失敗しました"
-setup.title.switch_agent: "エージェントを切り替える"
 setup.title.not_available: "エージェントを利用できません"
 setup.title.sign_in: "サインインが必要です"
 
@@ -11,8 +9,6 @@ setup.subtitle.copilot_missing: "エージェント \"%{agent}\" がインスト
 setup.subtitle.agent_missing: "エージェント \"%{agent}\" がインストールされていません。手動で再インストールしてから再試行してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
 setup.subtitle.copilot_auth: "エージェント \"%{agent}\" には認証が必要です。以下の手順に従ってサインインしてください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
 setup.subtitle.agent_auth: "エージェント \"%{agent}\" には認証が必要です。エージェントからサインインし、下の \"サインイン済み\" を選択してください。エージェントを切り替えるにはインテリジェント ターミナル Settings > Agent に移動してください。"
-setup.description.fre_line1: "インテリジェント ターミナルで使用する既定のエージェントを選択してください。"
-setup.description.fre_line2: "設定に移動してワークスペースを構成およびセットアップできます。"
 
 setup.option.install: "%{agent} をインストール"
 setup.option.install_hint: "（自動的にインストールされます）"
@@ -20,7 +16,6 @@ setup.option.signin: "%{agent} にサインイン"
 setup.option.retry_detection: "再試行"
 setup.option.retry_auth: "サインイン済み — 再接続を試行"
 setup.option.retry_connection: "再接続を試行"
-setup.option.switch_to: "%{agent} に切り替え"
 setup.status.installing: "インストール中..."
 setup.status.install_failed: "インストール失敗: "
 setup.status.installing_winget: " winget 経由でインストール中..."

@@ -176,9 +176,8 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
-    /// Enter setup mode with the given reason. The agent pane shows a
-    /// Getting Started screen instead of connecting directly.
-    /// Values: first-run, agent-missing, agent-error, switch-agent
+    /// Enter diagnostic setup mode with the given reason instead of connecting directly.
+    /// Values: agent-missing, agent-error
     #[arg(long)]
     setup: Option<String>,
 
@@ -2802,7 +2801,7 @@ async fn run_acp_app(
             // the wta cmdline. `open_agents_view_for_tab` fires the
             // `session/list` refetch to master that populates the view.
             //
-            // Skip in setup mode: --setup takes the FRE path and the user
+            // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
             if cli.setup.is_none() && cli.initial_view == InitialView::Sessions {
                 tracing::info!(target: "initial_view", "starting in agent session view");
@@ -2838,17 +2837,13 @@ async fn run_acp_app(
             // Enter setup mode if --setup <reason> was passed.
             tracing::info!("cli.setup = {:?}", cli.setup);
             if let Some(ref reason_str) = cli.setup {
-                tracing::info!("Entering FRE setup mode: reason={}", reason_str);
+                tracing::info!("Entering diagnostic setup mode: reason={}", reason_str);
                 let reason = app::SetupReason::from_str(reason_str);
 
                 app_state.mode = app::AppMode::Setup;
-                let all_agent_statuses = agent_check::check_all_agents();
-                let options = app::build_setup_options(&reason, None, &all_agent_statuses);
+                let options = app::build_setup_options(&reason, None);
                 let title = reason.title().to_string();
-                let subtitle = match reason {
-                    app::SetupReason::FirstRun => "Getting started".to_string(),
-                    _ => "Fix the issue to continue".to_string(),
-                };
+                let subtitle = "Fix the issue to continue".to_string();
                 app_state.setup = Some(app::SetupState {
                     reason,
                     selected_index: 0,

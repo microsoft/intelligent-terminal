@@ -1,9 +1,7 @@
 # அமைவு திரை தலைப்புகள்
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "அறிவாண் முனையம்-க்கு வரவேற்கிறோம்!"
 setup.title.agent_missing: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.agent_error: "ஏஜெண்ட் இணைப்பு தோல்வியடைந்தது"
-setup.title.switch_agent: "முகவரை மாற்று"
 setup.title.not_available: "ஏஜெண்ட் கிடைக்கவில்லை"
 setup.title.sign_in: "உள்நுழைவு தேவை"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "உங்கள் ஏஜெண்ட் \"%{agent
 setup.subtitle.agent_auth: "உங்கள் எஜென்ட் \"%{agent}\" அங்கீகாரம் தேவைப்படுகிறது. எஜென்ட்டின் மூலம் உள்நுழைந்து, பின்னர் கீழே \"நான் உள்நுழைந்துவிட்டேன்\" என்பதைத் தேர்ந்தெடுக்கவும். எஜென்ட்களை மாற்ற, Settings-க்கு செல்லவும்."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "அறிவாண் முனையம்-இல் பயன்படுத்த விரும்பும் இயல்புநிலை எஜென்டைத் தேர்ந்தெடுக்கவும். நீங்கள்"
-setup.description.fre_line2: "உங்கள் பணியிடத்தை உள்ளமைக்க Settings-க்குச் செல்லலாம்."
 
 setup.option.install: "%{agent} மீண்டும் நிறுவு"
 setup.option.install_hint: "(தானாக நிறுவப்படும்)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent}-ல் உள்நுழையவும்"
 setup.option.retry_detection: "மீண்டும் முயற்சிக்கவும்"
 setup.option.retry_auth: "நான் உள்நுழைந்துவிட்டேன் — மீண்டும் இணைக்க முயற்சிக்கவும்"
 setup.option.retry_connection: "மீண்டும் இணைக்க முயற்சிக்கவும்"
-setup.option.switch_to: "%{agent}-க்கு மாறு"
 setup.status.installing: "நிறுவப்படுகிறது..."
 setup.status.install_failed: "நிறுவல் தோல்வி: "
 setup.status.installing_winget: " winget வழியாக நிறுவப்படுகிறது..."

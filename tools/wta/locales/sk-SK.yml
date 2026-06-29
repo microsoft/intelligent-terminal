@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Vitajte v Inteligentný Terminál!"
 setup.title.agent_missing: "Agenta sa nepodarilo nájsť"
 setup.title.agent_error: "Pripojenie k agentovi zlyhalo"
-setup.title.switch_agent: "Prepnúť agenta"
 setup.title.not_available: "Agent nie je k dispozícii"
 setup.title.sign_in: "Vyžaduje sa prihlásenie"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Postu
 setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Prihláste sa cez agenta a potom vyberte nižšie \"Prihlásil/a som sa\". Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Vyberte predvoleného agenta, ktorý chcete používať v Inteligentný Terminál. Môžete"
-setup.description.fre_line2: "prejsť do Settings a nakonfigurovať svoj pracovný priestor."
 
 setup.option.install: "Inštalovať %{agent}"
 setup.option.install_hint: "(Bude nainštalovaný automaticky)"
@@ -23,7 +19,6 @@ setup.option.signin: "Prihlásiť sa do %{agent}"
 setup.option.retry_detection: "Skúsiť znova"
 setup.option.retry_auth: "Prihlásil/a som sa — skúsiť sa znova pripojiť"
 setup.option.retry_connection: "Skúsiť sa znova pripojiť"
-setup.option.switch_to: "Prepnúť na %{agent}"
 setup.status.installing: "Inštalácia..."
 setup.status.install_failed: "Inštalácia zlyhala: "
 setup.status.installing_winget: " Inštalácia cez winget..."

@@ -1,9 +1,7 @@
 # Opstellingskerm titels
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Welkom by Intelligente Terminaal!"
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
-setup.title.switch_agent: "Wissel agent"
 setup.title.not_available: "Agent is nie beskikbaar nie"
 setup.title.sign_in: "Aanmelding vereis"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die st
 setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Kies die verstek agent wat jy in Intelligente Terminaal wil gebruik. Jy kan"
-setup.description.fre_line2: "na Settings navigeer om jou werkspasie op te stel en te konfigureer."
 
 setup.option.install: "Installeer %{agent}"
 setup.option.install_hint: "(Sal outomaties geïnstalleer word)"
@@ -23,7 +19,6 @@ setup.option.signin: "Meld aan by %{agent}"
 setup.option.retry_detection: "Probeer weer"
 setup.option.retry_auth: "Ek het aangemeld — probeer weer koppel"
 setup.option.retry_connection: "Probeer weer koppel"
-setup.option.switch_to: "Wissel na %{agent}"
 setup.status.installing: "Installeer tans..."
 setup.status.install_failed: "Installasie het misluk: "
 setup.status.installing_winget: " Installeer tans via winget..."

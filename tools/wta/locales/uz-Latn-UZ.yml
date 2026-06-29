@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Aqlli terminal-ga xush kelibsiz!"
 setup.title.agent_missing: "Agent topilmadi"
 setup.title.agent_error: "Agentga ulanish amalga oshmadi"
-setup.title.switch_agent: "Agentni almashtirish"
 setup.title.not_available: "Agent mavjud emas"
 setup.title.sign_in: "Tizimga kirish talab qilinadi"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab q
 setup.subtitle.agent_auth: "Agentingiz \"%{agent}\" autentifikatsiyani talab qiladi. Iltimos, agent orqali tizimga kiring, keyin pastda \"Men tizimga kirdim\" ni tanlang. Agentni almashtirish uchun Aqlli terminal Settings > Agent boʻlimiga oʻting."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Aqlli terminal-da foydalanmoqchi boʻlgan standart agentni tanlang. Ish"
-setup.description.fre_line2: "muhitingizni sozlash va oʻrnatish uchun Settings boʻlimiga oʻtishingiz mumkin."
 
 setup.option.install: "%{agent} qayta oʻrnatish"
 setup.option.install_hint: "(Avtomatik oʻrnatiladi)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent} tizimga kirish"
 setup.option.retry_detection: "Qayta urinib koʻring"
 setup.option.retry_auth: "Men tizimga kirdim — qayta ulanib koʻring"
 setup.option.retry_connection: "Qayta ulanib koʻring"
-setup.option.switch_to: "%{agent} ga almashtirish"
 setup.status.installing: "Oʻrnatilmoqda..."
 setup.status.install_failed: "Oʻrnatish amalga oshmadi: "
 setup.status.installing_winget: " winget orqali oʻrnatilmoqda..."

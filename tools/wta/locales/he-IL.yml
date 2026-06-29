@@ -1,9 +1,7 @@
 # כותרות מסך הגדרה
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "ברוכים הבאים ל-מסוף חכם!"
 setup.title.agent_missing: "הסוכן לא נמצא"
 setup.title.agent_error: "החיבור לסוכן נכשל"
-setup.title.switch_agent: "החלף סוכן"
 setup.title.not_available: "הסוכן אינו זמין"
 setup.title.sign_in: "נדרשת כניסה"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "הסוכן \"%{agent}\" דורש אימות. בצ�
 setup.subtitle.agent_auth: "הסוכן \"%{agent}\" דורש אימות. היכנס דרך הסוכן ולאחר מכן בחר \"נכנסתי\" למטה. כדי להחליף סוכנים, עבור אל מסוף חכם Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "בחר את הסוכן שברצונך להשתמש בו כברירת מחדל ב-מסוף חכם. ניתן"
-setup.description.fre_line2: "לנווט אל Settings כדי להגדיר את סביבת העבודה שלך."
 
 setup.option.install: "התקן את %{agent}"
 setup.option.install_hint: "(יותקן באופן אוטומטי)"
@@ -23,7 +19,6 @@ setup.option.signin: "היכנס אל %{agent}"
 setup.option.retry_detection: "נסה שוב"
 setup.option.retry_auth: "נכנסתי — נסה להתחבר שוב"
 setup.option.retry_connection: "נסה להתחבר שוב"
-setup.option.switch_to: "עבור אל %{agent}"
 setup.status.installing: "מתקין..."
 setup.status.install_failed: "ההתקנה נכשלה: "
 setup.status.installing_winget: " מתקין באמצעות winget..."

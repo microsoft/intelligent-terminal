@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Ağıllı Terminal-a xoş gəlmisiniz!"
 setup.title.agent_missing: "Agent tapılmadı"
 setup.title.agent_error: "Agent bağlantısı uğursuz oldu"
-setup.title.switch_agent: "Agenti dəyiş"
 setup.title.not_available: "Agent əlçatan deyil"
 setup.title.sign_in: "Daxil olma tələb olunur"
 
@@ -14,8 +12,6 @@ setup.subtitle.copilot_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələ
 setup.subtitle.agent_auth: "Agentiniz \"%{agent}\" kimlik doğrulaması tələb edir. Lütfən agent vasitəsilə daxil olun, sonra aşağıda \"Daxil oldum\" seçin. Agenti dəyişmək üçün Ağıllı Terminal Settings > Agent-ə keçin."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Ağıllı Terminal-da istifadə etmək istədiyiniz standart agenti seçin. İş sahənizi"
-setup.description.fre_line2: "konfiqurasiya etmək və qurmaq üçün Settings-ə keçə bilərsiniz."
 
 setup.option.install: "%{agent} quraşdır"
 setup.option.install_hint: "(Avtomatik quraşdırılacaq)"
@@ -23,7 +19,6 @@ setup.option.signin: "%{agent} daxil ol"
 setup.option.retry_detection: "Yenidən cəhd edin"
 setup.option.retry_auth: "Daxil oldum — yenidən qoşulmağa cəhd edin"
 setup.option.retry_connection: "Yenidən qoşulmağa cəhd edin"
-setup.option.switch_to: "%{agent} dəyiş"
 setup.status.installing: "Quraşdırılır..."
 setup.status.install_failed: "Quraşdırma uğursuz oldu: "
 setup.status.installing_winget: " winget vasitəsilə quraşdırılır..."
