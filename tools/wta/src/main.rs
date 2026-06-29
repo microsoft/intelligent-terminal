@@ -1996,8 +1996,13 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
     let windows_arr = windows.get("windows")?.as_array()?;
 
     for win in windows_arr {
-        let window_id = win.get("window_id")?.as_str()?;
-        let tabs = shell_mgr.wt_list_tabs(window_id).await.ok()?;
+        // window_id may be a JSON string or number (COM returns numeric) — accept both.
+        let window_id = match win.get("window_id") {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(serde_json::Value::Number(n)) => n.to_string(),
+            _ => continue,
+        };
+        let tabs = shell_mgr.wt_list_tabs(&window_id).await.ok()?;
         let tabs_arr = tabs.get("tabs")?.as_array()?;
 
         for tab in tabs_arr {
@@ -2006,7 +2011,7 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
                 Some(serde_json::Value::Number(n)) => n.to_string(),
                 _ => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(window_id)).await.ok()?;
+            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(&window_id)).await.ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {
