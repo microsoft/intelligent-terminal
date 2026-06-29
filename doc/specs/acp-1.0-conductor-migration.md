@@ -603,3 +603,22 @@ connection/auth state machine, the tab registry) outside this spec's scope.
   came from): `symposium-dev/symposium-acp`.
 - Existing internal design: `doc/specs/Multi-window-agent-pane.md`,
   `tools/wta/AGENTS.md`.
+
+## Implementation status (Phase 0)
+
+Branch `dev/yuazha/acp-1.0-phase0`. Build/test from the **worktree root** (not
+`tools/wta/src` — that dir's `rust-toolchain.toml` pins an uninstalled channel):
+`cargo build --manifest-path tools/wta/Cargo.toml`. Baseline = 1017 tests.
+
+**Done — chunk 1 (committed):** Cargo bump 0.10→1.0; dropped stabilized features
+`unstable_session_list`/`unstable_session_model`; ~538 schema-path moves
+(`acp::<T>`/`agent_client_protocol::<T>` → `acp::schema::v1::<T>`). 311→**47**
+errors, all structural. **No `agent-client-protocol-tokio`** (stuck at 0.11.1,
+needs core ^0.11): use core `acp::AcpAgent`/`Stdio`/`ByteStreams`.
+
+**TODO — chunks 2-4 (47 errors):** `master/mod.rs` 22, `client.rs` 15, `main.rs`
+6, `probe.rs` 6, `model_select.rs` 3. Patterns:
+- `acp::ClientSideConnection/AgentSideConnection` (removed) → `acp::Client/Agent.builder().on_receive_*(...).connect_with(ByteStreams::new(out,in), |cx| ...)`
+- `conn.new_session()/prompt()/initialize()/cancel().await` → `cx.send_request(req).block_task().await` / `SessionBuilder`
+- 5× `impl acp::Client/Agent` → builder callbacks (WtaClient, HelperHandler, MasterClient, NoopClient, PendingNewSessionAgent)
+- remove `LocalSet`/`spawn_local`/`handle_io`; master is a `Proxy/Conductor` (N:1 multiplexer stays bespoke); then `mock_agent_tests.rs` harness; then `cargo test` → 1017.
