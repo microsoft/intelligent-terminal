@@ -28,6 +28,9 @@
 //! local model providers without extra config.
 
 use std::collections::HashSet;
+use std::future::Future;
+
+use foundry_local_sdk::{FoundryLocalConfig, FoundryLocalManager};
 
 use crate::agent::{ModelCatalog, ModelEntry, ModelKind};
 use crate::llm_provider::{discover_local_models, LlmProviderConfig};
@@ -120,12 +123,13 @@ impl ModelRuntime for CloudRuntime {
     }
 }
 
-/// Microsoft Foundry Local, discovered either from explicit OpenAI-compatible
-/// env vars or by probing a small set of localhost endpoints. This keeps the
-/// provider zero-config in the common local case while still honoring an
-/// explicit provider URL when the user sets one.
+/// Microsoft Foundry Local, discovered through the Rust SDK when cached local
+/// models are available. This keeps the provider zero-config in the common
+/// local case while still honoring an explicit provider URL when the user sets
+/// one.
 pub struct FoundryRuntime {
     cfg: Option<LlmProviderConfig>,
+    cached_models: Vec<String>,
 }
 
 impl FoundryRuntime {
@@ -133,14 +137,24 @@ impl FoundryRuntime {
     pub fn from_env() -> Self {
         Self {
             cfg: foundry_cfg_from_env(),
+            cached_models: Vec::new(),
         }
     }
 
-    /// Probe the ambient env first, then a small set of common localhost
-    /// endpoints, and return the first reachable Foundry-compatible provider.
+    /// Probe the Foundry Local SDK for cached models, falling back to the
+    /// ambient env when no SDK-managed models are present.
     pub fn detect() -> Self {
+        let cached_models = foundry_cached_model_ids();
+        if !cached_models.is_empty() {
+            return Self {
+                cfg: None,
+                cached_models,
+            };
+        }
+
         Self {
-            cfg: discover_foundry_cfg(),
+            cfg: foundry_cfg_from_env(),
+            cached_models,
         }
     }
 }
@@ -153,9 +167,13 @@ impl ModelRuntime for FoundryRuntime {
         "Foundry Local"
     }
     fn is_available(&self) -> bool {
-        self.cfg.is_some()
+        self.cfg.is_some() || !self.cached_models.is_empty()
     }
     fn list_models(&self) -> Vec<String> {
+        if !self.cached_models.is_empty() {
+            return self.cached_models.clone();
+        }
+
         match self.cfg.as_ref().and_then(|cfg| cfg.base_url.as_deref()) {
             Some(url) if !url.is_empty() => discover_local_models(url)
                 .into_iter()
@@ -165,17 +183,51 @@ impl ModelRuntime for FoundryRuntime {
         }
     }
     fn description(&self) -> Option<String> {
-        self.cfg
-            .as_ref()?
-            .base_url
-            .as_deref()
+        if let Some(url) = self
+            .cfg
+            .as_ref()
+            .and_then(|cfg| cfg.base_url.as_deref())
             .filter(|s| !s.is_empty())
-            .map(|url| format!("Local provider · {url}"))
+        {
+            return Some(format!("Local provider · {url}"));
+        }
+
+        if !self.cached_models.is_empty() {
+            return Some("Foundry Local".to_string());
+        }
+
+        None
     }
     fn provider_config(&self, model: &str) -> Option<LlmProviderConfig> {
-        let mut cfg = self.cfg.as_ref()?.clone();
-        cfg.model = Some(model.to_string());
-        Some(cfg)
+        if let Some(mut cfg) = self.cfg.as_ref().cloned() {
+            cfg.model = Some(model.to_string());
+            return Some(cfg);
+        }
+
+        if self.cached_models.is_empty() {
+            return None;
+        }
+
+        let base_url = foundry_service_base_url()?;
+        Some(LlmProviderConfig {
+            base_url: Some(base_url),
+            api_key: None,
+            provider_type: Some("openai".to_string()),
+            model: Some(model.to_string()),
+            offline: false,
+        })
+    }
+    fn ensure_running(&self) -> std::io::Result<()> {
+        if self.cfg.is_some() || self.cached_models.is_empty() {
+            return Ok(());
+        }
+
+        foundry_service_base_url().map(|_| ()).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Foundry Local service did not become ready",
+            )
+        })
     }
 }
 
@@ -200,42 +252,90 @@ fn foundry_cfg_from_env() -> Option<LlmProviderConfig> {
     }
 }
 
-fn discover_foundry_cfg() -> Option<LlmProviderConfig> {
-    discover_foundry_cfg_with_candidates(&foundry_probe_candidates())
-}
+fn foundry_cached_model_ids() -> Vec<String> {
+    let Some(manager) = foundry_manager() else {
+        return Vec::new();
+    };
 
-fn discover_foundry_cfg_with_candidates(candidates: &[String]) -> Option<LlmProviderConfig> {
-    if let Some(cfg) = foundry_cfg_from_env() {
-        if let Some(base_url) = cfg.base_url.as_deref() {
-            if !discover_local_models(base_url).is_empty() {
-                return Some(cfg);
-            }
+    let result = foundry_block_on_result(async {
+        let models = manager.catalog().get_cached_models().await?;
+        Ok::<_, foundry_local_sdk::FoundryLocalError>(
+            models
+                .into_iter()
+                .map(|model| model.id().to_string())
+                .collect::<Vec<_>>(),
+        )
+    });
+
+    match result {
+        Some(ref ids) if !ids.is_empty() => {
+            tracing::info!(
+                target: "model_runtime",
+                count = ids.len(),
+                ids = ?ids,
+                "Foundry Local: cached models found"
+            );
+        }
+        Some(_) => {
+            tracing::info!(
+                target: "model_runtime",
+                "Foundry Local: SDK initialized but no cached models found (use `foundry model download <model>` to cache one)"
+            );
+        }
+        None => {
+            tracing::warn!(
+                target: "model_runtime",
+                "Foundry Local: get_cached_models() failed"
+            );
         }
     }
 
-    for base_url in candidates {
-        if !discover_local_models(&base_url).is_empty() {
-            return Some(LlmProviderConfig {
-                base_url: Some(base_url.clone()),
-                api_key: Some("foundry-local-no-auth".to_string()),
-                provider_type: Some("openai".to_string()),
-                model: None,
-                offline: false,
-            });
-        }
-    }
-
-    None
+    result.unwrap_or_default()
 }
 
-fn foundry_probe_candidates() -> Vec<String> {
-    vec![
-        "http://127.0.0.1:59993/v1".to_string(),
-        "http://127.0.0.1:5000/v1".to_string(),
-        "http://127.0.0.1:8000/v1".to_string(),
-        "http://127.0.0.1:8080/v1".to_string(),
-        "http://127.0.0.1:8081/v1".to_string(),
-    ]
+fn foundry_manager() -> Option<&'static FoundryLocalManager> {
+    match FoundryLocalManager::create(FoundryLocalConfig::new("intelligent_terminal")) {
+        Ok(manager) => {
+            tracing::info!(target: "model_runtime", "Foundry Local: SDK manager initialized successfully");
+            Some(manager)
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "model_runtime",
+                error = %e,
+                "Foundry Local: SDK manager init failed — Foundry Local may not be installed"
+            );
+            None
+        }
+    }
+}
+
+fn foundry_block_on_result<T, E>(
+    future: impl Future<Output = std::result::Result<T, E>>,
+) -> Option<T> {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future).ok())
+    } else {
+        tokio::runtime::Runtime::new().ok()?.block_on(future).ok()
+    }
+}
+
+fn foundry_service_base_url() -> Option<String> {
+    let manager = foundry_manager()?;
+    if manager
+        .urls()
+        .ok()
+        .filter(|urls| !urls.is_empty())
+        .is_none()
+    {
+        foundry_block_on_result(manager.start_web_service())?;
+    }
+    foundry_base_url_from_urls(&manager.urls().ok()?)
+}
+
+fn foundry_base_url_from_urls(urls: &[String]) -> Option<String> {
+    urls.first()
+        .map(|url| format!("{}{}", url.trim_end_matches('/'), "/v1"))
 }
 
 impl ModelRuntime for OllamaRuntime {
@@ -321,18 +421,17 @@ fn port_open(host: &str, port: u16, timeout: std::time::Duration) -> bool {
 }
 
 /// The local runtimes to aggregate, in display order. Ollama leads (fixed,
-/// zero-config endpoint) followed by the env-sourced Foundry runtime.
+/// zero-config endpoint) followed by the SDK-backed Foundry runtime with an
+/// env fallback for explicit OpenAI-compatible endpoints.
 pub fn local_runtimes() -> Vec<Box<dyn ModelRuntime>> {
-    vec![
-        Box::new(OllamaRuntime),
-        Box::new(FoundryRuntime::detect()),
-    ]
+    vec![Box::new(OllamaRuntime), Box::new(FoundryRuntime::detect())]
 }
 
 /// Resolve the concrete [`ModelRuntime`] for a [`RuntimeId`]. Local runtimes are
-/// sourced the same way [`local_runtimes`] builds them (Foundry from the ambient
-/// env). Used by the spawner to translate a persisted [`RuntimeId`] selection
-/// into the provider env for the next agent-CLI spawn.
+/// sourced the same way [`local_runtimes`] builds them (Foundry via SDK when
+/// available, otherwise the ambient env fallback). Used by the spawner to
+/// translate a persisted [`RuntimeId`] selection into the provider env for the
+/// next agent-CLI spawn.
 pub fn runtime_for_id(id: RuntimeId) -> Box<dyn ModelRuntime> {
     match id {
         RuntimeId::Cloud => Box::new(CloudRuntime),
@@ -666,9 +765,33 @@ mod tests {
         clear_env();
         std::env::set_var("COPILOT_OFFLINE", "true");
         let rt = FoundryRuntime::from_env();
-        assert!(!rt.is_available(), "offline-only with no URL is not routable");
+        assert!(
+            !rt.is_available(),
+            "offline-only with no URL is not routable"
+        );
         assert!(rt.provider_config("m").is_none());
         clear_env();
+    }
+
+    #[test]
+    fn foundry_runtime_uses_cached_models_when_available() {
+        let rt = FoundryRuntime {
+            cfg: None,
+            cached_models: vec!["foundry-local-model".into()],
+        };
+
+        assert!(rt.is_available());
+        assert_eq!(rt.list_models(), vec!["foundry-local-model".to_string()]);
+        assert_eq!(rt.description().as_deref(), Some("Foundry Local"));
+    }
+
+    #[test]
+    fn foundry_base_url_from_urls_appends_v1_once() {
+        let urls = vec!["http://127.0.0.1:5000/".to_string()];
+        assert_eq!(
+            foundry_base_url_from_urls(&urls).as_deref(),
+            Some("http://127.0.0.1:5000/v1")
+        );
     }
 
     #[test]
@@ -687,7 +810,10 @@ mod tests {
         let rt = FoundryRuntime::detect();
         assert!(rt.is_available());
         assert_eq!(rt.list_models(), vec!["foundry-local-model".to_string()]);
-        assert_eq!(rt.provider_config("picked").unwrap().base_url.as_deref(), Some(base.as_str()));
+        assert_eq!(
+            rt.provider_config("picked").unwrap().base_url.as_deref(),
+            Some(base.as_str())
+        );
         clear_env();
     }
 
@@ -697,7 +823,9 @@ mod tests {
         clear_env();
         std::env::set_var("COPILOT_PROVIDER_BASE_URL", "http://127.0.0.1:5/v1");
         std::env::set_var("COPILOT_MODEL", "env-model");
-        let cfg = FoundryRuntime::from_env().provider_config("picked").unwrap();
+        let cfg = FoundryRuntime::from_env()
+            .provider_config("picked")
+            .unwrap();
         assert_eq!(cfg.model.as_deref(), Some("picked"));
         assert_eq!(cfg.base_url.as_deref(), Some("http://127.0.0.1:5/v1"));
         clear_env();

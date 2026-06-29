@@ -248,18 +248,20 @@ mod tests {
         assert_eq!(resolved.models[0].kind, super::super::ModelKind::Local);
         assert_eq!(resolved.current_id.as_deref(), Some("qwen2.5-coder-7b"));
         assert!(
-            resolved.models[0]
+            !resolved.models[0]
                 .description
                 .as_deref()
                 .unwrap_or_default()
-                .contains("127.0.0.1:1"),
-            "the provider URL is surfaced in the local model description"
+                .is_empty(),
+            "local models should carry a runtime description"
         );
 
         // The cloud catalog survives, tagged Cloud.
         assert!(
-            resolved.models.iter().any(|m| m.id == "claude-sonnet-4.6"
-                && m.kind == super::super::ModelKind::Cloud),
+            resolved
+                .models
+                .iter()
+                .any(|m| m.id == "claude-sonnet-4.6" && m.kind == super::super::ModelKind::Cloud),
             "cloud models remain in the aggregated list tagged Cloud"
         );
 

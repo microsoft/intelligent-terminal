@@ -271,7 +271,9 @@ fn discover_local_models_inner(base_url: &str) -> Option<Vec<DiscoveredModel>> {
 
     let base = base_url.trim().trim_end_matches('/');
     // Strip scheme; we only speak plain HTTP to localhost.
-    let after_scheme = base.strip_prefix("http://").or_else(|| base.strip_prefix("https://"))?;
+    let after_scheme = base
+        .strip_prefix("http://")
+        .or_else(|| base.strip_prefix("https://"))?;
     // Split authority (host:port) from any base path (e.g. `/v1`).
     let (authority, base_path) = match after_scheme.find('/') {
         Some(i) => (&after_scheme[..i], &after_scheme[i..]),
@@ -283,10 +285,7 @@ fn discover_local_models_inner(base_url: &str) -> Option<Vec<DiscoveredModel>> {
     };
     let path = format!("{}/models", base_path.trim_end_matches('/'));
 
-    let addr = format!("{host}:{port}")
-        .to_socket_addrs()
-        .ok()?
-        .next()?;
+    let addr = format!("{host}:{port}").to_socket_addrs().ok()?.next()?;
     let mut stream = TcpStream::connect_timeout(&addr, DISCOVERY_TIMEOUT).ok()?;
     stream.set_read_timeout(Some(DISCOVERY_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(DISCOVERY_TIMEOUT)).ok()?;
@@ -397,7 +396,10 @@ mod tests {
         env::set_var("COPILOT_PROVIDER_BASE_URL", "   ");
         env::set_var("COPILOT_OFFLINE", "false");
         let cfg = LlmProviderConfig::from_env();
-        assert_eq!(cfg.base_url, None, "whitespace base URL must normalize to None");
+        assert_eq!(
+            cfg.base_url, None,
+            "whitespace base URL must normalize to None"
+        );
         assert!(!cfg.offline);
         assert!(!cfg.is_active(), "blank URL + falsey offline is not BYOK");
         clear_env();
@@ -528,7 +530,10 @@ mod tests {
             model: None,
         };
         let json = serde_json::to_string(&sel).unwrap();
-        assert!(!json.contains("model"), "absent model must be skipped: {json}");
+        assert!(
+            !json.contains("model"),
+            "absent model must be skipped: {json}"
+        );
     }
 
     #[test]
