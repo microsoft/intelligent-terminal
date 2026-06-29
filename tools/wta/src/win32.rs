@@ -123,7 +123,9 @@ pub(crate) fn copy_text_to_clipboard(text: &str) -> io::Result<()> {
     let bytes = wide.len() * std::mem::size_of::<u16>();
 
     unsafe {
-        EmptyClipboard();
+        if EmptyClipboard() == 0 {
+            return Err(io::Error::last_os_error());
+        }
         let handle = GlobalAlloc(GMEM_MOVEABLE, bytes);
         if handle.is_null() {
             return Err(io::Error::last_os_error());
@@ -176,8 +178,12 @@ pub(crate) fn open_url_in_default_browser(url: &str) -> io::Result<()> {
         )
     };
 
-    if (result as isize) <= 32 {
-        Err(io::Error::last_os_error())
+    let code = result as isize;
+    if code <= 32 {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("ShellExecuteW failed with code {code}"),
+        ))
     } else {
         Ok(())
     }
@@ -197,25 +203,15 @@ mod tests {
 
     #[test]
     fn copilot_credential_match_accepts_known_target_shapes() {
-        assert!(credential_target_matches_copilot(
-            "LegacyGeneric:target=copilot-cli/https://github.com:haonanttt"
-        ));
-        assert!(credential_target_matches_copilot(
-            "LegacyGeneric:target=https://github.com:haonanttt.copilot-cli"
-        ));
-        assert!(credential_target_matches_copilot(
-            "legacygeneric:target=COPILOT-CLI/https://example.ghe.com:user"
-        ));
+        assert!(credential_target_matches_copilot("copilot-cli/https://github.com:user"));
+        assert!(credential_target_matches_copilot("https://github.com:user.copilot-cli"));
+        assert!(credential_target_matches_copilot("COPILOT-CLI/https://example.ghe.com:user"));
     }
 
     #[test]
     fn copilot_credential_match_rejects_unrelated_targets() {
         assert!(!credential_target_matches_copilot(""));
-        assert!(!credential_target_matches_copilot(
-            "LegacyGeneric:target=github.com:haonanttt"
-        ));
-        assert!(!credential_target_matches_copilot(
-            "LegacyGeneric:target=other-agent-cli"
-        ));
+        assert!(!credential_target_matches_copilot("github.com:user"));
+        assert!(!credential_target_matches_copilot("other-agent-cli"));
     }
 }

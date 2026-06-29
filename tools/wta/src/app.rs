@@ -6433,13 +6433,16 @@ impl App {
                         )
                         .into_owned();
                         // Copy device code to clipboard
-                        if let Err(e) = crate::win32::copy_text_to_clipboard(&device_code) {
-                            tracing::warn!(
-                                target: "clipboard",
-                                error = %e,
-                                "failed to copy Copilot device code to clipboard"
-                            );
-                        }
+                        let code_to_copy = device_code.clone();
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(e) = crate::win32::copy_text_to_clipboard(&code_to_copy) {
+                                tracing::warn!(
+                                    target: "clipboard",
+                                    error = %e,
+                                    "failed to copy Copilot device code to clipboard"
+                                );
+                            }
+                        });
                     }
                 }
             }
@@ -6710,14 +6713,18 @@ impl App {
                             self.spawn_login(&agent_id, &login_cmd);
                         } else {
                             // Non-Copilot agents: copy command to clipboard, re-check credential
-                            if let Err(e) = crate::win32::copy_text_to_clipboard(&login_cmd) {
-                                tracing::warn!(
-                                    target: "clipboard",
-                                    agent = %agent_id,
-                                    error = %e,
-                                    "failed to copy login command to clipboard"
-                                );
-                            }
+                            let cmd_to_copy = login_cmd.clone();
+                            let agent_for_log = agent_id.clone();
+                            tokio::task::spawn_blocking(move || {
+                                if let Err(e) = crate::win32::copy_text_to_clipboard(&cmd_to_copy) {
+                                    tracing::warn!(
+                                        target: "clipboard",
+                                        agent = %agent_for_log,
+                                        error = %e,
+                                        "failed to copy login command to clipboard"
+                                    );
+                                }
+                            });
 
                             self.begin_auth_checking();
 
