@@ -35,6 +35,7 @@ mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;
+mod win32;
 mod wsl;
 
 use acp::Agent as _;
