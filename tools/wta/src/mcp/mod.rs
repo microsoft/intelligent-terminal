@@ -66,8 +66,12 @@ pub async fn start_and_publish() -> Option<McpEndpoint> {
             let _ = std::fs::create_dir_all(dir);
         }
         let tmp = p.with_extension("txt.tmp");
-        if std::fs::write(&tmp, &ep.url).is_ok() {
-            let _ = std::fs::rename(&tmp, p);
+        let ok = std::fs::write(&tmp, &ep.url).is_ok() && std::fs::rename(&tmp, p).is_ok();
+        if !ok {
+            // Don't leave a stale URL helpers would inject as a dead endpoint.
+            let _ = std::fs::remove_file(&tmp);
+            let _ = std::fs::remove_file(p);
+            tracing::warn!(target: "mcp", "failed to publish endpoint; cleared stale file");
         }
     }
     Some(ep)

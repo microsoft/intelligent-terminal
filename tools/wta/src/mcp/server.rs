@@ -55,6 +55,9 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
     // memory growth: headers and body are both bounded; over-cap → close.
     const MAX_HEADERS: usize = 16 * 1024;
     const MAX_BODY: usize = 1024 * 1024;
+    // Inactivity timeout: drop a peer that opens a connection but never finishes
+    // sending headers/body (slowloris-style local resource exhaustion).
+    const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
     let mut buf = Vec::with_capacity(8192);
     loop {
         // Read until headers complete, then the declared body.
@@ -66,7 +69,10 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
                 return Ok(()); // headers too large — drop
             }
             let mut chunk = [0u8; 4096];
-            let n = stream.read(&mut chunk).await?;
+            let n = match tokio::time::timeout(READ_TIMEOUT, stream.read(&mut chunk)).await {
+                Ok(r) => r?,
+                Err(_) => return Ok(()), // idle too long — drop
+            };
             if n == 0 {
                 return Ok(()); // client closed
             }
@@ -78,7 +84,10 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
         let body_start = headers_end;
         while buf.len() < body_start + content_len {
             let mut chunk = [0u8; 4096];
-            let n = stream.read(&mut chunk).await?;
+            let n = match tokio::time::timeout(READ_TIMEOUT, stream.read(&mut chunk)).await {
+                Ok(r) => r?,
+                Err(_) => return Ok(()),
+            };
             if n == 0 {
                 return Ok(());
             }
