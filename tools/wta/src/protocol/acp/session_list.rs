@@ -113,10 +113,11 @@ pub(crate) async fn fetch_session_list(
         .ok_or_else(|| anyhow!("agent stdout not piped"))?
         .compat();
     if let Some(stderr) = child.stderr.take() {
+        let label = client_label.to_string();
         tokio::task::spawn_local(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(target: "acp_session_list", "agent stderr: {}", line);
+                tracing::debug!(target: "acp_session_list", agent = %label, "agent stderr: {}", line);
             }
         });
     }

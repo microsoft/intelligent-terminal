@@ -2386,13 +2386,16 @@ async fn handle_sessions_list(
         spawn_wsl_seed(state);
     }
 
-    let snap = state.registry.snapshot().await;
-    if snap.iter().any(crate::session_registry::title_is_synthetic) {
+    let mut sessions = state.registry.snapshot().await;
+    if sessions.iter().any(crate::session_registry::title_is_synthetic) {
         let titles = host_titles_via_acp(state).await;
-        refresh_synthetic_titles_from(&*state.registry, &titles).await;
+        // Re-snapshot only when a title actually changed; the common steady-state
+        // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
+        if refresh_synthetic_titles_from(&*state.registry, &titles).await {
+            sessions = state.registry.snapshot().await;
+        }
     }
 
-    let mut sessions = state.registry.snapshot().await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(sessions);
     Ok(acp::ExtResponse::new(raw.into()))

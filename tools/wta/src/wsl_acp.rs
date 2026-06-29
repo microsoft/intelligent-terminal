@@ -56,6 +56,13 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
         return Vec::new();
     }
 
+    // Load the host-side agent-pane index ONCE for the whole scan instead of
+    // per (distro, CLI) pair. (In practice WTA agent-pane session_ids never
+    // appear in an in-distro CLI's `session/list`, so this filter is a cheap
+    // safety net — but reading + parsing the index per pair added needless disk
+    // IO to an already-expensive scan.)
+    let idx = crate::agent_pane_origin::load_default_set();
+
     // Run the (distro × CLI) probes with bounded concurrency so one wedged
     // distro/CLI can't stall the whole scan: each pair is still capped by the
     // init/list timeouts; this just stops those timeouts from summing serially.
@@ -63,6 +70,7 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
     // ACP connections are fine on the master's LocalSet.
     use futures::stream::StreamExt as _;
     const WSL_SCAN_CONCURRENCY: usize = 4;
+    let idx = &idx;
     let pairs: Vec<(&String, &CliSource)> = distros
         .iter()
         .flat_map(|d| clis.iter().map(move |c| (d, c)))
@@ -70,7 +78,7 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
 
     futures::stream::iter(pairs)
         .map(|(distro, c)| async move {
-            let rows = list_distro_cli_sessions(distro, c).await;
+            let rows = list_distro_cli_sessions(distro, c, idx).await;
             tracing::info!(
                 target: "wsl_acp",
                 distro = %distro,
@@ -86,9 +94,11 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
 }
 
 /// Which CLIs to query for a given filter. Known ACP-capable CLIs map to
-/// themselves; `None` scans all ACP-capable built-ins. Gemini is excluded
-/// because it has no ACP `session/list`, and custom/unknown agents are
-/// excluded because WTA has no known launch command for them.
+/// themselves. `None` (the all-CLI session view) and custom/unknown agents both
+/// map to "scan the built-in ACP-capable CLIs" (copilot, claude, codex) — WTA
+/// has no bespoke launch command for a custom agent inside a distro, so it falls
+/// back to the known set. Gemini is always excluded: it has no ACP
+/// `session/list`.
 fn clis_to_scan(cli: Option<&CliSource>) -> Vec<CliSource> {
     match cli {
         Some(CliSource::Copilot) => vec![CliSource::Copilot],
@@ -105,7 +115,11 @@ fn clis_to_scan(cli: Option<&CliSource>) -> Vec<CliSource> {
 
 /// Query one `(distro, CLI)` pair. Returns rows on success, empty on any
 /// failure (CLI absent in the distro, ACP unsupported, timeout, …).
-async fn list_distro_cli_sessions(distro: &str, cli: &CliSource) -> Vec<AgentSession> {
+async fn list_distro_cli_sessions(
+    distro: &str,
+    cli: &CliSource,
+    idx: &std::collections::HashSet<String>,
+) -> Vec<AgentSession> {
     let Some(acp_cmd) = acp_command_for(cli) else {
         return Vec::new();
     };
@@ -130,17 +144,14 @@ async fn list_distro_cli_sessions(distro: &str, cli: &CliSource) -> Vec<AgentSes
     let _ = child.start_kill();
 
     match result {
-        Ok((_init, Ok(sessions))) => {
-            let idx = crate::agent_pane_origin::load_default_set();
-            crate::session_history::classify_and_map(
-                &sessions,
-                &idx,
-                crate::agent_sessions::SessionLocation::Wsl {
-                    distro: distro.to_string(),
-                },
-                cli,
-            )
-        }
+        Ok((_init, Ok(sessions))) => crate::session_history::classify_and_map(
+            &sessions,
+            idx,
+            crate::agent_sessions::SessionLocation::Wsl {
+                distro: distro.to_string(),
+            },
+            cli,
+        ),
         Ok((_init, Err(reason))) => {
             tracing::debug!(target: "wsl_acp", distro, cli = ?cli, "session/list unavailable: {reason}");
             Vec::new()

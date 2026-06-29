@@ -1172,7 +1172,14 @@ async fn run_probe_wsl_sessions(cli: Option<&str>) -> Result<()> {
         Some("claude") => Some(CliSource::Claude),
         Some("codex") => Some(CliSource::Codex),
         Some("gemini") => Some(CliSource::Gemini),
-        Some(other) => Some(CliSource::Unknown(other.to_string())),
+        Some(other) => {
+            // Reject unknown values rather than silently widening to "scan all"
+            // (Unknown → clis_to_scan → every built-in), which would make the
+            // diagnostic's output contradict the requested restriction.
+            anyhow::bail!(
+                "unknown --cli value {other:?}; expected one of: copilot, claude, codex, gemini"
+            );
+        }
     };
 
     let local = tokio::task::LocalSet::new();
