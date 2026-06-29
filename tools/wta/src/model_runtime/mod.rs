@@ -322,19 +322,30 @@ fn foundry_service_base_url() -> Option<String> {
         if let Some(idx) = line.find("http://") {
             let url_part = &line[idx..];
             let raw_url = url_part.split_whitespace().next().unwrap_or(url_part);
-            let base = raw_url
-                .trim_end_matches('/')
-                .split("/openai")
-                .next()
-                .unwrap_or("")
-                .trim_end_matches('/');
-            if !base.is_empty() {
-                return Some(format!("{base}/v1"));
+            if let Some(base) = foundry_base_url_from_urls(&[raw_url.to_string()]) {
+                return Some(base);
             }
         }
     }
 
     tracing::warn!(target: "model_runtime", "Foundry Local: service not running (call ensure_running first)");
+    None
+}
+
+/// Normalize a Foundry endpoint URL to its OpenAI-compatible `/v1` base,
+/// returning the first that yields a non-empty authority.
+fn foundry_base_url_from_urls(urls: &[String]) -> Option<String> {
+    for raw_url in urls {
+        let base = raw_url
+            .trim_end_matches('/')
+            .split("/openai")
+            .next()
+            .unwrap_or("")
+            .trim_end_matches('/');
+        if !base.is_empty() {
+            return Some(format!("{base}/v1"));
+        }
+    }
     None
 }
 

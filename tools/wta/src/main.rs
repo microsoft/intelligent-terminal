@@ -25,6 +25,7 @@ mod model_runtime;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
+mod native_agent;
 mod osc52;
 mod pane_context;
 mod proc_bind;
@@ -486,6 +487,23 @@ enum Command {
         #[arg(long)]
         agent: String,
     },
+
+    /// Run WTA's own native ACP agent over stdio, backed by a single
+    /// OpenAI-compatible endpoint. Spawned by wta-master like any agent CLI
+    /// (e.g. via `acpCustomCommand: "wta native-agent"`). Backend is BYOK:
+    /// flags override, else falls back to the COPILOT_PROVIDER_* env. Designed
+    /// for local models (tiny system prompt, no tools) but backend-agnostic.
+    NativeAgent {
+        /// OpenAI-compatible base URL, e.g. http://127.0.0.1:11434/v1
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Model id to send to the backend.
+        #[arg(long)]
+        model: Option<String>,
+        /// API key (local providers ignore it; default "local").
+        #[arg(long)]
+        api_key: Option<String>,
+    },
 }
 
 
@@ -882,6 +900,11 @@ async fn main() -> Result<()> {
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
+        // ── WTA native ACP agent (stdio) ──
+        Some(Command::NativeAgent { base_url, model, api_key }) => {
+            run_native_agent(base_url, model, api_key).await
+        }
+
         // ── No subcommand: a singleton-service mode, or an error. There
         //    is no standalone/default ACP TUI mode — the direct agent-spawn
         //    path was removed, so bare `wta` always runs as a WT-launched
@@ -995,8 +1018,33 @@ async fn run_probe_models(agent: &str) -> Result<()> {
     std::process::exit(0);
 }
 
-// ─── Hooks subcommand handlers ──────────────────────────────────────────────
+// ─── WTA native ACP agent ────────────────────────────────────────────────────
 
+/// Run WTA's own native ACP agent over stdio. Backed by a single
+/// OpenAI-compatible endpoint (BYOK). Flags override, else the COPILOT_PROVIDER_*
+/// env supplies the backend. Runs on a `LocalSet` (ACP conn is `!Send`).
+async fn run_native_agent(
+    base_url: Option<String>,
+    model: Option<String>,
+    api_key: Option<String>,
+) -> Result<()> {
+    let cfg = native_agent::NativeAgentConfig::resolve(base_url, model, api_key);
+    tracing::info!(
+        "native-agent start: base_url={} model={}",
+        cfg.base_url,
+        cfg.model
+    );
+    let local = tokio::task::LocalSet::new();
+    let result = local.run_until(native_agent::run(cfg)).await;
+    if let Err(e) = &result {
+        tracing::error!("native-agent exiting with error: {e:#}");
+    }
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(if result.is_ok() { 0 } else { 1 });
+}
+
+// ─── Hooks subcommand handlers ──────────────────────────────────────────────
 fn run_hooks_install(cli: HooksCliFilter) -> Result<()> {
     // Logging is initialized in `main()`; the install attempt is observable in
     // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
