@@ -2440,13 +2440,6 @@ async fn handle_session_hook(
     // the refresh is fine.
     let refresh_key = session_event_key(&event).map(str::to_owned);
 
-    // Capture the key of a `SessionStopped` BEFORE `event` moves into the reducer
-    // so we can phantom-prune the just-ended row below (Fix A).
-    let stopped_key = match &event {
-        crate::agent_sessions::SessionEvent::SessionStopped { key, .. } => Some(key.clone()),
-        _ => None,
-    };
-
     // Resume binding events (`ResumeDispatched` / `ResumePaneAssigned`) are the
     // hook-free born-bound binding for `/sessions` resume (published over the
     // generic `session_hook` method by the helper). Treat them as binding-only —
@@ -2500,61 +2493,7 @@ async fn handle_session_hook(
         .await;
     }
 
-    // Phantom prune (Fix A): a host session that ended with no resumable on-disk
-    // content — e.g. `copilot` opened in a shell pane, exited with 0 turns —
-    // would otherwise linger as an Ended row that the session view renders and
-    // `--resume` then rejects ("No session, task, or name matched"). Master owns
-    // the snapshot the view renders, so prune it here.
-    if let Some(key) = stopped_key {
-        let sid = acp::SessionId::new(key.clone());
-        if let Some(row) = state.registry.lookup(&sid).await {
-            let cli = row
-                .cli_source
-                .clone()
-                .unwrap_or(crate::agent_sessions::CliSource::Unknown(String::new()));
-            let has_content =
-                crate::history_loader::key_has_definite_resumable_content(&cli, &key);
-            if ended_session_is_prunable_phantom(&row, has_content)
-                && state.registry.remove(&sid).await.is_some()
-            {
-                tracing::info!(
-                    target: "master_history",
-                    key = %key,
-                    cli = ?cli,
-                    "pruned ended phantom session (no resumable on-disk content)"
-                );
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
-        }
-    }
-
     Ok(crate::session_registry::build_session_hook_response(applied))
-}
-
-/// Decide whether a just-**ended** session row is a prunable phantom. A Class-B
-/// host session that left no resumable on-disk content (`has_resumable_content`
-/// is the result of the strict `history_loader::key_has_definite_resumable_content`
-/// probe) is a phantom the picker should not surface. Agent panes (ACP-driven,
-/// never on-disk phantoms) and WSL rows (host can't probe distro disk) are never
-/// pruned here. Pure so it can be unit-tested without touching disk.
-fn ended_session_is_prunable_phantom(
-    row: &crate::session_registry::SessionInfo,
-    has_resumable_content: bool,
-) -> bool {
-    if has_resumable_content {
-        return false;
-    }
-    if row.origin == Some(crate::agent_sessions::SessionOrigin::AgentPane) {
-        return false;
-    }
-    !matches!(
-        row.location,
-        crate::agent_sessions::SessionLocation::Wsl { .. }
-    )
 }
 
 /// Apply one watcher-emitted session event to master's registry and, if it
@@ -4578,27 +4517,6 @@ mod tests {
                 .as_deref(),
             Some("project")
         );
-    }
-
-    #[test]
-    fn ended_phantom_prune_decision() {
-        use crate::agent_sessions::{CliSource, SessionLocation, SessionOrigin};
-        let mut row = crate::session_registry::SessionInfo::new(
-            acp::SessionId::new("p".to_string()),
-            std::path::PathBuf::from("C:\\Users\\dev"),
-        );
-        row.cli_source = Some(CliSource::Copilot);
-        // Class-B host row, no resumable content → prune.
-        assert!(ended_session_is_prunable_phantom(&row, false));
-        // Has resumable content → keep.
-        assert!(!ended_session_is_prunable_phantom(&row, true));
-        // Agent pane → never disk-pruned.
-        row.origin = Some(SessionOrigin::AgentPane);
-        assert!(!ended_session_is_prunable_phantom(&row, false));
-        // WSL row → host can't probe distro disk, never pruned here.
-        row.origin = Some(SessionOrigin::Unknown);
-        row.location = SessionLocation::Wsl { distro: "Ubuntu".to_string() };
-        assert!(!ended_session_is_prunable_phantom(&row, false));
     }
 
     #[test]
