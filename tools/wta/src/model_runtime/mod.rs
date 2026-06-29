@@ -22,11 +22,10 @@
 //! ## Status
 //!
 //! Step 1 introduces the trait + registry and migrates the existing env-sourced
-//! local-discovery path (today pointed at Foundry Local via
-//! `COPILOT_PROVIDER_*`) behind [`FoundryRuntime`]. Behavior is unchanged:
-//! [`aggregate_models`] reproduces the previous `copilot::resolve_models` logic.
-//! Follow-ups add [`OllamaRuntime`] (auto-probe `:11434`), daemon lifecycle, and
-//! a `{runtime, model}` selection.
+//! local-discovery path behind [`FoundryRuntime`]. [`aggregate_models`]
+//! reproduces the previous `copilot::resolve_models` logic; the registry now
+//! auto-probes both Foundry Local and Ollama so the picker can surface running
+//! local model providers without extra config.
 
 use std::collections::HashSet;
 
@@ -121,19 +120,27 @@ impl ModelRuntime for CloudRuntime {
     }
 }
 
-/// Microsoft Foundry Local, reached today through the `COPILOT_PROVIDER_*`
-/// environment the user configures. Sourcing the endpoint from the env keeps
-/// step-1 behavior byte-for-byte; a later step adds true auto-discovery
-/// independent of the agent-specific env var names.
+/// Microsoft Foundry Local, discovered either from explicit OpenAI-compatible
+/// env vars or by probing a small set of localhost endpoints. This keeps the
+/// provider zero-config in the common local case while still honoring an
+/// explicit provider URL when the user sets one.
 pub struct FoundryRuntime {
-    cfg: LlmProviderConfig,
+    cfg: Option<LlmProviderConfig>,
 }
 
 impl FoundryRuntime {
-    /// Build from the ambient BYOK environment.
+    /// Build from the ambient BYOK environment, if one is configured.
     pub fn from_env() -> Self {
         Self {
-            cfg: LlmProviderConfig::from_env(),
+            cfg: foundry_cfg_from_env(),
+        }
+    }
+
+    /// Probe the ambient env first, then a small set of common localhost
+    /// endpoints, and return the first reachable Foundry-compatible provider.
+    pub fn detect() -> Self {
+        Self {
+            cfg: discover_foundry_cfg(),
         }
     }
 }
@@ -146,12 +153,10 @@ impl ModelRuntime for FoundryRuntime {
         "Foundry Local"
     }
     fn is_available(&self) -> bool {
-        // Routable only with an explicit endpoint; an offline-only flag with no
-        // URL can't list or serve, so it's not "available" as a runtime.
-        self.cfg.base_url.as_deref().is_some_and(|s| !s.is_empty())
+        self.cfg.is_some()
     }
     fn list_models(&self) -> Vec<String> {
-        match self.cfg.base_url.as_deref() {
+        match self.cfg.as_ref().and_then(|cfg| cfg.base_url.as_deref()) {
             Some(url) if !url.is_empty() => discover_local_models(url)
                 .into_iter()
                 .map(|m| m.id)
@@ -161,16 +166,14 @@ impl ModelRuntime for FoundryRuntime {
     }
     fn description(&self) -> Option<String> {
         self.cfg
+            .as_ref()?
             .base_url
             .as_deref()
             .filter(|s| !s.is_empty())
             .map(|url| format!("Local provider · {url}"))
     }
     fn provider_config(&self, model: &str) -> Option<LlmProviderConfig> {
-        if !self.is_available() {
-            return None;
-        }
-        let mut cfg = self.cfg.clone();
+        let mut cfg = self.cfg.as_ref()?.clone();
         cfg.model = Some(model.to_string());
         Some(cfg)
     }
@@ -187,6 +190,53 @@ pub struct OllamaRuntime;
 const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 /// Cheap reachability probe budget for the daemon TCP connect.
 const OLLAMA_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
+
+fn foundry_cfg_from_env() -> Option<LlmProviderConfig> {
+    let cfg = LlmProviderConfig::from_env();
+    if cfg.base_url.as_deref().is_some_and(|s| !s.is_empty()) {
+        Some(cfg)
+    } else {
+        None
+    }
+}
+
+fn discover_foundry_cfg() -> Option<LlmProviderConfig> {
+    discover_foundry_cfg_with_candidates(&foundry_probe_candidates())
+}
+
+fn discover_foundry_cfg_with_candidates(candidates: &[String]) -> Option<LlmProviderConfig> {
+    if let Some(cfg) = foundry_cfg_from_env() {
+        if let Some(base_url) = cfg.base_url.as_deref() {
+            if !discover_local_models(base_url).is_empty() {
+                return Some(cfg);
+            }
+        }
+    }
+
+    for base_url in candidates {
+        if !discover_local_models(&base_url).is_empty() {
+            return Some(LlmProviderConfig {
+                base_url: Some(base_url.clone()),
+                api_key: Some("foundry-local-no-auth".to_string()),
+                provider_type: Some("openai".to_string()),
+                model: None,
+                offline: false,
+            });
+        }
+    }
+
+    None
+}
+
+fn foundry_probe_candidates() -> Vec<String> {
+    vec![
+        "http://127.0.0.1:59993/v1".to_string(),
+        "http://127.0.0.1:5000/v1".to_string(),
+        "http://127.0.0.1:8000/v1".to_string(),
+        "http://127.0.0.1:8080/v1".to_string(),
+        "http://127.0.0.1:8081/v1".to_string(),
+    ]
+}
 
 impl ModelRuntime for OllamaRuntime {
     fn id(&self) -> RuntimeId {
@@ -275,7 +325,7 @@ fn port_open(host: &str, port: u16, timeout: std::time::Duration) -> bool {
 pub fn local_runtimes() -> Vec<Box<dyn ModelRuntime>> {
     vec![
         Box::new(OllamaRuntime),
-        Box::new(FoundryRuntime::from_env()),
+        Box::new(FoundryRuntime::detect()),
     ]
 }
 
@@ -286,7 +336,7 @@ pub fn local_runtimes() -> Vec<Box<dyn ModelRuntime>> {
 pub fn runtime_for_id(id: RuntimeId) -> Box<dyn ModelRuntime> {
     match id {
         RuntimeId::Cloud => Box::new(CloudRuntime),
-        RuntimeId::Foundry => Box::new(FoundryRuntime::from_env()),
+        RuntimeId::Foundry => Box::new(FoundryRuntime::detect()),
         RuntimeId::Ollama => Box::new(OllamaRuntime),
     }
 }
@@ -295,7 +345,13 @@ pub fn runtime_for_id(id: RuntimeId) -> Box<dyn ModelRuntime> {
 /// an unconfigured local runtime. Thin convenience over [`runtime_for_id`] +
 /// [`ModelRuntime::provider_config`].
 pub fn runtime_provider_config(id: RuntimeId, model: &str) -> Option<LlmProviderConfig> {
-    runtime_for_id(id).provider_config(model)
+    match id {
+        RuntimeId::Cloud => None,
+        RuntimeId::Foundry => FoundryRuntime::detect()
+            .provider_config(model)
+            .or_else(|| FoundryRuntime::from_env().provider_config(model)),
+        RuntimeId::Ollama => runtime_for_id(id).provider_config(model),
+    }
 }
 
 /// Which local runtime currently serves `model_id`, by probing each available
@@ -418,6 +474,8 @@ mod tests {
             "COPILOT_PROVIDER_BASE_URL",
             "COPILOT_MODEL",
             "COPILOT_OFFLINE",
+            "OPENAI_API_BASE",
+            "OPENAI_BASE_URL",
         ] {
             std::env::remove_var(k);
         }
@@ -442,6 +500,29 @@ mod tests {
             current_id: Some("claude-sonnet-4.6".into()),
             switchable: true,
         }
+    }
+
+    fn discover_against(response: &'static str) -> String {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for _ in 0..2 {
+                if let Ok((mut sock, _)) = listener.accept() {
+                    let mut buf = [0u8; 1024];
+                    let _ = sock.read(&mut buf);
+                    let _ = sock.write_all(response.as_bytes());
+                } else {
+                    break;
+                }
+            }
+        });
+
+        let base = format!("http://127.0.0.1:{port}/v1");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        base
     }
 
     /// A controllable in-memory runtime so aggregation tests don't depend on
@@ -512,7 +593,7 @@ mod tests {
 
     #[test]
     fn aggregate_with_dead_endpoint_falls_back_to_pinned() {
-        let _g = ENV_LOCK.lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         // No live endpoint → discovery empty → just the pinned local + cloud.
         std::env::set_var("COPILOT_PROVIDER_BASE_URL", "http://127.0.0.1:1/v1");
@@ -581,7 +662,7 @@ mod tests {
 
     #[test]
     fn foundry_runtime_unavailable_without_url() {
-        let _g = ENV_LOCK.lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         std::env::set_var("COPILOT_OFFLINE", "true");
         let rt = FoundryRuntime::from_env();
@@ -591,8 +672,28 @@ mod tests {
     }
 
     #[test]
+    fn foundry_runtime_detects_local_models_from_openai_env() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_env();
+        let body = r#"{"data":[{"id":"foundry-local-model","object":"model"}],"object":"list"}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let response: &'static str = Box::leak(response.into_boxed_str());
+        let base = discover_against(response);
+        std::env::set_var("OPENAI_API_BASE", &base);
+        let rt = FoundryRuntime::detect();
+        assert!(rt.is_available());
+        assert_eq!(rt.list_models(), vec!["foundry-local-model".to_string()]);
+        assert_eq!(rt.provider_config("picked").unwrap().base_url.as_deref(), Some(base.as_str()));
+        clear_env();
+    }
+
+    #[test]
     fn foundry_provider_config_overrides_model() {
-        let _g = ENV_LOCK.lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_env();
         std::env::set_var("COPILOT_PROVIDER_BASE_URL", "http://127.0.0.1:5/v1");
         std::env::set_var("COPILOT_MODEL", "env-model");

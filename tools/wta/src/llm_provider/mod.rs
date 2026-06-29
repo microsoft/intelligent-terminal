@@ -19,8 +19,9 @@
 //!
 //! ## Current source: the `COPILOT_PROVIDER_*` environment
 //!
-//! Per the locked scope, the only config *source* wired up now is the
-//! environment contract copilot already documents:
+//! Per the locked scope, the config *source* is still the environment contract
+//! copilot already documents, plus the standard OpenAI base-url aliases used by
+//! local providers:
 //!
 //! | env var                      | meaning                                  |
 //! |------------------------------|------------------------------------------|
@@ -29,6 +30,7 @@
 //! | `COPILOT_PROVIDER_TYPE`      | provider flavor (e.g. `openai`)           |
 //! | `COPILOT_MODEL`              | model id to pin every request to          |
 //! | `COPILOT_OFFLINE`            | `true`/`1` → force air-gapped local use   |
+//! | `OPENAI_API_BASE` / `OPENAI_BASE_URL` | aliases for the base URL         |
 //!
 //! [`LlmProviderConfig::from_env`] reads them into the generic shape. When the
 //! source later moves to IT settings, only `from_env` changes; the translation
@@ -65,7 +67,9 @@ impl LlmProviderConfig {
     /// env var never looks like a configured field.
     pub fn from_env() -> Self {
         Self {
-            base_url: trimmed_env("COPILOT_PROVIDER_BASE_URL"),
+            base_url: trimmed_env("COPILOT_PROVIDER_BASE_URL")
+                .or_else(|| trimmed_env("OPENAI_API_BASE"))
+                .or_else(|| trimmed_env("OPENAI_BASE_URL")),
             api_key: trimmed_env("COPILOT_PROVIDER_API_KEY"),
             provider_type: trimmed_env("COPILOT_PROVIDER_TYPE"),
             model: trimmed_env("COPILOT_MODEL"),
@@ -359,6 +363,8 @@ mod tests {
             "COPILOT_PROVIDER_TYPE",
             "COPILOT_MODEL",
             "COPILOT_OFFLINE",
+            "OPENAI_API_BASE",
+            "OPENAI_BASE_URL",
         ] {
             env::remove_var(k);
         }
@@ -413,6 +419,17 @@ mod tests {
         let cfg = LlmProviderConfig::from_env();
         assert_eq!(cfg, LlmProviderConfig::default());
         assert!(!cfg.is_active());
+        clear_env();
+    }
+
+    #[test]
+    fn openai_alias_base_urls_are_treated_as_active() {
+        let _g = ENV_LOCK.lock().unwrap();
+        clear_env();
+        env::set_var("OPENAI_API_BASE", " http://127.0.0.1:59993/v1 ");
+        let cfg = LlmProviderConfig::from_env();
+        assert_eq!(cfg.base_url.as_deref(), Some("http://127.0.0.1:59993/v1"));
+        assert!(cfg.is_active());
         clear_env();
     }
 

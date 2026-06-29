@@ -144,6 +144,8 @@ mod tests {
         env::remove_var("COPILOT_PROVIDER_BASE_URL");
         env::remove_var("COPILOT_OFFLINE");
         env::remove_var("COPILOT_MODEL");
+        env::remove_var("OPENAI_API_BASE");
+        env::remove_var("OPENAI_BASE_URL");
     }
 
     #[test]
