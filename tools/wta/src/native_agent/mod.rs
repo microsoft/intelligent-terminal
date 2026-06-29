@@ -63,6 +63,20 @@ impl NativeAgentConfig {
             .unwrap_or_else(|| "local".to_string());
         Self { base_url, api_key, model }
     }
+
+    /// Parse `--base-url` / `--model` / `--api-key` out of a `wta native-agent …`
+    /// command line, then resolve. Used when the master embeds the native agent
+    /// in-process: it only has the agent command string, not parsed clap args.
+    pub fn from_agent_cmd(cmd: &str) -> Self {
+        let toks: Vec<&str> = cmd.split_whitespace().collect();
+        let grab = |flag: &str| -> Option<String> {
+            toks.iter()
+                .position(|t| *t == flag)
+                .and_then(|i| toks.get(i + 1))
+                .map(|s| s.trim_matches('"').to_string())
+        };
+        Self::resolve(grab("--base-url"), grab("--model"), grab("--api-key"))
+    }
 }
 
 /// One conversation turn kept for context. Roles map to OpenAI chat roles.
@@ -228,13 +242,25 @@ fn uuid_like() -> String {
 
 /// Run the native agent: serve ACP over stdio until the client disconnects.
 pub async fn run(cfg: NativeAgentConfig) -> anyhow::Result<()> {
+    let stdout = tokio::io::stdout().compat_write();
+    let stdin = tokio::io::stdin().compat();
+    run_on(cfg, stdin, stdout).await
+}
+
+/// Run the native agent over an arbitrary reader/writer pair. Used both for the
+/// stdio entry point and for in-process embedding (master drives it over an
+/// in-memory duplex instead of spawning a child), which avoids re-exec'ing the
+/// packaged exe — blocked under `WindowsApps` ("Access is denied").
+pub async fn run_on<R, W>(cfg: NativeAgentConfig, incoming: R, outgoing: W) -> anyhow::Result<()>
+where
+    R: futures::AsyncRead + Unpin + 'static,
+    W: futures::AsyncWrite + Unpin + 'static,
+{
     tracing::info!(target: "native_agent", base_url=%cfg.base_url, model=%cfg.model, "native agent starting");
     let agent = NativeAgent::new(cfg);
     let conn_slot = agent.conn.clone();
 
-    let stdout = tokio::io::stdout().compat_write();
-    let stdin = tokio::io::stdin().compat();
-    let (conn, io_task) = acp::AgentSideConnection::new(agent, stdout, stdin, |fut| {
+    let (conn, io_task) = acp::AgentSideConnection::new(agent, outgoing, incoming, |fut| {
         tokio::task::spawn_local(fut);
     });
     // Hand the connection back to the agent so `prompt` can stream replies.

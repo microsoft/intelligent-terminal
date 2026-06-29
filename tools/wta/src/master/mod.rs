@@ -1436,103 +1436,95 @@ impl Drop for MasterPipeDiscoveryGuard {
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
-    // 1. Spawn the agent CLI subprocess. cwd=None: master inherits
-    //    Terminal's cwd, which is fine because per-session cwd is
-    //    supplied by helpers via `new_session` params.
-    let mut spawn_result = spawn_agent_process(&cli.agent, None)
-        .with_context(|| format!("failed to spawn agent CLI: {}", cli.agent))?;
-    tracing::info!(
-        target: "master",
-        program = %spawn_result.resolved_program,
-        "agent CLI spawned"
-    );
+    // 1. Stand up the agent transport. Two shapes:
+    //    * native: WTA's own agent runs IN-PROCESS over an in-memory duplex.
+    //      Spawning it as a child would re-exec the packaged exe, which Windows
+    //      blocks under WindowsApps ("Access is denied"). It's our own code, so
+    //      we just drive it directly — no child, no stderr drain, no reaper.
+    //    * external CLI (copilot/claude/…): spawn the subprocess. cwd=None so
+    //      master inherits Terminal's cwd; per-session cwd comes via new_session.
+    let is_native = crate::agent_registry::resolve_agent_id_from_cmd(&cli.agent) == "native";
 
-    let stdin = spawn_result
-        .child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
-    let stdout = spawn_result
-        .child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
-    let is_npx = spawn_result.is_npx;
-
-    // Drain agent stderr to logs so failures are diagnosable. At debug, not
-    // warn: most lines are routine adapter chatter (and can echo prompt/file
-    // content), so they shouldn't pollute shipping logs or fire as warnings.
-    // The agent's actual exit/crash is logged separately at error.
-    if let Some(stderr) = spawn_result.child.stderr.take() {
-        tokio::task::spawn_local(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(target: "agent_stderr", "{line}");
-            }
-        });
-    }
-
-    // Shutdown channel — when either the agent CLI subprocess exits or
-    // the ACP I/O loop ends, the responsible reaper task posts a reason
-    // string here, the accept loop wakes from `recv()`, and
-    // `run_master_loop` returns `Err`. Returning (rather than
-    // `process::exit`) is critical:
-    //
-    //   * The `tokio::process::Child` (`spawn_agent_process` configures
-    //     `kill_on_drop(true)`) is owned by the child reaper task. When
-    //     `LocalSet::run_until` returns, the LocalSet drops, cancels
-    //     remaining tasks, and the child handle drops — `kill_on_drop`
-    //     then reaps surviving descendants. `process::exit` would skip
-    //     that path and could orphan agent grandchildren.
-    //   * The `WorkerGuard` from `crate::logging::init` is held by
-    //     `main()` for the whole process; it only flushes the
-    //     non-blocking tracing appender on Drop. `process::exit` skips
-    //     that Drop and the final error lines silently vanish. The
-    //     graceful path here lets `main()` return so the guard drops in
-    //     normal stack unwinding and the "agent CLI exited" diagnostic
-    //     actually lands on disk.
-    //
-    // Capacity 2: at most one child-exit reason + one I/O-loop reason
-    // will ever be sent, and both `try_send`s are non-blocking.
+    // Shutdown channel — when the agent transport ends, the responsible task
+    // posts a reason here, the accept loop wakes, and `run_master_loop` returns
+    // Err so SharedWta respawns a fresh master on the next AcquirePane.
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<&'static str>(2);
 
-    // Reap the child so it doesn't zombie if it dies, and signal
-    // shutdown when it does. Without this, helpers would stay
-    // connected to a master whose backing agent CLI is gone — every
-    // prompt would hang waiting on a dead ACP peer, and SharedWta on
-    // the C++ side wouldn't respawn the master (its process handle is
-    // still alive). Signalling here lets `run_master_loop` return
-    // cleanly so SharedWta can spawn a fresh master + agent CLI pair
-    // on the next `AcquirePane`.
-    let mut child = spawn_result.child;
-    let shutdown_tx_child = shutdown_tx.clone();
-    tokio::task::spawn_local(async move {
-        let reason = match child.wait().await {
-            Ok(status) => {
-                tracing::error!(
-                    target: "master",
-                    ?status,
-                    "agent CLI exited — initiating master shutdown"
-                );
-                "agent CLI exited"
-            }
-            Err(err) => {
-                tracing::error!(
-                    target: "master",
-                    error = %err,
-                    "agent CLI wait failed — initiating master shutdown"
-                );
-                "agent CLI wait failed"
-            }
-        };
-        let _ = shutdown_tx_child.try_send(reason);
-        // `child` drops as this task body ends, firing kill_on_drop on
-        // any descendants that survived.
-    });
+    let is_npx;
+    let outgoing: std::pin::Pin<Box<dyn futures::AsyncWrite>>;
+    let incoming: std::pin::Pin<Box<dyn futures::AsyncRead>>;
 
-    let outgoing = stdin.compat_write();
-    let incoming = stdout.compat();
+    if is_native {
+        is_npx = false;
+        let cfg = crate::native_agent::NativeAgentConfig::from_agent_cmd(&cli.agent);
+        tracing::info!(target: "master", base_url = %cfg.base_url, model = %cfg.model, "embedding native agent in-process");
+        let (master_side, agent_side) = tokio::io::duplex(64 * 1024);
+        let (agent_read, agent_write) = tokio::io::split(agent_side);
+        let shutdown_tx_native = shutdown_tx.clone();
+        tokio::task::spawn_local(async move {
+            let res = crate::native_agent::run_on(cfg, agent_read.compat(), agent_write.compat_write()).await;
+            tracing::error!(target: "master", ?res, "native agent ended — initiating master shutdown");
+            let _ = shutdown_tx_native.try_send("native agent ended");
+        });
+        let (master_read, master_write) = tokio::io::split(master_side);
+        outgoing = Box::pin(master_write.compat_write());
+        incoming = Box::pin(master_read.compat());
+    } else {
+        let mut spawn_result = spawn_agent_process(&cli.agent, None)
+            .with_context(|| format!("failed to spawn agent CLI: {}", cli.agent))?;
+        tracing::info!(
+            target: "master",
+            program = %spawn_result.resolved_program,
+            "agent CLI spawned"
+        );
+
+        let stdin = spawn_result
+            .child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
+        let stdout = spawn_result
+            .child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
+        is_npx = spawn_result.is_npx;
+
+        // Drain agent stderr to logs so failures are diagnosable. At debug, not
+        // warn: most lines are routine adapter chatter (and can echo prompt/file
+        // content), so they shouldn't pollute shipping logs or fire as warnings.
+        // The agent's actual exit/crash is logged separately at error.
+        if let Some(stderr) = spawn_result.child.stderr.take() {
+            tokio::task::spawn_local(async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    tracing::debug!(target: "agent_stderr", "{line}");
+                }
+            });
+        }
+
+        // Reap the child so it doesn't zombie if it dies, and signal shutdown
+        // when it does. kill_on_drop reaps descendants when the LocalSet drops.
+        let mut child = spawn_result.child;
+        let shutdown_tx_child = shutdown_tx.clone();
+        tokio::task::spawn_local(async move {
+            let reason = match child.wait().await {
+                Ok(status) => {
+                    tracing::error!(target: "master", ?status, "agent CLI exited — initiating master shutdown");
+                    "agent CLI exited"
+                }
+                Err(err) => {
+                    tracing::error!(target: "master", error = %err, "agent CLI wait failed — initiating master shutdown");
+                    "agent CLI wait failed"
+                }
+            };
+            let _ = shutdown_tx_child.try_send(reason);
+        });
+
+        outgoing = Box::pin(stdin.compat_write());
+        incoming = Box::pin(stdout.compat());
+    }
 
     // 2. Build the shared state + ClientSideConnection. `cached_init_resp`
     //    starts empty and is filled below once the initialize round
