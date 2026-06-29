@@ -309,5 +309,94 @@ mod tests {
             42
         );
         assert_eq!(content_length(b"x\r\ncontent-length:7\r\n\r\n"), 7);
+        assert_eq!(content_length(b"no length header\r\n\r\n"), 0);
+    }
+
+    #[test]
+    fn finds_header_terminator() {
+        assert_eq!(find_headers_end(b"POST /mcp\r\n\r\nbody"), Some(13));
+        assert_eq!(find_headers_end(b"incomplete\r\n"), None);
+    }
+
+    #[tokio::test]
+    async fn unknown_method_is_32601() {
+        let tools = default_registry();
+        let r = dispatch(
+            &tools,
+            &serde_json::json!({"jsonrpc":"2.0","id":7,"method":"frobnicate"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(r["error"]["code"], -32601);
+    }
+
+    /// A tool that blocks until aborted, so we can prove notifications/cancelled
+    /// stops an in-flight call.
+    struct SleepTool;
+    #[async_trait::async_trait]
+    impl Tool for SleepTool {
+        fn name(&self) -> &'static str {
+            "sleep"
+        }
+        fn description(&self) -> &'static str {
+            "blocks"
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type":"object"})
+        }
+        async fn call(&self, _a: &serde_json::Value) -> Result<String, String> {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            Ok("never".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_aborts_in_flight_tool_call() {
+        let tools: Vec<Arc<dyn Tool>> = vec![Arc::new(SleepTool)];
+        let call = serde_json::json!({"jsonrpc":"2.0","id":"X","method":"tools/call","params":{"name":"sleep","arguments":{}}});
+        let cancel = serde_json::json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"X"}});
+        let t2 = tools.clone();
+        let caller = tokio::spawn(async move { dispatch(&tools, &call).await });
+        // Let the call register, then cancel by id.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(dispatch(&t2, &cancel).await.is_none());
+        let res = tokio::time::timeout(std::time::Duration::from_secs(2), caller)
+            .await
+            .expect("call must end after cancel")
+            .unwrap();
+        assert!(res.is_none(), "cancelled call yields no response");
+    }
+
+    #[tokio::test]
+    async fn serve_handles_post_and_rejects_non_post() {
+        let ep = serve(default_registry()).await.unwrap();
+        let post = |body: &str| {
+            format!(
+                "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            )
+        };
+        // tools/list over a real socket.
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", ep.port))
+            .await
+            .unwrap();
+        s.write_all(post(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#).as_bytes())
+            .await
+            .unwrap();
+        let mut buf = vec![0u8; 4096];
+        let n = s.read(&mut buf).await.unwrap();
+        let resp = String::from_utf8_lossy(&buf[..n]);
+        assert!(resp.starts_with("HTTP/1.1 200"), "got {resp}");
+        assert!(resp.contains("resolve_command"), "got {resp}");
+        // Non-POST → 405.
+        let mut s2 = tokio::net::TcpStream::connect(("127.0.0.1", ep.port))
+            .await
+            .unwrap();
+        s2.write_all(b"GET /mcp HTTP/1.1\r\nHost: x\r\n\r\n")
+            .await
+            .unwrap();
+        let n2 = s2.read(&mut buf).await.unwrap();
+        assert!(String::from_utf8_lossy(&buf[..n2]).starts_with("HTTP/1.1 405"));
     }
 }

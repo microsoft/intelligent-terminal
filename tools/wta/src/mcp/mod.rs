@@ -82,11 +82,29 @@ pub async fn start_and_publish() -> Option<McpEndpoint> {
 pub fn published_url() -> Option<String> {
     let p = endpoint_file_path()?;
     let url = std::fs::read_to_string(p).ok()?.trim().to_string();
-    // Validate shape so a partial/garbage read degrades to no-MCP rather than a
-    // bad endpoint: must be our localhost /mcp URL.
-    if url.starts_with("http://127.0.0.1:") && url.ends_with("/mcp") {
+    if is_valid_endpoint(&url) {
         Some(url)
     } else {
         None
+    }
+}
+
+/// True for a well-formed local MCP endpoint URL. Keeps partial/garbage reads
+/// from being injected as a bad endpoint.
+fn is_valid_endpoint(url: &str) -> bool {
+    url.starts_with("http://127.0.0.1:") && url.ends_with("/mcp")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_endpoint;
+
+    #[test]
+    fn endpoint_validation_accepts_localhost_mcp_only() {
+        assert!(is_valid_endpoint("http://127.0.0.1:51234/mcp"));
+        assert!(!is_valid_endpoint("")); // empty / unpublished
+        assert!(!is_valid_endpoint("http://127.0.0.1:512")); // truncated, no /mcp
+        assert!(!is_valid_endpoint("http://evil.example/mcp")); // non-localhost
+        assert!(!is_valid_endpoint("http://127.0.0.1:51234/other"));
     }
 }
