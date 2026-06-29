@@ -1807,32 +1807,22 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let _ = inner.agent_conn.set(std::sync::Arc::clone(&agent_conn));
 
     // Seed the registry with historical sessions sourced from ACP
-    // `session/list` (host = the already-running agent; WSL = per-distro
-    // spawn). No on-disk CLI parsing. Runs after init so the capability +
-    // connection are ready.
+    // `session/list`. Host (the already-running agent) is fast — seed +
+    // broadcast it immediately. WSL (per-distro spawn) can be slow / wedged, so
+    // it runs decoupled on the LocalSet and broadcasts when it lands. No on-disk
+    // CLI parsing. Runs after init so the capability + connection are ready.
     {
         let inner_for_history = std::sync::Arc::clone(&inner);
         tokio::task::spawn_local(async move {
             let scan_started = std::time::Instant::now();
-            let sessions = seed_history_via_acp(&inner_for_history).await;
-            let count = sessions.len();
-            for s in &sessions {
-                let info = crate::session_registry::agent_session_to_session_info(s);
-                inner_for_history.registry.upsert_if_absent(info).await;
-            }
+            let count = seed_host_and_broadcast(&inner_for_history).await;
             tracing::info!(
                 target: "master_history",
                 count,
                 elapsed_ms = scan_started.elapsed().as_millis() as u64,
-                "master ACP history seed complete; broadcasting sessions/changed"
+                "master ACP host history seed complete"
             );
-            if count > 0 {
-                broadcast_ext_to_helpers(
-                    &inner_for_history,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
+            spawn_wsl_seed(&inner_for_history);
         });
     }
 
@@ -2301,19 +2291,57 @@ async fn host_rows_from_conn(
     )
 }
 
-/// Host (ACP) + WSL (ACP) historical sessions, merged.
-async fn seed_history_via_acp(
-    state: &MasterStateInner,
-) -> Vec<crate::agent_sessions::AgentSession> {
+/// Seed host history (fast: one round-trip on the already-running agent),
+/// upsert, and broadcast immediately. Returns the host row count. WSL is
+/// seeded separately ([`spawn_wsl_seed`]) so a slow/wedged distro never blocks
+/// host rows from appearing.
+async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> usize {
     let host = host_history_via_acp(state).await;
-    let wsl = if crate::history_loader::wsl_sessions_enabled() {
-        crate::wsl_acp::scan_running_distros_acp(state.cli_source.as_ref()).await
-    } else {
-        Vec::new()
-    };
-    let mut out = host;
-    out.extend(wsl);
-    out
+    let count = host.len();
+    for s in &host {
+        let info = crate::session_registry::agent_session_to_session_info(s);
+        state.registry.upsert_if_absent(info).await;
+    }
+    if count > 0 {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+    count
+}
+
+/// Fire-and-forget the WSL history scan on the master's LocalSet so a 40s distro
+/// timeout can't stall host rows. Upserts + broadcasts when it lands. No-op when
+/// WSL sessions are disabled.
+fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
+    if !crate::history_loader::wsl_sessions_enabled() {
+        return;
+    }
+    let inner = std::sync::Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let started = std::time::Instant::now();
+        let wsl = crate::wsl_acp::scan_running_distros_acp(inner.cli_source.as_ref()).await;
+        let count = wsl.len();
+        for s in &wsl {
+            let info = crate::session_registry::agent_session_to_session_info(s);
+            inner.registry.upsert_if_absent(info).await;
+        }
+        tracing::info!(
+            target: "master_history",
+            count,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "WSL ACP history seed complete"
+        );
+        if count > 0 {
+            broadcast_ext_to_helpers(
+                &inner,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+    });
 }
 
 /// Before returning the snapshot, opportunistically upgrade any row whose title
@@ -2323,7 +2351,7 @@ async fn seed_history_via_acp(
 /// delegate sessions, which register with an empty title before the CLI has
 /// generated its real one.
 async fn handle_sessions_list(
-    state: &MasterStateInner,
+    state: &std::sync::Arc<MasterStateInner>,
     params: &serde_json::value::RawValue,
 ) -> acp::Result<acp::ExtResponse> {
     let parsed = crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
@@ -2337,22 +2365,16 @@ async fn handle_sessions_list(
     })?;
 
     if parsed.rescan {
-        let sessions = seed_history_via_acp(state).await;
-        let count = sessions.len();
-        for s in &sessions {
-            let info = crate::session_registry::agent_session_to_session_info(s);
-            state.registry.upsert_if_absent(info).await;
-        }
+        // Host is fast: re-pull + broadcast inline. WSL can be slow / wedged
+        // (40s distro timeout), so fire it asynchronously — it broadcasts again
+        // when it lands rather than blocking this response on it.
+        let count = seed_host_and_broadcast(state).await;
         tracing::info!(
             target: "master_history",
             count,
-            "sessions/list rescan: reloaded historical sessions (host+WSL via ACP)"
+            "sessions/list rescan: reloaded host history via ACP (WSL async)"
         );
-        broadcast_ext_to_helpers(
-            state,
-            crate::session_registry::build_sessions_changed_notification(),
-        )
-        .await;
+        spawn_wsl_seed(state);
     }
 
     let snap = state.registry.snapshot().await;
