@@ -12,6 +12,9 @@
                              * full results table grouped by Describe > Context
       - results.xml        NUnit XML (for CI: Azure DevOps / GitHub test reporting)
       - summary.md         Human-readable Markdown summary (same per-failure blocks)
+      - release-report.md  Clean, jargon-free RELEASE CHECKLIST driven by the results
+                           ([x] = automation verified it; plain [ ] = verify manually).
+                           Generated via New-ReleaseReport.ps1; suppress with -SkipReleaseReport.
     Prints the same failure blocks to the console and returns a CI exit code
     (0 = all passed, 1 = any failure).
 
@@ -25,7 +28,9 @@ param(
     [string[]]$Path = @("$PSScriptRoot/selftests", "$PSScriptRoot/tests"),
     [string[]]$Tag,
     # Fixed in-repo location by default so the latest report is always at a known path.
-    [string]$OutDir = (Join-Path $PSScriptRoot 'artifacts')
+    [string]$OutDir = (Join-Path $PSScriptRoot 'artifacts'),
+    # Also emit the clean, jargon-free release checklist (release-report.md) from the results.
+    [switch]$SkipReleaseReport
 )
 
 $ErrorActionPreference = 'Stop'
@@ -192,6 +197,19 @@ Write-Host "ItE2E REPORT  Passed=$($result.PassedCount) Failed=$($result.FailedC
 Write-Host "  report.html : $htmlPath"
 Write-Host "  results.xml : $($cfg.TestResult.OutputPath.Value)"
 Write-Host "  summary.md  : $summaryPath"
+
+# ── Release checklist (clean, jargon-free) ──────────────────────────────────
+# Final workflow step: turn the raw test outcomes into doc/release-check-list.md with each
+# box filled by what automation verified ([x] = passed, plain [ ] = verify manually). This is
+# the human-facing "what's tested / what you still need to run" artifact.
+if (-not $SkipReleaseReport) {
+    $releaseReport = Join-Path $OutDir 'release-report.md'
+    try {
+        & (Join-Path $PSScriptRoot 'New-ReleaseReport.ps1') -ResultsXml $cfg.TestResult.OutputPath.Value -OutFile $releaseReport
+        Write-Host "  release-report.md : $releaseReport (clean release checklist)" -ForegroundColor Green
+    }
+    catch { Write-Host "  release-report.md : SKIPPED ($($_.Exception.Message))" -ForegroundColor Yellow }
+}
 if ($failed) {
     Write-Host ""
     Write-Host "PRECISE FAILURES:" -ForegroundColor Red
