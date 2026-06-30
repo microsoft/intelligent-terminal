@@ -74,4 +74,14 @@
     # §0 FRE agent-setup overlay controls (Feature.FreAgentSetup) — the FRE-specific UI half.
     'Copilot preinstalled'              = 'FRE agent dropdown shows Copilot as installed'
     'Session hook hints'                = 'Session hook hints appear only when'
+
+    # §7 multi-pane / multi-tab (Feature.MultiPane) — single-window protocol-driven cases.
+    'Split pane does not break chat'    = 'Split pane does not break chat'
+    'Multiple tabs work'                = 'Multiple tabs each get an independent agent session'
+    'Multiple agent panes work'         = 'Multiple tabs each get an independent agent session'
+    'Close target tab cleans up'        = 'Close target tab cleans up'
+
+    # §6 custom agents (Feature.CustomAgent)
+    'Custom agent is Settings-only'     = 'Custom agent is Settings-only'
+    'Custom agent runs the standard agent-pane behaviours' = 'A configured custom ACP agent connects and chats'
 }
