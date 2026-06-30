@@ -812,22 +812,6 @@ where
         hook_sink(ev);
     }
 
-    // Phantom-session prune: if this event was a session-end and the
-    // row is now Ended for a managed CLI (Claude/Copilot/Gemini) whose
-    // on-disk artefacts contain no resumable content, drop it from the
-    // registry now. Without this, the user who opens `<cli>` and exits
-    // without typing a real prompt is left with an Ended row in session management view
-    // whose Enter would launch `<cli> --resume <id>` — and the CLI
-    // itself would then reject the request (`No conversation found`
-    // for Claude, `No session, task, or name matched` for Copilot,
-    // similar for Gemini), often leaving fresh phantom artefacts on
-    // disk in the process. Mirrors the loader-side filters in
-    // `history_loader::load_*` (which only fire for historical rows
-    // reconstructed at startup).
-    if matches!(event, "agent.session.stopped" | "agent.session.end") {
-        prune_phantom_session_if_ended(reg, &key_for_refresh);
-    }
-
     // Stamp `AgentPane` origin on the live session if the agent-pane
     // origin index recorded its session id. This is what flips the
     // "agent pane" prefix on for *live* rows — historical rows pick up
@@ -854,72 +838,6 @@ where
         "applied"
     );
     dirty
-}
-
-/// Drop `key` from `reg` if it has transitioned to `Ended` and its
-/// on-disk artefacts indicate `<cli> --resume <key>` would be rejected
-/// (per the CLI's own resumability rule). A no-op for any other
-/// status or for keys whose CLI has no on-disk artefact yet (defers
-/// to the CLI's own validation).
-///
-/// Covers all three managed CLIs:
-///   * Claude  — JSONL exists but contains only meta records
-///               (Claude rejects with `No conversation found with
-///               session ID: <id>`).
-///   * Copilot — session-state dir exists but `events.jsonl` is missing
-///               or empty (Copilot rejects with
-///               `Error: No session, task, or name matched '<id>'`).
-///   * Gemini  — chat JSONL exists but contains only the session
-///               header line(s), no user/tool activity.
-pub(crate) fn prune_phantom_session_if_ended(
-    reg: &mut crate::agent_sessions::AgentSessionRegistry,
-    key: &str,
-) {
-    prune_phantom_session_if_ended_with(reg, key, |cli, k| {
-        // Use the *strict* probe here. Rationale: the row is in
-        // wta's live registry, so we know the session really existed
-        // in this process — a missing on-disk artefact is conclusive
-        // evidence of a phantom (the CLI never had anything to
-        // flush). The lenient probe defers to the CLI on missing
-        // artefacts, but for live-tracked sessions that produces a
-        // sticky Idle/Ended row that pressing Enter dead-ends on
-        // (e.g. ACP-launched `claude` that the user exits without
-        // typing — Claude never writes a JSONL, so
-        // `claude --resume <id>` rejects with
-        // `No conversation found with session ID: <id>`).
-        crate::history_loader::key_has_definite_resumable_content(cli, k)
-    });
-}
-
-/// Variant of [`prune_phantom_session_if_ended`] that takes the
-/// resumability probe as a callback. Allows unit tests to drive the
-/// prune path without touching the real
-/// `~/.{claude,copilot,gemini}` trees (and without racing on
-/// `USERPROFILE` env-var mutation).
-pub(crate) fn prune_phantom_session_if_ended_with(
-    reg: &mut crate::agent_sessions::AgentSessionRegistry,
-    key: &str,
-    is_resumable: impl FnOnce(&crate::agent_sessions::CliSource, &str) -> bool,
-) {
-    use crate::agent_sessions::AgentStatus;
-    let probe_input = match reg.get(&key.to_string()) {
-        Some(s) if matches!(s.status, AgentStatus::Ended) => {
-            Some((s.cli_source.clone(), s.key.clone()))
-        }
-        _ => None,
-    };
-    let should_prune = match probe_input {
-        Some((cli, k)) => !is_resumable(&cli, &k),
-        None => false,
-    };
-    if should_prune {
-        tracing::info!(
-            target: "agent_session_registry",
-            key = %key,
-            "pruning phantom session (Ended, no resumable on-disk content)",
-        );
-        reg.remove(&key.to_string());
-    }
 }
 
 /// Classify a WT protocol event into a notification.
@@ -5260,23 +5178,8 @@ impl App {
                     "AgentSessionEvent posted from background callback"
                 );
                 let hook_event = ev.clone();
-                // Capture key BEFORE apply for events that unbind it
-                // (PaneClosed clears the pane→key mapping), so the
-                // phantom-session prune below can still see the row.
-                let key_to_prune = match &ev {
-                    crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id } => {
-                        self.agent_sessions.key_for_pane(pane_session_id)
-                    }
-                    crate::agent_sessions::SessionEvent::SessionStopped { key, .. } => {
-                        Some(key.clone())
-                    }
-                    _ => None,
-                };
                 self.agent_sessions.apply(ev);
                 self.publish_session_hook(hook_event);
-                if let Some(k) = key_to_prune {
-                    crate::app::prune_phantom_session_if_ended(&mut self.agent_sessions, &k);
-                }
             }
             AppEvent::AliveSnapshotLoaded(items) => {
                 let count = items.len();
@@ -5907,8 +5810,8 @@ impl App {
                     match state {
                         "closed" => {
                             // Capture the key BEFORE PaneClosed clears
-                            // the pane→key binding, so the post-apply
-                            // phantom-session prune still sees the row.
+                            // the pane→key binding, so the log can report
+                            // which row was demoted.
                             let key_before = self
                                 .agent_sessions
                                 .key_for_pane(&pane_id);
@@ -5923,12 +5826,6 @@ impl App {
                                 key_before = ?key_before,
                                 "helper applied PaneClosed locally + published to master"
                             );
-                            if let Some(k) = key_before {
-                                crate::app::prune_phantom_session_if_ended(
-                                    &mut self.agent_sessions,
-                                    &k,
-                                );
-                            }
                         }
                         "failed" => {
                             let reason = params
@@ -6003,21 +5900,11 @@ impl App {
                             pane_id = %pane_id,
                             "shell prompt-start in agent-bound pane: treating as agent exit",
                         );
-                        // Capture the key BEFORE PaneClosed clears the
-                        // pane→key binding so the phantom-session prune
-                        // can still inspect the row.
-                        let key_before = self.agent_sessions.key_for_pane(&pane_id);
                         let event = crate::agent_sessions::SessionEvent::PaneClosed {
                             pane_session_id: pane_id.clone(),
                         };
                         self.agent_sessions.apply(event.clone());
                         self.publish_session_hook(event);
-                        if let Some(k) = key_before {
-                            crate::app::prune_phantom_session_if_ended(
-                                &mut self.agent_sessions,
-                                &k,
-                            );
-                        }
                     }
                 }
 
@@ -12825,244 +12712,6 @@ mod tests {
 
     // ─── Phantom-session prune ───────────────────────────────────────
 
-    fn make_ended_session(
-        cli: crate::agent_sessions::CliSource,
-        key: &str,
-    ) -> crate::agent_sessions::AgentSessionRegistry {
-        use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
-        use std::path::PathBuf;
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: key.into(),
-            cli_source: cli,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        reg.apply(SessionEvent::SessionStopped {
-            key: key.into(),
-            reason: "user_exit".into(),
-        });
-        reg
-    }
-
-    #[test]
-    fn prune_phantom_session_drops_ended_claude_row_when_not_resumable() {
-        // Reproduces the "ghost live Claude session" bug: open
-        // `claude`, run `/model`, exit. Without the prune, the Ended
-        // row sticks around and Enter dead-ends on
-        // `No conversation found with session ID: <id>`.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Claude, "phantom-claude");
-        assert!(reg.has_session(&"phantom-claude".to_string()));
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "phantom-claude", |_cli, _k| {
-            false
-        });
-        assert!(!reg.has_session(&"phantom-claude".to_string()));
-    }
-
-    #[test]
-    fn prune_phantom_session_drops_ended_copilot_row_when_not_resumable() {
-        // Reproduces the equivalent Copilot bug: open `copilot`, exit.
-        // workspace.yaml exists but events.jsonl is missing/empty.
-        // Enter on the Ended row would launch
-        // `copilot --resume=<id>` and dead-end on
-        // `Error: No session, task, or name matched '<id>'`.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Copilot, "phantom-copilot");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "phantom-copilot", |_cli, _k| {
-            false
-        });
-        assert!(
-            !reg.has_session(&"phantom-copilot".to_string()),
-            "phantom Ended Copilot row must be removed"
-        );
-    }
-
-    #[test]
-    fn prune_phantom_session_drops_ended_gemini_row_when_not_resumable() {
-        // Reproduces the equivalent Gemini bug: open `gemini`, exit.
-        // The JSONL has only the session header — no user/tool record.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Gemini, "phantom-gemini");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "phantom-gemini", |_cli, _k| {
-            false
-        });
-        assert!(
-            !reg.has_session(&"phantom-gemini".to_string()),
-            "phantom Ended Gemini row must be removed"
-        );
-    }
-
-    #[test]
-    fn prune_phantom_session_dispatches_cli_argument() {
-        // The probe callback receives the row's CliSource so it can
-        // dispatch to the right per-CLI on-disk check. Verify the
-        // CliSource passed through matches the row's, for both
-        // Claude and Copilot, so the routing logic is regression-safe.
-        use crate::agent_sessions::CliSource;
-        use std::sync::{Arc, Mutex};
-
-        for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
-            let mut reg = make_ended_session(cli.clone(), "k");
-            let probed = Arc::new(Mutex::new(None));
-            let probed_capture = Arc::clone(&probed);
-            crate::app::prune_phantom_session_if_ended_with(&mut reg, "k", move |c, _k| {
-                *probed_capture.lock().unwrap() = Some(c.clone());
-                true // not a phantom — keep row, just observe routing
-            });
-            let captured = probed.lock().unwrap().clone();
-            assert_eq!(
-                captured.as_ref(),
-                Some(&cli),
-                "probe must receive the row's CliSource ({:?})",
-                cli
-            );
-        }
-    }
-
-    #[test]
-    fn prune_phantom_session_keeps_ended_row_when_resumable() {
-        // Symmetric to the per-CLI drop tests: if the on-disk
-        // artefact has real content, the prune is a no-op so the user
-        // can resume via Enter in session management view.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Claude, "real-id");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "real-id", |_cli, _k| true);
-        assert!(
-            reg.has_session(&"real-id".to_string()),
-            "resumable Ended row must NOT be removed"
-        );
-    }
-
-    #[test]
-    fn prune_phantom_session_skips_live_rows() {
-        // Status must be Ended for the prune to fire — silently
-        // removing a still-live (Idle/Working/Attention) row would be
-        // a UX disaster.
-        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: "live-id".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "live-id", |_, _| false);
-        assert!(reg.has_session(&"live-id".to_string()));
-    }
-
-    #[test]
-    fn pane_closed_via_agent_event_triggers_phantom_prune() {
-        // Reproduces the "stale-Idle row" recovery path: when the
-        // user presses Enter on a row whose pane has died silently
-        // (tab closed while WT's connection_state racing with
-        // TermControl teardown lost the event), our focus-pane
-        // callback posts `AgentSessionEvent(PaneClosed { ... })` to
-        // demote the row to Ended — and the post-apply prune in the
-        // AgentSessionEvent handler then drops the row if its CLI
-        // artefacts indicate no resumable content. This test drives
-        // that whole path: PaneClosed event → Ended → prune fires.
-        //
-        // Stubs the on-disk probe via the testable `_with` variant
-        // so the test doesn't touch the real `~/.claude` tree. The
-        // full path being tested here uses the global probe, so the
-        // test directly exercises the handler logic via the variant
-        // we use to test prune behaviour.
-        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: "stale".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "00000000-0000-0000-0000-deadbeefdead".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        // Sanity: row is bound to the pane.
-        assert_eq!(
-            reg.key_for_pane("00000000-0000-0000-0000-deadbeefdead")
-                .as_deref(),
-            Some("stale"),
-            "row must be bound to pane before close",
-        );
-        // Simulate the focus-pane callback firing PaneClosed.
-        // Capture key BEFORE apply (mirrors the AgentSessionEvent handler).
-        let key_to_prune = reg.key_for_pane("00000000-0000-0000-0000-deadbeefdead");
-        reg.apply(SessionEvent::PaneClosed {
-            pane_session_id: "00000000-0000-0000-0000-deadbeefdead".into(),
-        });
-        // Pre-prune: row is now Ended but still in the registry.
-        assert!(reg.has_session(&"stale".to_string()));
-        // Prune with phantom probe → row should be removed.
-        let k = key_to_prune.expect("captured key before apply");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, &k, |_cli, _key| false);
-        assert!(
-            !reg.has_session(&"stale".to_string()),
-            "phantom row must be removed once PaneClosed transitions it to Ended",
-        );
-    }
-
-    #[test]
-    fn default_prune_uses_strict_probe_for_live_claude_session_without_jsonl() {
-        // End-to-end regression for the user-reported bug:
-        //   "start a claude session，no conversation，close session,
-        //    session still active, resume error"
-        //
-        // Concretely: the user launches `claude` via the agent pane
-        // (ACP), exchanges zero turns, exits the pane. Claude does
-        // NOT write a JSONL under `~/.claude/projects/...` for that
-        // session id (it only flushes when there's content). With
-        // the previous lenient probe ("missing artefact → defer to
-        // CLI → resumable=true"), the post-`SessionStopped` prune
-        // believed the row was real and left it Ended in session management view. Pressing
-        // Enter then launched `claude --resume <id>` and dead-ended
-        // on `No conversation found with session ID: <id>`.
-        //
-        // We drive the contract via the injectable
-        // `prune_phantom_session_if_ended_with` variant rather than
-        // the global `prune_phantom_session_if_ended`. The latter
-        // probes the real `~/.claude/projects` tree under whatever
-        // home directory the test runner happens to have, which is
-        // non-hermetic — flaky on developer machines if a Claude
-        // session ever happens to land on the chosen UUID, and
-        // dependent on USERPROFILE/HOME environment state. The
-        // injectable variant lets us pin the probe to the precise
-        // semantics the production default uses
-        // (`key_has_definite_resumable_content`) without touching
-        // the filesystem.
-        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let key = "ed7c7c7c-9999-8888-7777-666666666666-strict";
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: key.into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "00000000-0000-0000-0000-aaaaaaaaaaaa".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        reg.apply(SessionEvent::SessionStopped {
-            key: key.into(),
-            reason: "user_exit".into(),
-        });
-        // Sanity: the row is in the registry (Ended) before prune.
-        assert!(reg.has_session(&key.to_string()));
-        // Drive the prune with the strict-probe contract pinned
-        // via the injectable variant. Stub returns `false` to model
-        // "no JSONL on disk" — the exact case the default's strict
-        // probe (`key_has_definite_resumable_content`) reports for
-        // a Claude session whose CLI never flushed.
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, key, |_cli, _key| false);
-        assert!(
-            !reg.has_session(&key.to_string()),
-            "prune must drop an Ended Claude row whose on-disk \
-             artefacts are absent (strict-probe contract)",
-        );
-    }
-
     #[test]
     fn agents_view_state_is_isolated_per_tab() {
         // Regression: opening the Agents picker in tab A should not show
@@ -13907,25 +13556,15 @@ mod tests {
             }),
         });
 
-        // Two outcomes are correct, both signal that the bridge fired:
-        //   1. Row transitions to Ended (PaneClosed applied), AND
-        //   2. The phantom-session prune (Gemini has no on-disk JSONL
-        //      for `gemini-key`, so the strict probe treats it as a
-        //      phantom and removes the row entirely).
-        // If the bridge had NOT fired, the row would still be Idle
-        // and the prune would not have run (prune only fires on
-        // Ended rows). So absence-from-registry confirms both:
-        // the bridge fired AND the prune fired correctly.
-        let still_present = app
+        let row = app
             .agent_sessions
             .iter_sorted()
             .into_iter()
-            .any(|s| s.key == "gemini-key");
+            .find(|s| s.key == "gemini-key")
+            .expect("row still exists");
         assert!(
-            !still_present,
-            "agent-bound pane seeing osc:133;A must transition to Ended \
-             and (since `gemini-key` has no on-disk JSONL) be pruned as \
-             a phantom; row is still present so the bridge didn't fire",
+            matches!(row.status, crate::agent_sessions::AgentStatus::Ended),
+            "agent-bound pane seeing osc:133;A must transition to Ended",
         );
         // The pane→key binding must be cleared either way.
         assert!(
@@ -13992,23 +13631,15 @@ mod tests {
             params: serde_json::json!({"session_id": pane, "state": "closed"}),
         });
 
-        // `gemini-key` has no on-disk JSONL, so the strict phantom
-        // probe (run by the post-PaneClosed prune) removes the row.
-        // The test still verifies the bridge wired correctly: if
-        // PaneClosed had NOT been applied, the row would still be
-        // Idle and the prune (which only fires on Ended) would have
-        // left it alone — so absence-from-registry is the strongest
-        // signal that the bridge fired.
-        let still_present = app
+        let row = app
             .agent_sessions
             .iter_sorted()
             .into_iter()
-            .any(|s| s.key == "gemini-key");
+            .find(|s| s.key == "gemini-key")
+            .expect("row still exists");
         assert!(
-            !still_present,
-            "Gemini row must transition to Ended on connection_state:closed \
-             AND (with no on-disk JSONL) be pruned by the phantom check; \
-             row is still present so the bridge didn't fire",
+            matches!(row.status, AgentStatus::Ended),
+            "Gemini row must transition to Ended on connection_state:closed",
         );
         assert!(
             !app.agent_sessions.is_agent_pane(pane),

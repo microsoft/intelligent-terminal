@@ -18,11 +18,6 @@
 //             - title        = first user message in jsonl (best-effort)
 //             - last_activity= file mtime
 //             - skip "memory" project + */subagents/*.jsonl
-//             - skip "phantom" sessions whose jsonl contains only meta
-//               records (permission-mode, file-history-snapshot, isMeta
-//               caveats, `<command-...>` / `<local-command-...>` slash
-//               echoes) — `claude --resume <id>` rejects these with
-//               `No conversation found with session ID: <id>`.
 //
 //   Gemini:   ~/.gemini/tmp/<project-slug>/chats/session-*.jsonl
 //             - session id   = first JSONL line `sessionId` field
@@ -30,29 +25,14 @@
 //             - title        = first JSONL line whose `type:"user"` carries
 //                              a content[0].text (best-effort)
 //             - last_activity= file mtime
-//             - skip "phantom" sessions whose jsonl contains only the
-//               session-header line(s) (no record carrying a `type`
-//               field). Opening `gemini` and exiting without
-//               exchanging a turn leaves these on disk — Enter on
-//               the row would launch `gemini --resume <id>` and
-//               dead-end on a similar "no session" rejection.
 //
 //   Codex:    ~/.codex/sessions/YYYY/MM/DD/rollout-<iso-ts>-<UUID>.jsonl
 //             - session id   = first JSONL line `session_meta` payload.id
 //             - cwd          = `session_meta` payload.cwd
 //             - title        = first `event_msg` payload.user_message,
 //                              else first `response_item` role=user content
-//                              (skipping codex's synthetic injections —
-//                              `<environment_context>` & friends plus the
-//                              `# AGENTS.md instructions for <dir>` block;
-//                              see `codex_user_text_is_synthetic`)
+//                              (skipping codex's synthetic injections)
 //             - last_activity= `session_meta` payload.timestamp (fallback file mtime)
-//             - skip "phantom" sessions whose jsonl contains only the
-//               `session_meta` header and/or synthetic injected
-//               response_items (`<environment_context>`, AGENTS.md docs, …;
-//               see `codex_user_text_is_synthetic`) with no real user
-//               turn. `codex resume <id>` would reject these as having
-//               no conversation to resume.
 //
 // (Note: per-subagent JSONL files may live in nested `<UUID>/` subdirs of
 // `chats/`. Top-level Gemini sessions are flat files named `session-*.jsonl`.
@@ -66,15 +46,7 @@ use std::time::SystemTime;
 #[allow(dead_code)]
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
 
-/// Upper bound on bytes read by the `*_has_real_content` classifiers
-/// when streaming a JSONL line-by-line. Picked at 8 MB so a session
-/// whose early meta records (e.g. Claude's `file-history-snapshot`
-/// for a large project) push past `TITLE_TAIL_BYTES` still gets
-/// scanned far enough to find the first real user/assistant record.
-/// The classifiers short-circuit on first hit, so this cap only
-/// matters for genuine phantoms (which are tiny by nature) and the
-/// pathological "JSONL contains only meta records up to the cap"
-/// case (treated as phantom — conservative but safe).
+/// Upper bound on bytes read when streaming a JSONL line-by-line.
 const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
 /// Whether to scan WSL distros for historical sessions. Single
@@ -94,189 +66,12 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
     }
 }
 
-/// Locate the on-disk Claude JSONL for `key` by scanning every
-/// `~/.claude/projects/<encoded-cwd>/` directory for a `<key>.jsonl`
-/// file. Returns `None` when no matching file exists.
-pub(crate) fn claude_jsonl_path_for_key(home: &Path, key: &str) -> Option<PathBuf> {
-    let projects = home.join(".claude").join("projects");
-    let rd = fs::read_dir(&projects).ok()?;
-    for proj in rd.flatten() {
-        if !proj.file_type().map(|t| t.is_dir()).unwrap_or(false) { continue; }
-        let candidate = proj.path().join(format!("{}.jsonl", key));
-        if candidate.is_file() { return Some(candidate); }
-    }
-    None
-}
-
-/// Locate the on-disk Gemini JSONL whose first-line `sessionId` matches
-/// `key`. Scans every `~/.gemini/tmp/<slug>/chats/session-*.jsonl` until
-/// it finds one — Gemini doesn't expose the session id in the filename,
-/// so per-key lookup is O(n) over the chat directory. Returns `None`
-/// when no matching file exists.
-pub(crate) fn gemini_jsonl_path_for_key(home: &Path, key: &str) -> Option<PathBuf> {
-    let tmp = home.join(".gemini").join("tmp");
-    let rd = fs::read_dir(&tmp).ok()?;
-    for proj in rd.flatten() {
-        if !proj.file_type().map(|t| t.is_dir()).unwrap_or(false) { continue; }
-        let chats = proj.path().join("chats");
-        let Ok(files) = fs::read_dir(&chats) else { continue; };
-        for f in files.flatten() {
-            let p = f.path();
-            if !is_gemini_session_file(&p) { continue; }
-            let (sid, _) = parse_gemini_meta(&p);
-            if sid.as_deref() == Some(key) { return Some(p); }
-        }
-    }
-    None
-}
-
-/// Top-level Gemini chat files are `~/.gemini/tmp/<slug>/chats/session-*.jsonl`.
-/// Files inside a per-subagent `<UUID>/` subdirectory are NOT session files
-/// and must be skipped.
-fn is_gemini_session_file(p: &Path) -> bool {
-    if !p.is_file() { return false; }
-    let Some(name) = p.file_name().and_then(|n| n.to_str()) else { return false; };
-    if !name.starts_with("session-") { return false; }
-    name.ends_with(".jsonl")
-}
-
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from)
-}
-
-// ─── Per-CLI resumability probes ────────────────────────────────────────
-
-/// Strict resumable-content probe: treats a
-/// missing on-disk artefact as definite evidence of a phantom
-/// session. Use this in flows where the row is *already in wta's
-/// live registry* (so we know the session really existed in this
-/// process), e.g. the prune that fires after `SessionStopped` /
-/// `PaneClosed`.
-///
-/// Example: the user opens `claude` via the agent pane (ACP-launched),
-/// exchanges zero turns, then closes the pane. Claude never wrote a
-/// JSONL under `~/.claude/projects/...` for that session id (it
-/// flushes only when there's something to flush), so a follow-up
-/// `claude --resume <id>` would fail with
-/// `No conversation found with session ID: <id>`. In this live-prune
-/// flow, the row's lifecycle is fully observed
-/// in-process — the absence of any JSONL is conclusive, so strict
-/// returns `false` and the prune drops the row immediately.
-pub fn key_has_definite_resumable_content(
-    cli: &crate::agent_sessions::CliSource,
-    key: &str,
-) -> bool {
-    match home_dir() {
-        Some(h) => key_has_definite_resumable_content_in(&h, cli, key),
-        // No home → can't probe. Be conservative and leave the row
-        // alone.
-        None    => true,
-    }
-}
-
-/// Testable variant of [`key_has_definite_resumable_content`].
-pub(crate) fn key_has_definite_resumable_content_in(
-    home: &Path,
-    cli: &crate::agent_sessions::CliSource,
-    key: &str,
-) -> bool {
-    use crate::agent_sessions::CliSource;
-    match cli {
-        CliSource::Claude  => claude_key_has_definite_resumable_content_in(home, key),
-        CliSource::Codex   => codex_key_has_definite_resumable_content_in(home, key),
-        CliSource::Copilot => copilot_key_has_definite_resumable_content_in(home, key),
-        CliSource::Gemini  => gemini_key_has_definite_resumable_content_in(home, key),
-        CliSource::Unknown(_) => true,
-    }
-}
-
-/// Claude live-prune probe: missing JSONL → `false` (treat as phantom). See
-/// [`key_has_definite_resumable_content`].
-pub(crate) fn claude_key_has_definite_resumable_content_in(
-    home: &Path,
-    key: &str,
-) -> bool {
-    match claude_jsonl_path_for_key(home, key) {
-        None    => false,
-        Some(p) => claude_session_has_real_content(&p),
-    }
-}
-
-/// Copilot live-prune probe: missing session-state dir → `false`.
-/// Treat a missing dir as phantom. For the
-/// live-tracked case this is rare in practice — Copilot eagerly
-/// creates `workspace.yaml` on launch — but the strict check covers
-/// the edge case symmetrically.
-pub(crate) fn copilot_key_has_definite_resumable_content_in(
-    home: &Path,
-    key: &str,
-) -> bool {
-    let dir = copilot_session_dir_for_key(home, key);
-    if !dir.is_dir() { return false; }
-    let events = dir.join("events.jsonl");
-    events.metadata()
-        .map(|m| m.is_file() && m.len() > 0)
-        .unwrap_or(false)
-}
-
-/// Gemini live-prune probe: missing JSONL → `false` (treat as phantom).
-pub(crate) fn gemini_key_has_definite_resumable_content_in(
-    home: &Path,
-    key: &str,
-) -> bool {
-    match gemini_jsonl_path_for_key(home, key) {
-        None    => false,
-        Some(p) => gemini_jsonl_has_real_content(&p),
-    }
-}
-
-// ─── Claude per-key helpers ─────────────────────────────────────────────
-
 // ─── Copilot per-key helpers ────────────────────────────────────────────
 
 /// Resolve the Copilot session-state directory for `key`.
 /// Always returns a path (no I/O); callers must `is_dir`/`exists` it.
 pub(crate) fn copilot_session_dir_for_key(home: &Path, key: &str) -> PathBuf {
     home.join(".copilot").join("session-state").join(key)
-}
-
-// ─── Gemini per-key helpers ─────────────────────────────────────────────
-
-/// Returns `true` iff the Gemini JSONL at `path` contains at least
-/// one record carrying a `type` field (i.e. user / tool / info
-/// activity beyond the bare session header). Mirrors the
-/// `claude_session_has_real_content` filter — including the
-/// streaming + capped read, and the conservative-on-I/O-error
-/// behavior — so a large early header (or duplicated headers)
-/// can't push real records past a fixed window, and so a
-/// transient open failure doesn't drop a real session.
-pub(crate) fn gemini_jsonl_has_real_content(path: &Path) -> bool {
-    let Some(lines) = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP) else {
-        // I/O failure → conservative: assume real content (don't
-        // drop the row on a transient open error). See the matching
-        // comment on `claude_session_has_real_content`.
-        return true;
-    };
-    for line in lines {
-        if line.trim().is_empty() { continue; }
-        let Ok(val): Result<serde_json::Value, _> = serde_json::from_str(&line) else { continue };
-        // Header lines are recognised by a `sessionId` field with no
-        // `type` field (see `parse_gemini_meta`). Any record carrying
-        // a `type` field is real session activity.
-        if val.get("type").is_some() { return true; }
-    }
-    false
-}
-
-// ─── Codex per-key helpers ──────────────────────────────────────────────
-
-fn codex_key_has_definite_resumable_content_in(home: &Path, id: &str) -> bool {
-    match find_codex_rollout_by_id(home, id) {
-        None => false,
-        Some(path) => codex_session_has_real_content(&path),
-    }
 }
 
 // ─── Codex per-key helpers ──────────────────────────────────────────────
@@ -317,79 +112,6 @@ pub(crate) fn codex_payload_is_subagent(payload: &serde_json::Value) -> bool {
         .get("source")
         .and_then(|s| s.get("subagent"))
         .is_some()
-}
-
-fn codex_session_has_real_content(path: &Path) -> bool {
-    let Some(lines) = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP) else {
-        return true; // conservative on IO error
-    };
-    for line in lines {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
-        let ty = v.get("type").and_then(|s| s.as_str()).unwrap_or("");
-        match ty {
-            "event_msg" => {
-                let pty = v.get("payload")
-                    .and_then(|p| p.get("type"))
-                    .and_then(|s| s.as_str())
-                    .unwrap_or("");
-                if matches!(pty, "user_message" | "agent_message") { return true; }
-            }
-            "response_item" => {
-                let Some(payload) = v.get("payload") else { continue };
-                let role = payload.get("role").and_then(|s| s.as_str()).unwrap_or("");
-                if role == "assistant" { return true; }
-                if role == "user" {
-                    let text = payload.get("content")
-                        .and_then(|c| c.get(0))
-                        .and_then(|c0| c0.get("text"))
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("");
-                    if !codex_user_text_is_synthetic(text) { return true; }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
-/// Is this codex user-role `content.text` a *synthetic* record codex injects
-/// around the real conversation rather than something the user typed?
-///
-/// Codex prepends/interleaves several non-prompt user-role records: XML-ish
-/// wrapper blocks (`<environment_context>`, `<user_instructions>`,
-/// `<subagent_notification>`, `<turn_aborted>`, …) and the auto-loaded AGENTS.md,
-/// headed by codex's `# AGENTS.md instructions` marker. That marker comes in two
-/// forms (codex `UserInstructions::body`): `# AGENTS.md instructions for <dir>`
-/// for a project AGENTS.md (`directory = Some`) and the *bare*
-/// `# AGENTS.md instructions` for a global `~/.codex/AGENTS.md`
-/// (`directory = None`). All appear *before* the user's first real prompt in the
-/// rollout, so both the title scanner and the "has real content" (phantom) check
-/// must skip them — otherwise a freshly opened, never-prompted codex session is
-/// treated as real and titled with a doc heading (e.g.
-/// `# AGENTS.md instructions for C:\…\intelligent-terminal`, or the bare
-/// `# AGENTS.md instructions`) instead of the user's prompt. Add new codex
-/// wrapper tags to `WRAPPER_TAGS` as they appear.
-fn codex_user_text_is_synthetic(text: &str) -> bool {
-    const WRAPPER_TAGS: &[&str] = &[
-        "<environment_context",
-        "<user_instructions",
-        "<subagent_notification",
-        "<turn_aborted",
-    ];
-    const AGENTS_MD_HEADING: &str = "# AGENTS.md instructions";
-    let t = text.trim_start();
-    // Match the AGENTS.md marker only when it stands as a whole heading line so a
-    // real prompt that merely opens with the phrase mid-line isn't swallowed: the
-    // bare global form is followed by end-of-text or a newline, and the project
-    // form continues with ` for <dir>`.
-    WRAPPER_TAGS.iter().any(|tag| t.starts_with(tag))
-        || t.strip_prefix(AGENTS_MD_HEADING).is_some_and(|rest| {
-            rest.is_empty()
-                || rest.starts_with('\n')
-                || rest.starts_with('\r')
-                || rest.starts_with(" for ")
-        })
 }
 
 /// Read a Codex session's working directory from its rollout `session_meta`
@@ -774,23 +496,6 @@ pub(crate) fn decode_claude_cwd(encoded: &str) -> PathBuf {
     PathBuf::from(encoded)
 }
 
-/// Read the first non-empty JSONL line of a Gemini session file and extract
-/// `sessionId`. Timestamps are not exposed by Gemini's JSONL header — the
-/// caller falls back to file mtime for `last_activity`.
-pub(crate) fn parse_gemini_meta(path: &Path) -> (Option<String>, Option<SystemTime>) {
-    let Ok(text) = read_first_bytes(path, 64 * 1024) else { return (None, None) };
-    for line in text.lines() {
-        if line.trim().is_empty() { continue; }
-        let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-        // Hook events such as `{"type":"user", ...}` show up before the
-        // session header on rare occasion; skip those.
-        if val.get("type").is_some() { return (None, None); }
-        let sid = val.get("sessionId").and_then(|v| v.as_str()).map(String::from);
-        return (sid, None);
-    }
-    (None, None)
-}
-
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
 enum ClaudeOrGemini { Claude, Gemini }
@@ -852,72 +557,6 @@ fn extract_gemini_user_text(v: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// Returns `true` iff the Claude JSONL at `path` contains at least one
-/// record that `claude --resume` would treat as real conversational
-/// content. The check accepts:
-///
-///   * Any `type:"assistant"` line (a model reply implies the session
-///     completed at least one round trip).
-///   * Any `type:"user"` line that is **not** a meta record
-///     (`isMeta:true`), **not** a sidechain/subagent record
-///     (`isSidechain:true`), and whose `message.content` is not a
-///     slash-command echo (`<command-...>` / `<local-command-...>`).
-///
-/// This matches Claude's own resumability rule: a session that contains
-/// only `permission-mode`, `file-history-snapshot`, `last-prompt`, and
-/// meta/slash-command user records is rejected with
-/// `No conversation found with session ID: <id>`. Filtering those
-/// "phantom" JSONL files out of the loader prevents Enter on a session management row
-/// from dead-ending in that error.
-///
-/// Streams the JSONL line-by-line (bounded by [`CLASSIFY_SCAN_BYTES_CAP`])
-/// rather than reading a fixed 64 KB head, because Claude's early meta
-/// records (notably `file-history-snapshot` for large projects) can
-/// individually exceed 64 KB and push the first real user/assistant
-/// record past a fixed window — misclassifying a real session as
-/// phantom. Short-circuits on first real-content hit.
-///
-/// **Conservative-on-I/O-error**: when the file can't be opened
-/// (locked by AV, transient permission error, race with another
-/// writer), returns `true` to treat the session as resumable. The
-/// caller (loader / strict prune) takes "true" to mean "keep the
-/// row", so this avoids dropping real sessions on transient
-/// filesystem failures. Only a successful open + scan that finds
-/// no real content classifies as phantom.
-fn claude_session_has_real_content(path: &Path) -> bool {
-    let Some(lines) = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP) else {
-        // I/O failure → conservative: assume real content. See the
-        // doc comment above for why "true" is the safer default here.
-        return true;
-    };
-    for line in lines {
-        if line.trim().is_empty() { continue; }
-        let val: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let ty = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        if ty == "assistant" { return true; }
-        if ty != "user" { continue; }
-        if val.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false) { continue; }
-        if val.get("isSidechain").and_then(|v| v.as_bool()).unwrap_or(false) { continue; }
-        // `message.content` may be a string or an array of parts. Treat
-        // a string starting with `<command-` / `<local-command-` as a
-        // slash-command echo (the only shape Claude emits for those).
-        let content_str = val
-            .get("message")
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .unwrap_or("")
-            .trim_start();
-        if content_str.starts_with("<command-") || content_str.starts_with("<local-command-") {
-            continue;
-        }
-        return true;
-    }
-    false
-}
-
 fn read_first_bytes(path: &Path, max: u64) -> std::io::Result<String> {
     use std::io::Read;
     let mut f = fs::File::open(path)?;
@@ -928,10 +567,6 @@ fn read_first_bytes(path: &Path, max: u64) -> std::io::Result<String> {
 
 /// Open `path` and return an iterator that yields each line as a
 /// `String`, with the underlying read capped at `cap_bytes` total.
-/// Used by the `*_has_real_content` classifiers so a single huge
-/// early meta record (e.g. Claude's `file-history-snapshot` for a
-/// large project) can't push real records past the read window and
-/// cause the file to be misclassified as phantom.
 ///
 /// Lines that fail to decode as UTF-8 cleanly or fail I/O mid-read
 /// are silently skipped — the classifiers parse each line as JSON
@@ -1093,217 +728,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn gemini_meta_first_line_yields_session_id() {
-        // Gemini layout: JSONL file whose first line is the session header.
-        let root = tmp_root("gemini-meta");
-        let f = root.join("session-2026-01-01-abc.jsonl");
-        write_file(&f,
-            "{\"sessionId\":\"abcd-1234\",\"projectHash\":\"x\",\"startTime\":\"2026-01-01T00:00:00Z\",\"kind\":\"main\"}\n\
-             {\"type\":\"user\",\"content\":[{\"text\":\"hello\"}]}\n");
-        let (sid, _ts) = parse_gemini_meta(&f);
-        assert_eq!(sid.as_deref(), Some("abcd-1234"));
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn gemini_meta_skips_non_session_first_line() {
-        // Defensive: if a hook record lands first, we should give up rather
-        // than mistake `type:"user"` for a session header.
-        let root = tmp_root("gemini-meta-skip");
-        let f = root.join("session-x.jsonl");
-        write_file(&f,
-            "{\"type\":\"user\",\"content\":[{\"text\":\"hi\"}]}\n");
-        let (sid, _) = parse_gemini_meta(&f);
-        assert!(sid.is_none());
-        let _ = fs::remove_dir_all(&root);
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    #[test]
-    fn claude_session_real_content_scans_past_large_early_meta_record() {
-        // Regression: Claude's early meta records (notably
-        // `file-history-snapshot` for a large project) can
-        // individually exceed 64 KB. The previous fixed-window read
-        // (TITLE_TAIL_BYTES = 64 KB) could be entirely consumed by a
-        // single such record, never reaching the first real
-        // user/assistant message — misclassifying a genuinely
-        // resumable session as a phantom and pruning it from session management view.
-        //
-        // The streaming refactor (`stream_jsonl_lines` capped at
-        // `CLASSIFY_SCAN_BYTES_CAP`) reads line-by-line and
-        // short-circuits on first hit, so a huge meta record on
-        // line 2 doesn't hide a real user record on line 3.
-        let home = tmp_root("claude-large-meta-then-real");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-        let sid = "ffffffff-1111-2222-3333-444444444444";
-
-        // Build a `file-history-snapshot` whose JSON line is ~128 KB
-        // — comfortably larger than the old 64 KB read window. Pad
-        // with a synthetic field of repeated `x` characters that
-        // serde_json will parse fine.
-        let big_pad: String = "x".repeat(128 * 1024);
-        let big_meta = format!(
-            "{{\"type\":\"file-history-snapshot\",\"messageId\":\"m\",\"pad\":\"{}\"}}",
-            big_pad
-        );
-        let real_user = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hello world\"}}";
-        let contents = format!(
-            "{{\"type\":\"permission-mode\",\"sessionId\":\"{sid}\"}}\n\
-             {big_meta}\n\
-             {real_user}\n"
-        );
-        let path = proj.join(format!("{}.jsonl", sid));
-        write_file(&path, &contents);
-
-        assert!(
-            claude_session_has_real_content(&path),
-            "session must NOT be misclassified as phantom when real \
-             content lives past a 64 KB early meta record"
-        );
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn classifiers_treat_io_error_as_has_content() {
-        // Regression: when `stream_jsonl_lines` can't open the file
-        // (locked by AV, transient permission error, file deleted
-        // between `read_dir` and the classify scan), the classifier
-        // must return `true` so the caller keeps the row. Returning
-        // `false` would let transient I/O failures silently drop
-        // real Claude / Gemini sessions out of session management view.
-        //
-        // We exercise the I/O-error branch by pointing at paths
-        // that don't exist — `fs::File::open` fails the same way it
-        // would for a real lock or permission denial as far as the
-        // classifier is concerned (None from `stream_jsonl_lines`).
-        let home = tmp_root("classifier-io-error");
-        let nowhere_claude = home.join(".claude").join("projects").join("no").join("no.jsonl");
-        let nowhere_gemini = home.join(".gemini").join("tmp").join("no").join("chats").join("session-no.jsonl");
-        assert!(
-            claude_session_has_real_content(&nowhere_claude),
-            "Claude classifier must be conservative (true) when the file can't be opened",
-        );
-        assert!(
-            gemini_jsonl_has_real_content(&nowhere_gemini),
-            "Gemini classifier must be conservative (true) when the file can't be opened",
-        );
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    // ─── Strict probe (used by the live-registry prune) ─────────────
-
-    #[test]
-    fn strict_probe_returns_false_when_artefact_missing_for_managed_clis() {
-        // The strict probe is the one the post-`SessionStopped` /
-        // post-`PaneClosed` prune uses. Its contract differs from
-        // the old picker pre-launch guard on the missing-artefact
-        // case: a live-tracked row whose CLI never
-        // wrote anything to disk is conclusively a phantom (the most
-        // common shape is ACP-launched `claude` that the user exits
-        // without typing — Claude writes no JSONL at all). This is
-        // exactly the path that would otherwise leave the row stuck
-        // Ended in session management view.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("strict-probe-missing");
-        for cli in [CliSource::Claude, CliSource::Codex, CliSource::Copilot, CliSource::Gemini] {
-            assert!(
-                !key_has_definite_resumable_content_in(&home, &cli, "no-such-id"),
-                "{:?} strict probe must report phantom when artefact is missing",
-                cli
-            );
-        }
-        // Unknown CLI: still true (we have no way to verify).
-        assert!(key_has_definite_resumable_content_in(
-            &home,
-            &CliSource::Unknown("codex".into()),
-            "x"
-        ));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn strict_probe_returns_true_for_real_claude_jsonl() {
-        // Symmetric check: when the JSONL exists and has real
-        // content, the strict probe reports resumable. This is the
-        // no-false-positive guard for the
-        // prune.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("strict-probe-real-claude");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-        let key = "real-claude-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", key)),
-            "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n");
-        assert!(key_has_definite_resumable_content_in(&home, &CliSource::Claude, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn strict_probe_returns_false_for_phantom_claude_jsonl() {
-        // The phantom case the loader already filters at startup —
-        // strict probe must agree at prune time so live-tracked rows
-        // are removed consistently.
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("strict-probe-phantom-claude");
-        let projects = home.join(".claude").join("projects");
-        let proj = projects.join("C--Users-me-proj");
-        fs::create_dir_all(&proj).unwrap();
-        let key = "phantom-1111-2222-3333-444444444444";
-        write_file(&proj.join(format!("{}.jsonl", key)),
-            "{\"type\":\"permission-mode\",\"sessionId\":\"phantom\"}\n\
-             {\"type\":\"user\",\"isMeta\":true,\"message\":{\"content\":\"<local-command-caveat>...\"}}\n");
-        assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Claude, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn strict_probe_returns_false_for_copilot_dir_with_empty_events() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("strict-probe-copilot-empty");
-        let key = "11111111-2222-3333-4444-555555555555";
-        let dir = home.join(".copilot").join("session-state").join(key);
-        fs::create_dir_all(&dir).unwrap();
-        write_file(&dir.join("workspace.yaml"), "id: x\n");
-        write_file(&dir.join("events.jsonl"), "");
-        assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Copilot, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn strict_probe_returns_false_for_gemini_header_only_jsonl() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("strict-probe-gemini-header");
-        let chats = home.join(".gemini").join("tmp").join("p").join("chats");
-        fs::create_dir_all(&chats).unwrap();
-        let key = "abcd1234-1111-2222-3333-444444444444";
-        write_file(&chats.join("session-2026-05-24T10-00-abcd.jsonl"),
-            "{\"sessionId\":\"abcd1234-1111-2222-3333-444444444444\",\"projectHash\":\"x\",\"startTime\":\"2026-05-24T10:00:00Z\",\"kind\":\"main\"}\n");
-        assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Gemini, key));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-
-
-
 
 
 
@@ -1331,37 +755,6 @@ mod tests {
 
     // ─── Codex tests ────────────────────────────────────────────────────
 
-    fn codex_session_path(home: &Path, yyyy: &str, mm: &str, dd: &str, iso: &str, id: &str) -> PathBuf {
-        let dir = home.join(".codex").join("sessions").join(yyyy).join(mm).join(dd);
-        fs::create_dir_all(&dir).unwrap();
-        dir.join(format!("rollout-{}-{}.jsonl", iso, id))
-    }
-
-    fn codex_meta_line(id: &str, ts: &str, cwd: &str) -> String {
-        format!(
-            "{{\"timestamp\":\"{ts}\",\"type\":\"session_meta\",\
-\"payload\":{{\"id\":\"{id}\",\"timestamp\":\"{ts}\",\"cwd\":\"{cwd}\",\
-\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\"source\":\"cli\"}}}}\n")
-    }
-
-    fn codex_subagent_meta_line(id: &str, parent: &str, ts: &str, cwd: &str) -> String {
-        format!(
-            "{{\"timestamp\":\"{ts}\",\"type\":\"session_meta\",\
-\"payload\":{{\"id\":\"{id}\",\"forked_from_id\":\"{parent}\",\"timestamp\":\"{ts}\",\"cwd\":\"{cwd}\",\
-\"originator\":\"codex-tui\",\"cli_version\":\"0.1.0\",\
-\"source\":{{\"subagent\":{{\"thread_spawn\":{{\"parent_thread_id\":\"{parent}\",\"depth\":1}}}}}}}}}}\n")
-    }
-
-    fn codex_user_msg_line(ts: &str, text: &str) -> String {
-        format!(
-            "{{\"timestamp\":\"{ts}\",\"type\":\"event_msg\",\
-\"payload\":{{\"type\":\"user_message\",\"message\":\"{text}\"}}}}\n")
-    }
-
-
-
-
-
 
 
     #[test]
@@ -1376,79 +769,10 @@ mod tests {
 
 
 
-    #[test]
-    fn codex_session_has_real_content_is_conservative_on_io_error() {
-        let nowhere = PathBuf::from("Z:/definitely/does/not/exist.jsonl");
-        assert!(codex_session_has_real_content(&nowhere),
-                "must default to true when the file can't be opened");
-    }
-
-    #[test]
-    fn codex_session_has_real_content_detects_user_message() {
-        let home = tmp_root("codex-scan-user");
-        let id = "abcd0001-2222-3333-4444-555555555555";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T12-00-00", id);
-        write_file(&path,
-            &(codex_meta_line(id, "2026-05-28T12:00:00Z", "C:/x")
-              + &codex_user_msg_line("2026-05-28T12:00:05Z", "hi")));
-        assert!(codex_session_has_real_content(&path));
-        let _ = fs::remove_dir_all(&home);
-    }
-
-    #[test]
-    fn codex_session_has_real_content_detects_agent_message() {
-        let home = tmp_root("codex-scan-agent");
-        let id = "abcd0002-2222-3333-4444-555555555555";
-        let path = codex_session_path(&home, "2026", "05", "28", "2026-05-28T12-30-00", id);
-        let agent_line = "{\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"message\":\"ok\"}}\n";
-        write_file(&path,
-            &(codex_meta_line(id, "2026-05-28T12:30:00Z", "C:/x") + agent_line));
-        assert!(codex_session_has_real_content(&path));
-        let _ = fs::remove_dir_all(&home);
-    }
 
 
 
 
-
-
-
-    #[test]
-    fn codex_user_text_is_synthetic_recognizes_bare_and_dir_headings() {
-        // Project AGENTS.md (directory=Some) -> "# AGENTS.md instructions for <dir>".
-        assert!(codex_user_text_is_synthetic(
-            "# AGENTS.md instructions for C:/proj\n\n<INSTRUCTIONS>\n be concise \n</INSTRUCTIONS>"
-        ));
-        // Global ~/.codex/AGENTS.md (directory=None) -> bare "# AGENTS.md instructions".
-        assert!(codex_user_text_is_synthetic(
-            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\n be concise \n</INSTRUCTIONS>"
-        ));
-        // Bare heading with nothing after it, and with tolerated leading space.
-        assert!(codex_user_text_is_synthetic("# AGENTS.md instructions"));
-        assert!(codex_user_text_is_synthetic("  # AGENTS.md instructions\n"));
-        // XML-ish wrapper block.
-        assert!(codex_user_text_is_synthetic(
-            "<environment_context>cwd=C:/x</environment_context>"
-        ));
-        // A real prompt that merely opens with the phrase mid-line is NOT synthetic.
-        assert!(!codex_user_text_is_synthetic(
-            "# AGENTS.md instructions are unclear, please rewrite them"
-        ));
-        // An ordinary prompt is not synthetic.
-        assert!(!codex_user_text_is_synthetic("fix the build"));
-    }
-
-
-
-
-
-    #[test]
-    fn codex_strict_probe_returns_false_when_artefact_missing() {
-        use crate::agent_sessions::CliSource;
-        let home = tmp_root("codex-strict-missing");
-        assert!(!key_has_definite_resumable_content_in(&home, &CliSource::Codex, "no-id"));
-        let _ = fs::remove_dir_all(&home);
-    }
 
     #[test]
     fn parse_iso_handles_positive_offset() {
