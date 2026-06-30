@@ -2206,6 +2206,9 @@ async fn host_session_list_raw(state: &MasterStateInner) -> Option<std::sync::Ar
         }
     }
 
+    // Captured before the await so the write-back can detect a result another
+    // caller published while we were in-flight.
+    let fetch_started = std::time::Instant::now();
     use acp::Agent as _;
     let outcome = match tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -2223,7 +2226,17 @@ async fn host_session_list_raw(state: &MasterStateInner) -> Option<std::sync::Ar
             None
         }
     };
-    *state.host_list_cache.lock().await = Some((std::time::Instant::now(), outcome.clone()));
+    // Single-flight write-back: if a concurrent caller already published a
+    // result while we were awaiting `list_sessions`, adopt it instead of
+    // clobbering — so a slow failure can't overwrite a fast success (or
+    // vice-versa) and poison the 2 s cache with a transient None.
+    let mut cache = state.host_list_cache.lock().await;
+    if let Some((at, cached)) = cache.as_ref() {
+        if *at >= fetch_started {
+            return cached.clone();
+        }
+    }
+    *cache = Some((std::time::Instant::now(), outcome.clone()));
     outcome
 }
 

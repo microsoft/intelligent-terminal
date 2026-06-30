@@ -322,9 +322,6 @@ Diagnostic log (drains the child CLI's stderr — decisive for the WSL traps):
 - **`session/load` resume into a pane for WSL rows** (vs PR #323's CLI-flag
   resume) is a possible follow-up; copilot/claude/codex advertise
   `loadSession: true`.
-- **Live phantom-prune still reads disk** (`key_has_definite_resumable_content`).
-  Moving that live-lifecycle check onto `session/list` too is a possible
-  follow-up, but it is a separate concern from history enumeration.
 
 ## Implementation status
 
@@ -336,12 +333,16 @@ Implemented and verified on the feature branch:
   `initialize` + `session/list` exchange (probe and production).
 - `session_history.rs` — `classify_and_map`, the shared `acp::SessionInfo` →
   `AgentSession` mapper + Class-A filter (host and WSL).
-- `master/mod.rs` — `seed_history_via_acp` (host + WSL), `host_history_via_acp` /
-  `host_rows_from_conn`, `host_titles_via_acp` + the synthetic-title refresh
-  (`refresh_synthetic_titles_from`, `try_refresh_title_via_acp`,
-  `row_refreshable_by_connected_agent`, `host_titles_cache`).
-- The on-disk loaders, title parsers, and resume phantom-guard were deleted; the
-  live phantom-prune flow and `session_watcher` were kept.
+- `master/mod.rs` — `seed_host_and_broadcast` (immediate host seed) +
+  `spawn_wsl_seed` (async WSL), `host_history_via_acp` → `host_session_list_raw`
+  (the `Arc<[SessionInfo]>` 2 s cache), the `sync_host_history` /
+  `is_stale_host_history_row` reconcile, `host_titles_via_acp` + the
+  synthetic-title refresh (`refresh_synthetic_titles_from`,
+  `try_refresh_title_via_acp`, `row_refreshable_by_connected_agent`,
+  `host_list_cache`).
+- The on-disk loaders, title parsers, the resume phantom-guard, **and the live
+  phantom-prune flow** were deleted; `session_watcher` was kept. Phantom cleanup
+  is now the `session/list` reconcile (host) + `session_watcher` (live status).
 - `wta probe-host-sessions` / `probe-wsl-sessions` exercise the production paths
   end-to-end. Smoke-tested against a running Ubuntu (snap copilot). Full WTA test
-  suite: **959 passing**.
+  suite: **952 passing**.
