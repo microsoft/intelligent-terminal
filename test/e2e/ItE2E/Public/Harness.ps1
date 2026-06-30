@@ -50,21 +50,31 @@ function Restore-WtConfig {
 function Clear-WtConfig {
     <#
     .SYNOPSIS
-        Wipe settings.json to a schema-only baseline so NO stale user keys leak into a test.
+        Strip agent/AI keys from settings.json so NO stale provider-specific value leaks into a
+        test that only patches a subset of keys.
     .DESCRIPTION
-        Tests apply settings by PATCHING individual keys (Set-WtSetting). If the user's real
-        settings.json carries provider-specific keys — e.g. `acpModel`/`acpBaseUrl` pointing at
-        a Foundry-local model that is only valid for `acpAgent: native` — a test that merely
-        flips `acpAgent` to `copilot` would launch `copilot --acp --stdio --model <foundry>`,
-        which the Copilot CLI rejects ("Invalid model …") and the agent handshake dies. Starting
-        every test from a clean schema-only file makes the launch deterministic and provider-pure.
-        The user's real settings are preserved in `.e2ebak` (written by Backup-WtConfig) and
-        restored by Stop-Terminal, so this is non-destructive across a run.
+        Tests apply settings by PATCHING individual keys (Set-WtSetting), layering on top of the
+        existing settings.json. If the user's real file carries provider-specific keys — e.g.
+        `acpModel`/`acpBaseUrl` pointing at a Foundry-local model that is only valid for
+        `acpAgent: native` — a test that merely flips `acpAgent` to `copilot` would launch
+        `copilot --acp --stdio --model <foundry>`, which the Copilot CLI rejects ("Invalid model
+        …") and the agent handshake dies. Starting every test from an agent-clean config makes the
+        launch deterministic and provider-pure.
+
+        We REMOVE every agent/AI top-level key (acp*, delegate*, agentPane*, autoFix*,
+        aiIntegration*) while PRESERVING the rest of the file (profiles, theme, keybindings). A
+        full schema-only wipe is deliberately NOT used: WindowsTerminal rejects a settings.json
+        with no usable profile and pops a "Failed to load settings" dialog that would destabilize
+        UI tests. The user's real settings are preserved in `.e2ebak` (Backup-WtConfig) and
+        restored by Stop-Terminal, so this stays non-destructive across a run.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
-    $minimal = [pscustomobject]@{ '$schema' = 'https://aka.ms/terminal-profiles-schema' }
-    Set-Content -LiteralPath $App.SettingsPath -Value ($minimal | ConvertTo-Json) -Encoding utf8
-    Write-ItLog -Level INFO -Message "Cleared settings.json to schema-only baseline (original preserved in .e2ebak)"
+    $obj = Get-WtSettingsObject -App $App
+    if (-not $obj) { Write-ItLog -Level INFO -Message "Clear-WtConfig: no parseable settings.json to clean"; return }
+    $agentKeys = @($obj.PSObject.Properties.Name | Where-Object { $_ -match '^(acp|delegate|agentPane|autoFix|aiIntegration)' })
+    foreach ($k in $agentKeys) { $obj.PSObject.Properties.Remove($k) }
+    ($obj | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $App.SettingsPath -Encoding utf8
+    Write-ItLog -Level INFO -Message "Cleared agent/AI keys from settings.json (removed: $($agentKeys -join ', ')); original preserved in .e2ebak"
 }
 
 function Get-WtProcessesForApp {
@@ -178,10 +188,10 @@ function Start-Terminal {
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
-    .PARAMETER CleanSettings  Wipe settings.json to a schema-only baseline after backup so the
-                         user's real config (e.g. a Foundry acpModel/acpBaseUrl set for
-                         acpAgent=native) cannot leak into a test that only patches a subset of
-                         keys (default $true; ignored when Backup is $false).
+    .PARAMETER CleanSettings  Strip agent/AI keys from settings.json after backup so the user's
+                         real config (e.g. a Foundry acpModel/acpBaseUrl set for acpAgent=native)
+                         cannot leak into a test that only patches a subset of keys (default
+                         $true; ignored when Backup is $false).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
                          COM resolution is best-effort in this mode. A fresh monarch is always
                          started (see Stop-StaleItInstances below), which is what lets the FRE
@@ -213,7 +223,7 @@ function Start-Terminal {
     Stop-StaleItInstances
 
     if ($Backup) { Backup-WtConfig -App $app }
-    # Start from a clean schema-only settings.json so the user's real config (e.g. a Foundry
+    # Strip agent/AI keys from settings.json so the user's real config (e.g. a Foundry
     # acpModel/acpBaseUrl set for acpAgent=native) cannot leak into a test that only patches a
     # subset of keys. Requires a backup so Stop-Terminal can restore the real settings.
     if ($CleanSettings -and $Backup) { Clear-WtConfig -App $app }
