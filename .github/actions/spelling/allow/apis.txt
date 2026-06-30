@@ -21,6 +21,7 @@ colspan
 COMDLG
 commandlinetoargv
 COPYFROMRESOURCE
+CREDENTIALW
 cstdint
 CXICON
 CYICON

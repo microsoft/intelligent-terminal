@@ -8,6 +8,7 @@ mod agent_registry;
 mod agent_sessions;
 mod app;
 mod clipboard_image;
+mod command_recall;
 mod commands;
 mod coordinator;
 mod cwd_util;
@@ -19,6 +20,7 @@ mod logging;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
+mod mcp;
 mod osc52;
 mod pane_context;
 mod proc_bind;
@@ -36,6 +38,7 @@ mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;
+mod win32;
 mod wsl;
 mod wsl_acp;
 
@@ -2213,30 +2216,40 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
 async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, String, String)> {
     let our_pid = std::process::id();
 
+    // WT IDs may arrive as JSON strings or numbers (COM returns numeric) — accept both.
+    fn id_str(v: Option<&serde_json::Value>) -> Option<String> {
+        match v {
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
     let windows = shell_mgr.wt_list_windows().await.ok()?;
     let windows_arr = windows.get("windows")?.as_array()?;
 
     for win in windows_arr {
-        let window_id = win.get("window_id")?.as_str()?;
-        let tabs = shell_mgr.wt_list_tabs(window_id).await.ok()?;
+        let window_id = match id_str(win.get("window_id")) {
+            Some(w) => w,
+            None => continue,
+        };
+        let tabs = shell_mgr.wt_list_tabs(&window_id).await.ok()?;
         let tabs_arr = tabs.get("tabs")?.as_array()?;
 
         for tab in tabs_arr {
-            let tab_id_str = match tab.get("tab_id") {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(serde_json::Value::Number(n)) => n.to_string(),
-                _ => continue,
+            let tab_id_str = match id_str(tab.get("tab_id")) {
+                Some(t) => t,
+                None => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str).await.ok()?;
+            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(&window_id)).await.ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {
                 if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64()) {
                     if pid == our_pid as u64 {
-                        let pane_id = match pane.get("session_id") {
-                            Some(serde_json::Value::String(s)) => s.clone(),
-                            Some(serde_json::Value::Number(n)) => n.to_string(),
-                            _ => continue,
+                        let pane_id = match id_str(pane.get("session_id")) {
+                            Some(p) => p,
+                            None => continue,
                         };
                         return Some((pane_id, tab_id_str.clone(), window_id.to_string()));
                     }

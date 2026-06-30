@@ -1444,6 +1444,14 @@ impl Drop for MasterPipeDiscoveryGuard {
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
+    // 0. Start the shared localhost MCP tool server (resolve_command, …) and
+    //    publish its URL for helpers to inject into session/new. Best-effort —
+    //    if it can't bind, agents simply don't get MCP tools.
+    match crate::mcp::start_and_publish().await {
+        Some(ep) => tracing::info!(target: "master", mcp_url = %ep.url, "MCP server started"),
+        None => tracing::warn!(target: "master", "MCP server not started (bind failed)"),
+    }
+
     // 1. Spawn the agent CLI subprocess. cwd=None: master inherits
     //    Terminal's cwd, which is fine because per-session cwd is
     //    supplied by helpers via `new_session` params.

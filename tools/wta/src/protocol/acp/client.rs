@@ -1,5 +1,6 @@
 use super::failure::AgentFailure;
 use super::prompt;
+use super::prompt_context::{self, ContextRequest};
 use super::soft_stop::SoftStopReason;
 use acp::Agent as _;
 use agent_client_protocol as acp;
@@ -13,7 +14,6 @@ use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app::{AppEvent, PermOption, PlanEntry, PlanEntryStatus};
-use crate::coordinator::default_supported_delegate_agents;
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
@@ -1030,7 +1030,58 @@ fn shell_from_active(active: &serde_json::Value) -> Option<String> {
         .and_then(|pid| process_image_name(pid as u32))
 }
 
-async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
+/// Resolve a pane's full JSON (`shell`, `cwd`, `session_id`, `pid`, …) by its
+/// **session id**, enumerating windows → tabs → panes via the protocol. Used by
+/// error-triggered autofix, where the failing pane can live in a non-focused
+/// tab and so is **not** the active pane returned by `get_active_pane`.
+///
+/// We deliberately resolve by session id rather than scoping `list_panes` to a
+/// tab: in autofix `PaneContext.tab_id` is the WT tab *StableId* (see
+/// `WtNotification.tab_id`), not the numeric protocol tab index that
+/// `list_panes` expects, so scoping by it would never match and would silently
+/// fall back to the wrong (active) pane. Enumerating by session id — using each
+/// tab's protocol `tab_id` from `list_tabs` for the inner `list_panes` call —
+/// sidesteps the id-space mismatch entirely. Returns `None` when no pane
+/// matches (channel error, pane closed).
+async fn resolve_pane_by_session_id(
+    shell_mgr: &ShellManager,
+    session_id: &str,
+) -> Option<serde_json::Value> {
+    let windows = shell_mgr.wt_list_windows().await.ok()?;
+    for win in windows.get("windows")?.as_array()? {
+        let Some(window_id) = json_str_or_num(win.get("window_id")) else {
+            continue;
+        };
+        let Ok(tabs) = shell_mgr.wt_list_tabs(&window_id).await else {
+            continue;
+        };
+        let Some(tabs_arr) = tabs.get("tabs").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for tab in tabs_arr {
+            // Protocol tab index (from `list_tabs`), which `list_panes` accepts
+            // — NOT the autofix StableId.
+            let Some(tab_id) = json_str_or_num(tab.get("tab_id")) else {
+                continue;
+            };
+            let Ok(panes) = shell_mgr.wt_list_panes(&tab_id, Some(window_id.as_str())).await else {
+                continue;
+            };
+            let Some(panes_arr) = panes.get("panes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            if let Some(pane) = panes_arr
+                .iter()
+                .find(|p| json_str_or_num(p.get("session_id")).as_deref() == Some(session_id))
+            {
+                return Some(pane.clone());
+            }
+        }
+    }
+    None
+}
+
+pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
     // target. Pane IDs are process-globally unique, so we only need the pane
@@ -1096,7 +1147,7 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
 /// POSIX locales — this field is just metadata for an LLM, which will
 /// either recognise the tag or treat it as opaque text. Either way it's
 /// honest: it reflects exactly what the user picked in the UI.
-fn user_locale_tag() -> String {
+pub(crate) fn user_locale_tag() -> String {
     rust_i18n::locale().to_string()
 }
 
@@ -1136,127 +1187,114 @@ async fn build_prompt_text(
         ),
     );
 
-    if !is_autofix {
-        // Full planner prompt: include delegate agents and terminal layout.
-        let agents_started = std::time::Instant::now();
-        let supported_agents_json = serde_json::to_string(&default_supported_delegate_agents())
-            .unwrap_or_else(|_| "[]".to_string());
-        runtime_sections.push(format!(
-            "### Supported Delegate Agents\n```json\n{}\n```",
-            supported_agents_json
-        ));
+    // ── Shared context resolution ───────────────────────────────────────────
+    // Autofix turns resolve the failing pane, its canonical shell, and its last
+    // output once; the providers below borrow these from the `ContextRequest`.
+    // Planner turns need none of it (their providers query the shell manager
+    // directly). Resolving here also keeps the `resolved_fix_pane` side-output
+    // — which is plumbing, not prompt context — out of the provider chain.
+    let mut context_pane: Option<serde_json::Value> = None;
+    let mut shell_exe: Option<String> = None;
+    let mut terminal_output: Option<String> = None;
+
+    if is_autofix && wt_connected {
+        let active = shell_mgr.wt_get_active_pane().await.ok();
+
+        // Explicit source pane (error-triggered autofix) wins; otherwise fall
+        // back to the resolved active working pane (`/fix`). An active pane that
+        // is itself an agent pane is skipped — there's no terminal output there.
+        let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.clone());
+        let source_pane_id = explicit_source.clone().or_else(|| {
+            active.as_ref().and_then(|a| {
+                let is_agent = a
+                    .get("is_agent_pane")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if is_agent {
+                    None
+                } else {
+                    json_str_or_num(a.get("session_id"))
+                }
+            })
+        });
+        // When we resolved the pane ourselves (manual `/fix`, no explicit
+        // source), remember it so the App can fill `target_pane_id` — that is
+        // the pane the eventual fix command is sent to.
+        if explicit_source.is_none() {
+            resolved_fix_pane = source_pane_id.clone();
+        }
+
+        // The pane whose shell/cwd describe the FAILING command — drives the
+        // `### Shell Context` header and the command-not-found near-match gate.
+        // For a manual `/fix` the active pane IS the source. But error-triggered
+        // autofix can fire for a pane in a *non-focused* tab, so deriving the
+        // shell from `wt_get_active_pane()` would describe the wrong pane (e.g.
+        // a failing pwsh pane while bash is active) and mis-gate the near-match.
+        // Resolve the explicit source pane's JSON by *session id* (not by
+        // `PaneContext.tab_id`, which in autofix is a StableId `list_panes`
+        // won't accept — see `resolve_pane_by_session_id`); fall back to the
+        // active pane if that lookup can't resolve it.
+        context_pane = match explicit_source.as_deref() {
+            Some(src) => resolve_pane_by_session_id(shell_mgr, src)
+                .await
+                .or_else(|| active.clone()),
+            None => active.clone(),
+        };
+        // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) of the failing
+        // pane — load-bearing for both the shell-context header and the
+        // command-not-found near-match gate.
+        shell_exe = context_pane.as_ref().and_then(shell_from_active);
+
+        if let Some(source_pane_id) = source_pane_id {
+            tracing::debug!(
+                target: "acp.terminal_context",
+                source_pane_id = %source_pane_id,
+                shell = ?shell_exe,
+                mode = "autofix",
+                "terminal_context_target_resolved"
+            );
+            terminal_output = read_pane_last_message(
+                shell_mgr,
+                &source_pane_id,
+                30,
+                ACTIVE_PANE_CONTEXT_MAX_CHARS,
+            )
+            .await;
+        }
+    }
+
+    // ── Provider-driven section assembly ────────────────────────────────────
+    // Each `### …` context source is a `ContextProvider`; the chain self-gates
+    // by turn kind, so adding a source means adding a provider, not editing
+    // this loop. The command-not-found "did you mean" injection (issue #287) is
+    // one such provider — see `prompt_context`.
+    let context_request = ContextRequest {
+        is_autofix,
+        wt_connected,
+        shell_mgr,
+        context_pane: context_pane.as_ref(),
+        shell_exe: shell_exe.as_deref(),
+        terminal_output: terminal_output.as_deref(),
+    };
+    for provider in prompt_context::default_providers() {
+        if !provider.applies(&context_request) {
+            continue;
+        }
+        let provider_started = std::time::Instant::now();
+        let section = provider.provide(&context_request).await;
         prompt_timing_log(
             prompt_id,
             submitted_at_unix_s,
-            "delegate_agents_ready",
-            &format!("dt={:.3}s", agents_started.elapsed().as_secs_f64()),
+            "context_provider",
+            &format!(
+                "id={} present={} dt={:.3}s",
+                provider.id(),
+                section.is_some(),
+                provider_started.elapsed().as_secs_f64()
+            ),
         );
-
-        if wt_connected {
-            let terminal_context_started = std::time::Instant::now();
-            let terminal_context_json = build_terminal_context_json(shell_mgr).await;
-            prompt_timing_log(
-                prompt_id,
-                submitted_at_unix_s,
-                "terminal_context_ready",
-                &format!(
-                    "present={} dt={:.3}s",
-                    terminal_context_json.is_some(),
-                    terminal_context_started.elapsed().as_secs_f64()
-                ),
-            );
-            if let Some(terminal_context_json) = terminal_context_json {
-                runtime_sections.push(format!(
-                    "### Terminal Context JSON\n```json\n{}\n```",
-                    terminal_context_json
-                ));
-            }
-        } else {
-            prompt_timing_log(
-                prompt_id,
-                submitted_at_unix_s,
-                "terminal_context_skipped",
-                "wt_connected=false",
-            );
-        }
-    } else {
-        // Auto-fix prompt: read the source pane buffer + a small shell-context
-        // header so the agent can choose PowerShell vs bash vs cmd syntax for
-        // any file-edit fix it suggests.
-        if wt_connected {
-            // Resolve the active pane once: it supplies the shell-context
-            // header and — for a manual `/fix`, which carries no explicit
-            // `source_pane_id` — doubles as the source-pane resolver. WT's
-            // GetActivePane already maps the agent pane to the user's working
-            // pane, so this is the same target the error-triggered path gets
-            // from its notification.
-            let active = shell_mgr.wt_get_active_pane().await.ok();
-
-            // Shell context — best-effort. The canonical shell exe (from the
-            // pane's pid) tells the agent which syntax the fix command must use.
-            if let Some(active) = active.as_ref() {
-                let cwd = active
-                    .get("cwd")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                // Canonical shell exe from the pane's pid — see `shell_from_active`.
-                let shell = shell_from_active(active);
-                let json = serde_json::to_string(&serde_json::json!({
-                    "shell": shell,
-                    "cwd": cwd,
-                    "locale": user_locale_tag(),
-                }))
-                .unwrap_or_else(|_| "{}".to_string());
-                runtime_sections.push(format!("### Shell Context\n```json\n{}\n```", json));
-            }
-
-            // Explicit source pane (error-triggered autofix) wins; otherwise
-            // fall back to the resolved active working pane (`/fix`). An
-            // active pane that is itself an agent pane is skipped — there's
-            // no terminal output to read there.
-            let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.clone());
-            let source_pane_id = explicit_source.clone().or_else(|| {
-                active.as_ref().and_then(|a| {
-                    let is_agent = a
-                        .get("is_agent_pane")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if is_agent {
-                        None
-                    } else {
-                        json_str_or_num(a.get("session_id"))
-                    }
-                })
-            });
-            // When we resolved the pane ourselves (manual `/fix`, no explicit
-            // source), remember it so the App can fill `target_pane_id` — that
-            // is the pane the eventual fix command is sent to.
-            if explicit_source.is_none() {
-                resolved_fix_pane = source_pane_id.clone();
-            }
-
-            if let Some(source_pane_id) = source_pane_id {
-                tracing::debug!(
-                    target: "acp.terminal_context",
-                    source_pane_id = %source_pane_id,
-                    // The shell type shipped in `### Shell Context` above; log it
-                    // here too so a `/fix` run shows what the agent received.
-                    shell = ?active.as_ref().and_then(shell_from_active),
-                    mode = "autofix",
-                    "terminal_context_target_resolved"
-                );
-                if let Some(content) = read_pane_last_message(
-                    shell_mgr,
-                    &source_pane_id,
-                    30,
-                    ACTIVE_PANE_CONTEXT_MAX_CHARS,
-                )
-                .await
-                {
-                    runtime_sections.push(format!("### Terminal Output\n```\n{}\n```", content));
-                }
-            }
+        if let Some(section) = section {
+            runtime_sections.push(section.render());
         }
     }
 
@@ -1858,6 +1896,21 @@ fn elapsed_ms_since(start: std::time::Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
+/// Inject WTA's shared MCP server (resolve_command, …) into a `session/new`
+/// request so the agent can pull tools. Only when the agent advertises HTTP MCP
+/// support and master published an endpoint; otherwise the agent gets no MCP
+/// server and autofix's in-process path is unaffected.
+fn inject_wta_mcp_servers(req: &mut acp::NewSessionRequest, http_supported: bool) {
+    if !http_supported {
+        return;
+    }
+    if let Some(url) = crate::mcp::published_url() {
+        req.mcp_servers
+            .push(acp::McpServer::Http(acp::McpServerHttp::new("wta", url)));
+        tracing::info!(target: "acp", "injected wta MCP http server into session/new");
+    }
+}
+
 fn acp_result_failure_fields<T>(result: &acp::Result<T>) -> (&'static str, i32) {
     match result {
         Ok(_) => ("", 0),
@@ -2387,6 +2440,10 @@ pub async fn run_acp_client_over_pipe(
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta);
+            inject_wta_mcp_servers(
+                &mut new_session_req,
+                init_resp.agent_capabilities.mcp_capabilities.http,
+            );
             let new_session_started = std::time::Instant::now();
             let new_session_result = conn.new_session(new_session_req).await;
             log_acp_new_session_result(
@@ -3991,11 +4048,17 @@ mod tests {
     // ── terminal-context / prompt assembly ──────────────────────────────────
 
     /// Minimal [`WtChannel`] that answers `get_active_pane` with a canned pane
-    /// and errors every other request. `read_pane_last_message` degrades to
-    /// `None` on those errors, which is all the assembly tests need (no buffer
-    /// content is asserted).
+    /// and the `list_windows`/`list_tabs`/`list_panes` enumeration with canned
+    /// payloads; every other request errors. `read_pane_last_message` degrades
+    /// to `None` on those errors, which is all the assembly tests need (no
+    /// buffer content is asserted).
     struct MockWtChannel {
         active_pane: serde_json::Value,
+        /// Optional enumeration topology for `resolve_pane_by_session_id`:
+        /// `{ "windows": […] }`, `{ "tabs": […] }`, `{ "panes": […] }`.
+        windows: Option<serde_json::Value>,
+        tabs: Option<serde_json::Value>,
+        panes: Option<serde_json::Value>,
     }
 
     #[async_trait::async_trait]
@@ -4005,8 +4068,15 @@ mod tests {
             method: &str,
             _params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
+            let scripted = |v: &Option<serde_json::Value>, what: &str| {
+                v.clone()
+                    .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no {what} scripted"))
+            };
             match method {
                 "get_active_pane" => Ok(self.active_pane.clone()),
+                "list_windows" => scripted(&self.windows, "list_windows"),
+                "list_tabs" => scripted(&self.tabs, "list_tabs"),
+                "list_panes" => scripted(&self.panes, "list_panes"),
                 other => Err(anyhow::anyhow!("MockWtChannel: unhandled method {other}")),
             }
         }
@@ -4016,8 +4086,27 @@ mod tests {
     }
 
     fn shell_mgr_with_pane(active: serde_json::Value) -> crate::shell::ShellManager {
-        crate::shell::ShellManager::new()
-            .with_wt_channel(std::sync::Arc::new(MockWtChannel { active_pane: active }))
+        crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
+            active_pane: active,
+            windows: None,
+            tabs: None,
+            panes: None,
+        }))
+    }
+
+    /// Shell manager whose enumeration (`list_windows`→`list_tabs`→`list_panes`)
+    /// resolves to a single window/tab containing `source_pane`, so
+    /// `resolve_pane_by_session_id` can find the failing pane.
+    fn shell_mgr_with_source_pane(
+        active: serde_json::Value,
+        source_pane: serde_json::Value,
+    ) -> crate::shell::ShellManager {
+        crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
+            active_pane: active,
+            windows: Some(serde_json::json!({ "windows": [{ "window_id": 1 }] })),
+            tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": 0 }] })),
+            panes: Some(serde_json::json!({ "panes": [source_pane] })),
+        }))
     }
 
     #[tokio::test]
@@ -4193,6 +4282,58 @@ mod tests {
         assert!(
             fix_pane.is_none(),
             "error-triggered autofix carries its source; resolved_fix_pane stays None"
+        );
+    }
+
+    /// Regression: error-triggered autofix whose failing pane lives in a
+    /// **non-focused** tab must describe *that* pane's shell/cwd in
+    /// `### Shell Context`, not the currently-active pane's. Deriving the shell
+    /// from `get_active_pane` here would mis-describe the failing command (and
+    /// mis-gate the not-found near-match — e.g. a failing pwsh pane while bash
+    /// is active). The source pane is resolved by **session id** (enumerating
+    /// windows→tabs→panes), so it works even though `PaneContext.tab_id` is a
+    /// StableId that `list_panes` won't accept.
+    #[tokio::test]
+    async fn build_prompt_text_autofix_uses_source_pane_shell_not_active_pane() {
+        // Active pane is bash in a different cwd…
+        let active = serde_json::json!({
+            "session_id": "active-pane",
+            "shell": "bash",
+            "cwd": "C:\\activedir",
+            "is_agent_pane": false,
+        });
+        // …while the failing pane (found via session-id enumeration) is pwsh.
+        let source_pane = serde_json::json!({
+            "session_id": "src-pane",
+            "shell": "pwsh.exe",
+            "cwd": "C:\\srcdir",
+            "is_agent_pane": false,
+        });
+        let mgr = shell_mgr_with_source_pane(active, source_pane);
+        let ctx = crate::pane_context::PaneContext {
+            // A StableId, as autofix supplies — deliberately NOT usable with
+            // `list_panes`; resolution must succeed via session id regardless.
+            tab_id: Some("stable-tab-xyz".to_string()),
+            source_pane_id: Some("src-pane".to_string()),
+            ..Default::default()
+        };
+        let (prompt, _s, _d, _f) =
+            super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
+        assert!(prompt.contains("### Shell Context"), "got: {prompt}");
+        // The shell-context JSON must carry the SOURCE pane's shell + cwd…
+        assert!(
+            prompt.contains("\"shell\":\"pwsh.exe\""),
+            "shell context must use the source pane's shell (pwsh); got: {prompt}"
+        );
+        assert!(
+            prompt.contains("\"cwd\":\"C:\\\\srcdir\""),
+            "shell context must use the source pane's cwd (srcdir); got: {prompt}"
+        );
+        // …and never the active pane's. (Check the JSON key:value form, not a
+        // bare word — the prompt template legitimately mentions `bash`.)
+        assert!(
+            !prompt.contains("\"shell\":\"bash\"") && !prompt.contains("activedir"),
+            "the active pane's shell/cwd must NOT leak into shell context; got: {prompt}"
         );
     }
 

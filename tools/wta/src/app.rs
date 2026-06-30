@@ -557,10 +557,7 @@ impl WtNotification {
 /// Open a URL in the user's default browser. Used by Setup mode's
 /// "press O to open install URL" key handler.
 fn open_url_in_browser(url: &str) -> std::io::Result<()> {
-    std::process::Command::new("cmd")
-        .args(["/c", "start", "", url])
-        .spawn()?;
-    Ok(())
+    crate::win32::open_url_in_default_browser(url)
 }
 
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
@@ -6224,12 +6221,16 @@ impl App {
                         )
                         .into_owned();
                         // Copy device code to clipboard
-                        #[cfg(windows)]
-                        {
-                            let _ = std::process::Command::new("cmd")
-                                .args(["/C", &format!("echo {}| clip", device_code)])
-                                .spawn();
-                        }
+                        let code_to_copy = device_code.clone();
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(e) = crate::win32::copy_text_to_clipboard(&code_to_copy) {
+                                tracing::warn!(
+                                    target: "clipboard",
+                                    error = %e,
+                                    "failed to copy Copilot device code to clipboard"
+                                );
+                            }
+                        });
                     }
                 }
             }
@@ -6500,22 +6501,18 @@ impl App {
                             self.spawn_login(&agent_id, &login_cmd);
                         } else {
                             // Non-Copilot agents: copy command to clipboard, re-check credential
-                            #[cfg(windows)]
-                            {
-                                let _ = std::process::Command::new("powershell")
-                                    .args([
-                                        "-NoProfile",
-                                        "-Command",
-                                        &format!(
-                                            "Set-Clipboard '{}'",
-                                            login_cmd.replace('\'', "''")
-                                        ),
-                                    ])
-                                    .stdin(std::process::Stdio::null())
-                                    .stdout(std::process::Stdio::null())
-                                    .stderr(std::process::Stdio::null())
-                                    .spawn();
-                            }
+                            let cmd_to_copy = login_cmd.clone();
+                            let agent_for_log = agent_id.clone();
+                            tokio::task::spawn_blocking(move || {
+                                if let Err(e) = crate::win32::copy_text_to_clipboard(&cmd_to_copy) {
+                                    tracing::warn!(
+                                        target: "clipboard",
+                                        agent = %agent_for_log,
+                                        error = %e,
+                                        "failed to copy login command to clipboard"
+                                    );
+                                }
+                            });
 
                             self.begin_auth_checking();
 
