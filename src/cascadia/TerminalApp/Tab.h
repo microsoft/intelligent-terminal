@@ -253,11 +253,6 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
-        // Edge-trigger guard for the agent-pane disconnect log:
-        // `_UpdateConnectionClosedState` runs on every pane's connection-state
-        // change (and on focus changes), so we only log on the false→true
-        // transition. Re-arms when the agent pane reconnects or is recreated.
-        bool _agentPaneConnectionClosed{ false };
 
         winrt::hstring _stableId{};
 

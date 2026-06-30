@@ -6,7 +6,6 @@
 #include "Tab.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
-#include "AgentPaneLog.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -1424,37 +1423,6 @@ namespace winrt::TerminalApp::implementation
             });
 
             _tabStatus.IsConnectionClosed(isClosed);
-
-            // When the closed connection is the agent pane's, the wta helper
-            // backend has died (process exit / ConPTY torn down). The C++ side
-            // used to be silent here, so a dead helper left no trace in
-            // terminal-agent-pane.log and "helper stopped responding" incidents
-            // were undiagnosable from this side. Record it so the UI half of the
-            // disconnect correlates (to the millisecond) with the Rust logs.
-            // This fires even when the master itself is gone and so can't emit
-            // restart_agent_pane.
-            //
-            // Edge-triggered: this method runs on every pane's connection-state
-            // change and on focus changes, so log only on the open→closed
-            // transition (the `_agentPaneConnectionClosed` guard re-arms when
-            // the agent pane reconnects or is removed) to avoid spamming the log
-            // after the helper dies.
-            //
-            // Only search for the agent pane when SOMETHING is closed: on the
-            // common all-healthy path no pane is closed, so the agent pane can't
-            // be either — skip the extra FindAgentPane() tree walk. agentClosed
-            // staying false there also re-arms the guard.
-            bool agentClosed = false;
-            if (isClosed)
-            {
-                const auto agentPane = FindAgentPane();
-                agentClosed = agentPane && agentPane->IsConnectionClosed();
-            }
-            if (agentClosed && !_agentPaneConnectionClosed)
-            {
-                _agentPaneLog("agent pane connection closed — wta helper backend disconnected");
-            }
-            _agentPaneConnectionClosed = agentClosed;
         }
     }
 
