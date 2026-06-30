@@ -133,6 +133,13 @@ Outputs (all under `test/e2e/artifacts/`):
 - `results.xml` — **NUnit XML** for CI test reporting (Azure DevOps / GitHub).
 - `summary.md` — Markdown: one block per **failed** test with the **exact error**, **file:line**,
   and any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
+- `release-report.md` — the **clean, jargon-free release checklist**, auto-generated as the final
+  step from `doc/release-check-list.md` + this run's `results.xml` (via `New-ReleaseReport.ps1`).
+  Every coverage tag (`[UT✓]`/`[E2E]`/`[MANUAL]`) and `_(UT: …)_` note is stripped, and each box is
+  driven purely by automation: **`[x]`** = a test passed, **`[ ] ⚠️ AUTOMATION FAILED`** = a test ran
+  and failed, plain **`[ ]`** = not covered this run, verify manually. Suppress with
+  `-SkipReleaseReport`; regenerate standalone from an existing `results.xml` with
+  `pwsh -File test/e2e/New-ReleaseReport.ps1`.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
