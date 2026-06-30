@@ -29,6 +29,8 @@ $publicFns = @(
     'Invoke-FrePassViaUi', 'Test-FreShowing',
     'Get-WtExecutionPolicyState', 'Set-WtExecutionPolicy', 'Restore-WtExecutionPolicy',
     'Test-WtExecutionPolicyControllable', 'Test-WtPwshBlocksShellIntegration',
+    # Policy (agent GPO via HKCU)
+    'Get-WtAgentPolicyState', 'Set-WtAgentPolicy', 'Restore-WtAgentPolicy', 'Test-WtAgentPolicyControllable',
     # Ui
     'Get-UiTree', 'Find-UiElement', 'Invoke-UiElement', 'Invoke-UiClick', 'Set-UiValue', 'Get-UiValue',
     'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds', 'Test-WinAppAvailable',
