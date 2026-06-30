@@ -2,7 +2,7 @@
 //!
 //! Basic functions (atomic, single-responsibility):
 //!   - `find_exe`          — find agent executable on PATH (registry-fresh)
-//!   - `has_credential`    — fast credential check (cmdkey / config files)
+//!   - `has_credential`    — fast credential check (Credential Manager / config files)
 //!   - `run_auth_command`  — run auth_check_command from registry
 //!   - `build_login_cmd`   — build login command with full path
 //!   - `install`           — install agent via winget (async, streaming logs)
@@ -90,7 +90,7 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
 ///
 /// Strategy:
 ///   1. If `auth_check_command` is defined → run it (exit 0 = true)
-///   2. Else → agent-specific fast check (cmdkey / config files)
+///   2. Else → agent-specific fast check (Credential Manager / config files)
 pub fn has_credential(agent_id: &str) -> bool {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
 
@@ -105,14 +105,8 @@ pub fn has_credential(agent_id: &str) -> bool {
 
     match agent_id {
         "copilot" => {
-            let found = std::process::Command::new("cmd")
-                .args(["/C", "cmdkey /list | findstr /i copilot-cli"])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output()
-                .map(|o| !o.stdout.is_empty())
-                .unwrap_or(false);
-            tracing::debug!(target: "agent_check", agent = "copilot", found, "copilot credential check (cmdkey)");
+            let found = crate::win32::copilot_credential_present();
+            tracing::debug!(target: "agent_check", agent = "copilot", found, "copilot credential check (Credential Manager API)");
             found
         }
         "claude" => {

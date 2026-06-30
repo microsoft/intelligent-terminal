@@ -2372,8 +2372,7 @@ fn matches_idempotency_substring(stdout: &str, stderr: &str, needles: &[&str]) -
         .any(|n| combined.contains(&n.to_ascii_lowercase()))
 }
 
-/// Return the discovered home directory. Mirrors `history_loader::home_dir`
-/// so behavior is consistent between the two modules.
+/// Return the discovered home directory from `USERPROFILE`/`HOME`.
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))

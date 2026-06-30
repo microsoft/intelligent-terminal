@@ -835,6 +835,17 @@ pub trait SessionRegistry: Send + Sync {
     /// in `session_removed` ext-notifications).
     async fn remove(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo>;
 
+    /// Atomically remove the row for `sid` **only if** the current entry still
+    /// satisfies `predicate`. The check + remove happen under one lock, so a
+    /// concurrent `apply_event` that flips the row live between a caller's
+    /// snapshot and this call cannot be clobbered by a stale-snapshot remove.
+    /// Returns the removed row, or `None` if absent or rejected by `predicate`.
+    async fn remove_if(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+    ) -> Option<SessionInfo>;
+
     /// Fetch a clone of the current entry for `sid`. Returns `None` if the
     /// session isn't alive (or hasn't been mirrored yet on the helper side).
     async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo>;
@@ -901,6 +912,21 @@ impl InMemoryRegistry {
     }
 }
 
+/// A title is "synthetic" (not the CLI's real chat title) when it's missing,
+/// empty, or just the cwd basename — the placeholder a born-bound session
+/// starts with before the CLI writes its generated name.
+pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
+    let cwd_leaf = info
+        .cwd
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    match info.title.as_deref() {
+        None | Some("") => true,
+        Some(t) => t == cwd_leaf,
+    }
+}
+
 #[async_trait::async_trait]
 impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
@@ -918,6 +944,24 @@ impl SessionRegistry for InMemoryRegistry {
     async fn remove(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
         remove_locked(&mut guard, sid)
+    }
+
+    async fn remove_if(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+    ) -> Option<SessionInfo> {
+        let mut guard = self.inner.lock().await;
+        let matches = guard
+            .sessions
+            .get(sid)
+            .map(|cur| predicate(cur))
+            .unwrap_or(false);
+        if matches {
+            remove_locked(&mut guard, sid)
+        } else {
+            None
+        }
     }
 
     async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
@@ -975,16 +1019,7 @@ impl SessionRegistry for InMemoryRegistry {
         let Some(entry) = guard.sessions.get_mut(sid) else {
             return false;
         };
-        let cwd_leaf = entry
-            .cwd
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        let is_synthetic = match entry.title.as_deref() {
-            None | Some("") => true,
-            Some(t) => t == cwd_leaf,
-        };
-        if !is_synthetic {
+        if !title_is_synthetic(entry) {
             return false;
         }
         if entry.title.as_deref() == Some(candidate) {
@@ -1503,6 +1538,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remove_if_respects_predicate() {
+        let reg = InMemoryRegistry::new();
+        reg.upsert(info("keep", None)).await;
+        reg.upsert(info("drop", None)).await;
+
+        // Predicate rejects -> row stays, returns None.
+        let kept = reg
+            .remove_if(&acp::schema::v1::SessionId::new("keep".to_string()), &|_| false)
+            .await;
+        assert!(kept.is_none(), "remove_if must not remove when predicate is false");
+        assert!(
+            reg.lookup(&acp::schema::v1::SessionId::new("keep".to_string()))
+                .await
+                .is_some(),
+            "rejected row must still be present"
+        );
+
+        // Predicate accepts -> row removed, returns the prior value.
+        let dropped = reg
+            .remove_if(&acp::schema::v1::SessionId::new("drop".to_string()), &|_| true)
+            .await;
+        assert!(dropped.is_some(), "remove_if must remove when predicate is true");
+        assert!(
+            reg.lookup(&acp::schema::v1::SessionId::new("drop".to_string()))
+                .await
+                .is_none(),
+            "accepted row must be gone"
+        );
+
+        // Missing id -> None even with an always-true predicate.
+        assert!(
+            reg.remove_if(&acp::schema::v1::SessionId::new("missing".to_string()), &|_| true)
+                .await
+                .is_none(),
+            "remove_if on an absent id returns None"
+        );
+    }
+
+    #[tokio::test]
     async fn snapshot_contains_all_inserted_rows_in_any_order() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info("a", Some("pa"))).await;
@@ -1597,6 +1671,14 @@ mod tests {
         let mut s = SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd));
         s.title = title.map(str::to_owned);
         s
+    }
+
+    #[test]
+    fn title_is_synthetic_detects_missing_empty_and_cwd_basename() {
+        assert!(title_is_synthetic(&info_with("s-none", "/repo/proj", None)));
+        assert!(title_is_synthetic(&info_with("s-empty", "/repo/proj", Some(""))));
+        assert!(title_is_synthetic(&info_with("s-leaf", "/repo/proj", Some("proj"))));
+        assert!(!title_is_synthetic(&info_with("s-real", "/repo/proj", Some("Real Title"))));
     }
 
     #[tokio::test]

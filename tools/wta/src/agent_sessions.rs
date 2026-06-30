@@ -1195,34 +1195,6 @@ impl AgentSessionRegistry {
     /// loaded from disk by `merge_historical`) is left untouched, so
     /// repeated refreshes are idempotent and never clobber a real summary.
     /// Returns `true` iff the title was actually changed.
-    pub fn upgrade_title_if_synthetic(&mut self, key: &str, candidate: &str) -> bool {
-        if candidate.is_empty() { return false; }
-        let Some(entry) = self.sessions.get_mut(key) else { return false; };
-        let cwd_leaf = entry.cwd.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let is_synthetic = entry.title.is_empty() || entry.title == cwd_leaf;
-        if !is_synthetic { return false; }
-        if entry.title == candidate { return false; }
-        entry.title = candidate.to_string();
-        self.dirty = true;
-        true
-    }
-
-    /// Read-only access to the cli_source for a key. Used by callers that
-    /// need to dispatch on CLI without taking ownership of the entry.
-    pub fn cli_source_for(&self, key: &str) -> Option<CliSource> {
-        self.sessions.get(key).map(|s| s.cli_source.clone())
-    }
-
-    /// Returns true iff the session's current title is "synthetic" — empty
-    /// or equal to the cwd's leaf folder. Used to short-circuit expensive
-    /// disk lookups when the title is already a real one (e.g. loaded from
-    /// `workspace.yaml summary:` at startup).
-    pub fn title_is_synthetic(&self, key: &str) -> bool {
-        let Some(entry) = self.sessions.get(key) else { return false; };
-        let cwd_leaf = entry.cwd.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        entry.title.is_empty() || entry.title == cwd_leaf
-    }
-
     /// Populate the registry with synthetic data covering all 6 statuses.
     /// Triggered by the `WTA_DEMO_AGENTS=1` env var on App startup so the
     /// agent session view can be exercised without running any real CLI.
@@ -2159,18 +2131,6 @@ mod tests {
         // hist-1 must be added as Historical.
         let hist = reg.sessions.get("hist-1").unwrap();
         assert_eq!(hist.status, AgentStatus::Historical);
-    }
-
-    #[test]
-    fn upgrade_title_ignores_empty_candidate_and_unknown_key() {
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: "s1".into(), cli_source: CliSource::Copilot,
-            pane_session_id: "p".into(), cwd: PathBuf::from("/x"),
-            title: "x".into(),
-        });
-        assert!(!reg.upgrade_title_if_synthetic("s1", ""));
-        assert!(!reg.upgrade_title_if_synthetic("missing", "title"));
     }
 
     #[test]

@@ -30,10 +30,27 @@ Use when an auto-fix would be wrong, ambiguous, or destructive: tool not install
 
 `explanation` (Markdown) must include: what the error means, why no auto-fix, and concrete next steps (commands in backticks; bullet the alternatives when multiple are plausible).
 
+### Command not found
+
+When the failure is an unrecognized / not-found command (in any language), never imply the command exists or fall back to generic "check the spelling / use `help`" advice. Be honest that it isn't on the user's machine.
+
+- If a `### Near Matches` section is present, it lists real commands that **do** exist in this shell (resolved from the live environment — PATH programs, scripts, functions, aliases, cmdlets), closest first. Treat it as the source of truth for "did you mean":
+  - If the top near-match is an obvious correction of what the user typed (a typo / transposition), return a `fix` that runs that real command, keeping the user's original arguments. Name the correction in the `rationale`.
+  - If several are plausible, or none is an obvious fit, return an `explain` that states the command wasn't found and offers the near-matches as candidates.
+- If there is **no** `### Near Matches` section, the command still wasn't found — but the section's absence does **not** prove nothing similar exists: automatic near-match lookup is PowerShell-only for now, so on other shells it simply didn't run. Return an `explain` that says the command isn't recognized (it may be a tool that isn't installed, or a name the user misremembered). Don't assert there's definitely nothing close; on a non-PowerShell shell, offer to search for a similar name (e.g. `compgen -c | grep -i <stem>` in bash) rather than claiming none exists.
+
 ### Examples
 
 ```json
 {"action": "fix", "title": "Fix: dotnet test", "command": "dotnet test", "rationale": "Typo: 'dotent' should be 'dotnet'."}
+```
+
+```json
+{"action": "fix", "title": "Run deploy-it", "command": "deploy-it -Target prod", "rationale": "No 'deploit' command in this shell; nearest match is the local script 'deploy-it'."}
+```
+
+```json
+{"action": "explain", "title": "No such command: frobnicate", "explanation": "`frobnicate` isn't recognized — there's no command by that name in this shell, and no near-match was found.\n\n**Why no auto-fix:** there's no obvious intended command to run.\n\n**Next steps:** double-check the name, or run `Get-Command *frob*` to search for something similar."}
 ```
 
 ```json

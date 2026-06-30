@@ -137,6 +137,11 @@ pub fn append_to(
 /// errors out to the caller, which lets `history_loader` proceed even on
 /// a fresh install or after a manual delete.
 ///
+/// Unpackaged dev binaries also merge the installed Intelligent Terminal
+/// package's LocalState index when present. That keeps diagnostics such as
+/// `probe-host-sessions` using the same Class-A filter as the packaged app
+/// that actually created the agent-pane sessions.
+///
 /// Use this when the caller only needs membership-check. For callers that
 /// need the per-record `pane_session_id` (e.g. post-restart reconcile),
 /// see [`load_default_records`].
@@ -153,8 +158,69 @@ pub fn load_set_from(path: &std::path::Path) -> HashSet<String> {
 /// (notably `pane_session_id` for v2 entries). Duplicate `session_id`s
 /// collapse to the last-written record. Empty map on any IO error.
 pub fn load_default_records() -> HashMap<String, OriginRecord> {
-    let Some(path) = default_index_path() else { return HashMap::new() };
-    load_records_from(&path)
+    let mut out = HashMap::new();
+    for path in default_index_paths() {
+        out.extend(load_records_from(&path));
+    }
+    out
+}
+
+fn default_index_paths() -> Vec<PathBuf> {
+    // Order matters: `load_default_records` merges these via `HashMap::extend`
+    // (last write wins on a duplicate `session_id`). Load installed-package
+    // indices FIRST (dev/unpackaged only) and the current runtime's index LAST
+    // so the current runtime's record wins on key collisions and keeps its
+    // newer per-record metadata.
+    let mut paths = Vec::new();
+    if crate::runtime_paths::current_package_family_name().is_none() {
+        paths.extend(installed_package_index_paths());
+    }
+    if let Some(path) = default_index_path() {
+        paths.push(path);
+    }
+    paths
+}
+
+fn installed_package_index_paths() -> Vec<PathBuf> {
+    // Memoize the `%LOCALAPPDATA%\Packages` walk for the process lifetime:
+    // `load_default_set` calls this on every routed event in unpackaged/dev mode,
+    // and the relevant package directories don't change mid-run.
+    static CACHE: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(installed_package_index_paths_uncached).clone()
+}
+
+fn installed_package_index_paths_uncached() -> Vec<PathBuf> {
+    let Some(local) = std::env::var_os("LOCALAPPDATA")
+        .or_else(|| std::env::var_os("APPDATA"))
+        .map(PathBuf::from)
+    else {
+        return Vec::new();
+    };
+    let packages = local.join("Packages");
+    let Ok(entries) = std::fs::read_dir(packages) else {
+        return Vec::new();
+    };
+    let mut dev = Vec::new();
+    let mut store = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let path = entry
+            .path()
+            .join("LocalState")
+            .join("IntelligentTerminal")
+            .join(INDEX_FILENAME);
+        if !path.exists() {
+            continue;
+        }
+        if name.starts_with("IntelligentTerminal_") {
+            dev.push(path);
+        } else if name.starts_with("Microsoft.IntelligentTerminal_") {
+            store.push(path);
+        }
+    }
+    dev.extend(store);
+    dev
 }
 
 /// Same as [`load_default_records`] but against a caller-supplied path.

@@ -457,10 +457,16 @@ impl ShellManager {
     }
 
     /// List panes in a tab.
-    pub async fn wt_list_panes(&self, tab_id: &str) -> anyhow::Result<serde_json::Value> {
-        self.wt()?
-            .request("list_panes", serde_json::json!({ "tab_id": tab_id }))
-            .await
+    pub async fn wt_list_panes(
+        &self,
+        tab_id: &str,
+        window_id: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut params = serde_json::json!({ "tab_id": tab_id });
+        if let Some(w) = window_id {
+            params["window_id"] = serde_json::Value::String(w.to_string());
+        }
+        self.wt()?.request("list_panes", params).await
     }
 
     /// Create a new tab in WT. Returns the raw response JSON.
