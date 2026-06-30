@@ -47,6 +47,26 @@ function Restore-WtConfig {
     }
 }
 
+function Clear-WtConfig {
+    <#
+    .SYNOPSIS
+        Wipe settings.json to a schema-only baseline so NO stale user keys leak into a test.
+    .DESCRIPTION
+        Tests apply settings by PATCHING individual keys (Set-WtSetting). If the user's real
+        settings.json carries provider-specific keys — e.g. `acpModel`/`acpBaseUrl` pointing at
+        a Foundry-local model that is only valid for `acpAgent: native` — a test that merely
+        flips `acpAgent` to `copilot` would launch `copilot --acp --stdio --model <foundry>`,
+        which the Copilot CLI rejects ("Invalid model …") and the agent handshake dies. Starting
+        every test from a clean schema-only file makes the launch deterministic and provider-pure.
+        The user's real settings are preserved in `.e2ebak` (written by Backup-WtConfig) and
+        restored by Stop-Terminal, so this is non-destructive across a run.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)]$App)
+    $minimal = [pscustomobject]@{ '$schema' = 'https://aka.ms/terminal-profiles-schema' }
+    Set-Content -LiteralPath $App.SettingsPath -Value ($minimal | ConvertTo-Json) -Encoding utf8
+    Write-ItLog -Level INFO -Message "Cleared settings.json to schema-only baseline (original preserved in .e2ebak)"
+}
+
 function Get-WtProcessesForApp {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     $loc = $App.InstallLocation
@@ -158,6 +178,10 @@ function Start-Terminal {
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
+    .PARAMETER CleanSettings  Wipe settings.json to a schema-only baseline after backup so the
+                         user's real config (e.g. a Foundry acpModel/acpBaseUrl set for
+                         acpAgent=native) cannot leak into a test that only patches a subset of
+                         keys (default $true; ignored when Backup is $false).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
                          COM resolution is best-effort in this mode. A fresh monarch is always
                          started (see Stop-StaleItInstances below), which is what lets the FRE
@@ -169,6 +193,7 @@ function Start-Terminal {
         [hashtable]$Settings,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
+        [bool]$CleanSettings = $true,
         [switch]$ShowFre,
         [int]$TimeoutSec = 60
     )
@@ -188,6 +213,11 @@ function Start-Terminal {
     Stop-StaleItInstances
 
     if ($Backup) { Backup-WtConfig -App $app }
+    # Start from a clean schema-only settings.json so the user's real config (e.g. a Foundry
+    # acpModel/acpBaseUrl set for acpAgent=native) cannot leak into a test that only patches a
+    # subset of keys. Requires a backup so Stop-Terminal can restore the real settings.
+    if ($CleanSettings -and $Backup) { Clear-WtConfig -App $app }
+    elseif ($CleanSettings) { Write-ItLog -Level WARN -Message "CleanSettings requested but Backup is off; skipping clean to avoid destroying user settings." }
     if ($ShowFre) { Reset-Fre -App $app | Out-Null }
     elseif ($PassFre) { Invoke-FrePass -App $app | Out-Null }
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
