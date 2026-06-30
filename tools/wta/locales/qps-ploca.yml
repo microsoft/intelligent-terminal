@@ -18,7 +18,6 @@ setup.option.install_hint: "[!!_(Will be installed automatically)_!!]"
 setup.option.signin: "[!!_Sign in to %{agent}_!!]"
 setup.option.retry_detection: "[!!_Try again_!!]"
 setup.option.retry_auth: "[!!_I've signed in — try connecting again_!!]"
-setup.option.retry_connection: "[!!_Try connecting again_!!]"
 setup.status.installing: "[!!_Installing..._!!]"
 setup.status.install_failed: "[!!_Install failed: _!!]"
 setup.status.installing_winget: "[!!_ Installing via winget..._!!]"
@@ -31,10 +30,7 @@ auth.checking_authentication: "[!!_  %{spinner} Checking authentication..._!!]"
 auth.waiting_for_authorization: "[!!_  %{spinner} Waiting for authorization..._!!]"
 auth.code_copied_hint: "[!!_  Code copied to clipboard — paste it in your browser._!!]"
 auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "[!!_Sign in to use your agent:_!!]"
 auth.card_connect: "[!!_  Connect %{name} to enable agent features_!!]"
-auth.hint_footer: "  Press Enter to copy the sign-in command, then paste it in a new terminal window to finish signing in"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc to go back"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise domain: "
 auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[!!_[Y/N to answer · resize for full card]_!!]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "[!!_Not installed — select to install automatically_!!]"
 agent.status.not_found: "[!!_Not found_!!]"
-agent.status.detected: "[!!_Detected_!!]"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "[!!_Running: winget install GitHub.Copilot_!!]"
 agent.install.launch_failed: "[!!_Failed to launch winget: %{error}_!!]"
@@ -127,7 +121,6 @@ connection.lost: "[!!_Connection to the agent was lost. Type /restart to reconne
 system.cancelled: "[!!_Cancelled._!!]"
 system.no_prompt_in_flight: "[!!_No prompt in flight._!!]"
 system.authentication_failed: "[!!_Authentication failed_!!]"
-system.command_copied_retry: "[!!_Command copied — run it in another terminal, then press Enter to retry_!!]"  # {Locked="Enter"}
 system.stopped_max_tokens: "[!!_The response was cut off after reaching the model's output limit._!!]"
 system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
 system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"

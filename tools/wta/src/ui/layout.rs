@@ -24,7 +24,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
 
-    // Setup mode: unified setup wizard (FRE + preflight) with input box
+    // Setup mode: diagnostic install/sign-in/retry flow with input box.
     if app.mode == AppMode::Setup {
         let input_height = {
             let tab = app.current_tab();

@@ -18,7 +18,6 @@ setup.option.install_hint: "(Instalarase automaticamente)"
 setup.option.signin: "Iniciar sesión en %{agent}"
 setup.option.retry_detection: "Tentar de novo"
 setup.option.retry_auth: "Xa iniciei sesión — tentar conectar de novo"
-setup.option.retry_connection: "Tentar conectar de novo"
 setup.status.installing: "Instalando..."
 setup.status.install_failed: "Erro na instalación: "
 setup.status.installing_winget: " Instalando mediante winget..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Comprobando autenticación..."
 auth.waiting_for_authorization: "  %{spinner} Agardando autorización..."
 auth.code_copied_hint: "  Código copiado ao portapapeis — pégueo no seu navegador."
 auth.device_code_prompt: "Visite %{url} e introduza o código: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Inicie sesión para usar o seu axente:"
 auth.card_connect: "  Conectar %{name} para activar funcións de axente"
-auth.hint_footer: "  Preme Enter para copiar o comando de inicio de sesión e pégao nunha nova xanela do terminal para rematar o inicio de sesión"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc para volver atrás"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter para iniciar sesión · E para GitHub Enterprise · Esc para volver atrás"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Dominio de Enterprise: "
 auth.enterprise_hint_footer: "  Enter para iniciar sesión · Esc para github.com"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para responder · redimensione para ver a tarxeta completa]"  # {Locked="Y/N"}
 
 # ── Estado do axente (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "Non instalado — seleccione para instalar automaticamente"
 agent.status.not_found: "Non atopado"
-agent.status.detected: "Detectado"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - nomes de ferramentas e comando, deben executarse tal cal
 agent.install.running_winget: "Executando: winget install GitHub.Copilot"
 agent.install.launch_failed: "Non se puido iniciar winget: %{error}"
@@ -127,7 +121,6 @@ connection.lost: "Perdeuse a conexión co axente. Escribe /restart para volver c
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Non hai ningún aviso en curso."
 system.authentication_failed: "A autenticación fallou"
-system.command_copied_retry: "Comando copiado — execúteo noutro terminal e prema Intro para reintentar"  # {Locked="Enter"}
 system.stopped_max_tokens: "A resposta cortouse ao acadar o límite de saída do modelo."
 system.stopped_max_turn_requests: "O axente detívose ao acadar o seu límite de solicitudes para esta quenda."
 system.stopped_refusal: "O axente negouse a continuar con esta solicitude."

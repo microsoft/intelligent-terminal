@@ -18,7 +18,6 @@ setup.option.install_hint: "(Automatikoki instalatuko da)"
 setup.option.signin: "Hasi saioa %{agent}(e)n"
 setup.option.retry_detection: "Saiatu berriro"
 setup.option.retry_auth: "Saioa hasi dut — saiatu konektatzen berriro"
-setup.option.retry_connection: "Saiatu konektatzen berriro"
 setup.status.installing: "Instalatzen..."
 setup.status.install_failed: "Instalazioak huts egin du: "
 setup.status.installing_winget: " winget bidez instalatzen..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Autentifikazioa egiaztatzen..."
 auth.waiting_for_authorization: "  %{spinner} Baimenaren zain..."
 auth.code_copied_hint: "  Kodea arbelean kopiatu da — itsatsi zure arakatzailean."
 auth.device_code_prompt: "Bisitatu %{url} eta idatzi kodea: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Hasi saioa zure agentea erabiltzeko:"
 auth.card_connect: "  Konektatu %{name} agentearen eginbideak gaitzeko"
-auth.hint_footer: "  Sakatu Enter saioa hasteko komandoa kopiatzeko, eta itsatsi terminal-leiho berri batean saioa hastea amaitzeko"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc atzera egiteko"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter saioa hasteko · E GitHub Enterprise erabiltzeko · Esc atzera egiteko"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise domeinua: "
 auth.enterprise_hint_footer: "  Enter saioa hasteko · Esc github.com erabiltzeko"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N erantzuteko · aldatu tamaina txartel osoa ikusteko]"  # {Locked="Y/N"}
 
 # ── Agentearen egoera (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "Instalatu gabe — hautatu automatikoki instalatzeko"
 agent.status.not_found: "Ez da aurkitu"
-agent.status.detected: "Detektatuta"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tresna-izenak eta komandoa, hitzez hitz exekutatu behar dira
 agent.install.running_winget: "Exekutatzen: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget abiarazi ezin izan da: %{error}"
@@ -127,7 +121,6 @@ connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konek
 system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"
-system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal batean, eta sakatu Enter berriro saiatzeko"  # {Locked="Enter"}
 system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
 system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
 system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."

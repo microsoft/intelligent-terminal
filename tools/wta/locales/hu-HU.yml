@@ -18,7 +18,6 @@ setup.option.install_hint: "(Automatikusan telepítve lesz)"
 setup.option.signin: "Bejelentkezés a következőbe: %{agent}"
 setup.option.retry_detection: "Próbálja újra"
 setup.option.retry_auth: "Bejelentkeztem — próbálja újra csatlakozni"
-setup.option.retry_connection: "Próbálja újra csatlakozni"
 setup.status.installing: "Telepítés..."
 setup.status.install_failed: "A telepítés sikertelen: "
 setup.status.installing_winget: " Telepítés a winget segítségével..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Hitelesítés ellenőrzése..."
 auth.waiting_for_authorization: "  %{spinner} Várakozás az engedélyezésre..."
 auth.code_copied_hint: "  A kód a vágólapra másolva — illessze be a böngészőben."
 auth.device_code_prompt: "Keresse fel a következőt: %{url}, és adja meg a kódot: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Jelentkezzen be az ügynök használatához:"
 auth.card_connect: "  Csatlakoztassa a(z) %{name} ügynököt az ügynökfunkciók engedélyezéséhez"
-auth.hint_footer: "  Nyomja meg az Enter billentyűt a bejelentkezési parancs másolásához, majd illessze be egy új terminálablakba a bejelentkezés befejezéséhez"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc = visszalépés"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = bejelentkezés · E = GitHub Enterprise · Esc = visszalépés"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise-tartomány: "
 auth.enterprise_hint_footer: "  Enter = bejelentkezés · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N a válaszhoz · méretezze át a teljes kártyához]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nincs telepítve — válassza ki az automatikus telepítéshez"
 agent.status.not_found: "Nem található"
-agent.status.detected: "Észlelve"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -127,7 +121,6 @@ connection.lost: "Megszakadt a kapcsolat az ügynökkel. Az újrakapcsolódásho
 system.cancelled: "Megszakítva."
 system.no_prompt_in_flight: "Nincs folyamatban lévő kérés."
 system.authentication_failed: "A hitelesítés sikertelen"
-system.command_copied_retry: "Parancs másolva — futtassa egy másik terminálban, majd nyomja meg az Entert az újrapróbálkozáshoz"  # {Locked="Enter"}
 system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimeneti korlátját."
 system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
 system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."

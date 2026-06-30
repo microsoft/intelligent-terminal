@@ -18,7 +18,6 @@ setup.option.install_hint: "(Gëtt automatesch installéiert)"
 setup.option.signin: "Bei %{agent} umellen"
 setup.option.retry_detection: "Nach eng Kéier probéieren"
 setup.option.retry_auth: "Ech hu mech ugemellt — probéiert nach eng Kéier ze verbannen"
-setup.option.retry_connection: "Probéiert nach eng Kéier ze verbannen"
 setup.status.installing: "Gëtt installéiert..."
 setup.status.install_failed: "Installatioun gescheitert: "
 setup.status.installing_winget: " Gëtt iwwer winget installéiert..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Authentifizéierung gëtt iwwerpréi
 auth.waiting_for_authorization: "  %{spinner} Waart op Autorisatioun..."
 auth.code_copied_hint: "  Code an d'Tëschoflag kopéiert — setzt en an Ärem Browser an."
 auth.device_code_prompt: "Gitt op %{url} a gitt de Code an: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Mellt Iech un fir Ären Agent ze benotzen:"
 auth.card_connect: "  Verbinnt %{name} fir Agent-Funktiounen z'aktivéieren"
-auth.hint_footer: "  Dréckt Enter, fir den Umeldungsbefeel ze kopéieren, a pecht en dann an eng nei Terminalfënster an, fir d'Umeldung ofzeschléissen"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc fir zréckzegoen"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter fir Iech unzemellen · E fir GitHub Enterprise · Esc fir zréckzegoen"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise-Domän: "
 auth.enterprise_hint_footer: "  Enter fir Iech unzemellen · Esc fir github.com"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N fir z'äntwerten · Gréisst änneren fir voll Kaart]"  # {Locked="Y/N"}
 
 # ── Agent-Status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Net installéiert — wielt fir automatesch z'installéieren"
 agent.status.not_found: "Net fonnt"
-agent.status.detected: "Erkannt"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - Tool-Nimm a Kommando, mussen wéi se sinn ausgefouert ginn
 agent.install.running_winget: "Leeft: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget konnt net gestart ginn: %{error}"
@@ -127,7 +121,6 @@ connection.lost: "D'Verbindung mam Agent ass verluer gaangen. Tippt /restart fir
 system.cancelled: "Ofgebrach."
 system.no_prompt_in_flight: "Keen Prompt ënnerwee."
 system.authentication_failed: "Authentifizéierung gescheitert"
-system.command_copied_retry: "Kommando kopéiert — féiert et an engem aneren Terminal aus, da dréckt Enter fir nach eng Kéier ze probéieren"  # {Locked="Enter"}
 system.stopped_max_tokens: "D'Äntwert gouf ofgeschnidden nodeems d'Ausgab-Limit vum Modell erreecht gouf."
 system.stopped_max_turn_requests: "Den Agent huet gestoppt nodeems seng Ufro-Limit fir dës Ronn erreecht gouf."
 system.stopped_refusal: "Den Agent huet refuséiert mat dëser Ufro weiderzemaachen."

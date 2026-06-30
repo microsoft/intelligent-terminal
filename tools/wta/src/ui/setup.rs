@@ -91,7 +91,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 let label = match setup.reason {
                     crate::app::SetupReason::AgentMissing => t!("setup.option.retry_detection").into_owned(),
                     crate::app::SetupReason::AgentError => t!("setup.option.retry_auth").into_owned(),
-                    _ => t!("setup.option.retry_connection").into_owned(),
                 };
                 (label, String::new())
             }

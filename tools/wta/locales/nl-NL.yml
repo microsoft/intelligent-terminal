@@ -18,7 +18,6 @@ setup.option.install_hint: "(Wordt automatisch geïnstalleerd)"
 setup.option.signin: "Aanmelden bij %{agent}"
 setup.option.retry_detection: "Opnieuw proberen"
 setup.option.retry_auth: "Ik heb me aangemeld — opnieuw verbinden"
-setup.option.retry_connection: "Opnieuw verbinden"
 setup.status.installing: "Installeren..."
 setup.status.install_failed: "Installatie mislukt: "
 setup.status.installing_winget: " Installeren via winget..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Verificatie controleren..."
 auth.waiting_for_authorization: "  %{spinner} Wachten op autorisatie..."
 auth.code_copied_hint: "  Code gekopieerd naar klembord — plak deze in uw browser."
 auth.device_code_prompt: "Ga naar %{url} en voer de code in: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Meld u aan om uw agent te gebruiken:"
 auth.card_connect: "  %{name} verbinden om agentfuncties in te schakelen"
-auth.hint_footer: "  Druk op Enter om de aanmeldopdracht te kopiëren en plak deze vervolgens in een nieuw terminalvenster om het aanmelden te voltooien"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc om terug te gaan"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter om aan te melden · E voor GitHub Enterprise · Esc om terug te gaan"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise-domein: "
 auth.enterprise_hint_footer: "  Enter om aan te melden · Esc voor github.com"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N om te antwoorden · formaat wijzigen voor volledige kaart]"  # {Locked="Y/N"}
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Niet geïnstalleerd — selecteer om automatisch te installeren"
 agent.status.not_found: "Niet gevonden"
-agent.status.detected: "Gedetecteerd"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - toolnamen en opdracht, ongewijzigd bewaren
 agent.install.running_winget: "Wordt uitgevoerd: winget install GitHub.Copilot"
 agent.install.launch_failed: "Kan winget niet starten: %{error}"
@@ -127,7 +121,6 @@ connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnie
 system.cancelled: "Geannuleerd."
 system.no_prompt_in_flight: "Geen prompt actief."
 system.authentication_failed: "Verificatie mislukt"
-system.command_copied_retry: "Opdracht gekopieerd — voer deze uit in een andere terminal en druk op Enter om opnieuw te proberen"  # {Locked="Enter"}
 system.stopped_max_tokens: "Het antwoord is afgekapt nadat de uitvoerlimiet van het model was bereikt."
 system.stopped_max_turn_requests: "De agent is gestopt nadat de aanvraaglimiet voor deze beurt was bereikt."
 system.stopped_refusal: "De agent heeft geweigerd door te gaan met deze aanvraag."

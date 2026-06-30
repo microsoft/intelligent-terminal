@@ -18,7 +18,6 @@ setup.option.install_hint: "(Sẽ được cài đặt tự động)"
 setup.option.signin: "Đăng nhập vào %{agent}"
 setup.option.retry_detection: "Thử lại"
 setup.option.retry_auth: "Tôi đã đăng nhập — thử kết nối lại"
-setup.option.retry_connection: "Thử kết nối lại"
 setup.status.installing: "Đang cài đặt..."
 setup.status.install_failed: "Cài đặt thất bại: "
 setup.status.installing_winget: " Đang cài đặt qua winget..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Đang kiểm tra xác thực..."
 auth.waiting_for_authorization: "  %{spinner} Đang chờ ủy quyền..."
 auth.code_copied_hint: "  Mã đã được sao chép vào bộ nhớ tạm — hãy dán vào trình duyệt của bạn."
 auth.device_code_prompt: "Truy cập %{url} và nhập mã: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Đăng nhập để sử dụng tác nhân AI của bạn:"
 auth.card_connect: "  Kết nối %{name} để bật tính năng tác nhân AI"
-auth.hint_footer: "  Nhấn Enter để sao chép lệnh đăng nhập, rồi dán lệnh đó vào cửa sổ terminal mới để hoàn tất đăng nhập"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc để quay lại"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter để đăng nhập · E để dùng GitHub Enterprise · Esc để quay lại"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Miền doanh nghiệp: "
 auth.enterprise_hint_footer: "  Enter để đăng nhập · Esc để dùng github.com"  # {Locked="Enter","Esc","github.com"}
@@ -94,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N để trả lời · thay đổi kích thước để xem đầy đủ]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Chưa cài đặt — chọn để cài đặt tự động"
 agent.status.not_found: "Không tìm thấy"
-agent.status.detected: "Đã phát hiện"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Đang chạy: winget install GitHub.Copilot"
 agent.install.launch_failed: "Không thể khởi chạy winget: %{error}"
@@ -127,7 +121,6 @@ connection.lost: "Đã mất kết nối với tác nhân AI. Nhập /restart đ
 system.cancelled: "Đã hủy."
 system.no_prompt_in_flight: "Không có lệnh nào đang chạy."
 system.authentication_failed: "Xác thực thất bại"
-system.command_copied_retry: "Đã sao chép lệnh — chạy trong terminal khác, sau đó nhấn Enter để thử lại"  # {Locked="Enter"}
 system.stopped_max_tokens: "Phản hồi đã bị cắt sau khi đạt đến giới hạn đầu ra của mô hình."
 system.stopped_max_turn_requests: "Tác nhân đã dừng sau khi đạt đến giới hạn yêu cầu cho lượt này."
 system.stopped_refusal: "Tác nhân đã từ chối tiếp tục với yêu cầu này."

@@ -18,7 +18,6 @@ setup.option.install_hint: "(Otomatik olarak yüklenecek)"
 setup.option.signin: "%{agent} oturumu aç"
 setup.option.retry_detection: "Tekrar dene"
 setup.option.retry_auth: "Oturum açtım — tekrar bağlanmayı dene"
-setup.option.retry_connection: "Tekrar bağlanmayı dene"
 setup.status.installing: "Yükleniyor..."
 setup.status.install_failed: "Yükleme başarısız: "
 setup.status.installing_winget: " winget üzerinden yükleniyor..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Kimlik doğrulama kontrol ediliyor..
 auth.waiting_for_authorization: "  %{spinner} Yetkilendirme bekleniyor..."
 auth.code_copied_hint: "  Kod panoya kopyalandı — tarayıcınıza yapıştırın."
 auth.device_code_prompt: "%{url} adresini ziyaret edin ve kodu girin: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Aracınızı kullanmak için oturum açın:"
 auth.card_connect: "  Aracı özelliklerini etkinleştirmek için %{name} bağlayın"
-auth.hint_footer: "  Oturum açma komutunu kopyalamak için Enter tuşuna basın, ardından oturum açmayı tamamlamak için yeni bir terminal penceresine yapıştırın"  # {Locked="Enter"}
-auth.hint_footer_back: "  Geri gitmek için Esc"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = oturum aç · E = GitHub Enterprise · Esc = geri git"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise etki alanı: "
 auth.enterprise_hint_footer: "  Enter = oturum aç · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
@@ -106,9 +102,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N yanıtlamak için · tam kart için yeniden boyutlandırın]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Yüklü değil — otomatik yüklemek için seçin"
 agent.status.not_found: "Bulunamadı"
-agent.status.detected: "Algılandı"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Çalıştırılıyor: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget başlatılamadı: %{error}"
@@ -139,7 +133,6 @@ connection.lost: "Aracı bağlantısı kesildi. Yeniden bağlanmak için /restar
 system.cancelled: "İptal edildi."
 system.no_prompt_in_flight: "Devam eden istem yok."
 system.authentication_failed: "Kimlik doğrulama başarısız"
-system.command_copied_retry: "Komut kopyalandı — başka bir terminalde çalıştırın, ardından tekrar denemek için Enter tuşuna basın"  # {Locked="Enter"}
 system.stopped_max_tokens: "Modelin çıktı sınırına ulaşıldıktan sonra yanıt kesildi."
 system.stopped_max_turn_requests: "Aracı, bu tur için istek sınırına ulaştıktan sonra durdu."
 system.stopped_refusal: "Aracı, bu isteği sürdürmeyi reddetti."

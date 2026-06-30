@@ -129,7 +129,6 @@ pub enum AppMode {
 pub struct AuthState {
     pub agent_id: String,
     pub agent_name: String,
-    pub auth_hint: String,
     pub login_command: String,
     pub checking: bool,
     pub status_message: String,
@@ -4028,8 +4027,8 @@ impl App {
         }
     }
 
-    /// Unified setup-mode key handler. Covers both FRE agent selection and
-    /// preflight diagnostic flows via the `SetupOption` variants.
+    /// Diagnostic setup-mode key handler. Covers install, sign-in, and retry
+    /// actions via the `SetupOption` variants.
     fn handle_setup_key(&mut self, key: KeyEvent) {
         // Block all input during install (except Ctrl+C / Esc to quit)
         let is_installing = self.setup.as_ref().map_or(false, |s| s.install_in_progress);
@@ -4135,13 +4134,11 @@ impl App {
                 agent_id,
                 display_name,
             } => {
-                let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
                 self.mode = AppMode::Auth;
                 let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(&agent_id);
                 self.auth = Some(AuthState {
                     agent_id: agent_id.clone(),
                     agent_name: display_name,
-                    auth_hint: profile.auth_hint.to_string(),
                     login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                     checking: false,
                     status_message: String::new(),
@@ -6222,15 +6219,14 @@ impl App {
                             self.auth = Some(AuthState {
                                 agent_id: agent_id.clone(),
                                 agent_name: status.display_name.clone(),
-                                auth_hint: profile.auth_hint.to_string(),
                                 login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                                 checking: false,
                                 status_message: String::new(),
                                 enterprise_mode,
                                 enterprise_host,
                             });
-                        } else {
-                            // No credential → auth screen
+                        } else if agent_id == "copilot" {
+                            // Copilot installed but not authenticated → auth screen.
                             self.mode = AppMode::Auth;
                             self.setup = None;
                             let (enterprise_mode, enterprise_host) =
@@ -6238,12 +6234,45 @@ impl App {
                             self.auth = Some(AuthState {
                                 agent_id: agent_id.clone(),
                                 agent_name: status.display_name.clone(),
-                                auth_hint: profile.auth_hint.to_string(),
                                 login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                                 checking: false,
                                 status_message: String::new(),
                                 enterprise_mode,
                                 enterprise_host,
+                            });
+                        } else {
+                            // Future-proofing: only Copilot has an in-app auth
+                            // screen. If another agent ever becomes
+                            // auto-installable, keep it on the diagnostic setup
+                            // retry path instead of entering Auth mode.
+                            let reason = SetupReason::AgentError;
+                            let options = build_setup_options(&reason, Some(&status));
+                            self.mode = AppMode::Setup;
+                            self.setup = Some(SetupState {
+                                reason,
+                                selected_index: 0,
+                                preflight: PreflightResult {
+                                    agent_id: agent_id.clone(),
+                                    display_name: status.display_name.clone(),
+                                    cli_status: CheckStatus::Passed,
+                                    cli_path: status.cli_path.clone(),
+                                    auth_status: CheckStatus::Failed(
+                                        t!("system.authentication_failed").into_owned(),
+                                    ),
+                                    install_hint: profile.install_hint.to_string(),
+                                    install_url: String::new(),
+                                    auth_hint: profile.auth_hint.to_string(),
+                                },
+                                install_in_progress: false,
+                                install_log: Vec::new(),
+                                install_error: None,
+                                options,
+                                title: t!("setup.title.sign_in").into_owned(),
+                                subtitle: t!(
+                                    "setup.subtitle.agent_auth",
+                                    agent = status.display_name.as_str()
+                                )
+                                .into_owned(),
                             });
                         }
                         return;
@@ -6348,16 +6377,12 @@ impl App {
                     // Login failed — show auth screen again with feedback.
                     if let Some(ref mut auth) = self.auth {
                         auth.checking = false;
-                        if !auth.login_command.contains("copilot") {
-                            auth.status_message = t!("system.command_copied_retry").into_owned();
-                        } else {
-                            // Copilot device-flow failed (e.g. an unreachable
-                            // GitHub Enterprise host) — surface the reason
-                            // instead of silently returning to the form.
-                            auth.status_message = error
-                                .filter(|e| !e.trim().is_empty())
-                                .unwrap_or_else(|| t!("system.authentication_failed").into_owned());
-                        }
+                        // Copilot device-flow failed (e.g. an unreachable
+                        // GitHub Enterprise host) — surface the reason instead
+                        // of silently returning to the form.
+                        auth.status_message = error
+                            .filter(|e| !e.trim().is_empty())
+                            .unwrap_or_else(|| t!("system.authentication_failed").into_owned());
                     }
                 }
             }
@@ -6452,7 +6477,7 @@ impl App {
             // would steal too much of the hint's visible lifetime.
         }
 
-        // Setup mode: unified setup wizard (FRE + preflight)
+        // Setup mode: diagnostic install/sign-in/retry flow.
         if self.mode == AppMode::Setup {
             self.handle_setup_key(key);
             return;
@@ -6528,69 +6553,41 @@ impl App {
                             None
                         }
                     });
-                    if let Some((agent_id, login_cmd, host)) = login_info {
-                        if login_cmd.contains("copilot") {
-                            // Copilot: auto device-flow sign-in via piped stdio.
-                            // Rebuild the command with the (optional) GitHub
-                            // Enterprise host and remember it for next time.
-                            let login_cmd =
-                                crate::agent_check::build_login_cmd(&agent_id, host.as_deref());
-                            // Remember the last-used host for next time. Persist
-                            // the *normalized* bare domain (or "" for github.com /
-                            // empty) so a returning user is prefilled only for a
-                            // real GHE domain — not stuck in the expanded
-                            // enterprise input after a github.com fallback.
-                            let normalized_host = host
-                                .as_deref()
-                                .and_then(crate::agent_check::normalize_enterprise_host);
-                            crate::agent_check::save_copilot_enterprise_host(
-                                normalized_host.as_deref().unwrap_or(""),
-                            );
-                            self.begin_auth_checking();
-                            tracing::info!(
+                    if let Some((agent_id, _login_cmd, host)) = login_info {
+                        if agent_id != "copilot" {
+                            tracing::warn!(
                                 target: "login",
                                 agent = %agent_id,
-                                enterprise = host.is_some(),
-                                host = host.as_deref().unwrap_or("github.com"),
-                                cmd = %login_cmd,
-                                "starting copilot device-flow login"
+                                "ignoring auth Enter for non-Copilot agent"
                             );
-                            self.spawn_login(&agent_id, &login_cmd);
-                        } else {
-                            // Non-Copilot agents: copy command to clipboard, re-check credential
-                            let cmd_to_copy = login_cmd.clone();
-                            let agent_for_log = agent_id.clone();
-                            tokio::task::spawn_blocking(move || {
-                                if let Err(e) = crate::win32::copy_text_to_clipboard(&cmd_to_copy) {
-                                    tracing::warn!(
-                                        target: "clipboard",
-                                        agent = %agent_for_log,
-                                        error = %e,
-                                        "failed to copy login command to clipboard"
-                                    );
-                                }
-                            });
-
-                            self.begin_auth_checking();
-
-                            // Re-check credential asynchronously
-                            if let Some(ref tx) = self.event_tx {
-                                let tx = tx.clone();
-                                let id = agent_id.clone();
-                                tokio::task::spawn_local(async move {
-                                    let result = tokio::task::spawn_blocking(move || {
-                                        crate::agent_check::has_credential(&id)
-                                    })
-                                    .await;
-                                    let success = result.unwrap_or(false);
-                                    let _ = tx.send(AppEvent::LoginComplete {
-                                        agent_id,
-                                        success,
-                                        error: None,
-                                    });
-                                });
-                            }
+                            return;
                         }
+                        // Copilot: auto device-flow sign-in via piped stdio.
+                        // Rebuild the command with the (optional) GitHub
+                        // Enterprise host and remember it for next time.
+                        let login_cmd =
+                            crate::agent_check::build_login_cmd(&agent_id, host.as_deref());
+                        // Remember the last-used host for next time. Persist
+                        // the *normalized* bare domain (or "" for github.com /
+                        // empty) so a returning user is prefilled only for a
+                        // real GHE domain — not stuck in the expanded
+                        // enterprise input after a github.com fallback.
+                        let normalized_host = host
+                            .as_deref()
+                            .and_then(crate::agent_check::normalize_enterprise_host);
+                        crate::agent_check::save_copilot_enterprise_host(
+                            normalized_host.as_deref().unwrap_or(""),
+                        );
+                        self.begin_auth_checking();
+                        tracing::info!(
+                            target: "login",
+                            agent = %agent_id,
+                            enterprise = host.is_some(),
+                            host = host.as_deref().unwrap_or("github.com"),
+                            cmd = %login_cmd,
+                            "starting copilot device-flow login"
+                        );
+                        self.spawn_login(&agent_id, &login_cmd);
                     }
                 }
                 KeyCode::Esc => {
@@ -14742,7 +14739,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "SELECTED_AGENT_NAME_XYZ".into(),
-            auth_hint: String::new(),
             login_command: String::new(),
             checking: true,
             status_message: String::new(),
@@ -14787,7 +14783,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: String::new(),
             checking: false,
             status_message: String::new(),
@@ -14807,69 +14802,6 @@ mod tests {
         assert!(
             !footer_probe.trim().is_empty() && text.contains(&footer_probe),
             "the auth sign-in card must paint the Copilot enterprise footer ({footer:?}); rendered:\n{text}"
-        );
-    }
-
-    /// Render: a non-Copilot agent's sign-in card (`checking == false`) shows
-    /// no sign-in button. Before Enter it paints the copy/paste instruction
-    /// plus the Esc hint; after Enter (status set) the instruction is replaced
-    /// by the "command copied" status. Covers the non-Copilot `else` arm of
-    /// `ui/auth.rs`.
-    #[test]
-    fn render_auth_non_copilot_sign_in_card() {
-        let mut app = test_app();
-        app.mode = AppMode::Auth;
-        app.auth = Some(AuthState {
-            agent_id: "claude".into(),
-            agent_name: "Claude".into(),
-            auth_hint: String::new(),
-            login_command: "claude /login".into(),
-            checking: false,
-            status_message: String::new(),
-            enterprise_mode: false,
-            enterprise_host: String::new(),
-        });
-
-        // Wide enough that the long instruction stays on one line (no wrap).
-        let text = render_to_text(&mut app, 140, 24);
-        // The copy/paste instruction is shown; "terminal window" is unique to
-        // it (the copied status instead says "another terminal,").
-        let instr = t!("auth.hint_footer").into_owned();
-        assert!(
-            instr.contains("terminal window"),
-            "probe guard: instruction wording changed ({instr:?})"
-        );
-        assert!(
-            text.contains("terminal window"),
-            "non-copilot card must paint the copy/paste instruction; rendered:\n{text}"
-        );
-        // The Esc hint is on its own line.
-        let back = t!("auth.hint_footer_back").into_owned();
-        let back_probe: String = back.trim_start().chars().take(6).collect();
-        assert!(
-            text.contains(&back_probe),
-            "non-copilot card must paint the Esc hint ({back:?}); rendered:\n{text}"
-        );
-        // No sign-in button is painted (the button was removed for all agents).
-        assert!(
-            !text.contains("[ Copy sign-in command ]") && !text.contains("[ Sign in with"),
-            "non-copilot card must not paint a sign-in button; rendered:\n{text}"
-        );
-
-        // After Enter the command is copied: the status replaces the
-        // instruction (the header is not used for non-Copilot status).
-        if let Some(ref mut a) = app.auth {
-            a.status_message = t!("system.command_copied_retry").into_owned();
-        }
-        let text2 = render_to_text(&mut app, 140, 24);
-        let status_probe: String = t!("system.command_copied_retry").chars().take(10).collect();
-        assert!(
-            text2.contains(&status_probe),
-            "after Enter the command-copied status must be painted; rendered:\n{text2}"
-        );
-        assert!(
-            !text2.contains("terminal window"),
-            "after Enter the copy/paste instruction must be replaced; rendered:\n{text2}"
         );
     }
 
@@ -14908,7 +14840,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: "copilot login --host https://nope.invalid".into(),
             checking: true,
             status_message: String::new(),
@@ -14939,7 +14870,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: "copilot login".into(),
             checking: true,
             status_message: String::new(),
@@ -14971,7 +14901,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: "copilot login --host https://nope.invalid".into(),
             checking: false,
             status_message: "Login failed: boom".into(),
@@ -15038,7 +14967,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "claude".into(),
             agent_name: "Claude".into(),
-            auth_hint: String::new(),
             login_command: "claude /login".into(),
             checking: true,
             status_message: String::new(),
@@ -15074,7 +15002,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: "copilot login --host https://nope.invalid".into(),
             checking: false,
             status_message: "Login failed: TypeError: fetch failed".into(),
@@ -15103,7 +15030,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: "copilot login --host https://nope.invalid".into(),
             checking: false,
             status_message: "Login failed: TypeError: fetch failed".into(),
@@ -15132,7 +15058,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: String::new(),
             checking: true,
             status_message: "AUTH_STATUS_XYZ".into(),
@@ -15158,7 +15083,6 @@ mod tests {
         app.auth = Some(AuthState {
             agent_id: "copilot".into(),
             agent_name: "GitHub Copilot".into(),
-            auth_hint: String::new(),
             login_command: "copilot login".into(),
             checking: false,
             status_message: String::new(),
@@ -15206,6 +15130,25 @@ mod tests {
             install_hint: String::new(),
             auth_hint: String::new(),
         }
+    }
+
+    #[test]
+    fn diagnostic_setup_options_route_auth_by_agent() {
+        let mut copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
+        copilot.has_credential = false;
+        let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
+        assert!(
+            matches!(copilot_options.as_slice(), [SetupOption::SignIn { agent_id, .. }] if agent_id == "copilot"),
+            "Copilot auth failures must offer the in-app SignIn flow"
+        );
+
+        let mut codex = agent_status_for_test("codex", "Codex", true);
+        codex.has_credential = false;
+        let codex_options = build_setup_options(&SetupReason::AgentError, Some(&codex));
+        assert!(
+            matches!(codex_options.as_slice(), [SetupOption::Retry]),
+            "external-auth agents stay on the diagnostic Retry flow"
+        );
     }
 
     /// Render: a setup screen with a full options list while a winget install

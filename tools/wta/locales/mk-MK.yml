@@ -18,7 +18,6 @@ setup.option.install_hint: "(Ќе биде инсталиран автоматс
 setup.option.signin: "Најави се во %{agent}"
 setup.option.retry_detection: "Обидете се повторно"
 setup.option.retry_auth: "Се најавив — обидете се повторно да се поврзете"
-setup.option.retry_connection: "Обидете се повторно да се поврзете"
 setup.status.installing: "Инсталирање..."
 setup.status.install_failed: "Инсталирањето не успеа: "
 setup.status.installing_winget: " Инсталирање преку winget..."
@@ -31,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Проверка на автенти
 auth.waiting_for_authorization: "  %{spinner} Чекање на авторизација..."
 auth.code_copied_hint: "  Кодот е копиран во clipboard — залепете го во прелистувачот."
 auth.device_code_prompt: "Посетете %{url} и внесете го кодот: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Најавете се за да го користите агентот:"
 auth.card_connect: "  Поврзете %{name} за да ги овозможите функциите на агентот"
-auth.hint_footer: "  Притиснете Enter за да ја копирате командата за најавување, потоа залепете ја во нов прозорец на терминалот за да го завршите најавувањето"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc за враќање назад"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter за најавување · E за GitHub Enterprise · Esc за враќање назад"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Домен на GitHub Enterprise: "
 auth.enterprise_hint_footer: "  Enter за најавување · Esc за github.com"  # {Locked="Enter","Esc","github.com"}
@@ -102,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N за одговор · сменете ја големината за целосна картичка]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Не е инсталиран — изберете за автоматска инсталација"
 agent.status.not_found: "Не е пронајден"
-agent.status.detected: "Откриен"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -135,7 +129,6 @@ connection.lost: "Врската со агентот беше изгубена. 
 system.cancelled: "Откажано."
 system.no_prompt_in_flight: "Нема активно барање."
 system.authentication_failed: "Автентикацијата не успеа"
-system.command_copied_retry: "Командата е копирана — извршете ја во друг терминал, потоа притиснете Enter за повторен обид"  # {Locked="Enter"}
 system.stopped_max_tokens: "Одговорот беше отсечен по достигнување на излезното ограничување на моделот."
 system.stopped_max_turn_requests: "Агентот запре по достигнување на ограничувањето на барања за овој потег."
 system.stopped_refusal: "Агентот одби да продолжи со ова барање."
