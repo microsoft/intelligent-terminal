@@ -6,16 +6,21 @@
 # WinPS execution-policy suite (Feature.FreExecutionPolicy.Tests.ps1).
 #
 # These are DETERMINISTIC, LLM-free assertions: they assert the ABSENCE of a policy-gated
-# behavior, which does not depend on any model output. The runtime enforces the gate at spawn
-# time — TerminalPage passes `--no-autofix` to the WTA helper when EffectiveAutoFixEnabled() is
-# false (TerminalPage.cpp:1695-1697, 1832-1834) — so a blocked policy means autofix can never
-# fire, regardless of the LLM.
+# behavior, which does not depend on any model output. The gate is enforced at TWO points and
+# this suite leans on the source-level one:
+#   * TerminalPage.cpp:5172-5173 — the VtSequenceReceived handler early-returns when
+#     IsAutoFixPolicyLocked() is true, BEFORE raising the protocol event. So with the policy
+#     Blocked the autofix pipeline is gated AT THE SOURCE: a failing command's OSC 133;D mark is
+#     not even forwarded to wtcli listeners, and no autofix prompt is ever submitted.
+#   * TerminalPage.cpp:1695-1697 — the WTA helper is additionally spawned with --no-autofix.
+# Positive control: Feature.AutofixPane.Tests.ps1 — the IDENTICAL setup WITHOUT this policy DOES
+# fire autofix, so a clean run here proves the policy (not a broken pane) suppressed it.
 #
-# REQUIRES AN ELEVATED RUNNER: the `Software\Policies` registry subtree is ACL-restricted to
-# administrators, so writing it needs elevation (unlike the WinPS ExecutionPolicy key). When the
-# runner can't write the policy hive (or a machine GPO already overrides it),
-# Test-WtAgentPolicyControllable is $false and this suite SKIPS cleanly — non-elevated CI stays
-# green, exactly like Feature.FreExecutionPolicy.Tests.ps1.
+# REQUIRES A WRITABLE POLICY HIVE: the `Software\Policies` subtree is ACL-restricted to
+# administrators. Run test/e2e/tools/Enable-WtAgentPolicyTesting.ps1 ONCE (elevated) to grant
+# the current user write on its own policy key; after that this suite runs non-elevated. When the
+# hive isn't writable (or a machine GPO overrides it), Test-WtAgentPolicyControllable is $false
+# and this suite SKIPS cleanly — non-elevated CI stays green, like Feature.FreExecutionPolicy.
 
 BeforeDiscovery {
     # Needs the package + copilot (agent pane) + winapp (Open-AgentPane), AND the HKCU policy
@@ -40,7 +45,7 @@ Describe 'Feature §1 agent Group Policy locks (AllowAutoFix)' -Tag 'Feature' -S
         if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
     }
 
-    It 'A policy-blocked AllowAutoFix suppresses autofix even though the failure is still detected' {
+    It 'AllowAutoFix=Blocked suppresses autofix end-to-end on a real command failure' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $listener = Start-WtEventListener -App $script:app
         try {
@@ -48,14 +53,13 @@ Describe 'Feature §1 agent Group Policy locks (AllowAutoFix)' -Tag 'Feature' -S
             # Unique command so autofix de-dup can never be the reason nothing fires.
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command "ggit$(Get-Random) status" | Out-Null
 
-            # 1) The failure IS detected — shell integration still emits OSC 133;D;<nonzero>.
-            #    This isolates the result: it's autofix specifically that's gated, not detection.
-            { Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20 } |
-                Should -Not -Throw -Because 'PowerShell shell integration must still mark the failure; only the autofix RESPONSE is policy-gated'
-
-            # 2) Autofix is NOT triggered — no agent prompt is ever submitted. Deterministic:
-            #    the helper was spawned with --no-autofix, so this can never fire under the block.
-            { Wait-Autofix -Listener $listener -TimeoutSec 20 } |
+            # The policy gate early-returns in the VtSequenceReceived handler before the autofix
+            # pipeline runs (TerminalPage.cpp:5172-5173), so the failing command never produces an
+            # autofix request. Deterministic and LLM-free. (Positive control: Feature.AutofixPane
+            # — the identical setup WITHOUT this policy DOES fire autofix, so a clean pass here
+            # means the policy suppressed it, not a dead pane: the pane already reached Connected
+            # in BeforeAll.)
+            { Wait-Autofix -Listener $listener -TimeoutSec 25 } |
                 Should -Throw -Because 'AllowAutoFix=Blocked must prevent autofix from asking the agent for a fix'
         }
         finally { Stop-WtEventListener -Listener $listener }
