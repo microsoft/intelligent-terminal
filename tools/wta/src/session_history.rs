@@ -54,8 +54,8 @@ pub(crate) fn classify_and_map(
 ) -> Vec<AgentSession> {
     sessions
         .iter()
-        .filter(|s| !agent_pane_index.contains(&s.session_id.to_string()))
         .map(|s| acp_session_to_agent_session(s, location.clone(), cli))
+        .filter(|s| !agent_pane_index.contains(&s.key))
         .collect()
 }
 

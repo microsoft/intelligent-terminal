@@ -125,9 +125,10 @@ pub(crate) async fn fetch_session_list(
     let (conn, handle_io) = acp::ClientSideConnection::new(StubClient, outgoing, incoming, |fut| {
         tokio::task::spawn_local(fut);
     });
+    let io_label = client_label.to_string();
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
-            tracing::warn!(target: "acp_session_list", "handle_io failed: {:#}", e);
+            tracing::warn!(target: "acp_session_list", agent = %io_label, "handle_io failed: {:#}", e);
         }
     });
 

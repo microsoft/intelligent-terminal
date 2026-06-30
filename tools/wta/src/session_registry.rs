@@ -835,6 +835,17 @@ pub trait SessionRegistry: Send + Sync {
     /// in `session_removed` ext-notifications).
     async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo>;
 
+    /// Atomically remove the row for `sid` **only if** the current entry still
+    /// satisfies `predicate`. The check + remove happen under one lock, so a
+    /// concurrent `apply_event` that flips the row live between a caller's
+    /// snapshot and this call cannot be clobbered by a stale-snapshot remove.
+    /// Returns the removed row, or `None` if absent or rejected by `predicate`.
+    async fn remove_if(
+        &self,
+        sid: &acp::SessionId,
+        predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+    ) -> Option<SessionInfo>;
+
     /// Fetch a clone of the current entry for `sid`. Returns `None` if the
     /// session isn't alive (or hasn't been mirrored yet on the helper side).
     async fn lookup(&self, sid: &acp::SessionId) -> Option<SessionInfo>;
@@ -933,6 +944,24 @@ impl SessionRegistry for InMemoryRegistry {
     async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
         remove_locked(&mut guard, sid)
+    }
+
+    async fn remove_if(
+        &self,
+        sid: &acp::SessionId,
+        predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
+    ) -> Option<SessionInfo> {
+        let mut guard = self.inner.lock().await;
+        let matches = guard
+            .sessions
+            .get(sid)
+            .map(|cur| predicate(cur))
+            .unwrap_or(false);
+        if matches {
+            remove_locked(&mut guard, sid)
+        } else {
+            None
+        }
     }
 
     async fn lookup(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
@@ -1506,6 +1535,45 @@ mod tests {
             .remove(&acp::SessionId::new("nope".to_string()))
             .await
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn remove_if_respects_predicate() {
+        let reg = InMemoryRegistry::new();
+        reg.upsert(info("keep", None)).await;
+        reg.upsert(info("drop", None)).await;
+
+        // Predicate rejects -> row stays, returns None.
+        let kept = reg
+            .remove_if(&acp::SessionId::new("keep".to_string()), &|_| false)
+            .await;
+        assert!(kept.is_none(), "remove_if must not remove when predicate is false");
+        assert!(
+            reg.lookup(&acp::SessionId::new("keep".to_string()))
+                .await
+                .is_some(),
+            "rejected row must still be present"
+        );
+
+        // Predicate accepts -> row removed, returns the prior value.
+        let dropped = reg
+            .remove_if(&acp::SessionId::new("drop".to_string()), &|_| true)
+            .await;
+        assert!(dropped.is_some(), "remove_if must remove when predicate is true");
+        assert!(
+            reg.lookup(&acp::SessionId::new("drop".to_string()))
+                .await
+                .is_none(),
+            "accepted row must be gone"
+        );
+
+        // Missing id -> None even with an always-true predicate.
+        assert!(
+            reg.remove_if(&acp::SessionId::new("missing".to_string()), &|_| true)
+                .await
+                .is_none(),
+            "remove_if on an absent id returns None"
+        );
     }
 
     #[tokio::test]

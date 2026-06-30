@@ -2320,10 +2320,20 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     }
 
     // Reconcile: drop terminal Class-B host rows the agent no longer lists.
+    // `remove_if` re-checks staleness on the *current* row under the registry
+    // lock, so a row a hook/watcher flips live between the snapshot above and
+    // the remove below is never deleted out from under that update.
     for row in &snapshot {
-        if is_stale_host_history_row(row, &listed_ids)
-            && state.registry.remove(&row.session_id).await.is_some()
-        {
+        if !is_stale_host_history_row(row, &listed_ids) {
+            continue;
+        }
+        let removed = state
+            .registry
+            .remove_if(&row.session_id, &|cur| {
+                is_stale_host_history_row(cur, &listed_ids)
+            })
+            .await;
+        if removed.is_some() {
             tracing::info!(
                 target: "master_history",
                 key = %row.session_id.0,
