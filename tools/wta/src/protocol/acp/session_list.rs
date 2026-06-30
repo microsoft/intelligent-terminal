@@ -9,8 +9,9 @@
 //! * the production WSL history scan ([`crate::wsl_acp`]), which spawns the
 //!   distro's CLI through `wsl.exe` and maps the rows into `AgentSession`s.
 //!
-//! The ACP 0.10 connection is `!Send`, so callers must drive this inside a
-//! tokio `LocalSet`.
+//! Callers must drive this inside a tokio `LocalSet`: the stderr drain and the
+//! ACP connection I/O are spawned via [`tokio::task::spawn_local`] (the
+//! `agent-client-protocol` 1.0 connection itself is `Send`).
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};

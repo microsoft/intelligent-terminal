@@ -251,6 +251,10 @@ impl AgentLink {
 /// Drive a pre-wired client builder over `transport`, returning a [`ClientLink`]
 /// for sending requests plus a `handle_io` future. The future resolves when the
 /// connection ends: clean EOF → `Ok(())`, transport error → `Err`.
+///
+/// **Must be called inside a `tokio::task::LocalSet`** — it drives the connection
+/// I/O via [`tokio::task::spawn_local`] and will panic on a runtime without one
+/// (the WTA helper/master/probe/CLI entry points all establish a `LocalSet`).
 pub fn spawn_client<H, Run>(
     builder: acp::Builder<acp::Client, H, Run>,
     transport: impl acp::ConnectTo<acp::Client> + 'static,
@@ -288,6 +292,8 @@ where
 
 /// Drive a pre-wired agent builder over `transport`, returning an [`AgentLink`]
 /// plus a `handle_io` future with the same liveness contract as [`spawn_client`].
+///
+/// **Must be called inside a `tokio::task::LocalSet`** (see [`spawn_client`]).
 pub fn spawn_agent<H, Run>(
     builder: acp::Builder<acp::Agent, H, Run>,
     transport: impl acp::ConnectTo<acp::Agent> + 'static,
