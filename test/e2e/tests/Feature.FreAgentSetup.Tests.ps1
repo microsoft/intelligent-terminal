@@ -14,6 +14,13 @@
 BeforeDiscovery {
     $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command winapp -ErrorAction SilentlyContinue))
     $script:CopilotReady = [bool](Get-Command copilot -ErrorAction SilentlyContinue)
+    # Non-Copilot built-ins surface in the FRE picker only when their CLI is installed.
+    $script:NonCopilot = @(
+        @{ Cmd = 'claude'; Label = 'Claude' }
+        @{ Cmd = 'codex';  Label = 'Codex' }
+        @{ Cmd = 'gemini'; Label = 'Gemini' }
+    ) | Where-Object { Get-Command $_.Cmd -ErrorAction SilentlyContinue }
+    $script:HasNonCopilot = [bool]$script:NonCopilot
 }
 
 Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(-not $script:Ready) {
@@ -54,5 +61,16 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
 
         # Restore ON so the suite leaves the overlay in its default state.
         Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
+    }
+
+    It 'Non-Copilot agents appear as installed in the FRE agent picker' -Skip:(-not $script:HasNonCopilot) {
+        # Expand the dropdown so all agent entries (not just the selected one) are in the tree,
+        # then assert each installed non-Copilot CLI is offered and labelled installed.
+        Invoke-UiElement -App $script:app -Selector 'AgentComboBox' -TimeoutSec 10 | Out-Null
+        Start-Sleep -Milliseconds 800
+        $tree = Get-UiTree -App $script:app -Depth 18
+        foreach ($a in $script:NonCopilot) {
+            $tree | Should -Match "(?i)$($a.Label).*\(installed\)" -Because "the installed $($a.Label) CLI must appear as a selectable installed agent in the FRE"
+        }
     }
 }

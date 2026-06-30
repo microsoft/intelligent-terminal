@@ -73,6 +73,7 @@
 
     # §0 FRE agent-setup overlay controls (Feature.FreAgentSetup) — the FRE-specific UI half.
     'Copilot preinstalled'              = 'FRE agent dropdown shows Copilot as installed'
+    'Non-Copilot agents appear when installed' = 'Non-Copilot agents appear as installed in the FRE'
     'Session hook hints'                = 'Session hook hints appear only when'
 
     # §7 multi-pane / multi-tab (Feature.MultiPane) — single-window protocol-driven cases.
@@ -80,6 +81,9 @@
     'Multiple tabs work'                = 'Multiple tabs each get an independent agent session'
     'Multiple agent panes work'         = 'Multiple tabs each get an independent agent session'
     'Close target tab cleans up'        = 'Close target tab cleans up'
+    # Agent insert/run/autofix targeting the intended split pane is proven by the autofix-in-a-split
+    # case plus the autofix-target-pane assertion.
+    'Split pane target selection is correct' = 'Split pane autofix works|Autofix target pane is correct'
 
     # §6 custom agents (Feature.CustomAgent)
     'Custom agent is Settings-only'     = 'Custom agent is Settings-only'
