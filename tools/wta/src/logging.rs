@@ -202,9 +202,12 @@ pub fn shutdown_flush() {
 ///   * The wta-**master** is spawned `CREATE_NO_WINDOW` and contained in a
 ///     Job Object with `KILL_ON_JOB_CLOSE` (see C++ `SharedWta`). Its normal
 ///     teardown is the parent dropping that job, which reaps the master like
-///     a `TerminateProcess` — NO control event — so this handler does NOT make
-///     routine master teardown traceable. It fires for the master only on
-///     genuine console signals (logoff/shutdown), if delivered at all.
+///     a `TerminateProcess` — NO control event — so *this handler* does not
+///     trace routine master teardown. That teardown is not unlogged overall,
+///     though: the C++ parent (`SharedWta`) records both the deliberate
+///     job-close and an unexpected exit to `terminal-agent-pane.log`. This
+///     handler fires for the master only on genuine console signals
+///     (logoff/shutdown), if delivered at all.
 ///   * A hard `TerminateProcess` (Task Manager "End task", `taskkill /F`, an
 ///     OS resource kill, or the Job-Object reap above) delivers no control
 ///     event and stays untraceable from inside the process.
