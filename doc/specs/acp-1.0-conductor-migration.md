@@ -330,6 +330,117 @@ Blast radius by file (matches of the removed 0.10 symbols):
       to `acp::schema::…` imports; regenerate third-party notices
       (`Generate-WtaThirdPartyNotices.ps1`).
 
+### Structure after Phase 0 (what actually landed)
+
+Behavior-preserving model swap. The hand-rolled multiplexer **topology is
+unchanged** from "Today"; only the connection primitives moved to 1.0. All 1.0
+builder/dispatch mechanics are confined to one compat shim
+(`protocol/acp/conn.rs`) so the ~10K call-site lines keep the old
+`conn.method().await` shape.
+
+```mermaid
+flowchart TB
+    H1["helper[1]<br/>Client.builder()<br/>.on_receive_request(AgentRequest enum)<br/>spawn_client → ClientLink"]
+    Hn["helper[N]<br/>Client.builder() … ClientLink"]
+
+    subgraph master["wta-master (singleton) — still bespoke N:1"]
+        AL["AgentLink x N (conn shim)<br/>ConnectionTo&lt;Client&gt; per helper"]
+        HH["HelperHandler (inherent fns)<br/>AgentRequest enum dispatch → fan-in"]
+        MAP["session_to_helper<br/>HashMap (unchanged)"]
+        MC["MasterClient (inherent fns)<br/>ClientRequest enum dispatch → fan-out"]
+        CL["ClientLink (conn shim)<br/>ConnectionTo&lt;Agent&gt;"]
+    end
+
+    CLI["agent CLI (unchanged)"]
+
+    H1 -->|"ACP/pipe"| AL
+    Hn -->|"ACP/pipe"| AL
+    AL --> HH
+    HH -->|"verbatim forward"| CL
+    CL -->|"ACP/stdio"| CLI
+    CLI -->|"session_notification / request_permission / terminal/* / fs/*"| MC
+    MC -.->|"route_for(SessionId)"| MAP
+    MC -->|"re-dispatch to owning helper"| AL
+```
+
+> Key landed specifics: `impl Client/Agent` traits → builder
+> `on_receive_request/notification` closures matching the **whole** `AgentRequest`/
+> `ClientRequest` enum (responses serialize to `serde_json::Value`); `cx` is
+> delivered async via a `Ready` cell (`spawn_client`/`spawn_agent`); the removed
+> `session/set_model` is re-declared locally and model lists read from
+> `config_options`; ext methods only enum-fall-through for `_`-prefixed names so
+> `intellterm.wta/*` became `_intellterm.wta/*`. `session_to_helper` / `route_for`
+> and the N:1 bridge are still hand-rolled — that is exactly what Phase 1 removes.
+
+### Phase 1 detail: master → library Conductor
+
+Phase 0 kept the bespoke fan-in (`HelperHandler`) + fan-out
+(`MasterClient` + `session_to_helper` + `route_for`). Phase 1 deletes that
+hand-rolled routing and lets the 1.0 library own per-session forwarding, while the
+**N:1 bridge skeleton** (N helper transports multiplexed onto 1 shared agent
+connection) stays ours — the library models 1:1 proxy chains, not N:1 fan-in (see
+the topology caveat).
+
+**What master becomes.** Each helper still connects as a plain ACP `Client` over
+its pipe; master answers as a `Conductor`. For every helper pipe master runs a
+`Conductor.builder()` whose `on_receive_request_from(Client, NewSessionRequest)`
+calls `cx.build_session_from(request)` then `on_proxy_session_start(responder, …)`.
+That single call:
+- forwards `session/new` to the shared agent `ConnectionTo<Agent>`, and
+- installs a library **`ProxySessionMessages(session_id)`** dynamic handler that
+  auto-forwards *both directions* for that session id — `session/update`,
+  `request_permission`, `terminal/*`, `fs/*` — with no `session_to_helper` lookup.
+
+**Deleted (hand-rolled routing retires):**
+- `session_to_helper: HashMap<SessionId, HelperRoute>` and `route_for`.
+- `MasterClient`'s manual reverse-request re-dispatch (`request_permission` /
+  `terminal/*` / `fs/*` → owning helper).
+- the per-helper `notif_tx` / `ext_tx` fan-out loops in `serve_helper` and the
+  `agent_side_slot` (`Weak`/cell) plumbing that fed them.
+- `HelperHandler`'s verbatim pass-through methods (the library forwards instead).
+
+**Kept (still ours):**
+- the **N:1 bridge**: the accept loop that takes N helper pipes + the single
+  shared agent `ConnectionTo<Agent>` (one `AcpAgent`), because the conductor's
+  native chain is 1:1.
+- per-tab routing identity (`window_id` / `owner_tab_id`) carried in `_meta.wta`
+  on `session/new` so WT-side reconciliation still addresses tabs.
+- the `cached_init_resp` replay and the host `session/list` title sourcing.
+
+**Wire & compat.** Helpers stay plain `Client`; the `_proxy/*` envelope methods
+are used by the library *inside* the conductor, not on the helper↔master pipe — so
+the named-pipe wire stays private plain ACP through Phase 1. Risk goes **down**:
+the race-prone cold-start join / tombstone reconciliation around
+`session_to_helper` is replaced by the library's per-session handler lifecycle.
+
+```mermaid
+flowchart TB
+    H1["helper[1]<br/>Client.builder() (plain ACP)"]
+    Hn["helper[N]<br/>Client.builder() (plain ACP)"]
+
+    subgraph master["wta-master = library Conductor"]
+        CB["Conductor.builder()<br/>on_receive_request_from(Client, NewSessionRequest)<br/>build_session_from + on_proxy_session_start"]
+        PSM["ProxySessionMessages(session_id) ×live<br/>library dynamic handler<br/>auto fan-out BOTH ways"]
+        BR["N:1 bridge skeleton (still ours)<br/>N helper transports → 1 shared agent conn"]
+        AC["ConnectionTo&lt;Agent&gt; (shared AcpAgent)"]
+    end
+
+    CLI["agent CLI (unchanged)"]
+
+    H1 -->|"ACP/pipe"| CB
+    Hn -->|"ACP/pipe"| CB
+    CB -->|"build_session_from"| AC
+    CB -.->|"installs per session"| PSM
+    PSM ---|"auto-forward update / permission / terminal / fs"| AC
+    BR --- AC
+    AC -->|"ACP/stdio"| CLI
+```
+
+> Gone vs Phase 0: the `session_to_helper` box and `MasterClient.route_for`
+> fan-out arrow. The library's `ProxySessionMessages` replaces both the fan-in
+> pass-through and the fan-out routing; only the N:1 bridge and the shared agent
+> connection remain hand-written.
+
 ### Phase 2 detail: `app.rs` → proxies
 
 `app.rs` is the central event-loop + state hub (`App` struct + the `AppEvent`
@@ -417,6 +528,38 @@ production logic) moves out. Expected outcome: `app.rs` becomes a leaner
 "TUI + connection + tab routing" hub with 3 transform cores lifted into
 composable proxies — not 16K lines fragmented into N proxies.
 
+### Structure after Phase 2 (conductor + chained transform proxies)
+
+The conductor from Phase 1 is unchanged; the three transform cores lifted out of
+`app.rs` become standalone proxies chained between the conductor and the agent via
+`_proxy/initialize` / `_proxy/successor`. Each proxy is reorderable/insertable by
+config rather than by editing `app.rs`. The helper TUI and the agent CLI are both
+untouched — they still speak plain ACP at the ends of the chain.
+
+```mermaid
+flowchart LR
+    H["helper (Client, plain ACP)"]
+    subgraph master["wta-master Conductor"]
+        CB["build_session_from<br/>start_session_proxy chain"]
+    end
+    AFX["autofix proxy<br/>classify_wt_event → inject prompt"]
+    CTX["context/prompt proxy<br/>persona + template rewrite"]
+    REC["delegate/recommendation proxy<br/>parse RecommendationSet"]
+    CLI["agent CLI (plain initialize)"]
+
+    H -->|"ACP/pipe"| CB
+    CB -.->|"_proxy/initialize"| AFX
+    AFX -.->|"_proxy/successor"| CTX
+    CTX -.->|"_proxy/successor"| REC
+    REC -.->|"_proxy/successor"| CLI
+    REC -->|"session/update passthrough"| CB
+```
+
+> Only the dashed `_proxy/*` chain is new vs Phase 1. The conductor still owns the
+> N:1 bridge + `ProxySessionMessages`; the proxies are pure 1:1 transforms in the
+> chain. `app.rs` keeps the cards/pickers + TUI/tab/connection plumbing; only each
+> proxy's decision/transform core moved out.
+
 ### Proxy criterion & count (how many proxies, and why)
 
 **Criterion.** A concern belongs in a proxy iff it can be expressed as *intercept
@@ -480,6 +623,69 @@ delegate) — existing module backing, clear ACP-method boundaries, most test
 migration; (2) `status-list` as a separate, larger workstream (subsystem redesign
 with the two caveats above); (3) model / permission as fold-in decisions made
 only after (1).
+
+### Phase 3 detail: WT control via MCP-over-ACP
+
+Today the agent reaches Windows Terminal by **shelling out**: it spawns `wta` /
+`wtcli`, which call WT's COM `IProtocolServer` (`CliChannel`). Every WT operation
+(`list-panes`, `capture-pane`, `send-keys`, `split-pane`, …) is a fresh
+subprocess. Phase 3 replaces that subprocess transport with **MCP-over-ACP**: the
+conductor injects an MCP server into each `session/new` via
+`SessionBuilder::with_mcp_server(...)`, exposing the WT operations as typed MCP
+tools the agent calls **in-band** over the ACP connection.
+
+**What changes:**
+- `session/new` carries a master-published MCP server (the same hook
+  `inject_wta_mcp_servers` already prepares for HTTP-capable agents — Phase 3
+  generalizes it to the ACP-native `with_mcp_server` path).
+- Each `wtcli` verb becomes an MCP tool with a JSON schema; the agent discovers
+  them via the MCP tool list instead of being told to shell out.
+- No per-call process spawn; the agent issues a tool call and gets a typed result
+  over the existing ACP pipe.
+
+**Kept (the COM path stays the implementation):**
+- WT's COM `IProtocolServer` + `TerminalProtocolComServer` are unchanged — they
+  remain the *backend* each tool handler calls. Only the **agent→WT transport**
+  changes (subprocess shell-out → in-band MCP tool call). `WT_COM_CLSID` discovery
+  and package identity are untouched.
+- `wta`/`wtcli` stay for humans and for agents that can only shell out; the MCP
+  surface is additive.
+
+**Caveats (why it is a separate, optional workstream):**
+- **Security/trust.** MCP tools can mutate WT (split panes, send keystrokes) — the
+  same authority `wtcli` has today, but now reachable in-band by the model. This
+  needs an explicit trust/confirmation policy (it dovetails with the existing
+  `aiIntegration.confirmation.*` settings) and is the security item flagged for
+  "when proxies/tools are introduced."
+- **Agent support.** The agent CLI must speak MCP-over-ACP. Copilot/Claude/Gemini
+  expose MCP, but capability negotiation + per-agent quirks are real work.
+- **Scope.** This is a larger rethink (tool schema design, error mapping,
+  streaming `capture-pane`) and gets its own spec; it needs no further
+  conductor/proxy change.
+
+```mermaid
+flowchart LR
+    subgraph master["wta-master Conductor"]
+        CB["build_session_from<br/>.with_mcp_server(WT tools)"]
+    end
+    CLI["agent CLI<br/>speaks MCP-over-ACP"]
+    subgraph mcp["WT MCP tools (in master)"]
+        T["list_panes / capture_pane / send_keys / split_pane / …"]
+    end
+    COM["WT COM IProtocolServer<br/>(unchanged backend)"]
+    WT["Windows Terminal"]
+
+    CB -->|"session/new (+ MCP server)"| CLI
+    CLI -.->|"MCP tool call over ACP (in-band)"| T
+    T -->|"CliChannel / COM"| COM
+    COM --> WT
+    T -.->|"typed result"| CLI
+```
+
+> Versus Phase 2: the only delta is the agent no longer spawns `wtcli`
+> subprocesses — WT control moves in-band as MCP tools. The COM server + WT are the
+> same boxes; the dashed subprocess arrow from earlier phases is replaced by an
+> in-band MCP tool call.
 
 ## Capabilities
 
