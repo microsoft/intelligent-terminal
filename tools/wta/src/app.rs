@@ -16152,6 +16152,7 @@ mod tests {
                 cwd: Some("C:/repo".into()),
                 title: Some("logs".into()),
                 direction: None,
+                profile: None,
             }],
         };
         let h = rec_card_height(&choice, 80);
@@ -16546,6 +16547,7 @@ mod tests {
                 cwd: None,
                 title: None,
                 direction: None,
+                profile: None,
             }],
         }
     }

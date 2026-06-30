@@ -477,7 +477,7 @@ int main()
     });
 
     // ── split-pane ──
-    std::string splitPaneTarget, splitPaneCommand, splitPaneDirection;
+    std::string splitPaneTarget, splitPaneCommand, splitPaneDirection, splitPaneProfile;
     bool splitHorizontal = false, splitVertical = false;
     double splitSize = 0.5;
     auto* splitPaneCmd = app.add_subcommand("split-pane", "Split a pane")->alias("splitw");
@@ -487,6 +487,7 @@ int main()
     splitPaneCmd->add_flag("-v,--vertical", splitVertical, "Split vertically (legacy alias for --direction right)");
     splitPaneCmd->add_option("-s,--size", splitSize, "Size fraction");
     splitPaneCmd->add_option("-c,--command", splitPaneCommand, "Command to run");
+    splitPaneCmd->add_option("-p,--profile", splitPaneProfile, "Profile");
     splitPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
@@ -500,7 +501,7 @@ int main()
             dir = "right";
         else
             dir = "automatic";
-        wil::unique_bstr dirB{ Bstr(dir) }, profile{ Bstr("") }, command{ Bstr(splitPaneCommand) };
+        wil::unique_bstr dirB{ Bstr(dir) }, profile{ Bstr(splitPaneProfile) }, command{ Bstr(splitPaneCommand) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
             return server->SplitPane(sessionId, dirB.get(), static_cast<float>(splitSize), profile.get(), command.get(), true, j);

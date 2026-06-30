@@ -81,6 +81,8 @@ pub enum RecommendedAction {
         /// fixed wtcli passes "automatic" when neither is set).
         #[serde(default)]
         direction: Option<String>,
+        #[serde(default)]
+        profile: Option<String>,
     },
     Open {
         target: OpenTarget,
@@ -94,6 +96,8 @@ pub enum RecommendedAction {
         /// Ignored for tab target.
         #[serde(default)]
         direction: Option<String>,
+        #[serde(default)]
+        profile: Option<String>,
     },
 }
 
@@ -412,7 +416,18 @@ async fn execute_choice(
                 cwd,
                 title,
                 direction,
+                profile,
             } => {
+                // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
+                let profile = match profile {
+                    Some(p) if !p.is_empty() => Some(p),
+                    _ => shell_mgr
+                        .wt_get_active_pane()
+                        .await
+                        .ok()
+                        .and_then(|v| v.get("profile").and_then(|v| v.as_str()).map(|s| s.to_owned())),
+                };
+
                 ensure_non_empty("input", input)?;
                 let runtime = match agent.as_deref() {
                     Some(agent) => Some(lookup_delegate_agent(delegate_agents, agent)?),
@@ -448,6 +463,7 @@ async fn execute_choice(
                                 commandline.as_deref(),
                                 cwd.as_deref(),
                                 title.as_deref().or(runtime_name),
+                                profile.as_deref(),
                             )
                             .await
                             .context("failed to create tab")?;
@@ -466,6 +482,7 @@ async fn execute_choice(
                                 cwd.as_deref(),
                                 direction.as_deref(),
                                 None,
+                                profile.as_deref(),
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
@@ -507,7 +524,18 @@ async fn execute_choice(
                 cwd,
                 title,
                 direction,
+                profile,
             } => {
+                // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
+                let profile = match profile {
+                    Some(p) if !p.is_empty() => Some(p),
+                    _ => shell_mgr
+                        .wt_get_active_pane()
+                        .await
+                        .ok()
+                        .and_then(|v| v.get("profile").and_then(|v| v.as_str()).map(|s| s.to_owned())),
+                };
+
                 let target_label = open_target_label(target);
                 coordinator_log(&format!(
                     "open begin target={} parent={:?} title={:?} direction={:?}",
@@ -520,7 +548,7 @@ async fn execute_choice(
                 let pane_id = match target {
                     OpenTarget::Tab => {
                         let result = shell_mgr
-                            .wt_create_tab(None, cwd.as_deref(), title.as_deref())
+                            .wt_create_tab(None, cwd.as_deref(), title.as_deref(), profile.as_deref())
                             .await
                             .context("failed to create tab")?;
                         coordinator_log(&format!(
@@ -532,7 +560,7 @@ async fn execute_choice(
                     OpenTarget::Panel => {
                         let parent = required_parent(parent.as_deref(), "open")?;
                         let result = shell_mgr
-                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None)
+                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None, profile.as_deref())
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
                         coordinator_log(&format!(

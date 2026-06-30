@@ -1906,7 +1906,7 @@ async fn delegate_with_context(
     tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
     let create_resp = shell_mgr
-        .wt_create_tab(Some(&commandline), cwd, None)
+        .wt_create_tab(Some(&commandline), cwd, None, None)
         .await?;
     let pane_guid = create_resp
         .get("session_id")
