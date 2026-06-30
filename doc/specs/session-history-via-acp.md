@@ -39,7 +39,52 @@ change: **the agent CLIs already expose ACP `session/list`, which returns their
 own parsed session history.** Asking the agent is one uniform path for host *and*
 WSL, with no on-disk-format coupling and no tar branch to maintain.
 
+**Before — disk-based `history_loader`.** The helper asks master; master seeds its
+registry by enumerating and parsing each CLI's on-disk transcripts (a per-CLI
+parser, title extractor, and phantom-guard), and tars WSL transcripts host-side:
+
+```mermaid
+flowchart LR
+    Helper["wta-helper<br/>agent-pane TUI"]
+    Master["wta-master<br/>session registry"]
+    Loader["history_loader<br/>per-CLI parsers"]
+    Disk[("host transcripts:<br/>~/.copilot ~/.claude<br/>~/.codex ~/.gemini")]
+    Tar["wsl + bash + tar<br/>PR 323 bridge"]
+    WslDisk[("in-distro<br/>CLI transcripts")]
+
+    Helper -->|"sessions/list"| Master
+    Master -->|"seed: startup + 5s"| Loader
+    Loader -->|"enumerate, parse title, phantom-guard"| Disk
+    Loader -->|"tar over wsl.exe"| Tar
+    Tar --> WslDisk
+    Loader -->|"AgentSession rows"| Master
+    Master -->|"registry snapshot"| Helper
+```
+
 ## Design: `session/list` as the sole history source
+
+**After — ACP `session/list`.** The helper still asks master; master now seeds
+*and* continuously reconciles its registry from the running agent's own
+`session/list` — one round-trip on the existing connection for the host, a
+per-distro ACP scan for WSL, and the `agent_pane_origin` index for the Class-A
+filter. No disk read:
+
+```mermaid
+flowchart LR
+    Helper["wta-helper<br/>agent-pane TUI"]
+    Master["wta-master<br/>session registry"]
+    Agent["agent CLI already running<br/>copilot / claude / codex"]
+    Wsl["wsl -d distro<br/>bash -lc CLI --acp"]
+    Index[("agent_pane_origin<br/>Class-A index")]
+
+    Helper -->|"sessions/list"| Master
+    Master -->|"ACP session/list<br/>seed + reconcile: startup + 5s"| Agent
+    Agent -->|"rows: id, cwd, title, updatedAt"| Master
+    Master -->|"per-distro ACP scan"| Wsl
+    Wsl -->|"rows"| Master
+    Master -->|"classify_and_map: subtract index"| Index
+    Master -->|"registry snapshot"| Helper
+```
 
 ### Host
 
