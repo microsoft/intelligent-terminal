@@ -295,6 +295,17 @@ fn process_label_subcommands() {
     let probe = Cli::try_parse_from(["wta", "probe-models", "--agent", "copilot"]).unwrap();
     assert_eq!(process_label(&probe), "probe");
 
+    let probe_sessions =
+        Cli::try_parse_from(["wta", "probe-sessions", "--agent", "copilot"]).unwrap();
+    assert_eq!(process_label(&probe_sessions), "probe");
+
+    let probe_host =
+        Cli::try_parse_from(["wta", "probe-host-sessions", "--agent", "copilot"]).unwrap();
+    assert_eq!(process_label(&probe_host), "probe");
+
+    let probe_wsl = Cli::try_parse_from(["wta", "probe-wsl-sessions"]).unwrap();
+    assert_eq!(process_label(&probe_wsl), "probe");
+
     // Any other subcommand is a short-lived wtcli-style client.
     let sessions = Cli::try_parse_from(["wta", "sessions", "list"]).unwrap();
     assert_eq!(process_label(&sessions), "cli");

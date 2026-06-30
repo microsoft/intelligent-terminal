@@ -8,6 +8,7 @@ mod agent_registry;
 mod agent_sessions;
 mod app;
 mod clipboard_image;
+mod command_recall;
 mod commands;
 mod coordinator;
 mod cwd_util;
@@ -19,12 +20,14 @@ mod logging;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
+mod mcp;
 mod osc52;
 mod pane_context;
 mod proc_bind;
 mod protocol;
 mod rtl;
 mod runtime_paths;
+mod session_history;
 mod session_mgmt;
 mod session_registry;
 mod session_watcher;
@@ -35,7 +38,9 @@ mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;
+mod win32;
 mod wsl;
+mod wsl_acp;
 
 use acp::Agent as _;
 use agent_client_protocol as acp;
@@ -480,6 +485,42 @@ enum Command {
         #[arg(long)]
         agent: String,
     },
+
+    /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
+    /// `session/list` (`list_sessions`) and print what it returns.
+    /// Used to evaluate whether ACP session enumeration can replace
+    /// reading on-disk transcripts. Prints a pretty JSON object to
+    /// stdout; on error: non-zero exit, message on stderr.
+    ProbeSessions {
+        /// Full agent cmdline, same shape as `--agent` (e.g.
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
+        #[arg(long)]
+        agent: String,
+    },
+
+    /// Diagnostic: spawn an agent CLI, call ACP `session/list`, filter
+    /// agent-pane-origin rows, and print the host history rows WTA would
+    /// seed from the already-running master agent.
+    ProbeHostSessions {
+        /// Full agent cmdline, same shape as `--agent` (e.g.
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
+        #[arg(long)]
+        agent: String,
+    },
+
+    /// Diagnostic: run the production WSL history scan
+    /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
+    /// currently-running distros and print the discovered sessions as
+    /// JSON. Exercises the real `wsl.exe` spawn + ACP `session/list` path
+    /// that seeds the `/sessions` view. Prints `[]` when no distro is
+    /// running or none answer.
+    ProbeWslSessions {
+        /// Restrict to one CLI (`copilot` | `claude` | `codex`). Omitted
+        /// scans the three ACP-capable built-ins (Gemini has no
+        /// `session/list`).
+        #[arg(long)]
+        cli: Option<String>,
+    },
 }
 
 
@@ -886,6 +927,15 @@ async fn main() -> Result<()> {
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
+        // ── ACP session/list probe (diagnostic) ──
+        Some(Command::ProbeSessions { agent }) => run_probe_sessions(&agent).await,
+
+        // ── Filtered host ACP history probe (diagnostic) ──
+        Some(Command::ProbeHostSessions { agent }) => run_probe_host_sessions(&agent).await,
+
+        // ── WSL ACP history-scan probe (diagnostic) ──
+        Some(Command::ProbeWslSessions { cli }) => run_probe_wsl_sessions(cli.as_deref()).await,
+
         // ── No subcommand: a singleton-service mode, or an error. There
         //    is no standalone/default ACP TUI mode — the direct agent-spawn
         //    path was removed, so bare `wta` always runs as a WT-launched
@@ -945,6 +995,9 @@ fn process_label(cli: &Cli) -> String {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
+        Some(Command::ProbeSessions { .. }) => "probe".to_string(),
+        Some(Command::ProbeHostSessions { .. }) => "probe".to_string(),
+        Some(Command::ProbeWslSessions { .. }) => "probe".to_string(),
         Some(Command::Hooks {
             action: HooksAction::Install { .. },
         }) => "install-hooks".to_string(),
@@ -995,6 +1048,179 @@ async fn run_probe_models(agent: &str) -> Result<()> {
     // when they notice their pipes are broken.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     // Flush the file appender — process::exit skips the guard drop.
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Drive [`protocol::acp::probe::probe_sessions`] on a tokio `LocalSet`
+/// (the ACP client connection is `!Send`), print the result as pretty
+/// JSON to stdout, force-exit. Diagnostic-only: evaluates whether an
+/// agent CLI answers ACP `session/list` and what it returns.
+async fn run_probe_sessions(agent: &str) -> Result<()> {
+    tracing::info!("probe-sessions start: agent={}", agent);
+
+    let local = tokio::task::LocalSet::new();
+    let result = match local
+        .run_until(protocol::acp::probe::probe_sessions(agent))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("probe-sessions failed: {:#}", e);
+            eprintln!("probe-sessions failed: {:#}", e);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            logging::shutdown_flush();
+            std::process::exit(1);
+        }
+    };
+    tracing::info!(
+        "probe-sessions ok: list_ok={} sessions={} err={:?}",
+        result.list_sessions_ok,
+        result.sessions.len(),
+        result.list_sessions_error
+    );
+    let payload = serde_json::to_string_pretty(&result).context("serialize session probe")?;
+    println!("{payload}");
+
+    // Same force-exit rationale as run_probe_models (orphan npx/node
+    // grandchildren keep the tokio reactor blocked on drop).
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Diagnostic host-history smoke test: run one ACP CLI, fetch
+/// `session/list`, apply the production Class-A filter, and print the
+/// rows in the same compact shape used by the WSL probe.
+async fn run_probe_host_sessions(agent: &str) -> Result<()> {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use std::time::Duration;
+
+    tracing::info!("probe-host-sessions start: agent={}", agent);
+
+    // Resolve the CliSource from the agent command so the probe labels and
+    // classifies rows the way production seeding does (which uses the real
+    // `state.cli_source`), instead of assuming Copilot for every agent.
+    let cli_source =
+        CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(agent)));
+
+    let local = tokio::task::LocalSet::new();
+    let rows = match local
+        .run_until(async {
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
+            let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
+            let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
+            let result = crate::protocol::acp::session_list::fetch_session_list(
+                &mut spawned.child,
+                &label,
+                init_timeout,
+                Duration::from_secs(10),
+            )
+            .await;
+            let _ = spawned.child.start_kill();
+            let (_init, list_result) = result?;
+            // session/list unsupported (e.g. `Method not found`) is the production
+            // "empty history, no fallback" case — surface it as `[]` + exit 0, not a
+            // diagnostic failure. A genuine spawn/init error still propagates above.
+            let sessions = list_result.unwrap_or_else(|e| {
+                tracing::info!("probe-host-sessions: session/list unavailable ({e}); returning []");
+                Vec::new()
+            });
+            let idx = crate::agent_pane_origin::load_default_set();
+            Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
+                &sessions,
+                &idx,
+                SessionLocation::Host,
+                &cli_source,
+            ))
+        })
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // Same force-exit rationale as run_probe_sessions: orphan npx/node
+            // grandchildren keep the tokio reactor blocked ~35s on drop.
+            tracing::error!("probe-host-sessions failed: {:#}", e);
+            eprintln!("probe-host-sessions failed: {:#}", e);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            logging::shutdown_flush();
+            std::process::exit(1);
+        }
+    };
+
+    let json: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "key": r.key,
+                "cli": format!("{:?}", r.cli_source),
+                "title": r.title,
+                "cwd": r.cwd.to_string_lossy(),
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).context("serialize host session probe")?
+    );
+
+    tracing::info!("probe-host-sessions ok: {} row(s)", rows.len());
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Drive the production WSL ACP history scan
+/// ([`wsl_acp::scan_running_distros_acp`]) on a tokio `LocalSet` (the ACP
+/// connection is `!Send`) and print the discovered sessions as JSON.
+/// Diagnostic-only: exercises the real `wsl.exe` spawn + `session/list`
+/// path that seeds the `/sessions` view.
+async fn run_probe_wsl_sessions(cli: Option<&str>) -> Result<()> {
+    use crate::agent_sessions::CliSource;
+    tracing::info!("probe-wsl-sessions start: cli={:?}", cli);
+
+    let filter: Option<CliSource> = match cli {
+        None => None,
+        Some("copilot") => Some(CliSource::Copilot),
+        Some("claude") => Some(CliSource::Claude),
+        Some("codex") => Some(CliSource::Codex),
+        Some("gemini") => Some(CliSource::Gemini),
+        Some(other) => {
+            // Reject unknown values rather than silently widening to "scan all"
+            // (Unknown → clis_to_scan → every built-in), which would make the
+            // diagnostic's output contradict the requested restriction.
+            anyhow::bail!(
+                "unknown --cli value {other:?}; expected one of: copilot, claude, codex, gemini"
+            );
+        }
+    };
+
+    let local = tokio::task::LocalSet::new();
+    let rows = local
+        .run_until(crate::wsl_acp::scan_running_distros_acp(filter.as_ref()))
+        .await;
+
+    let json: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "key": r.key,
+                "cli": format!("{:?}", r.cli_source),
+                "title": r.title,
+                "cwd": r.cwd.to_string_lossy(),
+                "distro": r.location.distro(),
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).context("serialize WSL session probe")?
+    );
+
+    tracing::info!("probe-wsl-sessions ok: {} row(s)", rows.len());
+    // Force-exit like the other probes: a distro CLI may leave orphan
+    // grandchildren that keep the tokio reactor blocked on drop.
+    let _ = std::io::Write::flush(&mut std::io::stdout());
     logging::shutdown_flush();
     std::process::exit(0);
 }
@@ -2000,30 +2226,40 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
 async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, String, String)> {
     let our_pid = std::process::id();
 
+    // WT IDs may arrive as JSON strings or numbers (COM returns numeric) — accept both.
+    fn id_str(v: Option<&serde_json::Value>) -> Option<String> {
+        match v {
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
     let windows = shell_mgr.wt_list_windows().await.ok()?;
     let windows_arr = windows.get("windows")?.as_array()?;
 
     for win in windows_arr {
-        let window_id = win.get("window_id")?.as_str()?;
-        let tabs = shell_mgr.wt_list_tabs(window_id).await.ok()?;
+        let window_id = match id_str(win.get("window_id")) {
+            Some(w) => w,
+            None => continue,
+        };
+        let tabs = shell_mgr.wt_list_tabs(&window_id).await.ok()?;
         let tabs_arr = tabs.get("tabs")?.as_array()?;
 
         for tab in tabs_arr {
-            let tab_id_str = match tab.get("tab_id") {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(serde_json::Value::Number(n)) => n.to_string(),
-                _ => continue,
+            let tab_id_str = match id_str(tab.get("tab_id")) {
+                Some(t) => t,
+                None => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str).await.ok()?;
+            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(&window_id)).await.ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {
                 if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64()) {
                     if pid == our_pid as u64 {
-                        let pane_id = match pane.get("session_id") {
-                            Some(serde_json::Value::String(s)) => s.clone(),
-                            Some(serde_json::Value::Number(n)) => n.to_string(),
-                            _ => continue,
+                        let pane_id = match id_str(pane.get("session_id")) {
+                            Some(p) => p,
+                            None => continue,
                         };
                         return Some((pane_id, tab_id_str.clone(), window_id.to_string()));
                     }

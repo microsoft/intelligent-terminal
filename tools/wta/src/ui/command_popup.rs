@@ -150,16 +150,16 @@ mod tests {
 
     #[test]
     fn highlight_follows_cursor() {
-        let cands = vec![spec("help"), spec("new"), spec("restart")];
-        assert_eq!(popup_highlight(&cands, 1), Some(1));
+        let candidates = vec![spec("help"), spec("new"), spec("restart")];
+        assert_eq!(popup_highlight(&candidates, 1), Some(1));
     }
 
     #[test]
     fn highlight_clamps_out_of_range_cursor() {
         // The App collapses the list to a single command (/restart) when the
         // transport is lost; a stale larger `selected` must clamp onto it.
-        let cands = vec![spec("restart")];
-        assert_eq!(popup_highlight(&cands, 9), Some(0));
+        let candidates = vec![spec("restart")];
+        assert_eq!(popup_highlight(&candidates, 9), Some(0));
     }
 
     #[test]

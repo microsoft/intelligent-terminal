@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI عامل الذكاء الاصطناعي %
 auth.checking_authentication: "  %{spinner} جارٍ التحقق من المصادقة..."
 auth.waiting_for_authorization: "  %{spinner} في انتظار التفويض..."
 auth.code_copied_hint: "  تم نسخ الرمز إلى الحافظة — الصقه في المتصفح."
+auth.device_code_prompt: "تفضّل بزيارة %{url} وأدخل الرمز: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "سجّل الدخول لاستخدام عامل الذكاء الاصطناعي الخاص بك:"
 auth.card_connect: "  قم بتوصيل %{name} لتمكين ميزات عامل الذكاء الاصطناعي"
-auth.button_sign_in_github: "[ تسجيل الدخول باستخدام GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ تسجيل الدخول باستخدام %{name} ]"
-auth.hint_footer: "  اضغط Enter لتسجيل الدخول، Esc للرجوع"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  اضغط على Enter لنسخ أمر تسجيل الدخول، ثم الصقه في نافذة طرفية جديدة لإكمال تسجيل الدخول"  # {Locked="Enter"}
+auth.hint_footer_back: "  اضغط على Esc للعودة"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter لتسجيل الدخول · E لاستخدام GitHub Enterprise · Esc للعودة"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  مجال المؤسسة: "
+auth.enterprise_hint_footer: "  Enter لتسجيل الدخول · Esc لاستخدام github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  اضغط على Enter لإعادة المحاولة، أو Esc لاستخدام github.com. الأسباب الشائعة: مجال مكتوب بشكل خاطئ أو لا يمكن الوصول إليه، أو رمز منتهي الصلاحية، أو عدم وجود وصول إلى Copilot على ذلك المضيف."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  اضغط على Enter لإعادة المحاولة، أو Esc للعودة."  # {Locked="Enter","Esc"}
 
 # ── عرض الدردشة (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "جارٍ التفكير…"

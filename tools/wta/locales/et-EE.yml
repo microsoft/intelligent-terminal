@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Autentimise kontrollimine..."
 auth.waiting_for_authorization: "  %{spinner} Autoriseerimise ootel..."
 auth.code_copied_hint: "  Kood kopeeritud lõikelauale — kleepige see oma brauserisse."
+auth.device_code_prompt: "Külastage aadressi %{url} ja sisestage kood: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Logige sisse, et kasutada oma agenti:"
 auth.card_connect: "  Ühendage %{name}, et lubada agendi funktsioone"
-auth.button_sign_in_github: "[ Logi sisse GitHub kontoga ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Logi sisse teenusega %{name} ]"
-auth.hint_footer: "  Vajutage Enter sisselogimiseks, Esc tagasi minemiseks"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Vajutage Enter sisselogimiskäsu kopeerimiseks, seejärel kleepige see sisselogimise lõpetamiseks uude terminaliaknasse"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc = tagasi"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter = logi sisse · E = GitHub Enterprise · Esc = tagasi"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise'i domeen: "
+auth.enterprise_hint_footer: "  Enter = logi sisse · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Vajutage Enter uuesti proovimiseks või Esc github.com jaoks. Levinud põhjused: valesti sisestatud või kättesaamatu domeen, aegunud kood või puudub Copilot juurdepääs sellel hostil."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Vajutage Enter uuesti proovimiseks või Esc tagasi minemiseks."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mõtleb..."

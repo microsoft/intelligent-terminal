@@ -133,6 +133,36 @@ pub struct AuthState {
     pub login_command: String,
     pub checking: bool,
     pub status_message: String,
+    /// GitHub Enterprise sign-in: true while the domain input is shown/active.
+    pub enterprise_mode: bool,
+    /// The GitHub Enterprise domain being entered (e.g. "mycompany.ghe.com").
+    pub enterprise_host: String,
+}
+
+/// Prefill the Copilot GHE sign-in state from the persisted host. Returns
+/// `(enterprise_mode, enterprise_host)`: a returning GHE user starts with the
+/// domain input expanded and pre-filled so they can sign in with one keypress.
+fn copilot_enterprise_prefill(agent_id: &str) -> (bool, String) {
+    if agent_id == "copilot" {
+        if let Some(host) = crate::agent_check::load_copilot_enterprise_host() {
+            return (true, host);
+        }
+    }
+    (false, String::new())
+}
+
+/// The device-verification URL for a Copilot device-code login. Data-residency
+/// GitHub Enterprise verifies device codes on the enterprise host (taken from
+/// the `--host https://<host>` in the login command), not github.com.
+fn device_verify_url(login_command: &str) -> String {
+    login_command
+        .split("--host ")
+        .nth(1)
+        .and_then(|s| s.split_whitespace().next())
+        .map(|h| h.trim_end_matches('/'))
+        .filter(|h| !h.is_empty())
+        .map(|h| format!("{}/login/device", h))
+        .unwrap_or_else(|| "https://github.com/login/device".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -527,10 +557,7 @@ impl WtNotification {
 /// Open a URL in the user's default browser. Used by Setup mode's
 /// "press O to open install URL" key handler.
 fn open_url_in_browser(url: &str) -> std::io::Result<()> {
-    std::process::Command::new("cmd")
-        .args(["/c", "start", "", url])
-        .spawn()?;
-    Ok(())
+    crate::win32::open_url_in_default_browser(url)
 }
 
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
@@ -783,22 +810,6 @@ where
         hook_sink(ev);
     }
 
-    // Phantom-session prune: if this event was a session-end and the
-    // row is now Ended for a managed CLI (Claude/Copilot/Gemini) whose
-    // on-disk artefacts contain no resumable content, drop it from the
-    // registry now. Without this, the user who opens `<cli>` and exits
-    // without typing a real prompt is left with an Ended row in session management view
-    // whose Enter would launch `<cli> --resume <id>` — and the CLI
-    // itself would then reject the request (`No conversation found`
-    // for Claude, `No session, task, or name matched` for Copilot,
-    // similar for Gemini), often leaving fresh phantom artefacts on
-    // disk in the process. Mirrors the loader-side filters in
-    // `history_loader::load_*` (which only fire for historical rows
-    // reconstructed at startup).
-    if matches!(event, "agent.session.stopped" | "agent.session.end") {
-        prune_phantom_session_if_ended(reg, &key_for_refresh);
-    }
-
     // Stamp `AgentPane` origin on the live session if the agent-pane
     // origin index recorded its session id. This is what flips the
     // "agent pane" prefix on for *live* rows — historical rows pick up
@@ -816,17 +827,6 @@ where
         }
     }
 
-    // Upgrade synthetic title from disk if the CLI has now written one.
-    if reg.title_is_synthetic(&key_for_refresh) {
-        if let Some(cli) = reg.cli_source_for(&key_for_refresh) {
-            if let Some(disk_title) =
-                crate::history_loader::lookup_title_for_session(cli, &key_for_refresh)
-            {
-                reg.upgrade_title_if_synthetic(&key_for_refresh, &disk_title);
-            }
-        }
-    }
-
     let dirty = reg.take_dirty();
     // Per-agent-event (partner of "routing") — debug, not info.
     tracing::debug!(
@@ -837,72 +837,6 @@ where
         "applied"
     );
     dirty
-}
-
-/// Drop `key` from `reg` if it has transitioned to `Ended` and its
-/// on-disk artefacts indicate `<cli> --resume <key>` would be rejected
-/// (per the CLI's own resumability rule). A no-op for any other
-/// status or for keys whose CLI has no on-disk artefact yet (defers
-/// to the CLI's own validation).
-///
-/// Covers all three managed CLIs:
-///   * Claude  — JSONL exists but contains only meta records
-///               (Claude rejects with `No conversation found with
-///               session ID: <id>`).
-///   * Copilot — session-state dir exists but `events.jsonl` is missing
-///               or empty (Copilot rejects with
-///               `Error: No session, task, or name matched '<id>'`).
-///   * Gemini  — chat JSONL exists but contains only the session
-///               header line(s), no user/tool activity.
-pub(crate) fn prune_phantom_session_if_ended(
-    reg: &mut crate::agent_sessions::AgentSessionRegistry,
-    key: &str,
-) {
-    prune_phantom_session_if_ended_with(reg, key, |cli, k| {
-        // Use the *strict* probe here. Rationale: the row is in
-        // wta's live registry, so we know the session really existed
-        // in this process — a missing on-disk artefact is conclusive
-        // evidence of a phantom (the CLI never had anything to
-        // flush). The lenient probe defers to the CLI on missing
-        // artefacts, but for live-tracked sessions that produces a
-        // sticky Idle/Ended row that pressing Enter dead-ends on
-        // (e.g. ACP-launched `claude` that the user exits without
-        // typing — Claude never writes a JSONL, so
-        // `claude --resume <id>` rejects with
-        // `No conversation found with session ID: <id>`).
-        crate::history_loader::key_has_definite_resumable_content(cli, k)
-    });
-}
-
-/// Variant of [`prune_phantom_session_if_ended`] that takes the
-/// resumability probe as a callback. Allows unit tests to drive the
-/// prune path without touching the real
-/// `~/.{claude,copilot,gemini}` trees (and without racing on
-/// `USERPROFILE` env-var mutation).
-pub(crate) fn prune_phantom_session_if_ended_with(
-    reg: &mut crate::agent_sessions::AgentSessionRegistry,
-    key: &str,
-    is_resumable: impl FnOnce(&crate::agent_sessions::CliSource, &str) -> bool,
-) {
-    use crate::agent_sessions::AgentStatus;
-    let probe_input = match reg.get(&key.to_string()) {
-        Some(s) if matches!(s.status, AgentStatus::Ended) => {
-            Some((s.cli_source.clone(), s.key.clone()))
-        }
-        _ => None,
-    };
-    let should_prune = match probe_input {
-        Some((cli, k)) => !is_resumable(&cli, &k),
-        None => false,
-    };
-    if should_prune {
-        tracing::info!(
-            target: "agent_session_registry",
-            key = %key,
-            "pruning phantom session (Ended, no resumable on-disk content)",
-        );
-        reg.remove(&key.to_string());
-    }
 }
 
 /// Classify a WT protocol event into a notification.
@@ -1295,6 +1229,9 @@ pub enum AppEvent {
     LoginComplete {
         agent_id: String,
         success: bool,
+        /// On failure, the most specific error line captured from the login
+        /// process output (if any), surfaced to the user. `None` on success.
+        error: Option<String>,
     },
     /// Post-login auth recovery: a genuine post-login reconnect (helper/pipe
     /// mode) for an External-auth agent STILL failed auth, which means the
@@ -2183,7 +2120,7 @@ pub struct AgentsViewState {
     /// Set by F5 in the session view to request a master-side disk re-scan
     /// (`load_for_cli`) on the next dispatched `sessions/list`. Sticky across
     /// in-flight coalescing: only cleared when a request is actually built, so
-    /// an F5 pressed while a poll is in flight still rescans on the trailing
+    /// an F5 pressed while a poll is in flight still re-scans on the trailing
     /// refetch. Reset on view close.
     pub pending_rescan: bool,
     /// True while an F5 rescan request is in flight (set when dispatched,
@@ -2911,7 +2848,7 @@ impl App {
     /// `(origin, liveness, cli, capabilities, shift)` to one of
     /// `Focus | ResumeInAgentPane | ResumeCliFlag | NotResumable`.
     /// All side effects (system messages, wtcli spawn, optimistic
-    /// state flips, phantom guards) live on the dispatch side here
+    /// state flips) live on the dispatch side here
     /// or in the existing [`Self::dispatch_resume`] /
     /// [`Self::dispatch_resume_in_agent_pane`] helpers we call into.
     ///
@@ -2980,14 +2917,14 @@ impl App {
             }
             EnterAction::ResumeInAgentPane { .. } => {
                 // dispatch_resume_in_agent_pane owns the loadSession
-                // capability gate (also re-checked) + phantom guard +
-                // optimistic ResumeDispatched + emit
+                // capability gate (also re-checked),
+                // optimistic ResumeDispatched, and emit
                 // resume_in_new_agent_tab to WT.
                 self.dispatch_resume_in_agent_pane(s);
             }
             EnterAction::ResumeCliFlag { .. } => {
-                // dispatch_resume owns the resume-flag check + phantom
-                // guard + optimistic ResumeDispatched + new-tab spawn.
+                // dispatch_resume owns the resume-flag check,
+                // optimistic ResumeDispatched, and new-tab spawn.
                 self.dispatch_resume(s);
             }
             EnterAction::NotResumable { reason } => {
@@ -3158,48 +3095,6 @@ impl App {
                 cli = %cli_id,
                 "dispatch_resume: CLI does not advertise a resume flag, skipping",
             );
-            return;
-        }
-
-        // Belt-and-suspenders phantom-session guard. The session-end
-        // and pane-closed routes already prune phantoms via
-        // `prune_phantom_session_if_ended`, but if any path slips
-        // through (e.g. session loaded from disk that wasn't filtered,
-        // race on artefact flush, manual CLI invocation outside of an
-        // agent pane), avoid launching `<cli> --resume <id>` here. The
-        // CLI itself would otherwise allocate fresh session
-        // artefacts at startup, *then* validate the `--resume`
-        // argument and exit with an error — leaving phantom artefacts
-        // behind for the next session-load to surface again.
-        if !s.location.is_wsl()
-            && !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key)
-        {
-            tracing::warn!(
-                target: "agents_view",
-                key = %s.key,
-                cli = %cli_id,
-                "dispatch_resume: refusing to resume phantom session (no on-disk content); pruning row",
-            );
-            let short_key: String = s.key.chars().take(8).collect();
-            let msg = t!(
-                "system.cannot_resume_phantom_via_flag",
-                agent = profile.display_name,
-                session_id = short_key.as_str()
-            )
-            .into_owned();
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(msg));
-            tab.scroll_to_bottom();
-            let key_to_remove = s.key.clone();
-            self.agent_sessions.remove(&key_to_remove);
-            #[cfg(test)]
-            {
-                self.last_dispatched_command = Some(DispatchedCommand {
-                    kind: DispatchedCommandKind::NewTabResume,
-                    session_id: Some(key_to_remove),
-                    argv: vec!["resume".to_string(), "--phantom-skipped".to_string()],
-                });
-            }
             return;
         }
 
@@ -3423,52 +3318,6 @@ impl App {
                     argv: vec![
                         "resume_in_new_agent_tab".to_string(),
                         "--unsupported".to_string(),
-                    ],
-                });
-            }
-            return;
-        }
-
-        // Mirror dispatch_resume's belt-and-suspenders phantom guard.
-        // Without this, Shift+Enter on a row whose on-disk artefact
-        // has no resumable content would open a new tab + reconcile
-        // the agent pane onto it, then dead-end inside the agent with
-        // a JSON-RPC `loadSession` error (the agent's own session
-        // store can't find the id). Preempt that round trip and drop
-        // the row in place, same as plain Enter.
-        if !crate::history_loader::key_is_resumable_on_disk(&s.cli_source, &s.key) {
-            tracing::warn!(
-                target: "agents_view",
-                key = %s.key,
-                cli = ?s.cli_source,
-                "dispatch_resume_in_agent_pane: refusing to load phantom session; pruning row",
-            );
-            let short_key: String = s.key.chars().take(8).collect();
-            let agent_display: String = match known_cli_id(&s.cli_source) {
-                Some(id) => crate::agent_registry::lookup_profile_by_id(id)
-                    .display_name
-                    .to_string(),
-                None => t!("system.fallback.this_agent").into_owned(),
-            };
-            let msg = t!(
-                "system.cannot_resume_phantom_via_load",
-                agent = agent_display.as_str(),
-                session_id = short_key.as_str()
-            )
-            .into_owned();
-            let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(msg));
-            tab.scroll_to_bottom();
-            let key_to_remove = s.key.clone();
-            self.agent_sessions.remove(&key_to_remove);
-            #[cfg(test)]
-            {
-                self.last_dispatched_command = Some(DispatchedCommand {
-                    kind: DispatchedCommandKind::ResumeInAgentPane,
-                    session_id: Some(key_to_remove),
-                    argv: vec![
-                        "resume_in_new_agent_tab".to_string(),
-                        "--phantom-skipped".to_string(),
                     ],
                 });
             }
@@ -3840,6 +3689,17 @@ impl App {
         self.event_tx = Some(tx);
     }
 
+    /// Enter the "checking" state for a (re)login: show the spinner and clear
+    /// any prior status. A stale `Login failed…` (or device-code) line must not
+    /// leak into the checking view, which treats a non-empty status as live
+    /// device-flow progress and would otherwise render a phantom "code copied".
+    fn begin_auth_checking(&mut self) {
+        if let Some(ref mut auth) = self.auth {
+            auth.checking = true;
+            auth.status_message.clear();
+        }
+    }
+
     fn spawn_login(&self, agent_id: &str, login_command: &str) {
         if let Some(ref tx) = self.event_tx {
             let tx = tx.clone();
@@ -3877,6 +3737,11 @@ impl App {
                         )
                     };
 
+                    // The device-verification URL follows the (optional)
+                    // `--host` (see `device_verify_url`).
+                    let verify_url = device_verify_url(&cmd);
+                    let verify_url_stderr = verify_url.clone();
+
                     let mut child = match std::process::Command::new(&exe)
                         .args(&args)
                         .stdout(std::process::Stdio::piped())
@@ -3887,7 +3752,7 @@ impl App {
                         Ok(c) => c,
                         Err(e) => {
                             tracing::warn!("spawn_login: failed to spawn '{}': {}", exe, e);
-                            return false;
+                            return (false, None);
                         }
                     };
 
@@ -3899,6 +3764,7 @@ impl App {
                     let progress_tx2 = progress_tx.clone();
                     let stderr_handle = std::thread::spawn(move || {
                         let mut found_success = false;
+                        let mut error_line: Option<String> = None;
                         if let Some(stderr) = stderr {
                             let reader = std::io::BufReader::new(stderr);
                             for line in reader.lines().map_while(Result::ok) {
@@ -3909,8 +3775,7 @@ impl App {
                                         let code = code.trim_end_matches('.');
                                         let _ = progress_tx2.send(AppEvent::LoginProgress {
                                             device_code: code.to_string(),
-                                            verify_url: "https://github.com/login/device"
-                                                .to_string(),
+                                            verify_url: verify_url_stderr.clone(),
                                         });
                                     }
                                 }
@@ -3920,12 +3785,17 @@ impl App {
                                     found_success = true;
                                     break;
                                 }
+                                let low = line.to_lowercase();
+                                if low.contains("fail") || low.contains("error") {
+                                    error_line = Some(line.clone());
+                                }
                             }
                         }
-                        found_success
+                        (found_success, error_line)
                     });
 
                     let mut found_success = false;
+                    let mut error_line: Option<String> = None;
                     if let Some(stdout) = stdout {
                         let reader = std::io::BufReader::new(stdout);
                         for line in reader.lines().map_while(Result::ok) {
@@ -3936,7 +3806,7 @@ impl App {
                                     let code = code.trim_end_matches('.');
                                     let _ = progress_tx.send(AppEvent::LoginProgress {
                                         device_code: code.to_string(),
-                                        verify_url: "https://github.com/login/device".to_string(),
+                                        verify_url: verify_url.clone(),
                                     });
                                 }
                             }
@@ -3945,6 +3815,10 @@ impl App {
                             {
                                 found_success = true;
                                 break;
+                            }
+                            let low = line.to_lowercase();
+                            if low.contains("fail") || low.contains("error") {
+                                error_line = Some(line.clone());
                             }
                         }
                     }
@@ -3959,10 +3833,11 @@ impl App {
                         // Don't call child.wait() — it can block if
                         // sub-processes are still running.
                         drop(stderr_handle);
-                        return true;
+                        return (true, None);
                     }
 
-                    let stderr_success = stderr_handle.join().unwrap_or(false);
+                    let (stderr_success, stderr_error) =
+                        stderr_handle.join().unwrap_or((false, None));
                     found_success = stderr_success;
 
                     if !found_success {
@@ -3972,15 +3847,31 @@ impl App {
                         let _ = child.kill();
                         let _ = child.wait();
                     }
-                    found_success
+                    // On failure, surface the most specific error line we saw
+                    // (stdout preferred, then stderr) so the UI can show *why*.
+                    let error = if found_success {
+                        None
+                    } else {
+                        error_line.or(stderr_error)
+                    };
+                    (found_success, error)
                 })
                 .await;
 
-                let success = result.unwrap_or(false);
+                let (success, error) = result.unwrap_or((false, None));
+                if !success {
+                    tracing::warn!(
+                        target: "login",
+                        agent = %id,
+                        reason = error.as_deref().unwrap_or("(no reason captured)"),
+                        "login failed"
+                    );
+                }
                 tracing::info!("login: spawn_blocking returned, sending LoginComplete success={}", success);
                 let send_result = tx.send(AppEvent::LoginComplete {
                     agent_id: id,
                     success,
+                    error,
                 });
                 tracing::info!("login: LoginComplete send result={:?}", send_result.is_ok());
             });
@@ -4079,26 +3970,34 @@ impl App {
                             });
                         }
                         self.setup = None;
+                        let (enterprise_mode, enterprise_host) =
+                            copilot_enterprise_prefill(&agent_id);
                         self.auth = Some(AuthState {
                             agent_id: agent_id.clone(),
                             agent_name,
                             auth_hint: profile.auth_hint.to_string(),
-                            login_command: crate::agent_check::build_login_cmd(&agent_id),
+                            login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                             checking: false,
                             status_message: String::new(),
+                            enterprise_mode,
+                            enterprise_host,
                         });
                     } else {
                         // No credential → auth screen
                         self.update_deferred_acp_agent(&agent_id);
                         self.mode = AppMode::Auth;
                         self.setup = None;
+                        let (enterprise_mode, enterprise_host) =
+                            copilot_enterprise_prefill(&agent_id);
                         self.auth = Some(AuthState {
                             agent_id: agent_id.clone(),
                             agent_name,
                             auth_hint: profile.auth_hint.to_string(),
-                            login_command: crate::agent_check::build_login_cmd(&agent_id),
+                            login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                             checking: false,
                             status_message: String::new(),
+                            enterprise_mode,
+                            enterprise_host,
                         });
                     }
                 } else if agent.can_auto_install() {
@@ -4196,13 +4095,16 @@ impl App {
             } => {
                 let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
                 self.mode = AppMode::Auth;
+                let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(&agent_id);
                 self.auth = Some(AuthState {
                     agent_id: agent_id.clone(),
                     agent_name: display_name,
                     auth_hint: profile.auth_hint.to_string(),
-                    login_command: crate::agent_check::build_login_cmd(&agent_id),
+                    login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                     checking: false,
                     status_message: String::new(),
+                    enterprise_mode,
+                    enterprise_host,
                 });
             }
             SetupOption::Retry => {
@@ -5275,23 +5177,8 @@ impl App {
                     "AgentSessionEvent posted from background callback"
                 );
                 let hook_event = ev.clone();
-                // Capture key BEFORE apply for events that unbind it
-                // (PaneClosed clears the pane→key mapping), so the
-                // phantom-session prune below can still see the row.
-                let key_to_prune = match &ev {
-                    crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id } => {
-                        self.agent_sessions.key_for_pane(pane_session_id)
-                    }
-                    crate::agent_sessions::SessionEvent::SessionStopped { key, .. } => {
-                        Some(key.clone())
-                    }
-                    _ => None,
-                };
                 self.agent_sessions.apply(ev);
                 self.publish_session_hook(hook_event);
-                if let Some(k) = key_to_prune {
-                    crate::app::prune_phantom_session_if_ended(&mut self.agent_sessions, &k);
-                }
             }
             AppEvent::AliveSnapshotLoaded(items) => {
                 let count = items.len();
@@ -5925,8 +5812,8 @@ impl App {
                     match state {
                         "closed" => {
                             // Capture the key BEFORE PaneClosed clears
-                            // the pane→key binding, so the post-apply
-                            // phantom-session prune still sees the row.
+                            // the pane→key binding, so the log can report
+                            // which row was demoted.
                             let key_before = self
                                 .agent_sessions
                                 .key_for_pane(&pane_id);
@@ -5941,12 +5828,6 @@ impl App {
                                 key_before = ?key_before,
                                 "helper applied PaneClosed locally + published to master"
                             );
-                            if let Some(k) = key_before {
-                                crate::app::prune_phantom_session_if_ended(
-                                    &mut self.agent_sessions,
-                                    &k,
-                                );
-                            }
                         }
                         "failed" => {
                             let reason = params
@@ -6021,21 +5902,11 @@ impl App {
                             pane_id = %pane_id,
                             "shell prompt-start in agent-bound pane: treating as agent exit",
                         );
-                        // Capture the key BEFORE PaneClosed clears the
-                        // pane→key binding so the phantom-session prune
-                        // can still inspect the row.
-                        let key_before = self.agent_sessions.key_for_pane(&pane_id);
                         let event = crate::agent_sessions::SessionEvent::PaneClosed {
                             pane_session_id: pane_id.clone(),
                         };
                         self.agent_sessions.apply(event.clone());
                         self.publish_session_hook(event);
-                        if let Some(k) = key_before {
-                            crate::app::prune_phantom_session_if_ended(
-                                &mut self.agent_sessions,
-                                &k,
-                            );
-                        }
                     }
                 }
 
@@ -6292,13 +6163,17 @@ impl App {
                             tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                             tab.chat_scroll.reset();
                             self.setup = None;
+                            let (enterprise_mode, enterprise_host) =
+                                copilot_enterprise_prefill(&agent_id);
                             self.auth = Some(AuthState {
                                 agent_id: agent_id.clone(),
                                 agent_name: status.display_name.clone(),
                                 auth_hint: profile.auth_hint.to_string(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id),
+                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                                 checking: false,
                                 status_message: String::new(),
+                                enterprise_mode,
+                                enterprise_host,
                             });
                         } else {
                             // No credential → auth screen
@@ -6307,13 +6182,17 @@ impl App {
                             }
                             self.mode = AppMode::Auth;
                             self.setup = None;
+                            let (enterprise_mode, enterprise_host) =
+                                copilot_enterprise_prefill(&agent_id);
                             self.auth = Some(AuthState {
                                 agent_id: agent_id.clone(),
                                 agent_name: status.display_name.clone(),
                                 auth_hint: profile.auth_hint.to_string(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id),
+                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
                                 checking: false,
                                 status_message: String::new(),
+                                enterprise_mode,
+                                enterprise_host,
                             });
                         }
                         return;
@@ -6337,31 +6216,57 @@ impl App {
                 device_code,
                 verify_url,
             } => {
+                // Only reflect device-flow progress while an auth attempt is
+                // actively checking. A late event after the user left the
+                // screen (auth = None) must not write status or copy a device
+                // code to the clipboard.
                 if let Some(ref mut auth) = self.auth {
-                    auth.status_message =
-                        format!("Visit {} and enter code: {}", verify_url, device_code);
-                }
-                // Copy device code to clipboard
-                #[cfg(windows)]
-                {
-                    let _ = std::process::Command::new("cmd")
-                        .args(["/C", &format!("echo {}| clip", device_code)])
-                        .spawn();
+                    if auth.checking {
+                        auth.status_message = t!(
+                            "auth.device_code_prompt",
+                            url = verify_url.as_str(),
+                            code = device_code.as_str()
+                        )
+                        .into_owned();
+                        // Copy device code to clipboard
+                        let code_to_copy = device_code.clone();
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(e) = crate::win32::copy_text_to_clipboard(&code_to_copy) {
+                                tracing::warn!(
+                                    target: "clipboard",
+                                    error = %e,
+                                    "failed to copy Copilot device code to clipboard"
+                                );
+                            }
+                        });
+                    }
                 }
             }
-            AppEvent::LoginComplete { success, .. } => {
+            AppEvent::LoginComplete { success, error, agent_id } => {
                 tracing::info!("LoginComplete received: success={} deferred_acp={}", success, self.deferred_acp.is_some());
+                // Ignore stale/late completions: only act on a completion that
+                // matches the currently active auth attempt. After the user
+                // escapes the auth screen (auth = None) or switches agents, a
+                // late background login must not force Chat mode, start ACP for
+                // the wrong/empty agent, or rewrite another screen's status.
+                let active = self
+                    .auth
+                    .as_ref()
+                    .map(|a| a.agent_id == agent_id)
+                    .unwrap_or(false);
+                if !active {
+                    tracing::info!(
+                        "LoginComplete ignored (no matching active auth attempt) agent={}",
+                        agent_id
+                    );
+                    return;
+                }
                 if success {
                     // Login succeeded → transition to Chat and start ACP
                     self.mode = AppMode::Chat;
                     self.setup = None;
                     self.state =
                         ConnectionState::Connecting(t!("connection.starting").into_owned());
-                    let agent_id = self
-                        .auth
-                        .as_ref()
-                        .map(|a| a.agent_id.clone())
-                        .unwrap_or_default();
                     self.update_deferred_acp_agent(&agent_id);
                     // If deferred_acp is None (helper mode — the initial
                     // ACP client already exited with auth error and dropped
@@ -6391,11 +6296,18 @@ impl App {
                     self.needs_post_login_authenticate = true;
                     self.auth = None;
                 } else {
-                    // Login failed — show auth screen again
+                    // Login failed — show auth screen again with feedback.
                     if let Some(ref mut auth) = self.auth {
                         auth.checking = false;
                         if !auth.login_command.contains("copilot") {
                             auth.status_message = t!("system.command_copied_retry").into_owned();
+                        } else {
+                            // Copilot device-flow failed (e.g. an unreachable
+                            // GitHub Enterprise host) — surface the reason
+                            // instead of silently returning to the form.
+                            auth.status_message = error
+                                .filter(|e| !e.trim().is_empty())
+                                .unwrap_or_else(|| t!("system.authentication_failed").into_owned());
                         }
                     }
                 }
@@ -6500,45 +6412,117 @@ impl App {
         // Auth mode: Enter to sign in, Esc to go back
         if self.mode == AppMode::Auth {
             match key.code {
+                // GitHub Enterprise sign-in (Copilot): [E] reveals a domain
+                // input; while it's open, typed chars edit the domain and
+                // Backspace deletes. (Esc collapses it — handled below.)
+                KeyCode::Char('e') | KeyCode::Char('E')
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self
+                            .auth
+                            .as_ref()
+                            .map(|a| !a.checking && a.agent_id == "copilot" && !a.enterprise_mode)
+                            .unwrap_or(false) =>
+                {
+                    if let Some(ref mut auth) = self.auth {
+                        auth.enterprise_mode = true;
+                        // Starting a fresh enterprise attempt: drop any prior
+                        // failure/progress text so it doesn't show in the domain
+                        // input (e.g. a leftover github.com "Login failed").
+                        auth.status_message.clear();
+                    }
+                }
+                KeyCode::Char(c)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::ALT)
+                        && self
+                            .auth
+                            .as_ref()
+                            .map(|a| !a.checking && a.enterprise_mode)
+                            .unwrap_or(false) =>
+                {
+                    if !c.is_whitespace() {
+                        if let Some(ref mut auth) = self.auth {
+                            auth.enterprise_host.push(c);
+                        }
+                    }
+                }
+                KeyCode::Backspace
+                    if self
+                        .auth
+                        .as_ref()
+                        .map(|a| !a.checking && a.enterprise_mode)
+                        .unwrap_or(false) =>
+                {
+                    if let Some(ref mut auth) = self.auth {
+                        auth.enterprise_host.pop();
+                    }
+                }
                 KeyCode::Enter => {
                     // Extract values before borrowing self again
                     let login_info = self.auth.as_ref().and_then(|a| {
                         if !a.checking && !a.login_command.is_empty() {
-                            Some((a.agent_id.clone(), a.login_command.clone()))
+                            // In enterprise mode, a non-empty domain drives a
+                            // `--host` sign-in; otherwise the default github.com.
+                            let host = if a.enterprise_mode {
+                                let h = a.enterprise_host.trim();
+                                if h.is_empty() {
+                                    None
+                                } else {
+                                    Some(h.to_string())
+                                }
+                            } else {
+                                None
+                            };
+                            Some((a.agent_id.clone(), a.login_command.clone(), host))
                         } else {
                             None
                         }
                     });
-                    if let Some((agent_id, login_cmd)) = login_info {
+                    if let Some((agent_id, login_cmd, host)) = login_info {
                         if login_cmd.contains("copilot") {
-                            // Copilot: auto device-flow sign-in via piped stdio
-                            if let Some(ref mut auth) = self.auth {
-                                auth.checking = true;
-                            }
+                            // Copilot: auto device-flow sign-in via piped stdio.
+                            // Rebuild the command with the (optional) GitHub
+                            // Enterprise host and remember it for next time.
+                            let login_cmd =
+                                crate::agent_check::build_login_cmd(&agent_id, host.as_deref());
+                            // Remember the last-used host for next time. Persist
+                            // the *normalized* bare domain (or "" for github.com /
+                            // empty) so a returning user is prefilled only for a
+                            // real GHE domain — not stuck in the expanded
+                            // enterprise input after a github.com fallback.
+                            let normalized_host = host
+                                .as_deref()
+                                .and_then(crate::agent_check::normalize_enterprise_host);
+                            crate::agent_check::save_copilot_enterprise_host(
+                                normalized_host.as_deref().unwrap_or(""),
+                            );
+                            self.begin_auth_checking();
+                            tracing::info!(
+                                target: "login",
+                                agent = %agent_id,
+                                enterprise = host.is_some(),
+                                host = host.as_deref().unwrap_or("github.com"),
+                                cmd = %login_cmd,
+                                "starting copilot device-flow login"
+                            );
                             self.spawn_login(&agent_id, &login_cmd);
                         } else {
                             // Non-Copilot agents: copy command to clipboard, re-check credential
-                            #[cfg(windows)]
-                            {
-                                let _ = std::process::Command::new("powershell")
-                                    .args([
-                                        "-NoProfile",
-                                        "-Command",
-                                        &format!(
-                                            "Set-Clipboard '{}'",
-                                            login_cmd.replace('\'', "''")
-                                        ),
-                                    ])
-                                    .stdin(std::process::Stdio::null())
-                                    .stdout(std::process::Stdio::null())
-                                    .stderr(std::process::Stdio::null())
-                                    .spawn();
-                            }
+                            let cmd_to_copy = login_cmd.clone();
+                            let agent_for_log = agent_id.clone();
+                            tokio::task::spawn_blocking(move || {
+                                if let Err(e) = crate::win32::copy_text_to_clipboard(&cmd_to_copy) {
+                                    tracing::warn!(
+                                        target: "clipboard",
+                                        agent = %agent_for_log,
+                                        error = %e,
+                                        "failed to copy login command to clipboard"
+                                    );
+                                }
+                            });
 
-                            if let Some(ref mut auth) = self.auth {
-                                auth.checking = true;
-                                auth.status_message = String::new();
-                            }
+                            self.begin_auth_checking();
 
                             // Re-check credential asynchronously
                             if let Some(ref tx) = self.event_tx {
@@ -6550,13 +6534,34 @@ impl App {
                                     })
                                     .await;
                                     let success = result.unwrap_or(false);
-                                    let _ = tx.send(AppEvent::LoginComplete { agent_id, success });
+                                    let _ = tx.send(AppEvent::LoginComplete {
+                                        agent_id,
+                                        success,
+                                        error: None,
+                                    });
                                 });
                             }
                         }
                     }
                 }
                 KeyCode::Esc => {
+                    // In the GHE domain input, Esc collapses back to the
+                    // github.com sign-in choice rather than leaving the screen.
+                    if self
+                        .auth
+                        .as_ref()
+                        .map(|a| a.enterprise_mode && !a.checking)
+                        .unwrap_or(false)
+                    {
+                        if let Some(ref mut auth) = self.auth {
+                            auth.enterprise_mode = false;
+                            // Collapsing back to the github.com choice abandons
+                            // the enterprise attempt — clear its failure/progress
+                            // text so it doesn't linger on the collapsed screen.
+                            auth.status_message.clear();
+                        }
+                        return;
+                    }
                     if self.setup.is_some() {
                         // Go back to setup screen
                         self.mode = AppMode::Setup;
@@ -12593,10 +12598,7 @@ mod tests {
         app.current_tab_mut().agents_list_state.select(Some(0));
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
 
-        // dispatch_resume internally guards on phantom-on-disk content
-        // (the artefact for "abc-class-a-shift" does not exist), so we
-        // observe the NewTabResume dispatch with the phantom-skipped
-        // sentinel argv. What matters here is that Shift+Enter on
+        // What matters here is that Shift+Enter on
         // Class A dead routed through dispatch_resume (the CLI flag
         // path), NOT dispatch_resume_in_agent_pane.
         let cmd = app
@@ -12714,316 +12716,6 @@ mod tests {
     }
 
     // ─── Phantom-session prune ───────────────────────────────────────
-
-    fn make_ended_session(
-        cli: crate::agent_sessions::CliSource,
-        key: &str,
-    ) -> crate::agent_sessions::AgentSessionRegistry {
-        use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
-        use std::path::PathBuf;
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: key.into(),
-            cli_source: cli,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        reg.apply(SessionEvent::SessionStopped {
-            key: key.into(),
-            reason: "user_exit".into(),
-        });
-        reg
-    }
-
-    #[test]
-    fn prune_phantom_session_drops_ended_claude_row_when_not_resumable() {
-        // Reproduces the "ghost live Claude session" bug: open
-        // `claude`, run `/model`, exit. Without the prune, the Ended
-        // row sticks around and Enter dead-ends on
-        // `No conversation found with session ID: <id>`.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Claude, "phantom-claude");
-        assert!(reg.has_session(&"phantom-claude".to_string()));
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "phantom-claude", |_cli, _k| {
-            false
-        });
-        assert!(!reg.has_session(&"phantom-claude".to_string()));
-    }
-
-    #[test]
-    fn prune_phantom_session_drops_ended_copilot_row_when_not_resumable() {
-        // Reproduces the equivalent Copilot bug: open `copilot`, exit.
-        // workspace.yaml exists but events.jsonl is missing/empty.
-        // Enter on the Ended row would launch
-        // `copilot --resume=<id>` and dead-end on
-        // `Error: No session, task, or name matched '<id>'`.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Copilot, "phantom-copilot");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "phantom-copilot", |_cli, _k| {
-            false
-        });
-        assert!(
-            !reg.has_session(&"phantom-copilot".to_string()),
-            "phantom Ended Copilot row must be removed"
-        );
-    }
-
-    #[test]
-    fn prune_phantom_session_drops_ended_gemini_row_when_not_resumable() {
-        // Reproduces the equivalent Gemini bug: open `gemini`, exit.
-        // The JSONL has only the session header — no user/tool record.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Gemini, "phantom-gemini");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "phantom-gemini", |_cli, _k| {
-            false
-        });
-        assert!(
-            !reg.has_session(&"phantom-gemini".to_string()),
-            "phantom Ended Gemini row must be removed"
-        );
-    }
-
-    #[test]
-    fn prune_phantom_session_dispatches_cli_argument() {
-        // The probe callback receives the row's CliSource so it can
-        // dispatch to the right per-CLI on-disk check. Verify the
-        // CliSource passed through matches the row's, for both
-        // Claude and Copilot, so the routing logic is regression-safe.
-        use crate::agent_sessions::CliSource;
-        use std::sync::{Arc, Mutex};
-
-        for cli in [CliSource::Claude, CliSource::Copilot, CliSource::Gemini] {
-            let mut reg = make_ended_session(cli.clone(), "k");
-            let probed = Arc::new(Mutex::new(None));
-            let probed_capture = Arc::clone(&probed);
-            crate::app::prune_phantom_session_if_ended_with(&mut reg, "k", move |c, _k| {
-                *probed_capture.lock().unwrap() = Some(c.clone());
-                true // not a phantom — keep row, just observe routing
-            });
-            let captured = probed.lock().unwrap().clone();
-            assert_eq!(
-                captured.as_ref(),
-                Some(&cli),
-                "probe must receive the row's CliSource ({:?})",
-                cli
-            );
-        }
-    }
-
-    #[test]
-    fn prune_phantom_session_keeps_ended_row_when_resumable() {
-        // Symmetric to the per-CLI drop tests: if the on-disk
-        // artefact has real content, the prune is a no-op so the user
-        // can resume via Enter in session management view.
-        use crate::agent_sessions::CliSource;
-        let mut reg = make_ended_session(CliSource::Claude, "real-id");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "real-id", |_cli, _k| true);
-        assert!(
-            reg.has_session(&"real-id".to_string()),
-            "resumable Ended row must NOT be removed"
-        );
-    }
-
-    #[test]
-    fn prune_phantom_session_skips_live_rows() {
-        // Status must be Ended for the prune to fire — silently
-        // removing a still-live (Idle/Working/Attention) row would be
-        // a UX disaster.
-        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: "live-id".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, "live-id", |_, _| false);
-        assert!(reg.has_session(&"live-id".to_string()));
-    }
-
-    #[test]
-    fn pane_closed_via_agent_event_triggers_phantom_prune() {
-        // Reproduces the "stale-Idle row" recovery path: when the
-        // user presses Enter on a row whose pane has died silently
-        // (tab closed while WT's connection_state racing with
-        // TermControl teardown lost the event), our focus-pane
-        // callback posts `AgentSessionEvent(PaneClosed { ... })` to
-        // demote the row to Ended — and the post-apply prune in the
-        // AgentSessionEvent handler then drops the row if its CLI
-        // artefacts indicate no resumable content. This test drives
-        // that whole path: PaneClosed event → Ended → prune fires.
-        //
-        // Stubs the on-disk probe via the testable `_with` variant
-        // so the test doesn't touch the real `~/.claude` tree. The
-        // full path being tested here uses the global probe, so the
-        // test directly exercises the handler logic via the variant
-        // we use to test prune behaviour.
-        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: "stale".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "00000000-0000-0000-0000-deadbeefdead".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        // Sanity: row is bound to the pane.
-        assert_eq!(
-            reg.key_for_pane("00000000-0000-0000-0000-deadbeefdead")
-                .as_deref(),
-            Some("stale"),
-            "row must be bound to pane before close",
-        );
-        // Simulate the focus-pane callback firing PaneClosed.
-        // Capture key BEFORE apply (mirrors the AgentSessionEvent handler).
-        let key_to_prune = reg.key_for_pane("00000000-0000-0000-0000-deadbeefdead");
-        reg.apply(SessionEvent::PaneClosed {
-            pane_session_id: "00000000-0000-0000-0000-deadbeefdead".into(),
-        });
-        // Pre-prune: row is now Ended but still in the registry.
-        assert!(reg.has_session(&"stale".to_string()));
-        // Prune with phantom probe → row should be removed.
-        let k = key_to_prune.expect("captured key before apply");
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, &k, |_cli, _key| false);
-        assert!(
-            !reg.has_session(&"stale".to_string()),
-            "phantom row must be removed once PaneClosed transitions it to Ended",
-        );
-    }
-
-    #[test]
-    fn default_prune_uses_strict_probe_for_live_claude_session_without_jsonl() {
-        // End-to-end regression for the user-reported bug:
-        //   "start a claude session，no conversation，close session,
-        //    session still active, resume error"
-        //
-        // Concretely: the user launches `claude` via the agent pane
-        // (ACP), exchanges zero turns, exits the pane. Claude does
-        // NOT write a JSONL under `~/.claude/projects/...` for that
-        // session id (it only flushes when there's content). With
-        // the previous lenient probe ("missing artefact → defer to
-        // CLI → resumable=true"), the post-`SessionStopped` prune
-        // believed the row was real and left it Ended in session management view. Pressing
-        // Enter then launched `claude --resume <id>` and dead-ended
-        // on `No conversation found with session ID: <id>`.
-        //
-        // We drive the contract via the injectable
-        // `prune_phantom_session_if_ended_with` variant rather than
-        // the global `prune_phantom_session_if_ended`. The latter
-        // probes the real `~/.claude/projects` tree under whatever
-        // home directory the test runner happens to have, which is
-        // non-hermetic — flaky on developer machines if a Claude
-        // session ever happens to land on the chosen UUID, and
-        // dependent on USERPROFILE/HOME environment state. The
-        // injectable variant lets us pin the probe to the precise
-        // semantics the production default uses
-        // (`key_has_definite_resumable_content`) without touching
-        // the filesystem.
-        use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let key = "ed7c7c7c-9999-8888-7777-666666666666-strict";
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: key.into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "00000000-0000-0000-0000-aaaaaaaaaaaa".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        reg.apply(SessionEvent::SessionStopped {
-            key: key.into(),
-            reason: "user_exit".into(),
-        });
-        // Sanity: the row is in the registry (Ended) before prune.
-        assert!(reg.has_session(&key.to_string()));
-        // Drive the prune with the strict-probe contract pinned
-        // via the injectable variant. Stub returns `false` to model
-        // "no JSONL on disk" — the exact case the default's strict
-        // probe (`key_has_definite_resumable_content`) reports for
-        // a Claude session whose CLI never flushed.
-        crate::app::prune_phantom_session_if_ended_with(&mut reg, key, |_cli, _key| false);
-        assert!(
-            !reg.has_session(&key.to_string()),
-            "prune must drop an Ended Claude row whose on-disk \
-             artefacts are absent (strict-probe contract)",
-        );
-    }
-
-    #[test]
-    fn shift_enter_history_row_short_circuits_when_session_is_phantom() {
-        // Belt-and-suspenders: the Shift+Enter path
-        // (resume_in_new_agent_tab → ACP loadSession) also gates on
-        // the phantom check. Without it, the user pressing Shift+Enter
-        // on a row whose CLI artefacts indicate "no conversation"
-        // would burn a new WT tab + reconcile the agent pane onto it,
-        // then dead-end inside the agent on a loadSession error.
-        //
-        // We can't easily inject a fake `key_is_resumable_on_disk`
-        // into `dispatch_resume_in_agent_pane` (it calls the global
-        // helper directly), but we CAN exercise the path by using a
-        // key whose CLI artefact does exist on disk and is phantom.
-        // Instead of that filesystem dependency, this test asserts
-        // the simpler invariant: when the probe returns false in
-        // production code, the dispatched command is the
-        // `--phantom-skipped` shape (not the real
-        // resume_in_new_agent_tab). The full check is covered by
-        // history_loader tests; here we exercise the App-level
-        // routing.
-        //
-        // Sanity check via the dispatched-command tape: when the
-        // capability gate fails (loadSession unsupported), the tape
-        // shows `--unsupported`. The phantom branch should likewise
-        // tag the tape with `--phantom-skipped`. This mirrors the
-        // existing test for the unsupported branch.
-        //
-        // (Direct fully-integrated test of the phantom branch
-        // requires manipulating the real home filesystem; covered
-        // by the existing history_loader tests for the probe and
-        // the prune tests above. This is documentation of the
-        // contract.)
-        use crate::agent_sessions::{CliSource, SessionEvent};
-        use std::path::PathBuf;
-        let mut app = test_app();
-        // Mark loadSession supported so the capability gate doesn't
-        // preempt the phantom check.
-        app.agent_supports_load_session = true;
-        // Use a CLI source for which the real ~/.claude/projects
-        // can't have this UUID. The probe falls through to "no
-        // JSONL → defer to CLI" (true), so the phantom branch does
-        // NOT fire and we get the normal resume_in_new_agent_tab
-        // dispatch. This proves the no-false-positive case.
-        app.agent_sessions.apply(SessionEvent::SessionStarted {
-            key: "abc-this-uuid-is-not-on-disk-anywhere-9999".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/work/proj"),
-            title: "t".into(),
-        });
-        app.agent_sessions.apply(SessionEvent::SessionStopped {
-            key: "abc-this-uuid-is-not-on-disk-anywhere-9999".into(),
-            reason: "user_exit".into(),
-        });
-        app.current_tab_mut().current_view = View::Agents;
-        app.current_tab_mut().agents_list_state.select(Some(0));
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-        let cmd = app
-            .last_dispatched_command_for_test()
-            .expect("a command was dispatched");
-        // Probe returned true ("no JSONL on disk → defer to CLI"), so
-        // the normal dispatch goes through, NOT the phantom-skipped
-        // path. The argv should contain --cwd, not --phantom-skipped.
-        let argv = cmd.argv.join(" ");
-        assert!(
-            !argv.contains("--phantom-skipped"),
-            "no-on-disk-artefact case must NOT short-circuit as phantom; argv: {}",
-            argv
-        );
-    }
 
     #[test]
     fn agents_view_state_is_isolated_per_tab() {
@@ -13869,25 +13561,15 @@ mod tests {
             }),
         });
 
-        // Two outcomes are correct, both signal that the bridge fired:
-        //   1. Row transitions to Ended (PaneClosed applied), AND
-        //   2. The phantom-session prune (Gemini has no on-disk JSONL
-        //      for `gemini-key`, so the strict probe treats it as a
-        //      phantom and removes the row entirely).
-        // If the bridge had NOT fired, the row would still be Idle
-        // and the prune would not have run (prune only fires on
-        // Ended rows). So absence-from-registry confirms both:
-        // the bridge fired AND the prune fired correctly.
-        let still_present = app
+        let row = app
             .agent_sessions
             .iter_sorted()
             .into_iter()
-            .any(|s| s.key == "gemini-key");
+            .find(|s| s.key == "gemini-key")
+            .expect("row still exists");
         assert!(
-            !still_present,
-            "agent-bound pane seeing osc:133;A must transition to Ended \
-             and (since `gemini-key` has no on-disk JSONL) be pruned as \
-             a phantom; row is still present so the bridge didn't fire",
+            matches!(row.status, crate::agent_sessions::AgentStatus::Ended),
+            "agent-bound pane seeing osc:133;A must transition to Ended",
         );
         // The pane→key binding must be cleared either way.
         assert!(
@@ -13954,23 +13636,15 @@ mod tests {
             params: serde_json::json!({"session_id": pane, "state": "closed"}),
         });
 
-        // `gemini-key` has no on-disk JSONL, so the strict phantom
-        // probe (run by the post-PaneClosed prune) removes the row.
-        // The test still verifies the bridge wired correctly: if
-        // PaneClosed had NOT been applied, the row would still be
-        // Idle and the prune (which only fires on Ended) would have
-        // left it alone — so absence-from-registry is the strongest
-        // signal that the bridge fired.
-        let still_present = app
+        let row = app
             .agent_sessions
             .iter_sorted()
             .into_iter()
-            .any(|s| s.key == "gemini-key");
+            .find(|s| s.key == "gemini-key")
+            .expect("row still exists");
         assert!(
-            !still_present,
-            "Gemini row must transition to Ended on connection_state:closed \
-             AND (with no on-disk JSONL) be pruned by the phantom check; \
-             row is still present so the bridge didn't fire",
+            matches!(row.status, AgentStatus::Ended),
+            "Gemini row must transition to Ended on connection_state:closed",
         );
         assert!(
             !app.agent_sessions.is_agent_pane(pane),
@@ -14694,6 +14368,8 @@ mod tests {
             login_command: String::new(),
             checking: true,
             status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
         });
 
         let text = render_to_text(&mut app, 80, 24);
@@ -14724,8 +14400,8 @@ mod tests {
     }
 
     /// Render: the auth screen's sign-in card branch (`checking == false`)
-    /// must paint the connect prompt and a Copilot-specific sign-in button.
-    /// Covers the `else` arm of `ui/auth.rs` (lines 62-122).
+    /// must paint the connect prompt and, for Copilot, the GitHub Enterprise
+    /// sign-in footer. Covers the `else` arm of `ui/auth.rs`.
     #[test]
     fn render_auth_sign_in_card() {
         let mut app = test_app();
@@ -14737,6 +14413,8 @@ mod tests {
             login_command: String::new(),
             checking: false,
             status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
         });
 
         let text = render_to_text(&mut app, 80, 24);
@@ -14746,11 +14424,323 @@ mod tests {
             !probe.trim().is_empty() && text.contains(&probe),
             "the auth sign-in card must paint the connect prompt ({connect:?}); rendered:\n{text}"
         );
-        let button = t!("auth.button_sign_in_github").into_owned();
-        let button_probe: String = button.chars().take(6).collect();
+        let footer = t!("auth.enterprise_prompt").into_owned();
+        let footer_probe: String = footer.trim_start().chars().take(13).collect();
         assert!(
-            !button_probe.trim().is_empty() && text.contains(&button_probe),
-            "the auth sign-in card must paint the GitHub sign-in button ({button:?}); rendered:\n{text}"
+            !footer_probe.trim().is_empty() && text.contains(&footer_probe),
+            "the auth sign-in card must paint the Copilot enterprise footer ({footer:?}); rendered:\n{text}"
+        );
+    }
+
+    /// Render: a non-Copilot agent's sign-in card (`checking == false`) shows
+    /// no sign-in button. Before Enter it paints the copy/paste instruction
+    /// plus the Esc hint; after Enter (status set) the instruction is replaced
+    /// by the "command copied" status. Covers the non-Copilot `else` arm of
+    /// `ui/auth.rs`.
+    #[test]
+    fn render_auth_non_copilot_sign_in_card() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "claude".into(),
+            agent_name: "Claude".into(),
+            auth_hint: String::new(),
+            login_command: "claude /login".into(),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        // Wide enough that the long instruction stays on one line (no wrap).
+        let text = render_to_text(&mut app, 140, 24);
+        // The copy/paste instruction is shown; "terminal window" is unique to
+        // it (the copied status instead says "another terminal,").
+        let instr = t!("auth.hint_footer").into_owned();
+        assert!(
+            instr.contains("terminal window"),
+            "probe guard: instruction wording changed ({instr:?})"
+        );
+        assert!(
+            text.contains("terminal window"),
+            "non-copilot card must paint the copy/paste instruction; rendered:\n{text}"
+        );
+        // The Esc hint is on its own line.
+        let back = t!("auth.hint_footer_back").into_owned();
+        let back_probe: String = back.trim_start().chars().take(6).collect();
+        assert!(
+            text.contains(&back_probe),
+            "non-copilot card must paint the Esc hint ({back:?}); rendered:\n{text}"
+        );
+        // No sign-in button is painted (the button was removed for all agents).
+        assert!(
+            !text.contains("[ Copy sign-in command ]") && !text.contains("[ Sign in with"),
+            "non-copilot card must not paint a sign-in button; rendered:\n{text}"
+        );
+
+        // After Enter the command is copied: the status replaces the
+        // instruction (the header is not used for non-Copilot status).
+        if let Some(ref mut a) = app.auth {
+            a.status_message = t!("system.command_copied_retry").into_owned();
+        }
+        let text2 = render_to_text(&mut app, 140, 24);
+        let status_probe: String = t!("system.command_copied_retry").chars().take(10).collect();
+        assert!(
+            text2.contains(&status_probe),
+            "after Enter the command-copied status must be painted; rendered:\n{text2}"
+        );
+        assert!(
+            !text2.contains("terminal window"),
+            "after Enter the copy/paste instruction must be replaced; rendered:\n{text2}"
+        );
+    }
+
+    /// `device_verify_url` derives the device-code verification URL from the
+    /// login command: github.com by default, but the GitHub Enterprise host
+    /// when the command carries `--host https://<host>` (bug B).
+    #[test]
+    fn device_verify_url_follows_enterprise_host() {
+        assert_eq!(
+            device_verify_url("copilot login"),
+            "https://github.com/login/device"
+        );
+        assert_eq!(
+            device_verify_url("copilot login --host https://mycorp.ghe.com"),
+            "https://mycorp.ghe.com/login/device"
+        );
+        // Trailing slash is trimmed.
+        assert_eq!(
+            device_verify_url("copilot login --host https://mycorp.ghe.com/"),
+            "https://mycorp.ghe.com/login/device"
+        );
+        // A quoted exe path doesn't confuse the --host parse.
+        assert_eq!(
+            device_verify_url("\"C:\\Program Files\\copilot.exe\" login --host https://x.ghe.com"),
+            "https://x.ghe.com/login/device"
+        );
+    }
+
+    /// A failed Copilot device-flow login (e.g. an unreachable GitHub
+    /// Enterprise host) must surface the captured reason on the auth screen
+    /// instead of silently returning to the form with no feedback (bug C).
+    #[test]
+    fn copilot_login_failure_surfaces_reason() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: true,
+            status_message: String::new(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: false,
+            error: Some("Login failed: TypeError: fetch failed".into()),
+        });
+
+        let auth = app.auth.as_ref().expect("auth screen stays after failure");
+        assert!(!auth.checking, "failure clears the checking spinner");
+        assert_eq!(
+            auth.status_message, "Login failed: TypeError: fetch failed",
+            "the copilot login failure reason must be surfaced"
+        );
+    }
+
+    /// When no specific reason is captured, a Copilot login failure still shows
+    /// a generic localized message rather than nothing.
+    #[test]
+    fn copilot_login_failure_without_reason_shows_generic_message() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login".into(),
+            checking: true,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: false,
+            error: None,
+        });
+
+        let auth = app.auth.as_ref().expect("auth screen stays after failure");
+        assert_eq!(
+            auth.status_message,
+            t!("system.authentication_failed").into_owned(),
+            "a reasonless copilot failure falls back to a generic message"
+        );
+    }
+
+    /// Render: a Copilot login failure shows the reason at the *bottom* of the
+    /// screen (not appended to the header) followed by situation-specific
+    /// guidance. Regression guard for the "error on the first line" report.
+    #[test]
+    fn render_auth_copilot_failure_shows_reason_and_guidance_at_bottom() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: false,
+            status_message: "Login failed: boom".into(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        let text = render_to_text(&mut app, 100, 24);
+        assert!(
+            text.contains("Login failed: boom"),
+            "the failure reason must render; rendered:\n{text}"
+        );
+        // Situation-specific guidance is shown (stable leading probe).
+        let help = t!("auth.login_failed_help_enterprise").into_owned();
+        let help_probe: String = help.trim_start().chars().take(16).collect();
+        assert!(
+            text.contains(&help_probe),
+            "enterprise failure guidance must render ({help:?}); rendered:\n{text}"
+        );
+        // The reason must NOT be on the header (card_connect) line — it now
+        // belongs at the bottom.
+        let header = text
+            .lines()
+            .find(|l| l.contains("Connect GitHub Copilot"))
+            .expect("header line present");
+        assert!(
+            !header.contains("Login failed"),
+            "the failure reason must not be in the header; rendered:\n{text}"
+        );
+    }
+
+    /// Review fix ①: a stale `LoginComplete` after the user escaped the auth
+    /// screen (auth = None) must be ignored — it must not force Chat mode or
+    /// start ACP for an empty agent.
+    #[test]
+    fn login_complete_ignored_when_no_active_auth_attempt() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.auth = None;
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: true,
+            error: None,
+        });
+
+        assert_eq!(
+            app.mode,
+            AppMode::Setup,
+            "a stale success must not force Chat mode after the user left auth"
+        );
+        assert!(
+            !app.pending_acp_start,
+            "a stale success must not start an ACP client"
+        );
+    }
+
+    /// Review fix ①: a `LoginComplete` whose agent doesn't match the active
+    /// auth attempt (user switched agents) must be ignored.
+    #[test]
+    fn login_complete_ignored_on_agent_mismatch() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "claude".into(),
+            agent_name: "Claude".into(),
+            auth_hint: String::new(),
+            login_command: "claude /login".into(),
+            checking: true,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        app.handle_event(AppEvent::LoginComplete {
+            agent_id: "copilot".into(),
+            success: true,
+            error: None,
+        });
+
+        assert_eq!(
+            app.mode,
+            AppMode::Auth,
+            "a completion for a different agent must not transition to Chat"
+        );
+        assert!(
+            app.auth.is_some(),
+            "a mismatched completion must not tear down the active auth screen"
+        );
+    }
+
+    /// Regression: a Copilot retry must clear any prior failure status so the
+    /// checking view shows "Checking…" — not a stale "Login failed…" plus a
+    /// phantom "code copied" from the previous attempt. `begin_auth_checking`
+    /// is the shared entry point both login paths use.
+    #[test]
+    fn begin_auth_checking_clears_stale_status() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: false,
+            status_message: "Login failed: TypeError: fetch failed".into(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        app.begin_auth_checking();
+
+        let auth = app.auth.as_ref().expect("auth screen present");
+        assert!(auth.checking, "begin_auth_checking must enter the checking state");
+        assert!(
+            auth.status_message.is_empty(),
+            "a retry must clear the stale failure status so the checking view \
+             does not render a phantom 'code copied'"
+        );
+    }
+
+    /// Regression: after a GHE failure, the first Esc collapses the enterprise
+    /// input AND clears the failure status, so it does not linger on the
+    /// collapsed github.com sign-in screen ("failed/copied message carried back").
+    #[test]
+    fn esc_collapse_clears_enterprise_failure_status() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login --host https://nope.invalid".into(),
+            checking: false,
+            status_message: "Login failed: TypeError: fetch failed".into(),
+            enterprise_mode: true,
+            enterprise_host: "nope.invalid".into(),
+        });
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.mode, AppMode::Auth, "collapse stays on the sign-in screen");
+        let auth = app.auth.as_ref().expect("collapse keeps the auth screen");
+        assert!(!auth.enterprise_mode, "first Esc collapses the enterprise input");
+        assert!(
+            auth.status_message.is_empty(),
+            "collapsing must clear the enterprise failure status so it does not linger"
         );
     }
 
@@ -14768,6 +14758,8 @@ mod tests {
             login_command: String::new(),
             checking: true,
             status_message: "AUTH_STATUS_XYZ".into(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
         });
 
         let text = render_to_text(&mut app, 80, 24);
@@ -14775,6 +14767,55 @@ mod tests {
             text.contains("AUTH_STATUS_XYZ"),
             "the auth screen must paint the status message while waiting; rendered:\n{text}"
         );
+    }
+
+    /// The GHE sign-in affordance: [E] reveals the domain input, typed chars
+    /// edit it (Ctrl-modified keys and whitespace are ignored), Backspace
+    /// deletes, and Esc collapses back to the github.com choice WITHOUT leaving
+    /// the sign-in screen.
+    #[test]
+    fn auth_enterprise_domain_entry_via_keys() {
+        let mut app = test_app();
+        app.mode = AppMode::Auth;
+        app.auth = Some(AuthState {
+            agent_id: "copilot".into(),
+            agent_name: "GitHub Copilot".into(),
+            auth_hint: String::new(),
+            login_command: "copilot login".into(),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode: false,
+            enterprise_host: String::new(),
+        });
+
+        // [E] opens the enterprise domain input (it is not typed into the field).
+        app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+        assert!(
+            app.auth.as_ref().unwrap().enterprise_mode,
+            "E must reveal the domain input"
+        );
+
+        // Typed characters edit the domain.
+        for c in ['c', 'o', 'r', 'p', '.', 'g', 'h', 'e', '.', 'c', 'o', 'm'] {
+            app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        // Ctrl-combinations and whitespace must NOT be typed into the field.
+        app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        assert_eq!(app.auth.as_ref().unwrap().enterprise_host, "corp.ghe.com");
+
+        // Backspace deletes one character.
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(app.auth.as_ref().unwrap().enterprise_host, "corp.ghe.co");
+
+        // Esc collapses the input but stays on the sign-in screen.
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let auth = app
+            .auth
+            .as_ref()
+            .expect("Esc collapse must not leave the sign-in screen");
+        assert!(!auth.enterprise_mode, "Esc must collapse the enterprise input");
+        assert_eq!(app.mode, AppMode::Auth, "Esc collapse must stay in Auth mode");
     }
 
     fn agent_status_for_test(id: &str, display: &str, cli_found: bool) -> crate::agent_check::AgentStatus {

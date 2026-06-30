@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI de agente %{name} — "
 auth.checking_authentication: "  %{spinner} Comprobando autenticación..."
 auth.waiting_for_authorization: "  %{spinner} Esperando autorización..."
 auth.code_copied_hint: "  Código copiado en el portapapeles — péguelo en su navegador."
+auth.device_code_prompt: "Visite %{url} e introduzca el código: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Inicie sesión para usar su agente:"
 auth.card_connect: "  Conectar %{name} para habilitar las funciones del agente"
-auth.button_sign_in_github: "[ Iniciar sesión con GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Iniciar sesión con %{name} ]"
-auth.hint_footer: "  Pulse Enter para iniciar sesión, Esc para volver"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Pulse Enter para copiar el comando de inicio de sesión y péguelo en una nueva ventana de terminal para terminar de iniciar sesión"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc para volver atrás"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter para iniciar sesión · E para GitHub Enterprise · Esc para volver atrás"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Dominio de Enterprise: "
+auth.enterprise_hint_footer: "  Enter para iniciar sesión · Esc para github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pulse Enter para reintentar, o Esc para github.com. Causas comunes: un dominio mal escrito o inaccesible, un código expirado o falta de acceso a Copilot en ese host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pulse Enter para reintentar, o Esc para volver atrás."  # {Locked="Enter","Esc"}
 
 # ── Vista de chat (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pensando…"

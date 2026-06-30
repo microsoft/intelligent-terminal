@@ -9,6 +9,7 @@ APPLYTOSUBMENUS
 appxrecipe
 bitfield
 bitfields
+BITMAPFILEHEADER
 BUILDBRANCH
 BUILDMSG
 BUILDNUMBER
@@ -20,6 +21,7 @@ colspan
 COMDLG
 commandlinetoargv
 COPYFROMRESOURCE
+CREDENTIALW
 cstdint
 CXICON
 CYICON
@@ -125,6 +127,7 @@ overridable
 PAGESCROLL
 PALLOC
 PATINVERT
+Pels
 PHANDLER
 PICKFOLDERS
 PINPUT
@@ -195,6 +198,7 @@ virtualalloc
 wcsnicmp
 wcsnlen
 WDJ
+wingdi
 winhttp
 wininet
 winmain
@@ -231,5 +235,6 @@ xtree
 xutility
 YIcon
 YMax
+YPels
 zstring
 zwstring

@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "AI ئاگېنتى %{name} — "
 auth.checking_authentication: "  %{spinner} تونۇقتۇرۇش تەكشۈرۈلۈۋاتىدۇ..."
 auth.waiting_for_authorization: "  %{spinner} ئىكرامىيەت كۈتۈلۈۋاتىدۇ..."
 auth.code_copied_hint: "  كود چاپلىغەن — توركۆرۈڭۈزگە چاپلاڭ."
+auth.device_code_prompt: "%{url} نى زىيارەت قىلىپ، كودنى كىرگۈزۈڭ: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "AI ئاگېنتىڭىزنى ئىشلىتىش ئۈچۈن كىرىڭ:"
 auth.card_connect: "  AI ئاگېنتى ئىقتىدارلىرىنى ئاچىش ئۈچۈن %{name} نى باغلاڭ"
-auth.button_sign_in_github: "[ GitHub بىلەن كىرىش ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} بىلەن كىرىش ]"
-auth.hint_footer: "  Enter كىرىش ئۈچۈن, Esc قايتىش ئۈچۈن بېسىڭ"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  كىرىش بۇيرۇقىنى كۆچۈرۈش ئۈچۈن Enter نى بېسىڭ، ئاندىن كىرىشنى تاماملاش ئۈچۈن ئۇنى يېڭى تېرمىنال كۆزنىكىگە چاپلاڭ"  # {Locked="Enter"}
+auth.hint_footer_back: "  قايتىش ئۈچۈن Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  كىرىش ئۈچۈن Enter · GitHub Enterprise ئۈچۈن E · قايتىش ئۈچۈن Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise دائىرىسى: "
+auth.enterprise_hint_footer: "  كىرىش ئۈچۈن Enter · github.com ئۈچۈن Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  قايتا سىناش ئۈچۈن Enter نى بېسىڭ ياكى github.com ئۈچۈن Esc. كۆپ ئۇچرايدىغان سەۋەبلەر: خاتا يېزىلغان ياكى يەتكىلى بولمايدىغان دائىرە، ۋاقتى ئۆتكەن كود، ياكى ئۇ مۇلازىمېتىردا Copilot زىيارەت ھوقۇقى يوق."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  قايتا سىناش ئۈچۈن Enter نى بېسىڭ ياكى قايتىش ئۈچۈن Esc."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ────────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "ئويلىنىۋاتىدۇ…"

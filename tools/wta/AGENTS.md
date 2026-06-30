@@ -474,7 +474,6 @@ dispatches into the existing helpers (`dispatch_focus_pane`,
 `dispatch_resume_in_agent_pane`, `dispatch_resume`) — those own
 all the side effects:
 
-* phantom-on-disk guard (`key_is_resumable_on_disk`),
 * optimistic `SessionEvent::ResumeDispatched` state flip,
 * `resume_in_new_agent_tab` event publish (for the WT side to open
   a new tab + reconcile the agent pane),

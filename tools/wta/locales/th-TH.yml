@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "CLI เอเจนต์ %{name} — "
 auth.checking_authentication: "  %{spinner} กำลังตรวจสอบการยืนยันตัวตน..."
 auth.waiting_for_authorization: "  %{spinner} กำลังรอการอนุญาต..."
 auth.code_copied_hint: "  คัดลอกรหัสไปยังคลิปบอร์ดแล้ว — วางในเบราว์เซอร์ของคุณ"
+auth.device_code_prompt: "ไปที่ %{url} แล้วป้อนรหัส: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "ลงชื่อเข้าใช้เพื่อใช้เอเจนต์ของคุณ:"
 auth.card_connect: "  เชื่อมต่อ %{name} เพื่อเปิดใช้งานฟีเจอร์เอเจนต์"
-auth.button_sign_in_github: "[ ลงชื่อเข้าใช้ด้วย GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ ลงชื่อเข้าใช้ด้วย %{name} ]"
-auth.hint_footer: "  กด Enter เพื่อลงชื่อเข้าใช้, Esc เพื่อย้อนกลับ"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  กด Enter เพื่อคัดลอกคำสั่งลงชื่อเข้าใช้ จากนั้นวางในหน้าต่างเทอร์มินัลใหม่เพื่อดำเนินการลงชื่อเข้าใช้ให้เสร็จสิ้น"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc เพื่อย้อนกลับ"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter เพื่อลงชื่อเข้าใช้ · E สำหรับ GitHub Enterprise · Esc เพื่อย้อนกลับ"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  โดเมนองค์กร: "
+auth.enterprise_hint_footer: "  Enter เพื่อลงชื่อเข้าใช้ · Esc เพื่อใช้ github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  กด Enter เพื่อลองอีกครั้ง หรือ Esc เพื่อใช้ github.com สาเหตุที่พบบ่อย: พิมพ์โดเมนผิดหรือเข้าถึงโดเมนไม่ได้ รหัสหมดอายุ หรือบัญชีของคุณไม่มีสิทธิ์เข้าถึง Copilot บนโฮสต์นั้น"  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  กด Enter เพื่อลองอีกครั้ง หรือ Esc เพื่อย้อนกลับ"  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "กำลังคิด…"

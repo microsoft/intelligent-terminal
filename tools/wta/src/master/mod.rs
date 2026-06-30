@@ -194,6 +194,10 @@ struct MasterStateInner {
     /// connection happens strictly after that, so the `get()` in
     /// `HelperHandler::initialize` always sees `Some(_)`.
     cached_init_resp: OnceLock<acp::InitializeResponse>,
+    /// The agent CLI connection, set once after startup `initialize`.
+    /// Used to source HOST session history via `session/list` instead of
+    /// reading the CLI's on-disk files.
+    agent_conn: OnceLock<std::sync::Arc<acp::ClientSideConnection>>,
     /// The CLI provider master is multiplexing. Resolved once at
     /// startup from `cli.agent` via `agent_registry::resolve_agent_id_from_cmd`.
     /// Used to stamp `cli_source` on every SessionInfo upserted from
@@ -252,6 +256,14 @@ struct MasterStateInner {
     /// couple seconds so a startup burst of session files triggers at most one
     /// COM walk. `None` until first populated.
     live_panes_cache: Mutex<Option<(std::time::Instant, HashSet<String>)>>,
+    /// Short-TTL cache of the connected agent's raw `session/list` response.
+    /// `Some(Some(sessions))` = the agent listed (possibly empty);
+    /// `Some(None)` = the last fetch failed / timed out / is unsupported —
+    /// negative-cached so a burst of hook/watcher events and the 5s poll share
+    /// one round-trip and don't hammer a hung agent. Both the host-history
+    /// reconcile and the synthetic-title refresh derive from this one fetch.
+    host_list_cache:
+        Mutex<Option<(std::time::Instant, Option<std::sync::Arc<[acp::SessionInfo]>>)>>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -1136,16 +1148,12 @@ impl acp::Agent for HelperHandler {
         self.agent_conn.set_session_config_option(args).await
     }
 
-    /// Answer `session/list` from our own live-session registry instead
-    /// of forwarding to the agent CLI.
-    ///
-    /// Rationale: the only live-session view that matters to the
-    /// Terminal session management panel is "what's wired up through
-    /// master right now" — agent-CLI-side dormant history is exposed
-    /// separately through `agent-pane-sessions.jsonl` + per-CLI
-    /// `<cli> --resume`. Forwarding to the agent CLI would conflate
-    /// the two and re-introduce the cross-CLI variance we built
-    /// `agent-pane-sessions.jsonl` to escape.
+    /// Answer `session/list` from our own registry (NOT by proxying the
+    /// helper's call to the agent CLI). The registry holds both live
+    /// sessions and the historical rows seeded at startup / rescan from
+    /// the agent's own `session/list` (host) and `wsl_acp` (WSL),
+    /// Class-A-filtered by the `agent_pane_origin` index. Proxying the
+    /// helper's call directly would bypass that merge + filter.
     ///
     /// The response carries our `pane_session_id` inside the standard
     /// `_meta.wta` namespace so the helper can join it with WT pane
@@ -1440,6 +1448,14 @@ impl Drop for MasterPipeDiscoveryGuard {
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
+    // 0. Start the shared localhost MCP tool server (resolve_command, …) and
+    //    publish its URL for helpers to inject into session/new. Best-effort —
+    //    if it can't bind, agents simply don't get MCP tools.
+    match crate::mcp::start_and_publish().await {
+        Some(ep) => tracing::info!(target: "master", mcp_url = %ep.url, "MCP server started"),
+        None => tracing::warn!(target: "master", "MCP server not started (bind failed)"),
+    }
+
     // 1. Spawn the agent CLI subprocess. cwd=None: master inherits
     //    Terminal's cwd, which is fine because per-session cwd is
     //    supplied by helpers via `new_session` params.
@@ -1609,62 +1625,13 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         cached_init_resp: OnceLock::new(),
+        agent_conn: OnceLock::new(),
         cli_source,
         helper_meta: Mutex::new(HashMap::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         live_panes_cache: Mutex::new(None),
-    });
-
-    // Seed the registry with historical sessions scanned from
-    // `~/.copilot/`, `~/.claude/`, `~/.gemini/` so `wta sessions list`
-    // and helper session management viewers see the full set, not just live sessions
-    // created via `session/new` after master booted. Disk scan can take
-    // ~100ms-1s for users with many sessions, so we run it in
-    // spawn_blocking and broadcast `sessions/changed` once when done.
-    // Helpers that have session management view open at that moment will refetch and pick
-    // up the historicals; helpers that open session management view later will see them on
-    // the next `sessions/list` call.
-    let inner_for_history = Arc::clone(&inner);
-    // The session view only shows the current agent's CLI, so seed the
-    // registry with just that CLI's history. `None` (custom / unrecognized
-    // agent) scans all four, matching the view's all-CLI behavior.
-    let history_cli = inner.cli_source.clone();
-    tokio::task::spawn_local(async move {
-        let scan_started = std::time::Instant::now();
-        let sessions = match tokio::task::spawn_blocking(move || {
-            crate::history_loader::load_for_cli(history_cli.as_ref())
-        })
-        .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(
-                    target: "master_history",
-                    error = %e,
-                    "history scan task panicked; registry will not include historicals"
-                );
-                return;
-            }
-        };
-        let count = sessions.len();
-        for s in &sessions {
-            let info = crate::session_registry::agent_session_to_session_info(s);
-            inner_for_history.registry.upsert_if_absent(info).await;
-        }
-        tracing::info!(
-            target: "master_history",
-            count,
-            elapsed_ms = scan_started.elapsed().as_millis() as u64,
-            "master-side history scan complete; broadcasting sessions/changed"
-        );
-        if count > 0 {
-            broadcast_ext_to_helpers(
-                &inner_for_history,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
-        }
+        host_list_cache: Mutex::new(None),
     });
 
     // ── Hookless Class-B session watcher ──────────────────────────────
@@ -1852,6 +1819,27 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // is idempotent on already-populated cells — we ignore the
     // returned Err.)
     let _ = inner.cached_init_resp.set(init_resp.clone());
+    let _ = inner.agent_conn.set(std::sync::Arc::clone(&agent_conn));
+
+    // Seed the registry with historical sessions sourced from ACP
+    // `session/list`. Host (the already-running agent) is fast — seed +
+    // broadcast it immediately. WSL (per-distro spawn) can be slow / wedged, so
+    // it runs decoupled on the LocalSet and broadcasts when it lands. No on-disk
+    // CLI parsing. Runs after init so the capability + connection are ready.
+    {
+        let inner_for_history = std::sync::Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            let scan_started = std::time::Instant::now();
+            let count = seed_host_and_broadcast(&inner_for_history).await;
+            tracing::info!(
+                target: "master_history",
+                count,
+                elapsed_ms = scan_started.elapsed().as_millis() as u64,
+                "master ACP host history seed complete"
+            );
+            spawn_wsl_seed(&inner_for_history);
+        });
+    }
 
     // 4. Open the named pipe and accept helper connections.
     let mut server = ServerOptions::new()
@@ -2205,39 +2193,257 @@ pub(crate) async fn broadcast_ext_to_helpers(
     }
 }
 
-/// Pure async handler for the `intellterm.wta/sessions/list` ExtRequest.
-async fn handle_sessions_list(
-    state: &MasterStateInner,
-    params: &serde_json::value::RawValue,
-) -> acp::Result<acp::ExtResponse> {
-    handle_sessions_list_with(state, params, |cli, key| {
-        crate::history_loader::lookup_title_for_session(cli, key)
-    })
+/// Cached raw host `session/list`. `Some(sessions)` = the agent listed (possibly
+/// empty); `None` = unsupported (Gemini / non-ACP custom), not connected yet, or
+/// the call failed / timed out. Callers MUST treat `None` as "unknown", never as
+/// "no sessions" — the reconcile skips it so a transient error can't wipe the
+/// view. 2s TTL so the 5s poll, the title refresh, and a burst of hook events
+/// share one round-trip.
+async fn host_session_list_raw(state: &MasterStateInner) -> Option<std::sync::Arc<[acp::SessionInfo]>> {
+    let Some(init) = state.cached_init_resp.get() else {
+        return None;
+    };
+    if init.agent_capabilities.session_capabilities.list.is_none() {
+        return None;
+    }
+    let Some(conn) = state.agent_conn.get() else {
+        return None;
+    };
+
+    const TTL: std::time::Duration = std::time::Duration::from_secs(2);
+    {
+        let cache = state.host_list_cache.lock().await;
+        if let Some((at, outcome)) = cache.as_ref() {
+            if at.elapsed() < TTL {
+                return outcome.clone();
+            }
+        }
+    }
+
+    // Captured before the await so the write-back can detect a result another
+    // caller published while we were in-flight.
+    let fetch_started = std::time::Instant::now();
+    use acp::Agent as _;
+    let outcome = match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        conn.list_sessions(acp::ListSessionsRequest::new()),
+    )
     .await
+    {
+        Ok(Ok(resp)) => Some(resp.sessions.into()),
+        Ok(Err(e)) => {
+            tracing::debug!(target: "master_history", "host session/list error: {e}");
+            None
+        }
+        Err(_) => {
+            tracing::warn!(target: "master_history", "host session/list timed out");
+            None
+        }
+    };
+    // Single-flight write-back: if a concurrent caller already published a
+    // result while we were awaiting `list_sessions`, adopt it instead of
+    // clobbering — so a slow failure can't overwrite a fast success (or
+    // vice-versa) and poison the 2 s cache with a transient None.
+    let mut cache = state.host_list_cache.lock().await;
+    if let Some((at, cached)) = cache.as_ref() {
+        if *at >= fetch_started {
+            return cached.clone();
+        }
+    }
+    *cache = Some((std::time::Instant::now(), outcome.clone()));
+    outcome
 }
 
-/// Testable inner of [`handle_sessions_list`]: the per-CLI disk title lookup is
-/// injected so tests can avoid touching `USERPROFILE`. Production uses the
-/// wrapper above pinned to `history_loader::lookup_title_for_session`.
-///
-/// Before returning the snapshot, opportunistically upgrade any row whose title
-/// is still synthetic (empty / cwd-basename) from the CLI's on-disk artefacts.
-/// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
-/// delegate sessions, which register a single `SessionStarted` with an empty
-/// title at launch (before the CLI has written its generated `name:`) and, being
-/// hook-independent, receive no follow-up events to re-trigger
-/// `handle_session_hook`'s refresh. The `/sessions` view re-polls `sessions/list`
-/// every 5s, so refreshing here surfaces the title once the CLI writes it. The
-/// `is_synthetic` early-out inside `try_refresh_title_from_disk_with` keeps this
-/// cheap: a row is read from disk only while it still lacks a real title.
-async fn handle_sessions_list_with<F>(
+/// Host history from the already-running agent's `session/list`, gated on the
+/// `sessionCapabilities.list` capability. `None` when unsupported (Gemini,
+/// non-ACP custom) / not connected / failed — distinct from `Some(vec![])`
+/// (listed, but empty), which the reconcile needs to authoritatively drop stale
+/// rows. No on-disk fallback by design.
+async fn host_history_via_acp(
     state: &MasterStateInner,
+) -> Option<Vec<crate::agent_sessions::AgentSession>> {
+    let sessions = host_session_list_raw(state).await?;
+    let cli = state
+        .cli_source
+        .clone()
+        .unwrap_or_else(|| crate::agent_sessions::CliSource::Unknown("custom".into()));
+    // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
+    // *after* session/new lands, so a just-created pane session can be returned by
+    // session/list before its index line exists, leaking a phantom historical row.
+    // Master routes every session/new, so its live `session_to_helper` keys are the
+    // authoritative live-pane set — union them in to close that race.
+    let mut idx = crate::agent_pane_origin::load_default_set();
+    for sid in state.session_to_helper.lock().await.keys() {
+        idx.insert(sid.0.to_string());
+    }
+    Some(crate::session_history::classify_and_map(
+        &sessions,
+        &idx,
+        crate::agent_sessions::SessionLocation::Host,
+        &cli,
+    ))
+}
+
+/// Raw host `session/list` as session_id → title, UNFILTERED (includes Class-A
+/// agent-pane rows, whose live registry entries still need synthetic-title
+/// upgrades). Empty when session/list is unsupported or the agent isn't
+/// connected yet.
+async fn host_titles_via_acp(
+    state: &MasterStateInner,
+) -> std::collections::HashMap<String, String> {
+    let Some(sessions) = host_session_list_raw(state).await else {
+        return std::collections::HashMap::new();
+    };
+    sessions
+        .iter()
+        .filter_map(|row| {
+            row.title
+                .clone()
+                .filter(|title| !title.is_empty())
+                .map(|title| (row.session_id.to_string(), title))
+        })
+        .collect()
+}
+
+/// Sync master's host-history rows to the agent's `session/list` (the single
+/// source of truth): add newly-listed sessions and drop terminal Class-B host
+/// rows the agent no longer lists (phantoms, CLI-side deletes). No-op when the
+/// agent can't list (unsupported / failed / timed out) so a transient error
+/// never wipes the view. Returns `(changed, listed_count)`, or `None` when the
+/// agent couldn't be listed.
+async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
+    let rows = host_history_via_acp(state).await?;
+    let listed_ids: std::collections::HashSet<String> =
+        rows.iter().map(|r| r.key.clone()).collect();
+
+    // Snapshot once; compute existing ids for the add pass and reconcile the
+    // terminal Class-B host rows in the same pass.
+    let snapshot = state.registry.snapshot().await;
+    let existing: std::collections::HashSet<String> =
+        snapshot.iter().map(|s| s.session_id.0.to_string()).collect();
+
+    let mut changed = false;
+
+    // Add: newly-listed sessions not already in the registry.
+    for s in &rows {
+        if !existing.contains(&s.key) {
+            let info = crate::session_registry::agent_session_to_session_info(s);
+            state.registry.upsert_if_absent(info).await;
+            changed = true;
+        }
+    }
+
+    // Reconcile: drop terminal Class-B host rows the agent no longer lists.
+    // `remove_if` re-checks staleness on the *current* row under the registry
+    // lock, so a row a hook/watcher flips live between the snapshot above and
+    // the remove below is never deleted out from under that update.
+    for row in &snapshot {
+        if !is_stale_host_history_row(row, &listed_ids) {
+            continue;
+        }
+        let removed = state
+            .registry
+            .remove_if(&row.session_id, &|cur| {
+                is_stale_host_history_row(cur, &listed_ids)
+            })
+            .await;
+        if removed.is_some() {
+            tracing::info!(
+                target: "master_history",
+                key = %row.session_id.0,
+                "reconcile: dropped host row no longer in session/list"
+            );
+            changed = true;
+        }
+    }
+
+    Some((changed, rows.len()))
+}
+
+/// Whether a registry row is a stale host-history row to drop during reconcile:
+/// a terminal (Historical / Ended) Class-B **host** row whose id is NOT in the
+/// authoritative `session/list` set. Live rows (Working / Idle), agent panes
+/// (ACP-driven), and WSL rows are never reconciled away. Pure for unit testing.
+fn is_stale_host_history_row(
+    row: &crate::session_registry::SessionInfo,
+    listed_ids: &std::collections::HashSet<String>,
+) -> bool {
+    use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
+    if !matches!(row.location, SessionLocation::Host) {
+        return false;
+    }
+    if row.origin == Some(SessionOrigin::AgentPane) {
+        return false;
+    }
+    let terminal = matches!(
+        row.status,
+        Some(AgentStatus::Historical) | Some(AgentStatus::Ended)
+    );
+    if !terminal {
+        return false;
+    }
+    !listed_ids.contains(row.session_id.0.as_ref())
+}
+
+/// Seed + reconcile host history against the agent's `session/list`, broadcasting
+/// when anything changed. WSL is seeded separately ([`spawn_wsl_seed`]) so a
+/// slow/wedged distro never blocks host rows. Returns the listed host count.
+async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> usize {
+    let Some((changed, count)) = sync_host_history(state).await else {
+        return 0;
+    };
+    if changed {
+        broadcast_ext_to_helpers(
+            state,
+            crate::session_registry::build_sessions_changed_notification(),
+        )
+        .await;
+    }
+    count
+}
+
+/// Fire-and-forget the WSL history scan on the master's LocalSet so a 40s distro
+/// timeout can't stall host rows. Upserts + broadcasts when it lands. No-op when
+/// WSL sessions are disabled.
+fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
+    if !crate::history_loader::wsl_sessions_enabled() {
+        return;
+    }
+    let inner = std::sync::Arc::clone(state);
+    tokio::task::spawn_local(async move {
+        let started = std::time::Instant::now();
+        let wsl = crate::wsl_acp::scan_running_distros_acp(inner.cli_source.as_ref()).await;
+        let count = wsl.len();
+        for s in &wsl {
+            let info = crate::session_registry::agent_session_to_session_info(s);
+            inner.registry.upsert_if_absent(info).await;
+        }
+        tracing::info!(
+            target: "master_history",
+            count,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "WSL ACP history seed complete"
+        );
+        if count > 0 {
+            broadcast_ext_to_helpers(
+                &inner,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+    });
+}
+
+/// Before returning the snapshot, opportunistically upgrade any row whose title
+/// is still synthetic (empty / cwd-basename) from the agent's raw ACP
+/// `session/list` titles.
+/// This is what gets a title onto **born-bound** rows — e.g. `?<prompt>`
+/// delegate sessions, which register with an empty title before the CLI has
+/// generated its real one.
+async fn handle_sessions_list(
+    state: &std::sync::Arc<MasterStateInner>,
     params: &serde_json::value::RawValue,
-    lookup: F,
-) -> acp::Result<acp::ExtResponse>
-where
-    F: Fn(crate::agent_sessions::CliSource, &str) -> Option<String> + Copy,
-{
+) -> acp::Result<acp::ExtResponse> {
     let parsed = crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
         tracing::warn!(
             target: "master",
@@ -2248,58 +2454,42 @@ where
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    // F5 refresh: re-scan the on-disk historical session logs and upsert them,
-    // exactly like the startup history seed. Run the blocking disk walk off the
-    // LocalSet so master stays responsive; on failure fall through to the
-    // cached snapshot rather than erroring the request.
     if parsed.rescan {
-        let cli = state.cli_source.clone();
-        match tokio::task::spawn_blocking(move || {
-            crate::history_loader::load_for_cli(cli.as_ref())
-        })
-        .await
-        {
-            Ok(sessions) => {
-                let count = sessions.len();
-                for s in &sessions {
-                    let info = crate::session_registry::agent_session_to_session_info(s);
-                    state.registry.upsert_if_absent(info).await;
-                }
-                tracing::info!(
-                    target: "master_history",
-                    count,
-                    "sessions/list rescan: reloaded historical sessions from disk"
-                );
-                // Tell every helper with the session view open to refetch, so
-                // the freshly-loaded historical rows surface immediately in all
-                // windows/tabs — matching the startup history scan's broadcast
-                // instead of waiting up to 5s for the next periodic poll. The
-                // triggered refetches are rescan=false snapshots: they neither
-                // re-scan disk nor re-broadcast, so there's no feedback loop.
-                broadcast_ext_to_helpers(
-                    state,
-                    crate::session_registry::build_sessions_changed_notification(),
-                )
-                .await;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    target: "master_history",
-                    error = %e,
-                    "sessions/list rescan task panicked; returning cached registry"
-                );
-            }
+        // Host is fast: re-pull + broadcast inline. WSL can be slow / wedged
+        // (40s distro timeout), so fire it asynchronously — it broadcasts again
+        // when it lands rather than blocking this response on it.
+        let count = seed_host_and_broadcast(state).await;
+        tracing::info!(
+            target: "master_history",
+            count,
+            "sessions/list rescan: reloaded host history via ACP (WSL async)"
+        );
+        spawn_wsl_seed(state);
+    } else {
+        // Periodic poll: reconcile host rows against `session/list` (the source
+        // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
+        // ones appear. Reuses the 2s-cached fetch. No-op (and no broadcast) when
+        // nothing changed or the agent can't list — so a transient error never
+        // wipes the view and steady state causes no push storm.
+        if let Some((true, _)) = sync_host_history(state).await {
+            broadcast_ext_to_helpers(
+                state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
         }
     }
 
-    for row in state.registry.snapshot().await {
-        // `try_refresh_title_from_disk_with` no-ops internally unless the title
-        // is still synthetic and a `cli_source` is present, so we can call it
-        // for every row without pre-filtering.
-        try_refresh_title_from_disk_with(&state.registry, &row.session_id, lookup).await;
+    let mut sessions = state.registry.snapshot().await;
+    if sessions.iter().any(crate::session_registry::title_is_synthetic) {
+        let titles = host_titles_via_acp(state).await;
+        // Re-snapshot only when a title actually changed; the common steady-state
+        // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
+        if refresh_synthetic_titles_from(&*state.registry, &titles).await {
+            sessions = state.registry.snapshot().await;
+        }
     }
 
-    let mut sessions = state.registry.snapshot().await;
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(sessions);
     Ok(acp::ExtResponse::new(raw.into()))
@@ -2312,16 +2502,10 @@ where
 /// helper when the reducer actually mutated state. Idempotent / no-op events
 /// (reducer returned `false`) skip the broadcast to avoid push storms.
 ///
-/// Title-from-disk refresh: after the reducer applies, we re-check master's
-/// row for a "synthetic" title (cwd basename / empty) and try to upgrade it
-/// by reading the CLI's on-disk session artefacts (Copilot's `workspace.yaml
-/// summary:`/`name:`, Claude/Gemini's first user prompt). The helper already
-/// runs the equivalent refresh against its *local* registry, but session management view renders
-/// from master's snapshot — without this refresh master never sees the
-/// upgraded title and the row keeps showing the cwd basename forever for
-/// shell-pane CLI sessions whose first hook arrives before the CLI has
-/// written the chat title to disk (e.g. Copilot's UserPromptSubmit fires
-/// before its LLM-generated `name:` is written).
+/// Title refresh: after the reducer applies, we re-check master's row for a
+/// "synthetic" title (cwd basename / empty) and try to upgrade it from the
+/// agent's raw ACP `session/list` titles. Session management view renders from
+/// master's snapshot, so the upgrade must happen here.
 async fn handle_session_hook(
     state: &MasterStateInner,
     params: &serde_json::value::RawValue,
@@ -2408,7 +2592,7 @@ async fn handle_session_hook(
     let applied = state.registry.apply_event(event).await;
 
     let title_upgraded = if let Some(key) = refresh_key {
-        try_refresh_title_from_disk(&state.registry, &acp::SessionId::new(key)).await
+        try_refresh_title_via_acp(state, &acp::SessionId::new(key)).await
     } else {
         false
     };
@@ -2430,7 +2614,7 @@ async fn handle_session_hook(
 /// round-trip). `SessionStarted` synthesis + pane binding happens in
 /// `ensure_watched_session_row` before the activity event is applied; the
 /// post-apply title refresh upgrades the synthetic (cwd-basename / empty)
-/// title from the CLI's on-disk artefacts, same as the hook path.
+/// title from the agent's raw ACP `session/list` titles, same as the hook path.
 async fn apply_watcher_event(
     state: &MasterStateInner,
     emitted: crate::session_watcher::Emitted,
@@ -2460,7 +2644,7 @@ async fn apply_watcher_event(
         let key = emitted.key.clone();
         let applied = state.registry.apply_event(emitted.event).await;
         let title_upgraded =
-            try_refresh_title_from_disk(&state.registry, &acp::SessionId::new(key)).await;
+            try_refresh_title_via_acp(state, &acp::SessionId::new(key)).await;
         if applied || title_upgraded {
             broadcast_ext_to_helpers(
                 state,
@@ -2517,7 +2701,7 @@ async fn apply_watcher_event(
     let key = emitted.key.clone();
     let applied = state.registry.apply_event(emitted.event).await;
     let title_upgraded =
-        try_refresh_title_from_disk(&state.registry, &acp::SessionId::new(key)).await;
+        try_refresh_title_via_acp(state, &acp::SessionId::new(key)).await;
     if applied || title_upgraded {
         broadcast_ext_to_helpers(
             state,
@@ -2919,81 +3103,64 @@ fn session_event_key(event: &crate::agent_sessions::SessionEvent) -> Option<&str
     }
 }
 
-/// If the row for `sid` has a synthetic title (None / empty / cwd
-/// basename) and we can resolve a richer title from the CLI's on-disk
-/// session artefacts, atomically upgrade the row's title. Returns
-/// `true` iff the title actually changed.
-///
-/// Reads workspace.yaml / JSONL outside the registry lock; commits via
-/// the atomic `upgrade_title_if_synthetic` registry method so a
-/// concurrent `apply_event` can't lose status / pane_session_id from a
-/// full-row upsert with a stale clone (which is what naïve
-/// lookup→clone→mutate→upsert would do here).
-async fn try_refresh_title_from_disk(
-    registry: &std::sync::Arc<dyn crate::session_registry::SessionRegistry>,
-    sid: &acp::SessionId,
+/// Upgrade every still-synthetic registry row's title from `titles`
+/// (session_id → CLI title). Returns true if any row changed.
+async fn refresh_synthetic_titles_from(
+    reg: &dyn crate::session_registry::SessionRegistry,
+    titles: &std::collections::HashMap<String, String>,
 ) -> bool {
-    try_refresh_title_from_disk_with(registry, sid, |cli, key| {
-        crate::history_loader::lookup_title_for_session(cli, key)
-    })
-    .await
+    let mut changed = false;
+    for row in reg.snapshot().await {
+        if !crate::session_registry::title_is_synthetic(&row) {
+            continue;
+        }
+        if let Some(title) = titles.get(row.session_id.0.as_ref()) {
+            if reg.upgrade_title_if_synthetic(&row.session_id, title).await {
+                changed = true;
+            }
+        }
+    }
+    changed
 }
 
-/// Testable inner of [`try_refresh_title_from_disk`]: the disk lookup
-/// is injected as a closure so tests can avoid mutating `USERPROFILE`
-/// or staging files. Production code uses the wrapper above which
-/// pins the closure to `history_loader::lookup_title_for_session`.
-async fn try_refresh_title_from_disk_with<F>(
-    registry: &std::sync::Arc<dyn crate::session_registry::SessionRegistry>,
+/// Whether `info`'s row can be title-refreshed from the connected agent's
+/// `session/list`. The agent enumerates only ITS OWN cli's sessions, so a row
+/// stamped with a *different* known cli (e.g. a machine-wide watched claude
+/// session while master multiplexes copilot) can never appear in it — skip it
+/// rather than issue a per-event round-trip that can't match. Such cross-cli
+/// titles are no longer upgraded — an accepted consequence of dropping the
+/// per-cli on-disk title reads. A `None` cli on either side is treated as
+/// "attempt" (the lookup simply no-ops when the id is absent).
+fn row_refreshable_by_connected_agent(
+    info: &crate::session_registry::SessionInfo,
+    conn_cli: Option<&crate::agent_sessions::CliSource>,
+) -> bool {
+    match (info.cli_source.as_ref(), conn_cli) {
+        (Some(row_cli), Some(conn_cli)) => row_cli == conn_cli,
+        _ => true,
+    }
+}
+
+/// ACP replacement for the former on-disk single-session title refresh. Cheap
+/// early-out: only fetch the agent's session/list when this row is synthetic.
+async fn try_refresh_title_via_acp(
+    state: &MasterStateInner,
     sid: &acp::SessionId,
-    lookup: F,
-) -> bool
-where
-    F: FnOnce(crate::agent_sessions::CliSource, &str) -> Option<String>,
-{
-    let Some(info) = registry.lookup(sid).await else {
+) -> bool {
+    let Some(info) = state.registry.lookup(sid).await else {
         return false;
     };
-    // Skip the disk read when the title is already a real one (not
-    // empty / None / equal to the cwd basename). Avoids hammering
-    // workspace.yaml / JSONL on every hook event for sessions that are
-    // already labelled.
-    let cwd_leaf = info
-        .cwd
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    let is_synthetic = match info.title.as_deref() {
-        None | Some("") => true,
-        Some(t) => t == cwd_leaf,
-    };
-    if !is_synthetic {
+    if !crate::session_registry::title_is_synthetic(&info) {
         return false;
     }
-    // cli_source is needed to dispatch the right per-CLI on-disk
-    // scanner; rows that landed in master without one (legacy /
-    // partially-populated history seeds) can't be refreshed.
-    let Some(cli) = info.cli_source.clone() else {
-        return false;
-    };
-    let Some(disk_title) = lookup(cli, &info.session_id.0) else {
-        return false;
-    };
-    if disk_title.is_empty() {
+    if !row_refreshable_by_connected_agent(&info, state.cli_source.as_ref()) {
         return false;
     }
-    let upgraded = registry
-        .upgrade_title_if_synthetic(sid, &disk_title)
-        .await;
-    if upgraded {
-        tracing::info!(
-            target: "session_hook",
-            session_id = %sid.0,
-            title_len = disk_title.chars().count(),
-            "upgraded synthetic title from on-disk session artefacts",
-        );
+    let titles = host_titles_via_acp(state).await;
+    match titles.get(sid.0.as_ref()) {
+        Some(title) => state.registry.upgrade_title_if_synthetic(sid, title).await,
+        None => false,
     }
-    upgraded
 }
 
 /// Pure async handler for the `intellterm.wta/focus_session` ExtRequest.
@@ -3297,11 +3464,13 @@ mod tests {
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
             cached_init_resp: OnceLock::new(),
+            agent_conn: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
             live_panes_cache: Mutex::new(None),
+            host_list_cache: Mutex::new(None),
         })
     }
 
@@ -3961,49 +4130,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sessions_list_upgrades_synthetic_title_from_disk() {
-        // Born-bound rows (e.g. ?<prompt> delegate sessions) register a single
-        // SessionStarted with an empty title — before the CLI has written its
-        // generated `name:` — and, being hook-independent, get no follow-up
-        // events to re-trigger the per-hook title refresh. The /sessions view
-        // re-polls sessions/list every 5s, so the list handler must surface the
-        // CLI-generated title once it lands on disk.
-        use crate::session_registry::{self, SessionInfo};
-        use std::path::PathBuf;
-
-        let state = make_state();
-        let mut row = SessionInfo::new(
-            SessionId::new("born-bound"),
-            PathBuf::from("C:\\Windows\\system32"),
-        );
-        row.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
-        // title left None → synthetic, exactly as at born-bound launch time.
-        state.registry.upsert(row).await;
-
-        let req = session_registry::build_sessions_list_request(false);
-        let resp = handle_sessions_list_with(&state, &req.params, |cli, key| {
-            assert_eq!(cli, crate::agent_sessions::CliSource::Copilot);
-            assert_eq!(key, "born-bound");
-            Some("Implement Greeting Function".to_string())
-        })
-        .await
-        .expect("sessions/list succeeds");
-        let parsed =
-            session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
-
-        let upgraded = parsed
-            .sessions
-            .iter()
-            .find(|s| s.session_id == SessionId::new("born-bound"))
-            .expect("born-bound row present in snapshot");
-        assert_eq!(
-            upgraded.title.as_deref(),
-            Some("Implement Greeting Function"),
-            "synthetic born-bound title should be upgraded from on-disk artefacts"
-        );
-    }
-
-    #[tokio::test]
     async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
         use crate::session_registry::{self, SessionInfo};
         use std::path::PathBuf;
@@ -4210,11 +4336,13 @@ mod tests {
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),
             cached_init_resp: OnceLock::new(),
+            agent_conn: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
             live_panes_cache: Mutex::new(None),
+            host_list_cache: Mutex::new(None),
         })
     }
 
@@ -4410,132 +4538,148 @@ mod tests {
         assert_eq!(notification.params.get(), "{}");
     }
 
-    // ── try_refresh_title_from_disk_with ────────────────────────────
+    // ── refresh_synthetic_titles_from ───────────────────────────────
 
     #[tokio::test]
-    async fn try_refresh_title_upgrades_synthetic_cwd_basename_title() {
-        // Repro of the production bug: shell-pane Copilot first hook arrives
-        // with title = cwd basename ("alice" for cwd C:\Users\alice). Later,
-        // the on-disk workspace.yaml has the real `name:` field, but the
-        // helper-local upgrade never reaches master. This is the master-side
-        // upgrade path.
-        let state = make_state();
-        let event = crate::agent_sessions::SessionEvent::SessionStarted {
-            key: "sid-y".to_string(),
-            cli_source: crate::agent_sessions::CliSource::Copilot,
-            pane_session_id: "pane-y".to_string(),
-            cwd: std::path::PathBuf::from("C:\\Users\\alice"),
-            title: "alice".to_string(),
-        };
-        state.registry.apply_event(event).await;
+    async fn refresh_synthetic_titles_from_upgrades_empty_and_basename_titles_only() {
+        use std::collections::HashMap;
 
-        let sid = acp::SessionId::new("sid-y".to_string());
-        let upgraded = try_refresh_title_from_disk_with(&state.registry, &sid, |cli, key| {
-            assert_eq!(cli, crate::agent_sessions::CliSource::Copilot);
-            assert_eq!(key, "sid-y");
-            Some("No Coding Task Identified".to_string())
-        })
-        .await;
-        assert!(upgraded, "title should be upgraded from synthetic basename");
+        let state = make_state();
+        let mut empty = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("sid-empty".to_string()),
+            std::path::PathBuf::from("/repo/empty"),
+        );
+        empty.title = Some(String::new());
+        state.registry.upsert(empty).await;
+
+        let mut basename = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("sid-base".to_string()),
+            std::path::PathBuf::from("/repo/project"),
+        );
+        basename.title = Some("project".to_string());
+        state.registry.upsert(basename).await;
+
+        let mut real = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("sid-real".to_string()),
+            std::path::PathBuf::from("/repo/real"),
+        );
+        real.title = Some("Existing Real Title".to_string());
+        state.registry.upsert(real).await;
+
+        let titles = HashMap::from([
+            ("sid-empty".to_string(), "Empty Real Title".to_string()),
+            ("sid-base".to_string(), "Basename Real Title".to_string()),
+            ("sid-real".to_string(), "Should Not Overwrite".to_string()),
+        ]);
+
+        assert!(refresh_synthetic_titles_from(&*state.registry, &titles).await);
         assert_eq!(
-            state.registry.lookup(&sid).await.unwrap().title.as_deref(),
-            Some("No Coding Task Identified")
+            state
+                .registry
+                .lookup(&acp::SessionId::new("sid-empty".to_string()))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Empty Real Title")
+        );
+        assert_eq!(
+            state
+                .registry
+                .lookup(&acp::SessionId::new("sid-base".to_string()))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Basename Real Title")
+        );
+        assert_eq!(
+            state
+                .registry
+                .lookup(&acp::SessionId::new("sid-real".to_string()))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Existing Real Title")
         );
     }
 
     #[tokio::test]
-    async fn try_refresh_title_skips_when_title_is_real() {
+    async fn refresh_synthetic_titles_from_skips_when_id_absent() {
         let state = make_state();
-        let event = crate::agent_sessions::SessionEvent::SessionStarted {
-            key: "sid-real".to_string(),
-            cli_source: crate::agent_sessions::CliSource::Copilot,
-            pane_session_id: "pane-real".to_string(),
-            cwd: std::path::PathBuf::from("/repo/proj"),
-            // "Some Real Title" ≠ "proj" → not synthetic. Lookup must not run.
-            title: "Some Real Title".to_string(),
-        };
-        state.registry.apply_event(event).await;
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("sid-missing".to_string()),
+            std::path::PathBuf::from("/repo/project"),
+        );
+        row.title = Some("project".to_string());
+        state.registry.upsert(row).await;
 
-        let sid = acp::SessionId::new("sid-real".to_string());
-        let lookup_called = std::cell::Cell::new(false);
-        let upgraded = try_refresh_title_from_disk_with(&state.registry, &sid, |_, _| {
-            lookup_called.set(true);
-            Some("would-be-overwrite".to_string())
-        })
-        .await;
-        assert!(!upgraded);
         assert!(
-            !lookup_called.get(),
-            "disk lookup must be skipped when title is already real"
+            !refresh_synthetic_titles_from(&*state.registry, &std::collections::HashMap::new())
+                .await
         );
         assert_eq!(
-            state.registry.lookup(&sid).await.unwrap().title.as_deref(),
-            Some("Some Real Title")
+            state
+                .registry
+                .lookup(&acp::SessionId::new("sid-missing".to_string()))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("project")
         );
     }
 
-    #[tokio::test]
-    async fn try_refresh_title_skips_when_cli_source_missing() {
-        // Rows without a cli_source (legacy / partial seeds) can't be
-        // dispatched to a per-CLI on-disk scanner; refresh must be a
-        // no-op rather than trying to guess.
-        let state = make_state();
-        let mut info = crate::session_registry::SessionInfo::new(
-            acp::SessionId::new("sid-bare".to_string()),
-            std::path::PathBuf::from("/x/proj"),
+    #[test]
+    fn row_refreshable_skips_only_definitively_cross_cli() {
+        use crate::agent_sessions::CliSource;
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::SessionId::new("s".to_string()),
+            std::path::PathBuf::from("/x"),
         );
-        info.title = Some("proj".to_string()); // synthetic
-        // info.cli_source intentionally left as None
-        state.registry.upsert(info).await;
-
-        let sid = acp::SessionId::new("sid-bare".to_string());
-        let upgraded = try_refresh_title_from_disk_with(&state.registry, &sid, |_, _| {
-            panic!("lookup must not be invoked without cli_source");
-        })
-        .await;
-        assert!(!upgraded);
+        // Same known cli → refreshable.
+        row.cli_source = Some(CliSource::Copilot);
+        assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+        // Different known cli → skipped (the connected agent can't enumerate it).
+        assert!(!row_refreshable_by_connected_agent(&row, Some(&CliSource::Claude)));
+        // Unknown cli on either side → attempt (never skip).
+        row.cli_source = None;
+        assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+        row.cli_source = Some(CliSource::Copilot);
+        assert!(row_refreshable_by_connected_agent(&row, None));
     }
 
-    #[tokio::test]
-    async fn try_refresh_title_skips_when_lookup_returns_none_or_empty() {
-        let state = make_state();
-        let event = crate::agent_sessions::SessionEvent::SessionStarted {
-            key: "sid-none".to_string(),
-            cli_source: crate::agent_sessions::CliSource::Copilot,
-            pane_session_id: "pane-none".to_string(),
-            cwd: std::path::PathBuf::from("/x/proj"),
-            title: "proj".to_string(),
+    #[test]
+    fn is_stale_host_history_row_reconcile_rules() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation, SessionOrigin};
+        use std::collections::HashSet;
+        let listed: HashSet<String> = ["kept".to_string()].into_iter().collect();
+        let mk = |id: &str| {
+            let mut r = crate::session_registry::SessionInfo::new(
+                acp::SessionId::new(id.to_string()),
+                std::path::PathBuf::from("C:\\Users\\dev"),
+            );
+            r.status = Some(AgentStatus::Historical);
+            r.origin = Some(SessionOrigin::Unknown);
+            r
         };
-        state.registry.apply_event(event).await;
-        let sid = acp::SessionId::new("sid-none".to_string());
-
-        // Disk lookup returns None (e.g. workspace.yaml `name:` not yet
-        // written by Copilot at the moment this hook arrives).
-        let upgraded = try_refresh_title_from_disk_with(&state.registry, &sid, |_, _| None).await;
-        assert!(!upgraded);
-        assert_eq!(
-            state.registry.lookup(&sid).await.unwrap().title.as_deref(),
-            Some("proj"),
-            "title must stay synthetic when no disk title is available"
-        );
-
-        // Disk lookup returns empty string — treat as None.
-        let upgraded = try_refresh_title_from_disk_with(&state.registry, &sid, |_, _| {
-            Some(String::new())
-        })
-        .await;
-        assert!(!upgraded);
-    }
-
-    #[tokio::test]
-    async fn try_refresh_title_returns_false_for_missing_session() {
-        let state = make_state();
-        let sid = acp::SessionId::new("nope".to_string());
-        let upgraded = try_refresh_title_from_disk_with(&state.registry, &sid, |_, _| {
-            panic!("lookup must not run for missing session");
-        })
-        .await;
-        assert!(!upgraded);
+        // Terminal Class-B host row NOT in session/list → stale (drop).
+        assert!(is_stale_host_history_row(&mk("gone"), &listed));
+        // Still listed → keep.
+        assert!(!is_stale_host_history_row(&mk("kept"), &listed));
+        // Live (Idle/Working) → keep even if not listed.
+        let mut live = mk("gone");
+        live.status = Some(AgentStatus::Idle);
+        assert!(!is_stale_host_history_row(&live, &listed));
+        // Agent pane → never reconciled.
+        let mut pane = mk("gone");
+        pane.origin = Some(SessionOrigin::AgentPane);
+        assert!(!is_stale_host_history_row(&pane, &listed));
+        // WSL row → host can't authoritatively list distro sessions.
+        let mut wsl = mk("gone");
+        wsl.location = SessionLocation::Wsl { distro: "Ubuntu".to_string() };
+        assert!(!is_stale_host_history_row(&wsl, &listed));
     }
 
     #[test]

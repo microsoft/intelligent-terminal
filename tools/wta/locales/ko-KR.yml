@@ -32,11 +32,16 @@ auth.agent_selected_with_status: "에이전트 %{name} — "
 auth.checking_authentication: "  %{spinner} 인증 확인 중..."
 auth.waiting_for_authorization: "  %{spinner} 승인 대기 중..."
 auth.code_copied_hint: "  코드가 클립보드에 복사되었습니다 — 브라우저에 붙여넣으세요."
+auth.device_code_prompt: "%{url}을(를) 방문하고 코드 %{code}을(를) 입력하세요"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "에이전트를 사용하려면 로그인하세요:"
 auth.card_connect: "  %{name}을(를) 연결하여 에이전트 기능 사용"
-auth.button_sign_in_github: "[ GitHub로 로그인 ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name}(으)로 로그인 ]"
-auth.hint_footer: "  Enter를 눌러 로그인, Esc를 눌러 뒤로 가기"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Enter 키를 눌러 로그인 명령을 복사한 다음, 새 터미널 창에 붙여넣어 실행하여 로그인을 완료하세요"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc 키를 눌러 뒤로 이동"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter 키로 로그인 · E 키로 GitHub Enterprise 사용 · Esc 키로 뒤로 이동"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  엔터프라이즈 도메인: "
+auth.enterprise_hint_footer: "  Enter 키로 로그인 · Esc 키로 github.com 사용"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Enter 키를 눌러 다시 시도하거나 Esc 키로 github.com을 사용하세요. 일반적인 원인: 도메인 오타 또는 연결할 수 없는 도메인, 만료된 코드, 또는 해당 호스트에서 계정에 Copilot 액세스 권한이 없음."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Enter 키를 눌러 다시 시도하거나 Esc 키를 눌러 뒤로 이동하세요."  # {Locked="Enter","Esc"}
 
 # ── 채팅 보기 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "생각 중…"

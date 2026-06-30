@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "Agente %{name} — "
 auth.checking_authentication: "  %{spinner} Autentifikazioa egiaztatzen..."
 auth.waiting_for_authorization: "  %{spinner} Baimenaren zain..."
 auth.code_copied_hint: "  Kodea arbelean kopiatu da — itsatsi zure arakatzailean."
+auth.device_code_prompt: "Bisitatu %{url} eta idatzi kodea: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "Hasi saioa zure agentea erabiltzeko:"
 auth.card_connect: "  Konektatu %{name} agentearen eginbideak gaitzeko"
-auth.button_sign_in_github: "[ Hasi saioa GitHub-ekin ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Hasi saioa %{name}(e)kin ]"
-auth.hint_footer: "  Sakatu Enter saioa hasteko, Esc atzera joateko"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  Sakatu Enter saioa hasteko komandoa kopiatzeko, eta itsatsi terminal-leiho berri batean saioa hastea amaitzeko"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc atzera egiteko"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter saioa hasteko · E GitHub Enterprise erabiltzeko · Esc atzera egiteko"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domeinua: "
+auth.enterprise_hint_footer: "  Enter saioa hasteko · Esc github.com erabiltzeko"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Sakatu Enter berriro saiatzeko, edo Esc github.com erabiltzeko. Ohiko arrazoiak: domeinua gaizki idatzita edo eskuraezin egotea, kodea iraungita egotea, edo host horretan Copilot sarbiderik ez izatea."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Sakatu Enter berriro saiatzeko, edo Esc atzera egiteko."  # {Locked="Enter","Esc"}
 
 # ── Txat-ikuspegia (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pentsatzen…"

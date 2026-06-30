@@ -38,11 +38,16 @@ auth.agent_selected_with_status: "AI អេជេន្ត់ %{name} — "
 auth.checking_authentication: "  %{spinner} កំពុងផ្ទៀងផ្ទាត់..."
 auth.waiting_for_authorization: "  %{spinner} កំពុងរង់ចាំការអនុញ្ញាត..."
 auth.code_copied_hint: "  កូដត្រូវបានចម្លង — សូមបិទនៅក្នុងកម្មវិធីអានរបស់អ្នក។"
+auth.device_code_prompt: "ចូលទៅកាន់ %{url} ហើយបញ្ចូលកូដ៖ %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "ចូលដើម្បីប្រើ AI អេជេន្ត់របស់អ្នក:"
 auth.card_connect: "  តភ្ជាប់ %{name} ដើម្បីបើកមុខងារ AI អេជេន្ត់"
-auth.button_sign_in_github: "[ ចូលដោយ GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ ចូលដោយ %{name} ]"
-auth.hint_footer: "  ចុច Enter ដើម្បីចូល, Esc ដើម្បីត្រឡប់ក្រោយ"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  ចុច Enter ដើម្បីចម្លងពាក្យបញ្ជាចូល បន្ទាប់មកបិទភ្ជាប់វាក្នុងបង្អួច terminal ថ្មី ដើម្បីបញ្ចប់ការចូល"  # {Locked="Enter"}
+auth.hint_footer_back: "  Esc ដើម្បីត្រឡប់ក្រោយ"  # {Locked="Esc"}
+auth.enterprise_prompt: "  Enter ដើម្បីចូល · E សម្រាប់ GitHub Enterprise · Esc ដើម្បីត្រឡប់ក្រោយ"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  ដែនសហគ្រាស: "
+auth.enterprise_hint_footer: "  Enter ដើម្បីចូល · Esc ដើម្បីប្រើ github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  ចុច Enter ដើម្បីព្យាយាមម្ដងទៀត ឬ Esc ដើម្បីប្រើ github.com។ មូលហេតុទូទៅ៖ វាយដែនខុស ឬដែនមិនអាចចូលដល់បាន លេខកូដផុតកំណត់ ឬគណនីរបស់អ្នកគ្មានសិទ្ធិចូលប្រើ Copilot លើម៉ាស៊ីនបង្ហោះនោះ។"  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  ចុច Enter ដើម្បីព្យាយាមម្ដងទៀត ឬ Esc ដើម្បីត្រឡប់ក្រោយ។"  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ────────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "កំពុងគិត…"

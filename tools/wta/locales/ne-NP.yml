@@ -35,11 +35,16 @@ auth.agent_selected_with_status: "एजेन्ट %{name} — "
 auth.checking_authentication: "  %{spinner} प्रमाणीकरण जाँच हुँदैछ..."
 auth.waiting_for_authorization: "  %{spinner} अधिकृतिको प्रतीक्षा हुँदैछ..."
 auth.code_copied_hint: "  कोड क्लिपबोर्डमा प्रतिलिपि गरियो — आफ्नो ब्राउजरमा टाँस्नुहोस्।"
+auth.device_code_prompt: "%{url} मा जानुहोस् र कोड प्रविष्ट गर्नुहोस्: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.sign_in_prompt: "आफ्नो एजेन्ट प्रयोग गर्न साइन इन गर्नुहोस्:"
 auth.card_connect: "  एजेन्ट सुविधाहरू सक्षम गर्न %{name} जोड्नुहोस्"
-auth.button_sign_in_github: "[ GitHub बाट साइन इन गर्नुहोस् ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} बाट साइन इन गर्नुहोस् ]"
-auth.hint_footer: "  साइन इन गर्न Enter थिच्नुहोस्, फिर्ता जान Esc थिच्नुहोस्"  # {Locked="Enter","Esc"}
+auth.hint_footer: "  साइन-इन आदेश प्रतिलिपि गर्न Enter थिच्नुहोस्, त्यसपछि साइन इन पूरा गर्न यसलाई नयाँ टर्मिनल विन्डोमा टाँस्नुहोस्"  # {Locked="Enter"}
+auth.hint_footer_back: "  फिर्ता जान Esc"  # {Locked="Esc"}
+auth.enterprise_prompt: "  साइन इन गर्न Enter · GitHub Enterprise का लागि E · फिर्ता जान Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise डोमेन: "
+auth.enterprise_hint_footer: "  साइन इन गर्न Enter · github.com का लागि Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  फेरि प्रयास गर्न Enter थिच्नुहोस्, वा github.com का लागि Esc. सामान्य कारणहरू: गलत टाइप गरिएको वा पहुँच गर्न नसकिने डोमेन, म्याद सकिएको कोड, वा त्यो होस्टमा Copilot पहुँच नहुनु."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  फेरि प्रयास गर्न Enter थिच्नुहोस्, वा फिर्ता जान Esc."  # {Locked="Enter","Esc"}
 
 # ── च्याट दृश्य (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "सोचिरहेको छ…"
