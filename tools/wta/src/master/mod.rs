@@ -263,7 +263,7 @@ struct MasterStateInner {
     /// one round-trip and don't hammer a hung agent. Both the host-history
     /// reconcile and the synthetic-title refresh derive from this one fetch.
     host_list_cache:
-        Mutex<Option<(std::time::Instant, Option<Vec<acp::SessionInfo>>)>>,
+        Mutex<Option<(std::time::Instant, Option<std::sync::Arc<[acp::SessionInfo]>>)>>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -2185,7 +2185,7 @@ pub(crate) async fn broadcast_ext_to_helpers(
 /// "no sessions" — the reconcile skips it so a transient error can't wipe the
 /// view. 2s TTL so the 5s poll, the title refresh, and a burst of hook events
 /// share one round-trip.
-async fn host_session_list_raw(state: &MasterStateInner) -> Option<Vec<acp::SessionInfo>> {
+async fn host_session_list_raw(state: &MasterStateInner) -> Option<std::sync::Arc<[acp::SessionInfo]>> {
     let Some(init) = state.cached_init_resp.get() else {
         return None;
     };
@@ -2213,7 +2213,7 @@ async fn host_session_list_raw(state: &MasterStateInner) -> Option<Vec<acp::Sess
     )
     .await
     {
-        Ok(Ok(resp)) => Some(resp.sessions),
+        Ok(Ok(resp)) => Some(resp.sessions.into()),
         Ok(Err(e)) => {
             tracing::debug!(target: "master_history", "host session/list error: {e}");
             None
@@ -2430,7 +2430,7 @@ async fn handle_sessions_list(
         spawn_wsl_seed(state);
     } else {
         // Periodic poll: reconcile host rows against `session/list` (the source
-        // of truth) so phantom / CLI-deleted host rows are GC'd and newly-listed
+        // of truth) so phantom / CLI-deleted host rows are pruned and newly-listed
         // ones appear. Reuses the 2s-cached fetch. No-op (and no broadcast) when
         // nothing changed or the agent can't list — so a transient error never
         // wipes the view and steady state causes no push storm.

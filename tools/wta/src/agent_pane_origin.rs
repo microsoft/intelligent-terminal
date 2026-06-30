@@ -166,12 +166,17 @@ pub fn load_default_records() -> HashMap<String, OriginRecord> {
 }
 
 fn default_index_paths() -> Vec<PathBuf> {
+    // Order matters: `load_default_records` merges these via `HashMap::extend`
+    // (last write wins on a duplicate `session_id`). Load installed-package
+    // indices FIRST (dev/unpackaged only) and the current runtime's index LAST
+    // so the current runtime's record wins on key collisions and keeps its
+    // newer per-record metadata.
     let mut paths = Vec::new();
-    if let Some(path) = default_index_path() {
-        paths.push(path);
-    }
     if crate::runtime_paths::current_package_family_name().is_none() {
         paths.extend(installed_package_index_paths());
+    }
+    if let Some(path) = default_index_path() {
+        paths.push(path);
     }
     paths
 }
