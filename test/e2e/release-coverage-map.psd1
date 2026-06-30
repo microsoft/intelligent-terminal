@@ -60,4 +60,14 @@
     'wtcli listen works'                = 'wtcli listen streams events'
     'C++ agent pane log is written'     = 'C\+\+ agent pane log is written'
     'Early startup failures are logged' = 'Early startup failures would be logged'
+
+    # §0/§1 agent Group Policy locks — the Feature.AgentPolicy suite drives the GPO registry
+    # (AllowAutoFix / AllowedAgents / AllowCustomAgents / AllowAgentSessionHooks) and asserts both
+    # the ENFORCEMENT (autofix suppressed; blocked built-in/custom agents can't open a pane) and
+    # the UI policy MESSAGE (the FRE SessionHooksPolicyNotice "managed by your organization").
+    # 'Group Policy locks' is in every Describe name, so the FRE-locks item is credited by the
+    # whole suite; the Settings-style "policy message" item is credited by the FRE notice case
+    # specifically (same managed-by-org control mechanism).
+    'FRE respects policy locks'         = 'Group Policy locks'
+    'Policy lock UI works'              = 'shows the policy-locked notice in the FRE'
 }
