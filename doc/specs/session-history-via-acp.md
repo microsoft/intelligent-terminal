@@ -47,7 +47,9 @@ WSL, with no on-disk-format coupling and no tar branch to maintain.
    agent CLI once at startup and stores its connection + handshake
    (`MasterStateInner::{agent_conn, cached_init_resp}`). Host history calls
    `session/list` on that existing connection (`host_history_via_acp` →
-   `host_rows_from_conn`), so it costs one round-trip, not a process spawn.
+   `host_session_list_raw`), so it costs one round-trip, not a process spawn. A
+   2 s TTL cache (`host_list_cache`, holding an `Arc<[SessionInfo]>`) lets the
+   reconcile and the title-refresh share that single round-trip.
 2. **Capability gate, no disk fallback.** Gated on
    `cached_init_resp.agent_capabilities.session_capabilities.list`. `None`
    (Gemini, non-ACP `custom:` agents) ⇒ **empty history** — there is no on-disk
@@ -57,14 +59,19 @@ WSL, with no on-disk-format coupling and no tar branch to maintain.
    session can't be recognised from the row itself. They are filtered out by
    subtracting the `agent_pane_origin` index (`load_default_set`) from the rows.
    Empirically: of 7 agent-pane-looking host rows, 6 were in the index (the 7th
-   predated the index file).
+   predated the index file). To close the race where a just-created pane session
+   is listed before its index line is written, master also unions its live
+   `session_to_helper` keys (every `session/new` it routed) into the subtracted
+   set.
 4. **Shared mapper.** `session_history::classify_and_map` maps `acp::SessionInfo`
    → `AgentSession` and applies the Class-A filter, used by host **and** WSL.
 
 The helper-facing `intellterm.wta/sessions/list` handler still answers from
-master's registry; what changed is the **seed** — the registry is now seeded
-(startup + the 5 s rescan) from the agent's `session/list` instead of from disk
-(`master::seed_history_via_acp` → host + WSL).
+master's registry; what changed is that the registry is now both **seeded** and
+continuously **reconciled** against the agent's `session/list` instead of from
+disk. The host seed is immediate (`seed_host_and_broadcast`); the slower WSL seed
+is spawned asynchronously (`spawn_wsl_seed`) so a distro scan never blocks host
+rows. See *Reconcile* below.
 
 ### WSL
 
@@ -99,10 +106,11 @@ so the title is upgraded **in place** instead:
 - Three guards keep this cheap:
   - **synthetic-gate** — only fetch when some row is still synthetic (steady state
     makes no extra ACP calls);
-  - **2 s TTL cache** of the title map (`host_titles_cache`) — a burst of
-    hook/watcher events shares one `list_sessions` round-trip, instead of the
-    serial, un-debounced watcher loop issuing (and stalling up to the 5 s timeout
-    on) one call per event;
+  - **2 s TTL cache** of the raw `session/list` (`host_list_cache`, holding an
+    `Arc<[SessionInfo]>` so callers clone a pointer, not the list) — a burst of
+    hook/watcher events, the title-refresh, and the reconcile all share one
+    `list_sessions` round-trip, instead of the serial, un-debounced watcher loop
+    issuing (and stalling up to the 5 s timeout on) one call per event;
   - **cli-source gate** (`row_refreshable_by_connected_agent`) — the connected
     agent enumerates only *its own* CLI's sessions, so a row stamped with a
     *different* known CLI (e.g. a watched `claude` shell session while the agent
@@ -111,6 +119,28 @@ so the title is upgraded **in place** instead:
 This replaces the per-CLI on-disk title parsers (`workspace.yaml` `name:`,
 first-user-message JSONL, …): the `session/list` title is the **same** value the
 CLI generated, surfaced by the CLI itself.
+
+### `session/list` is authoritative: reconcile, not just seed
+
+`session/list` isn't only the startup seed — it is the ongoing source of truth.
+On every 5 s poll the master reconciles its host-history rows against the latest
+`session/list` (`sync_host_history`):
+
+- **Add** any newly-listed session not yet in the registry.
+- **Drop** any *stale* host row the agent no longer lists. The drop rule
+  (`is_stale_host_history_row`, a pure unit-tested predicate) is deliberately
+  narrow: only a **Host**, **non-AgentPane**, **terminal** (Ended / Historical)
+  row that is **absent from `session/list`** is removed. Live rows, agent-pane
+  (Class-A) rows, and anything the agent still lists are always kept.
+
+This is what makes a phantom self-heal: a session the user opened and exited with
+no real content never enters the CLI's `session/list` (the agent lists only
+sessions with real events — see *Feasibility evidence §2*), so the next poll
+drops its leftover row within ~5 s — authoritatively, from the agent's own
+enumeration, with **no disk read**. A transient `session/list` failure returns
+`None` and is a no-op, so an error never wipes the view. Reconcile runs only for
+agents that support `session/list`; for Gemini / non-ACP `custom:` there is
+nothing to reconcile against (and no history either).
 
 ### What was deleted vs. kept
 
@@ -126,28 +156,35 @@ CLI generated, surfaced by the CLI itself.
   that picker rows come from the agent's own enumeration of resumable sessions —
   a present row *is* resumable, and the CLI re-validates on `--resume`. WSL rows
   already bypassed this guard, so host rows are now symmetric.
+- The **live phantom-prune flow**: `prune_phantom_session_if_ended` /
+  `key_has_definite_resumable_content*` and the per-CLI on-disk content scanners
+  it drove (`*_session_has_real_content`, `parse_gemini_meta`, the `*_jsonl`
+  readers …). It was **helper-local** — it pruned the *helper's* own registry,
+  never master's snapshot, which is what the session view actually renders — so
+  it never reached a phantom the user saw. Reconcile (above) now drops those rows
+  authoritatively from master's registry and `session_watcher` covers live
+  Class-B status, so the disk-reading guard is redundant.
 
 **Kept** (different concerns; some still touch disk):
 
 - `agent_pane_origin` index — the Class-A identifier (written by the agent-pane
   lifecycle, read by the filter above).
-- `session_watcher` — machine-wide *live* session activity/status.
-- The **live phantom-prune flow**: `prune_phantom_session_if_ended` /
-  `key_has_definite_resumable_content*`. It prunes a *just-ended live* row that
-  left no on-disk content (e.g. a 0-turn agent pane the user closed). It is
-  "strict" (missing artefact ⇒ phantom ⇒ prune) precisely because wta observed
-  that session's whole lifecycle in process. Still reads
-  `~/.{copilot,claude,gemini,codex}` to make that call.
+- `session_watcher` — machine-wide *live* session activity/status, including the
+  on-disk reads it needs to resolve a watched session's cwd / pane
+  (`copilot_session_dir_for_key`, `find_codex_rollout_by_id`,
+  `codex_cwd_from_rollout`, `decode_claude_cwd`, …).
 
-#### Why the resume-guard could go but the prune-guard stayed
+#### Why both on-disk phantom-guards could go
 
-| | Resume phantom-guard (**deleted**) | Live phantom-prune (**kept**) |
+Both disk-reading guards are now redundant, superseded by the agent's own
+`session/list` (via reconcile) plus `session_watcher`:
+
+| | Resume phantom-guard | Live phantom-prune |
 |---|---|---|
-| Function | `key_is_resumable_on_disk*` | `key_has_definite_resumable_content*` |
+| Function | `key_is_resumable_on_disk*` | `key_has_definite_resumable_content*` / `prune_phantom_session_if_ended` |
 | Trigger | user presses Enter to **resume a history row** in the picker | a **live session ends** (`SessionStopped` / pane closed) |
-| Question | "is this picker row safe to `--resume`?" | "should I drop this just-ended empty live row?" |
-| Missing artefact | lenient ⇒ `true` (defer to CLI) | strict ⇒ `false` (prune) |
-| Why (not) redundant | rows now come from `session/list` ⇒ already resumable | not about history sourcing; a 0-turn session isn't in `session/list` but its live row still needs cleanup |
+| Question | "is this picker row safe to `--resume`?" | "should I drop this just-ended empty row?" |
+| Why redundant | rows now come from `session/list` ⇒ already resumable; the CLI re-validates on `--resume` | reconcile drops the row from master's snapshot once `session/list` stops listing it (a 0-turn session is never listed); the guard only ever pruned the helper-local registry the view doesn't render |
 
 ### Accepted trade-offs
 
@@ -247,8 +284,8 @@ live-session registry** and **never forwarded it to the agent CLI**
 (`src/master/mod.rs`), so WTA had never observed what an agent CLI's *own*
 `session/list` returns — which is exactly what the study above measured. This
 change keeps the helper-facing handler answering from the registry, but now
-**seeds** that registry from the agent's `session/list` (host) and the per-distro
-WSL scan, instead of from the on-disk loaders.
+**seeds and reconciles** that registry against the agent's `session/list` (host)
+and the per-distro WSL scan, instead of from the on-disk loaders.
 
 ## Appendix B: reproduce
 
