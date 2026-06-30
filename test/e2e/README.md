@@ -139,7 +139,8 @@ Outputs (all under `test/e2e/artifacts/`):
   driven purely by automation: **`[x]`** = a test passed, **`[ ] ⚠️ AUTOMATION FAILED`** = a test ran
   and failed, plain **`[ ]`** = not covered this run, verify manually. Suppress with
   `-SkipReleaseReport`; regenerate standalone from an existing `results.xml` with
-  `pwsh -File test/e2e/New-ReleaseReport.ps1`.
+  `pwsh -File test/e2e/New-ReleaseReport.ps1`. Items listed in `test/e2e/release-exclude.psd1`
+  (by title regex, e.g. RTL) are dropped from the report to keep it focused on the sign-off set.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.

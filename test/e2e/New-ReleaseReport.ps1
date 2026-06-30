@@ -19,6 +19,9 @@
 .PARAMETER Checklist   Source checklist (default doc/release-check-list.md).
 .PARAMETER ResultsXml  NUnit results from a Pester run (default test/e2e/artifacts/results.xml).
 .PARAMETER OverrideMap PSD1 of @{ '<item title>' = '<regex matched against test names>' }.
+.PARAMETER ExcludeMap  PSD1 of @{ Exclude = @('<item-title regex>', …) }; matching items are
+                       dropped from the report entirely (not counted as passed or manual), to
+                       keep the checklist focused. Default test/e2e/release-exclude.psd1.
 .PARAMETER OutFile     Output report (default test/e2e/artifacts/release-report.md).
 
 .EXAMPLE
@@ -31,6 +34,7 @@ param(
     [string]$Checklist = (Join-Path $PSScriptRoot '..\..\doc\release-check-list.md'),
     [string[]]$ResultsXml = @((Join-Path $PSScriptRoot 'artifacts\results.xml')),
     [string]$OverrideMap = (Join-Path $PSScriptRoot 'release-coverage-map.psd1'),
+    [string]$ExcludeMap = (Join-Path $PSScriptRoot 'release-exclude.psd1'),
     [string]$OutFile = (Join-Path $PSScriptRoot 'artifacts\release-report.md')
 )
 
@@ -57,6 +61,11 @@ Write-Host "Loaded $($results.Count) test results from $($ResultsXml -join ', ')
 $overrides = @{}
 if (Test-Path $OverrideMap) { $overrides = Import-PowerShellDataFile -Path $OverrideMap }
 
+# Item-title regexes to drop entirely from the report (kept out of pass/manual counts) so the
+# checklist stays focused on the sign-off set. The canonical checklist doc is unaffected.
+$excludes = @()
+if (Test-Path $ExcludeMap) { $excludes = @((Import-PowerShellDataFile -Path $ExcludeMap).Exclude) }
+
 # ── Match a checklist item title to test outcomes ───────────────────────────────────
 function Get-ItemStatus([string]$title) {
     if (-not $title) { return 'Untested' }
@@ -81,7 +90,7 @@ function Get-ItemTitle([string]$rest) {
 }
 
 # ── Walk the checklist, emit the report ─────────────────────────────────────────────
-$pass = 0; $fail = 0; $manual = 0
+$pass = 0; $fail = 0; $manual = 0; $excluded = 0
 $body = [System.Collections.Generic.List[string]]::new()
 foreach ($line in Get-Content -LiteralPath $Checklist) {
     if ($line -match '^\s*#{1,6}\s') { $body.Add($line); continue }              # section headers
@@ -90,6 +99,8 @@ foreach ($line in Get-Content -LiteralPath $Checklist) {
         $rest = $Matches['rest']
         $title = Get-ItemTitle $rest
         $clean = Clear-ItemText $rest
+        # Drop intentionally-excluded items (e.g. RTL) entirely — not passed, not manual.
+        if ($title -and ($excludes | Where-Object { $title -match $_ })) { $excluded++; continue }
         $status = Get-ItemStatus $title
         # An originally-ticked box means the item is already fully verified by an automated
         # UNIT test (the checklist's [x] convention). Unit tests are automation too, so unless
@@ -128,5 +139,5 @@ $outDir = Split-Path -Parent $OutFile
 if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
 Set-Content -LiteralPath $OutFile -Value ($header + ($body -join "`n")) -Encoding UTF8
 Write-Host "Report -> $OutFile" -ForegroundColor Green
-Write-Host ("  [x] passed={0}  [!] FAILED={1}  [ ] manual={2}  (total {3})" -f $pass, $fail, $manual, $total)
+Write-Host ("  [x] passed={0}  [!] FAILED={1}  [ ] manual={2}  (total {3}; excluded {4})" -f $pass, $fail, $manual, $total, $excluded)
 if ($fail -gt 0) { Write-Host "  WARNING: $fail item(s) have FAILED automation." -ForegroundColor Yellow }
