@@ -70,4 +70,8 @@
     # specifically (same managed-by-org control mechanism).
     'FRE respects policy locks'         = 'Group Policy locks'
     'Policy lock UI works'              = 'shows the policy-locked notice in the FRE'
+
+    # §0 FRE agent-setup overlay controls (Feature.FreAgentSetup) — the FRE-specific UI half.
+    'Copilot preinstalled'              = 'FRE agent dropdown shows Copilot as installed'
+    'Session hook hints'                = 'Session hook hints appear only when'
 }
