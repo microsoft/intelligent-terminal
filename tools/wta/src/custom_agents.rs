@@ -15,9 +15,15 @@
 //! ```
 //!
 //! Discovery scopes, highest priority first (later scope wins on id collision):
-//!   1. Project: `<cwd>/.github/agents/*.md`
-//!   2. User:    `~/.github/agents/*.md`
+//!   1. Project: `<cwd..git-root>/.intelligent-terminal/agents/*.md` (walked up)
+//!   2. User:    `~/.intelligent-terminal/agents/*.md`
 //!   3. Built-in `terminal-agent` (always present, lowest priority)
+//!
+//! The IT-neutral dirs above are backend-agnostic (Intelligent Terminal's own
+//! home dotdir, like `~/.claude` / `~/.copilot`). Phase B adds *provider-native*
+//! sources selected by the active backend CLI (Copilot `.github/agents`, Claude
+//! `.claude/agents`, …) so `/agent` also surfaces the agents you already defined
+//! for whatever CLI the pane is running.
 //!
 //! The list is re-scanned every time the `/agent` picker opens, so adding,
 //! editing, or deleting a `.agent.md` file takes effect with no restart — the
@@ -99,34 +105,111 @@ pub fn builtin_agent() -> CustomAgent {
     }
 }
 
-/// Discover all custom agents visible from `project_dir` (walked for a
-/// `.github/agents` folder) and `user_home` (`~/.github/agents`), plus the
-/// always-present built-in.
+/// A discovery source: a set of home-relative user dirs and repo-relative
+/// project dirs (scanned per level while walking up when `walk_up`). Phase A
+/// ships only the IT-neutral source; Phase B appends provider-native sources
+/// (Copilot `.github/agents`, Claude `.claude/agents`, …) selected by the
+/// active backend.
+struct AgentSource {
+    /// Dirs relative to the user's home directory, e.g.
+    /// `.intelligent-terminal/agents`.
+    user_rel: &'static [&'static str],
+    /// Dirs relative to each project level, e.g. `.intelligent-terminal/agents`.
+    project_rel: &'static [&'static str],
+    /// When true, `project_rel` is scanned at every directory from the cwd up
+    /// to (and including) the git root; otherwise only at the cwd.
+    walk_up: bool,
+}
+
+/// The always-on, backend-agnostic IT source. Branded to Intelligent Terminal
+/// (its own home dotdir, like `~/.claude` / `~/.copilot`) — deliberately NOT
+/// `.github`, which is Copilot's provider convention (added in Phase B).
+fn neutral_sources() -> Vec<AgentSource> {
+    vec![AgentSource {
+        user_rel: &[".intelligent-terminal/agents"],
+        project_rel: &[".intelligent-terminal/agents"],
+        walk_up: true,
+    }]
+}
+
+/// Discover all custom agents visible from `project_dir` (walked up to the git
+/// root for a project agents folder) and `user_home` (the IT-neutral user
+/// dir), plus the always-present built-in.
 ///
-/// The returned list is stable-ordered: the built-in is first (unless a
-/// same-id agent overrides it, in which case the override keeps that slot),
-/// followed by the remaining agents in discovery order. On id collision the
-/// higher-priority scope (Project > User > BuiltIn) wins and keeps the earlier
-/// slot.
+/// Priority (later wins on id collision): **Project > User > BuiltIn**, and the
+/// override keeps the earlier display slot. Within the project scope, a level
+/// closer to the cwd wins over an ancestor.
 ///
 /// Both roots are optional so this is unit-testable with temp directories and
 /// so a missing `$HOME` / cwd degrades gracefully to fewer agents.
 pub fn discover_agents(project_dir: Option<&Path>, user_home: Option<&Path>) -> Vec<CustomAgent> {
     let mut agents = vec![builtin_agent()];
+    let sources = neutral_sources();
 
-    // User scope first, project scope second, so project upserts over user.
+    // USER scope first so PROJECT upserts over it. (When Phase B adds provider
+    // sources, they are appended after neutral within each scope, so
+    // provider-native wins over IT-neutral at the same scope.)
     if let Some(home) = user_home {
-        collect_from_dir(&home.join(".github").join("agents"), AgentScope::User, &mut agents);
+        for source in &sources {
+            for rel in source.user_rel {
+                collect_from_dir(&join_rel(home, rel), AgentScope::User, &mut agents);
+            }
+        }
     }
-    if let Some(project) = project_dir {
-        collect_from_dir(
-            &project.join(".github").join("agents"),
-            AgentScope::Project,
-            &mut agents,
-        );
+
+    // PROJECT scope: scan each level from the git root down to the cwd, so the
+    // level closest to the cwd is processed last and wins on collision.
+    if let Some(cwd) = project_dir {
+        for source in &sources {
+            let levels = if source.walk_up {
+                project_levels(cwd)
+            } else {
+                vec![cwd.to_path_buf()]
+            };
+            for level in &levels {
+                for rel in source.project_rel {
+                    collect_from_dir(&join_rel(level, rel), AgentScope::Project, &mut agents);
+                }
+            }
+        }
     }
 
     agents
+}
+
+/// Join a `/`-separated relative path onto `base`, one segment at a time (so it
+/// works regardless of the platform path separator).
+fn join_rel(base: &Path, rel: &str) -> PathBuf {
+    let mut p = base.to_path_buf();
+    for seg in rel.split('/').filter(|s| !s.is_empty()) {
+        p.push(seg);
+    }
+    p
+}
+
+/// The project directory levels to scan, ordered **git-root-first, cwd-last**,
+/// so callers that upsert (last-wins) let the cwd-closest definition win.
+///
+/// The repo root is the nearest ancestor (including `cwd`) that contains a
+/// `.git` entry. When no git root is found we scan only the cwd (matching
+/// Codex: "if it cannot find a project root, it only checks the current
+/// directory") rather than walking to the filesystem root.
+fn project_levels(cwd: &Path) -> Vec<PathBuf> {
+    let git_root = cwd.ancestors().find(|a| a.join(".git").exists());
+    match git_root {
+        Some(root) => {
+            let mut levels: Vec<PathBuf> = Vec::new();
+            for anc in cwd.ancestors() {
+                levels.push(anc.to_path_buf());
+                if anc == root {
+                    break;
+                }
+            }
+            levels.reverse(); // root-first, cwd-last
+            levels
+        }
+        None => vec![cwd.to_path_buf()],
+    }
 }
 
 /// Convenience wrapper over [`discover_agents`] using the real current
@@ -487,9 +570,43 @@ mod tests {
         }
 
         fn write_agent(&self, rel: &str, contents: &str) {
-            let dir = self.path.join(".github").join("agents");
+            self.write_agent_in(".", rel, contents);
+        }
+
+        /// Write an agent file under `<self.path>/<level>/.intelligent-terminal/agents/`.
+        /// `level` is a `/`-separated subpath (use "." for the root).
+        fn write_agent_in(&self, level: &str, rel: &str, contents: &str) {
+            let mut dir = self.path.clone();
+            if level != "." {
+                for seg in level.split('/') {
+                    dir.push(seg);
+                }
+            }
+            dir.push(".intelligent-terminal");
+            dir.push("agents");
             fs::create_dir_all(&dir).unwrap();
             fs::write(dir.join(rel), contents).unwrap();
+        }
+
+        /// Mark a subdirectory (or the root, ".") as a git repo root so
+        /// `project_levels` walk-up stops there.
+        fn make_git_root(&self, level: &str) {
+            let mut dir = self.path.clone();
+            if level != "." {
+                for seg in level.split('/') {
+                    dir.push(seg);
+                }
+            }
+            fs::create_dir_all(dir.join(".git")).unwrap();
+        }
+
+        /// Absolute path to a `/`-separated subdirectory of this temp dir.
+        fn sub(&self, level: &str) -> PathBuf {
+            let mut dir = self.path.clone();
+            for seg in level.split('/') {
+                dir.push(seg);
+            }
+            dir
         }
     }
 
@@ -548,7 +665,7 @@ mod tests {
     fn project_scope_overrides_user_scope_by_id() {
         let user = TempDir::new();
         // Reuse write_agent layout under the "home" temp dir.
-        let user_dir = user.path.join(".github").join("agents");
+        let user_dir = user.path.join(".intelligent-terminal").join("agents");
         fs::create_dir_all(&user_dir).unwrap();
         fs::write(
             user_dir.join("shared.agent.md"),
@@ -660,5 +777,62 @@ mod tests {
             .collect();
         // built-in first, then sorted-by-filename order (alpha before zeta).
         assert_eq!(ids, vec!["terminal-agent", "alpha", "zeta"]);
+    }
+
+    #[test]
+    fn walks_up_to_git_root_finds_ancestor_agent() {
+        let repo = TempDir::new();
+        repo.make_git_root(".");
+        // Agent defined at the repo root's neutral dir…
+        repo.write_agent_in(".", "root-agent.agent.md", "---\nname: root-agent\n---\nr\n");
+        // …discovered even when the cwd is a nested subdirectory.
+        let cwd = repo.sub("a/b/c");
+        fs::create_dir_all(&cwd).unwrap();
+
+        let agents = discover_agents(Some(&cwd), None);
+        assert!(
+            find_agent_by_id(&agents, "root-agent").is_some(),
+            "walk-up must find an agent defined at the git root from a nested cwd"
+        );
+    }
+
+    #[test]
+    fn cwd_level_wins_over_ancestor_on_collision() {
+        let repo = TempDir::new();
+        repo.make_git_root(".");
+        repo.write_agent_in(
+            ".",
+            "dup.agent.md",
+            "---\nname: dup\ndescription: 'Root version.'\n---\nroot\n",
+        );
+        repo.write_agent_in(
+            "a/b",
+            "dup.agent.md",
+            "---\nname: dup\ndescription: 'Nested version.'\n---\nnested\n",
+        );
+        let cwd = repo.sub("a/b");
+
+        let agents = discover_agents(Some(&cwd), None);
+        let dup = find_agent_by_id(&agents, "dup").expect("found");
+        assert_eq!(
+            dup.description, "Nested version.",
+            "the level closest to the cwd must win over an ancestor"
+        );
+        assert_eq!(agents.iter().filter(|a| a.id == "dup").count(), 1);
+    }
+
+    #[test]
+    fn no_git_root_scans_only_cwd_not_ancestors() {
+        // No `.git` anywhere under the temp root → ancestors are NOT scanned.
+        let root = TempDir::new();
+        root.write_agent_in(".", "ancestor.agent.md", "---\nname: ancestor\n---\na\n");
+        let cwd = root.sub("x/y");
+        fs::create_dir_all(&cwd).unwrap();
+
+        let agents = discover_agents(Some(&cwd), None);
+        assert!(
+            find_agent_by_id(&agents, "ancestor").is_none(),
+            "without a git root, discovery must scan only the cwd, not ancestors"
+        );
     }
 }
