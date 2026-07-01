@@ -113,7 +113,23 @@ fn parse_group_guid(path: &Path) -> String {
         .0;
     let f: Vec<u64> = inner
         .split(',')
-        .map(|p| u64::from_str_radix(p.trim().trim_start_matches("0x"), 16).unwrap())
+        .map(|p| {
+            let tok = p.trim();
+            // Accept both `0x` and `0X`, matching `extract_define_u64`.
+            let hex = tok
+                .strip_prefix("0x")
+                .or_else(|| tok.strip_prefix("0X"))
+                .unwrap_or(tok);
+            // Tolerate a trailing C numeric suffix (`u`/`U`/`l`/`L`); none of
+            // these are hex digits, so this can't strip real value bytes.
+            let hex = hex.trim_end_matches(|c: char| matches!(c, 'u' | 'U' | 'l' | 'L'));
+            u64::from_str_radix(hex, 16).unwrap_or_else(|e| {
+                panic!(
+                    "failed to parse group GUID field `{tok}` in {}: {e}",
+                    path.display()
+                )
+            })
+        })
         .collect();
     assert_eq!(f.len(), 11, "group GUID: expected 11 fields, got {}", f.len());
     format!(
