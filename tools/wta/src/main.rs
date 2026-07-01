@@ -1905,8 +1905,16 @@ async fn delegate_with_context(
     tracing::debug!("delegate_with_context: launching");
     tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
+    // The delegate always launches a Windows agent CLI (Copilot/Claude/Gemini).
+    // If the active pane is WSL, `cwd` is a POSIX path (e.g. "/home/user") that
+    // a Windows process can't use as a working directory — sanitize it to the
+    // Windows home so the CLI still launches. (WSL-native agents are a separate
+    // future feature.)
+    let windows_home = std::env::var("USERPROFILE").ok();
+    let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+
     let create_resp = shell_mgr
-        .wt_create_tab(Some(&commandline), cwd, None, None)
+        .wt_create_tab(Some(&commandline), sanitized_cwd.as_deref(), None, None)
         .await?;
     let pane_guid = create_resp
         .get("session_id")

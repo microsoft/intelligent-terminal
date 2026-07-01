@@ -1013,6 +1013,43 @@ pub(crate) fn resolve_agent_profile(
     }
 }
 
+/// A bare POSIX absolute path (`/home/user`, `/mnt/c/...`) — starts with a
+/// single `/`. A `//`-prefixed path is a forward-slash UNC path (e.g.
+/// `//wsl.localhost/Ubuntu/...`), which *is* a valid Windows path, so it's not
+/// treated as POSIX here.
+fn is_posix_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.first() == Some(&b'/') && bytes.get(1) != Some(&b'/')
+}
+
+/// Choose the working directory to hand a **Windows** agent CLI process.
+///
+/// A WSL pane reports a POSIX cwd (e.g. `/home/user`), which is not a valid
+/// working directory for a Windows process — handing it to a Windows agent CLI
+/// (Copilot/Claude/Gemini) makes it fail to launch. When the provided cwd is a
+/// bare POSIX path we fall back to the Windows home (`%USERPROFILE%`, passed in
+/// as `windows_home`) if available, otherwise drop it so Windows Terminal picks
+/// a sensible default. Windows paths (drive-letter, UNC) and relative paths pass
+/// through unchanged, and a missing/blank cwd stays `None`.
+///
+/// Running an agent *natively inside WSL* (so it honors the Linux cwd and uses
+/// the WSL toolchain) is a separate future feature; this is only a guard so the
+/// Windows agent CLI doesn't crash on an unusable cwd.
+pub(crate) fn sanitize_windows_agent_cwd(
+    cwd: Option<&str>,
+    windows_home: Option<&str>,
+) -> Option<String> {
+    let cwd = cwd.map(str::trim).filter(|c| !c.is_empty())?;
+    if is_posix_absolute_path(cwd) {
+        windows_home
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            .map(str::to_owned)
+    } else {
+        Some(cwd.to_owned())
+    }
+}
+
 fn resolve_created_pane_id(result: &serde_json::Value, action_name: &str) -> Result<String> {
     value_to_string(result.get("session_id"))
         .filter(|pane_id| !pane_id.trim().is_empty())
@@ -1128,9 +1165,9 @@ mod tests {
         build_delegate_launch_commandline,
         build_delegate_launch_commandline_with_session, default_delegate_agent_runtimes,
         parse_autofix_response, parse_recommendation_set, resolve_agent_profile,
-        resolve_created_pane_id, validate_recommendation_set_for_coordinator_target,
-        AutofixDecision, DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget,
-        RecommendedAction,
+        resolve_created_pane_id, sanitize_windows_agent_cwd,
+        validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
+        DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
     use serde_json::json;
 
@@ -1667,6 +1704,76 @@ mod tests {
     fn resolve_profile_ignores_non_string_active_pane_profile() {
         let active = json!({ "profile": 42 });
         assert_eq!(resolve_agent_profile(None, Some(&active)), None);
+    }
+
+    // ── Windows agent CLI cwd sanitize (WSL POSIX cwd guard) ───────────────
+
+    #[test]
+    fn sanitize_cwd_passes_through_windows_drive_path() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some(r"C:\repo"), Some(r"C:\Users\me")),
+            Some(r"C:\repo".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_falls_back_for_posix_path() {
+        // A WSL pane's "/home/user" is unusable for a Windows agent CLI → home.
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/home/user"), Some(r"C:\Users\me")),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_falls_back_for_mnt_path() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/mnt/c/repo"), Some(r"C:\Users\me")),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_root_posix_falls_back() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/"), Some(r"C:\Users\me")),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_posix_without_home_is_dropped() {
+        // No Windows home available → drop the unusable cwd (None), letting WT
+        // pick a default rather than crashing the agent CLI on a POSIX path.
+        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), None), None);
+        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")), None);
+    }
+
+    #[test]
+    fn sanitize_cwd_keeps_unc_path() {
+        // Forward-slash and backslash UNC paths are valid Windows paths — keep.
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("//wsl.localhost/Ubuntu/home/user"), Some(r"C:\Users\me")),
+            Some("//wsl.localhost/Ubuntu/home/user".to_string())
+        );
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some(r"\\wsl.localhost\Ubuntu\home\user"), Some(r"C:\Users\me")),
+            Some(r"\\wsl.localhost\Ubuntu\home\user".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_none_and_blank_stay_none() {
+        assert_eq!(sanitize_windows_agent_cwd(None, Some(r"C:\Users\me")), None);
+        assert_eq!(sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")), None);
+    }
+
+    #[test]
+    fn sanitize_cwd_keeps_relative_path() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("subdir"), Some(r"C:\Users\me")),
+            Some("subdir".to_string())
+        );
     }
 
     #[test]
