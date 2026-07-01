@@ -140,10 +140,10 @@ impl ShellManager {
         params.insert("background".into(), true.into());
 
         if let Ok(active) = self.wt_get_active_pane().await {
-            if let Some(profile) = active.get("profile").and_then(|v| v.as_str()) {
-                if !profile.is_empty() {
-                    params.insert("profile".into(), profile.into());
-                }
+            if let Some(profile) =
+                crate::coordinator::resolve_agent_profile(None, Some(&active))
+            {
+                params.insert("profile".into(), profile.into());
             }
         }
 

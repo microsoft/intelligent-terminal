@@ -419,14 +419,8 @@ async fn execute_choice(
                 profile,
             } => {
                 // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
-                let profile = match profile {
-                    Some(p) if !p.is_empty() => Some(p.clone()),
-                    _ => shell_mgr
-                        .wt_get_active_pane()
-                        .await
-                        .ok()
-                        .and_then(|v| v.get("profile").and_then(|v| v.as_str()).map(|s| s.to_owned())),
-                };
+                let active_pane = shell_mgr.wt_get_active_pane().await.ok();
+                let profile = resolve_agent_profile(profile.as_deref(), active_pane.as_ref());
 
                 ensure_non_empty("input", input)?;
                 let runtime = match agent.as_deref() {
@@ -527,14 +521,8 @@ async fn execute_choice(
                 profile,
             } => {
                 // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
-                let profile = match profile {
-                    Some(p) if !p.is_empty() => Some(p.clone()),
-                    _ => shell_mgr
-                        .wt_get_active_pane()
-                        .await
-                        .ok()
-                        .and_then(|v| v.get("profile").and_then(|v| v.as_str()).map(|s| s.to_owned())),
-                };
+                let active_pane = shell_mgr.wt_get_active_pane().await.ok();
+                let profile = resolve_agent_profile(profile.as_deref(), active_pane.as_ref());
 
                 let target_label = open_target_label(target);
                 coordinator_log(&format!(
@@ -1004,6 +992,27 @@ fn ensure_non_empty(field: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// Resolve the profile for an agent-created terminal.
+///
+/// Prefers an explicit, non-empty profile supplied by the LLM; otherwise falls
+/// back to the `profile` field of the active pane (the shell the user is
+/// working in). An empty profile from either source is treated as "no profile"
+/// so downstream callers let Windows Terminal pick the default — this keeps the
+/// behavior consistent with `ShellManager::create_terminal_wt`.
+pub(crate) fn resolve_agent_profile(
+    explicit: Option<&str>,
+    active_pane: Option<&serde_json::Value>,
+) -> Option<String> {
+    match explicit {
+        Some(p) if !p.is_empty() => Some(p.to_owned()),
+        _ => active_pane
+            .and_then(|v| v.get("profile"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned()),
+    }
+}
+
 fn resolve_created_pane_id(result: &serde_json::Value, action_name: &str) -> Result<String> {
     value_to_string(result.get("session_id"))
         .filter(|pane_id| !pane_id.trim().is_empty())
@@ -1118,9 +1127,10 @@ mod tests {
     use super::{
         build_delegate_launch_commandline,
         build_delegate_launch_commandline_with_session, default_delegate_agent_runtimes,
-        parse_autofix_response, parse_recommendation_set, resolve_created_pane_id,
-        validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
-        DelegatePromptDelivery, OpenTarget, RecommendedAction,
+        parse_autofix_response, parse_recommendation_set, resolve_agent_profile,
+        resolve_created_pane_id, validate_recommendation_set_for_coordinator_target,
+        AutofixDecision, DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget,
+        RecommendedAction,
     };
     use serde_json::json;
 
@@ -1513,6 +1523,150 @@ mod tests {
             }
             other => panic!("expected Open, got {other:?}"),
         }
+    }
+
+    // ── profile inheritance (PR #366) ──────────────────────────────────────
+
+    #[test]
+    fn open_action_defaults_profile_to_none_when_absent() {
+        // The `profile` field is optional; an LLM emitting the pre-#366 schema
+        // (no `profile` key) must still parse, with profile == None.
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open a tab",
+      "actions": [ { "type": "open", "target": "tab" } ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open without profile should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { profile, .. } => assert_eq!(profile.as_deref(), None),
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_action_parses_explicit_profile() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open Ubuntu tab",
+      "actions": [ { "type": "open", "target": "tab", "profile": "Ubuntu" } ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open with profile should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { profile, .. } => {
+                assert_eq!(profile.as_deref(), Some("Ubuntu"));
+            }
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_and_send_parses_explicit_profile() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open Ubuntu tab and run",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "input": "ls -la",
+          "profile": "Ubuntu"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open_and_send should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::OpenAndSend { profile, input, .. } => {
+                assert_eq!(profile.as_deref(), Some("Ubuntu"));
+                assert_eq!(input, "ls -la");
+            }
+            other => panic!("expected OpenAndSend, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_profile_prefers_explicit_over_active_pane() {
+        let active = json!({ "profile": "PowerShell" });
+        assert_eq!(
+            resolve_agent_profile(Some("Ubuntu"), Some(&active)),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_falls_back_to_active_pane_when_explicit_missing() {
+        let active = json!({ "profile": "Ubuntu" });
+        assert_eq!(
+            resolve_agent_profile(None, Some(&active)),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_falls_back_when_explicit_empty() {
+        // An empty explicit profile is treated as "unspecified" and must not
+        // shadow the active pane's profile.
+        let active = json!({ "profile": "Ubuntu" });
+        assert_eq!(
+            resolve_agent_profile(Some(""), Some(&active)),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_none_when_active_pane_profile_empty() {
+        // An empty active-pane profile must resolve to None (not Some("")), so
+        // downstream lets Windows Terminal pick the default. This mirrors
+        // ShellManager::create_terminal_wt's non-empty guard.
+        let active = json!({ "profile": "" });
+        assert_eq!(resolve_agent_profile(None, Some(&active)), None);
+    }
+
+    #[test]
+    fn resolve_profile_none_when_active_pane_has_no_profile_field() {
+        let active = json!({ "session_id": "abc" });
+        assert_eq!(resolve_agent_profile(None, Some(&active)), None);
+    }
+
+    #[test]
+    fn resolve_profile_none_when_active_pane_unavailable() {
+        // wt_get_active_pane() failing (COM error) yields None; with no explicit
+        // profile the result is None (default profile downstream).
+        assert_eq!(resolve_agent_profile(None, None), None);
+    }
+
+    #[test]
+    fn resolve_profile_uses_explicit_when_active_pane_unavailable() {
+        assert_eq!(
+            resolve_agent_profile(Some("Ubuntu"), None),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_ignores_non_string_active_pane_profile() {
+        let active = json!({ "profile": 42 });
+        assert_eq!(resolve_agent_profile(None, Some(&active)), None);
     }
 
     #[test]
