@@ -5,34 +5,36 @@
 //
 // Responsibilities:
 //   1. Spawn the agent CLI subprocess (claude / copilot / gemini)
-//      and wrap its stdio in an `acp::ClientSideConnection` (master
-//      is the *client* of the agent CLI — same role that legacy
-//      wta plays today).
+//      and wrap its stdio in a `ConnectionTo<Agent>` (master is the
+//      *client* of the agent CLI — same role that legacy wta plays
+//      today). Built via the `conn.rs` shim (`ClientLink` /
+//      `spawn_client`) so call sites keep the old `conn.method().await`
+//      shape.
 //   2. Listen on a named pipe (path supplied by the C++ side via
 //      `--master <pipe-name>`). Accept one wta-helper per connect.
-//   3. For each helper, run an `acp::AgentSideConnection` in which
-//      master plays the *agent* role. Forward helper requests to
-//      the agent CLI; route inbound `session_notification`s from
-//      the agent CLI back to the helper that owns the session.
+//   3. For each helper, run a `ConnectionTo<Client>` in which master
+//      plays the *agent* role (via the shim: `AgentLink` /
+//      `spawn_agent`). Forward helper requests to the agent CLI; route
+//      inbound `session_notification`s from the agent CLI back to the
+//      helper that owns the session.
 //
 // Forwarding paths:
 //   * `helper → master → agent CLI`: every helper request runs
-//     through `HelperHandler`'s `acp::Agent` impl, which is just a
-//     thin pass-through to the agent CLI's `ClientSideConnection`.
+//     through `HelperHandler`'s dispatch (inherent fns on the
+//     agent-side builder), a thin pass-through to the agent CLI's
+//     `ClientLink`.
 //   * `agent CLI → master → helper` (notifications): inbound
 //     `session_notification`s land in `MasterClient::session_notification`
 //     and are fanned out to the owning helper's notification channel
 //     via the `session_to_helper` map (populated in `new_session` /
 //     `load_session`).
 //   * `agent CLI → master → helper` (requests — request_permission,
-//     terminal/*, fs/*): same map carries an `Arc<AgentSideConnection>`
-//     to each helper. `MasterClient` looks up the helper by
-//     `args.session_id` and calls the matching `Client`-trait method
-//     on that connection (`AgentSideConnection` itself implements
-//     `acp::Client` and re-issues each call as an RPC request over the
-//     helper's pipe). The helper-side `WtaClient` then runs the same
-//     code path it ran pre-helper-split (TUI permission UI,
-//     `ShellManager`, etc.).
+//     terminal/*, fs/*): same map carries each helper's `AgentLink`.
+//     `MasterClient` looks up the helper by `args.session_id` and calls
+//     the matching `AgentLink` method, which re-issues each call as an
+//     RPC request over the helper's pipe. The helper-side `WtaClient`
+//     then runs the same code path it ran pre-helper-split (TUI
+//     permission UI, `ShellManager`, etc.).
 
 use std::collections::HashMap;
 use std::collections::HashSet;
