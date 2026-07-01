@@ -134,15 +134,18 @@ Describe 'Feature §0 agent Group Policy locks (AllowAgentSessionHooks, FRE)' -T
         if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
     }
 
-    It 'AllowAgentSessionHooks=Blocked shows the policy-locked notice in the FRE' {
+    It 'AllowAgentSessionHooks=Blocked disables the session toggle and shows the policy notice in the FRE' {
         Test-FreShowing -App $script:app | Should -BeTrue -Because 'the FRE overlay must be up to inspect its policy notices'
         # The settings controls (agent / auto-error / session-management toggles) and their policy
         # notices live on the FRE's SECOND page — click Next to reach them.
         Invoke-UiElement -App $script:app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
-        # SessionHooksPolicyNotice is the named "managed by your organization" element that renders
-        # next to the session-management toggle ONLY when the policy is locked (FreOverlay
-        # SessionHooksPolicyNotice). Asserting the named element is locale-robust.
+        # 1) SessionHooksPolicyNotice is the named "managed by your organization" element that
+        #    renders next to the session-management toggle ONLY when the policy is locked.
         Test-UiElementExists -App $script:app -Selector 'SessionHooksPolicyNotice' -TimeoutSec 10 |
-            Should -BeTrue -Because 'a Blocked AllowAgentSessionHooks policy must surface the managed-by-organization notice next to the session-management toggle'
+            Should -BeTrue -Because 'a Blocked AllowAgentSessionHooks policy must surface the managed-by-organization notice'
+        # 2) …and the control itself is DISABLED (greyed / not settable) — the literal "locked
+        #    controls are disabled" guarantee, read from winapp's UIA isEnabled.
+        Test-UiElementEnabled -App $script:app -Selector 'SessionManagementToggle' |
+            Should -BeFalse -Because 'a Blocked AllowAgentSessionHooks policy must DISABLE the session-management toggle'
     }
 }
