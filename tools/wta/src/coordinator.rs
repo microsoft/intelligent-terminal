@@ -1028,7 +1028,7 @@ fn is_posix_absolute_path(path: &str) -> bool {
 /// working directory for a Windows process — handing it to a Windows agent CLI
 /// (Copilot/Claude/Gemini) makes it fail to launch. When the provided cwd is a
 /// bare POSIX path we fall back to the Windows home (`%USERPROFILE%`, passed in
-/// as `windows_home`) if available, otherwise drop it so Windows Terminal picks
+/// as `windows_home`) if available; otherwise drop it so Windows Terminal picks
 /// a sensible default. Windows paths (drive-letter, UNC) and relative paths pass
 /// through unchanged, and a missing/blank cwd stays `None`.
 ///
