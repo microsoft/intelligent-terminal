@@ -41,6 +41,16 @@ if (-not (Test-IsAdmin)) {
 }
 
 $path = "Registry::HKEY_USERS\$UserSid\SOFTWARE\Policies\Microsoft\IntelligentTerminal"
-if (Test-Path $path) { Remove-Item -Path $path -Recurse -Force; Write-Host "Removed $path." }
-else { Write-Host "Nothing to remove ($path absent)." }
+if (-not (Test-Path $path)) { Write-Host "Nothing to remove ($path absent)."; exit 0 }
+
+# Only delete the whole key if Enable-WtAgentPolicyTesting created it (marker present). Otherwise
+# the key pre-existed with real policy values — just drop our marker so we don't clobber them.
+$provisioned = $null -ne (Get-ItemProperty -Path $path -Name '__wt_e2e_provisioned' -ErrorAction SilentlyContinue)
+if ($provisioned) {
+    Remove-Item -Path $path -Recurse -Force
+    Write-Host "Removed $path (was provisioned by Enable-WtAgentPolicyTesting)."
+}
+else {
+    Write-Host "Key pre-existed (no provisioning marker) — leaving it untouched."
+}
 exit 0

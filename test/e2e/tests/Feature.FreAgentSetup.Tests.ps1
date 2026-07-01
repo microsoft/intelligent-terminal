@@ -30,14 +30,18 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         # Advance to the settings page (agent dropdown / toggles / hint / position live here).
         Invoke-UiElement -App $script:app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
         Start-Sleep -Seconds 1
+        # Locale-robust "(installed)" suffix from the FreOverlay_AgentStatusInstalled resource, so
+        # the install-state assertions work on non-en-US builds (fall back to the en-US literal).
+        $rx = Get-WtReswTextRegex -Key 'FreOverlay_AgentStatusInstalled'
+        $script:InstalledSfx = if ($rx) { $rx -replace '^\(\?i\)', '' } else { '(\s*\(installed\))' }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Copilot preinstalled: the FRE agent dropdown shows Copilot as installed' -Skip:(-not $script:CopilotReady) {
         # The AgentComboBox renders its selected item text in the tree even while collapsed; with
-        # the Copilot CLI installed it must be labelled "(installed)".
+        # the Copilot CLI installed it must carry the localized installed suffix.
         $shown = Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
-            (Get-UiTree -App $script:app -Depth 16) -match '(?i)copilot.*\(installed\)'
+            (Get-UiTree -App $script:app -Depth 16) -match ("(?i)copilot[^\r\n]*" + $script:InstalledSfx)
         }
         $shown | Should -BeTrue -Because 'with the Copilot CLI installed, the FRE agent picker must list it as installed'
     }
@@ -70,7 +74,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         Start-Sleep -Milliseconds 800
         $tree = Get-UiTree -App $script:app -Depth 18
         foreach ($a in $script:NonCopilot) {
-            $tree | Should -Match "(?i)$($a.Label).*\(installed\)" -Because "the installed $($a.Label) CLI must appear as a selectable installed agent in the FRE"
+            $tree | Should -Match ("(?i)$($a.Label)[^\r\n]*" + $script:InstalledSfx) -Because "the installed $($a.Label) CLI must appear as a selectable installed agent in the FRE"
         }
     }
 }

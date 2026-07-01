@@ -66,6 +66,39 @@ function Set-AgentPaneFocus {
     }
 }
 
+function Get-WtReswTextRegex {
+    <#
+    .SYNOPSIS
+        Case-insensitive regex alternation of a C++ .resw resource key's <value> across EVERY
+        bundled TerminalApp locale (src/cascadia/TerminalApp/Resources/*/Resources.resw), so
+        assertions on localized WT/FRE UI text (e.g. FreOverlay_AgentStatusInstalled) work on
+        non-en-US machines. Returns $null when the resources/key can't be read so callers can fall
+        back to an en-US literal. Cached per key.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Key)
+    if (-not $script:WtReswRegexCache) { $script:WtReswRegexCache = @{} }
+    if ($script:WtReswRegexCache.ContainsKey($Key)) { return $script:WtReswRegexCache[$Key] }
+    $result = $null
+    try {
+        $resDir = Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalApp\Resources'
+        if (Test-Path $resDir) {
+            $vals = foreach ($f in Get-ChildItem -Path $resDir -Filter 'Resources.resw' -Recurse -ErrorAction SilentlyContinue) {
+                try {
+                    $xml = [xml](Get-Content -LiteralPath $f.FullName -Raw)
+                    $node = $xml.root.data | Where-Object { $_.name -eq $Key } | Select-Object -First 1
+                    if ($node) { $v = "$($node.value)".Trim(); if ($v) { $v } }
+                }
+                catch {}
+            }
+            $pats = @($vals | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) })
+            if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
+        }
+    }
+    catch { $result = $null }
+    $script:WtReswRegexCache[$Key] = $result
+    $result
+}
+
 function Get-WtaLocalizedTextRegex {
     <#
     .SYNOPSIS

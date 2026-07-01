@@ -4,9 +4,16 @@
 #   Software\Policies\Microsoft\IntelligentTerminal
 # under HKLM FIRST, then HKCU as a fallback (AgentPolicy.h _ReadDwordPolicy / _ReadMultiSzPolicy
 # iterate { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER } and return on the first hit). That HKCU
-# fallback is what makes GPO automatable WITHOUT admin: writing the CurrentUser policy hive is a
-# faithful, elevation-free proxy for a real machine GPO — the exact same code path and value
-# semantics. This mirrors how Fre.ps1 drives the WinPS execution policy via HKCU.
+# fallback lets the tests drive a real GPO via the CurrentUser policy hive — the exact same code
+# path and value semantics as a machine GPO, and without touching HKLM. This mirrors how Fre.ps1
+# drives the WinPS execution policy via HKCU.
+#
+# CAVEAT — the Software\Policies subtree is ACL-restricted to administrators, so a standard user
+# cannot write it out of the box. Run test/e2e/tools/Enable-WtAgentPolicyTesting.ps1 ONCE (it
+# self-elevates) to grant the current user write access to just this key; AFTER that the suite
+# drives policy values NON-elevated and the terminal under test stays a normal user process.
+# Test-WtAgentPolicyControllable probes writability (and any HKLM override) so the GPO suite skips
+# cleanly on a machine that hasn't been provisioned.
 #
 # The snapshot is read at app startup (AgentPolicy::Reload), so ALWAYS set policy BEFORE
 # launching the terminal (Start-Terminal cold-starts, so it picks up a freshly-written value).
@@ -42,9 +49,10 @@ function Get-WtAgentPolicyState {
 function Set-WtAgentPolicy {
     <#
     .SYNOPSIS
-        Force IntelligentTerminal agent GPO values via the HKCU policy hive (no admin). Set
-        BEFORE launching the terminal — the policy snapshot is read at startup. Returns the prior
-        state object; pass it to Restore-WtAgentPolicy (ALWAYS restore in a finally).
+        Force IntelligentTerminal agent GPO values via the CurrentUser policy hive. Set BEFORE
+        launching the terminal — the policy snapshot is read at startup. Returns the prior state
+        object; pass it to Restore-WtAgentPolicy (ALWAYS restore in a finally). Requires the policy
+        hive to be writable (see Enable-WtAgentPolicyTesting.ps1 — grant once, then non-elevated).
     .PARAMETER Policy
         Hashtable keyed by registry value name:
           AllowAutoFix / AllowCustomAgents / AllowAgentSessionHooks -> 'Allowed' | 'Blocked' | 0/1
@@ -106,10 +114,12 @@ function Test-WtAgentPolicyControllable {
           (a) HKLM does not already set the same values — the reader checks HKLM first and
               returns on the first hit (AgentPolicy.h:80-88, 94-118), so a machine GPO would
               outrank the CurrentUser values we write.
-          (b) We can actually WRITE the HKCU policy hive. Unlike the WinPS ExecutionPolicy key
-              (under ShellIds, user-writable), the `Software\Policies` subtree is ACL-restricted
-              to administrators, so this requires an ELEVATED test runner. We probe with a
-              sentinel value; denial => not controllable.
+          (b) We can actually WRITE the CurrentUser policy hive. Unlike the WinPS ExecutionPolicy
+              key (under ShellIds, user-writable), the `Software\Policies` subtree is ACL-restricted
+              to administrators. Run test/e2e/tools/Enable-WtAgentPolicyTesting.ps1 ONCE (it
+              self-elevates) to grant the current user write access to just this key; afterwards
+              this returns $true and the suite runs non-elevated. We probe with a sentinel value;
+              denial => not controllable.
         The GPO suite must -Skip when this is false (non-elevated CI stays green), exactly like
         Feature.FreExecutionPolicy.Tests.ps1 skips when its policy isn't controllable.
     #>

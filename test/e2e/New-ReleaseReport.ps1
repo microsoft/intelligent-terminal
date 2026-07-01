@@ -62,9 +62,13 @@ $overrides = @{}
 if (Test-Path $OverrideMap) { $overrides = Import-PowerShellDataFile -Path $OverrideMap }
 
 # Item-title regexes to drop entirely from the report (kept out of pass/manual counts) so the
-# checklist stays focused on the sign-off set. The canonical checklist doc is unaffected.
+# checklist stays focused on the sign-off set. The canonical checklist doc is unaffected. Guard
+# against a malformed map (missing/null Exclude, or null/empty patterns) so report generation
+# never throws on `$title -match $null`.
 $excludes = @()
-if (Test-Path $ExcludeMap) { $excludes = @((Import-PowerShellDataFile -Path $ExcludeMap).Exclude) }
+if (Test-Path $ExcludeMap) {
+    $excludes = @((Import-PowerShellDataFile -Path $ExcludeMap).Exclude) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+}
 
 # ── Match a checklist item title to test outcomes ───────────────────────────────────
 function Get-ItemStatus([string]$title) {

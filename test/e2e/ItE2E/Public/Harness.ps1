@@ -65,8 +65,10 @@ function Clear-WtConfig {
         aiIntegration*) while PRESERVING the rest of the file (profiles, theme, keybindings). A
         full schema-only wipe is deliberately NOT used: WindowsTerminal rejects a settings.json
         with no usable profile and pops a "Failed to load settings" dialog that would destabilize
-        UI tests. The user's real settings are preserved in `.e2ebak` (Backup-WtConfig) and
-        restored by Stop-Terminal, so this stays non-destructive across a run.
+        UI tests. When called via Start-Terminal (the normal path) the user's real settings are
+        preserved in `.e2ebak` (Backup-WtConfig) and restored by Stop-Terminal, so this stays
+        non-destructive across a run. If called standalone WITHOUT a prior backup, there is no
+        `.e2ebak` to restore from — the caller owns preserving the original.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     $obj = Get-WtSettingsObject -App $App
@@ -74,7 +76,8 @@ function Clear-WtConfig {
     $agentKeys = @($obj.PSObject.Properties.Name | Where-Object { $_ -match '^(acp|delegate|agentPane|autoFix|aiIntegration)' })
     foreach ($k in $agentKeys) { $obj.PSObject.Properties.Remove($k) }
     ($obj | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $App.SettingsPath -Encoding utf8
-    Write-ItLog -Level INFO -Message "Cleared agent/AI keys from settings.json (removed: $($agentKeys -join ', ')); original preserved in .e2ebak"
+    $preserved = if (Test-Path "$($App.SettingsPath).e2ebak") { "; original preserved in .e2ebak" } else { "" }
+    Write-ItLog -Level INFO -Message "Cleared agent/AI keys from settings.json (removed: $($agentKeys -join ', '))$preserved"
 }
 
 function Get-WtProcessesForApp {

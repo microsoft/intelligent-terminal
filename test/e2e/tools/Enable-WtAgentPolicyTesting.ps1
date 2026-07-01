@@ -60,8 +60,14 @@ $rights = [System.Security.AccessControl.RegistryRights]'SetValue,CreateSubKey,D
 $rule = New-Object System.Security.AccessControl.RegistryAccessRule($sid, $rights, 'ContainerInherit', 'None', 'Allow')
 
 $acl = Get-Acl -Path $path
-$acl.AddAccessRule($rule)
+# SetAccessRule (not AddAccessRule) so re-running is idempotent — it replaces any existing
+# matching allow rule for this SID instead of accumulating duplicate ACEs.
+$acl.SetAccessRule($rule)
 Set-Acl -Path $path -AclObject $acl
+
+# Stamp a marker so Disable-WtAgentPolicyTesting can tell it provisioned this key (and thus may
+# remove it) vs. a key that pre-existed with real policy values.
+New-ItemProperty -Path $path -Name '__wt_e2e_provisioned' -Value 1 -PropertyType DWord -Force | Out-Null
 
 Write-Host "Granted write on $path to $UserName ($UserSid)."
 exit 0

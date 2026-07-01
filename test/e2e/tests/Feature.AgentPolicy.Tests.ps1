@@ -1,9 +1,9 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist: §1 "Policy lock UI works" / §0 "FRE respects policy locks" — the agent
-# Group-Policy gates (AgentPolicy.h). Automated WITHOUT admin by driving the HKCU policy hive
+# Group-Policy gates (AgentPolicy.h). Driven by the CurrentUser policy hive
 # (Software\Policies\Microsoft\IntelligentTerminal), which the C++ reader honors as a fallback
-# after HKLM — a faithful, elevation-free proxy for a real machine GPO. Same approach as the
-# WinPS execution-policy suite (Feature.FreExecutionPolicy.Tests.ps1).
+# after HKLM — the same code path and value semantics as a machine GPO, without touching HKLM.
+# Same approach as the WinPS execution-policy suite (Feature.FreExecutionPolicy.Tests.ps1).
 #
 # These are DETERMINISTIC, LLM-free assertions: they assert the ABSENCE of a policy-gated
 # behavior, which does not depend on any model output. The gate is enforced at TWO points and
