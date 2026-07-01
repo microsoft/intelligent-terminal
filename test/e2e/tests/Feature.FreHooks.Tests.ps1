@@ -43,6 +43,14 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
             Test-Until -TimeoutSec 90 -IntervalSec 2 -Condition { -not (Test-FreShowing -App $app) } | Out-Null
             $installed = Test-Until -TimeoutSec 20 -IntervalSec 2 -Condition { Get-CopilotHooksInstalled }
             $installed | Should -BeTrue -Because 'enabling session management and saving the FRE must install the wt-agent-hooks plugin'
+
+            # Hook logs are available: the install writes its decisions to the WTA hook log.
+            $logDir = Get-ItLogDir -App $app
+            if ($logDir) {
+                $hookLog = Join-Path $logDir 'wta-install-hooks.log'
+                Test-Path $hookLog | Should -BeTrue -Because 'hook install decisions must be recorded in wta-install-hooks.log'
+                (Get-Item $hookLog).Length | Should -BeGreaterThan 0
+            }
         }
         finally { Stop-Terminal -App $app }
     }

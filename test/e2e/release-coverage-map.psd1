@@ -80,6 +80,9 @@
     'Session management on'              = 'Session management on installs agent hooks'
     'Session management off'             = 'Session management off does not install hooks'
     'Install hooks from FRE works'       = 'Session management on installs agent hooks'
+    'Hook logs are available'            = 'Session management on installs agent hooks'
+    # §4 focus/restore — the Enter-on-the-live-row case selects the active session and focuses/resumes it.
+    'Focus active session'               = 'Enter behavior works'
 
     # §7 multi-pane / multi-tab (Feature.MultiPane) — single-window protocol-driven cases.
     'Split pane does not break chat'    = 'Split pane does not break chat'
