@@ -29,6 +29,8 @@ $publicFns = @(
     'Invoke-FrePassViaUi', 'Test-FreShowing',
     'Get-WtExecutionPolicyState', 'Set-WtExecutionPolicy', 'Restore-WtExecutionPolicy',
     'Test-WtExecutionPolicyControllable', 'Test-WtPwshBlocksShellIntegration',
+    # Hooks (agent session-management hook install state on disk)
+    'Get-CopilotHooksInstalled', 'Backup-CopilotConfig', 'Restore-CopilotConfig', 'Remove-CopilotHooksEntry',
     # Policy (agent GPO via HKCU)
     'Get-WtAgentPolicyState', 'Set-WtAgentPolicy', 'Restore-WtAgentPolicy', 'Test-WtAgentPolicyControllable',
     # Ui

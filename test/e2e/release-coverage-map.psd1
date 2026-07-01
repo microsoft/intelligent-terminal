@@ -76,6 +76,10 @@
     'Non-Copilot agents appear when installed' = 'Non-Copilot agents appear as installed in the FRE'
     'Session hook hints'                = 'Session hook hints appear only when'
     'Detection/suggestion dependency'   = 'the suggestion toggle disables when detection is off'
+    # §0 FRE session-management hook install (Feature.FreHooks) — observed on disk via config.json.
+    'Session management on'              = 'Session management on installs agent hooks'
+    'Session management off'             = 'Session management off does not install hooks'
+    'Install hooks from FRE works'       = 'Session management on installs agent hooks'
 
     # §7 multi-pane / multi-tab (Feature.MultiPane) — single-window protocol-driven cases.
     'Split pane does not break chat'    = 'Split pane does not break chat'
