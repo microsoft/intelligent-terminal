@@ -219,3 +219,11 @@ model_picker.title: "मॉडेल निवडा (↑ ↓ • Enter • Esc)
 system.no_models: "कनेक्ट केलेल्या agent ने कोणतेही निवडण्यायोग्य मॉडेल जाहीर केले नाही."
 system.model_set: "या पेनसाठी मॉडेल %{model} वर सेट केले."  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}
+
+# ── /agent custom-agent picker (seeded EN; pending translation) ──────────────
+# {Locked="/agent","<name>","↑","↓","Enter","Esc"}
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+system.agent_set: "This pane is now using the %{agent} agent."
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."

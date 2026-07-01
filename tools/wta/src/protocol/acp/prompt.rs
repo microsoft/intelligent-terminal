@@ -52,15 +52,20 @@ pub(crate) fn load_planner_prompt_template_for_agent(
     if agent.is_builtin() {
         return load_planner_prompt_template();
     }
+    planner_template_from_agent_override(&agent.display_name, &agent.body)
+}
 
-    let source_label = match &agent.source_path {
-        Some(path) => format!("agent:{}", path.display()),
-        None => format!("agent:{}", agent.id),
-    };
+/// Build a planner template from a custom agent's display name + system-prompt
+/// body directly (without a [`CustomAgent`]). Used on the prompt hot path where
+/// the override travels with the prompt as `(display_name, body)`.
+pub(crate) fn planner_template_from_agent_override(
+    display_name: &str,
+    body: &str,
+) -> PlannerPromptTemplate {
     PlannerPromptTemplate {
-        display_name: agent.display_name.clone(),
-        content: agent.body.clone(),
-        source_label,
+        display_name: display_name.to_string(),
+        content: body.to_string(),
+        source_label: format!("agent:{display_name}"),
     }
 }
 

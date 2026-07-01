@@ -217,3 +217,11 @@ model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Lock
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}
+
+# ── /agent custom-agent picker (seeded EN; pending translation) ──────────────
+# {Locked="/agent","<name>","↑","↓","Enter","Esc"}
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+system.agent_set: "This pane is now using the %{agent} agent."
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."

@@ -218,3 +218,11 @@ model_picker.title: "Выбор модели (↑ ↓ • Enter • Esc)"  # {Lo
 system.no_models: "Подключённый агент не объявил ни одной доступной для выбора модели."
 system.model_set: "Модель для этой панели установлена на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Неизвестная модель %{model} — введите /model, чтобы увидеть доступный список."  # {Locked="%{model}","/model"}
+
+# ── /agent custom-agent picker (seeded EN; pending translation) ──────────────
+# {Locked="/agent","<name>","↑","↓","Enter","Esc"}
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+system.agent_set: "This pane is now using the %{agent} agent."
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."

@@ -92,8 +92,8 @@ use crate::coordinator::{
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    prompt_timing_log, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, RestartRequest,
+    prompt_timing_log, AgentPromptOverride, CancelRequest, DropSessionRequest, LoadSessionForTab,
+    NewSessionForTab, PromptSubmission, RenameSessionRequest, RestartRequest,
 };
 use crate::ui;
 use crate::ui_trace;
@@ -1491,6 +1491,21 @@ pub struct TabSession {
     /// advertised `App::available_models`. Clamped on open.
     pub model_picker_selected: usize,
 
+    /// The custom agent selected for this tab via `/agent`. `None` = the
+    /// built-in default `terminal-agent`. When set to a non-built-in agent,
+    /// each planner prompt on this tab ships the agent's `.agent.md` body as
+    /// the system prompt (see `App::active_agent_prompt_override`).
+    pub active_agent: Option<crate::custom_agents::CustomAgent>,
+    /// True while the `/agent` picker modal is up for this tab. Drives both the
+    /// key-event intercept in `handle_key` and the popup render.
+    pub agent_picker_open: bool,
+    /// Highlighted row in the open agent picker — an index into
+    /// `agent_picker_items`. Clamped on open.
+    pub agent_picker_selected: usize,
+    /// Snapshot of discoverable agents taken when the picker opened, so the
+    /// list stays stable while the user navigates even if files change on disk.
+    pub agent_picker_items: Vec<crate::custom_agents::CustomAgent>,
+
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
     pub current_view: View,
@@ -2749,6 +2764,165 @@ impl App {
             self.send_session_model(Some(sid), model_id);
         }
         self.publish_agent_status();
+    }
+
+    // ─── `/agent` custom-agent picker ────────────────────────────────────────
+
+    /// The active tab's custom-agent override for planner prompts, or `None`
+    /// when the tab is on the built-in default `terminal-agent`. Attached to
+    /// each user prompt so `build_prompt_text` ships the agent's `.agent.md`
+    /// body as the system prompt.
+    fn active_agent_prompt_override(&self) -> Option<AgentPromptOverride> {
+        self.current_tab()
+            .active_agent
+            .as_ref()
+            .filter(|a| !a.is_builtin())
+            .map(|a| AgentPromptOverride {
+                display_name: a.display_name.clone(),
+                body: a.body.clone(),
+            })
+    }
+
+    fn agent_picker_visible(&self) -> bool {
+        self.current_tab().agent_picker_open
+    }
+
+    /// `/agent [name]` — switch this tab's custom agent. Bare `/agent` opens the
+    /// interactive picker; with an argument, match it against the discovered
+    /// agents (id then display name, case-insensitive) and switch directly.
+    fn cmd_agent(&mut self, arg: String, in_flight: bool) {
+        let arg = arg.trim().to_string();
+        if arg.is_empty() {
+            self.open_agent_picker();
+            return;
+        }
+        let agents = crate::custom_agents::discover_agents_default();
+        let matched = crate::custom_agents::find_agent_by_id(&agents, &arg)
+            .cloned()
+            .or_else(|| {
+                agents
+                    .iter()
+                    .find(|a| a.display_name.eq_ignore_ascii_case(&arg))
+                    .cloned()
+            });
+        match matched {
+            Some(agent) => self.apply_agent_pick(agent, in_flight),
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.agent_unknown", agent = arg.as_str()).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    /// Open the picker on the active tab, snapshotting the discoverable agents
+    /// and pre-selecting the one the tab is currently on (built-in when none).
+    fn open_agent_picker(&mut self) {
+        let agents = crate::custom_agents::discover_agents_default();
+        let current_id = self
+            .current_tab()
+            .active_agent
+            .as_ref()
+            .map(|a| a.id.clone())
+            .unwrap_or_else(|| crate::custom_agents::BUILTIN_AGENT_ID.to_string());
+        let selected = agents
+            .iter()
+            .position(|a| a.id.eq_ignore_ascii_case(&current_id))
+            .unwrap_or(0);
+        let tab = self.current_tab_mut();
+        tab.agent_picker_items = agents;
+        tab.agent_picker_open = true;
+        tab.agent_picker_selected = selected;
+    }
+
+    fn close_agent_picker(&mut self) {
+        self.current_tab_mut().agent_picker_open = false;
+    }
+
+    fn agent_picker_up(&mut self) {
+        let tab = self.current_tab_mut();
+        if tab.agent_picker_selected > 0 {
+            tab.agent_picker_selected -= 1;
+        }
+    }
+
+    fn agent_picker_down(&mut self) {
+        let last = self.current_tab().agent_picker_items.len().saturating_sub(1);
+        let tab = self.current_tab_mut();
+        if tab.agent_picker_selected < last {
+            tab.agent_picker_selected += 1;
+        }
+    }
+
+    /// Commit the highlighted row in the open agent picker.
+    fn commit_agent_pick(&mut self) {
+        let agent = {
+            let tab = self.current_tab();
+            tab.agent_picker_items
+                .get(tab.agent_picker_selected)
+                .cloned()
+        };
+        self.close_agent_picker();
+        if let Some(agent) = agent {
+            let in_flight = self.current_tab().turn.is_in_flight();
+            self.apply_agent_pick(agent, in_flight);
+        }
+    }
+
+    /// Switch the active tab to `agent` and start a fresh session bound to it
+    /// (mirrors `/new`: clean context, the switch takes effect immediately
+    /// because the agent's body becomes the system prompt on the new session's
+    /// first turn). Refuses while a turn is in flight — the user should `/stop`
+    /// first. Selecting the built-in agent reverts to the default prompt.
+    fn apply_agent_pick(&mut self, agent: crate::custom_agents::CustomAgent, in_flight: bool) {
+        if in_flight {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("system.busy_use_stop").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let tab_id = self
+            .tab_id
+            .clone()
+            .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        let display = agent.display_name.clone();
+        // Proactively start a fresh session so the new agent is live at once.
+        let _ = self
+            .new_session_tx
+            .send(NewSessionForTab { tab_id, cwd: None });
+        let tab = self.current_tab_mut();
+        tab.active_agent = if agent.is_builtin() { None } else { Some(agent) };
+        tab.clear_chat_history();
+        tab.completed_turns.clear();
+        tab.selected_completed_turn_idx = None;
+        tab.session_id = None;
+        tab.messages.push(ChatMessage::System(
+            t!("system.agent_set", agent = display.as_str()).into_owned(),
+        ));
+        tab.scroll_to_bottom();
+    }
+
+    /// Per-frame state for the `/agent` picker modal, or `None` when it's not
+    /// open on the active tab.
+    pub fn agent_popup_state(&self) -> Option<crate::ui::AgentPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.agent_picker_open {
+            return None;
+        }
+        let current_id = tab
+            .active_agent
+            .as_ref()
+            .map(|a| a.id.as_str())
+            .unwrap_or(crate::custom_agents::BUILTIN_AGENT_ID);
+        Some(crate::ui::AgentPopupState {
+            agents: &tab.agent_picker_items,
+            selected: tab.agent_picker_selected,
+            current_id: Some(current_id),
+        })
     }
 
     /// Rebuild the shared delegate runtime table from a settings change.
@@ -6810,6 +6984,20 @@ impl App {
             return;
         }
 
+        // Agent picker modal (`/agent`): same modal key contract as the model
+        // picker above — arrows move, Enter commits (which starts a fresh
+        // session bound to the chosen agent), Esc dismisses.
+        if self.agent_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.agent_picker_up(),
+                KeyCode::Down => self.agent_picker_down(),
+                KeyCode::Enter => self.commit_agent_pick(),
+                KeyCode::Esc => self.close_agent_picker(),
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
             {
@@ -7157,8 +7345,9 @@ impl App {
                             format!("{text}\n{marker}")
                         }
                     };
-                    let prompt =
-                        PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
+                    let prompt = PromptSubmission::new(text.clone(), Some(pane_context))
+                        .with_agent_override(self.active_agent_prompt_override())
+                        .with_images(images);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,
@@ -7576,6 +7765,7 @@ impl App {
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Agent => self.cmd_agent(cmd.rest, in_flight),
         }
     }
 

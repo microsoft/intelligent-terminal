@@ -218,3 +218,11 @@ model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
 system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}
+
+# ── /agent custom-agent picker (seeded EN; pending translation) ──────────────
+# {Locked="/agent","<name>","↑","↓","Enter","Esc"}
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+system.agent_set: "This pane is now using the %{agent} agent."
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."
