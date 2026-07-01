@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Maligayang pagdating sa Matalinong Terminal!"
 setup.title.agent_missing: "Hindi nahanap ang agent"
 setup.title.agent_error: "Nabigo ang koneksyon sa agent"
-setup.title.switch_agent: "Palitan ang agent"
 setup.title.not_available: "Hindi available ang agent"
 setup.title.sign_in: "Kailangang mag-sign in"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng 
 setup.subtitle.agent_auth: "Ang agent mong \"%{agent}\" ay nangangailangan ng authentication. Mangyaring mag-sign in sa pamamagitan ng agent, pagkatapos ay piliin ang \"Naka-sign in na ako\" sa ibaba. Para magpalit ng agent, pumunta sa Matalinong Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pumili ng default na agent CLI na gusto mong gamitin sa Matalinong Terminal. Maaari kang"
-setup.description.fre_line2: "pumunta sa Settings para i-configure at i-set up ang iyong workspace."
 
 setup.option.install: "I-install ang %{agent}"
 setup.option.install_hint: "(Awtomatikong mai-install)"
 setup.option.signin: "Mag-sign in sa %{agent}"
 setup.option.retry_detection: "Subukang muli"
 setup.option.retry_auth: "Naka-sign in na ako — subukang kumonekta muli"
-setup.option.retry_connection: "Subukang kumonekta muli"
-setup.option.switch_to: "Lumipat sa %{agent}"
 setup.status.installing: "Ini-install..."
 setup.status.install_failed: "Nabigo ang pag-install: "
 setup.status.installing_winget: " Ini-install sa pamamagitan ng winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Sinusuri ang authentication..."
 auth.waiting_for_authorization: "  %{spinner} Naghihintay ng authorization..."
 auth.code_copied_hint: "  Nakopya ang code sa clipboard — i-paste ito sa iyong browser."
 auth.device_code_prompt: "Bisitahin ang %{url} at ilagay ang code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Mag-sign in para magamit ang iyong agent:"
 auth.card_connect: "  Ikonekta ang %{name} para paganahin ang mga feature ng agent"
-auth.hint_footer: "  Pindutin ang Enter para kopyahin ang command sa pag-sign in, pagkatapos ay i-paste ito sa bagong terminal window para tapusin ang pag-sign in"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc para bumalik"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter para mag-sign in · E para sa GitHub Enterprise · Esc para bumalik"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Domain ng enterprise: "
 auth.enterprise_hint_footer: "  Enter para mag-sign in · Esc para gamitin ang github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para sumagot · i-resize para sa buong card]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Hindi pa naka-install — piliin para awtomatikong mai-install"
 agent.status.not_found: "Hindi nahanap"
-agent.status.detected: "Na-detect"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Pinapatakbo: winget install GitHub.Copilot"
 agent.install.launch_failed: "Hindi mailunsad ang winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Nawala ang koneksyon sa agent. I-type ang /restart para kumone
 system.cancelled: "Kinansela."
 system.no_prompt_in_flight: "Walang prompt na kasalukuyang pinapatakbo."
 system.authentication_failed: "Nabigo ang authentication"
-system.command_copied_retry: "Nakopya ang command — patakbuhin sa ibang terminal, pagkatapos ay pindutin ang Enter para subukang muli"  # {Locked="Enter"}
 system.stopped_max_tokens: "Naputol ang tugon pagkatapos maabot ang limitasyon sa output ng modelo."
 system.stopped_max_turn_requests: "Huminto ang ahente pagkatapos maabot ang limitasyon nito sa kahilingan para sa pagliko na ito."
 system.stopped_refusal: "Tumanggi ang ahente na ipagpatuloy ang kahilingang ito."

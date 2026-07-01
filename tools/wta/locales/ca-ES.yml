@@ -1,9 +1,7 @@
 # Titles de la pantalla de configuració
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Us donem la benvinguda a l'Terminal Intel·ligent!"
 setup.title.agent_missing: "No s'ha trobat l'agent"
 setup.title.agent_error: "No s'ha pogut connectar amb l'agent"
-setup.title.switch_agent: "Canvia d'agent"
 setup.title.not_available: "L'agent no està disponible"
 setup.title.sign_in: "Cal iniciar la sessió"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "El vostre agent \"%{agent}\" requereix autenticaci
 setup.subtitle.agent_auth: "El vostre agent \"%{agent}\" requereix autenticació. Inicieu la sessió mitjançant l'agent i seleccioneu \"He iniciat la sessió\" a continuació. Per canviar d'agent, aneu a Terminal Intel·ligent Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Trieu el CLI d'agent predeterminat que voleu utilitzar a l'Terminal Intel·ligent. Podeu"
-setup.description.fre_line2: "anar a Settings per configurar el vostre espai de treball."
 
 setup.option.install: "Instal·la %{agent}"
 setup.option.install_hint: "(S'instal·larà automàticament)"
 setup.option.signin: "Inicia la sessió a %{agent}"
 setup.option.retry_detection: "Torna-ho a provar"
 setup.option.retry_auth: "He iniciat la sessió — prova de connectar de nou"
-setup.option.retry_connection: "Prova de connectar de nou"
-setup.option.switch_to: "Canvia a %{agent}"
 setup.status.installing: "S'està instal·lant..."
 setup.status.install_failed: "Error en la instal·lació: "
 setup.status.installing_winget: " S'està instal·lant mitjançant winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} S'està comprovant l'autenticació..
 auth.waiting_for_authorization: "  %{spinner} S'està esperant l'autorització..."
 auth.code_copied_hint: "  Codi copiat al porta-retalls — enganxeu-lo al navegador."
 auth.device_code_prompt: "Visiteu %{url} i introduïu el codi: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Inicieu la sessió per utilitzar el vostre agent:"
 auth.card_connect: "  Connecteu %{name} per habilitar les funcions d'agent"
-auth.hint_footer: "  Premeu Enter per copiar l'ordre d'inici de sessió i enganxeu-la en una finestra nova del terminal per completar l'inici de sessió"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc per tornar enrere"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter per iniciar la sessió · E per GitHub Enterprise · Esc per tornar enrere"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Domini d'Enterprise: "
 auth.enterprise_hint_footer: "  Enter per iniciar la sessió · Esc per github.com"  # {Locked="Enter","Esc","github.com"}
@@ -100,9 +91,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N per respondre · redimensioneu per veure la targeta completa]"  # {Locked="Y/N"}
 
 # ── Estat de l'agent (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "No instal·lat — seleccioneu per instal·lar automàticament"
 agent.status.not_found: "No s'ha trobat"
-agent.status.detected: "Detectat"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - noms d'eines i ordre, s'han d'executar tal qual
 agent.install.running_winget: "S'està executant: winget install GitHub.Copilot"
 agent.install.launch_failed: "No s'ha pogut iniciar winget: %{error}"
@@ -133,7 +122,6 @@ connection.lost: "S'ha perdut la connexió amb l'agent. Escriviu /restart per to
 system.cancelled: "Cancel·lat."
 system.no_prompt_in_flight: "No hi ha cap indicació en curs."
 system.authentication_failed: "L'autenticació ha fallat"
-system.command_copied_retry: "Ordre copiada — executeu-la en un altre terminal i premeu Enter per tornar-ho a provar"  # {Locked="Enter"}
 system.stopped_max_tokens: "La resposta s'ha tallat en arribar al límit de sortida del model."
 system.stopped_max_turn_requests: "L'agent s'ha aturat en arribar al seu límit de sol·licituds per a aquest torn."
 system.stopped_refusal: "L'agent ha rebutjat continuar amb aquesta sol·licitud."

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Dobrodošli v Inteligentni Terminal!"
 setup.title.agent_missing: "Agenta ni mogoče najti"
 setup.title.agent_error: "Povezava z agentom ni uspela"
-setup.title.switch_agent: "Spremeni agenta"
 setup.title.not_available: "Agent ni na voljo"
 setup.title.sign_in: "Zahtevana je prijava"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristn
 setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek agenta in nato spodaj izberite \"Prijavil/a sem se\". Za zamenjavo agenta pojdite v Inteligentni Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Izberite privzetega agenta, ki ga želite uporabljati v Inteligentni Terminal. Lahko"
-setup.description.fre_line2: "odprete Settings za konfiguracijo delovnega prostora."
 
 setup.option.install: "Ponovna namestitev %{agent}"
 setup.option.install_hint: "(Nameščen bo samodejno)"
 setup.option.signin: "Prijava v %{agent}"
 setup.option.retry_detection: "Poskusite znova"
 setup.option.retry_auth: "Prijavil/a sem se — poskusite se znova povezati"
-setup.option.retry_connection: "Poskusite se znova povezati"
-setup.option.switch_to: "Preklopi na %{agent}"
 setup.status.installing: "Nameščanje..."
 setup.status.install_failed: "Namestitev ni uspela: "
 setup.status.installing_winget: " Nameščanje prek winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Preverjanje pristnosti..."
 auth.waiting_for_authorization: "  %{spinner} Čakanje na avtorizacijo..."
 auth.code_copied_hint: "  Koda kopirana v odložišče — prilepite jo v brskalnik."
 auth.device_code_prompt: "Obiščite %{url} in vnesite kodo: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Prijavite se za uporabo agenta:"
 auth.card_connect: "  Povežite %{name} za omogočanje funkcij agenta"
-auth.hint_footer: "  Pritisnite Enter, da kopirate ukaz za prijavo, nato ga prilepite v novo okno terminala, da dokončate prijavo"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc za nazaj"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter za prijavo · E za GitHub Enterprise · Esc za nazaj"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Domena GitHub Enterprise: "
 auth.enterprise_hint_footer: "  Enter za prijavo · Esc za github.com"  # {Locked="Enter","Esc","github.com"}
@@ -107,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N za odgovor · spremenite velikost za celotno kartico]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Ni nameščen — izberite za samodejno namestitev"
 agent.status.not_found: "Ni najden"
-agent.status.detected: "Zaznan"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -140,7 +129,6 @@ connection.lost: "Povezava z agentom je bila izgubljena. Vnesite /restart za pon
 system.cancelled: "Preklicano."
 system.no_prompt_in_flight: "Nobena zahteva ni v teku."
 system.authentication_failed: "Preverjanje pristnosti ni uspelo"
-system.command_copied_retry: "Ukaz kopiran — zaženite ga v drugem terminalu, nato pritisnite Enter za ponovni poskus"  # {Locked="Enter"}
 system.stopped_max_tokens: "Odgovor je bil odrezan po dosegu izhodne omejitve modela."
 system.stopped_max_turn_requests: "Agent se je ustavil po dosegu omejitve zahtev za to potezo."
 system.stopped_refusal: "Agent je zavrnil nadaljevanje te zahteve."

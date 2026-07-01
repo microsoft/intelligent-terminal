@@ -1,9 +1,7 @@
 # Títulos da tela de configuração
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Bem-vindo ao Terminal Inteligente!"
 setup.title.agent_missing: "Agente não encontrado"
 setup.title.agent_error: "Falha na conexão com o agente"
-setup.title.switch_agent: "Trocar agente"
 setup.title.not_available: "Agente não disponível"
 setup.title.sign_in: "Login necessário"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Seu agente \"%{agent}\" requer autenticação. Sig
 setup.subtitle.agent_auth: "Seu agente \"%{agent}\" requer autenticação. Entre pelo agente e selecione \"Já entrei\" abaixo. Para trocar de agente, vá para Configurações do Terminal Inteligente > Agente."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Escolha a CLI de agente padrão que você deseja usar no Terminal Inteligente. Você pode"
-setup.description.fre_line2: "acessar as configurações para configurar e preparar seu espaço de trabalho."
 
 setup.option.install: "Instalar %{agent}"
 setup.option.install_hint: "(Será instalado automaticamente)"
 setup.option.signin: "Entrar em %{agent}"
 setup.option.retry_detection: "Tentar novamente"
 setup.option.retry_auth: "Já entrei — tentar conectar novamente"
-setup.option.retry_connection: "Tentar conectar novamente"
-setup.option.switch_to: "Trocar para %{agent}"
 setup.status.installing: "Instalando..."
 setup.status.install_failed: "Falha na instalação: "
 setup.status.installing_winget: " Instalando via winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Verificando autenticação..."
 auth.waiting_for_authorization: "  %{spinner} Aguardando autorização..."
 auth.code_copied_hint: "  Código copiado para a área de transferência — cole-o no navegador."
 auth.device_code_prompt: "Acesse %{url} e insira o código: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Entre para usar seu agente:"
 auth.card_connect: "  Conectar %{name} para habilitar os recursos do agente"
-auth.hint_footer: "  Pressione Enter para copiar o comando de login e cole-o em uma nova janela do terminal para concluir o login"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc para voltar"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter para fazer login · E para GitHub Enterprise · Esc para voltar"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Domínio Enterprise: "
 auth.enterprise_hint_footer: "  Enter para fazer login · Esc para github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N para responder · redimensionar para o cartão completo]"  # {Locked="Y/N"}
 
 # ── Status do agente (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Não instalado — selecione para instalar automaticamente"
 agent.status.not_found: "Não encontrado"
-agent.status.detected: "Detectado"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - nomes de ferramentas e comando, manter como está
 agent.install.running_winget: "Executando: winget install GitHub.Copilot"
 agent.install.launch_failed: "Falha ao iniciar o winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "A conexão com o agente foi perdida. Digite /restart para reco
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Nenhum prompt em andamento."
 system.authentication_failed: "Falha na autenticação"
-system.command_copied_retry: "Comando copiado — execute-o em outro terminal e pressione Enter para tentar novamente"  # {Locked="Enter"}
 system.stopped_max_tokens: "A resposta foi cortada após atingir o limite de saída do modelo."
 system.stopped_max_turn_requests: "O agente parou após atingir o limite de solicitações para esta vez."
 system.stopped_refusal: "O agente recusou-se a continuar com esta solicitação."

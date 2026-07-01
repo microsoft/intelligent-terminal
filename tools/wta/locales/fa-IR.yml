@@ -1,9 +1,7 @@
 # عناوین صفحه راه‌اندازی
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "به پایانه هوشمند خوش آمدید!"
 setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
 setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
-setup.title.switch_agent: "تغییر عامل هوش مصنوعی"
 setup.title.not_available: "عامل هوش مصنوعی در دسترس نیست"
 setup.title.sign_in: "ورود به سیستم لازم است"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز
 setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس \"وارد شدم\" را در زیر انتخاب کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "عامل هوش مصنوعی پیش‌فرضی را که می‌خواهید در پایانه هوشمند استفاده کنید انتخاب نمایید. می‌توانید"
-setup.description.fre_line2: "به Settings بروید تا فضای کاری خود را پیکربندی و راه‌اندازی کنید."
 
 setup.option.install: "نصب %{agent}"
 setup.option.install_hint: "(به صورت خودکار نصب خواهد شد)"
 setup.option.signin: "ورود به %{agent}"
 setup.option.retry_detection: "دوباره تلاش کنید"
 setup.option.retry_auth: "وارد شدم — دوباره اتصال را امتحان کنید"
-setup.option.retry_connection: "دوباره اتصال را امتحان کنید"
-setup.option.switch_to: "تغییر به %{agent}"
 setup.status.installing: "در حال نصب..."
 setup.status.install_failed: "نصب ناموفق بود: "
 setup.status.installing_winget: " در حال نصب از طریق winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} در حال بررسی احراز ه
 auth.waiting_for_authorization: "  %{spinner} در انتظار مجوز..."
 auth.code_copied_hint: "  کد در کلیپ‌بورد کپی شد — آن را در مرورگر خود جای‌گذاری کنید."
 auth.device_code_prompt: "به %{url} بروید و کد را وارد کنید: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "برای استفاده از عامل هوش مصنوعی خود وارد شوید:"
 auth.card_connect: "  %{name} را متصل کنید تا قابلیت‌های عامل هوش مصنوعی فعال شوند"
-auth.hint_footer: "  Enter را فشار دهید تا فرمان ورود کپی شود، سپس آن را در پنجره ترمینال جدید جای‌گذاری کنید تا ورود تکمیل شود"  # {Locked="Enter"}
-auth.hint_footer_back: "  برای بازگشت Esc را فشار دهید"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter برای ورود · E برای GitHub Enterprise · Esc برای بازگشت"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  دامنه سازمانی: "
 auth.enterprise_hint_footer: "  Enter برای ورود · Esc برای github.com"  # {Locked="Enter","Esc","github.com"}
@@ -111,9 +102,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N برای پاسخ · تغییر اندازه برای کارت کامل]"  # {Locked="Y/N"}
 
 # ── وضعیت عامل هوش مصنوعی (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "نصب نشده — برای نصب خودکار انتخاب کنید"
 agent.status.not_found: "یافت نشد"
-agent.status.detected: "شناسایی شد"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - نام ابزارها و دستور، باید عیناً اجرا شوند
 agent.install.running_winget: "در حال اجرا: winget install GitHub.Copilot"
 agent.install.launch_failed: "راه‌اندازی winget ناموفق بود: %{error}"
@@ -144,7 +133,6 @@ connection.lost: "اتصال به عامل هوش مصنوعی قطع شد. بر
 system.cancelled: "لغو شد."
 system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
 system.authentication_failed: "احراز هویت ناموفق بود"
-system.command_copied_retry: "دستور کپی شد — آن را در ترمینال دیگری اجرا کنید، سپس Enter را برای تلاش مجدد فشار دهید"  # {Locked="Enter"}
 system.stopped_max_tokens: "پاسخ پس از رسیدن به حد خروجی مدل قطع شد."
 system.stopped_max_turn_requests: "عامل پس از رسیدن به حد درخواست خود برای این نوبت متوقف شد."
 system.stopped_refusal: "عامل از ادامه‌دادن این درخواست خودداری کرد."

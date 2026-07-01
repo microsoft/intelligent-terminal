@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Vitajte v Inteligentný Terminál!"
 setup.title.agent_missing: "Agenta sa nepodarilo nájsť"
 setup.title.agent_error: "Pripojenie k agentovi zlyhalo"
-setup.title.switch_agent: "Prepnúť agenta"
 setup.title.not_available: "Agent nie je k dispozícii"
 setup.title.sign_in: "Vyžaduje sa prihlásenie"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Postu
 setup.subtitle.agent_auth: "Váš agent \"%{agent}\" vyžaduje overenie. Prihláste sa cez agenta a potom vyberte nižšie \"Prihlásil/a som sa\". Ak chcete zmeniť agenta, prejdite do Inteligentný Terminál Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Vyberte predvoleného agenta, ktorý chcete používať v Inteligentný Terminál. Môžete"
-setup.description.fre_line2: "prejsť do Settings a nakonfigurovať svoj pracovný priestor."
 
 setup.option.install: "Inštalovať %{agent}"
 setup.option.install_hint: "(Bude nainštalovaný automaticky)"
 setup.option.signin: "Prihlásiť sa do %{agent}"
 setup.option.retry_detection: "Skúsiť znova"
 setup.option.retry_auth: "Prihlásil/a som sa — skúsiť sa znova pripojiť"
-setup.option.retry_connection: "Skúsiť sa znova pripojiť"
-setup.option.switch_to: "Prepnúť na %{agent}"
 setup.status.installing: "Inštalácia..."
 setup.status.install_failed: "Inštalácia zlyhala: "
 setup.status.installing_winget: " Inštalácia cez winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Kontrola overenia..."
 auth.waiting_for_authorization: "  %{spinner} Čakanie na autorizáciu..."
 auth.code_copied_hint: "  Kód skopírovaný do schránky — prilepte ho v prehliadači."
 auth.device_code_prompt: "Navštívte %{url} a zadajte kód: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Prihláste sa, aby ste mohli používať agenta:"
 auth.card_connect: "  Pripojte %{name} na povolenie funkcií agenta"
-auth.hint_footer: "  Stlačením Enter skopírujte príkaz na prihlásenie a potom ho vložte do nového okna terminálu, aby ste dokončili prihlásenie"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc na návrat"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter na prihlásenie · E pre GitHub Enterprise · Esc na návrat"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Doména GitHub Enterprise: "
 auth.enterprise_hint_footer: "  Enter na prihlásenie · Esc pre github.com"  # {Locked="Enter","Esc","github.com"}
@@ -107,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N na odpoveď · zmeňte veľkosť pre úplnú kartu]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nenainštalovaný — vyberte na automatickú inštaláciu"
 agent.status.not_found: "Nenájdený"
-agent.status.detected: "Zistený"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -140,7 +129,6 @@ connection.lost: "Pripojenie k agentovi sa stratilo. Zadaním /restart sa znova 
 system.cancelled: "Zrušené."
 system.no_prompt_in_flight: "Žiadna prebiehajúca požiadavka."
 system.authentication_failed: "Overenie zlyhalo"
-system.command_copied_retry: "Príkaz skopírovaný — spustite ho v inom termináli a stlačte Enter na zopakovanie"  # {Locked="Enter"}
 system.stopped_max_tokens: "Odpoveď bola orezaná po dosiahnutí výstupného limitu modelu."
 system.stopped_max_turn_requests: "Agent sa zastavil po dosiahnutí limitu požiadaviek pre toto kolo."
 system.stopped_refusal: "Agent odmietol pokračovať v tejto požiadavke."

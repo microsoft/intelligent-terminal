@@ -1,9 +1,7 @@
 # Teidil scáileán socraithe
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Fáilte go Teirminéal Cliste!"
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
-setup.title.switch_agent: "Athraigh gníomhaire"
 setup.title.not_available: "Níl an gníomhaire ar fáil"
 setup.title.sign_in: "Sínigh isteach riachtanach"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%
 setup.subtitle.agent_auth: "Teastaíonn fíordheimhniú ó do ghníomhaire \"%{agent}\". Sínigh isteach tríd an ngníomhaire, ansin roghnaigh \"Tá mé sínithe isteach\" thíos. Chun gníomhairí a athrú, téigh go Teirminéal Cliste Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Roghnaigh an gníomhaire réamhshocraithe ba mhaith leat a úsáid in Teirminéal Cliste. Is féidir leat"
-setup.description.fre_line2: "dul go Settings chun do spás oibre a chumrú agus a shocrú."
 
 setup.option.install: "Suiteáil %{agent}"
 setup.option.install_hint: "(Suiteálfar go huathoibríoch)"
 setup.option.signin: "Sínigh isteach chuig %{agent}"
 setup.option.retry_detection: "Bain triail eile as"
 setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceangal"
-setup.option.retry_connection: "Bain triail eile as ceangal"
-setup.option.switch_to: "Athraigh go %{agent}"
 setup.status.installing: "Á shuiteáil..."
 setup.status.install_failed: "Theip ar shuiteáil: "
 setup.status.installing_winget: " Á shuiteáil trí winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Fíordheimhniú á sheiceáil..."
 auth.waiting_for_authorization: "  %{spinner} Ag fanacht le húdarú..."
 auth.code_copied_hint: "  Cód cóipeáilte chuig an ngearrthaisce — greamaigh é i do bhrabhsálaí."
 auth.device_code_prompt: "Tabhair cuairt ar %{url} agus cuir isteach an cód: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Sínigh isteach chun do ghníomhaire a úsáid:"
 auth.card_connect: "  Ceangail %{name} chun gnéithe gníomhaire a chumasú"
-auth.hint_footer: "  Brúigh Enter chun an t-ordú sínithe isteach a chóipeáil, ansin greamaigh i bhfuinneog teirminéil nua é chun an síniú isteach a chríochnú"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc chun dul siar"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = sínigh isteach · E = GitHub Enterprise · Esc = téigh siar"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Fearann Enterprise: "
 auth.enterprise_hint_footer: "  Enter = sínigh isteach · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N le freagairt · athraigh méid le haghaidh cárta iomlán]"  # {Locked="Y/N"}
 
 # ── Stádas gníomhaire (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "Níl suiteáilte — roghnaigh chun suiteáil go huathoibríoch"
 agent.status.not_found: "Nár aimsíodh"
-agent.status.detected: "Braitheadh"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ainmneacha uirlisí agus ordú, caithfidh siad rith mar atá
 agent.install.running_winget: "Ag rith: winget install GitHub.Copilot"
 agent.install.launch_failed: "Theip ar winget a sheoladh: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Cailleadh an ceangal leis an ngníomhaire. Clóscríobh /resta
 system.cancelled: "Cealaithe."
 system.no_prompt_in_flight: "Níl aon leid ar siúl."
 system.authentication_failed: "Theip ar fhíordheimhniú"
-system.command_copied_retry: "Ordú cóipeáilte — rith i dteirminéal eile é, ansin brúigh Enter chun triail eile a bhaint as"  # {Locked="Enter"}
 system.stopped_max_tokens: "Gearradh an freagra tar éis teorainn aschuir an mhúnla a bhaint amach."
 system.stopped_max_turn_requests: "Stop an gníomhaire tar éis a theorainn iarratas don seal seo a bhaint amach."
 system.stopped_refusal: "Dhiúltaigh an gníomhaire leanúint ar aghaidh leis an iarratas seo."

@@ -430,7 +430,9 @@ impl MasterClient {
                                 "helper notification channel drained — backpressure cleared"
                             );
                         }
-                        tracing::debug!(
+                        // Per-streamed-chunk; trace-only so default debug logs
+                        // stay readable. Turn-level flow is in `prompt_timing`.
+                        tracing::trace!(
                             target: "master",
                             step = "agent→helper",
                             op = "session_notification",
@@ -1224,7 +1226,9 @@ impl HelperHandler {
             return handle_sessions_list(&self.state, &args.params).await;
         }
         if method == crate::session_registry::INTELLTERM_METHOD_SESSION_HOOK {
-            tracing::info!(
+            // Per-session-hook (every tool start/stop/session event) — debug,
+            // not info; the reducer logs its own outcome where it matters.
+            tracing::debug!(
                 target: "master",
                 op = "ext_method",
                 method = %method,
@@ -1986,7 +1990,9 @@ async fn serve_helper(
             Some(notif) = notif_rx.recv() => {
                 let sid = notif.session_id.clone();
                 let kind = notification_kind(&notif);
-                tracing::debug!(
+                // Per-streamed-chunk; trace-only to keep default debug logs
+                // readable (this line alone dominated the master log volume).
+                tracing::trace!(
                     target: "master",
                     step = "master→helper",
                     op = "session_notification",
@@ -2506,11 +2512,29 @@ async fn handle_session_hook(
         acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
     })?;
 
-    tracing::info!(
-        target: "session_hook",
-        event = ?event,
-        "received helper session hook"
-    );
+    // Split by event kind so field diagnosis of session-state bugs survives at
+    // the default release level: terminal/lifecycle transitions (session
+    // start/stop, pane closed, connection failed) stay at info; the
+    // high-frequency routine events (tool start/stop, notifications, resume
+    // bookkeeping) go to debug. Keeps the load-bearing transitions visible
+    // without the per-tool flood that dominated the info logs.
+    {
+        use crate::agent_sessions::SessionEvent;
+        // Match on a reference so the level decision borrows rather than
+        // consumes `event` (it's used again below for the reducer).
+        let lifecycle = matches!(
+            &event,
+            SessionEvent::SessionStarted { .. }
+                | SessionEvent::SessionStopped { .. }
+                | SessionEvent::ConnectionFailed { .. }
+                | SessionEvent::PaneClosed { .. }
+        );
+        if lifecycle {
+            tracing::info!(target: "session_hook", event = ?event, "received helper session hook");
+        } else {
+            tracing::debug!(target: "session_hook", event = ?event, "received helper session hook");
+        }
+    }
 
     // Capture the session key BEFORE moving `event` into the reducer so
     // we can dispatch the post-apply title refresh against the right

@@ -81,6 +81,8 @@ pub enum RecommendedAction {
         /// fixed wtcli passes "automatic" when neither is set).
         #[serde(default)]
         direction: Option<String>,
+        #[serde(default)]
+        profile: Option<String>,
     },
     Open {
         target: OpenTarget,
@@ -94,6 +96,8 @@ pub enum RecommendedAction {
         /// Ignored for tab target.
         #[serde(default)]
         direction: Option<String>,
+        #[serde(default)]
+        profile: Option<String>,
     },
 }
 
@@ -412,7 +416,12 @@ async fn execute_choice(
                 cwd,
                 title,
                 direction,
+                profile,
             } => {
+                // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
+                let active_pane = shell_mgr.wt_get_active_pane().await.ok();
+                let profile = resolve_agent_profile(profile.as_deref(), active_pane.as_ref());
+
                 ensure_non_empty("input", input)?;
                 let runtime = match agent.as_deref() {
                     Some(agent) => Some(lookup_delegate_agent(delegate_agents, agent)?),
@@ -448,6 +457,7 @@ async fn execute_choice(
                                 commandline.as_deref(),
                                 cwd.as_deref(),
                                 title.as_deref().or(runtime_name),
+                                profile.as_deref(),
                             )
                             .await
                             .context("failed to create tab")?;
@@ -466,6 +476,7 @@ async fn execute_choice(
                                 cwd.as_deref(),
                                 direction.as_deref(),
                                 None,
+                                profile.as_deref(),
                             )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
@@ -507,7 +518,12 @@ async fn execute_choice(
                 cwd,
                 title,
                 direction,
+                profile,
             } => {
+                // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
+                let active_pane = shell_mgr.wt_get_active_pane().await.ok();
+                let profile = resolve_agent_profile(profile.as_deref(), active_pane.as_ref());
+
                 let target_label = open_target_label(target);
                 coordinator_log(&format!(
                     "open begin target={} parent={:?} title={:?} direction={:?}",
@@ -520,7 +536,7 @@ async fn execute_choice(
                 let pane_id = match target {
                     OpenTarget::Tab => {
                         let result = shell_mgr
-                            .wt_create_tab(None, cwd.as_deref(), title.as_deref())
+                            .wt_create_tab(None, cwd.as_deref(), title.as_deref(), profile.as_deref())
                             .await
                             .context("failed to create tab")?;
                         coordinator_log(&format!(
@@ -532,7 +548,7 @@ async fn execute_choice(
                     OpenTarget::Panel => {
                         let parent = required_parent(parent.as_deref(), "open")?;
                         let result = shell_mgr
-                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None)
+                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None, profile.as_deref())
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
                         coordinator_log(&format!(
@@ -976,6 +992,64 @@ fn ensure_non_empty(field: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// Resolve the profile for an agent-created terminal.
+///
+/// Prefers an explicit, non-empty profile supplied by the LLM; otherwise falls
+/// back to the `profile` field of the active pane (the shell the user is
+/// working in). An empty profile from either source is treated as "no profile"
+/// so downstream callers let Windows Terminal pick the default — this keeps the
+/// behavior consistent with `ShellManager::create_terminal_wt`.
+pub(crate) fn resolve_agent_profile(
+    explicit: Option<&str>,
+    active_pane: Option<&serde_json::Value>,
+) -> Option<String> {
+    match explicit {
+        Some(p) if !p.is_empty() => Some(p.to_owned()),
+        _ => active_pane
+            .and_then(|v| v.get("profile"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned()),
+    }
+}
+
+/// A bare POSIX absolute path (`/home/user`, `/mnt/c/...`) — starts with a
+/// single `/`. A `//`-prefixed path is a forward-slash UNC path (e.g.
+/// `//wsl.localhost/Ubuntu/...`), which *is* a valid Windows path, so it's not
+/// treated as POSIX here.
+fn is_posix_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.first() == Some(&b'/') && bytes.get(1) != Some(&b'/')
+}
+
+/// Choose the working directory to hand a **Windows** agent CLI process.
+///
+/// A WSL pane reports a POSIX cwd (e.g. `/home/user`), which is not a valid
+/// working directory for a Windows process — handing it to a Windows agent CLI
+/// (Copilot/Claude/Gemini) makes it fail to launch. When the provided cwd is a
+/// bare POSIX path we fall back to the Windows home (`%USERPROFILE%`, passed in
+/// as `windows_home`) if available; otherwise drop it so Windows Terminal picks
+/// a sensible default. Windows paths (drive-letter, UNC) and relative paths pass
+/// through unchanged, and a missing/blank cwd stays `None`.
+///
+/// Running an agent *natively inside WSL* (so it honors the Linux cwd and uses
+/// the WSL toolchain) is a separate future feature; this is only a guard so the
+/// Windows agent CLI doesn't crash on an unusable cwd.
+pub(crate) fn sanitize_windows_agent_cwd(
+    cwd: Option<&str>,
+    windows_home: Option<&str>,
+) -> Option<String> {
+    let cwd = cwd.map(str::trim).filter(|c| !c.is_empty())?;
+    if is_posix_absolute_path(cwd) {
+        windows_home
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            .map(str::to_owned)
+    } else {
+        Some(cwd.to_owned())
+    }
+}
+
 fn resolve_created_pane_id(result: &serde_json::Value, action_name: &str) -> Result<String> {
     value_to_string(result.get("session_id"))
         .filter(|pane_id| !pane_id.trim().is_empty())
@@ -1090,7 +1164,8 @@ mod tests {
     use super::{
         build_delegate_launch_commandline,
         build_delegate_launch_commandline_with_session, default_delegate_agent_runtimes,
-        parse_autofix_response, parse_recommendation_set, resolve_created_pane_id,
+        parse_autofix_response, parse_recommendation_set, resolve_agent_profile,
+        resolve_created_pane_id, sanitize_windows_agent_cwd,
         validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
@@ -1485,6 +1560,220 @@ mod tests {
             }
             other => panic!("expected Open, got {other:?}"),
         }
+    }
+
+    // ── profile inheritance (PR #366) ──────────────────────────────────────
+
+    #[test]
+    fn open_action_defaults_profile_to_none_when_absent() {
+        // The `profile` field is optional; an LLM emitting the pre-#366 schema
+        // (no `profile` key) must still parse, with profile == None.
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open a tab",
+      "actions": [ { "type": "open", "target": "tab" } ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open without profile should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { profile, .. } => assert_eq!(profile.as_deref(), None),
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_action_parses_explicit_profile() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open Ubuntu tab",
+      "actions": [ { "type": "open", "target": "tab", "profile": "Ubuntu" } ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open with profile should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { profile, .. } => {
+                assert_eq!(profile.as_deref(), Some("Ubuntu"));
+            }
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_and_send_parses_explicit_profile() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open Ubuntu tab and run",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "input": "ls -la",
+          "profile": "Ubuntu"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open_and_send should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::OpenAndSend { profile, input, .. } => {
+                assert_eq!(profile.as_deref(), Some("Ubuntu"));
+                assert_eq!(input, "ls -la");
+            }
+            other => panic!("expected OpenAndSend, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_profile_prefers_explicit_over_active_pane() {
+        let active = json!({ "profile": "PowerShell" });
+        assert_eq!(
+            resolve_agent_profile(Some("Ubuntu"), Some(&active)),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_falls_back_to_active_pane_when_explicit_missing() {
+        let active = json!({ "profile": "Ubuntu" });
+        assert_eq!(
+            resolve_agent_profile(None, Some(&active)),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_falls_back_when_explicit_empty() {
+        // An empty explicit profile is treated as "unspecified" and must not
+        // shadow the active pane's profile.
+        let active = json!({ "profile": "Ubuntu" });
+        assert_eq!(
+            resolve_agent_profile(Some(""), Some(&active)),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_none_when_active_pane_profile_empty() {
+        // An empty active-pane profile must resolve to None (not Some("")), so
+        // downstream lets Windows Terminal pick the default. This mirrors
+        // ShellManager::create_terminal_wt's non-empty guard.
+        let active = json!({ "profile": "" });
+        assert_eq!(resolve_agent_profile(None, Some(&active)), None);
+    }
+
+    #[test]
+    fn resolve_profile_none_when_active_pane_has_no_profile_field() {
+        let active = json!({ "session_id": "abc" });
+        assert_eq!(resolve_agent_profile(None, Some(&active)), None);
+    }
+
+    #[test]
+    fn resolve_profile_none_when_active_pane_unavailable() {
+        // wt_get_active_pane() failing (COM error) yields None; with no explicit
+        // profile the result is None (default profile downstream).
+        assert_eq!(resolve_agent_profile(None, None), None);
+    }
+
+    #[test]
+    fn resolve_profile_uses_explicit_when_active_pane_unavailable() {
+        assert_eq!(
+            resolve_agent_profile(Some("Ubuntu"), None),
+            Some("Ubuntu".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_profile_ignores_non_string_active_pane_profile() {
+        let active = json!({ "profile": 42 });
+        assert_eq!(resolve_agent_profile(None, Some(&active)), None);
+    }
+
+    // ── Windows agent CLI cwd sanitize (WSL POSIX cwd guard) ───────────────
+
+    #[test]
+    fn sanitize_cwd_passes_through_windows_drive_path() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some(r"C:\repo"), Some(r"C:\Users\me")),
+            Some(r"C:\repo".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_falls_back_for_posix_path() {
+        // A WSL pane's "/home/user" is unusable for a Windows agent CLI → home.
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/home/user"), Some(r"C:\Users\me")),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_falls_back_for_mnt_path() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/mnt/c/repo"), Some(r"C:\Users\me")),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_root_posix_falls_back() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/"), Some(r"C:\Users\me")),
+            Some(r"C:\Users\me".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_posix_without_home_is_dropped() {
+        // No Windows home available → drop the unusable cwd (None), letting WT
+        // pick a default rather than crashing the agent CLI on a POSIX path.
+        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), None), None);
+        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")), None);
+    }
+
+    #[test]
+    fn sanitize_cwd_keeps_unc_path() {
+        // Forward-slash and backslash UNC paths are valid Windows paths — keep.
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("//wsl.localhost/Ubuntu/home/user"), Some(r"C:\Users\me")),
+            Some("//wsl.localhost/Ubuntu/home/user".to_string())
+        );
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some(r"\\wsl.localhost\Ubuntu\home\user"), Some(r"C:\Users\me")),
+            Some(r"\\wsl.localhost\Ubuntu\home\user".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_cwd_none_and_blank_stay_none() {
+        assert_eq!(sanitize_windows_agent_cwd(None, Some(r"C:\Users\me")), None);
+        assert_eq!(sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")), None);
+    }
+
+    #[test]
+    fn sanitize_cwd_keeps_relative_path() {
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("subdir"), Some(r"C:\Users\me")),
+            Some("subdir".to_string())
+        );
     }
 
     #[test]

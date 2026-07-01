@@ -455,15 +455,16 @@ int main()
     });
 
     // ── new-tab ──
-    std::string newTabCommand, newTabTitle, newTabCwd;
+    std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");
     newTabCmd->add_option("-c,--command", newTabCommand, "Command to run");
     newTabCmd->add_option("-n,--title", newTabTitle, "Tab title");
     newTabCmd->add_option("-d,--cwd", newTabCwd, "Starting directory");
+    newTabCmd->add_option("-p,--profile", newTabProfile, "Profile");
     newTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        wil::unique_bstr profile{ Bstr("") }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
+        wil::unique_bstr profile{ Bstr(newTabProfile) }, command{ Bstr(newTabCommand) }, title{ Bstr(newTabTitle) }, cwd{ Bstr(newTabCwd) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
             return server->CreateTab(0, profile.get(), command.get(), title.get(), cwd.get(), false, true, j);
@@ -476,7 +477,7 @@ int main()
     });
 
     // ── split-pane ──
-    std::string splitPaneTarget, splitPaneCommand, splitPaneDirection;
+    std::string splitPaneTarget, splitPaneCommand, splitPaneDirection, splitPaneProfile;
     bool splitHorizontal = false, splitVertical = false;
     double splitSize = 0.5;
     auto* splitPaneCmd = app.add_subcommand("split-pane", "Split a pane")->alias("splitw");
@@ -486,6 +487,7 @@ int main()
     splitPaneCmd->add_flag("-v,--vertical", splitVertical, "Split vertically (legacy alias for --direction right)");
     splitPaneCmd->add_option("-s,--size", splitSize, "Size fraction");
     splitPaneCmd->add_option("-c,--command", splitPaneCommand, "Command to run");
+    splitPaneCmd->add_option("-p,--profile", splitPaneProfile, "Profile");
     splitPaneCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
@@ -499,7 +501,7 @@ int main()
             dir = "right";
         else
             dir = "automatic";
-        wil::unique_bstr dirB{ Bstr(dir) }, profile{ Bstr("") }, command{ Bstr(splitPaneCommand) };
+        wil::unique_bstr dirB{ Bstr(dir) }, profile{ Bstr(splitPaneProfile) }, command{ Bstr(splitPaneCommand) };
         Json::Value result;
         auto hr = CallJson([&](BSTR* j) {
             return server->SplitPane(sessionId, dirB.get(), static_cast<float>(splitSize), profile.get(), command.get(), true, j);

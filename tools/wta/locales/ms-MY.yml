@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Selamat datang ke Terminal Pintar!"
 setup.title.agent_missing: "Ejen AI tidak ditemui"
 setup.title.agent_error: "Sambungan ejen AI gagal"
-setup.title.switch_agent: "Tukar ejen AI"
 setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. I
 setup.subtitle.agent_auth: "Ejen AI \"%{agent}\" anda memerlukan pengesahan. Sila log masuk melalui ejen AI, kemudian pilih \"Saya telah log masuk\" di bawah. Untuk menukar ejen AI, pergi ke Terminal Pintar Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pilih CLI ejen AI lalai yang ingin anda gunakan dalam Terminal Pintar. Anda boleh"
-setup.description.fre_line2: "pergi ke Settings untuk mengkonfigurasi dan menyediakan ruang kerja anda."
 
 setup.option.install: "Pasang %{agent}"
 setup.option.install_hint: "(Akan dipasang secara automatik)"
 setup.option.signin: "Log masuk ke %{agent}"
 setup.option.retry_detection: "Cuba lagi"
 setup.option.retry_auth: "Saya telah log masuk — cuba sambung kembali"
-setup.option.retry_connection: "Cuba sambung kembali"
-setup.option.switch_to: "Tukar ke %{agent}"
 setup.status.installing: "Memasang..."
 setup.status.install_failed: "Pemasangan gagal: "
 setup.status.installing_winget: " Memasang melalui winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Menyemak pengesahan..."
 auth.waiting_for_authorization: "  %{spinner} Menunggu kebenaran..."
 auth.code_copied_hint: "  Kod disalin ke papan keratan — tampalkan dalam pelayar anda."
 auth.device_code_prompt: "Lawati %{url} dan masukkan kod: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Log masuk untuk menggunakan ejen AI anda:"
 auth.card_connect: "  Sambungkan %{name} untuk mendayakan ciri ejen AI"
-auth.hint_footer: "  Tekan Enter untuk menyalin perintah daftar masuk, kemudian tampalkannya dalam tetingkap terminal baharu untuk melengkapkan daftar masuk"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc untuk kembali"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter untuk daftar masuk · E untuk GitHub Enterprise · Esc untuk kembali"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Domain Enterprise: "
 auth.enterprise_hint_footer: "  Enter untuk daftar masuk · Esc untuk menggunakan github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N untuk menjawab · ubah saiz untuk kad penuh]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Belum dipasang — pilih untuk memasang secara automatik"
 agent.status.not_found: "Tidak ditemui"
-agent.status.detected: "Dikesan"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Menjalankan: winget install GitHub.Copilot"
 agent.install.launch_failed: "Gagal melancarkan winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Sambungan kepada ejen AI terputus. Taip /restart untuk menyamb
 system.cancelled: "Dibatalkan."
 system.no_prompt_in_flight: "Tiada prompt sedang berjalan."
 system.authentication_failed: "Pengesahan gagal"
-system.command_copied_retry: "Arahan disalin — jalankan dalam terminal lain, kemudian tekan Enter untuk cuba semula"  # {Locked="Enter"}
 system.stopped_max_tokens: "Respons telah dipotong selepas mencapai had output model."
 system.stopped_max_turn_requests: "Ejen berhenti selepas mencapai had permintaannya untuk giliran ini."
 system.stopped_refusal: "Ejen enggan meneruskan permintaan ini."

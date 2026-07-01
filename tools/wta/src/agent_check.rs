@@ -10,10 +10,9 @@
 //!
 //! Composite functions (combine basics):
 //!   - `check_agent`       — find_exe + has_credential → AgentStatus
-//!   - `check_all_agents`  — check_agent for all known agents
 //!   - `ensure_installed`  — find_exe → install if missing → refresh_path → find_exe
 
-use crate::agent_registry::{self, KNOWN_AGENTS};
+use crate::agent_registry;
 
 // ─── Data types ─────────────────────────────────────────────────────────────
 
@@ -30,19 +29,6 @@ pub struct AgentStatus {
 }
 
 impl AgentStatus {
-    /// User-facing status string for agent list.
-    pub fn status_label(&self) -> String {
-        if !self.cli_found {
-            if self.id == "copilot" {
-                t!("agent.status.not_installed_auto").into_owned()
-            } else {
-                t!("agent.status.not_found").into_owned()
-            }
-        } else {
-            t!("agent.status.detected").into_owned()
-        }
-    }
-
     /// Whether this agent can be auto-installed (e.g. via winget).
     pub fn can_auto_install(&self) -> bool {
         self.id == "copilot"
@@ -323,11 +309,6 @@ pub fn check_agent(agent_id: &str) -> AgentStatus {
         install_hint: profile.install_hint.to_string(),
         auth_hint: profile.auth_hint.to_string(),
     }
-}
-
-/// Check all known agents.
-pub fn check_all_agents() -> Vec<AgentStatus> {
-    KNOWN_AGENTS.iter().map(|p| check_agent(p.id)).collect()
 }
 
 /// Ensure an agent is installed: find → install if missing → refresh PATH → find again.

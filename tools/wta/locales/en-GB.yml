@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Welcome to Intelligent Terminal!"
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
-setup.title.switch_agent: "Switch agent"
 setup.title.not_available: "Agent not available"
 setup.title.sign_in: "Sign in required"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. F
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
-setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
 setup.option.install: "Install %{agent}"
 setup.option.install_hint: "(Will be installed automatically)"
 setup.option.signin: "Sign in to %{agent}"
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
-setup.option.retry_connection: "Try connecting again"
-setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Checking authentication..."
 auth.waiting_for_authorization: "  %{spinner} Waiting for authorisation..."
 auth.code_copied_hint: "  Code copied to clipboard — paste it in your browser."
 auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Sign in to use your agent:"
 auth.card_connect: "  Connect %{name} to enable agent features"
-auth.hint_footer: "  Press Enter to copy the sign-in command, then paste it in a new terminal window to finish signing in"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc to go back"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise domain: "
 auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Not installed — select to install automatically"
 agent.status.not_found: "Not found"
-agent.status.detected: "Detected"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Connection to the agent was lost. Type /restart to reconnect."
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
-system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
 system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."

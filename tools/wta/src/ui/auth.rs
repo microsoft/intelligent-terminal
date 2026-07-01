@@ -13,6 +13,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Some(a) => a,
         None => return,
     };
+    if auth.agent_id != "copilot" {
+        return;
+    }
 
     let padded = Layout::default()
         .direction(Direction::Horizontal)
@@ -69,67 +72,45 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
         lines.push(Line::from(""));
 
-        // Footer. For Copilot it carries the GitHub Enterprise affordance —
-        // collapsed it's just an "E" key hint; expanded it shows the domain
-        // input plus a github.com fallback hint. For other agents the sign-in
-        // is a copy-the-command flow: before sign-in show the copy/paste
-        // instruction; after Enter (command copied) replace it with the
-        // "command copied — retry" status, then an Esc hint.
-        if auth.agent_id == "copilot" {
-            if auth.enterprise_mode {
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        t!("auth.enterprise_domain_label").into_owned(),
-                        Style::new().fg(Color::Reset),
-                    ),
-                    Span::styled(
-                        format!("{}\u{2588}", auth.enterprise_host),
-                        Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-                    ),
-                ]));
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    t!("auth.enterprise_hint_footer").into_owned(),
-                    DIM_TEXT,
-                )));
-            } else {
-                lines.push(Line::from(Span::styled(
-                    t!("auth.enterprise_prompt").into_owned(),
-                    DIM_TEXT,
-                )));
-            }
-            // Failure feedback at the bottom: a prior attempt set status_message
-            // (e.g. an unreachable enterprise host). Show the reason in yellow
-            // followed by a dim, situation-specific guidance line.
-            if !auth.status_message.is_empty() {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", auth.status_message),
-                    Style::new().fg(Color::Yellow),
-                )));
-                let help = if auth.enterprise_mode {
-                    t!("auth.login_failed_help_enterprise").into_owned()
-                } else {
-                    t!("auth.login_failed_help_default").into_owned()
-                };
-                lines.push(Line::from(Span::styled(help, DIM_TEXT)));
-            }
-        } else {
-            if auth.status_message.is_empty() {
-                lines.push(Line::from(Span::styled(
-                    t!("auth.hint_footer").into_owned(),
-                    DIM_TEXT,
-                )));
-            } else {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", auth.status_message),
-                    Style::new().fg(Color::Yellow),
-                )));
-            }
+        // Auth mode is Copilot-only. Other agents use the diagnostic setup
+        // screen and retry after external sign-in.
+        if auth.enterprise_mode {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    t!("auth.enterprise_domain_label").into_owned(),
+                    Style::new().fg(Color::Reset),
+                ),
+                Span::styled(
+                    format!("{}\u{2588}", auth.enterprise_host),
+                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                t!("auth.hint_footer_back").into_owned(),
+                t!("auth.enterprise_hint_footer").into_owned(),
                 DIM_TEXT,
             )));
+        } else {
+            lines.push(Line::from(Span::styled(
+                t!("auth.enterprise_prompt").into_owned(),
+                DIM_TEXT,
+            )));
+        }
+        // Failure feedback at the bottom: a prior attempt set status_message
+        // (e.g. an unreachable enterprise host). Show the reason in yellow
+        // followed by a dim, situation-specific guidance line.
+        if !auth.status_message.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                format!("  {}", auth.status_message),
+                Style::new().fg(Color::Yellow),
+            )));
+            let help = if auth.enterprise_mode {
+                t!("auth.login_failed_help_enterprise").into_owned()
+            } else {
+                t!("auth.login_failed_help_default").into_owned()
+            };
+            lines.push(Line::from(Span::styled(help, DIM_TEXT)));
         }
     }
 

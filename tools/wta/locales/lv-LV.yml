@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Laipni lūdzam Viedais Terminālis!"
 setup.title.agent_missing: "Aģents nav atrasts"
 setup.title.agent_error: "Neizdevās izveidot savienojumu ar aģentu"
-setup.title.switch_agent: "Mainīt aģentu"
 setup.title.not_available: "Aģents nav pieejams"
 setup.title.sign_in: "Nepieciešama pierakstīšanās"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāci
 setup.subtitle.agent_auth: "Jūsu aģents \"%{agent}\" pieprasa autentifikāciju. Pierakstieties, izmantojot aģentu, un izvēlieties \"Esmu pierakstījies\" zemāk. Lai mainītu aģentu, dodieties uz Viedais Terminālis Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Izvēlieties noklusējuma aģentu, ko vēlaties izmantot Viedais Terminālis. Varat"
-setup.description.fre_line2: "doties uz Settings, lai konfigurētu un iestatītu savu darbvietu."
 
 setup.option.install: "Instalēt %{agent}"
 setup.option.install_hint: "(Tiks instalēts automātiski)"
 setup.option.signin: "Pierakstīties %{agent}"
 setup.option.retry_detection: "Mēģināt vēlreiz"
 setup.option.retry_auth: "Esmu pierakstījies — mēģināt savienoties vēlreiz"
-setup.option.retry_connection: "Mēģināt savienoties vēlreiz"
-setup.option.switch_to: "Pārslēgties uz %{agent}"
 setup.status.installing: "Instalē..."
 setup.status.install_failed: "Instalēšana neizdevās: "
 setup.status.installing_winget: " Instalē, izmantojot winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Pārbauda autentifikāciju..."
 auth.waiting_for_authorization: "  %{spinner} Gaida autorizāciju..."
 auth.code_copied_hint: "  Kods nokopēts starpliktuvē — ielīmējiet to pārlūkprogrammā."
 auth.device_code_prompt: "Apmeklējiet %{url} un ievadiet kodu: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Pierakstieties, lai izmantotu savu aģentu:"
 auth.card_connect: "  Savienojiet %{name}, lai iespējotu aģenta funkcijas"
-auth.hint_footer: "  Nospiediet Enter, lai kopētu pierakstīšanās komandu, pēc tam ielīmējiet to jaunā termināļa logā, lai pabeigtu pierakstīšanos"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc = atgriezties"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = pierakstīties · E = GitHub Enterprise · Esc = atgriezties"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise domēns: "
 auth.enterprise_hint_footer: "  Enter = pierakstīties · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N lai atbildētu · mainiet izmēru pilnai kartītei]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nav instalēts — izvēlieties, lai instalētu automātiski"
 agent.status.not_found: "Nav atrasts"
-agent.status.detected: "Noteikts"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Savienojums ar aģentu tika zaudēts. Ierakstiet /restart, lai
 system.cancelled: "Atcelts."
 system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
 system.authentication_failed: "Autentifikācija neizdevās"
-system.command_copied_retry: "Komanda nokopēta — palaidiet to citā terminālī, pēc tam nospiediet Enter, lai mēģinātu vēlreiz"  # {Locked="Enter"}
 system.stopped_max_tokens: "Atbilde tika apcirsta pēc modeļa izvades ierobežojuma sasniegšanas."
 system.stopped_max_turn_requests: "Aģents apstājās pēc tā pieprasījumu ierobežojuma sasniegšanas šim gājienam."
 system.stopped_refusal: "Aģents atteicās turpināt šo pieprasījumu."

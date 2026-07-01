@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Tere tulemast Nutikas Terminali!"
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
-setup.title.switch_agent: "Vaheta agenti"
 setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgi
 setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Nutikas Terminalis. Saate"
-setup.description.fre_line2: "avada Settings, et oma tööruumi seadistada ja konfigureerida."
 
 setup.option.install: "Installi %{agent}"
 setup.option.install_hint: "(Installitakse automaatselt)"
 setup.option.signin: "Logi sisse teenusesse %{agent}"
 setup.option.retry_detection: "Proovi uuesti"
 setup.option.retry_auth: "Olen sisse loginud — proovi uuesti ühendust luua"
-setup.option.retry_connection: "Proovi uuesti ühendust luua"
-setup.option.switch_to: "Lülitu üle: %{agent}"
 setup.status.installing: "Installimine..."
 setup.status.install_failed: "Installimine nurjus: "
 setup.status.installing_winget: " Installimine winget kaudu..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Autentimise kontrollimine..."
 auth.waiting_for_authorization: "  %{spinner} Autoriseerimise ootel..."
 auth.code_copied_hint: "  Kood kopeeritud lõikelauale — kleepige see oma brauserisse."
 auth.device_code_prompt: "Külastage aadressi %{url} ja sisestage kood: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Logige sisse, et kasutada oma agenti:"
 auth.card_connect: "  Ühendage %{name}, et lubada agendi funktsioone"
-auth.hint_footer: "  Vajutage Enter sisselogimiskäsu kopeerimiseks, seejärel kleepige see sisselogimise lõpetamiseks uude terminaliaknasse"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc = tagasi"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = logi sisse · E = GitHub Enterprise · Esc = tagasi"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise'i domeen: "
 auth.enterprise_hint_footer: "  Enter = logi sisse · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N vastamiseks · muutke suurust täiskaardi jaoks]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Pole installitud — valige automaatseks installimiseks"
 agent.status.not_found: "Ei leitud"
-agent.status.detected: "Tuvastatud"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restar
 system.cancelled: "Tühistatud."
 system.no_prompt_in_flight: "Aktiivset päringut pole."
 system.authentication_failed: "Autentimine nurjus"
-system.command_copied_retry: "Käsk kopeeritud — käivitage see teises terminalis ja vajutage seejärel Enter uuesti proovimiseks"  # {Locked="Enter"}
 system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavutamist."
 system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
 system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."

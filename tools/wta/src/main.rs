@@ -179,9 +179,8 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
-    /// Enter setup mode with the given reason. The agent pane shows a
-    /// Getting Started screen instead of connecting directly.
-    /// Values: first-run, agent-missing, agent-error, switch-agent
+    /// Enter diagnostic setup mode with the given reason instead of connecting directly.
+    /// Values: agent-missing, agent-error
     #[arg(long)]
     setup: Option<String>,
 
@@ -645,6 +644,18 @@ async fn main() -> Result<()> {
     // is held in a global and flushed via `logging::shutdown_flush()` on every
     // exit path (see the calls below and before each `process::exit`).
     logging::init(&process_label(&cli));
+    // Log + flush on console teardown signals (pane/tab/window close, logoff,
+    // shutdown) so a torn-down helper isn't a silent disappearance. Installed
+    // process-wide; see `install_ctrl_handler` for coverage limits — notably
+    // the master is job-killed (KILL_ON_JOB_CLOSE) and won't observe these, so
+    // *this handler* doesn't trace routine master teardown. That teardown is
+    // still logged, just by the C++ parent: `SharedWta` records both the
+    // deliberate job-close and an unexpected exit to terminal-agent-pane.log.
+    logging::install_ctrl_handler();
+    // Record panics to disk (+ a synchronous wta-panic.log backstop) so a
+    // panic isn't a silent death — stderr is invisible for a ConPTY helper /
+    // CREATE_NO_WINDOW master. Chains the default hook; semantics unchanged.
+    logging::install_panic_hook();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
 
     let locale = cli
@@ -2115,8 +2126,16 @@ async fn delegate_with_context(
     tracing::debug!("delegate_with_context: launching");
     tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
+    // The delegate always launches a Windows agent CLI (Copilot/Claude/Gemini).
+    // If the active pane is WSL, `cwd` is a POSIX path (e.g. "/home/user") that
+    // a Windows process can't use as a working directory — sanitize it to the
+    // Windows home so the CLI still launches. (WSL-native agents are a separate
+    // future feature.)
+    let windows_home = std::env::var("USERPROFILE").ok();
+    let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+
     let create_resp = shell_mgr
-        .wt_create_tab(Some(&commandline), cwd, None)
+        .wt_create_tab(Some(&commandline), sanitized_cwd.as_deref(), None, None)
         .await?;
     let pane_guid = create_resp
         .get("session_id")
@@ -3021,7 +3040,7 @@ async fn run_acp_app(
             // the wta cmdline. `open_agents_view_for_tab` fires the
             // `session/list` refetch to master that populates the view.
             //
-            // Skip in setup mode: --setup takes the FRE path and the user
+            // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
             if cli.setup.is_none() && cli.initial_view == InitialView::Sessions {
                 tracing::info!(target: "initial_view", "starting in agent session view");
@@ -3057,17 +3076,13 @@ async fn run_acp_app(
             // Enter setup mode if --setup <reason> was passed.
             tracing::info!("cli.setup = {:?}", cli.setup);
             if let Some(ref reason_str) = cli.setup {
-                tracing::info!("Entering FRE setup mode: reason={}", reason_str);
+                tracing::info!("Entering diagnostic setup mode: reason={}", reason_str);
                 let reason = app::SetupReason::from_str(reason_str);
 
                 app_state.mode = app::AppMode::Setup;
-                let all_agent_statuses = agent_check::check_all_agents();
-                let options = app::build_setup_options(&reason, None, &all_agent_statuses);
+                let options = app::build_setup_options(&reason, None);
                 let title = reason.title().to_string();
-                let subtitle = match reason {
-                    app::SetupReason::FirstRun => "Getting started".to_string(),
-                    _ => "Fix the issue to continue".to_string(),
-                };
+                let subtitle = "Fix the issue to continue".to_string();
                 app_state.setup = Some(app::SetupState {
                     reason,
                     selected_index: 0,

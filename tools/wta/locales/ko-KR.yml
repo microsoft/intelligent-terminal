@@ -1,8 +1,6 @@
 # 설정 화면 제목
-setup.title.first_run: "지능형 터미널에 오신 것을 환영합니다!"
 setup.title.agent_missing: "에이전트를 찾을 수 없음"
 setup.title.agent_error: "에이전트 연결 실패"
-setup.title.switch_agent: "에이전트 전환"
 setup.title.not_available: "에이전트를 사용할 수 없음"
 setup.title.sign_in: "로그인 필요"
 
@@ -11,16 +9,12 @@ setup.subtitle.copilot_missing: "에이전트 \"%{agent}\"이(가) 설치되어 
 setup.subtitle.agent_missing: "에이전트 \"%{agent}\"이(가) 설치되어 있지 않습니다. 수동으로 다시 설치한 후 재시도하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
 setup.subtitle.copilot_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 아래 단계에 따라 로그인하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
 setup.subtitle.agent_auth: "에이전트 \"%{agent}\"에 인증이 필요합니다. 에이전트를 통해 로그인한 후 아래에서 \"로그인 완료\"를 선택하세요. 에이전트를 전환하려면 지능형 터미널 Settings > Agent로 이동하세요."
-setup.description.fre_line1: "지능형 터미널에서 사용할 기본 에이전트를 선택하세요."
-setup.description.fre_line2: "설정으로 이동하여 작업 영역을 구성하고 설정할 수 있습니다."
 
 setup.option.install: "%{agent} 설치"
 setup.option.install_hint: "(자동으로 설치됩니다)"
 setup.option.signin: "%{agent}에 로그인"
 setup.option.retry_detection: "다시 시도"
 setup.option.retry_auth: "로그인 완료 — 다시 연결 시도"
-setup.option.retry_connection: "다시 연결 시도"
-setup.option.switch_to: "%{agent}(으)로 전환"
 setup.status.installing: "설치 중..."
 setup.status.install_failed: "설치 실패: "
 setup.status.installing_winget: " winget을 통해 설치 중..."
@@ -33,10 +27,7 @@ auth.checking_authentication: "  %{spinner} 인증 확인 중..."
 auth.waiting_for_authorization: "  %{spinner} 승인 대기 중..."
 auth.code_copied_hint: "  코드가 클립보드에 복사되었습니다 — 브라우저에 붙여넣으세요."
 auth.device_code_prompt: "%{url}을(를) 방문하고 코드 %{code}을(를) 입력하세요"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "에이전트를 사용하려면 로그인하세요:"
 auth.card_connect: "  %{name}을(를) 연결하여 에이전트 기능 사용"
-auth.hint_footer: "  Enter 키를 눌러 로그인 명령을 복사한 다음, 새 터미널 창에 붙여넣어 실행하여 로그인을 완료하세요"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc 키를 눌러 뒤로 이동"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter 키로 로그인 · E 키로 GitHub Enterprise 사용 · Esc 키로 뒤로 이동"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  엔터프라이즈 도메인: "
 auth.enterprise_hint_footer: "  Enter 키로 로그인 · Esc 키로 github.com 사용"  # {Locked="Enter","Esc","github.com"}
@@ -95,9 +86,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N으로 응답 · 전체 카드를 보려면 크기 조정]"  # {Locked="Y/N"}
 
 # ── 에이전트 상태 (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "설치되지 않음 — 선택하면 자동으로 설치됩니다"
 agent.status.not_found: "찾을 수 없음"
-agent.status.detected: "감지됨"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - 도구 이름 및 명령, 그대로 유지
 agent.install.running_winget: "실행 중: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget을 시작할 수 없습니다: %{error}"
@@ -128,7 +117,6 @@ connection.lost: "에이전트와의 연결이 끊어졌습니다. 다시 연결
 system.cancelled: "취소되었습니다."
 system.no_prompt_in_flight: "진행 중인 프롬프트가 없습니다."
 system.authentication_failed: "인증 실패"
-system.command_copied_retry: "명령이 복사되었습니다 — 다른 터미널에서 실행한 후 Enter를 눌러 재시도하세요"  # {Locked="Enter"}
 system.stopped_max_tokens: "모델의 출력 한도에 도달하여 응답이 잘렸습니다."
 system.stopped_max_turn_requests: "이 턴의 요청 한도에 도달하여 에이전트가 중지되었습니다."
 system.stopped_refusal: "에이전트가 이 요청을 계속하기를 거부했습니다."

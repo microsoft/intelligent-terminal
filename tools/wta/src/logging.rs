@@ -175,6 +175,181 @@ pub fn shutdown_flush() {
     }
 }
 
+/// Install a Windows console control handler that records the teardown
+/// signal and drains the log appender before the OS terminates us.
+///
+/// The wta-**helper** runs as a ConPTY child of Windows Terminal (it's the
+/// process rendered in the agent pane). When its pane/tab/window closes — or
+/// the user logs off / shuts down — the OS delivers a control event
+/// (`CTRL_CLOSE`/`CTRL_LOGOFF`/`CTRL_SHUTDOWN`) and then terminates it at the
+/// end of a short grace window. Without a handler those deaths are invisible:
+/// the process vanishes mid-stream and the non-blocking appender's last
+/// buffered records are lost, because [`shutdown_flush`] never runs (the
+/// `WorkerGuard` lives in a `static` and `static`s don't `Drop` at teardown).
+/// That is exactly the "helper just stopped responding" signature where the
+/// success path is logged exhaustively but the teardown path is silent and
+/// the incident is undiagnosable.
+///
+/// This closes that gap for the helper: it logs WHICH control event tore the
+/// process down and flushes so the final records (e.g. the transport-lost
+/// WARN in `run_acp_client_over_pipe`) reach disk. The handler returns FALSE
+/// so the default handler still runs and the process terminates as before —
+/// we only ADD a log line + flush, never changing termination behavior. It's
+/// installed process-wide (cheap and harmless), so any wta process that does
+/// receive a console control event benefits.
+///
+/// Coverage limits — what this does NOT catch:
+///   * The wta-**master** is spawned `CREATE_NO_WINDOW` and contained in a
+///     Job Object with `KILL_ON_JOB_CLOSE` (see C++ `SharedWta`). Its normal
+///     teardown is the parent dropping that job, which reaps the master like
+///     a `TerminateProcess` — NO control event — so *this handler* does not
+///     trace routine master teardown. That teardown is not unlogged overall,
+///     though: the C++ parent (`SharedWta`) records both the deliberate
+///     job-close and an unexpected exit to `terminal-agent-pane.log`. This
+///     handler fires for the master only on genuine console signals
+///     (logoff/shutdown), if delivered at all.
+///   * A hard `TerminateProcess` (Task Manager "End task", `taskkill /F`, an
+///     OS resource kill, or the Job-Object reap above) delivers no control
+///     event and stays untraceable from inside the process.
+///   * While the Ratatui TUI holds the console in raw mode, Ctrl+C arrives as
+///     a key event (not `CTRL_C_EVENT`), so this handler doesn't normally see
+///     it and doesn't alter the TUI's Ctrl+C behavior.
+pub fn install_ctrl_handler() {
+    use windows_sys::Win32::Foundation::{GetLastError, ERROR_INVALID_HANDLE};
+    use windows_sys::Win32::System::Console::{
+        SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
+        CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
+    };
+
+    // Returns `windows_sys`' `BOOL` (an `i32` alias) to match the
+    // PHANDLER_ROUTINE signature: 0 == FALSE (fall through to default).
+    unsafe extern "system" fn handler(ctrl_type: u32) -> i32 {
+        let event = match ctrl_type {
+            CTRL_C_EVENT => "CTRL_C",
+            CTRL_BREAK_EVENT => "CTRL_BREAK",
+            CTRL_CLOSE_EVENT => "CTRL_CLOSE",
+            CTRL_LOGOFF_EVENT => "CTRL_LOGOFF",
+            CTRL_SHUTDOWN_EVENT => "CTRL_SHUTDOWN",
+            _ => "UNKNOWN",
+        };
+        tracing::warn!(
+            target: "lifecycle",
+            ctrl_type,
+            event,
+            "console control event received — process being torn down; flushing logs"
+        );
+        // Drain the appender so the line above (and any earlier buffered
+        // records) hit disk before the grace window ends and we're killed.
+        shutdown_flush();
+        // FALSE → fall through to the default handler (terminate). We only
+        // add logging + flush; termination behavior is unchanged.
+        0
+    }
+
+    // SAFETY: `handler` is a valid `extern "system"` routine matching the
+    // PHANDLER_ROUTINE signature; registering a control handler is a
+    // process-global, thread-safe Win32 operation.
+    unsafe {
+        if SetConsoleCtrlHandler(Some(handler), 1) == 0 {
+            // Capture the Win32 error immediately, before any other call (incl.
+            // the logging macro's own work) can reset thread-last-error.
+            let error_code = GetLastError();
+            if error_code == ERROR_INVALID_HANDLE {
+                // Expected for a windowless wta process (the CREATE_NO_WINDOW
+                // master, a detached CLI invocation): there's no console to
+                // signal, and teardown for those is covered elsewhere (the C++
+                // side observes the master via its wait callback). Benign —
+                // debug only, so it never spams release logs.
+                tracing::debug!(
+                    target: "lifecycle",
+                    error_code,
+                    "SetConsoleCtrlHandler: no console attached (expected for windowless process)"
+                );
+            } else {
+                // Any other failure is the diagnostic feature itself failing to
+                // arm where we DID expect a console (e.g. the helper) — warn so
+                // release (info) logs explain why later teardown signals are
+                // absent rather than leaving it a silent mystery.
+                tracing::warn!(
+                    target: "lifecycle",
+                    error_code,
+                    "SetConsoleCtrlHandler failed — teardown signals will not be logged"
+                );
+            }
+        }
+    }
+}
+
+/// Install a panic hook that records the panic to disk, then chains to the
+/// previous hook.
+///
+/// A Rust panic otherwise writes only to stderr — invisible for a ConPTY-
+/// hosted helper or a `CREATE_NO_WINDOW` master — and the non-blocking
+/// appender's buffered tail is lost when a *fatal* panic kills the process
+/// before the background worker drains it. So a panic is a "died for no
+/// logged reason" blind spot. This closes it WITHOUT changing panic semantics
+/// (it chains the previous hook, so unwind/abort and backtraces are
+/// unchanged):
+///   * a `tracing::error!` so the panic correlates in the normal log (this
+///     drains fine for a *recovered* panic, e.g. behind a `catch_unwind`), and
+///   * a synchronous append to `wta-panic.log`, independent of the async
+///     appender, so the record reaches disk even when a fatal panic kills us.
+///
+/// It deliberately does NOT call [`shutdown_flush`]: that drops the appender
+/// guard and would permanently kill logging after a recoverable panic. The
+/// synchronous file write is the durable path instead.
+pub fn install_panic_hook() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Same payload extraction the rest of the codebase uses.
+        let msg = info
+            .payload()
+            .downcast_ref::<&'static str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(|s| s.as_str()))
+            .unwrap_or("<non-string panic payload>");
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let thread_name = std::thread::current()
+            .name()
+            .unwrap_or("<unnamed>")
+            .to_string();
+
+        tracing::error!(
+            target: "panic",
+            message = %msg,
+            location = %location,
+            thread = %thread_name,
+            "thread panicked"
+        );
+
+        // Guaranteed-on-disk backstop: a fatal main-thread panic unwinds past
+        // main() without reaching any `shutdown_flush`, so the appender's
+        // buffered tail (incl. the error above) can be lost. A synchronous
+        // append here does not depend on the appender being alive.
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_dir().join("wta-panic.log"))
+        {
+            use std::io::Write;
+            let _ = writeln!(
+                f,
+                "[{millis}ms] pid={} thread={thread_name} panicked at {location}: {msg}",
+                std::process::id()
+            );
+        }
+
+        prev(info);
+    }));
+}
+
 /// Filesystem upkeep run once per process at logging init, before our own
 /// appender opens.
 ///

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "ჭკვიანი ტერმინალი-ში მოგესალმებით!"
 setup.title.agent_missing: "აგენტი ვერ მოიძებნა"
 setup.title.agent_error: "აგენტთან კავშირი ვერ შედგა"
-setup.title.switch_agent: "აგენტის შეცვლა"
 setup.title.not_available: "აგენტი მიუწვდომელია"
 setup.title.sign_in: "საჭიროა შესვლა"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "თქვენი აგენტი \"%{agent}\"
 setup.subtitle.agent_auth: "თქვენი აგენტი \"%{agent}\" მოითხოვს ავთენტიფიკაციას. შედით აგენტით და შემდეგ აირჩიეთ \"შევედი\" ქვემოთ. აგენტის შესაცვლელად გადადით ჭკვიანი ტერმინალი Settings > Agent-ში."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "აირჩიეთ ნაგულისხმევი აგენტი, რომლის გამოყენებაც გსურთ ჭკვიანი ტერმინალი-ში. შეგიძლიათ"
-setup.description.fre_line2: "გადახვიდეთ Settings-ში სამუშაო გარემოს კონფიგურაციისთვის."
 
 setup.option.install: "%{agent}-ის დაინსტალირება"
 setup.option.install_hint: "(ავტომატურად დაინსტალირდება)"
 setup.option.signin: "შესვლა %{agent}-ში"
 setup.option.retry_detection: "სცადეთ თავიდან"
 setup.option.retry_auth: "შევედი — კავშირის ხელახლა სცადეთ"
-setup.option.retry_connection: "კავშირის ხელახლა სცადეთ"
-setup.option.switch_to: "გადართვა %{agent}-ზე"
 setup.status.installing: "ინსტალაცია..."
 setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
 setup.status.installing_winget: " winget-ით ინსტალაცია..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} ავთენტიფიკაც
 auth.waiting_for_authorization: "  %{spinner} ავტორიზაციის მოლოდინში..."
 auth.code_copied_hint: "  კოდი კოპირებულია — ჩასვით ბრაუზერში."
 auth.device_code_prompt: "გადადით %{url} მისამართზე და შეიყვანეთ კოდი: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "შედით აგენტის გამოსაყენებლად:"
 auth.card_connect: "  დაუკავშირეთ %{name} აგენტის ფუნქციების გასააქტიურებლად"
-auth.hint_footer: "  დააჭირეთ Enter-ს შესვლის ბრძანების დასაკოპირებლად, შემდეგ ჩასვით იგი ახალი ტერმინალის ფანჯარაში შესვლის დასასრულებლად"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc უკან დასაბრუნებლად"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter შესასვლელად · E GitHub Enterprise-ისთვის · Esc უკან დასაბრუნებლად"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise დომენი: "
 auth.enterprise_hint_footer: "  Enter შესასვლელად · Esc github.com-ისთვის"  # {Locked="Enter","Esc","github.com"}
@@ -111,9 +102,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N პასუხისთვის · ზომის შეცვლა სრული ბარათისთვის]"  # {Locked="Y/N"}
 
 # ── აგენტის სტატუსი (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "არ არის დაინსტალირებული — აირჩიეთ ავტომატური ინსტალაციისთვის"
 agent.status.not_found: "ვერ მოიძებნა"
-agent.status.detected: "აღმოჩენილია"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ხელსაწყოების სახელები და ბრძანება, უნდა შესრულდეს ზუსტად
 agent.install.running_winget: "გაშვება: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget-ის გაშვება ვერ მოხერხდა: %{error}"
@@ -144,7 +133,6 @@ connection.lost: "აგენტთან კავშირი დაიკა
 system.cancelled: "გაუქმებულია."
 system.no_prompt_in_flight: "მიმდინარე მოთხოვნა არ არის."
 system.authentication_failed: "ავთენტიფიკაცია ვერ მოხერხდა"
-system.command_copied_retry: "ბრძანება კოპირებულია — გაუშვით სხვა ტერმინალში, შემდეგ დააჭირეთ Enter ხელახლა საცდელად"  # {Locked="Enter"}
 system.stopped_max_tokens: "პასუხი შეწყდა მოდელის გამოსავლის ლიმიტის მიღწევის შემდეგ."
 system.stopped_max_turn_requests: "აგენტი გაჩერდა ამ რაუნდის მოთხოვნების ლიმიტის მიღწევის შემდეგ."
 system.stopped_refusal: "აგენტმა უარი თქვა ამ მოთხოვნის გაგრძელებაზე."

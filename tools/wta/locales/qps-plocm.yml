@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "[!! Welco_me to Intelligent Terminal! !!]"
 setup.title.agent_missing: "[!! Age_nt not found !!]"
 setup.title.agent_error: "[!! Age_nt connection failed !!]"
-setup.title.switch_agent: "[!! Swi_tch agent !!]"
 setup.title.not_available: "[!! Age_nt not available !!]"
 setup.title.sign_in: "[!! Sig_n in required !!]"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authenticati
 setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've_ signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "[!! Cho_ose the default agent you would like to use in Intelligent Terminal. You can !!]"
-setup.description.fre_line2: "[!! nav_igate to Settings to configure and set up your workspace. !!]"
 
 setup.option.install: "[!! Ins_tall %{agent} !!]"
 setup.option.install_hint: "[!! (Wi_ll be installed automatically) !!]"
 setup.option.signin: "[!! Sig_n in to %{agent} !!]"
 setup.option.retry_detection: "[!! Try_ again !!]"
 setup.option.retry_auth: "[!! I've_ signed in — try connecting again !!]"
-setup.option.retry_connection: "[!! Try_ connecting again !!]"
-setup.option.switch_to: "[!! Swi_tch to %{agent} !!]"
 setup.status.installing: "[!! Ins_talling... !!]"
 setup.status.install_failed: "[!! Ins_tall failed:  !!]"
 setup.status.installing_winget: "[!!  In_stalling via winget... !!]"
@@ -36,10 +30,7 @@ auth.checking_authentication: "[!!   %{spinner} Che_cking authentication... !!]"
 auth.waiting_for_authorization: "[!!   %{spinner} Wai_ting for authorization... !!]"
 auth.code_copied_hint: "[!!   Co_de copied to clipboard — paste it in your browser. !!]"
 auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "[!! Sig_n in to use your agent: !!]"
 auth.card_connect: "[!!   Co_nnect %{name} to enable agent features !!]"
-auth.hint_footer: "  Press Enter to copy the sign-in command, then paste it in a new terminal window to finish signing in"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc to go back"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise domain: "
 auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[!! [Y/_N to answer · resize for full card] !!]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "[!! Not_ installed — select to install automatically !!]"
 agent.status.not_found: "[!! Not_ found !!]"
-agent.status.detected: "[!! Det_ected !!]"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "[!! Run_ning: winget install GitHub.Copilot !!]"
 agent.install.launch_failed: "[!! Fai_led to launch winget: %{error} !!]"
@@ -132,7 +121,6 @@ connection.lost: "[!! Conn_ection to the agent was lost. Type /restart to reconn
 system.cancelled: "[!! Can_celled. !!]"
 system.no_prompt_in_flight: "[!! No_ prompt in flight. !!]"
 system.authentication_failed: "[!! Aut_hentication failed !!]"
-system.command_copied_retry: "[!! Com_mand copied — run it in another terminal, then press Enter to retry !!]"  # {Locked="Enter"}
 system.stopped_max_tokens: "[!! The_ response was cut off after reaching the model's output limit. !!]"
 system.stopped_max_turn_requests: "[!! The_ agent stopped after reaching its request limit for this turn. !!]"
 system.stopped_refusal: "[!! The_ agent declined to continue with this request. !!]"

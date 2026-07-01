@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Sveiki atvykę į Išmanusis Terminalas!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
-setup.title.switch_agent: "Pakeisti agentą"
 setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifika
 setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Išmanusis Terminalas. Galite"
-setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
 
 setup.option.install: "Įdiegti %{agent}"
 setup.option.install_hint: "(Bus įdiegta automatiškai)"
 setup.option.signin: "Prisijungti prie %{agent}"
 setup.option.retry_detection: "Bandyti dar kartą"
 setup.option.retry_auth: "Prisijungiau — bandyti prisijungti dar kartą"
-setup.option.retry_connection: "Bandyti prisijungti dar kartą"
-setup.option.switch_to: "Perjungti į %{agent}"
 setup.status.installing: "Diegiama..."
 setup.status.install_failed: "Diegimas nepavyko: "
 setup.status.installing_winget: " Diegiama per winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Tikrinama autentifikacija..."
 auth.waiting_for_authorization: "  %{spinner} Laukiama autorizavimo..."
 auth.code_copied_hint: "  Kodas nukopijuotas į iškarpinę — įklijuokite jį naršyklėje."
 auth.device_code_prompt: "Apsilankykite %{url} ir įveskite kodą: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Prisijunkite, kad galėtumėte naudoti savo agentą:"
 auth.card_connect: "  Prijunkite %{name}, kad įgalintumėte agento funkcijas"
-auth.hint_footer: "  Paspauskite Enter, kad nukopijuotumėte prisijungimo komandą, tada įklijuokite ją naujame terminalo lange, kad baigtumėte prisijungimą"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc = grįžti"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter = prisijungti · E = GitHub Enterprise · Esc = grįžti"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise domenas: "
 auth.enterprise_hint_footer: "  Enter = prisijungti · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N atsakyti · pakeiskite dydį pilnai kortelei]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Neįdiegta — pasirinkite, kad būtų įdiegta automatiškai"
 agent.status.not_found: "Nerasta"
-agent.status.detected: "Aptikta"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Ryšys su agentu nutrūko. Įveskite /restart, kad prisijungtu
 system.cancelled: "Atšaukta."
 system.no_prompt_in_flight: "Nėra vykdomos užklausos."
 system.authentication_failed: "Autentifikavimas nepavyko"
-system.command_copied_retry: "Komanda nukopijuota — paleiskite ją kitame terminale, tada paspauskite Enter, kad bandytumėte iš naujo"  # {Locked="Enter"}
 system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvesties ribą."
 system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
 system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."

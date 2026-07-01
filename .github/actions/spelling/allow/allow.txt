@@ -224,6 +224,7 @@ sids
 SIGKILLs
 signtool
 slnt
+spams
 splitn
 splitw
 ssh

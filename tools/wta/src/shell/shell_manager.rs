@@ -139,6 +139,14 @@ impl ShellManager {
         // Create in background so it doesn't steal focus from wta's TUI
         params.insert("background".into(), true.into());
 
+        if let Ok(active) = self.wt_get_active_pane().await {
+            if let Some(profile) =
+                crate::coordinator::resolve_agent_profile(None, Some(&active))
+            {
+                params.insert("profile".into(), profile.into());
+            }
+        }
+
         let result = wt
             .request("create_tab", serde_json::Value::Object(params))
             .await?;
@@ -475,6 +483,7 @@ impl ShellManager {
         commandline: Option<&str>,
         cwd: Option<&str>,
         title: Option<&str>,
+        profile: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
         if let Some(cmd) = commandline {
@@ -485,6 +494,9 @@ impl ShellManager {
         }
         if let Some(t) = title {
             params.insert("title".into(), t.into());
+        }
+        if let Some(p) = profile {
+            params.insert("profile".into(), p.into());
         }
         self.wt()?
             .request("create_tab", serde_json::Value::Object(params))
@@ -499,6 +511,7 @@ impl ShellManager {
         cwd: Option<&str>,
         direction: Option<&str>,
         size: Option<f64>,
+        profile: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
         params.insert("session_id".into(), pane_id.into());
@@ -513,6 +526,9 @@ impl ShellManager {
         }
         if let Some(s) = size {
             params.insert("size".into(), s.into());
+        }
+        if let Some(p) = profile {
+            params.insert("profile".into(), p.into());
         }
         self.wt()?
             .request("split_pane", serde_json::Value::Object(params))

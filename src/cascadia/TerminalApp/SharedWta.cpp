@@ -9,6 +9,7 @@
 
 #include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../inc/WtaProcess.h"
+#include "AgentPaneLog.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -419,6 +420,9 @@ namespace winrt::TerminalApp::implementation
         // Order matters: drop the job FIRST so KILL_ON_JOB_CLOSE
         // terminates wta + descendants while we still hold a process
         // handle that lets us observe the termination if needed.
+        // Deliberate teardown: the master is reaped silently (job close, no
+        // console event), so it can't log its own death — record it here.
+        _agentPaneLog("releasing wta-master pid=" + std::to_string(_pid) + " (deliberate teardown via KILL_ON_JOB_CLOSE)");
         _job.reset();
         _process.reset();
         if (_waitHandle)
@@ -470,6 +474,13 @@ namespace winrt::TerminalApp::implementation
             // ran. Nothing to do.
             return;
         }
+        // The master exited on its own — crash, OOM, or an external kill
+        // (taskkill /F, Task Manager). It can't log its own hard death from
+        // inside, but this wait callback (the parent observing it) can. This
+        // is the external observer that makes otherwise-silent master deaths
+        // diagnosable; deliberate teardowns never reach here (they reset
+        // _process first, so the validity check above bails).
+        _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(observedPid) + " (crash/OOM/external kill — observed by wait callback)");
         _job.reset();
         _process.reset();
         if (_waitHandle)

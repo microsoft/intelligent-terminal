@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Velkommen til Intelligent Terminal!"
 setup.title.agent_missing: "Agenten ble ikke funnet"
 setup.title.agent_error: "Tilkoblingen til agenten mislyktes"
-setup.title.switch_agent: "Bytt agent"
 setup.title.not_available: "Agenten er ikke tilgjengelig"
 setup.title.sign_in: "Pålogging kreves"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krever autentisering. Fø
 setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agenten, og velg deretter \"Jeg har logget inn\" nedenfor. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Velg standardagenten du vil bruke i Intelligent Terminal. Du kan"
-setup.description.fre_line2: "gå til Settings for å konfigurere og sette opp arbeidsområdet ditt."
 
 setup.option.install: "Installer %{agent}"
 setup.option.install_hint: "(Installeres automatisk)"
 setup.option.signin: "Logg inn på %{agent}"
 setup.option.retry_detection: "Prøv igjen"
 setup.option.retry_auth: "Jeg har logget inn — prøv å koble til igjen"
-setup.option.retry_connection: "Prøv å koble til igjen"
-setup.option.switch_to: "Bytt til %{agent}"
 setup.status.installing: "Installerer..."
 setup.status.install_failed: "Installasjonen mislyktes: "
 setup.status.installing_winget: " Installerer via winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} Kontrollerer autentisering..."
 auth.waiting_for_authorization: "  %{spinner} Venter på autorisasjon..."
 auth.code_copied_hint: "  Koden er kopiert til utklippstavlen — lim den inn i nettleseren din."
 auth.device_code_prompt: "Gå til %{url} og skriv inn koden: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Logg inn for å bruke agenten din:"
 auth.card_connect: "  Koble til %{name} for å aktivere agentfunksjoner"
-auth.hint_footer: "  Trykk Enter for å kopiere påloggingskommandoen, og lim den deretter inn i et nytt terminalvindu for å fullføre påloggingen"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc for å gå tilbake"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter for å logge på · E for GitHub Enterprise · Esc for å gå tilbake"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Enterprise-domene: "
 auth.enterprise_hint_footer: "  Enter for å logge på · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N for å svare · endre størrelse for fullstendig kort]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Ikke installert — velg for å installere automatisk"
 agent.status.not_found: "Ikke funnet"
-agent.status.detected: "Oppdaget"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Tilkoblingen til agenten gikk tapt. Skriv /restart for å kobl
 system.cancelled: "Avbrutt."
 system.no_prompt_in_flight: "Ingen forespørsel pågår."
 system.authentication_failed: "Autentisering mislyktes"
-system.command_copied_retry: "Kommando kopiert — kjør den i en annen terminal og trykk Enter for å prøve igjen"  # {Locked="Enter"}
 system.stopped_max_tokens: "Svaret ble avkortet etter at modellens utdatagrense ble nådd."
 system.stopped_max_turn_requests: "Agenten stoppet etter at forespørselsgrensen for denne runden ble nådd."
 system.stopped_refusal: "Agenten avslo å fortsette med denne forespørselen."

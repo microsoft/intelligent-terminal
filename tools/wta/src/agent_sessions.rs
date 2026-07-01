@@ -1142,7 +1142,9 @@ impl AgentSessionRegistry {
                         self.known_alive_panes.insert(pane_lc);
                     }
                     self.dirty = true;
-                    tracing::info!(
+                    // Per-row, fires on every alive-snapshot upgrade — debug,
+                    // not info (this was by far the highest-volume info line).
+                    tracing::debug!(
                         target: "agent_session_registry",
                         key = %sid,
                         pane = ?pane_opt,

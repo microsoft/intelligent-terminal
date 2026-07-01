@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Nau mai ki Iho Atamai!"
 setup.title.agent_missing: "Kaore i kitea te agent"
 setup.title.agent_error: "I rahua te hononga agent"
-setup.title.switch_agent: "Huri agent"
 setup.title.not_available: "Kaore te agent e watea"
 setup.title.sign_in: "Me takiuru"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Me whakamanatu to agent \"%{agent}\". Whaia nga hi
 setup.subtitle.agent_auth: "Me whakamanatu to agent \"%{agent}\". Takiuru mā te agent, kātahi ka kōwhiria \"Kua takiuru au\" i raro. Ki te huri agent, haere ki Iho Atamai Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Kōwhiria te agent taunoa hei whakamahi i roto i Iho Atamai. Ka taea e koe te"
-setup.description.fre_line2: "haere ki Settings hei whirihiri me te whakarite i to wahi mahi."
 
 setup.option.install: "Tauta ano i a %{agent}"
 setup.option.install_hint: "(Ka tautahia aunoa)"
 setup.option.signin: "Takiuru ki %{agent}"
 setup.option.retry_detection: "Ngana anō"
 setup.option.retry_auth: "Kua takiuru au — ngana anō ki te hono"
-setup.option.retry_connection: "Ngana anō ki te hono"
-setup.option.switch_to: "Huri ki %{agent}"
 setup.status.installing: "E tauta ana..."
 setup.status.install_failed: "I rahua te tauta: "
 setup.status.installing_winget: " E tauta ana ma winget..."
@@ -36,10 +30,7 @@ auth.checking_authentication: "  %{spinner} E tiritee ana i te whakamanatu..."
 auth.waiting_for_authorization: "  %{spinner} E tatari ana mo te whakamana..."
 auth.code_copied_hint: "  Kua tarua te waehere — whakapiri ki to tirotiro."
 auth.device_code_prompt: "Haere ki %{url}, ka tāuru i te waehere: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
-auth.sign_in_prompt: "Takiuru ki te whakamahi i to agent:"
 auth.card_connect: "  Honoa %{name} ki te whakahohe i nga ahuatanga agent"
-auth.hint_footer: "  Pēhia Enter hei tārua i te tono takiuru, kātahi whakapiria ki tētahi matapihi kāpeka hōu hei whakaoti i te takiuru"  # {Locked="Enter"}
-auth.hint_footer_back: "  Esc hei hoki whakamuri"  # {Locked="Esc"}
 auth.enterprise_prompt: "  Enter hei takiuru · E mō GitHub Enterprise · Esc hei hoki whakamuri"  # {Locked="Enter","E","Esc"}
 auth.enterprise_domain_label: "  Rohe Enterprise: "
 auth.enterprise_hint_footer: "  Enter hei takiuru · Esc mō github.com"  # {Locked="Enter","Esc","github.com"}
@@ -99,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N ki te whakautu · hurihia te rahi mo te kaari katoa]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Kaore i tautahia — kowhiria ki te tauta aunoa"
 agent.status.not_found: "Kaore i kitea"
-agent.status.detected: "Kua kitea"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "E whakahau ana: winget install GitHub.Copilot"
 agent.install.launch_failed: "I rahua te whakarewa i a winget: %{error}"
@@ -132,7 +121,6 @@ connection.lost: "Kua ngaro te hononga ki te agent. Patohia /restart kia hono an
 system.cancelled: "Kua whakakorea."
 system.no_prompt_in_flight: "Karekau he tohutohu e rere ana."
 system.authentication_failed: "I rahua te whakamanatu"
-system.command_copied_retry: "Kua tarua te whakahau — whakahautia i tetahi atu teirminara, katahi ka pehi Enter ki te ngana ano"  # {Locked="Enter"}
 system.stopped_max_tokens: "I tapahia te whakautu i muri i te tutukinga o te tepe putanga o te tauira."
 system.stopped_max_turn_requests: "I mutu te kaihoko i muri i te tutukinga o tana tepe tono mō tēnei huri."
 system.stopped_refusal: "I whakakāhore te kaihoko ki te haere tonu me tēnei tono."
