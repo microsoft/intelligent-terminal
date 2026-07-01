@@ -93,4 +93,5 @@
     # §6 custom agents (Feature.CustomAgent)
     'Custom agent is Settings-only'     = 'Custom agent is Settings-only'
     'Custom agent runs the standard agent-pane behaviours' = 'A configured custom ACP agent connects and chats'
+    'Custom failure is safe'            = 'Custom failure is safe'
 }

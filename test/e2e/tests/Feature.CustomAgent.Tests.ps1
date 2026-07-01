@@ -15,6 +15,7 @@ BeforeDiscovery {
 }
 
 Describe 'Feature §6 custom agents' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll { Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Custom agent is Settings-only (the FRE agent picker offers no custom-agent creation)' {
@@ -42,5 +43,21 @@ Describe 'Feature §6 custom agents' -Tag 'Feature' -Skip:(-not $script:Ready) {
             (Get-AgentPaneText -App $script:app -MaxLines 80) -match '\b9\b'
         }
         $answered | Should -BeTrue -Because 'the custom ACP agent must answer a chat prompt in the pane'
+        Stop-Terminal -App $script:app
+        $script:app = $null
+    }
+
+    It 'Custom failure is safe (a bad custom command does not crash the terminal)' {
+        # A custom agent pointing at a non-existent executable must fail to launch WITHOUT taking
+        # down the terminal — the protocol surface stays alive and a shell pane keeps responding.
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent         = 'custom:broken'
+            acpCustomCommand = 'wt-nonexistent-agent-xyz --acp --stdio'
+        }
+        # Opening the pane may throw (nothing launches) — that's fine; the guarantee is no crash.
+        try { Open-AgentPane -App $script:app -TimeoutSec 20 | Out-Null } catch { }
+        # The WT process is alive and the protocol still answers.
+        (Get-Process -Id $script:app.Pid -ErrorAction SilentlyContinue) | Should -Not -BeNullOrEmpty -Because 'a bad custom agent command must not crash the terminal'
+        { Get-ActivePane -App $script:app } | Should -Not -Throw -Because 'the protocol surface must stay responsive after a failed custom-agent launch'
     }
 }
