@@ -3,8 +3,7 @@
 //
 // Build-time codegen for the WTA ETW TraceLogging provider.
 //
-// WTA registers its OWN provider, `Microsoft.Windows.Terminal.WTA`; it must not
-// reuse TerminalApp's `Microsoft.Windows.Terminal.App` provider. The Microsoft
+// WTA registers its own provider, `Microsoft.Windows.Terminal.WTA`. The Microsoft
 // telemetry group GUID + keyword/privacy values come from `ProjectTelemetry.h`,
 // resolved the same way the C++ include path does (`src\inc` before `dep`):
 //   - src/inc/telemetry/ProjectTelemetry.h  real header overlaid by the
