@@ -420,7 +420,7 @@ async fn execute_choice(
             } => {
                 // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
                 let profile = match profile {
-                    Some(p) if !p.is_empty() => Some(p),
+                    Some(p) if !p.is_empty() => Some(p.clone()),
                     _ => shell_mgr
                         .wt_get_active_pane()
                         .await
@@ -528,7 +528,7 @@ async fn execute_choice(
             } => {
                 // Resolve profile: prefer explicit from LLM, fall back to active pane's profile
                 let profile = match profile {
-                    Some(p) if !p.is_empty() => Some(p),
+                    Some(p) if !p.is_empty() => Some(p.clone()),
                     _ => shell_mgr
                         .wt_get_active_pane()
                         .await
