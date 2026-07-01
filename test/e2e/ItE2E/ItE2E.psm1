@@ -32,7 +32,7 @@ $publicFns = @(
     # Policy (agent GPO via HKCU)
     'Get-WtAgentPolicyState', 'Set-WtAgentPolicy', 'Restore-WtAgentPolicy', 'Test-WtAgentPolicyControllable',
     # Ui
-    'Get-UiTree', 'Find-UiElement', 'Invoke-UiElement', 'Invoke-UiClick', 'Set-UiValue', 'Get-UiValue',
+    'Get-UiTree', 'Find-UiElement', 'Get-UiElement', 'Test-UiElementEnabled', 'Invoke-UiElement', 'Invoke-UiClick', 'Set-UiValue', 'Get-UiValue',
     'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds', 'Test-WinAppAvailable',
     # Observe
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',

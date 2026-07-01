@@ -119,6 +119,34 @@ function Set-UiValue {
     }
 }
 
+function Get-UiElement {
+    <#
+    .SYNOPSIS
+        Return the `winapp ui inspect --json` property bag of the first matching element
+        (type, name, automationId, isEnabled, isOffscreen, toggleState, bounds, …) or $null.
+        Unlike Get-UiTree (a text summary that only shows [on]/[off]), this exposes UIA
+        properties like isEnabled — needed to assert enabled/disabled (greyed) control state.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector)
+    process {
+        $r = Invoke-WinAppUi -App $App -UiArgs @('inspect', $Selector, '--json', '--depth', '1')
+        $j = $r.StdOut | ConvertFrom-JsonSafe
+        if (-not $j -or -not $j.windows) { return $null }
+        $els = @($j.windows | ForEach-Object { $_.elements } | Where-Object { $_ })
+        $match = $els | Where-Object { $_.automationId -eq $Selector -or $_.selector -eq $Selector } | Select-Object -First 1
+        if ($match) { return $match }
+        $els | Select-Object -First 1
+    }
+}
+
+function Test-UiElementEnabled {
+    <# $true when the element's UIA IsEnabled is true (i.e. NOT greyed/disabled). #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Selector)
+    process { $el = Get-UiElement -App $App -Selector $Selector; [bool]($el -and $el.isEnabled) }
+}
+
 function Get-UiValue {
     <# Read an element value (smart fallback chain). Returns the text. #>
     [CmdletBinding()]
