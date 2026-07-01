@@ -37,7 +37,8 @@ pub(crate) type ListOutcome = std::result::Result<Vec<acp::schema::v1::SessionIn
 /// [`ListOutcome`]. `child` must have `stdin`/`stdout` piped; `stderr`,
 /// when piped, is drained so a chatty agent can't deadlock the pipe.
 ///
-/// The ACP connection is `!Send`; call this inside a tokio `LocalSet`.
+/// Runs ACP I/O and the stderr drain via [`tokio::task::spawn_local`], so call
+/// this inside a tokio `LocalSet`.
 pub(crate) async fn fetch_session_list(
     child: &mut tokio::process::Child,
     client_label: &str,

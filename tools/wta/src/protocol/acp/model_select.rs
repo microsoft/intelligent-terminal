@@ -45,10 +45,12 @@ fn record_channel_config(config_id: &str) {
     };
 }
 
-/// Extract the model list and current model id from a `new_session` response,
-/// preferring the legacy `models` field and falling back to a `config_options`
-/// `Select` with `category == Model`. Records the switch channel as a side
-/// effect so [`apply_session_model`] later dispatches correctly.
+/// Extract the model list and current model id from a `new_session` response.
+/// Schema 1.1 removed the legacy `NewSessionResponse.models` field, so this only
+/// reads the `config_options` `Select` with `category == Model`: when present it
+/// records the `Config` switch channel (otherwise the channel stays `Legacy`, its
+/// default). Records the switch channel as a side effect so [`apply_session_model`]
+/// later dispatches correctly.
 pub(crate) fn models_from_new_session(
     resp: &acp::schema::v1::NewSessionResponse,
 ) -> (Vec<AcpModelInfo>, Option<String>) {
