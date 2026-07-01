@@ -191,13 +191,6 @@ flowchart TB
         PLUMB["TUI · connection · tab routing<br/>+ card / picker rendering shells only"]
     end
 
-    subgraph master["wta-master = library Conductor"]
-        CB["Conductor.builder()<br/>on_receive_request_from(Client, NewSessionRequest)<br/>build_session_from + on_proxy_session_start"]
-        PSM["ProxySessionMessages(session_id)<br/>library dynamic handler — auto fan-out both ways"]
-        BR["N:1 bridge skeleton (still ours)<br/>N helper transports → 1 shared agent conn"]
-        AC["ConnectionTo&lt;Agent&gt;<br/>AcpAgent (shared)"]
-    end
-
     subgraph proxies["composable transform proxies — lifted out of app.rs / session subsystem, chained via _proxy/*"]
         AFX["autofix proxy<br/>off-wire WtEvent → inject session/prompt"]
         CTX["context / prompt-injection proxy<br/>rewrite session/prompt (persona + template)"]
@@ -209,9 +202,17 @@ flowchart TB
         PERM["permission-policy shim<br/>auto-decide request_permission"]
     end
 
+    subgraph master["wta-master = library Conductor"]
+        CB["Conductor.builder()<br/>on_receive_request_from(Client, NewSessionRequest)<br/>build_session_from + on_proxy_session_start"]
+        PSM["ProxySessionMessages(session_id)<br/>library dynamic handler — auto fan-out both ways"]
+        BR["N:1 bridge skeleton (still ours)<br/>N helper transports → 1 shared agent conn"]
+        AC["ConnectionTo&lt;Agent&gt;<br/>AcpAgent (shared)"]
+    end
+
     CLI["agent CLI<br/>unchanged: sees plain initialize"]
 
-    PLUMB -->|"ACP/pipe (plain)"| CB
+    PLUMB -->|"N× ACP/pipe (plain)"| BR
+    BR -->|"presents each helper to the conductor"| CB
     CB -.->|"installs per session"| PSM
     PSM ---|"auto-forward update / permission / terminal / fs"| AC
     BR --- AC
@@ -249,8 +250,10 @@ flowchart TB
 > granularity choice, not a hard boundary. Each proxy is a pure 1:1 ACP transform
 > inserted via `_proxy/initialize` / `_proxy/successor`, reorderable by config.
 > Library-managed pieces (green) replace the hand-rolled fan-out; the **N:1 bridge**
-> (red) stays ours. The helper (blue) keeps only TUI / connection
-> / tab routing + card/picker shells; the agent CLI is untouched.
+> (red) is where the N helper transports land before being funneled onto the 1
+> shared agent connection — the library's linear 1:1 chain can't express this, so it
+> stays ours (see *The topology caveat* below for why). The helper (blue) keeps only
+> TUI / connection / tab routing + card/picker shells; the agent CLI is untouched.
 
 The 1.0 proxy/conductor model expresses per-session forwarding natively. The
 canonical pattern (from `session.rs` docs) is:
@@ -559,8 +562,9 @@ flowchart TB
 
     CLI["agent CLI (unchanged)"]
 
-    H1 -->|"ACP/pipe"| CB
-    Hn -->|"ACP/pipe"| CB
+    H1 -->|"ACP/pipe"| BR
+    Hn -->|"ACP/pipe"| BR
+    BR -.->|"presents each helper to the conductor"| CB
     CB -.->|"build_session_from"| AC
     CB -.->|"installs per session"| PSM
     PSM -.-|"auto-forward update / permission / terminal / fs"| AC
@@ -569,11 +573,12 @@ flowchart TB
 ```
 
 > **Dashed = new / changed vs Phase 0; solid = unchanged.** New (dashed): the library
-> conductor (`build_session_from` + `on_proxy_session_start`) and
-> `ProxySessionMessages` auto-forwarding, which replace Phase 0's hand-rolled fan-in
-> (`HelperHandler`) + fan-out (`session_to_helper` + `MasterClient::route_for`, both
-> **gone**). Unchanged (solid): the helper pipes, the **N:1 bridge**, and the shared
-> agent connection + `ACP/stdio` to the CLI.
+> conductor (`build_session_from` + `on_proxy_session_start`) that the bridge now
+> feeds, and `ProxySessionMessages` auto-forwarding — together they replace Phase 0's
+> hand-rolled fan-in (`HelperHandler`) + fan-out (`session_to_helper` +
+> `MasterClient::route_for`, both **gone**). Unchanged (solid): the helper pipes
+> landing on the **N:1 bridge**, and the shared agent connection + `ACP/stdio` to the
+> CLI.
 
 ### Phase 2 detail: extracting the transform proxies
 
