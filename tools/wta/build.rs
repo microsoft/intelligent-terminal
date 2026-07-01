@@ -104,7 +104,8 @@ fn main() {
 /// `TraceLoggingOptionGroup(0x.., 0x.., ...)` macro (11 hex fields: u32, u16,
 /// u16, then 8 bytes). Any malformation panics -> build fails.
 fn parse_group_guid(path: &Path) -> String {
-    let text = fs::read_to_string(path).unwrap();
+    let text = fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
     let inner = text
         .split_once("TraceLoggingOptionGroup(")
         .and_then(|(_, r)| r.split_once(')'))
