@@ -14810,6 +14810,33 @@ mod tests {
         );
     }
 
+    /// Render (C134 "Hooks off behavior is safe"): with session management OFF — no tracked
+    /// sessions, exactly as when wt-agent-hooks are not installed — the session-management (Agents)
+    /// view must still paint a STABLE empty state (the draw does not panic and the navigation footer
+    /// hint is drawn) rather than a broken/blank surface.
+    #[test]
+    fn render_agents_view_empty_when_no_sessions_is_stable() {
+        let mut app = test_app();
+        let key = app.active_tab_key().to_string();
+        // No SessionStarted events applied => the registry is empty, exactly as when session
+        // management is off (no wt-agent-hooks tracking any sessions).
+        assert!(
+            app.agents_rows_for_tab(&key).is_empty(),
+            "precondition: no tracked sessions (hooks off)"
+        );
+        app.current_tab_mut().current_view = View::Agents;
+
+        // render_to_text asserts the draw does not panic.
+        let text = render_to_text(&mut app, 80, 24);
+
+        // The navigation footer hint (agents.footer_hint) is drawn in the empty state too; its
+        // leading "↑ ↓" arrows are invariant across every bundled locale, so assert on those.
+        assert!(
+            text.contains('↑') && text.contains('↓'),
+            "the empty session view must paint the stable navigation footer hint; rendered:\n{text}"
+        );
+    }
+
     /// Render: a queued permission request must paint its description and the
     /// allow/reject option labels. Lifts `ui/permission.rs` coverage.
     #[test]

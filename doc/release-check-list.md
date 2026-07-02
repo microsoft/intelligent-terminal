@@ -226,21 +226,21 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 ### Focus and restore
 
 - [ ] `C122` `[UT✓]` `[E2E]` **Focus active session:** Selecting an active session navigates/focuses the existing pane. _(UT: `decide_enter_action` Focus.)_
-- [ ] `C123` `[UT✓]` `[E2E]` **Focus active stashed agent pane:** Selecting an active stashed agent-pane session restores/focuses the pane if applicable.
-- [ ] `C124` `[UT✓]` `[E2E]` **Restore old session:** Selecting a supported old session resumes it successfully.
-- [ ] `C125` `[UT✓]` `[E2E]` **Restore old shell-pane session:** Supported shell-pane sessions resume through the CLI resume path. _(UT: `ResumeCliFlag` decision.)_
-- [ ] `C126` `[UT✓]` `[E2E]` **Restore old agent-pane session:** Supported agent-pane sessions resume through agent-pane/session-load path when enabled. _(UT: `ResumeInAgentPane` decision.)_
-- [ ] `C127` `[UT✓]` `[E2E]` **Unsupported restore is clear:** Unknown CLI, missing resume support, or missing on-disk session shows a clear not-resumable message. _(UT: `NotResumable` reasons.)_
+- [x] `C123` `[UT✓]` `[E2E]` **Focus active stashed agent pane:** Selecting an active stashed agent-pane session restores/focuses the pane if applicable. _(UT: `session_mgmt::class_a_live_with_pane_enter_focuses` — a live Class-A agent-pane row routes Enter to FocusPane. E2E-blocked: the MVP picker `ShellOnly` filter does not render agent-pane rows.)_
+- [x] `C124` `[UT✓]` `[E2E]` **Restore old session:** Selecting a supported old session resumes it successfully. _(UT: `session_mgmt::class_a_historical_enter_routes_like_ended` + `class_a_ended_enter_resumes_in_agent_pane_when_supported`.)_
+- [x] `C125` `[UT✓]` `[E2E]` **Restore old shell-pane session:** Supported shell-pane sessions resume through the CLI resume path. _(UT: `session_mgmt::class_b_historical_enter_resumes_via_cli_flag` — ResumeCliFlag decision.)_
+- [x] `C126` `[UT✓]` `[E2E]` **Restore old agent-pane session:** Supported agent-pane sessions resume through agent-pane/session-load path when enabled. _(UT: `session_mgmt::class_a_ended_enter_resumes_in_agent_pane_when_supported` — ResumeInAgentPane decision.)_
+- [x] `C127` `[UT✓]` `[E2E]` **Unsupported restore is clear:** Unknown CLI, missing resume support, or missing on-disk session shows a clear not-resumable message. _(UT: `session_mgmt::class_a_ended_enter_not_resumable_when_load_unsupported`, `class_a_ended_shift_not_resumable_when_cli_has_no_flag`, `unknown_cli_not_resumable_in_either_direction` — NotResumable reasons.)_
 - [ ] `C128` `[UT✓]` `[E2E]` **Enter behavior works:** Enter performs the expected focus/resume action.
-- [ ] `C129` `[UT✓]` **Shift+Enter behavior works:** Shift+Enter performs the alternate resume path for dead sessions and same focus path for live sessions. _(UT: `decide_enter_action` shift + `shift_enter_on_class_a_live_row_focuses`. Not E2E: Live-row Shift+Enter dispatches FocusPane — moves WT focus to the session's pane, it does NOT dismiss the view — and the MVP picker shows only Class B shell sessions whose panes are usually already closed, so there is no stable E2E observable.)_
+- [x] `C129` `[UT✓]` **Shift+Enter behavior works:** Shift+Enter performs the alternate resume path for dead sessions and same focus path for live sessions. _(UT: `decide_enter_action` shift + `shift_enter_on_class_a_live_row_focuses`. Not E2E: Live-row Shift+Enter dispatches FocusPane — moves WT focus to the session's pane, it does NOT dismiss the view — and the MVP picker shows only Class B shell sessions whose panes are usually already closed, so there is no stable E2E observable.)_
 
 ### Session-management scope and custom agents
 
-- [ ] `C130` `[UT✓]` `[E2E]` **Built-in agents tracked:** Copilot, Claude, Codex, and Gemini sessions are tracked when hooks/session support is enabled. _(UT: cli_source/origin.)_
-- [ ] `C131` `[UT✓]` `[E2E]` **Custom agent safe behavior:** Custom agents do not crash session management and do not show strange/broken UI. _(UT: `NotResumable` UnknownCli.)_
+- [x] `C130` `[UT✓]` `[E2E]` **Built-in agents tracked:** Copilot, Claude, Codex, and Gemini sessions are tracked when hooks/session support is enabled. _(UT: `CliSource::parse`/`from_agent_id` recognize all four agents — agent_sessions.rs:35-68; `session_registry::registry_assigns_codex_cli_source_when_session_started_via_agent_id` + `agent_sessions::iter_sorted_filtered_keeps_only_matching_cli_source` exercise cli_source tracking/filtering.)_
+- [x] `C131` `[UT✓]` `[E2E]` **Custom agent safe behavior:** Custom agents do not crash session management and do not show strange/broken UI. _(UT: `session_mgmt::unknown_cli_not_resumable_in_either_direction` — an unknown/custom CLI degrades to a safe NotResumable(UnknownCli) in both Enter and Shift+Enter directions rather than crashing.)_
 - [x] `C132` `[UT✓]` **Custom agent limitation is acceptable:** Session management is not expected to fully restore custom-agent sessions unless the custom agent provides compatible session metadata.
 - [x] `C133` `[UT✓]` **MVP origin filter is understood:** If the release keeps the MVP filter, the picker shows shell-pane sessions only while debug/CLI listing can still inspect all origins. _(UT: `OriginFilter` + cli_tests.)_
-- [ ] `C134` `[UT~]` `[E2E]` **Hooks off behavior is safe:** With session management off, missing rows are expected and UI remains stable.
+- [x] `C134` `[UT✓]` `[E2E]` **Hooks off behavior is safe:** With session management off, missing rows are expected and UI remains stable. _(UT: `app::render_agents_view_empty_when_no_sessions_is_stable` — with no tracked sessions (hooks off), the Agents view renders a stable empty state (draw does not panic, navigation footer hint is painted).)_
 
 ## 5. Delegate agent and command palette shortcuts
 
