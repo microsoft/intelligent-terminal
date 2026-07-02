@@ -3437,6 +3437,7 @@ impl App {
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
+        self.saved_tabs = None;
         let rows_available = !self.agents_rows_for_tab(&tab_id).is_empty();
         {
             let tab = self.tab_mut(&tab_id);
@@ -7815,13 +7816,18 @@ impl App {
 
     /// `/restore-tab` — open the saved-tab picker. Implemented in Phase E.
     fn cmd_restore_tab(&mut self) {
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        let tab_id = self.active_tab_key().to_string();
+        if self.current_tab().current_view == View::Agents {
+            self.close_agents_view_for_tab(&tab_id);
+            self.project_active_tab_state();
+        }
         self.saved_tabs = Some(SavedTabsViewState {
             loading: true,
             ..Default::default()
         });
-        let Some(tx) = self.event_tx.clone() else {
-            return;
-        };
         crate::shell::wt_channel::spawn_wtcli_list_saved_tabs(Box::new(move |rows| {
             let _ = tx.send(AppEvent::SavedTabsListed(rows));
         }));
@@ -10004,6 +10010,33 @@ mod tests {
             saved_at: "0".into(),
             is_open: false,
         }]));
+
+        assert!(app.saved_tabs.is_none());
+    }
+
+    #[test]
+    fn saved_tabs_picker_and_agents_view_are_mutually_exclusive() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+
+        app.saved_tabs = Some(SavedTabsViewState::default());
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        assert!(app.saved_tabs.is_none());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+        app.set_event_tx(event_tx);
+        app.cmd_restore_tab();
+        assert!(app.saved_tabs.is_some());
+        assert_eq!(app.current_tab().current_view, View::Chat);
+    }
+
+    #[test]
+    fn restore_tab_without_event_tx_does_not_open_loading_picker() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+
+        app.cmd_restore_tab();
 
         assert!(app.saved_tabs.is_none());
     }

@@ -39,6 +39,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         return;
     }
 
+    let (main_area, debug_area) = if app.show_debug_panel {
+        let h = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(area);
+        (h[0], Some(h[1]))
+    } else {
+        (area, None)
+    };
+
+    if let Some(view) = app.saved_tabs.as_ref() {
+        saved_tabs_view::render(frame, main_area, view);
+        return;
+    }
+
     // agent session view takes over the full pane area; chat / input / debug
     // panel are not drawn in this mode. Per-tab: the active tab's
     // TabSession owns the open state and selection cursor. Disjoint-field
@@ -75,21 +90,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             origin_filter,
             show_loading,
         );
-        return;
-    }
-
-    let (main_area, debug_area) = if app.show_debug_panel {
-        let h = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-            .split(area);
-        (h[0], Some(h[1]))
-    } else {
-        (area, None)
-    };
-
-    if let Some(view) = app.saved_tabs.as_ref() {
-        saved_tabs_view::render(frame, main_area, view);
         return;
     }
 

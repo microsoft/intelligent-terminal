@@ -45,17 +45,29 @@ pub fn render(f: &mut Frame, area: Rect, view: &SavedTabsViewState) {
         .collect();
     let mut state = ListState::default();
     state.select(Some(view.selected));
-    f.render_stateful_widget(List::new(items), area, &mut state);
 
-    let hint = Rect {
-        x: area.x,
-        y: area.y + area.height.saturating_sub(1),
-        width: area.width,
-        height: 1,
+    let (list_area, hint_area) = if area.height >= 2 {
+        let hint = Rect {
+            x: area.x,
+            y: area.y + area.height - 1,
+            width: area.width,
+            height: 1,
+        };
+        let list = Rect {
+            height: area.height - 1,
+            ..area
+        };
+        (list, Some(hint))
+    } else {
+        (area, None)
     };
-    f.render_widget(
-        Paragraph::new("↑/↓ select · Enter restore · D delete · Esc close")
-            .style(Style::default().fg(MUTED)),
-        hint,
-    );
+    f.render_stateful_widget(List::new(items), list_area, &mut state);
+
+    if let Some(hint) = hint_area {
+        f.render_widget(
+            Paragraph::new("↑/↓ select · Enter restore · D delete · Esc close")
+                .style(Style::default().fg(MUTED)),
+            hint,
+        );
+    }
 }
