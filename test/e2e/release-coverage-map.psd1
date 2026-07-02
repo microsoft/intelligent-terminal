@@ -100,6 +100,8 @@
     # §10 diagnostics — bug-report zip (Feature.BugReport). The "Report a bug (collect logs)"
     # command palette entry zips the logs dir to the Desktop; assert it contains agent logs.
     'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
+    # §10 diagnostics — hook trace log (Feature.HookTrace). A hooked copilot prompt is traced.
+    'Hook trace log is written'         = 'Hook trace log is written'
 
     # §9 packaging / §10 logging (titles differ from test names)
     'Packaged wta.exe is present'       = 'Packaged wta.exe is present'
