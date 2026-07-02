@@ -84,6 +84,13 @@
     'FRE respects policy locks'         = 'Group Policy locks'
     'Policy lock UI works'              = 'disables the session toggle and shows the policy notice'
 
+    # §1 Settings session-hook install/remove (Feature.SettingsHooks). The Settings editor's
+    # Install/Remove-hooks buttons run the `wta hooks install|uninstall|status` engine
+    # (agent_hooks_installer); we drive that engine directly and assert the on-disk plugin state,
+    # exactly as the rest of §1 tests the settings model rather than the (non-openable) editor UI.
+    'Session hooks install works'       = 'Session hooks install works'
+    'Session hooks remove works'        = 'Session hooks remove works'
+
     # §0 FRE agent-setup overlay controls (Feature.FreAgentSetup) — the FRE-specific UI half.
     'Copilot preinstalled'              = 'FRE agent dropdown shows Copilot as installed'
     'Non-Copilot agents appear when installed' = 'Non-Copilot agents appear as installed in the FRE'
