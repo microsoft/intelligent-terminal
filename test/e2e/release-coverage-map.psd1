@@ -26,6 +26,10 @@
     # §6 custom delegate via accelerators (Feature.CustomDelegate)
     'Alt+Shift+B uses custom delegate'  = 'Alt\+Shift\+B uses custom delegate'
     'Alt+Shift+/ uses custom delegate'  = 'Alt\+Shift\+/ uses custom delegate'
+    # §6 custom delegate ENGINE (Feature.CustomDelegate, second Describe) — the custom-command
+    # delegate path driven directly via `wta delegate --delegate-agent <custom cmdline>`.
+    'Custom delegate cwd is correct'    = 'Custom delegate cwd is correct'
+    'Custom delegate errors are clear'  = 'Custom delegate errors are clear'
 
     # §1 settings
     'Model control appears'             = 'Model control / model changes apply'

@@ -73,3 +73,58 @@ Describe 'Feature §6 custom delegate via accelerators (Alt+Shift+B / Alt+Shift+
         $seen | Should -BeTrue -Because 'the palette must launch the CONFIGURED custom delegate command (marker visible in the new tab)'
     }
 }
+
+# The custom-delegate ENGINE (deterministic, no accelerators/foreground needed): a CUSTOM delegate
+# is an arbitrary command line passed as `wta delegate --delegate-agent <cmdline>` (the exact call
+# WT builds from delegateAgent=custom:<id> + delegateCustomCommand). Unlike a built-in id, the
+# whole command line is used verbatim (coordinator::resolve_delegate_runtime_commandline), so this
+# exercises the custom-command path. We drive it directly (like Feature.Delegate does for the
+# built-in delegate) to cover the custom cwd + custom error cases without the flaky UI entry points.
+Describe 'Feature §6 custom delegate engine (wta delegate custom command)' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; delegateAgent = 'copilot' }
+        # Launch a delegate with an explicit CUSTOM command line and return the NEW tab + its panes.
+        $script:RunCustomDelegate = {
+            param($Prompt, $CustomCmd, $Cwd)
+            $wid = [string]$script:app.WindowId
+            $before = @((Get-WtTabs -App $script:app -WindowId $wid).tab_id)
+            $args = @('delegate', $Prompt, '--agent', 'copilot --acp --stdio', '--delegate-agent', $CustomCmd)
+            if ($Cwd) { $args += @('--cwd', $Cwd) }
+            Invoke-Wta -App $script:app -Arguments $args -TimeoutSec 40 -Raw | Out-Null
+            $newTab = $null
+            for ($i = 0; $i -lt 30 -and -not $newTab; $i++) {
+                $newTab = @(Get-WtTabs -App $script:app -WindowId $wid) | Where-Object { $_.tab_id -notin $before } | Select-Object -First 1
+                if (-not $newTab) { Start-Sleep -Milliseconds 500 }
+            }
+            $panes = if ($newTab) { @(Get-WtPanes -App $script:app -WindowId $wid -TabId ([string]$newTab.tab_id)) } else { @() }
+            @{ Tab = $newTab; Panes = $panes }
+        }
+    }
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'Custom delegate cwd is correct (the custom command launches in the requested cwd)' {
+        # A self-identifying custom command proves the CONFIGURED custom command (not a built-in) ran,
+        # and the pane cwd proves it started in the requested --cwd (the source pane's working dir).
+        $marker = "custdeleg$(Get-Random -Maximum 99999)"
+        $cwd = Join-Path $env:TEMP $marker
+        New-Item -ItemType Directory -Force -Path $cwd | Out-Null
+        $d = & $script:RunCustomDelegate -Prompt 'hi' -CustomCmd "cmd /k echo $marker" -Cwd $cwd
+        $d.Tab | Should -Not -BeNullOrEmpty -Because 'a custom delegate must create a new tab'
+        ($d.Panes.cwd -join '|') | Should -Match ([regex]::Escape($marker)) -Because 'the custom delegate must start in the requested --cwd'
+        $sid = $d.Panes[0].session_id
+        (Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition {
+                (Get-WtCapture -App $script:app -SessionId $sid -MaxLines 25) -match $marker
+            }) | Should -BeTrue -Because 'the CONFIGURED custom command (not a built-in) must be the one launched'
+    }
+
+    It 'Custom delegate errors are clear (a bad custom command surfaces an actionable error)' {
+        # A non-existent custom command must fail VISIBLY in the delegate tab (not silently).
+        $d = & $script:RunCustomDelegate -Prompt 'hi' -CustomCmd 'wt-bogus-custom-delegate-xyz --nope'
+        $d.Tab | Should -Not -BeNullOrEmpty -Because 'even a failing custom delegate opens a tab so the error is visible'
+        $sid = $d.Panes[0].session_id
+        (Test-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
+                (Get-WtCapture -App $script:app -SessionId $sid -MaxLines 40) -match "(?i)not recognized|not found|is not recognized|exited with code|cannot find|no such file"
+            }) | Should -BeTrue -Because 'a bad custom delegate command must surface a clear, actionable error in the tab'
+    }
+}
