@@ -45,6 +45,14 @@ pub enum CommandKind {
     /// the life of the pane but is reset by a global `acpModel` settings
     /// change — see `App::apply_global_acp_model`.
     Model,
+    /// Pick the custom agent for *this* agent pane.
+    ///
+    /// Bare `/agent` opens an interactive picker listing the custom agents
+    /// discovered from `.github/agents/` (project) and `~/.github/agents/`
+    /// (user), plus the built-in default; `/agent <name>` switches directly.
+    /// Selecting an agent starts a fresh session bound to that agent's
+    /// `.agent.md` system prompt — see `App::apply_agent_pick`.
+    Agent,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +130,13 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+        takes_args: true,
+    },
+    CommandSpec {
+        name: "agent",
+        summary_key: "commands.agent.summary",
+        // `/agent <name>` switches directly; bare `/agent` opens the picker.
+        kind: CommandKind::Agent,
         takes_args: true,
     },
 ];
@@ -297,6 +312,19 @@ mod tests {
         assert_eq!(hinted.rest, "the path looks wrong");
         // takes_args is advertised so Tab-completion leaves a trailing space.
         assert!(lookup("fix").unwrap().takes_args);
+    }
+
+    #[test]
+    fn agent_parses_with_optional_name() {
+        // Bare /agent opens the picker (no arg).
+        let bare = parse("/agent").unwrap();
+        assert_eq!(bare.kind, CommandKind::Agent);
+        assert_eq!(bare.rest, "");
+        // /agent <name>: the trailing text is captured verbatim for a direct switch.
+        let named = parse("/agent devops-helper").unwrap();
+        assert_eq!(named.kind, CommandKind::Agent);
+        assert_eq!(named.rest, "devops-helper");
+        assert!(lookup("agent").unwrap().takes_args);
     }
 
     #[test]

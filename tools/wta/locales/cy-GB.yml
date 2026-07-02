@@ -207,3 +207,11 @@ model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
 system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model anhysbys %{model} — teipiwch /model i weld y rhestr sydd ar gael."  # {Locked="%{model}","/model"}
+
+# ── /agent custom-agent picker (seeded EN; pending translation) ──────────────
+# {Locked="/agent","<name>","↑","↓","Enter","Esc"}
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+system.agent_set: "This pane is now using the %{agent} agent."
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."

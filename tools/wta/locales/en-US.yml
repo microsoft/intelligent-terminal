@@ -90,6 +90,18 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+# "agent" = an AI agent persona (Copilot/Claude/custom .agent.md), not a human proxy
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"  # {Locked="/agent","<name>"}
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+# {agent} is the selected agent's display name, inserted verbatim. Shown after
+# switching this pane to a custom AI agent via /agent.
+system.agent_set: "This pane is now using the %{agent} agent."
+# {agent} is the unrecognized text the user typed after /agent (an AI agent name).
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."
 
 # ── Model picker (src/ui/model_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate

@@ -206,3 +206,11 @@ model_picker.title: "Модель сайлагыз (↑ ↓ • Enter • Esc)" 
 system.no_models: "Тоташкан агент бер дә сайлап була торган модель игълан итмәде."
 system.model_set: "Бу панель өчен модель %{model} итеп билгеләнде."  # {Locked="%{model}"}
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}
+
+# ── /agent custom-agent picker (seeded EN; pending translation) ──────────────
+# {Locked="/agent","<name>","↑","↓","Enter","Esc"}
+# "agent" = an AI agent persona (e.g. Copilot, Claude, a custom .agent.md), not a human representative
+commands.agent.summary: "Pick the custom agent for this pane (/agent <name> to switch directly)"
+agent_picker.title: "Select agent (↑ ↓ • Enter • Esc)"
+system.agent_set: "This pane is now using the %{agent} agent."
+system.agent_unknown: "Unknown agent %{agent} — type /agent to see the available list."

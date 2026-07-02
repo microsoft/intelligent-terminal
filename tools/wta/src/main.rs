@@ -11,6 +11,7 @@ mod clipboard_image;
 mod command_recall;
 mod commands;
 mod coordinator;
+mod custom_agents;
 mod cwd_util;
 mod event;
 mod helper;

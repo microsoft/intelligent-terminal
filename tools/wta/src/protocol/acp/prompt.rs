@@ -38,6 +38,37 @@ pub(crate) fn load_planner_prompt_template() -> PlannerPromptTemplate {
     )
 }
 
+/// Build the planner template for a specific selected custom agent.
+///
+/// The built-in `terminal-agent` falls back to the default file/embedded
+/// loader (so a user override of `terminal-agent.md` still applies). Any other
+/// agent uses its `.agent.md` body verbatim as the template — the runtime
+/// context block is merged in later by [`merge_runtime_sections`] (the body
+/// need not contain the [`RUNTIME_CONTEXT_MARKER`]; the merge appends when it
+/// is absent).
+pub(crate) fn load_planner_prompt_template_for_agent(
+    agent: &crate::custom_agents::CustomAgent,
+) -> PlannerPromptTemplate {
+    if agent.is_builtin() {
+        return load_planner_prompt_template();
+    }
+    planner_template_from_agent_override(&agent.display_name, &agent.body)
+}
+
+/// Build a planner template from a custom agent's display name + system-prompt
+/// body directly (without a [`CustomAgent`]). Used on the prompt hot path where
+/// the override travels with the prompt as `(display_name, body)`.
+pub(crate) fn planner_template_from_agent_override(
+    display_name: &str,
+    body: &str,
+) -> PlannerPromptTemplate {
+    PlannerPromptTemplate {
+        display_name: display_name.to_string(),
+        content: body.to_string(),
+        source_label: format!("agent:{display_name}"),
+    }
+}
+
 pub(crate) fn merge_runtime_sections(template: &str, runtime_sections: &[String]) -> String {
     let runtime_block = runtime_sections
         .iter()
@@ -262,6 +293,38 @@ mod tests {
             merge_runtime_sections("before", &[String::from("first"), String::from("second")]);
 
         assert_eq!(merged, "before\n\nfirst\n\nsecond");
+    }
+
+    #[test]
+    fn agent_template_uses_custom_body_and_display_name() {
+        use crate::custom_agents::{AgentScope, CustomAgent};
+
+        let agent = CustomAgent {
+            id: "devops-helper".to_string(),
+            display_name: "DevOps Helper".to_string(),
+            description: "Fixes builds.".to_string(),
+            model: Some("claude-haiku-4.5".to_string()),
+            agent_cli: None,
+            tools: Vec::new(),
+            body: "You are a DevOps specialist.".to_string(),
+            scope: AgentScope::Project,
+            source_path: Some(PathBuf::from("C:/x/.github/agents/devops-helper.agent.md")),
+        };
+
+        let template = super::load_planner_prompt_template_for_agent(&agent);
+        assert_eq!(template.content, "You are a DevOps specialist.");
+        assert_eq!(template.display_name, "DevOps Helper");
+        assert!(template.source_label.starts_with("agent:"));
+    }
+
+    #[test]
+    fn agent_template_for_builtin_falls_back_to_default_loader() {
+        use crate::custom_agents::builtin_agent;
+
+        // The built-in must NOT use its (empty) body; it delegates to the
+        // default embedded/file loader so a user override still applies.
+        let template = super::load_planner_prompt_template_for_agent(&builtin_agent());
+        assert!(!template.content.is_empty());
     }
 
     #[test]

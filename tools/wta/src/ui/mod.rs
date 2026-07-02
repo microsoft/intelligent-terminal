@@ -1,6 +1,7 @@
 mod auth;
 pub(crate) mod card;
 pub(crate) mod chat;
+mod agent_popup;
 mod command_popup;
 mod debug_panel;
 mod input;
@@ -17,3 +18,4 @@ pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;
 pub use command_popup::PopupState;
 pub use layout::render;
 pub use model_popup::ModelPopupState;
+pub use agent_popup::AgentPopupState;
