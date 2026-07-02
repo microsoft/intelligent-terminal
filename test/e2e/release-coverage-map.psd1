@@ -74,6 +74,9 @@
     # binding-covered by the Rust UT DefaultAgentKeybindings; its live open-behavior isn't stably
     # observable in E2E (harness pane-resolution vs. the per-tab pre-warm's extra stashed pane).
     'Session view opens from chat'      = 'Idle state is correct.*Idle badge'
+    # C111 'Slash command works' (`/sessions` opens the session view) is the same hard assertion in
+    # Feature.SessionState's Idle test as the C083 `/sessions` trigger above.
+    'Slash command works'               = 'Idle state is correct.*Idle badge'
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
