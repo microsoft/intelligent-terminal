@@ -2088,11 +2088,16 @@ async fn delegate_with_context(
     .new_session_id_flag
     .map(|_| uuid::Uuid::new_v4().to_string());
 
-    let commandline = match prompt {
-        // Prompt present → enrich it with the active pane's recent output and
-        // bake it into the new tab's agent CLI (the `?<prompt>` path).
+    // Hoist the active pane fetch — needed for prompt enrichment (terminal
+    // context) and for WSL detection so we can route the delegate to a
+    // WSL-native agent CLI instead of the Windows fallback.
+    let active = shell_mgr.wt_get_active_pane().await.ok();
+
+    // Enrich the prompt with the active pane's recent terminal output
+    // (when available).  Computed once and shared by both the Windows and
+    // WSL commandline builders below.
+    let enriched_prompt: Option<String> = match prompt {
         Some(prompt) if !prompt.trim().is_empty() => {
-            let active = shell_mgr.wt_get_active_pane().await.ok();
             let active_pane_id = active
                 .as_ref()
                 .and_then(|v| v.get("session_id"))
@@ -2114,38 +2119,110 @@ async fn delegate_with_context(
                 None
             };
 
-            let full_prompt = match (pane_context, active_pane_id) {
+            Some(match (pane_context, active_pane_id) {
                 (Some(context), Some(pane_id)) => format!(
                     "{}\n\n## Terminal Context (pane {})\n```\n{}\n```",
                     prompt, pane_id, context
                 ),
                 _ => prompt.to_string(),
-            };
-
-            crate::coordinator::build_delegate_launch_commandline_with_session(
-                runtime,
-                Some(&full_prompt),
-                pinned_session_id.as_deref(),
-            )?
+            })
         }
-        // No prompt → open the delegate agent interactively in the new tab.
-        _ => crate::coordinator::build_delegate_launch_commandline_with_session(
-            runtime,
-            None,
-            pinned_session_id.as_deref(),
-        )?,
+        _ => None,
     };
 
-    // The commandline bakes in the user prompt (`-i "<prompt>"`); keep it out
-    // of the debug log and only emit it at trace.
-    tracing::debug!("delegate_with_context: launching");
-    tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
+    // Build the Windows-native delegate commandline (PATH-resolved,
+    // Windows-escaped prompt).  Also used as the fallback when the active
+    // pane is not WSL.
+    let commandline = crate::coordinator::build_delegate_launch_commandline_with_session(
+        runtime,
+        enriched_prompt.as_deref(),
+        pinned_session_id.as_deref(),
+    )?;
 
+    // ── WSL delegate path ───────────────────────────────────────────────────
+    // If the active pane is inside a WSL distro, build a WSL-native command
+    // that runs the agent CLI inside the distro (using the Linux toolchain
+    // and filesystem) instead of the Windows-host fallback.
+    //
+    // Quoting strategy (two disjoint layers):
+    //   1. prompt → sh_quote() → bash '...' quoting (only ' is special)
+    //   2. wsl_agent_cmd → quote_windows_commandline_arg() → Windows
+    //      CommandLineToArgvW escaping (only " is special)
+    //      → embed in format!("bash -lc {}")
+    //   3. → wsl -d <distro> --cd "<cwd>" -- bash -lc <escaped>
+    //
+    // Composability works because the two layers have disjoint special
+    // characters: ' is special to bash, " is special to Windows.
+    if let Some(ref active_pane) = active {
+        if let Some(shell) = active_pane.get("shell").and_then(|v| v.as_str()) {
+            if let Some(distro) = shell.strip_prefix("wsl:") {
+                let wsl_agent_cmd =
+                    crate::coordinator::build_wsl_delegate_commandline(
+                        runtime,
+                        enriched_prompt.as_deref(),
+                        pinned_session_id.as_deref(),
+                    )?;
+                let escaped =
+                    crate::coordinator::quote_windows_commandline_arg(
+                        &wsl_agent_cmd,
+                    );
+                let login_invocation = format!("bash -lc {}", escaped);
+                let wsl_cwd = active_pane
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| s.starts_with('/') && !s.contains('"'));
+                let wsl_commandline = match wsl_cwd {
+                    Some(cwd) => format!(
+                        "wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"
+                    ),
+                    None => format!(
+                        "wsl -d {distro} -- {login_invocation}"
+                    ),
+                };
+
+                tracing::debug!("delegate_with_context: launching in WSL ({distro})");
+                tracing::trace!(
+                    target: "delegate.content",
+                    commandline = %wsl_commandline,
+                    "wsl delegate commandline",
+                );
+
+                let create_resp = shell_mgr
+                    .wt_create_tab(Some(&wsl_commandline), None, None, None)
+                    .await?;
+                let pane_guid = create_resp
+                    .get("session_id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                tracing::info!(
+                    target: "delegate",
+                    pane_guid = ?pane_guid,
+                    pinned = ?pinned_session_id,
+                    distro,
+                    "delegate WSL tab created",
+                );
+
+                if let (Some(sid), Some(pane)) =
+                    (pinned_session_id.as_deref(), pane_guid.as_deref())
+                {
+                    register_launched_session_with_master(
+                        sid, pane, &runtime.id, cwd,
+                    )
+                    .await;
+                }
+                return Ok(());
+            }
+        }
+    }
+
+    // ── Windows (existing) path ────────────────────────────────────────────
     // The delegate always launches a Windows agent CLI (Copilot/Claude/Gemini).
     // If the active pane is WSL, `cwd` is a POSIX path (e.g. "/home/user") that
     // a Windows process can't use as a working directory — sanitize it to the
-    // Windows home so the CLI still launches. (WSL-native agents are a separate
-    // future feature.)
+    // Windows home so the CLI still launches.
+    tracing::debug!("delegate_with_context: launching");
+    tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
+
     let windows_home = std::env::var("USERPROFILE").ok();
     let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
 
