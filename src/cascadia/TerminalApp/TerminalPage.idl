@@ -117,6 +117,10 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.SessionVariable> GetProtocolSessionVariable(Guid sessionId, String name);
         Windows.Foundation.IAsyncOperation<Boolean> SetProtocolSessionVariable(Guid sessionId, String name, String value);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
+        Windows.Foundation.IAsyncOperation<String> SaveTabSessionProtocol(String tabStableId, String title);
+        Windows.Foundation.IAsyncOperation<String> ListSavedTabSessionsProtocol();
+        Windows.Foundation.IAsyncOperation<String> RestoreTabSessionProtocol(String id);
+        Windows.Foundation.IAsyncOperation<Boolean> DeleteSavedTabSessionProtocol(String id);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> SplitProtocolPane(Guid sessionId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
         Windows.Foundation.IAsyncOperation<Boolean> CloseProtocolPane(Guid sessionId);
         Windows.Foundation.IAsyncOperation<Boolean> SendProtocolInput(Guid sessionId, String text);

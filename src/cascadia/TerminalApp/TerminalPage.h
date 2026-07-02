@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <filesystem>
+
 #include <ThrottledFunc.h>
 
 #include "TerminalPage.g.h"
@@ -204,6 +206,10 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        Windows::Foundation::IAsyncOperation<winrt::hstring> SaveTabSessionProtocol(winrt::hstring tabStableId, winrt::hstring title);
+        Windows::Foundation::IAsyncOperation<winrt::hstring> ListSavedTabSessionsProtocol();
+        Windows::Foundation::IAsyncOperation<winrt::hstring> RestoreTabSessionProtocol(winrt::hstring id);
+        Windows::Foundation::IAsyncOperation<bool> DeleteSavedTabSessionProtocol(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
@@ -525,6 +531,8 @@ namespace winrt::TerminalApp::implementation
         void _NotifyAgentTabClosed(const winrt::hstring& tabId);
         void _NotifyAgentTabReset(const winrt::hstring& tabId);
         void _NotifyAgentTabChanged(const winrt::hstring& tabId);
+        static std::filesystem::path _SavedTabSessionDir(const winrt::hstring& id);
+
         // Look up a tab by its StableId; returns nullptr if unknown.
         winrt::com_ptr<Tab> _FindTabByStableId(const winrt::hstring& stableId) const;
         // Look up a tab by the AgentPaneContent instance hosted in it.
