@@ -66,6 +66,14 @@
     # EMPTY badge (agents_view.rs:430), so they are indistinguishable in the picker's text. It is
     # covered deterministically by the Rust unit tests agent_sessions.rs ("Ended must stay Ended" +
     # PaneClosed tombstone) and status_badge_renders_expected_text_per_state (empty-for-Ended).
+    #
+    # 'Session view opens from chat' (C083): the checklist lists three triggers (`/sessions`, session
+    # button, or Ctrl+Shift+/); the `/sessions` slash trigger is deterministically asserted by
+    # Feature.SessionState's Idle test ("the /sessions slash command must open the session view",
+    # a hard Should -BeTrue before any skip path). The Ctrl+Shift+/ WT-accelerator variant (C110) is
+    # binding-covered by the Rust UT DefaultAgentKeybindings; its live open-behavior isn't stably
+    # observable in E2E (harness pane-resolution vs. the per-tab pre-warm's extra stashed pane).
+    'Session view opens from chat'      = 'Idle state is correct.*Idle badge'
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
