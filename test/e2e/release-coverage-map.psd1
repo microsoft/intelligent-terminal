@@ -97,6 +97,8 @@
     # Rust unit (app.rs::view_switch_preserves_chat_draft_input).
     'View switch preserves input'       = 'View switch preserves the draft input'
 
+    # §8 per-CLI hook status (Feature.PerCliHooks) — wta hooks status enumerates each CLI's state/reason.
+    'Per-CLI hook install works'        = 'Per-CLI hook install works'
     # §10 diagnostics — bug-report zip (Feature.BugReport). The "Report a bug (collect logs)"
     # command palette entry zips the logs dir to the Desktop; assert it contains agent logs.
     'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
@@ -109,6 +111,9 @@
 
     # §11 accessibility — keyboard-only agent pane (Feature.KeyboardOnly).
     'Keyboard-only agent pane works'    = 'Keyboard-only agent pane works'
+    # §11 accessibility — keyboard-only FRE + Settings (Feature.KeyboardFre / Feature.KeyboardSettings).
+    'Keyboard-only FRE works'           = 'Keyboard-only FRE works'
+    'Keyboard-only Settings works'      = 'Keyboard-only Settings works'
 
     # §9 packaging / §10 logging (titles differ from test names)
     'Packaged wta.exe is present'       = 'Packaged wta.exe is present'
