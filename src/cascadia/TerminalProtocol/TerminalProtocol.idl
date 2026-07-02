@@ -129,6 +129,11 @@ namespace Microsoft.Terminal.Protocol
 
         // Client-originated event publishing (agent → WT → listeners)
         void SendEvent(String eventJson);
+
+        // Eternal Terminal — per-tab save/restore
+        String SaveTabSession(String tabStableId, String title);
+        String ListSavedTabSessions();
+        String RestoreTabSession(String id);
+        void DeleteSavedTabSession(String id);
     }
 }
-

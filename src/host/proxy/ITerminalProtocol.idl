@@ -76,4 +76,10 @@ import "unknwn.idl";
     HRESULT Subscribe([in] ITerminalProtocolEventSink* sink);
     HRESULT Unsubscribe();
     HRESULT SendEvent([in] BSTR eventJson);
+
+    // ── Eternal Terminal: per-tab save/restore ──
+    HRESULT SaveTabSession([in] BSTR tabStableId, [in] BSTR title, [out, retval] BSTR* json);
+    HRESULT ListSavedTabSessions([out, retval] BSTR* json);
+    HRESULT RestoreTabSession([in] BSTR id, [out, retval] BSTR* json);
+    HRESULT DeleteSavedTabSession([in] BSTR id);
 };
