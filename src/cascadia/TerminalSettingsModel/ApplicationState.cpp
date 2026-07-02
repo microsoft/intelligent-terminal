@@ -6,6 +6,7 @@
 #include "CascadiaSettings.h"
 #include "ApplicationState.g.cpp"
 #include "WindowLayout.g.cpp"
+#include "SavedTabSession.g.cpp"
 #include "ActionAndArgs.h"
 #include "JsonUtils.h"
 #include "FileUtils.h"
@@ -62,6 +63,44 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             return "WindowLayout";
         }
     };
+
+    template<>
+    struct ConversionTrait<SavedTabSession>
+    {
+        SavedTabSession FromJson(const Json::Value& json)
+        {
+            auto session = winrt::make_self<implementation::SavedTabSession>();
+            GetValueForKey(json, "id", session->_Id);
+            GetValueForKey(json, "title", session->_Title);
+            GetValueForKey(json, "sourceStableId", session->_SourceStableId);
+            GetValueForKey(json, "savedAt", session->_SavedAt);
+            GetValueForKey(json, "tabActions", session->_TabActions);
+            GetValueForKey(json, "bufferSessionIds", session->_BufferSessionIds);
+            return *session;
+        }
+
+        bool CanConvert(const Json::Value& json)
+        {
+            return json.isObject();
+        }
+
+        Json::Value ToJson(const SavedTabSession& val)
+        {
+            Json::Value json{ Json::objectValue };
+            SetValueForKey(json, "id", val.Id());
+            SetValueForKey(json, "title", val.Title());
+            SetValueForKey(json, "sourceStableId", val.SourceStableId());
+            SetValueForKey(json, "savedAt", val.SavedAt());
+            SetValueForKey(json, "tabActions", val.TabActions());
+            SetValueForKey(json, "bufferSessionIds", val.BufferSessionIds());
+            return json;
+        }
+
+        std::string TypeDescription() const
+        {
+            return "SavedTabSession";
+        }
+    };
 }
 
 using namespace ::Microsoft::Terminal::Settings::Model;
@@ -90,6 +129,31 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
         }
         JsonUtils::ConversionTrait<Model::WindowLayout> trait;
+        return trait.FromJson(root);
+    }
+
+    winrt::hstring SavedTabSession::ToJson(const Model::SavedTabSession& session)
+    {
+        JsonUtils::ConversionTrait<Model::SavedTabSession> trait;
+        auto json = trait.ToJson(session);
+
+        Json::StreamWriterBuilder wbuilder;
+        const auto content = Json::writeString(wbuilder, json);
+        return hstring{ til::u8u16(content) };
+    }
+
+    Model::SavedTabSession SavedTabSession::FromJson(const hstring& str)
+    {
+        auto data = til::u16u8(str);
+        std::string errs;
+        std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
+
+        Json::Value root;
+        if (!reader->parse(data.data(), data.data() + data.size(), &root, &errs))
+        {
+            throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
+        }
+        JsonUtils::ConversionTrait<Model::SavedTabSession> trait;
         return trait.FromJson(root);
     }
 
@@ -314,6 +378,63 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
 
         _throttler();
+    }
+
+    void ApplicationState::UpsertSavedTabSession(Model::SavedTabSession session)
+    {
+        {
+            const auto state = _state.lock();
+            if (!state->SavedTabSessions || !*state->SavedTabSessions)
+            {
+                state->SavedTabSessions = winrt::single_threaded_vector<Model::SavedTabSession>();
+            }
+
+            auto& vec = *state->SavedTabSessions;
+            bool replaced = false;
+            for (uint32_t i = 0; i < vec.Size(); ++i)
+            {
+                if (vec.GetAt(i).SourceStableId() == session.SourceStableId())
+                {
+                    vec.SetAt(i, session);
+                    replaced = true;
+                    break;
+                }
+            }
+
+            if (!replaced)
+            {
+                vec.Append(std::move(session));
+            }
+        }
+
+        _throttler();
+    }
+
+    bool ApplicationState::RemoveSavedTabSession(const hstring& id)
+    {
+        bool removed = false;
+        {
+            const auto state = _state.lock();
+            if (state->SavedTabSessions && *state->SavedTabSessions)
+            {
+                auto& vec = *state->SavedTabSessions;
+                for (uint32_t i = 0; i < vec.Size(); ++i)
+                {
+                    if (vec.GetAt(i).Id() == id)
+                    {
+                        vec.RemoveAt(i);
+                        removed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (removed)
+        {
+            _throttler();
+        }
+        return removed;
     }
 
     bool ApplicationState::DismissBadge(const hstring& badgeId)

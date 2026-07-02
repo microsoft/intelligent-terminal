@@ -14,6 +14,7 @@ Abstract:
 
 #include "ApplicationState.g.h"
 #include "WindowLayout.g.h"
+#include "SavedTabSession.g.h"
 
 #include <inc/cppwinrt_utils.h>
 #include <JsonUtils.h>
@@ -38,6 +39,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Shared, winrt::hstring, SettingsHash, "settingsHash")                                                                                                   \
     X(FileSource::Shared, std::unordered_set<winrt::guid>, GeneratedProfiles, "generatedProfiles")                                                                        \
     X(FileSource::Local, Windows::Foundation::Collections::IVector<Model::WindowLayout>, PersistedWindowLayouts, "persistedWindowLayouts")                                \
+    X(FileSource::Local, Windows::Foundation::Collections::IVector<Model::SavedTabSession>, SavedTabSessions, "savedTabSessions")                                         \
     X(FileSource::Shared, Windows::Foundation::Collections::IVector<hstring>, RecentCommands, "recentCommands")                                                           \
     X(FileSource::Shared, Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::InfoBarMessage>, DismissedMessages, "dismissedMessages") \
     X(FileSource::Local, Windows::Foundation::Collections::IVector<hstring>, AllowedCommandlines, "allowedCommandlines")                                                  \
@@ -59,6 +61,21 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::WindowLayout>;
     };
 
+    struct SavedTabSession : SavedTabSessionT<SavedTabSession>
+    {
+        static winrt::hstring ToJson(const Model::SavedTabSession& session);
+        static Model::SavedTabSession FromJson(const winrt::hstring& json);
+
+        WINRT_PROPERTY(winrt::hstring, Id);
+        WINRT_PROPERTY(winrt::hstring, Title);
+        WINRT_PROPERTY(winrt::hstring, SourceStableId);
+        WINRT_PROPERTY(winrt::hstring, SavedAt);
+        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<Model::ActionAndArgs>, TabActions, nullptr);
+        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<winrt::hstring>, BufferSessionIds, nullptr);
+
+        friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::SavedTabSession>;
+    };
+
     struct ApplicationState : public ApplicationStateT<ApplicationState>
     {
         static Microsoft::Terminal::Settings::Model::ApplicationState SharedInstance();
@@ -74,6 +91,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         Json::Value ToJson(FileSource parseSource) const noexcept;
 
         void AppendPersistedWindowLayout(Model::WindowLayout layout);
+        void UpsertSavedTabSession(Model::SavedTabSession session);
+        bool RemoveSavedTabSession(const hstring& id);
         bool DismissBadge(const hstring& badgeId);
         bool BadgeDismissed(const hstring& badgeId) const;
 
@@ -111,5 +130,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 namespace winrt::Microsoft::Terminal::Settings::Model::factory_implementation
 {
     BASIC_FACTORY(WindowLayout)
+    BASIC_FACTORY(SavedTabSession)
     BASIC_FACTORY(ApplicationState);
 }
