@@ -23,6 +23,9 @@
     'Alt+Shift+/ opens agent delegation palette' = 'Alt\+Shift\+/ opens agent delegation palette'
     'Command palette prompt launches delegate' = 'Command palette prompt launches delegate'
     'Command palette cancel is safe'    = 'Command palette cancel is safe'
+    # §6 custom delegate via accelerators (Feature.CustomDelegate)
+    'Alt+Shift+B uses custom delegate'  = 'Alt\+Shift\+B uses custom delegate'
+    'Alt+Shift+/ uses custom delegate'  = 'Alt\+Shift\+/ uses custom delegate'
 
     # §1 settings
     'Model control appears'             = 'Model control / model changes apply'

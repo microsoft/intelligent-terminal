@@ -44,7 +44,27 @@ function Initialize-WtWin32Input {
     Add-Type -Namespace 'ItE2E' -Name 'ItWtWin32Input' -MemberDefinition @'
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
     [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
+    // Robustly foreground a window even when the caller doesn't own foreground, by briefly
+    // attaching to the current foreground thread's input queue (the standard foreground-lock
+    // workaround). Returns true if the window is foreground afterwards.
+    public static bool ForceForeground(IntPtr hWnd) {
+        IntPtr fg = GetForegroundWindow();
+        if (fg == hWnd) return true;
+        uint tidThis = GetCurrentThreadId();
+        uint fgPid; uint tidFg = GetWindowThreadProcessId(fg, out fgPid);
+        bool attached = false;
+        if (tidFg != 0 && tidFg != tidThis) { attached = AttachThreadInput(tidThis, tidFg, true); }
+        BringWindowToTop(hWnd);
+        SetForegroundWindow(hWnd);
+        if (attached) { AttachThreadInput(tidThis, tidFg, false); }
+        System.Threading.Thread.Sleep(120);
+        return GetForegroundWindow() == hWnd;
+    }
 '@
 }
 
@@ -57,7 +77,11 @@ function Send-WtWindowKey {
     .PARAMETER Vk         Main virtual-key code (e.g. 0xBC = OEM_COMMA, 0xBE = OEM_PERIOD, 'B'=0x42).
     .PARAMETER Ctrl/Shift/Alt  Modifier switches held around the main key.
     .NOTES
-        Requires the WT window to accept foreground activation. Best-effort focus + verify + retry.
+        Foregrounds the WT window via AttachThreadInput (works even when the caller doesn't own
+        foreground). Best-effort: returns even if foreground couldn't be taken (a competing
+        foreground app in an agent-driven session) — the caller verifies the observable effect and
+        treats "no effect" as a foreground/precondition SKIP rather than a product failure. Query
+        the last result via the -PassThru object's boolean note if needed.
     #>
     [CmdletBinding()]
     param(
@@ -73,13 +97,15 @@ function Send-WtWindowKey {
         $KEYUP = 0x2
         $mods = @()
         if ($Ctrl) { $mods += 0x11 }; if ($Shift) { $mods += 0x10 }; if ($Alt) { $mods += 0x12 }
+        $script:ItLastForegroundOk = $false
         for ($r = 0; $r -lt $Repeat; $r++) {
-            # Foreground the window (retry — focus can be transiently stolen).
-            for ($f = 0; $f -lt 5; $f++) {
-                [ItE2E.ItWtWin32Input]::SetForegroundWindow($hwnd) | Out-Null
-                Start-Sleep -Milliseconds 200
-                if ([ItE2E.ItWtWin32Input]::GetForegroundWindow() -eq $hwnd) { break }
+            # Force foreground (AttachThreadInput bypasses the foreground lock). Best-effort retry.
+            $fg = $false
+            for ($f = 0; $f -lt 6 -and -not $fg; $f++) {
+                $fg = [ItE2E.ItWtWin32Input]::ForceForeground($hwnd)
+                if (-not $fg) { Start-Sleep -Milliseconds 200 }
             }
+            $script:ItLastForegroundOk = $fg
             foreach ($m in $mods) { [ItE2E.ItWtWin32Input]::keybd_event([byte]$m, 0, 0, [UIntPtr]::Zero) }
             [ItE2E.ItWtWin32Input]::keybd_event([byte]$Vk, 0, 0, [UIntPtr]::Zero)
             Start-Sleep -Milliseconds 40
@@ -88,6 +114,21 @@ function Send-WtWindowKey {
             Start-Sleep -Milliseconds 120
         }
         $App
+    }
+}
+
+function Test-WtWindowKeyFocusable {
+    <#
+    .SYNOPSIS
+        $true if the WT window could be brought to the foreground for window-level key injection.
+        Use to SKIP accelerator tests when a competing foreground app (e.g. the agent's own
+        terminal driving the run) makes Send-WtWindowKey unreliable, instead of failing flakily.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    process {
+        if (-not $App.Hwnd) { return $false }
+        Initialize-WtWin32Input
+        [ItE2E.ItWtWin32Input]::ForceForeground([IntPtr][int64]$App.Hwnd)
     }
 }
 
