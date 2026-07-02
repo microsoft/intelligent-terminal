@@ -134,11 +134,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 ### Input and rendering
 
 - [ ] `C062` `[E2E]` **Prompt focused appearance is correct:** Input box looks correct when focused.
-- [ ] `C063` `[E2E]` **Prompt out-of-focus appearance is correct:** Input box looks correct when focus leaves the agent pane.
+- [x] `C063` `[UT✓]` `[E2E]` **Prompt out-of-focus appearance is correct:** Input box looks correct when focus leaves the agent pane. _(UT: `render_input_box_intact_when_pane_unfocused` renders with `pane_focused=false` and asserts the input box stays intact — prompt marker + connection placeholder still paint, not blanked/broken; only the caret style dims, input.rs:69/90.)_
 - [ ] `C064` `[E2E]` **Typing works:** User can type, edit, and submit prompt text correctly.
 - [ ] `C065` `[E2E]` **Paste works:** Pasted multi-line text is handled correctly.
 - [ ] `C066` `[E2E]` **Keyboard navigation works:** Arrow keys, Tab completion, Ctrl combinations, and Esc behave correctly.
-- [ ] `C067` `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing.
+- [x] `C067` `[UT✓]` `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing. _(UT: `render_agent_input_accepts_non_ascii` types accented-Latin/Greek/CJK via the real key handler and asserts the input buffer holds them verbatim (multi-byte caret advance) + they render. E2E send path (wtcli send-keys) cannot carry non-ASCII, so the product side is UT-covered; IME composition stays MANUAL.)_
 - [ ] `C068` `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; streaming-JSON unwrap incl. emoji/surrogate pairs in `ui::chat::tests`.)_
 - [x] `C069` `[UT✓]` `[E2E]` **Permission UI works:** When the agent requests a command/tool permission, the user can allow or reject it. _(UT: `permission_allow_round_trips_to_agent`, `permission_reject_round_trips_to_agent`, `permission_quick_allow/reject_key_round_trips_to_agent`, `render_permission_card_shows_options`, `render_permission_compact_shows_hint`; the `y`/`n` quick-key case-match bug was fixed here.)_
 - [ ] `C070` `[E2E]` **Insert into pane works:** Agent-proposed command/text can be inserted into the target terminal pane without running.
