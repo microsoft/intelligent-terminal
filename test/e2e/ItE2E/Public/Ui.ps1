@@ -160,8 +160,15 @@ function Send-WtWindowKey {
             # Guarantee foreground BEFORE injecting, so the keystroke can't land on the wrong window.
             $fg = Set-WtWindowForeground -App $App
             $script:ItLastForegroundOk = $fg
-            if (-not $fg -and $RequireForeground) {
-                throw "Send-WtWindowKey: WT window could not be brought to the foreground (competing foreground app)."
+            if (-not $fg) {
+                if ($RequireForeground) {
+                    throw "Send-WtWindowKey: WT window could not be brought to the foreground (competing foreground app)."
+                }
+                # Foreground not acquired: do NOT inject — the keys (esp. Ctrl/Alt/Shift accelerators)
+                # would land on whatever app currently owns the foreground. Skip this iteration; the
+                # caller detects the no-effect via Test-WtWindowKeyFocusable and treats it as a
+                # skippable foreground precondition rather than a spurious keystroke.
+                continue
             }
             foreach ($m in $mods) { [ItE2E.ItWtWin32Input]::keybd_event([byte]$m, 0, 0, [UIntPtr]::Zero) }
             [ItE2E.ItWtWin32Input]::keybd_event([byte]$Vk, 0, 0, [UIntPtr]::Zero)

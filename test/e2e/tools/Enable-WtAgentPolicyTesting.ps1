@@ -59,7 +59,10 @@ $preExisted = Test-Path $path
 if (-not $preExisted) { New-Item -Path $path -Force | Out-Null }
 
 $sid = New-Object System.Security.Principal.SecurityIdentifier($UserSid)
-$rights = [System.Security.AccessControl.RegistryRights]'SetValue,CreateSubKey,Delete,ReadKey,EnumerateSubKeys,ReadPermissions'
+# Grant only what the NON-elevated test runs need: read + write policy VALUES. Deletion of the key
+# is done by Disable-WtAgentPolicyTesting, which runs ELEVATED, so we deliberately do NOT grant the
+# non-admin user Delete (least privilege — avoids a standard user/process being able to drop the key).
+$rights = [System.Security.AccessControl.RegistryRights]'SetValue,CreateSubKey,ReadKey,EnumerateSubKeys,ReadPermissions'
 $rule = New-Object System.Security.AccessControl.RegistryAccessRule($sid, $rights, 'ContainerInherit', 'None', 'Allow')
 
 $acl = Get-Acl -Path $path

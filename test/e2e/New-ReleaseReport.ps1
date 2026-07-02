@@ -67,7 +67,15 @@ if (Test-Path $OverrideMap) { $overrides = Import-PowerShellDataFile -Path $Over
 # never throws on `$title -match $null`.
 $excludes = @()
 if (Test-Path $ExcludeMap) {
-    $excludes = @((Import-PowerShellDataFile -Path $ExcludeMap).Exclude) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    $excludes = @((Import-PowerShellDataFile -Path $ExcludeMap).Exclude) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object {
+            $pat = $_
+            # Drop any pattern that isn't a valid regex, so one bad entry in release-exclude.psd1
+            # can't throw on `$title -match $pat` and abort the whole report generation.
+            try { [void][regex]::new($pat); $pat }
+            catch { Write-Warning "release-exclude.psd1: ignoring invalid regex pattern '$pat' ($($_.Exception.Message))" }
+        }
 }
 
 # ── Match a checklist item title to test outcomes ───────────────────────────────────
