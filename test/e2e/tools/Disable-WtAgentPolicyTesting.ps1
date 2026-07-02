@@ -43,8 +43,9 @@ if (-not (Test-IsAdmin)) {
 $path = "Registry::HKEY_USERS\$UserSid\SOFTWARE\Policies\Microsoft\IntelligentTerminal"
 if (-not (Test-Path $path)) { Write-Host "Nothing to remove ($path absent)."; exit 0 }
 
-# Only delete the whole key if Enable-WtAgentPolicyTesting created it (marker present). Otherwise
-# the key pre-existed with real policy values — just drop our marker so we don't clobber them.
+# Only delete the whole key if Enable-WtAgentPolicyTesting created it (marker present). If the key
+# pre-existed, Enable did NOT stamp the marker, so we land here and leave the key — and any real
+# policy values — untouched. (Enable's ACL grant on a pre-existing key is harmless and left as-is.)
 $provisioned = $null -ne (Get-ItemProperty -Path $path -Name '__wt_e2e_provisioned' -ErrorAction SilentlyContinue)
 if ($provisioned) {
     Remove-Item -Path $path -Recurse -Force

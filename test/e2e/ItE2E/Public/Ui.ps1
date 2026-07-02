@@ -257,6 +257,28 @@ function Get-WtWindowHwnds {
         })
 }
 
+function Test-CommandPaletteOpen {
+    <#
+    .SYNOPSIS
+        Locale-aware check that the command palette is open, centralizing the detection that was
+        previously duplicated as a hard-coded English "Command palette" literal across suites.
+        The palette's accessible name is the localized `CommandPaletteControlName` resource; we match
+        the search result against an ALL-LOCALES regex built from that key (en-US "Command palette" is
+        one alternative), so on any build language a returned localized palette name still matches.
+    .NOTES
+        winapp `search` matches by name substring and the palette exposes no stable AutomationId to
+        winapp (its x:Name `CommandPaletteElement` is not surfaced), so the search query itself uses
+        the en-US name; on a non-en-US build where that query returns nothing the caller's retry/skip
+        (foreground-precondition) path handles it. The all-locales regex keeps the MATCH robust.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    process {
+        $rx = Get-WtReswTextRegex -Key 'CommandPaletteControlName'
+        if (-not $rx) { $rx = '(?i)Command palette' }
+        [bool]((Find-UiElement -App $App -Selector 'Command palette') -match $rx)
+    }
+}
+
 function Get-UiTree {
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$Selector, [int]$Depth = 3, [switch]$Interactive)
@@ -324,10 +346,17 @@ function Get-UiElement {
         $r = Invoke-WinAppUi -App $App -UiArgs @('inspect', $Selector, '--json', '--depth', '1')
         $j = $r.StdOut | ConvertFrom-JsonSafe
         if (-not $j -or -not $j.windows) { return $null }
+        # Flatten to a single list of element objects (each window's `elements` may itself be an
+        # array; @(... ForEach-Object) unrolls them into one flat list).
         $els = @($j.windows | ForEach-Object { $_.elements } | Where-Object { $_ })
-        $match = $els | Where-Object { $_.automationId -eq $Selector -or $_.selector -eq $Selector } | Select-Object -First 1
-        if ($match) { return $match }
-        $els | Select-Object -First 1
+        # Return ONLY an element that actually matches the requested selector (by AutomationId,
+        # winapp slug, or name). Do NOT fall back to "first inspected element": winapp inspect can
+        # return the window root / unrelated nodes when the selector doesn't resolve, and returning
+        # those would make Test-UiElementEnabled / .toggleState assert against the wrong control
+        # (false positives). No match => $null, so callers correctly see "absent/disabled".
+        $els |
+            Where-Object { $_.automationId -eq $Selector -or $_.selector -eq $Selector -or $_.name -eq $Selector } |
+            Select-Object -First 1
     }
 }
 

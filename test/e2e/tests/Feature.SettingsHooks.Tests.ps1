@@ -4,9 +4,10 @@
 # The Settings editor's "Install hooks" / per-CLI "Remove" buttons run the SAME engine as
 # `wta hooks install|uninstall|status` (agent_hooks_installer) — they detect supported CLIs and
 # add/remove the wt-agent-hooks bridge in each CLI's plugin store (~/.copilot/config.json etc.).
-# The Settings-editor window itself is not harness-openable (same wall as every other editor-UI
-# item), but — exactly like the rest of §1, which tests the settings MODEL via settings.json rather
-# than the editor widgets — we drive the underlying engine directly and assert the on-disk effect.
+# The Settings editor window CAN be opened by the harness (see Open-WtSettings / Feature.SettingsUi),
+# but — exactly like the rest of §1, which tests the settings MODEL via settings.json rather than the
+# editor widgets — we drive the underlying engine directly here and assert the on-disk effect, which
+# is deterministic and independent of the button's foreground/click timing.
 #
 # SAFETY: these mutate the real ~/.copilot plugin config, so the whole Describe backs it up in
 # BeforeAll and restores it in AfterAll; each test leaves copilot's hook state as it found it.

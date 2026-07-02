@@ -24,7 +24,7 @@ Describe 'Feature §2/§5 agent hotkeys + delegation palette (window-level accel
         $script:OpenDelegatePalette = { Send-WtWindowKey -App $script:app -Vk 0xBF -Alt -Shift | Out-Null }
         $script:TabIds = { @((Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)).tab_id) }
         $script:NewTabCountSince = { param($before) @(@(Get-WtTabs -App $script:app -WindowId ([string]$script:app.WindowId)) | Where-Object { $_.tab_id -notin $before }).Count }
-        $script:PalettePresent = { (Find-UiElement -App $script:app -Selector 'Command palette') -match '(?i)Command palette' }
+        $script:PalettePresent = { Test-CommandPaletteOpen -App $script:app }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 

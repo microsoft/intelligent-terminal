@@ -241,7 +241,9 @@ function Start-Terminal {
     # any pane_session_id already present here is NOT ours. Captured before activation, so the
     # pre-warm agent pane this launch creates is guaranteed to be a NEW id.
     $agentJsonl = Join-Path $app.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
-    $preIds = New-Object System.Collections.Generic.HashSet[string]
+    # Case-insensitive set: pane_session_id GUIDs can vary in casing between producer/serializer, so
+    # an ordinal (case-sensitive) HashSet would miss a match and treat a pre-existing pane as new.
+    $preIds = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
     if (Test-Path $agentJsonl) {
         Get-Content -LiteralPath $agentJsonl | Where-Object { $_.Trim() } |
             ForEach-Object { $_ | ConvertFrom-JsonSafe } |

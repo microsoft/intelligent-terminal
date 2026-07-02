@@ -53,7 +53,7 @@ Describe 'Feature §6 custom delegate via accelerators (Alt+Shift+B / Alt+Shift+
         for ($attempt = 0; $attempt -lt 3 -and -not $seen; $attempt++) {
             Send-WtWindowKey -App $script:app -Vk 0xBF -Alt -Shift | Out-Null   # Alt+Shift+/
             $paletteOpen = Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
-                (Find-UiElement -App $script:app -Selector 'Command palette') -match '(?i)Command palette'
+                Test-CommandPaletteOpen -App $script:app
             }
             if (-not $paletteOpen) { continue }
             Set-UiValue -App $script:app -Selector '_searchBox' -Value 'do a thing' | Out-Null

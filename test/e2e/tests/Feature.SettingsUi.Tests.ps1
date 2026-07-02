@@ -37,10 +37,11 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
     It 'Model selection visible: the model control shows on the AI Agents page for a custom agent' {
         if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
         Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
-        # With a custom agent selected, the "Model" control (picker/textbox) must remain visible.
-        # Assert via a text search of the rendered page — locale-tolerant on the English label is
-        # acceptable here because the control's help text/label is a stable UI string.
-        $models = Find-UiElement -App $script:app -Selector 'Model'
-        $models | Should -Match '(?i)Model' -Because 'the model control must be visible when a custom agent is selected'
+        # With a custom agent selected, the model control must remain visible. Assert via the stable
+        # AutomationId `AcpModel` (SettingContainer x:Name in AIAgents.xaml), NOT the English label
+        # text "Model" — the label is localized (AIAgents_AcpModel.Header), so a text match would
+        # fail on non-en-US machines and could also match unrelated nodes.
+        Test-UiElementExists -App $script:app -Selector 'AcpModel' -TimeoutSec 8 |
+            Should -BeTrue -Because 'the model control (AcpModel) must be visible when a custom agent is selected'
     }
 }

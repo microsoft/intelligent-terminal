@@ -53,7 +53,10 @@ if (-not (Test-IsAdmin)) {
 
 # ── Elevated half: operate on the ORIGINAL user's hive (HKU\<sid>), not the admin's HKCU. ──
 $path = "Registry::HKEY_USERS\$UserSid\SOFTWARE\Policies\Microsoft\IntelligentTerminal"
-if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+# Capture whether the key already existed BEFORE we create it. Only a key WE create may later be
+# deleted wholesale by Disable-WtAgentPolicyTesting; a pre-existing key may hold real policy values.
+$preExisted = Test-Path $path
+if (-not $preExisted) { New-Item -Path $path -Force | Out-Null }
 
 $sid = New-Object System.Security.Principal.SecurityIdentifier($UserSid)
 $rights = [System.Security.AccessControl.RegistryRights]'SetValue,CreateSubKey,Delete,ReadKey,EnumerateSubKeys,ReadPermissions'
@@ -65,9 +68,16 @@ $acl = Get-Acl -Path $path
 $acl.SetAccessRule($rule)
 Set-Acl -Path $path -AclObject $acl
 
-# Stamp a marker so Disable-WtAgentPolicyTesting can tell it provisioned this key (and thus may
-# remove it) vs. a key that pre-existed with real policy values.
-New-ItemProperty -Path $path -Name '__wt_e2e_provisioned' -Value 1 -PropertyType DWord -Force | Out-Null
+# Stamp the provisioning marker ONLY when we created the key. Disable-WtAgentPolicyTesting deletes
+# the whole key when this marker is present, so stamping a pre-existing key (with real policy
+# values) would let cleanup clobber it. A pre-existing key is left unmarked → cleanup leaves it
+# intact (only the ACL grant remains, which is harmless).
+if (-not $preExisted) {
+    New-ItemProperty -Path $path -Name '__wt_e2e_provisioned' -Value 1 -PropertyType DWord -Force | Out-Null
+    Write-Host "Granted write on $path to $UserName ($UserSid); marked test-provisioned (Disable will remove it)."
+}
+else {
+    Write-Host "Granted write on PRE-EXISTING $path to $UserName ($UserSid); NOT marked test-provisioned, so Disable will leave the key (and any real policy values) intact."
+}
 
-Write-Host "Granted write on $path to $UserName ($UserSid)."
 exit 0
