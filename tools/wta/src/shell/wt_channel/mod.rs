@@ -1,7 +1,11 @@
 mod cli_channel;
 
 pub(crate) use cli_channel::resolve_wtcli_path;
+pub use cli_channel::spawn_wtcli_delete_saved_tab;
 pub use cli_channel::spawn_wtcli_focus_pane;
+pub use cli_channel::spawn_wtcli_list_saved_tabs;
+pub use cli_channel::spawn_wtcli_restore_tab;
+pub use cli_channel::spawn_wtcli_save_tab;
 pub use cli_channel::spawn_wtcli_split_then_focus_with_callback;
 pub use cli_channel::CliChannel;
 

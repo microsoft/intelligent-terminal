@@ -1284,6 +1284,14 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    /// Result of `wtcli save-tab`: Ok(title) or Err(message).
+    SavedTabResult(Result<String, String>),
+    /// Result of `wtcli list-saved-tabs`: the parsed rows (may be empty).
+    SavedTabsListed(Vec<crate::app::SavedTabEntry>),
+    /// Result of `wtcli restore-tab`: outcome "focused" | "opened", or Err.
+    RestoredTabResult(Result<String, String>),
+    /// A saved tab was deleted; carries the id so the picker can drop the row.
+    SavedTabDeleted(String),
 }
 
 // --- Per-tab session storage ---
@@ -1955,6 +1963,7 @@ pub struct App {
     /// Gates the experimental `/save-tab` and `/restore-tab` slash commands.
     /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
     pub eternal_terminal_enabled: bool,
+    pub saved_tabs: Option<SavedTabsViewState>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -2025,6 +2034,8 @@ pub struct App {
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
+    #[cfg(test)]
+    pub last_restore_tab_id: Option<String>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
     /// launching pane). Used by autofix to attribute which pane originated
     /// the failing command we're about to fix.
@@ -2103,6 +2114,25 @@ pub struct AgentsViewState {
     /// the whole refresh so F5 has visible feedback even when the list already
     /// has rows — a normal 5s poll leaves it false and never flashes loading.
     pub rescan_in_flight: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+pub struct SavedTabEntry {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "sourceStableId", default)]
+    pub source_stable_id: String,
+    #[serde(rename = "savedAt", default)]
+    pub saved_at: String,
+    #[serde(rename = "isOpen", default)]
+    pub is_open: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct SavedTabsViewState {
+    pub entries: Vec<SavedTabEntry>,
+    pub selected: usize,
+    pub loading: bool,
 }
 
 // (Historical-session load-state tracking was removed: the helper no longer
@@ -2225,6 +2255,7 @@ impl App {
             show_notification_banner: false,
             autofix_enabled,
             eternal_terminal_enabled,
+            saved_tabs: None,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -2239,6 +2270,8 @@ impl App {
             acp_model: None,
             #[cfg(test)]
             last_dispatched_command: None,
+            #[cfg(test)]
+            last_restore_tab_id: None,
             source_session_id: None,
             source_cwd: None,
             log_agent_events: false,
@@ -4275,6 +4308,10 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
+            AppEvent::SavedTabResult(_) => "saved_tab_result",
+            AppEvent::SavedTabsListed(_) => "saved_tabs_listed",
+            AppEvent::RestoredTabResult(_) => "restored_tab_result",
+            AppEvent::SavedTabDeleted(_) => "saved_tab_deleted",
         }
     }
 
@@ -5146,6 +5183,37 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::SavedTabResult(result) => {
+                let message = match result {
+                    Ok(title) => t!("commands.save_tab.saved", title = title.as_str()).into_owned(),
+                    Err(error) => t!("commands.save_tab.failed", error = error.as_str()).into_owned(),
+                };
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(message));
+                tab.scroll_to_bottom();
+            }
+            AppEvent::SavedTabsListed(entries) => {
+                if let Some(view) = self.saved_tabs.as_mut() {
+                    view.selected = view.selected.min(entries.len().saturating_sub(1));
+                    view.entries = entries;
+                    view.loading = false;
+                }
+            }
+            AppEvent::RestoredTabResult(result) => {
+                let message = match result {
+                    Ok(outcome) if outcome == "focused" => {
+                        t!("commands.restore_tab.focused").into_owned()
+                    }
+                    Ok(_) => t!("commands.restore_tab.opened").into_owned(),
+                    Err(error) => {
+                        t!("commands.restore_tab.failed", error = error.as_str()).into_owned()
+                    }
+                };
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(message));
+                tab.scroll_to_bottom();
+            }
+            AppEvent::SavedTabDeleted(_id) => {}
             AppEvent::WtEvent {
                 method,
                 pane_id,
@@ -6221,6 +6289,65 @@ impl App {
         matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
     }
 
+    fn handle_saved_tabs_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                self.saved_tabs = None;
+            }
+            KeyCode::Up => {
+                if let Some(view) = self.saved_tabs.as_mut() {
+                    if view.selected > 0 {
+                        view.selected -= 1;
+                    }
+                }
+            }
+            KeyCode::Down => {
+                if let Some(view) = self.saved_tabs.as_mut() {
+                    let max = view.entries.len().saturating_sub(1);
+                    if view.selected < max {
+                        view.selected += 1;
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                let selected = self
+                    .saved_tabs
+                    .as_ref()
+                    .and_then(|view| view.entries.get(view.selected).cloned());
+                if let Some(entry) = selected {
+                    #[cfg(test)]
+                    {
+                        self.last_restore_tab_id = Some(entry.id.clone());
+                    }
+                    self.saved_tabs = None;
+                    self.dispatch_restore_tab(&entry.id);
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                let deleted = if let Some(view) = self.saved_tabs.as_mut() {
+                    if let Some(entry) = view.entries.get(view.selected).cloned() {
+                        view.entries.remove(view.selected);
+                        if view.selected >= view.entries.len() {
+                            view.selected = view.entries.len().saturating_sub(1);
+                        }
+                        Some(entry.id)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                if let Some(id) = deleted {
+                    crate::shell::wt_channel::spawn_wtcli_delete_saved_tab(&id);
+                    if let Some(tx) = self.event_tx.clone() {
+                        let _ = tx.send(AppEvent::SavedTabDeleted(id));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Advance the typewriter reveal cursor on every streaming tab. The step
     /// is *adaptive*: it grows with the backlog so the reveal can never fall
     /// permanently behind a fast model — any backlog is drained within
@@ -6465,6 +6592,11 @@ impl App {
                 }
                 _ => {}
             }
+            return;
+        }
+
+        if self.saved_tabs.is_some() {
+            self.handle_saved_tabs_key(key);
             return;
         }
 
@@ -7652,20 +7784,59 @@ impl App {
     }
 
     /// `/save-tab <title>` — snapshot this tab. Implemented in Phase E.
-    fn cmd_save_tab(&mut self, _title: String) {
-        let tab = self.current_tab_mut();
-        tab.messages
-            .push(ChatMessage::System("save-tab: not yet implemented".to_string()));
-        tab.scroll_to_bottom();
+    fn cmd_save_tab(&mut self, title: String) {
+        let title = title.trim().to_string();
+        if title.is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("commands.save_tab.needs_title").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let Some(tab_id) = self.owner_tab_id.clone() else {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("commands.save_tab.no_tab").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        };
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        crate::shell::wt_channel::spawn_wtcli_save_tab(
+            &tab_id,
+            &title,
+            Box::new(move |res| {
+                let _ = tx.send(AppEvent::SavedTabResult(res));
+            }),
+        );
     }
 
     /// `/restore-tab` — open the saved-tab picker. Implemented in Phase E.
     fn cmd_restore_tab(&mut self) {
-        let tab = self.current_tab_mut();
-        tab.messages.push(ChatMessage::System(
-            "restore-tab: not yet implemented".to_string(),
-        ));
-        tab.scroll_to_bottom();
+        self.saved_tabs = Some(SavedTabsViewState {
+            loading: true,
+            ..Default::default()
+        });
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        crate::shell::wt_channel::spawn_wtcli_list_saved_tabs(Box::new(move |rows| {
+            let _ = tx.send(AppEvent::SavedTabsListed(rows));
+        }));
+    }
+
+    fn dispatch_restore_tab(&mut self, id: &str) {
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        crate::shell::wt_channel::spawn_wtcli_restore_tab(
+            id,
+            Box::new(move |res| {
+                let _ = tx.send(AppEvent::RestoredTabResult(res));
+            }),
+        );
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
@@ -9754,6 +9925,87 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    #[test]
+    fn saved_tabs_navigation_clamps() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState {
+            entries: vec![
+                SavedTabEntry {
+                    id: "a".into(),
+                    title: "A".into(),
+                    source_stable_id: "".into(),
+                    saved_at: "0".into(),
+                    is_open: false,
+                },
+                SavedTabEntry {
+                    id: "b".into(),
+                    title: "B".into(),
+                    source_stable_id: "".into(),
+                    saved_at: "0".into(),
+                    is_open: false,
+                },
+            ],
+            selected: 0,
+            loading: false,
+        });
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 0);
+    }
+
+    #[test]
+    fn saved_tabs_esc_closes() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState::default());
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.saved_tabs.is_none());
+    }
+
+    #[test]
+    fn saved_tabs_enter_dispatches_restore() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState {
+            entries: vec![SavedTabEntry {
+                id: "sid-1".into(),
+                title: "T".into(),
+                source_stable_id: "".into(),
+                saved_at: "0".into(),
+                is_open: false,
+            }],
+            selected: 0,
+            loading: false,
+        });
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.last_restore_tab_id.as_deref(), Some("sid-1"));
+    }
+
+    #[test]
+    fn saved_tabs_list_result_does_not_reopen_after_esc() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState {
+            loading: true,
+            ..Default::default()
+        });
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.handle_event(AppEvent::SavedTabsListed(vec![SavedTabEntry {
+            id: "late".into(),
+            title: "Late".into(),
+            source_stable_id: "".into(),
+            saved_at: "0".into(),
+            is_open: false,
+        }]));
+
+        assert!(app.saved_tabs.is_none());
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
