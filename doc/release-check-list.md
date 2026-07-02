@@ -162,7 +162,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C083` `[UT✓]` `[E2E]` **Session view opens from chat:** `/sessions`, session button, or `Ctrl+Shift+/` opens the session view. _(UT: `slash_sessions_opens_agents_view` + `DefaultAgentKeybindings`.)_
 - [ ] `C084` `[E2E]` **Chat view restores:** User can return to chat view after opening session view.
-- [x] `C085` `[UT✓]` `[E2E]` **View switch preserves input:** Draft prompt text is not unexpectedly lost when switching views. _(UT: `view_switch_preserves_chat_draft_input` — seeds a chat draft, opens the Agents view, drives the real Esc handler back to chat, asserts the draft + cursor survive. E2E form is not harness-reliable: opening the session view input-free races the per-tab pre-warm's extra pane, the `/sessions` trigger types into the draft, and Esc is overloaded chat-clear vs view-exit.)_
+- [x] `C085` `[UT✓]` `[E2E]` **View switch preserves input:** Draft prompt text is not unexpectedly lost when switching views. _(E2E `Feature.SessionList` 'View switch preserves the draft input': types a draft, switches chat↔sessions via the bottom-bar buttons (SessionToggleButton/AgentToggleButton — not the `/sessions` slash that would type into the draft, not Esc which is overloaded), observing the view via the `AgentLabelText` UIA element (winapp get-value, no jsonl pane ambiguity), then asserts the draft survives. UT: `view_switch_preserves_chat_draft_input` drives the Esc key handler and asserts draft + cursor survive.)_
 - [ ] `C086` `[E2E]` **View switch preserves connection:** Agent connection state remains correct after switching views.
 
 ## 3. Autofix flow
