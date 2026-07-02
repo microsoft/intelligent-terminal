@@ -16,7 +16,13 @@
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
+#include <array>
+#include <chrono>
+#include <filesystem>
+#include <json/json.h>
+#include <sddl.h>
 #include <wil/resource.h>
+#include <wil/stl.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
@@ -29,6 +35,7 @@ using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::TerminalConnection;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 namespace Protocol = winrt::Microsoft::Terminal::Protocol;
+namespace Model = winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -67,6 +74,75 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return {};
+    }
+
+    static bool _initializeHighIntegritySecurityAttributes(SECURITY_ATTRIBUTES& sa, wil::unique_hlocal_security_descriptor& sd) noexcept
+    try
+    {
+        unsigned long cb;
+        THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &cb));
+        sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+        sa.lpSecurityDescriptor = sd.get();
+        sa.bInheritHandle = false;
+        return true;
+    }
+    CATCH_LOG_RETURN_FALSE()
+
+    static wil::unique_hfile _createBufferFileForWrite(const std::filesystem::path& path, const bool elevatedOnly)
+    {
+        SECURITY_ATTRIBUTES sa{};
+        wil::unique_hlocal_security_descriptor sd;
+        SECURITY_ATTRIBUTES* securityAttributes{ nullptr };
+        if (elevatedOnly)
+        {
+            if (!_initializeHighIntegritySecurityAttributes(sa, sd))
+            {
+                return {};
+            }
+            securityAttributes = &sa;
+        }
+
+        return wil::unique_hfile{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, securityAttributes, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+    }
+
+    static bool _copyBufferFileForRestore(const std::filesystem::path& source, const std::filesystem::path& destination, const bool elevatedOnly)
+    {
+        wil::unique_hfile input{ CreateFileW(source.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr) };
+        if (!input)
+        {
+            return false;
+        }
+
+        auto output = _createBufferFileForWrite(destination, elevatedOnly);
+        if (!output)
+        {
+            return false;
+        }
+
+        std::array<char, 64 * 1024> buffer{};
+        for (;;)
+        {
+            DWORD bytesRead{};
+            if (!ReadFile(input.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &bytesRead, nullptr))
+            {
+                return false;
+            }
+            if (bytesRead == 0)
+            {
+                return true;
+            }
+
+            DWORD bytesWrittenTotal{};
+            while (bytesWrittenTotal < bytesRead)
+            {
+                DWORD bytesWritten{};
+                if (!WriteFile(output.get(), buffer.data() + bytesWrittenTotal, bytesRead - bytesWrittenTotal, &bytesWritten, nullptr) || bytesWritten == 0)
+                {
+                    return false;
+                }
+                bytesWrittenTotal += bytesWritten;
+            }
+        }
     }
 
     uint32_t TerminalPage::TabCount() const
@@ -593,6 +669,202 @@ namespace winrt::TerminalApp::implementation
         }
 
         co_return result;
+    }
+
+    std::filesystem::path TerminalPage::_SavedTabSessionDir(const winrt::hstring& id)
+    {
+        std::filesystem::path dir{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        dir /= L"SavedTabSessions";
+        dir /= std::wstring_view{ id };
+        return dir;
+    }
+
+    IAsyncOperation<winrt::hstring> TerminalPage::SaveTabSessionProtocol(winrt::hstring tabStableId, winrt::hstring title)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        const auto tabImpl = _FindTabByStableId(tabStableId);
+        if (!tabImpl)
+        {
+            co_return winrt::hstring{};
+        }
+
+        winrt::hstring id;
+        const auto existing = ApplicationState::SharedInstance().SavedTabSessions();
+        if (existing)
+        {
+            for (const auto& s : existing)
+            {
+                if (s.SourceStableId() == tabStableId)
+                {
+                    id = s.Id();
+                    break;
+                }
+            }
+        }
+        if (id.empty())
+        {
+            id = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
+        }
+
+        const auto dir = _SavedTabSessionDir(id);
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+        std::filesystem::create_directories(dir, ec);
+
+        auto actions = tabImpl->BuildStartupActions(BuildStartupKind::Persist);
+
+        std::vector<winrt::hstring> bufferIds;
+        if (const auto rootPane = tabImpl->GetRootPane())
+        {
+            rootPane->WalkTree([&](const auto& pane) {
+                try
+                {
+                    const auto term = pane->GetContent().try_as<TerminalApp::ITerminalPaneContent>();
+                    if (!term)
+                    {
+                        return;
+                    }
+                    const auto control = term.GetTermControl();
+                    if (!control)
+                    {
+                        return;
+                    }
+                    const auto connection = control.Connection();
+                    if (!connection)
+                    {
+                        return;
+                    }
+                    const auto sessionId = connection.SessionId();
+                    if (sessionId == winrt::guid{})
+                    {
+                        return;
+                    }
+
+                    const auto sidStr = winrt::hstring{ fmt::format(FMT_COMPILE(L"{}"), sessionId) };
+                    const auto path = dir / (std::wstring{ L"buffer_" } + std::wstring{ sidStr } + L".txt");
+                    if (auto file = _createBufferFileForWrite(path, IsRunningElevated()))
+                    {
+                        control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                        bufferIds.push_back(sidStr);
+                    }
+                }
+                CATCH_LOG();
+            });
+        }
+
+        Model::SavedTabSession record;
+        record.Id(id);
+        record.Title(title);
+        record.SourceStableId(tabStableId);
+        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        record.SavedAt(winrt::to_hstring(nowMs));
+        record.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
+        record.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
+        ApplicationState::SharedInstance().UpsertSavedTabSession(record);
+
+        Json::Value out{ Json::objectValue };
+        out["id"] = winrt::to_string(id);
+        out["title"] = winrt::to_string(title);
+        Json::StreamWriterBuilder wb;
+        co_return winrt::to_hstring(Json::writeString(wb, out));
+    }
+
+    IAsyncOperation<winrt::hstring> TerminalPage::ListSavedTabSessionsProtocol()
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        Json::Value arr{ Json::arrayValue };
+        const auto sessions = ApplicationState::SharedInstance().SavedTabSessions();
+        if (sessions)
+        {
+            for (const auto& s : sessions)
+            {
+                Json::Value o{ Json::objectValue };
+                o["id"] = winrt::to_string(s.Id());
+                o["title"] = winrt::to_string(s.Title());
+                o["sourceStableId"] = winrt::to_string(s.SourceStableId());
+                o["savedAt"] = winrt::to_string(s.SavedAt());
+                o["isOpen"] = static_cast<bool>(_FindTabByStableId(s.SourceStableId()));
+                arr.append(o);
+            }
+        }
+        Json::StreamWriterBuilder wb;
+        co_return winrt::to_hstring(Json::writeString(wb, arr));
+    }
+
+    IAsyncOperation<winrt::hstring> TerminalPage::RestoreTabSessionProtocol(winrt::hstring id)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        Model::SavedTabSession record{ nullptr };
+        const auto sessions = ApplicationState::SharedInstance().SavedTabSessions();
+        if (sessions)
+        {
+            for (const auto& s : sessions)
+            {
+                if (s.Id() == id)
+                {
+                    record = s;
+                    break;
+                }
+            }
+        }
+        if (!record)
+        {
+            co_return winrt::hstring{};
+        }
+
+        if (const auto live = _FindTabByStableId(record.SourceStableId()))
+        {
+            FocusTab(*live);
+
+            Json::Value out{ Json::objectValue };
+            out["outcome"] = "focused";
+            Json::StreamWriterBuilder wb;
+            co_return winrt::to_hstring(Json::writeString(wb, out));
+        }
+
+        const auto dir = _SavedTabSessionDir(id);
+        const std::filesystem::path settingsRoot{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        if (const auto ids = record.BufferSessionIds())
+        {
+            using namespace std::string_view_literals;
+
+            const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
+            for (const auto& sid : ids)
+            {
+                const std::wstring storedName = std::wstring{ L"buffer_" } + std::wstring{ sid } + L".txt";
+                const std::wstring stagedName = std::wstring{ filenamePrefix } + std::wstring{ sid } + L".txt";
+                _copyBufferFileForRestore(dir / storedName, settingsRoot / stagedName, IsRunningElevated());
+            }
+        }
+
+        std::vector<Model::ActionAndArgs> actions;
+        if (const auto tabActions = record.TabActions())
+        {
+            actions = wil::to_vector(tabActions);
+        }
+        ProcessStartupActions(std::move(actions), winrt::hstring{}, winrt::hstring{});
+
+        Json::Value out{ Json::objectValue };
+        out["outcome"] = "opened";
+        Json::StreamWriterBuilder wb;
+        co_return winrt::to_hstring(Json::writeString(wb, out));
+    }
+
+    IAsyncOperation<bool> TerminalPage::DeleteSavedTabSessionProtocol(winrt::hstring id)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        const bool removed = ApplicationState::SharedInstance().RemoveSavedTabSession(id);
+        std::error_code ec;
+        std::filesystem::remove_all(_SavedTabSessionDir(id), ec);
+        co_return removed;
     }
 
     IAsyncOperation<Protocol::TabCreationResult> TerminalPage::SplitProtocolPane(winrt::guid sessionId, SplitDirection direction, float size, NewTerminalArgs args, bool background)

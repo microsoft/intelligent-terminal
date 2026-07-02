@@ -206,3 +206,14 @@ model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  #
 system.no_models: "Поврзаниот агент не објави ниту еден модел што може да се избере."
 system.model_set: "Моделот за овој панел е поставен на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Непознат модел %{model} — внесете /model за да ја видите достапната листа."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
+commands.save_tab.needs_title: "Please provide a title: /save-tab <name>"
+commands.save_tab.no_tab: "Cannot determine this tab. Save is unavailable."
+commands.save_tab.saved: "Saved this tab as \"%{title}\". Restore it later with /restore-tab."
+commands.save_tab.failed: "Save failed: %{error}"
+commands.restore_tab.focused: "Switched to the original tab."
+commands.restore_tab.opened: "Restored in a new tab."
+commands.restore_tab.failed: "Restore failed: %{error}"
+commands.restore_tab.empty: "No saved tabs yet."

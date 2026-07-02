@@ -1833,6 +1833,10 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
+        if (globals.EternalTerminalEnabled())
+        {
+            helperCmd.append(L" --eternal-terminal");
+        }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             appendHelperFlagValue(L"--language", lang);

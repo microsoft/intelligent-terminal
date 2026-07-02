@@ -304,6 +304,13 @@ static winrt::hstring _hstr(BSTR b)
     return b ? winrt::hstring{ b } : winrt::hstring{};
 }
 
+static BSTR _bstrFromHstring(const winrt::hstring& s)
+{
+    BSTR b = ::SysAllocString(s.c_str());
+    THROW_IF_NULL_ALLOC(b);
+    return b;
+}
+
 void TerminalProtocolComServer::_ensurePageEventsRegistered()
 {
     if (!s_emperor)
@@ -526,6 +533,10 @@ try
         "subscribe",
         "unsubscribe",
         "send_event",
+        "save_tab_session",
+        "list_saved_tab_sessions",
+        "restore_tab_session",
+        "delete_saved_tab_session",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -961,6 +972,90 @@ try
 
         if (page.SetProtocolSessionVariable(winrt::guid{ sessionId }, nameH, _hstr(value)).get())
             return S_OK;
+    }
+
+    return E_FAIL;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::SaveTabSession(BSTR tabStableId, BSTR title, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        const auto result = page.SaveTabSessionProtocol(_hstr(tabStableId), _hstr(title)).get();
+        if (!result.empty())
+        {
+            *json = _bstrFromHstring(result);
+            return S_OK;
+        }
+    }
+
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListSavedTabSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        *json = _bstrFromHstring(page.ListSavedTabSessionsProtocol().get());
+        return S_OK;
+    }
+
+    return E_FAIL;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::RestoreTabSession(BSTR id, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    const auto mostRecent = s_emperor->GetMostRecentWindow();
+    const auto page = mostRecent ? _getPage(mostRecent) : nullptr;
+    RETURN_HR_IF(E_FAIL, !page);
+
+    const auto result = page.RestoreTabSessionProtocol(_hstr(id)).get();
+    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), result.empty());
+
+    *json = _bstrFromHstring(result);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::DeleteSavedTabSession(BSTR id)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        (void)page.DeleteSavedTabSessionProtocol(_hstr(id)).get();
+        return S_OK;
     }
 
     return E_FAIL;

@@ -206,3 +206,14 @@ model_picker.title: "Vel modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","�
 system.no_models: "Den tilkopla agenten annonserte ingen modellar som kan veljast."
 system.model_set: "Modell for dette panelet sett til %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ukjend modell %{model} — skriv /model for å sjå lista over tilgjengelege."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
+commands.save_tab.needs_title: "Please provide a title: /save-tab <name>"
+commands.save_tab.no_tab: "Cannot determine this tab. Save is unavailable."
+commands.save_tab.saved: "Saved this tab as \"%{title}\". Restore it later with /restore-tab."
+commands.save_tab.failed: "Save failed: %{error}"
+commands.restore_tab.focused: "Switched to the original tab."
+commands.restore_tab.opened: "Restored in a new tab."
+commands.restore_tab.failed: "Restore failed: %{error}"
+commands.restore_tab.empty: "No saved tabs yet."

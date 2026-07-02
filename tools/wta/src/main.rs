@@ -180,6 +180,10 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
+    /// Enable the experimental Eternal Terminal save/restore-tab commands
+    #[arg(long)]
+    eternal_terminal: bool,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]
@@ -2790,7 +2794,7 @@ async fn run_acp_app(
             ));
 
             let autofix_enabled = !cli.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, cli.eternal_terminal, Arc::clone(&shell_mgr));
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
             // re-derive the delegate commandline when only the delegate

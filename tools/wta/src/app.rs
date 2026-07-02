@@ -1284,6 +1284,14 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    /// Result of `wtcli save-tab`: Ok(title) or Err(message).
+    SavedTabResult(Result<String, String>),
+    /// Result of `wtcli list-saved-tabs`: the parsed rows (may be empty).
+    SavedTabsListed(Vec<crate::app::SavedTabEntry>),
+    /// Result of `wtcli restore-tab`: outcome "focused" | "opened", or Err.
+    RestoredTabResult(Result<String, String>),
+    /// A saved tab was deleted; carries the id so the picker can drop the row.
+    SavedTabDeleted(String),
 }
 
 // --- Per-tab session storage ---
@@ -1715,17 +1723,18 @@ impl TabSession {
     pub fn clear_input(&mut self) {
         self.input.clear();
         self.cursor_pos = 0;
-        self.refresh_command_popup();
+        self.command_popup_candidates.clear();
+        self.command_popup_selected = 0;
     }
 
-    pub fn insert_input_char(&mut self, ch: char) {
+    pub fn insert_input_char(&mut self, ch: char, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert(self.cursor_pos, ch);
         self.cursor_pos += ch.len_utf8();
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
-    pub fn delete_before_cursor(&mut self) {
+    pub fn delete_before_cursor(&mut self, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
             return;
@@ -1734,10 +1743,10 @@ impl TabSession {
         let previous = prev_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(previous..self.cursor_pos, "");
         self.cursor_pos = previous;
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
-    pub fn delete_word_before_cursor(&mut self) {
+    pub fn delete_word_before_cursor(&mut self, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
             return;
@@ -1745,10 +1754,10 @@ impl TabSession {
         let word_start = prev_word_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(word_start..self.cursor_pos, "");
         self.cursor_pos = word_start;
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
-    pub fn delete_at_cursor(&mut self) {
+    pub fn delete_at_cursor(&mut self, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos >= self.input.len() {
             return;
@@ -1756,7 +1765,7 @@ impl TabSession {
 
         let next = next_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(self.cursor_pos..next, "");
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
     pub fn move_cursor_left(&mut self) {
@@ -1786,14 +1795,15 @@ impl TabSession {
     /// Recompute the slash-command popup candidates from the current
     /// input. Called after every input mutation. Clamps the selected
     /// index so it stays valid when the candidate list shrinks.
-    pub fn refresh_command_popup(&mut self) {
+    pub fn refresh_command_popup(&mut self, eternal_enabled: bool) {
         if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
             // partial name. `is_command_prefix` already guarantees the
             // shape, so the unwrap is safe.
             let trimmed = self.input.trim_start();
             let name = trimmed.strip_prefix('/').unwrap_or("");
-            self.command_popup_candidates = commands::matches(name);
+            self.command_popup_candidates =
+                commands::matches_gated(name, eternal_enabled);
         } else {
             self.command_popup_candidates.clear();
         }
@@ -1830,7 +1840,7 @@ impl TabSession {
     /// trailing space if the command takes args; otherwise just the
     /// name) and reset the cursor to the end. Triggered by Tab when the
     /// popup is visible.
-    pub fn accept_command_popup_completion(&mut self) {
+    pub fn accept_command_popup_completion(&mut self, eternal_enabled: bool) {
         if let Some(spec) = self.selected_command_spec() {
             self.input = if spec.takes_args {
                 format!("/{} ", spec.name)
@@ -1838,7 +1848,7 @@ impl TabSession {
                 format!("/{}", spec.name)
             };
             self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
+            self.refresh_command_popup(eternal_enabled);
         }
     }
 }
@@ -1950,6 +1960,10 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
+    /// Gates the experimental `/save-tab` and `/restore-tab` slash commands.
+    /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
+    pub eternal_terminal_enabled: bool,
+    pub saved_tabs: Option<SavedTabsViewState>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -2020,6 +2034,8 @@ pub struct App {
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
+    #[cfg(test)]
+    pub last_restore_tab_id: Option<String>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
     /// launching pane). Used by autofix to attribute which pane originated
     /// the failing command we're about to fix.
@@ -2100,6 +2116,25 @@ pub struct AgentsViewState {
     pub rescan_in_flight: bool,
 }
 
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+pub struct SavedTabEntry {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "sourceStableId", default)]
+    pub source_stable_id: String,
+    #[serde(rename = "savedAt", default)]
+    pub saved_at: String,
+    #[serde(rename = "isOpen", default)]
+    pub is_open: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct SavedTabsViewState {
+    pub entries: Vec<SavedTabEntry>,
+    pub selected: usize,
+    pub loading: bool,
+}
+
 // (Historical-session load-state tracking was removed: the helper no longer
 // scans on-disk history; the session view renders from master's `session/list`
 // snapshot. See doc/specs/per-cli-history-filtering.md.)
@@ -2165,6 +2200,7 @@ impl App {
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
         autofix_enabled: bool,
+        eternal_terminal_enabled: bool,
         shell_mgr: Arc<crate::shell::ShellManager>,
     ) -> Self {
         let mut tab_sessions = HashMap::new();
@@ -2218,6 +2254,8 @@ impl App {
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
+            eternal_terminal_enabled,
+            saved_tabs: None,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -2232,6 +2270,8 @@ impl App {
             acp_model: None,
             #[cfg(test)]
             last_dispatched_command: None,
+            #[cfg(test)]
+            last_restore_tab_id: None,
             source_session_id: None,
             source_cwd: None,
             log_agent_events: false,
@@ -3397,6 +3437,7 @@ impl App {
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
+        self.saved_tabs = None;
         let rows_available = !self.agents_rows_for_tab(&tab_id).is_empty();
         {
             let tab = self.tab_mut(&tab_id);
@@ -4268,6 +4309,10 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
+            AppEvent::SavedTabResult(_) => "saved_tab_result",
+            AppEvent::SavedTabsListed(_) => "saved_tabs_listed",
+            AppEvent::RestoredTabResult(_) => "restored_tab_result",
+            AppEvent::SavedTabDeleted(_) => "saved_tab_deleted",
         }
     }
 
@@ -5139,6 +5184,37 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
+            AppEvent::SavedTabResult(result) => {
+                let message = match result {
+                    Ok(title) => t!("commands.save_tab.saved", title = title.as_str()).into_owned(),
+                    Err(error) => t!("commands.save_tab.failed", error = error.as_str()).into_owned(),
+                };
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(message));
+                tab.scroll_to_bottom();
+            }
+            AppEvent::SavedTabsListed(entries) => {
+                if let Some(view) = self.saved_tabs.as_mut() {
+                    view.selected = view.selected.min(entries.len().saturating_sub(1));
+                    view.entries = entries;
+                    view.loading = false;
+                }
+            }
+            AppEvent::RestoredTabResult(result) => {
+                let message = match result {
+                    Ok(outcome) if outcome == "focused" => {
+                        t!("commands.restore_tab.focused").into_owned()
+                    }
+                    Ok(_) => t!("commands.restore_tab.opened").into_owned(),
+                    Err(error) => {
+                        t!("commands.restore_tab.failed", error = error.as_str()).into_owned()
+                    }
+                };
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(message));
+                tab.scroll_to_bottom();
+            }
+            AppEvent::SavedTabDeleted(_id) => {}
             AppEvent::WtEvent {
                 method,
                 pane_id,
@@ -6214,6 +6290,65 @@ impl App {
         matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
     }
 
+    fn handle_saved_tabs_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                self.saved_tabs = None;
+            }
+            KeyCode::Up => {
+                if let Some(view) = self.saved_tabs.as_mut() {
+                    if view.selected > 0 {
+                        view.selected -= 1;
+                    }
+                }
+            }
+            KeyCode::Down => {
+                if let Some(view) = self.saved_tabs.as_mut() {
+                    let max = view.entries.len().saturating_sub(1);
+                    if view.selected < max {
+                        view.selected += 1;
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                let selected = self
+                    .saved_tabs
+                    .as_ref()
+                    .and_then(|view| view.entries.get(view.selected).cloned());
+                if let Some(entry) = selected {
+                    #[cfg(test)]
+                    {
+                        self.last_restore_tab_id = Some(entry.id.clone());
+                    }
+                    self.saved_tabs = None;
+                    self.dispatch_restore_tab(&entry.id);
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                let deleted = if let Some(view) = self.saved_tabs.as_mut() {
+                    if let Some(entry) = view.entries.get(view.selected).cloned() {
+                        view.entries.remove(view.selected);
+                        if view.selected >= view.entries.len() {
+                            view.selected = view.entries.len().saturating_sub(1);
+                        }
+                        Some(entry.id)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                if let Some(id) = deleted {
+                    crate::shell::wt_channel::spawn_wtcli_delete_saved_tab(&id);
+                    if let Some(tx) = self.event_tx.clone() {
+                        let _ = tx.send(AppEvent::SavedTabDeleted(id));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Advance the typewriter reveal cursor on every streaming tab. The step
     /// is *adaptive*: it grows with the backlog so the reveal can never fall
     /// permanently behind a fast model — any backlog is drained within
@@ -6458,6 +6593,11 @@ impl App {
                 }
                 _ => {}
             }
+            return;
+        }
+
+        if self.saved_tabs.is_some() {
+            self.handle_saved_tabs_key(key);
             return;
         }
 
@@ -6881,14 +7021,16 @@ impl App {
                 self.current_tab_mut().command_popup_down();
             }
             KeyCode::Tab if self.command_popup_visible() => {
-                self.current_tab_mut().accept_command_popup_completion();
+                let eternal_enabled = self.eternal_terminal_enabled;
+                self.current_tab_mut().accept_command_popup_completion(eternal_enabled);
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 // Input editing only acts when the input is the live caret
                 // target. While a recommendation/permission card or a past
                 // turn is highlighted the input is locked (see Char below).
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().insert_input_char('\n');
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().insert_input_char('\n', eternal_enabled);
                 }
             }
             KeyCode::Enter
@@ -6966,7 +7108,8 @@ impl App {
                     // Drain any Alt+V images queued for this prompt.
                     let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
-                    tab.refresh_command_popup();
+                    tab.command_popup_candidates.clear();
+                    tab.command_popup_selected = 0;
                     // `session_id` may be None on a brand-new tab whose ACP
                     // session is created lazily by `dispatch_prompt_body`.
                     // Fall back to a key that `session_tab_mut`'s
@@ -7029,17 +7172,20 @@ impl App {
             }
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().delete_word_before_cursor();
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().delete_word_before_cursor(eternal_enabled);
                 }
             }
             KeyCode::Backspace => {
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().delete_before_cursor();
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().delete_before_cursor(eternal_enabled);
                 }
             }
             KeyCode::Delete => {
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().delete_at_cursor();
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().delete_at_cursor(eternal_enabled);
                 }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -7079,7 +7225,8 @@ impl App {
                 // user (a non-empty buffer disables Tab/↑ history nav). Press
                 // Esc, or Tab/Shift+Tab back past the ends, to return focus.
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().insert_input_char(c);
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().insert_input_char(c, eternal_enabled);
                 }
             }
             _ => {}
@@ -7412,6 +7559,18 @@ impl App {
             return;
         }
 
+        // Experimental commands are invisible + inert unless the feature flag
+        // is on. Defense-in-depth: the popup already hides them via
+        // `matches_gated`, but a user could type `/save-tab` blind.
+        if cmd.spec.experimental_eternal && !self.eternal_terminal_enabled {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("commands.eternal_disabled").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+
         // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
         // single command can be read and unit-tested in isolation. `in_flight`
         // is computed once here and threaded to the commands that branch on it.
@@ -7422,6 +7581,8 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::SaveTab => self.cmd_save_tab(cmd.rest),
+            CommandKind::RestoreTab => self.cmd_restore_tab(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
         }
@@ -7621,6 +7782,67 @@ impl App {
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
         self.project_active_tab_state();
+    }
+
+    /// `/save-tab <title>` — snapshot this tab. Implemented in Phase E.
+    fn cmd_save_tab(&mut self, title: String) {
+        let title = title.trim().to_string();
+        if title.is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("commands.save_tab.needs_title").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let Some(tab_id) = self.owner_tab_id.clone() else {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("commands.save_tab.no_tab").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        };
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        crate::shell::wt_channel::spawn_wtcli_save_tab(
+            &tab_id,
+            &title,
+            Box::new(move |res| {
+                let _ = tx.send(AppEvent::SavedTabResult(res));
+            }),
+        );
+    }
+
+    /// `/restore-tab` — open the saved-tab picker. Implemented in Phase E.
+    fn cmd_restore_tab(&mut self) {
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        let tab_id = self.active_tab_key().to_string();
+        if self.current_tab().current_view == View::Agents {
+            self.close_agents_view_for_tab(&tab_id);
+            self.project_active_tab_state();
+        }
+        self.saved_tabs = Some(SavedTabsViewState {
+            loading: true,
+            ..Default::default()
+        });
+        crate::shell::wt_channel::spawn_wtcli_list_saved_tabs(Box::new(move |rows| {
+            let _ = tx.send(AppEvent::SavedTabsListed(rows));
+        }));
+    }
+
+    fn dispatch_restore_tab(&mut self, id: &str) {
+        let Some(tx) = self.event_tx.clone() else {
+            return;
+        };
+        crate::shell::wt_channel::spawn_wtcli_restore_tab(
+            id,
+            Box::new(move |res| {
+                let _ = tx.send(AppEvent::RestoredTabResult(res));
+            }),
+        );
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
@@ -9706,8 +9928,117 @@ mod tests {
             debug_capture,
             true,
             false,
+            false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    #[test]
+    fn saved_tabs_navigation_clamps() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState {
+            entries: vec![
+                SavedTabEntry {
+                    id: "a".into(),
+                    title: "A".into(),
+                    source_stable_id: "".into(),
+                    saved_at: "0".into(),
+                    is_open: false,
+                },
+                SavedTabEntry {
+                    id: "b".into(),
+                    title: "B".into(),
+                    source_stable_id: "".into(),
+                    saved_at: "0".into(),
+                    is_open: false,
+                },
+            ],
+            selected: 0,
+            loading: false,
+        });
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 0);
+    }
+
+    #[test]
+    fn saved_tabs_esc_closes() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState::default());
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.saved_tabs.is_none());
+    }
+
+    #[test]
+    fn saved_tabs_enter_dispatches_restore() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState {
+            entries: vec![SavedTabEntry {
+                id: "sid-1".into(),
+                title: "T".into(),
+                source_stable_id: "".into(),
+                saved_at: "0".into(),
+                is_open: false,
+            }],
+            selected: 0,
+            loading: false,
+        });
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.last_restore_tab_id.as_deref(), Some("sid-1"));
+    }
+
+    #[test]
+    fn saved_tabs_list_result_does_not_reopen_after_esc() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+        app.saved_tabs = Some(SavedTabsViewState {
+            loading: true,
+            ..Default::default()
+        });
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.handle_event(AppEvent::SavedTabsListed(vec![SavedTabEntry {
+            id: "late".into(),
+            title: "Late".into(),
+            source_stable_id: "".into(),
+            saved_at: "0".into(),
+            is_open: false,
+        }]));
+
+        assert!(app.saved_tabs.is_none());
+    }
+
+    #[test]
+    fn saved_tabs_picker_and_agents_view_are_mutually_exclusive() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+
+        app.saved_tabs = Some(SavedTabsViewState::default());
+        app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+        assert!(app.saved_tabs.is_none());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+
+        let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+        app.set_event_tx(event_tx);
+        app.cmd_restore_tab();
+        assert!(app.saved_tabs.is_some());
+        assert_eq!(app.current_tab().current_view, View::Chat);
+    }
+
+    #[test]
+    fn restore_tab_without_event_tx_does_not_open_loading_picker() {
+        let mut app = test_app();
+        app.eternal_terminal_enabled = true;
+
+        app.cmd_restore_tab();
+
+        assert!(app.saved_tabs.is_none());
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
@@ -10178,6 +10509,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            false,
             Arc::new(crate::shell::ShellManager::new()),
         );
         (app, master_rx)
@@ -10410,6 +10742,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            false,
             Arc::new(crate::shell::ShellManager::new()),
         );
 
@@ -10467,6 +10800,7 @@ mod tests {
             master_tx,
             debug_capture,
             true,
+            false,
             false,
             Arc::new(crate::shell::ShellManager::new()),
         );
@@ -10557,6 +10891,7 @@ mod tests {
             master_tx,
             debug_capture,
             true,
+            false,
             false,
             Arc::new(crate::shell::ShellManager::new()),
         );
@@ -15697,7 +16032,7 @@ mod tests {
         // type "/" and let refresh_command_popup populate candidates.
         app.current_tab_mut().input.push('/');
         app.current_tab_mut().cursor_pos = 1;
-        app.current_tab_mut().refresh_command_popup();
+        app.current_tab_mut().refresh_command_popup(false);
         assert!(
             app.command_popup_visible(),
             "test prerequisite: command popup must be visible after typing '/'",

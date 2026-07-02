@@ -185,6 +185,88 @@ pub fn spawn_wtcli_async(args: &[String]) {
     }
 }
 
+pub fn spawn_wtcli_save_tab(
+    tab_stable_id: &str,
+    title: &str,
+    on_done: Box<dyn FnOnce(Result<String, String>) + Send>,
+) {
+    let path = resolve_wtcli_path();
+    let (tab, title) = (tab_stable_id.to_string(), title.to_string());
+    std::thread::spawn(move || {
+        let out = std::process::Command::new(&path)
+            .args(["save-tab", "-t", &tab, "-n", &title])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output();
+        let result = match out {
+            Ok(o) if o.status.success() => {
+                let s = String::from_utf8_lossy(&o.stdout);
+                match serde_json::from_str::<serde_json::Value>(s.trim()) {
+                    Ok(v) => Ok(v
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or(&title)
+                        .to_string()),
+                    Err(_) => Ok(title.clone()),
+                }
+            }
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        on_done(result);
+    });
+}
+
+pub fn spawn_wtcli_list_saved_tabs(
+    on_done: Box<dyn FnOnce(Vec<crate::app::SavedTabEntry>) + Send>,
+) {
+    let path = resolve_wtcli_path();
+    std::thread::spawn(move || {
+        let rows = std::process::Command::new(&path)
+            .args(["list-saved-tabs"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| serde_json::from_slice::<Vec<crate::app::SavedTabEntry>>(&o.stdout).ok())
+            .unwrap_or_default();
+        on_done(rows);
+    });
+}
+
+pub fn spawn_wtcli_restore_tab(id: &str, on_done: Box<dyn FnOnce(Result<String, String>) + Send>) {
+    let path = resolve_wtcli_path();
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        let out = std::process::Command::new(&path)
+            .args(["restore-tab", "-i", &id])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output();
+        let result = match out {
+            Ok(o) if o.status.success() => {
+                let s = String::from_utf8_lossy(&o.stdout);
+                Ok(serde_json::from_str::<serde_json::Value>(s.trim())
+                    .ok()
+                    .and_then(|v| {
+                        v.get("outcome")
+                            .and_then(|o| o.as_str())
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| "opened".to_string()))
+            }
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        on_done(result);
+    });
+}
+
+pub fn spawn_wtcli_delete_saved_tab(id: &str) {
+    spawn_wtcli_async(&["delete-saved-tab".into(), "-i".into(), id.to_string()]);
+}
+
 /// Run `wtcli --json <args>`, parse the resulting `sessionId` (or `SessionId`)
 /// from stdout, then run `wtcli focus-pane -t <id>`. All performed on a
 /// background thread so the UI stays responsive.
@@ -557,10 +639,7 @@ impl WtChannel for CliChannel {
                     .get("direction")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let profile = params
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;

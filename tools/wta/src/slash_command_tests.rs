@@ -352,7 +352,8 @@ fn degraded_still_allows_restart() {
 /// candidates refresh exactly as they do live.
 fn type_input(app: &mut App, text: &str) {
     for ch in text.chars() {
-        app.current_tab_mut().insert_input_char(ch);
+        let eternal_enabled = app.eternal_terminal_enabled;
+        app.current_tab_mut().insert_input_char(ch, eternal_enabled);
     }
 }
 

@@ -26,6 +26,21 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.IReference<LaunchMode> LaunchMode;
     };
 
+    runtimeclass SavedTabSession
+    {
+        SavedTabSession();
+
+        static String ToJson(SavedTabSession session);
+        static SavedTabSession FromJson(String json);
+
+        String Id;
+        String Title;
+        String SourceStableId;
+        String SavedAt; // decimal Unix epoch milliseconds, as a string
+        Windows.Foundation.Collections.IVector<ActionAndArgs> TabActions;
+        Windows.Foundation.Collections.IVector<String> BufferSessionIds;
+    };
+
     [default_interface] runtimeclass ApplicationState {
         static ApplicationState SharedInstance();
 
@@ -33,11 +48,14 @@ namespace Microsoft.Terminal.Settings.Model
         void Reset();
 
         void AppendPersistedWindowLayout(WindowLayout layout);
+        void UpsertSavedTabSession(SavedTabSession session);
+        Boolean RemoveSavedTabSession(String id);
         Boolean DismissBadge(String badgeId);
         Boolean BadgeDismissed(String badgeId);
 
         String SettingsHash;
         Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts;
+        Windows.Foundation.Collections.IVector<SavedTabSession> SavedTabSessions;
         Windows.Foundation.Collections.IVector<String> RecentCommands;
         Windows.Foundation.Collections.IVector<InfoBarMessage> DismissedMessages;
         Windows.Foundation.Collections.IVector<String> AllowedCommandlines;
