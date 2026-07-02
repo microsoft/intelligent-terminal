@@ -294,8 +294,13 @@ pub enum WtaExtNotification {
 pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNotification {
     let method: &str = &n.method;
     let raw: &serde_json::value::RawValue = &n.params;
-    match method {
-        INTELLTERM_METHOD_SESSION_ADDED => match serde_json::from_str::<acp::schema::v1::SessionInfo>(raw.get()) {
+    // ACP 1.0 strips the leading `_` from extension method names on receive,
+    // so compare through `ext_method_matches` rather than matching the
+    // `_`-prefixed constants literally — otherwise every over-the-wire
+    // notification would fall through to `Unknown` and the alive-mirror would
+    // never update.
+    if ext_method_matches(method, INTELLTERM_METHOD_SESSION_ADDED) {
+        match serde_json::from_str::<acp::schema::v1::SessionInfo>(raw.get()) {
             Ok(mut wire) => {
                 let wta = extract_wta_meta(&mut wire.meta);
                 let mut info = SessionInfo::new(wire.session_id, wire.cwd);
@@ -309,25 +314,110 @@ pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNot
                 error: err.to_string(),
             },
         }
-        INTELLTERM_METHOD_SESSION_REMOVED => {
-            match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
-                Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
-                Err(err) => WtaExtNotification::MalformedParams {
-                    method: method.to_string(),
+    } else if ext_method_matches(method, INTELLTERM_METHOD_SESSION_REMOVED) {
+        match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
+            Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
+            Err(err) => WtaExtNotification::MalformedParams {
+                method: method.to_string(),
+                error: err.to_string(),
+            },
+        }
+    } else if ext_method_matches(method, INTELLTERM_METHOD_SESSIONS_CHANGED) {
+        match serde_json::from_str::<SessionsChangedParams>(raw.get()) {
+            Ok(_) => WtaExtNotification::SessionsChanged,
+            Err(err) => WtaExtNotification::MalformedParams {
+                method: method.to_string(),
+                error: err.to_string(),
+            },
+        }
+    } else {
+        WtaExtNotification::Unknown
+    }
+}
+
+/// Compare an inbound extension method name against one of our `_`-prefixed
+/// `INTELLTERM_METHOD_*` constants.
+///
+/// ACP 1.0's receive path (`agent-client-protocol` schema `parse_message`)
+/// strips the single leading `_` from unrecognized method names before it
+/// hands us the `ExtRequest` / `ExtNotification`, while the send side and our
+/// constants keep it. Match both forms so a value works whether it arrived
+/// over the wire (stripped) or was constructed locally — e.g. in a unit test
+/// via a `build_*` helper (still `_`-prefixed).
+#[inline]
+#[must_use]
+fn ext_method_matches(inbound: &str, const_with_underscore: &str) -> bool {
+    inbound == const_with_underscore
+        || Some(inbound) == const_with_underscore.strip_prefix('_')
+}
+
+/// A typed, inbound helper→master `ExtRequest` that the master answers
+/// locally, or a passthrough for anything else. Request-side analogue of
+/// [`WtaExtNotification`]: [`parse_ext_request`] collapses the six method-name
+/// comparisons, the ACP-1.0 leading-`_` normalization, and per-method param
+/// decoding into one place, so `MasterAgent::ext_method` can `match` on a type
+/// (with typed params already in hand) instead of chaining `if method == …`
+/// string compares — which silently fell through to the agent CLI once ACP 1.0
+/// began stripping the `_`.
+#[derive(Debug)]
+pub enum WtaExtRequest {
+    /// `_intellterm.wta/focus_session` — focus the WT pane hosting a session.
+    FocusSession(FocusSessionParams),
+    /// `_intellterm.wta/sessions/list` — full registry snapshot.
+    SessionsList(SessionsListParams),
+    /// `_intellterm.wta/session_hook` — a real per-session hook event.
+    SessionHook(crate::agent_sessions::SessionEvent),
+    /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
+    /// (same body as `SessionHook`, distinct method → binding-only semantics).
+    SessionBornBound(crate::agent_sessions::SessionEvent),
+    /// `_intellterm.wta/session_resume_dispatched` — optimistic resume flip.
+    SessionResumeDispatched(SessionResumeDispatchedParams),
+    /// `_intellterm.wta/session_focus` — focus + typed focus result.
+    SessionFocus(SessionFocusParams),
+    /// Not one of ours (or a future agent-native extension); forward it
+    /// verbatim to the agent CLI so unknown extension methods still work.
+    ForwardToAgent(acp::schema::v1::ExtRequest),
+    /// Method matched one of ours but the params failed to decode. The master
+    /// answers `invalid_params` rather than acting on a half-parsed payload.
+    Malformed { method: String, error: String },
+}
+
+/// Classify and decode an inbound helper→master `ExtRequest`.
+///
+/// Normalizes the ACP-1.0 leading-`_` strip in exactly one place (via
+/// `ext_method_matches`) and decodes the params for recognized methods, so
+/// every caller downstream matches exhaustively on [`WtaExtRequest`]. None of
+/// the six method names is a prefix of another, so equality-after-strip cannot
+/// collide. Consumes `req` so an unrecognized method can be forwarded verbatim.
+#[must_use]
+pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
+    // Decode `req.params` with `$parser` into the `$variant` payload, mapping a
+    // decode failure to `Malformed` (never a silent forward-to-agent).
+    macro_rules! decode {
+        ($variant:ident, $parser:path) => {
+            match $parser(&req.params) {
+                Ok(v) => WtaExtRequest::$variant(v),
+                Err(err) => WtaExtRequest::Malformed {
+                    method: req.method.to_string(),
                     error: err.to_string(),
                 },
             }
-        }
-        INTELLTERM_METHOD_SESSIONS_CHANGED => {
-            match serde_json::from_str::<SessionsChangedParams>(raw.get()) {
-                Ok(_) => WtaExtNotification::SessionsChanged,
-                Err(err) => WtaExtNotification::MalformedParams {
-                    method: method.to_string(),
-                    error: err.to_string(),
-                },
-            }
-        }
-        _ => WtaExtNotification::Unknown,
+        };
+    }
+    if ext_method_matches(&req.method, INTELLTERM_METHOD_FOCUS_SESSION) {
+        decode!(FocusSession, parse_focus_session_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
+        decode!(SessionsList, parse_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
+        decode!(SessionHook, parse_session_hook_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
+        decode!(SessionBornBound, parse_session_hook_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED) {
+        decode!(SessionResumeDispatched, parse_session_resume_dispatched_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_FOCUS) {
+        decode!(SessionFocus, parse_session_focus_params)
+    } else {
+        WtaExtRequest::ForwardToAgent(req)
     }
 }
 
@@ -2581,6 +2671,109 @@ mod tests {
         let notification = build_sessions_changed_notification();
         assert_eq!(&*notification.method, INTELLTERM_METHOD_SESSIONS_CHANGED);
         assert_eq!(notification.params.get(), "{}");
+    }
+
+    // ─── ext-method classification (ACP-1.0 leading-`_` strip) ──────────
+
+    #[test]
+    fn ext_method_matches_accepts_prefixed_and_wire_stripped() {
+        // Local/test construction keeps the `_`; the ACP-1.0 wire path strips it.
+        assert!(ext_method_matches(
+            INTELLTERM_METHOD_SESSIONS_LIST,
+            INTELLTERM_METHOD_SESSIONS_LIST
+        ));
+        assert!(ext_method_matches(
+            "intellterm.wta/sessions/list",
+            INTELLTERM_METHOD_SESSIONS_LIST
+        ));
+        assert!(!ext_method_matches(
+            "intellterm.wta/something_else",
+            INTELLTERM_METHOD_SESSIONS_LIST
+        ));
+    }
+
+    /// Emulate the ACP-1.0 receive path: drop the single leading `_` from an
+    /// `ExtRequest`'s method, keeping the params, so a test can exercise what
+    /// the master actually sees over the wire.
+    fn strip_leading_underscore(req: acp::schema::v1::ExtRequest) -> acp::schema::v1::ExtRequest {
+        let stripped = req
+            .method
+            .strip_prefix('_')
+            .expect("our INTELLTERM_METHOD_* constants are `_`-prefixed")
+            .to_string();
+        acp::schema::v1::ExtRequest::new(stripped, req.params.clone())
+    }
+
+    /// A prefixed (locally-constructed) request decodes to its typed variant,
+    /// and params flow through (checked on `sessions/list.rescan`).
+    #[test]
+    fn parse_ext_request_decodes_every_method_prefixed() {
+        let sid = acp::schema::v1::SessionId::new("sid-p".to_string());
+        let ev = crate::agent_sessions::SessionEvent::ToolCompleted { key: "k".to_string() };
+        assert!(matches!(parse_ext_request(build_focus_session_request(&sid)), WtaExtRequest::FocusSession(_)));
+        assert!(matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan));
+        assert!(matches!(parse_ext_request(build_session_hook_request(&ev)), WtaExtRequest::SessionHook(_)));
+        assert!(matches!(parse_ext_request(build_born_bound_request(&ev)), WtaExtRequest::SessionBornBound(_)));
+        assert!(matches!(parse_ext_request(build_session_resume_dispatched_request(&sid)), WtaExtRequest::SessionResumeDispatched(_)));
+        assert!(matches!(parse_ext_request(build_session_focus_request(&sid)), WtaExtRequest::SessionFocus(_)));
+    }
+
+    /// Regression: ACP 1.0 delivers the method name with the leading `_`
+    /// already stripped. Each must still decode to its handler variant, not
+    /// `ForwardToAgent` (which forwarded to the agent CLI → -32601).
+    #[test]
+    fn parse_ext_request_decodes_every_method_wire_stripped() {
+        let sid = acp::schema::v1::SessionId::new("sid-w".to_string());
+        let ev = crate::agent_sessions::SessionEvent::ToolCompleted { key: "k".to_string() };
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_focus_session_request(&sid))), WtaExtRequest::FocusSession(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_sessions_list_request(false))), WtaExtRequest::SessionsList(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_hook_request(&ev))), WtaExtRequest::SessionHook(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_born_bound_request(&ev))), WtaExtRequest::SessionBornBound(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_resume_dispatched_request(&sid))), WtaExtRequest::SessionResumeDispatched(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_focus_request(&sid))), WtaExtRequest::SessionFocus(_)));
+    }
+
+    #[test]
+    fn parse_ext_request_forwards_foreign_methods() {
+        let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
+        let foreign = acp::schema::v1::ExtRequest::new("somebody.else/method", Arc::from(raw));
+        assert!(matches!(parse_ext_request(foreign), WtaExtRequest::ForwardToAgent(_)));
+    }
+
+    /// A recognized method carrying the wrong param shape → `Malformed`, never a
+    /// silent forward-to-agent (which would surface to the user as -32601).
+    #[test]
+    fn parse_ext_request_reports_malformed_params_for_known_method() {
+        let raw = serde_json::value::RawValue::from_string(r#"{"wrong":"shape"}"#.into()).unwrap();
+        let bad = acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_FOCUS_SESSION, Arc::from(raw));
+        match parse_ext_request(bad) {
+            WtaExtRequest::Malformed { method, .. } => assert!(method.contains("focus_session")),
+            other => panic!("expected Malformed, got {other:?}"),
+        }
+    }
+
+    /// Regression for the notification side of the same ACP-1.0 strip: a
+    /// `session_added` arriving over the wire (no leading `_`) must parse to
+    /// `SessionAdded`, not `Unknown` — otherwise the helper's alive-mirror
+    /// never updates.
+    #[test]
+    fn parse_ext_notification_accepts_wire_stripped_method() {
+        let row = SessionInfo::new(
+            acp::schema::v1::SessionId::new("sess-strip".to_string()),
+            PathBuf::from("/repo/strip"),
+        );
+        let built = build_session_added_notification(&row);
+        // Emulate the ACP-1.0 receive path: drop the single leading `_`.
+        let stripped_method = built
+            .method
+            .strip_prefix('_')
+            .expect("our INTELLTERM_METHOD_* constants are `_`-prefixed")
+            .to_string();
+        let wire = acp::schema::v1::ExtNotification::new(stripped_method, built.params.clone());
+        match parse_ext_notification(&wire) {
+            WtaExtNotification::SessionAdded(parsed) => assert_eq!(parsed, row),
+            other => panic!("expected SessionAdded from wire-stripped method, got {other:?}"),
+        }
     }
 
     // ─── agent_session_to_session_info (master history seeding) ─────────

@@ -1199,68 +1199,43 @@ impl HelperHandler {
         self.agent_conn.cancel(args).await
     }
 
-    /// Master answers our own `intellterm.wta/*` ext methods locally
-    /// (without round-tripping to the agent CLI). Today only
-    /// `focus_session` is recognized; everything else is forwarded so
-    /// future agent-native extension methods still work.
+    /// Master answers our own `_intellterm.wta/*` ext methods locally
+    /// (without round-tripping to the agent CLI); anything we don't
+    /// recognize is forwarded so future agent-native extension methods
+    /// still work. Routing + param decoding go through
+    /// [`parse_ext_request`](crate::session_registry::parse_ext_request) so the
+    /// ACP-1.0 leading-`_` normalization lives in one place and the match below
+    /// is exhaustive (a new method is a compile error until it is handled,
+    /// instead of silently falling through to the agent CLI).
     async fn ext_method(&self, args: acp::schema::v1::ExtRequest) -> acp::Result<acp::schema::v1::ExtResponse> {
-        let method: &str = &args.method;
-        if method == crate::session_registry::INTELLTERM_METHOD_FOCUS_SESSION {
-            tracing::info!(
-                target: "master",
-                op = "ext_method",
-                method = %method,
-                helper_id = ?self.helper_id,
-                "handling intellterm.wta/focus_session locally"
-            );
-            return handle_focus_session(&self.state, &args.params).await;
-        }
-        if method == crate::session_registry::INTELLTERM_METHOD_SESSIONS_LIST {
-            tracing::info!(
-                target: "master",
-                op = "ext_method",
-                method = %method,
-                helper_id = ?self.helper_id,
-                "handling intellterm.wta/sessions/list locally"
-            );
-            return handle_sessions_list(&self.state, &args.params).await;
-        }
-        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_HOOK {
-            // Per-session-hook (every tool start/stop/session event) — debug,
-            // not info; the reducer logs its own outcome where it matters.
-            tracing::debug!(
-                target: "master",
-                op = "ext_method",
-                method = %method,
-                helper_id = ?self.helper_id,
-                "handling intellterm.wta/session_hook locally"
-            );
-            return handle_session_hook(&self.state, &args.params, false).await;
-        }
-        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_BORN_BOUND {
-            tracing::info!(
-                target: "master",
-                op = "ext_method",
-                method = %method,
-                helper_id = ?self.helper_id,
-                "handling intellterm.wta/session_born_bound locally"
-            );
-            return handle_session_hook(&self.state, &args.params, true).await;
-        }
-        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED {
-            return handle_session_resume_dispatched(&self.state, &args.params).await;
-        }
-        if method == crate::session_registry::INTELLTERM_METHOD_SESSION_FOCUS {
-            return handle_session_focus(&self.state, &args.params).await;
-        }
+        use crate::session_registry::WtaExtRequest as Req;
         tracing::debug!(
             target: "master",
             op = "ext_method",
-            method = %method,
+            method = %args.method,
             helper_id = ?self.helper_id,
-            "forwarding non-intellterm ext_method to agent CLI"
+            "routing ext_method"
         );
-        self.agent_conn.ext_method(args).await
+        match crate::session_registry::parse_ext_request(args) {
+            Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
+            Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
+            Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
+            Req::SessionBornBound(ev) => handle_session_hook(&self.state, ev, true).await,
+            Req::SessionResumeDispatched(p) => handle_session_resume_dispatched(&self.state, &p).await,
+            Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
+            Req::ForwardToAgent(raw) => self.agent_conn.ext_method(raw).await,
+            Req::Malformed { method, error } => {
+                tracing::warn!(
+                    target: "master",
+                    op = "ext_method",
+                    %method,
+                    %error,
+                    helper_id = ?self.helper_id,
+                    "rejecting malformed ext_method params"
+                );
+                Err(acp::Error::invalid_params().data(serde_json::json!({ "message": error })))
+            }
+        }
     }
 }
 
@@ -2434,18 +2409,8 @@ fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
 /// generated its real one.
 async fn handle_sessions_list(
     state: &std::sync::Arc<MasterStateInner>,
-    params: &serde_json::value::RawValue,
+    parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let parsed = crate::session_registry::parse_sessions_list_params(params).map_err(|err| {
-        tracing::warn!(
-            target: "master",
-            op = "sessions_list",
-            error = %err,
-            "rejecting malformed sessions/list params"
-        );
-        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
-    })?;
-
     if parsed.rescan {
         // Host is fast: re-pull + broadcast inline. WSL can be slow / wedged
         // (40s distro timeout), so fire it asynchronously — it broadcasts again
@@ -2500,18 +2465,9 @@ async fn handle_sessions_list(
 /// master's snapshot, so the upgrade must happen here.
 async fn handle_session_hook(
     state: &MasterStateInner,
-    params: &serde_json::value::RawValue,
+    event: crate::agent_sessions::SessionEvent,
     is_born_bound: bool,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let event = crate::session_registry::parse_session_hook_params(params).map_err(|err| {
-        tracing::warn!(
-            target: "session_hook",
-            error = %err,
-            "rejecting malformed session_hook params"
-        );
-        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
-    })?;
-
     // Split by event kind so field diagnosis of session-state bugs survives at
     // the default release level: terminal/lifecycle transitions (session
     // start/stop, pane closed, connection failed) stay at info; the
@@ -3179,18 +3135,8 @@ async fn try_refresh_title_via_acp(
 /// agent CLI / pipe pair.
 pub(crate) async fn handle_focus_session(
     state: &MasterStateInner,
-    params: &serde_json::value::RawValue,
+    parsed: &crate::session_registry::FocusSessionParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let parsed = crate::session_registry::parse_focus_session_params(params).map_err(|err| {
-        tracing::warn!(
-            target: "master",
-            op = "focus_session",
-            error = %err,
-            "rejecting malformed focus_session params"
-        );
-        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
-    })?;
-
     let info = state
         .registry
         .lookup(&parsed.session_id)
@@ -3275,12 +3221,8 @@ pub(crate) async fn handle_focus_session(
 
 async fn handle_session_resume_dispatched(
     state: &MasterStateInner,
-    params: &serde_json::value::RawValue,
+    parsed: &crate::session_registry::SessionResumeDispatchedParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let parsed =
-        crate::session_registry::parse_session_resume_dispatched_params(params).map_err(|err| {
-            acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
-        })?;
     // TODO(Task A merge): keep this check-and-flip on the expanded reducer-owned status field.
     let (flipped, current_status) = state
         .registry
@@ -3304,11 +3246,8 @@ async fn handle_session_resume_dispatched(
 
 async fn handle_session_focus(
     state: &MasterStateInner,
-    params: &serde_json::value::RawValue,
+    parsed: &crate::session_registry::SessionFocusParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
-    let parsed = crate::session_registry::parse_session_focus_params(params).map_err(|err| {
-        acp::Error::invalid_params().data(serde_json::json!({ "message": err.to_string() }))
-    })?;
     let Some(info) = state.registry.lookup(&parsed.sid).await else {
         let body = crate::session_registry::SessionFocusResponse {
             focused: false,
@@ -4081,8 +4020,7 @@ mod tests {
         row.last_activity_at_ms = Some(42);
         state.registry.upsert(row.clone()).await;
 
-        let req = session_registry::build_sessions_list_request(false);
-        let resp = handle_sessions_list(&state, &req.params)
+        let resp = handle_sessions_list(&state, &session_registry::SessionsListParams { rescan: false })
             .await
             .expect("sessions/list succeeds");
         let parsed = session_registry::parse_sessions_list_response(&resp.0)
@@ -4221,20 +4159,12 @@ mod tests {
         assert!(mock.calls().is_empty());
     }
 
-    fn session_resume_params_for(sid: &acp::schema::v1::SessionId) -> Box<serde_json::value::RawValue> {
-        let req = crate::session_registry::build_session_resume_dispatched_request(sid);
-        serde_json::value::to_raw_value(
-            &serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap(),
-        )
-        .unwrap()
+    fn session_resume_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::SessionResumeDispatchedParams {
+        crate::session_registry::SessionResumeDispatchedParams { sid: sid.clone() }
     }
 
-    fn session_focus_params_for(sid: &acp::schema::v1::SessionId) -> Box<serde_json::value::RawValue> {
-        let req = crate::session_registry::build_session_focus_request(sid);
-        serde_json::value::to_raw_value(
-            &serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap(),
-        )
-        .unwrap()
+    fn session_focus_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::SessionFocusParams {
+        crate::session_registry::SessionFocusParams { sid: sid.clone() }
     }
 
     // ─── handle_focus_session ───────────────────────────────────────
@@ -4308,15 +4238,8 @@ mod tests {
         })
     }
 
-    fn focus_params_for(sid: &acp::schema::v1::SessionId) -> Box<serde_json::value::RawValue> {
-        let req = crate::session_registry::build_focus_session_request(sid);
-        // ExtRequest stores params as Arc<RawValue>; cloning to owned Box
-        // through serialization is the simplest portable way to feed it
-        // into `handle_focus_session` which expects `&RawValue`.
-        serde_json::value::to_raw_value(
-            &serde_json::from_str::<serde_json::Value>(req.params.get()).unwrap(),
-        )
-        .unwrap()
+    fn focus_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::FocusSessionParams {
+        crate::session_registry::FocusSessionParams { session_id: sid.clone() }
     }
 
     /// Happy path: sid in registry with pane_session_id, WtChannel present.
@@ -4436,38 +4359,9 @@ mod tests {
         assert_eq!(mock.calls().len(), 1);
     }
 
-    /// Malformed params (e.g. missing `session_id`) → `invalid_params`
-    /// without touching the registry or wt channel.
-    #[tokio::test]
-    async fn focus_session_returns_invalid_params_for_garbage() {
-        let mock = Arc::new(MockWtChannel::ok());
-        let state = make_state_with_wt(mock.clone());
-
-        let garbage = serde_json::value::to_raw_value(&serde_json::json!({
-            "wrong_field": "huh"
-        }))
-        .unwrap();
-        let err = handle_focus_session(&state, &garbage)
-            .await
-            .expect_err("malformed params must error");
-        assert_eq!(err.code, acp::ErrorCode::InvalidParams);
-        assert!(mock.calls().is_empty());
-    }
-
-    #[tokio::test]
-    async fn session_hook_returns_invalid_params_for_garbage() {
-        let state = make_state();
-        let garbage = serde_json::value::to_raw_value(&serde_json::json!({
-            "wrong_field": "huh"
-        }))
-        .unwrap();
-
-        let err = handle_session_hook(&state, &garbage, false)
-            .await
-            .expect_err("malformed session_hook params must error");
-        assert_eq!(err.code, acp::ErrorCode::InvalidParams);
-    }
-
+    /// Malformed params for a recognized method are rejected as `invalid_params`
+    /// by `parse_ext_request` (unit-tested in `session_registry`), so the
+    /// handlers below always receive already-decoded, well-typed params.
     #[tokio::test]
     async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
         let state = make_state();
@@ -4485,9 +4379,7 @@ mod tests {
             cwd: std::path::PathBuf::from("/tmp"),
             title: String::new(),
         };
-        let req = crate::session_registry::build_session_hook_request(&event);
-
-        let response = handle_session_hook(&state, &req.params, false)
+        let response = handle_session_hook(&state, event, false)
             .await
             .expect("valid session_hook accepted");
         assert_eq!(response.0.get(), r#"{"applied":true}"#);
@@ -5024,8 +4916,7 @@ mod tests {
             cwd: std::path::PathBuf::from("C:\\repo"),
             title: String::new(),
         };
-        let req = crate::session_registry::build_session_hook_request(&event);
-        handle_session_hook(&state, &req.params, false)
+        handle_session_hook(&state, event, false)
             .await
             .expect("valid session_hook accepted");
 
@@ -5065,8 +4956,7 @@ mod tests {
             cwd: std::path::PathBuf::from("C:\\repo"),
             title: String::new(),
         };
-        let req = crate::session_registry::build_born_bound_request(&event);
-        handle_session_hook(&state, &req.params, true)
+        handle_session_hook(&state, event, true)
             .await
             .expect("valid born-bound accepted");
 
@@ -5129,13 +5019,9 @@ mod tests {
             cwd: std::path::PathBuf::from("C:\\repo"),
             title: String::new(),
         };
-        handle_session_hook(
-            &state,
-            &crate::session_registry::build_born_bound_request(&bb).params,
-            true,
-        )
-        .await
-        .expect("born-bound accepted");
+        handle_session_hook(&state, bb, true)
+            .await
+            .expect("born-bound accepted");
         assert!(state.born_bound.lock().await.contains(&sid));
 
         // A real hook event arrives via session_hook (is_born_bound = false).
@@ -5143,13 +5029,9 @@ mod tests {
             key: "bb-takeover".to_string(),
             tool_name: "Bash".to_string(),
         };
-        handle_session_hook(
-            &state,
-            &crate::session_registry::build_session_hook_request(&hook).params,
-            false,
-        )
-        .await
-        .expect("real hook accepted");
+        handle_session_hook(&state, hook, false)
+            .await
+            .expect("real hook accepted");
 
         assert!(
             state.hook_owned.lock().await.contains(&sid),
@@ -5173,13 +5055,9 @@ mod tests {
         let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
             key: "sid-resume".to_string(),
         };
-        handle_session_hook(
-            &state,
-            &crate::session_registry::build_session_hook_request(&dispatched).params,
-            false,
-        )
-        .await
-        .expect("resume dispatched accepted");
+        handle_session_hook(&state, dispatched, false)
+            .await
+            .expect("resume dispatched accepted");
         assert!(
             state.born_bound.lock().await.contains(&sid),
             "ResumeDispatched must be born_bound"
@@ -5193,13 +5071,9 @@ mod tests {
             key: "sid-resume".to_string(),
             pane_session_id: "pane-resume".to_string(),
         };
-        handle_session_hook(
-            &state,
-            &crate::session_registry::build_session_hook_request(&assigned).params,
-            false,
-        )
-        .await
-        .expect("resume pane assigned accepted");
+        handle_session_hook(&state, assigned, false)
+            .await
+            .expect("resume pane assigned accepted");
         assert!(
             state.born_bound.lock().await.contains(&sid),
             "ResumePaneAssigned must be born_bound"
