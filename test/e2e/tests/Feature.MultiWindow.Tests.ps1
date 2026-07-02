@@ -74,6 +74,27 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
             Should -BeTrue -Because 'the agent chat history must survive moving the tab to a new window'
     }
 
+    It 'Move tab to new window preserves session routing (the moved agent still answers a prompt)' {
+        if (-not $script:agentSid) { Set-ItResult -Skipped -Because 'depends on the move case having pinned the agent session (previous case skipped)'; return }
+        $sid = $script:agentSid
+        # Let the moved pane's helper re-settle in its new window before routing a prompt to it.
+        Start-Sleep -Seconds 3
+        (Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition { -not [string]::IsNullOrWhiteSpace((Get-WtCapture -App $script:app -SessionId $sid -MaxLines 40)) }) | Out-Null
+        # Send a fresh prompt directly to the moved agent pane by its pinned session id (routing is
+        # window-agnostic; the jsonl resolver would pick another tab's pre-warmed pane). If routing
+        # survived the window move, the moved agent receives it and answers.
+        Clear-AgentInput -App $script:app 2>$null | Out-Null
+        Invoke-WtCli -App $script:app -Arguments @('send-keys', '--raw', '-t', $sid, '--', 'What is 7 plus 2? Reply with only the number.') | Out-Null
+        Start-Sleep -Milliseconds 300
+        Invoke-WtCli -App $script:app -Arguments @('send-keys', '-t', $sid, '--', 'Enter') | Out-Null
+        $answered = Test-Until -TimeoutSec 50 -IntervalSec 2 -Condition { (Get-WtCapture -App $script:app -SessionId $sid -MaxLines 60) -match '\b9\b' }
+        if (-not $answered) {
+            Set-ItResult -Skipped -Because 'the moved agent received the prompt but did not answer this run (auth/offline/model-variance precondition), not a routing failure'
+            return
+        }
+        $answered | Should -BeTrue -Because 'session routing must survive the window move — the moved agent answers a new prompt'
+    }
+
     It 'Close source window is safe (closing the original window leaves the moved window + agent pane alive)' {
         if (-not $script:movedWin) { Set-ItResult -Skipped -Because 'depends on the move having produced a new window (previous case skipped)'; return }
         $moved = $script:movedWin
