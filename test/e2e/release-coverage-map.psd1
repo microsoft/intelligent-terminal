@@ -200,4 +200,6 @@
     'Delegate provider is correct'      = 'Delegate provider is correct'
     'Delegate with Copilot works'       = 'Delegate with Copilot works'
     'Delegate errors are actionable'    = 'Delegate errors are actionable'
+    # §5 non-Copilot delegate (Feature.DelegateNonCopilot) — claude/gemini delegate tab launches.
+    'Delegate with non-Copilot agents works' = 'Delegate with non-Copilot agents works'
 }
