@@ -32,6 +32,100 @@ function Get-UiTarget {
     throw "App has no Hwnd or Pid for UI targeting. Launch via Start-Terminal first."
 }
 
+# ── Window-level key injection (WT accelerators + Settings) ───────────────────────────
+# winapp drives UIA elements but has no key-send verb, and wtcli send-keys reaches a pane's
+# CONPTY (the wta TUI), NOT WT's XAML keybinding layer — so WT accelerators (Ctrl+, to open
+# Settings, Ctrl+Shift+. to toggle the agent pane, Alt+Shift+B delegate, …) can't be driven that
+# way. This sends OS-level keystrokes to the focused WT WINDOW via keybd_event, which DOES hit
+# WT's accelerator handler. Foreground-focus dependent (so a bit fragile under parallel runs /
+# a locked session), hence the SetForegroundWindow + verify + retry below.
+function Initialize-WtWin32Input {
+    if ('ItWtWin32Input' -as [type]) { return }
+    Add-Type -Namespace 'ItE2E' -Name 'ItWtWin32Input' -MemberDefinition @'
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
+'@
+}
+
+function Send-WtWindowKey {
+    <#
+    .SYNOPSIS
+        Send an OS-level keystroke (optionally with modifiers) to the WT window itself, so WT
+        ACCELERATORS fire (Ctrl+,, Ctrl+Shift+., Alt+Shift+B, …). Unlike Send-WtKeys (conpty) this
+        reaches WT's keybinding layer.
+    .PARAMETER Vk         Main virtual-key code (e.g. 0xBC = OEM_COMMA, 0xBE = OEM_PERIOD, 'B'=0x42).
+    .PARAMETER Ctrl/Shift/Alt  Modifier switches held around the main key.
+    .NOTES
+        Requires the WT window to accept foreground activation. Best-effort focus + verify + retry.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][int]$Vk,
+        [switch]$Ctrl, [switch]$Shift, [switch]$Alt,
+        [int]$Repeat = 1
+    )
+    process {
+        if (-not $App.Hwnd) { throw "Send-WtWindowKey needs `$App.Hwnd (launch via Start-Terminal)." }
+        Initialize-WtWin32Input
+        $hwnd = [IntPtr][int64]$App.Hwnd
+        $KEYUP = 0x2
+        $mods = @()
+        if ($Ctrl) { $mods += 0x11 }; if ($Shift) { $mods += 0x10 }; if ($Alt) { $mods += 0x12 }
+        for ($r = 0; $r -lt $Repeat; $r++) {
+            # Foreground the window (retry — focus can be transiently stolen).
+            for ($f = 0; $f -lt 5; $f++) {
+                [ItE2E.ItWtWin32Input]::SetForegroundWindow($hwnd) | Out-Null
+                Start-Sleep -Milliseconds 200
+                if ([ItE2E.ItWtWin32Input]::GetForegroundWindow() -eq $hwnd) { break }
+            }
+            foreach ($m in $mods) { [ItE2E.ItWtWin32Input]::keybd_event([byte]$m, 0, 0, [UIntPtr]::Zero) }
+            [ItE2E.ItWtWin32Input]::keybd_event([byte]$Vk, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 40
+            [ItE2E.ItWtWin32Input]::keybd_event([byte]$Vk, 0, $KEYUP, [UIntPtr]::Zero)
+            foreach ($m in ($mods | Sort-Object -Descending)) { [ItE2E.ItWtWin32Input]::keybd_event([byte]$m, 0, $KEYUP, [UIntPtr]::Zero) }
+            Start-Sleep -Milliseconds 120
+        }
+        $App
+    }
+}
+
+function Open-WtSettings {
+    <#
+    .SYNOPSIS
+        Open the Windows Terminal SETTINGS editor (Ctrl+, via window-level key injection) and wait
+        until its UI renders. Returns $App. The editor opens as a tab in the WT window; drive its
+        controls with the normal Get-UiElement / Invoke-UiElement / Set-UiValue primitives.
+    .NOTES
+        The Settings UI is a real XAML surface (SettingsNav, per-page controls). This refutes the
+        earlier assumption that the editor "can't be opened" by the harness — it can, via the OS
+        accelerator. Idempotent: returns immediately if Settings is already showing.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 20)
+    process {
+        $shown = { Test-UiElementExists -App $App -Selector 'SettingsNav' -TimeoutSec 1 }
+        if (& $shown) { return $App }
+        for ($try = 0; $try -lt 3; $try++) {
+            Send-WtWindowKey -App $App -Vk 0xBC -Ctrl | Out-Null   # Ctrl + OEM_COMMA
+            if (Test-Until -TimeoutSec ([Math]::Max(4, [int]($TimeoutSec / 3))) -IntervalSec 0.5 -Condition $shown) { return $App }
+        }
+        throw "Open-WtSettings: the Settings editor did not render after Ctrl+, (is the WT window able to take foreground?)."
+    }
+}
+
+function Invoke-SettingsNav {
+    <# Navigate the open Settings editor to a nav page (e.g. 'AIAgentsNavItem', 'AppearanceNavItem'). #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$NavItem)
+    process {
+        Invoke-UiElement -App $App -Selector $NavItem -TimeoutSec 10 | Out-Null
+        Start-Sleep -Milliseconds 500
+        $App
+    }
+}
+
+
 function Invoke-WinAppUi {
     <#
     .SYNOPSIS

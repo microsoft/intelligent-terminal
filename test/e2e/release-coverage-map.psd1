@@ -125,6 +125,10 @@
     'Add custom ACP agent'              = 'A configured custom ACP agent connects and chats'
     'Edit custom ACP agent'             = 'Edit custom ACP agent updates the command used by new agent panes'
     'Delete custom ACP agent'           = 'Delete custom ACP agent returns to a valid built-in selection'
+    # §6 "Model selection visible" — the Settings editor IS drivable: Open-WtSettings opens it via
+    # the Ctrl+, accelerator (OS-level key to the WT window), then winapp navigates to the AI Agents
+    # page and asserts the Model control renders for a custom agent (Feature.SettingsUi).
+    'Model selection visible'           = 'Model selection visible: the model control shows'
 
     # §5 delegate agent (Feature.Delegate) — the delegate ENGINE driven directly via `wta delegate`
     # (the exact command Alt+Shift+B / the Alt+Shift+/ palette build), with Copilot as the delegate.
