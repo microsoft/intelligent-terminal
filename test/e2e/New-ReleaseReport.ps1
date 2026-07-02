@@ -59,7 +59,16 @@ foreach ($xml in $ResultsXml) {
 Write-Host "Loaded $($results.Count) test results from $($ResultsXml -join ', ')" -ForegroundColor Cyan
 
 $overrides = @{}
-if (Test-Path $OverrideMap) { $overrides = Import-PowerShellDataFile -Path $OverrideMap }
+if (Test-Path $OverrideMap) {
+    $rawOverrides = Import-PowerShellDataFile -Path $OverrideMap
+    # Keep only entries whose value is a VALID regex — one malformed override pattern must not throw
+    # on `$_.Key -match $pattern` and abort report generation.
+    foreach ($k in $rawOverrides.Keys) {
+        $pat = [string]$rawOverrides[$k]
+        try { [void][regex]::new($pat); $overrides[$k] = $pat }
+        catch { Write-Warning "release-coverage-map: ignoring invalid regex for '$k' ('$pat'): $($_.Exception.Message)" }
+    }
+}
 
 # Item-title regexes to drop entirely from the report (kept out of pass/manual counts) so the
 # checklist stays focused on the sign-off set. The canonical checklist doc is unaffected. Guard

@@ -64,7 +64,16 @@ if (-not $results.Count) { throw "Update-ReleaseReport: no test results loaded f
 Write-Host "Loaded $($results.Count) test result(s) from $($ResultsXml -join ', ')" -ForegroundColor Cyan
 
 $overrides = @{}
-if (Test-Path $OverrideMap) { $overrides = Import-PowerShellDataFile -Path $OverrideMap }
+if (Test-Path $OverrideMap) {
+    $rawOverrides = Import-PowerShellDataFile -Path $OverrideMap
+    # Keep only entries whose value is a VALID regex — one malformed override pattern must not throw
+    # on `$_.Key -match $pattern` and abort an incremental report update.
+    foreach ($k in $rawOverrides.Keys) {
+        $pat = [string]$rawOverrides[$k]
+        try { [void][regex]::new($pat); $overrides[$k] = $pat }
+        catch { Write-Warning "release-coverage-map: ignoring invalid regex for '$k' ('$pat'): $($_.Exception.Message)" }
+    }
+}
 
 # ── Title extraction + result matching (mirrors New-ReleaseReport) ────────────────────
 function Get-ReportItemTitle([string]$body) {

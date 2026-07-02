@@ -267,22 +267,25 @@ function Get-WtWindowHwnds {
 function Test-CommandPaletteOpen {
     <#
     .SYNOPSIS
-        Locale-aware check that the command palette is open, centralizing the detection that was
+        Locale-robust check that the command palette is open, centralizing the detection that was
         previously duplicated as a hard-coded English "Command palette" literal across suites.
-        The palette's accessible name is the localized `CommandPaletteControlName` resource; we match
-        the search result against an ALL-LOCALES regex built from that key (en-US "Command palette" is
-        one alternative), so on any build language a returned localized palette name still matches.
-    .NOTES
-        winapp `search` matches by name substring and the palette exposes no stable AutomationId to
-        winapp (its x:Name `CommandPaletteElement` is not surfaced), so the search query itself uses
-        the en-US name; on a non-en-US build where that query returns nothing the caller's retry/skip
-        (foreground-precondition) path handles it. The all-locales regex keeps the MATCH robust.
+        The palette's accessible name is the localized `CommandPaletteControlName` resource, and it
+        exposes no stable AutomationId to winapp, so we SEARCH by each localized name value (winapp
+        search needs a literal query) and confirm the hit against an all-locales regex of the same
+        key. This works on any build language, not just en-US.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
     process {
         $rx = Get-WtReswTextRegex -Key 'CommandPaletteControlName'
         if (-not $rx) { $rx = '(?i)Command palette' }
-        [bool]((Find-UiElement -App $App -Selector 'Command palette') -match $rx)
+        # Try each localized palette name as a search query; the running build's language matches on
+        # its own value. Fall back to the en-US literal if the resources couldn't be read.
+        $queries = @(Get-WtReswTextValues -Key 'CommandPaletteControlName')
+        if (-not $queries.Count) { $queries = @('Command palette') }
+        foreach ($q in $queries) {
+            if ((Find-UiElement -App $App -Selector $q) -match $rx) { return $true }
+        }
+        $false
     }
 }
 

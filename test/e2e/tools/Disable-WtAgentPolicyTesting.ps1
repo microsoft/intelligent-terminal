@@ -1,13 +1,16 @@
 <#
 .SYNOPSIS
-    Revert Enable-WtAgentPolicyTesting.ps1 — remove the agent policy key (and the write grant)
-    from the current user's hive, leaving the machine clean.
+    Revert Enable-WtAgentPolicyTesting.ps1 — remove the agent policy key that Enable CREATED (and
+    that it marked as test-provisioned), leaving the machine clean.
 
 .DESCRIPTION
-    Self-elevates via UAC and deletes
+    Self-elevates via UAC and, in YOUR hive (HKEY_USERS\<your-SID>, captured before elevation),
+    removes
         HKCU\Software\Policies\Microsoft\IntelligentTerminal
-    from YOUR hive (HKEY_USERS\<your-SID>, captured before elevation). Safe to run even if the
-    key doesn't exist.
+    ONLY when Enable created it (the `__wt_e2e_provisioned` marker is present). If the key
+    pre-existed (real policy values), Enable did not mark it, so this script intentionally LEAVES IT
+    UNTOUCHED — including any ACL write-grant Enable added to it — rather than risk clobbering real
+    policy. Safe to run even if the key doesn't exist.
 
 .EXAMPLE
     pwsh -File test/e2e/tools/Disable-WtAgentPolicyTesting.ps1

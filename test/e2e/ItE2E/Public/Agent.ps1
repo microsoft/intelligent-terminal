@@ -66,6 +66,40 @@ function Set-AgentPaneFocus {
     }
 }
 
+function Get-WtReswTextValues {
+    <#
+    .SYNOPSIS
+        Distinct <value> strings for a C++ .resw resource key across EVERY bundled TerminalApp AND
+        TerminalSettingsEditor locale. Returns @() when the resources/key can't be read. Cached per
+        key. Underpins Get-WtReswTextRegex (all-locales match) and locale-robust name SEARCHES (a
+        caller can try each localized value as a winapp search query, since search needs a literal).
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Key)
+    if (-not $script:WtReswValsCache) { $script:WtReswValsCache = @{} }
+    if ($script:WtReswValsCache.ContainsKey($Key)) { return $script:WtReswValsCache[$Key] }
+    $vals = @()
+    try {
+        $resDirs = @(
+            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalApp\Resources'),
+            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalSettingsEditor\Resources')
+        ) | Where-Object { Test-Path $_ }
+        $raw = foreach ($resDir in $resDirs) {
+            foreach ($f in Get-ChildItem -Path $resDir -Filter 'Resources.resw' -Recurse -ErrorAction SilentlyContinue) {
+                try {
+                    $xml = [xml](Get-Content -LiteralPath $f.FullName -Raw)
+                    $node = $xml.root.data | Where-Object { $_.name -eq $Key } | Select-Object -First 1
+                    if ($node) { $v = "$($node.value)".Trim(); if ($v) { $v } }
+                }
+                catch {}
+            }
+        }
+        $vals = @($raw | Where-Object { $_ } | Select-Object -Unique)
+    }
+    catch { $vals = @() }
+    $script:WtReswValsCache[$Key] = $vals
+    $vals
+}
+
 function Get-WtReswTextRegex {
     <#
     .SYNOPSIS
@@ -79,29 +113,8 @@ function Get-WtReswTextRegex {
     if (-not $script:WtReswRegexCache) { $script:WtReswRegexCache = @{} }
     if ($script:WtReswRegexCache.ContainsKey($Key)) { return $script:WtReswRegexCache[$Key] }
     $result = $null
-    try {
-        # Scan BOTH the TerminalApp resources (WT/FRE strings) and the TerminalSettingsEditor
-        # resources (Settings UI strings), so keys from either surface resolve.
-        $resDirs = @(
-            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalApp\Resources'),
-            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalSettingsEditor\Resources')
-        ) | Where-Object { Test-Path $_ }
-        if ($resDirs) {
-            $vals = foreach ($resDir in $resDirs) {
-                foreach ($f in Get-ChildItem -Path $resDir -Filter 'Resources.resw' -Recurse -ErrorAction SilentlyContinue) {
-                    try {
-                        $xml = [xml](Get-Content -LiteralPath $f.FullName -Raw)
-                        $node = $xml.root.data | Where-Object { $_.name -eq $Key } | Select-Object -First 1
-                        if ($node) { $v = "$($node.value)".Trim(); if ($v) { $v } }
-                    }
-                    catch {}
-                }
-            }
-            $pats = @($vals | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) })
-            if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
-        }
-    }
-    catch { $result = $null }
+    $pats = @(Get-WtReswTextValues -Key $Key | ForEach-Object { [regex]::Escape($_) })
+    if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
     $script:WtReswRegexCache[$Key] = $result
     $result
 }
