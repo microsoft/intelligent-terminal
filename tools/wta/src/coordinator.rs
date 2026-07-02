@@ -981,27 +981,32 @@ pub(crate) fn build_wsl_delegate_commandline(
     input: Option<&str>,
     session_id: Option<&str>,
 ) -> Result<String> {
-    let agent_id = runtime.commandline.trim();
-    if agent_id.is_empty() {
+    let agent_cmd = runtime.commandline.trim();
+    if agent_cmd.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
     let profile = agent_registry::lookup_profile_by_id(
-        agent_registry::resolve_agent_id_from_cmd(agent_id),
+        agent_registry::resolve_agent_id_from_cmd(agent_cmd),
     );
 
-    let mut parts: Vec<String> = Vec::new();
-    parts.push(agent_id.to_string());
+    let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
+        .into_iter()
+        .map(|t| sh_quote(&t))
+        .collect();
+    if parts.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
 
     if let Some(ref model) = runtime.model {
         if let Some(flag) = profile.model_flags.first() {
-            parts.push(flag.to_string());
-            parts.push(model.to_string());
+            parts.push(sh_quote(flag));
+            parts.push(sh_quote(model));
         }
     }
 
     if let (Some(sid), Some(flag)) = (session_id, profile.new_session_id_flag) {
-        parts.push(flag.to_string());
-        parts.push(sid.to_string());
+        parts.push(sh_quote(flag));
+        parts.push(sh_quote(sid));
     }
 
     if let Some(input) = input {
