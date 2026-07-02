@@ -4,9 +4,29 @@
 can pick up mid-execution and continue without the original chat context.
 Read this top-to-bottom, then jump to **§8 "Exact next actions"**.
 
-**Last updated:** 2026-07-02, after Task group **G2** (Rust Phase A) was
-implemented + passed spec-compliance review. Code-quality review for G2 is the
-immediate next step.
+> ## ✅ STATUS: IMPLEMENTATION COMPLETE (2026-07-02)
+> All 7 task groups (G1–G7) are implemented and reviewed (each spec + quality
+> reviewed; plus a clean final cross-boundary integration review). The sections
+> below are retained as **historical execution log + reusable reference**
+> (build gotchas §5, research anchors §9); the per-group "next actions" in §8
+> are superseded by this banner.
+>
+> **Branch HEAD:** `66d8e22f`. **Rust suite:** `1019 passed, 0 failed`.
+> **C++ NOT built here** (vcpkg not bootstrapped — see §5); build/verify in VS.
+>
+> **What remains (yours):** build C++ in Visual Studio; F5 smoke per the plan's
+> Phase F2 checklist; run the E2E test `test/e2e/tests/Feature.EternalTerminal.Tests.ps1`.
+>
+> **Non-blocking follow-ups** (from the final integration review):
+> 1. `SavedTabDeleted` AppEvent is emitted but its handler is a no-op (dead code).
+> 2. Cross-window focus: restore routes to `GetMostRecentWindow()` + same-window
+>    `FocusTab` (not `FocusTabInAnyWindow`), so multi-window focus-if-open falls
+>    back to a new-tab restore. Step-1 was scoped same-window; revisit for multi-window.
+> 3. Picker view `saved_tabs_view.rs` uses hardcoded English ("Loading…", "No
+>    saved tabs yet.", hint) and doesn't render `savedAt`/cwd — i18n + column polish.
+
+**Original last-updated note (historical):** 2026-07-02, after Task group **G2**
+(Rust Phase A) was implemented + passed spec-compliance review.
 
 ---
 
@@ -152,14 +172,14 @@ Using the **superpowers subagent-driven-development** skill:
 
 | Group | Plan tasks | Lang | Status |
 |---|---|---|---|
-| **G2** | A3 + A4 + A5 | Rust | **impl DONE + spec review ✅ PASSED** → needs code-quality review, then mark done |
-| **G1** | A1 + A2 | C++ | pending (settings bool + helper cmdline `--eternal-terminal`) |
-| **G3** | B1 + B2 + B3 | C++ | pending (ApplicationState `SavedTabSession` + store + upsert/remove) |
-| **G4** | C1–C5 | C++ | pending (TerminalPage.Protocol.cpp Save/List/Restore/Delete coroutines + buffer folder) |
-| **G5** | D1 + D2 + D3 | C++ | pending (IProtocolServer methods + ComServer + wtcli subcommands) |
-| **G6** | E1 + E2 + E3 | Rust | pending (cli_channel spawn_wtcli_* + AppEvents + picker state/keys + saved_tabs_view render) |
-| **G7** | F1 | PowerShell | pending (ItE2E Feature.EternalTerminal.Tests.ps1) |
-| — | F2 | manual | user/end smoke via F5 (not a subagent task) |
+| **G2** | A3 + A4 + A5 | Rust | ✅ DONE (e6aafd823/8bc80ed9e/09427c9e2) — spec + quality reviewed |
+| **G1** | A1 + A2 | C++ | ✅ DONE (e02c0d665/4bcab0a5a) — static-verified; build in VS |
+| **G3** | B1 + B2 + B3 | C++ | ✅ DONE (0b5b46b3) — spec + C++ correctness clean |
+| **G4** | C1–C5 | C++ | ✅ DONE (d4f121a41) — spec + correctness clean; elevated-buffer refinement |
+| **G5** | D1 + D2 + D3 | C++ | ✅ DONE (6e181a58f/004c5c6f4) — ABI clean; proxy IDL also updated |
+| **G6** | E1 + E2 + E3 | Rust | ✅ DONE (68350d9a/734bcdd0/62a3bf47) — reviewed → overlay-exclusivity fix → re-review ✅ |
+| **G7** | F1 | PowerShell | ✅ DONE (859143ca/66d8e22f) — authored + fixed; NOT run here (needs built Terminal) |
+| — | F2 | manual | ⏳ YOURS — F5 smoke via the plan's Phase F2 checklist |
 
 **Dependency order:** G2 (done) → G1 → G3 → G4 → G5 → G6 → G7.
 (G2 Rust was run first only to validate the loop cheaply; G1 C++ is functionally
