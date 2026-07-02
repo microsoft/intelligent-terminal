@@ -9,75 +9,17 @@
 //! * the production WSL history scan ([`crate::wsl_acp`]), which spawns the
 //!   distro's CLI through `wsl.exe` and maps the rows into `AgentSession`s.
 //!
-//! The ACP 0.10 connection is `!Send`, so callers must drive this inside a
-//! tokio `LocalSet`.
+//! Callers must drive this inside a tokio `LocalSet`: the stderr drain and the
+//! ACP connection I/O are spawned via [`tokio::task::spawn_local`] (the
+//! `agent-client-protocol` 1.0 connection itself is `Send`).
 
-use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-/// No-op ACP client. `initialize` + `session/list` never trigger
-/// server→client calls, so every method here is a fail-fast safety net
-/// rather than a real implementation.
-pub(crate) struct StubClient;
-
-#[async_trait::async_trait(?Send)]
-impl acp::Client for StubClient {
-    async fn request_permission(
-        &self,
-        _: acp::RequestPermissionRequest,
-    ) -> acp::Result<acp::RequestPermissionResponse> {
-        Err(acp::Error::internal_error()
-            .data("session-list client does not handle permissions".to_string()))
-    }
-
-    async fn session_notification(&self, _: acp::SessionNotification) -> acp::Result<()> {
-        Ok(())
-    }
-
-    async fn create_terminal(
-        &self,
-        _: acp::CreateTerminalRequest,
-    ) -> acp::Result<acp::CreateTerminalResponse> {
-        Err(acp::Error::internal_error()
-            .data("session-list client does not create terminals".to_string()))
-    }
-
-    async fn terminal_output(
-        &self,
-        _: acp::TerminalOutputRequest,
-    ) -> acp::Result<acp::TerminalOutputResponse> {
-        Err(acp::Error::internal_error()
-            .data("session-list client does not run terminals".to_string()))
-    }
-
-    async fn wait_for_terminal_exit(
-        &self,
-        _: acp::WaitForTerminalExitRequest,
-    ) -> acp::Result<acp::WaitForTerminalExitResponse> {
-        Err(acp::Error::internal_error()
-            .data("session-list client does not run terminals".to_string()))
-    }
-
-    async fn release_terminal(
-        &self,
-        _: acp::ReleaseTerminalRequest,
-    ) -> acp::Result<acp::ReleaseTerminalResponse> {
-        Err(acp::Error::internal_error()
-            .data("session-list client does not run terminals".to_string()))
-    }
-
-    async fn kill_terminal(
-        &self,
-        _: acp::KillTerminalRequest,
-    ) -> acp::Result<acp::KillTerminalResponse> {
-        Err(acp::Error::internal_error()
-            .data("session-list client does not run terminals".to_string()))
-    }
-}
+use crate::protocol::acp::conn;
 
 /// The successful list outcome, or a human-readable reason it failed.
 ///
@@ -86,7 +28,7 @@ impl acp::Client for StubClient {
 /// non-fatal outcome (distinct from a transport/`initialize` failure,
 /// which surfaces as the outer `Err`), so it is captured as a `String`
 /// rather than collapsing the whole call.
-pub(crate) type ListOutcome = std::result::Result<Vec<acp::SessionInfo>, String>;
+pub(crate) type ListOutcome = std::result::Result<Vec<acp::schema::v1::SessionInfo>, String>;
 
 /// Run ACP `initialize` then `session/list` over `child`'s piped stdio.
 ///
@@ -95,13 +37,14 @@ pub(crate) type ListOutcome = std::result::Result<Vec<acp::SessionInfo>, String>
 /// [`ListOutcome`]. `child` must have `stdin`/`stdout` piped; `stderr`,
 /// when piped, is drained so a chatty agent can't deadlock the pipe.
 ///
-/// The ACP connection is `!Send`; call this inside a tokio `LocalSet`.
+/// Runs ACP I/O and the stderr drain via [`tokio::task::spawn_local`], so call
+/// this inside a tokio `LocalSet`.
 pub(crate) async fn fetch_session_list(
     child: &mut tokio::process::Child,
     client_label: &str,
     init_timeout: Duration,
     list_timeout: Duration,
-) -> Result<(acp::InitializeResponse, ListOutcome)> {
+) -> Result<(acp::schema::v1::InitializeResponse, ListOutcome)> {
     let outgoing = child
         .stdin
         .take()
@@ -122,9 +65,8 @@ pub(crate) async fn fetch_session_list(
         });
     }
 
-    let (conn, handle_io) = acp::ClientSideConnection::new(StubClient, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
+    let (conn, handle_io) =
+        conn::spawn_client(acp::Client.builder().name("wta-session-list"), conn::byte_streams(outgoing, incoming));
     let io_label = client_label.to_string();
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
@@ -132,10 +74,10 @@ pub(crate) async fn fetch_session_list(
         }
     });
 
-    let init_req = acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-        .client_capabilities(acp::ClientCapabilities::new().terminal(true))
+    let init_req = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+        .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
         .client_info(
-            acp::Implementation::new("wta-session-list", env!("CARGO_PKG_VERSION"))
+            acp::schema::v1::Implementation::new("wta-session-list", env!("CARGO_PKG_VERSION"))
                 .title("WTA Session List"),
         );
     let init_resp = tokio::time::timeout(init_timeout, conn.initialize(init_req))
@@ -151,7 +93,7 @@ pub(crate) async fn fetch_session_list(
 
     let list = match tokio::time::timeout(
         list_timeout,
-        conn.list_sessions(acp::ListSessionsRequest::new()),
+        conn.list_sessions(acp::schema::v1::ListSessionsRequest::new()),
     )
     .await
     {

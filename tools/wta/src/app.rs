@@ -1247,7 +1247,7 @@ pub enum AppEvent {
     /// Master broadcast that an alive session is gone via
     /// `intellterm.wta/session_removed`. Symmetric counterpart to
     /// `AliveSessionAdded`.
-    AliveSessionRemoved(agent_client_protocol::SessionId),
+    AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
     /// Apply an "upgrade Historical/Ended → Live" join between the
     /// historical-row registry (`agent_sessions`) and the alive-session
     /// mirror. Posted from `AliveSnapshotLoaded` (master's bootstrap
@@ -2082,7 +2082,7 @@ impl Default for View {
 #[derive(Debug, Default, Clone)]
 pub struct AgentsViewState {
     pub snapshot: Option<Vec<crate::session_registry::SessionInfo>>,
-    pub focused_sid: Option<agent_client_protocol::SessionId>,
+    pub focused_sid: Option<agent_client_protocol::schema::v1::SessionId>,
     pub refetch_in_flight: bool,
     pub dirty: bool,
     pub next_request_id: u64,
@@ -2539,7 +2539,7 @@ impl App {
         }
         let _ = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-                session_id: session_id.map(agent_client_protocol::SessionId::new),
+                session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
             },
         );
@@ -3364,7 +3364,7 @@ impl App {
 
     fn dispatch_session_focus_rpc(&mut self, sid: &str) {
         let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::SessionId::new(sid.to_string());
+        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
         let _ = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SessionFocus {
                 request_id,
@@ -3387,7 +3387,7 @@ impl App {
 
     fn dispatch_session_resume_dispatched_rpc(&mut self, sid: &str) {
         let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::SessionId::new(sid.to_string());
+        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
         let _ = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SessionResumeDispatched {
                 request_id,
@@ -3557,7 +3557,7 @@ impl App {
             .unwrap_or_else(|| old_selected.min(rows.len() - 1));
         tab.agents_list_state.select(Some(idx));
         tab.agents_view.focused_sid =
-            Some(agent_client_protocol::SessionId::new(rows[idx].key.clone()));
+            Some(agent_client_protocol::schema::v1::SessionId::new(rows[idx].key.clone()));
     }
 
     fn update_agents_focus_for_tab(&mut self, tab_id: &str) {
@@ -3568,7 +3568,7 @@ impl App {
             .and_then(|t| t.agents_list_state.selected());
         let focused = selected.and_then(|idx| {
             rows.get(idx)
-                .map(|s| agent_client_protocol::SessionId::new(s.key.clone()))
+                .map(|s| agent_client_protocol::schema::v1::SessionId::new(s.key.clone()))
         });
         self.tab_mut(tab_id).agents_view.focused_sid = focused;
     }
@@ -9953,7 +9953,7 @@ mod tests {
         // documented default), and Enter would fall through to the resume
         // path and fail with "unknown CLI" since cli_source is also None.
         let mut info = crate::session_registry::SessionInfo::new(
-            agent_client_protocol::SessionId::new("sid-live"),
+            agent_client_protocol::schema::v1::SessionId::new("sid-live"),
             std::path::PathBuf::from("/repo"),
         );
         info.pane_session_id = Some("pane-live".to_string());
@@ -9977,7 +9977,7 @@ mod tests {
         // session_info_to_agent_session AND on the master handler
         // comments — silently flipping defaults will mask future bugs.
         let info = crate::session_registry::SessionInfo::new(
-            agent_client_protocol::SessionId::new("sid-bare"),
+            agent_client_protocol::schema::v1::SessionId::new("sid-bare"),
             std::path::PathBuf::from("/repo"),
         );
         let s = crate::app::session_info_to_agent_session(&info);
@@ -11596,7 +11596,7 @@ mod tests {
         });
         app.current_tab_mut().agents_list_state.select(Some(1));
         app.current_tab_mut().agents_view.focused_sid =
-            Some(agent_client_protocol::SessionId::new("b"));
+            Some(agent_client_protocol::schema::v1::SessionId::new("b"));
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().unwrap() {
             crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
@@ -11861,7 +11861,7 @@ mod tests {
 
     fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
         let mut info = crate::session_registry::SessionInfo::new(
-            agent_client_protocol::SessionId::new(id),
+            agent_client_protocol::schema::v1::SessionId::new(id),
             std::path::PathBuf::from(format!("/repo/{id}")),
         );
         info.title = Some(id.to_string());
@@ -13593,7 +13593,7 @@ mod tests {
     async fn mock_agent_reply_streams_into_app_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let local = tokio::task::LocalSet::new();
         local
@@ -13601,14 +13601,14 @@ mod tests {
                 // Borrow the acp-module harness: deterministic mock wired to a
                 // real WtaClient over an in-memory duplex.
                 let (conn, mut event_rx, _seen) = connect_mock_agent();
-                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                     .await
                     .expect("initialize failed");
                 let session = conn
-                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                     .await
                     .expect("new_session failed");
-                conn.prompt(acp::PromptRequest::new(
+                conn.prompt(acp::schema::v1::PromptRequest::new(
                     session.session_id.clone(),
                     vec!["hello".into()],
                 ))
@@ -13661,17 +13661,17 @@ mod tests {
     async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
-        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
             .await
             .expect("initialize failed");
         let session = conn
-            .new_session(acp::NewSessionRequest::new("/test"))
+            .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
             .await
             .expect("new_session failed");
-        conn.prompt(acp::PromptRequest::new(
+        conn.prompt(acp::schema::v1::PromptRequest::new(
             session.session_id.clone(),
             vec!["do it".into()],
         ))
@@ -13830,20 +13830,20 @@ mod tests {
     async fn tool_call_surfaces_card_in_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
                 let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
-                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                     .await
                     .expect("initialize failed");
                 let session = conn
-                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                     .await
                     .expect("new_session failed");
-                conn.prompt(acp::PromptRequest::new(
+                conn.prompt(acp::schema::v1::PromptRequest::new(
                     session.session_id.clone(),
                     vec!["run it".into()],
                 ))
@@ -13913,18 +13913,18 @@ mod tests {
     /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
     /// owns the `App`.
     async fn app_after_prompt(
-        conn: &agent_client_protocol::ClientSideConnection,
+        conn: &crate::protocol::acp::conn::ClientLink,
     ) {
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
-        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+        
+        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
             .await
             .expect("initialize failed");
         let session = conn
-            .new_session(acp::NewSessionRequest::new("/test"))
+            .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
             .await
             .expect("new_session failed");
-        conn.prompt(acp::PromptRequest::new(
+        conn.prompt(acp::schema::v1::PromptRequest::new(
             session.session_id.clone(),
             vec!["go".into()],
         ))

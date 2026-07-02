@@ -42,7 +42,6 @@ mod win32;
 mod wsl;
 mod wsl_acp;
 
-use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -1443,22 +1442,6 @@ async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<Strin
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
 
-struct SessionsCliClient;
-
-#[async_trait::async_trait(?Send)]
-impl acp::Client for SessionsCliClient {
-    async fn request_permission(
-        &self,
-        _args: acp::RequestPermissionRequest,
-    ) -> acp::Result<acp::RequestPermissionResponse> {
-        Err(acp::Error::internal_error().data("sessions CLI cannot answer permission requests"))
-    }
-
-    async fn session_notification(&self, _args: acp::SessionNotification) -> acp::Result<()> {
-        Ok(())
-    }
-}
-
 async fn run_sessions_list(
     master_override: Option<String>,
     origin_filter: agent_sessions::OriginFilter,
@@ -1496,19 +1479,20 @@ async fn fetch_sessions_from_master(
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
-    let (conn, handle_io) = acp::ClientSideConnection::new(SessionsCliClient, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
+    let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
+        acp::Client.builder().name("wta-sessions"),
+        crate::protocol::acp::conn::byte_streams(outgoing, incoming),
+    );
     tokio::task::spawn_local(async move {
         let _ = handle_io.await;
     });
 
     let init_started = std::time::Instant::now();
     let init_result = conn.initialize(
-        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-            .client_capabilities(acp::ClientCapabilities::new())
+        acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+            .client_capabilities(acp::schema::v1::ClientCapabilities::new())
             .client_info(
-                acp::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
+                acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
                     .title("Windows Terminal Agent sessions CLI"),
             ),
     )
@@ -1574,19 +1558,19 @@ async fn register_launched_session_with_master(
             let (read_half, write_half) = tokio::io::split(pipe);
             let outgoing = write_half.compat_write();
             let incoming = read_half.compat();
-            let (conn, handle_io) =
-                acp::ClientSideConnection::new(SessionsCliClient, outgoing, incoming, |fut| {
-                    tokio::task::spawn_local(fut);
-                });
+            let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
+                acp::Client.builder().name("wta-delegate"),
+                crate::protocol::acp::conn::byte_streams(outgoing, incoming),
+            );
             tokio::task::spawn_local(async move {
                 let _ = handle_io.await;
             });
 
             conn.initialize(
-                acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-                    .client_capabilities(acp::ClientCapabilities::new())
+                acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+                    .client_capabilities(acp::schema::v1::ClientCapabilities::new())
                     .client_info(
-                        acp::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
+                        acp::schema::v1::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
                             .title("Windows Terminal Agent delegate"),
                     ),
             )
