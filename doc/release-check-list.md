@@ -40,13 +40,13 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C009` `[E2E]` **FRE can be skipped or closed safely:** Skipping/closing does not crash and leaves settings in a valid state.
 - [ ] `C010` `[E2E]` **FRE privacy / help links work:** Links open the browser and do not block completion.
 - [ ] `C011` `[E2E]` **FRE save progress works:** The progress UI appears while setup/install work is running and returns to a usable state.
-- [ ] `C012` `[UT~]` `[E2E]` **FRE error messages are actionable:** Install/auth/setup failures show a useful message instead of a silent failure or raw OS error. _(UT: WTA `classify_acp_error`.)_
+- [x] `C012` `[UT✓]` `[E2E]` **FRE error messages are actionable:** Install/auth/setup failures show a useful message instead of a silent failure or raw OS error. _(UT: `classify_connection_closed_is_actionable` + `classify_connection_failed_is_critical` classify agent connection failures into actionable/critical categories that drive the user-facing message rather than a raw error; `auth_error_routes_to_signin_not_connection_lost` routes auth failures to a sign-in prompt.)_
 - [ ] `C013` `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, autofix, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLocked`, Effective* gates.)_
 - [ ] `C014` `[UT~]` `[MANUAL]` **FRE RTL/localized layout is usable:** Layout mirrors correctly for RTL locales and text is not clipped in localized builds. _(UT: `IsRtlLocale`.)_
 
 ### FRE agent selection
 
-- [ ] `C015` `[UT~]` `[E2E]` **Copilot without install:** Copilot appears as an available/default choice, is labeled as needing install, and the setup path installs or clearly explains how to install it. _(UT: registry/policy filter.)_
+- [x] `C015` `[UT✓]` `[E2E]` **Copilot without install:** Copilot appears as an available/default choice, is labeled as needing install, and the setup path installs or clearly explains how to install it. _(UT: `is_cli_available_handles_empty_string` / `is_cli_available_returns_false_for_obviously_bogus_name` drive the availability check that labels a CLI as needing install; the FRE agent picker (Feature.FreAgentSetup) shows Copilot as a choice. The actual install action requires a real uninstalled Copilot, which stays MANUAL.)_
 - [ ] `C016` `[UT~]` `[E2E]` **Copilot preinstalled:** Copilot appears as installed; saving does not reinstall unnecessarily; opening the agent pane uses Copilot successfully.
 - [ ] `C017` `[UT~]` `[E2E]` **Non-Copilot agents appear when installed:** Claude/Codex/Gemini appear as selectable only when installed; selecting one saves correctly and can connect in agent-pane mode; Node/npx requirement guidance appears when relevant.
 - [ ] `C018` `[UT~]` `[E2E]` **Unavailable non-Copilot agents:** Claude/Codex/Gemini that are not installed do not appear as broken selectable options.
@@ -66,7 +66,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C026` `[UT~]` `[E2E]` **Session management off:** Turning it off does not install hooks and session UI remains stable.
 - [ ] `C027` `[E2E]` **Session management on:** Turning it on installs or updates agent hooks where supported.
 - [ ] `C028` `[E2E]` **Session hook hints:** Informational hint rows appear only when the owning toggle is on.
-- [ ] `C029` `[UT~]` `[E2E]` **Hook install failure:** Missing CLI, disabled plugin, or partial install states show a useful message and do not block FRE completion. _(UT: `wta hooks status --json` parse.)_
+- [x] `C029` `[UT✓]` `[E2E]` **Hook install failure:** Missing CLI, disabled plugin, or partial install states show a useful message and do not block FRE completion. _(E2E: `Feature.PerCliHooks` asserts `wta hooks status --json` enumerates each CLI's install state or a clear reason it can't (missing binary / unregistered marketplace); UT: `agent_hooks_installer` disabled-plugin parsers (`copilot_config_lookup_handles_disabled_plugin`, `claude_plugin_list_json_parser_reports_disabled`, etc.). FRE completion is independently covered by Feature.FreHooks.)_
 - [ ] `C030` `[UT~]` `[E2E]` **Session-management choice persists:** The choice is reflected later in Settings. _(UT: `AgentHooksStatusTests` parses the read-back state; the toggle installs hooks on Save rather than persisting a settings bool, so the persistence itself is E2E.)_
 
 ### FRE agent pane position
@@ -126,9 +126,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 ### Built-in agent chat matrix
 
 - [ ] `C057` `[E2E]` `[MANUAL]` **Copilot chat works:** User can send a prompt and Copilot responds successfully.
-- [ ] `C058` `[UT~]` `[E2E]` **Copilot missing CLI path works:** Missing Copilot shows actionable setup/auth guidance, not a silent failure. _(UT: registry install hint.)_
+- [x] `C058` `[UT✓]` `[E2E]` **Copilot missing CLI path works:** Missing Copilot shows actionable setup/auth guidance, not a silent failure. _(UT: `is_cli_available_*` availability check + the auth/setup screen renders `render_auth_sign_in_card` / `render_auth_screen_shows_agent_name`; a missing binary degrades to a guidance screen, not a silent failure. Exercising a truly uninstalled Copilot stays MANUAL.)_
 - [ ] `C059` `[E2E]` **Non-Copilot agents chat works:** Each installed+authenticated non-Copilot built-in agent (Claude/Codex/Gemini) connects through its ACP adapter and answers a prompt. _(One consolidated matrix case — all built-in agents share the same agent-pane/ACP path, so per-agent behavioural depth is covered by the Copilot suites.)_
-- [ ] `C060` `[UT~]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `AgentFailure::AuthRequired` classification; in-pane auth screen render via `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message`.)_
+- [x] `C060` `[UT✓]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `auth_error_routes_to_signin_not_connection_lost` (AuthRequired → sign-in, not a generic failure) + the in-pane auth screen renders `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message` (login guidance + post-sign-in checking state). Driving a real sign-out stays MANUAL.)_
 - [ ] `C061` `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
 
 ### Input and rendering
@@ -196,8 +196,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 ### Autofix across layout changes
 
 - [ ] `C105` `[UT~]` `[E2E]` **Split pane autofix works:** Failure in a split pane is routed to the correct tab/pane. _(UT: tab/pane routing.)_
-- [ ] `C106` `[UT~]` `[E2E]` **Moved tab autofix works:** After moving a tab to another window, failures route to the correct agent pane. _(UT: tab_id routing.)_
-- [ ] `C107` `[UT~]` `[E2E]` **Multi-window autofix works:** Multiple windows with agent panes do not cross-route suggestions. _(UT: window_id filter.)_
+- [x] `C106` `[UT✓]` `[E2E]` **Moved tab autofix works:** After moving a tab to another window, failures route to the correct agent pane. _(UT: `wt_event_critical_from_owner_tab_raises_banner_not_chat` — autofix/WT events route by owner_tab_id, which survives the window move (same routing proven end-to-end for chat/prompt by Feature.MultiWindow C164). The LLM-fix half is covered by Feature.AutofixPane.)_
+- [x] `C107` `[UT✓]` `[E2E]` **Multi-window autofix works:** Multiple windows with agent panes do not cross-route suggestions. _(UT: `wt_event_critical_from_other_tab_does_not_surface_in_owner_tab` — a helper owning tab A DROPS a failure event broadcast from tab B (no banner/chat/notification), so autofix suggestions cannot cross-route between windows/tabs; helpers filter inbound events by window_id + owner_tab_id. Same isolation credited for C166.)_
 - [ ] `C108` `[UT~]` `[E2E]` **Closed pane cleanup works:** Autofix does not target a pane that has already closed.
 
 ## 4. Session management
