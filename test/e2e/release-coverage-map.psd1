@@ -15,6 +15,14 @@
     'Focus hotkey works'                = 'Focus hotkey / focus works'
     '/model works'                      = '/model opens the model picker'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
+    # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
+    # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).
+    'Hotkey opens pane'                 = 'Hotkey opens pane \(Ctrl'
+    'Hotkey hides pane'                 = 'Hotkey hides pane \(Ctrl'
+    'Alt+Shift+B launches background delegate' = 'Alt\+Shift\+B launches background delegate'
+    'Alt+Shift+/ opens agent delegation palette' = 'Alt\+Shift\+/ opens agent delegation palette'
+    'Command palette prompt launches delegate' = 'Command palette prompt launches delegate'
+    'Command palette cancel is safe'    = 'Command palette cancel is safe'
 
     # §1 settings
     'Model control appears'             = 'Model control / model changes apply'
