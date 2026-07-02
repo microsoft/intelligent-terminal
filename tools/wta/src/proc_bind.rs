@@ -616,9 +616,18 @@ mod tests {
         let missing = env_var_for_pid(pid, "WTA_NOT_SET_XYZ");
         let _ = child.kill();
         let _ = child.wait();
-        assert_eq!(got.as_deref(), Some("marker-value-42"));
-        assert_eq!(got_ci.as_deref(), Some("marker-value-42"));
-        assert_eq!(missing, None);
+        if cfg!(target_arch = "x86_64") {
+            assert_eq!(got.as_deref(), Some("marker-value-42"));
+            assert_eq!(got_ci.as_deref(), Some("marker-value-42"));
+            assert_eq!(missing, None);
+        } else {
+            // The PEB walk uses x64-specific offsets, so `read_process_env_block`
+            // bails to `None` on every other arch (e.g. i686/x86, aarch64) by
+            // design rather than read the wrong remote memory.
+            assert_eq!(got, None);
+            assert_eq!(got_ci, None);
+            assert_eq!(missing, None);
+        }
     }
 
     #[test]
@@ -681,6 +690,12 @@ mod tests {
         let got = cwd_for_pid(pid);
         let _ = child.kill();
         let _ = child.wait();
+        if !cfg!(target_arch = "x86_64") {
+            // `cwd_for_pid` uses x64-specific PEB offsets and returns `None` on
+            // every other arch (e.g. i686/x86, aarch64) by design.
+            assert_eq!(got, None);
+            return;
+        }
         let got = got.expect("cwd_for_pid returned None");
         // Compare case-insensitively on the final component to avoid
         // \\?\ prefix / drive-letter-case differences.
