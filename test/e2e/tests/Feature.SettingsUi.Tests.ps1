@@ -37,11 +37,14 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
     It 'Model selection visible: the model control shows on the AI Agents page for a custom agent' {
         if (-not $script:settingsOpen) { Set-ItResult -Skipped -Because 'the WT window could not take foreground to open Settings (env precondition)'; return }
         Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
-        # With a custom agent selected, the model control must remain visible. Assert via the stable
-        # AutomationId `AcpModel` (SettingContainer x:Name in AIAgents.xaml), NOT the English label
-        # text "Model" — the label is localized (AIAgents_AcpModel.Header), so a text match would
-        # fail on non-en-US machines and could also match unrelated nodes.
-        Test-UiElementExists -App $script:app -Selector 'AcpModel' -TimeoutSec 8 |
-            Should -BeTrue -Because 'the model control (AcpModel) must be visible when a custom agent is selected'
+        # With a custom agent selected, the model control must be visible. The model container's
+        # x:Name (AcpModel) is NOT surfaced as a winapp selector (winapp gives it a generated
+        # grp-model-<hash> slug), so we assert its localized header instead — matched against an
+        # ALL-LOCALES regex of AIAgents_AcpModel.Header (en-US "Model") so it holds on non-en-US
+        # builds rather than hard-coding the English label.
+        $rx = Get-WtReswTextRegex -Key 'AIAgents_AcpModel.Header'
+        if (-not $rx) { $rx = '(?i)\bModel\b' }
+        (Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition { (Get-UiTree -App $script:app -Depth 16) -match $rx }) |
+            Should -BeTrue -Because 'the model control (localized "Model" header) must be visible when a custom agent is selected'
     }
 }

@@ -80,15 +80,22 @@ function Get-WtReswTextRegex {
     if ($script:WtReswRegexCache.ContainsKey($Key)) { return $script:WtReswRegexCache[$Key] }
     $result = $null
     try {
-        $resDir = Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalApp\Resources'
-        if (Test-Path $resDir) {
-            $vals = foreach ($f in Get-ChildItem -Path $resDir -Filter 'Resources.resw' -Recurse -ErrorAction SilentlyContinue) {
-                try {
-                    $xml = [xml](Get-Content -LiteralPath $f.FullName -Raw)
-                    $node = $xml.root.data | Where-Object { $_.name -eq $Key } | Select-Object -First 1
-                    if ($node) { $v = "$($node.value)".Trim(); if ($v) { $v } }
+        # Scan BOTH the TerminalApp resources (WT/FRE strings) and the TerminalSettingsEditor
+        # resources (Settings UI strings), so keys from either surface resolve.
+        $resDirs = @(
+            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalApp\Resources'),
+            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalSettingsEditor\Resources')
+        ) | Where-Object { Test-Path $_ }
+        if ($resDirs) {
+            $vals = foreach ($resDir in $resDirs) {
+                foreach ($f in Get-ChildItem -Path $resDir -Filter 'Resources.resw' -Recurse -ErrorAction SilentlyContinue) {
+                    try {
+                        $xml = [xml](Get-Content -LiteralPath $f.FullName -Raw)
+                        $node = $xml.root.data | Where-Object { $_.name -eq $Key } | Select-Object -First 1
+                        if ($node) { $v = "$($node.value)".Trim(); if ($v) { $v } }
+                    }
+                    catch {}
                 }
-                catch {}
             }
             $pats = @($vals | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) })
             if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
