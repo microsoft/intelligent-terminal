@@ -103,6 +103,12 @@ foreach ($line in Get-Content -LiteralPath $Checklist) {
         $rest = $Matches['rest']
         $title = Get-ItemTitle $rest
         $clean = Clear-ItemText $rest
+        # Pull the stable item ID (`Cnnn`, assigned by Set-ChecklistIds.ps1) out of the cleaned
+        # text so it can be placed CONSISTENTLY right after the box in every branch. The ID has no
+        # square brackets, so Clear-ItemText's `[TAG]`-stripping leaves it in $clean.
+        $id = ''
+        if ($clean -match '^(`C\d+`)\s*(.*)$') { $id = $Matches[1]; $clean = $Matches[2] }
+        $idpfx = if ($id) { "$id " } else { '' }
         # Drop intentionally-excluded items (e.g. RTL) entirely — not passed, not manual.
         if ($title -and ($excludes | Where-Object { $title -match $_ })) { $excluded++; continue }
         $status = Get-ItemStatus $title
@@ -112,9 +118,9 @@ foreach ($line in Get-Content -LiteralPath $Checklist) {
         # re-verify it. (Items needing an E2E half were left unticked in the source.)
         if ($status -eq 'Untested' -and $box -match 'x') { $status = 'Passed' }
         switch ($status) {
-            'Passed'   { $body.Add("- [x] $clean"); $pass++ }
-            'Failed'   { $body.Add("- [ ] ⚠️ **AUTOMATION FAILED** — $clean"); $fail++ }
-            default    { $body.Add("- [ ] $clean"); $manual++ }
+            'Passed'   { $body.Add("- [x] $idpfx$clean"); $pass++ }
+            'Failed'   { $body.Add("- [ ] $idpfx⚠️ **AUTOMATION FAILED** — $clean"); $fail++ }
+            default    { $body.Add("- [ ] $idpfx$clean"); $manual++ }
         }
         continue
     }

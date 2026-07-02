@@ -142,6 +142,12 @@ Outputs (all under `test/e2e/artifacts/`):
   `pwsh -File test/e2e/New-ReleaseReport.ps1`. Items listed in `test/e2e/release-exclude.psd1`
   (by title regex, e.g. RTL) are dropped from the report to keep it focused on the sign-off set.
 
+  **Stable item IDs (`C001`, `C002`, …).** Every checkbox item in `doc/release-check-list.md`
+  carries a stable ID right after the box, and the generators carry it verbatim into
+  `release-report.md` — so you can refer to a case by number ("C136 is failing") and it means the
+  same item in both files. Assign/refresh IDs with `pwsh -File test/e2e/Set-ChecklistIds.ps1`
+  (idempotent: existing IDs are never renumbered; a newly-added item gets the next free number).
+
   **Incremental update (no full-suite re-run needed).** `New-ReleaseReport.ps1` regenerates the
   whole report, so a single-suite run would blank every item it didn't cover. To refresh just the
   rows a partial run touched, use `Update-ReleaseReport.ps1`, which takes the EXISTING

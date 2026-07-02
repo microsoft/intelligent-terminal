@@ -94,13 +94,17 @@ foreach ($line in Get-Content -LiteralPath $Report) {
     if ($line -match '^(?<indent>\s*)-\s*\[(?<box>[ xX])\]\s*(?<body>.*)$') {
         $indent = $Matches['indent']
         $body = $Matches['body']
+        # Peel the stable item ID (`Cnnn`) so it is preserved and re-emitted right after the box.
+        $id = ''
+        if ($body -match '^(`C\d+`)\s*(.*)$') { $id = $Matches[1]; $body = $Matches[2] }
+        $idpfx = if ($id) { "$id " } else { '' }
         # Strip an existing FAILED marker to recover the clean item text (title + desc).
         $clean = $body
         if ($clean.StartsWith($failedPrefix)) { $clean = $clean.Substring($failedPrefix.Length) }
         $title = Get-ReportItemTitle $clean
         switch (Get-CoverageStatus $title) {
-            'Passed' { $out.Add("$indent- [x] $clean"); $updated++ }
-            'Failed' { $out.Add("$indent- [ ] $failedPrefix$clean"); $updated++ }
+            'Passed' { $out.Add("$indent- [x] $idpfx$clean"); $updated++ }
+            'Failed' { $out.Add("$indent- [ ] $idpfx$failedPrefix$clean"); $updated++ }
             default { $out.Add($line) }   # Untested (out of scope) or SkippedOnly → unchanged
         }
         continue
@@ -112,7 +116,7 @@ foreach ($line in Get-Content -LiteralPath $Report) {
 $pass = 0; $fail = 0; $manual = 0
 foreach ($l in $out) {
     if ($l -match '^\s*-\s*\[[xX]\]\s') { $pass++ }
-    elseif ($l -match '^\s*-\s*\[\s\]\s*⚠️\s*\*\*AUTOMATION FAILED\*\*') { $fail++ }
+    elseif ($l -match '^\s*-\s*\[\s\]\s*(`C\d+`\s*)?⚠️\s*\*\*AUTOMATION FAILED\*\*') { $fail++ }
     elseif ($l -match '^\s*-\s*\[\s\]\s') { $manual++ }
 }
 $total = $pass + $fail + $manual
