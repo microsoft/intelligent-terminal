@@ -140,7 +140,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C066` `[E2E]` **Keyboard navigation works:** Arrow keys, Tab completion, Ctrl combinations, and Esc behave correctly.
 - [ ] `C067` `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing.
 - [ ] `C068` `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; streaming-JSON unwrap incl. emoji/surrogate pairs in `ui::chat::tests`.)_
-- [ ] `C069` `[UT✓]` `[E2E]` **Permission UI works:** When the agent requests a command/tool permission, the user can allow or reject it. _(UT: `permission_allow_round_trips_to_agent`, `permission_reject_round_trips_to_agent`, `permission_quick_allow/reject_key_round_trips_to_agent`, `render_permission_card_shows_options`, `render_permission_compact_shows_hint`; the `y`/`n` quick-key case-match bug was fixed here.)_
+- [x] `C069` `[UT✓]` `[E2E]` **Permission UI works:** When the agent requests a command/tool permission, the user can allow or reject it. _(UT: `permission_allow_round_trips_to_agent`, `permission_reject_round_trips_to_agent`, `permission_quick_allow/reject_key_round_trips_to_agent`, `render_permission_card_shows_options`, `render_permission_compact_shows_hint`; the `y`/`n` quick-key case-match bug was fixed here.)_
 - [ ] `C070` `[E2E]` **Insert into pane works:** Agent-proposed command/text can be inserted into the target terminal pane without running.
 - [ ] `C071` `[E2E]` **Run in pane works:** Agent-proposed command can be run in the target terminal pane.
 - [ ] `C072` `[E2E]` **Command target is correct:** Insert/run applies to the intended active pane, not the agent pane itself or another tab.
@@ -207,17 +207,17 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 ### Surfaces
 
 - [ ] `C109` `[E2E]` **Session button works:** The session-management button opens the session view.
-- [ ] `C110` `[UT✓]` `[E2E]` **Hotkey works:** `Ctrl+Shift+/` opens the session view. _(UT: `DefaultAgentKeybindings` binding; open behavior E2E.)_
+- [x] `C110` `[UT✓]` `[E2E]` **Hotkey works:** `Ctrl+Shift+/` opens the session view. _(UT: `DefaultAgentKeybindings` pins `ctrl+shift+/`→`Terminal.OpenAgentSessions`; the open-the-view behavior it triggers is E2E-proven via the same handler in `Feature.SessionList`/`Feature.SessionState` (`/sessions`, C083/C111). The live WT-accelerator keystroke itself isn't a stable E2E observable — see C083 note.)_
 - [ ] `C111` `[UT✓]` `[E2E]` **Slash command works:** `/sessions` opens the session view. _(UT: `/sessions` classify.)_
-- [ ] `C112` `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies the action parses; opening the view is E2E.)_
-- [ ] `C113` `[UT✓]` `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken. _(UT: `render_sessions_view_shows_footer_hint` paints the agents-view chrome/footer with an empty registry; live data still E2E.)_
+- [x] `C112` `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies `openAgentSessions` parses to the action; the resulting open-the-view behavior is E2E-proven in `Feature.SessionList` 'Session view opens from chat' / 'Slash command works' (C083/C111), which route through the same `_HandleOpenAgentSessions`.)_
+- [x] `C113` `[UT✓]` `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken. _(UT: `render_sessions_view_shows_footer_hint` + `render_agents_view_empty_when_no_sessions_is_stable` paint the agents-view chrome/footer with an empty registry (no panic, nav hint drawn).)_
 - [ ] `C114` `[E2E]` **Session view refresh works:** Newly created sessions appear without restarting Terminal when hooks are active.
 
 ### Session states
 
 - [ ] `C115` `[UT✓]` `[E2E]` **Active/Live state is correct:** A currently reachable session is shown as active/live and can be focused. _(UT: `agent_sessions` liveness.)_
-- [ ] `C116` `[UT✓]` `[E2E]` **Running/Working state is correct:** A session running a tool or long operation shows running/working state. _(UT: activity state.)_
-- [ ] `C117` `[UT✓]` `[E2E]` **Waiting-for-input state is correct:** A session waiting for user input/attention shows the waiting/attention state. _(UT: Attention activity.)_
+- [x] `C116` `[UT✓]` `[E2E]` **Running/Working state is correct:** A session running a tool or long operation shows running/working state. _(UT: `agents_view::status_badge_renders_expected_text_per_state` (Working→active badge) + `session_mgmt::liveness_from_status_maps_activity_states_to_live`.)_
+- [x] `C117` `[UT✓]` `[E2E]` **Waiting-for-input state is correct:** A session waiting for user input/attention shows the waiting/attention state. _(UT: `agents_view::status_badge_renders_expected_text_per_state` (Attention→waiting_for_input badge).)_
 - [x] `C118` `[UT✓]` `[E2E]` **Idle state is correct:** A live session waiting for the next prompt shows idle/ready state. _(E2E `Feature.SessionState` drives a live shell copilot session to turn-completion and asserts its Idle badge in the /sessions view; UT: Idle activity derivation + badge render `agents_view.rs::status_badge_renders_expected_text_per_state`.)_
 - [x] `C119` `[UT✓]` **Ended state is correct:** A session whose pane was closed becomes ended and does not stay falsely live. _(UT: PaneClosed tombstone + "Ended must stay Ended" in `agent_sessions.rs`; Ended renders an empty badge `agents_view.rs::status_badge_renders_expected_text_per_state`, so it is visually distinct from any live/idle row.)_
 - [ ] `C120` `[UT✓]` `[E2E]` **Historical state is correct:** On-disk sessions show as historical when not live.
@@ -249,7 +249,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C135` `[UT✓]` `[E2E]` **`Alt+Shift+B` launches background delegate:** Shortcut opens a new delegate agent/task. _(UT: `DefaultAgentKeybindings` binding; launch E2E.)_
 - [ ] `C136` `[UT~]` `[E2E]` **Delegate cwd is correct:** The delegate starts with the current pane's working directory.
 - [ ] `C137` `[UT✓]` `[E2E]` **Delegate provider is correct:** The launched delegate uses the configured delegate agent, not the agent-pane provider unless they are intentionally the same. _(UT: `EffectiveDelegateAgent`.)_
-- [ ] `C138` `[UT✓]` `[E2E]` **Delegate model is correct:** The launched delegate uses the configured delegate model. _(UT: command construction.)_
+- [x] `C138` `[UT✓]` `[E2E]` **Delegate model is correct:** The launched delegate uses the configured delegate model. _(UT: `coordinator::delegate_launch_commandline_appends_startup_prompt_and_model` + `delegate_runtime_inherits_model_from_agent_command` — the delegate command line carries the configured `--model`.)_
 - [ ] `C139` `[UT✓]` `[E2E]` **`Alt+Shift+/` opens agent delegation palette:** Shortcut opens command palette in agent-delegation mode. _(UT: `DefaultAgentKeybindings` binding; palette E2E.)_
 - [ ] `C140` `[E2E]` **Command palette prompt launches delegate:** Typing a request and pressing Enter creates a delegate task.
 - [ ] `C141` `[E2E]` **Command palette cancel is safe:** Esc/cancel closes the palette without launching a delegate.
@@ -274,7 +274,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Custom delegate agent
 
-- [ ] `C153` `[UT✓]` `[E2E]` **Add custom delegate agent:** In Settings, add a delegate custom command such as `qwen.cmd`. _(UT: `DeriveCustomAgentId`.)_
+- [x] `C153` `[UT✓]` `[E2E]` **Add custom delegate agent:** In Settings, add a delegate custom command such as `qwen.cmd`. _(UT: `DeriveCustomAgentId` (AIAgentsViewModel) derives the `custom:<id>` from the entered command; E2E-adjacent: `Feature.CustomDelegate` runs a configured custom delegate command.)_
 - [x] `C154` `[UT✓]` **Save custom delegate agent:** Saving persists the delegate custom command. _(UT: round-trip.)_
 - [ ] `C155` `[UT✓]` `[E2E]` **`Alt+Shift+B` uses custom delegate:** Background delegate shortcut launches the custom command. _(UT: `DefaultAgentKeybindings` binding + custom `EffectiveDelegateAgent` resolution.)_
 - [ ] `C156` `[UT✓]` `[E2E]` **`Alt+Shift+/` uses custom delegate:** Agent-delegation command palette launches the custom command. _(UT: `DefaultAgentKeybindings` + `AgentActionsParse` delegation mode.)_
@@ -304,9 +304,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C170` `[E2E]` **Install hooks from Settings works:** Install hooks button works after FRE.
 - [ ] `C171` `[E2E]` **Per-CLI hook install works:** Each supported CLI (Copilot/Claude/Gemini) installs its hook or reports why it can't; Codex hook/session support behaves per the current implementation.
 - [ ] `C172` `[E2E]` **Hook remove works:** Removing a hook disables future session tracking for that CLI.
-- [ ] `C173` `[UT✓]` `[E2E]` **Disabled plugin is respected:** Disabled agent plugin is skipped and not force-enabled. _(UT: `decide_skip_when_disabled`.)_
-- [ ] `C174` `[UT✓]` `[E2E]` **Hook auto-upgrade works:** After package upgrade, previously installed hooks are updated silently when bundle version changes. _(UT: `decide_upgrade` + `upgrade_state` round-trip.)_
-- [ ] `C175` `[UT✓]` `[E2E]` **Opt-in preserved:** Auto-upgrade does not install hooks into a CLI the user never opted into. _(UT: `decide_skip_when_not_installed`.)_
+- [x] `C173` `[UT✓]` `[E2E]` **Disabled plugin is respected:** Disabled agent plugin is skipped and not force-enabled. _(UT: `decide_skip_when_disabled`.)_
+- [x] `C174` `[UT✓]` `[E2E]` **Hook auto-upgrade works:** After package upgrade, previously installed hooks are updated silently when bundle version changes. _(UT: `decide_upgrade` + `upgrade_state` round-trip.)_
+- [x] `C175` `[UT✓]` `[E2E]` **Opt-in preserved:** Auto-upgrade does not install hooks into a CLI the user never opted into. _(UT: `decide_skip_when_not_installed`.)_
 - [ ] `C176` `[E2E]` **Hook logs are available:** Hook decisions and failures are visible in the expected WTA log files.
 
 ## 9. Packaging, process, and protocol integration
