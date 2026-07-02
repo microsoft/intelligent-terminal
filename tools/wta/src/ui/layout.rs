@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
-    recommendations, setup,
+    recommendations, saved_tabs_view, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -87,6 +87,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     } else {
         (area, None)
     };
+
+    if let Some(view) = app.saved_tabs.as_ref() {
+        saved_tabs_view::render(frame, main_area, view);
+        return;
+    }
 
     let rec_panel_h = if app.current_tab().turn.recommendations().is_some() {
         app.rec_panel_height(main_area.width)
