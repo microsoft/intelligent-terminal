@@ -42,6 +42,16 @@
     # NOTE: 'Shift+Enter behavior works' is NOT E2E-mapped — its contract (Live row Shift+Enter ->
     # FocusPane) is deterministically covered by the Rust unit test
     # shift_enter_on_class_a_live_row_focuses; focus-pane semantics aren't stably observable in E2E.
+    #
+    # NOTE: 'Idle state is correct' / 'Ended state is correct' are NOT E2E-mapped either. A live
+    # Idle/Ended BADGE requires a live SHELL-pane session (the picker ships ShellOnly, MVP), whose
+    # pane must stay open and therefore contends with the finicky SessionToggleButton — measured
+    # 1 pass / 1 fail / 1 skip across three runs, i.e. the picker-open toggle-race dominates. The
+    # badge CONTENT was confirmed by live experiment (a finished shell copilot renders "Idle ·
+    # copilot") and is locked down deterministically by the Rust unit tests
+    # agent_sessions.rs::activity_and_liveness_derive_from_legacy_status (state derivation) and
+    # agents_view.rs::status_badge_renders_expected_text_per_state (badge text incl. empty for
+    # Ended/Historical). These items are ticked [x] in the source checklist on that UT basis.
 
     # §0 FRE flow
     'FRE can be skipped or closed safely' = 'FRE can be closed safely'
