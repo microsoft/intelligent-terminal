@@ -123,6 +123,10 @@
     # exactly as the rest of §1 tests the settings model rather than the (non-openable) editor UI.
     'Session hooks install works'       = 'Session hooks install works'
     'Session hooks remove works'        = 'Session hooks remove works'
+    # C170/C172 checklist titles differ from the test names — map them to the same passing
+    # Feature.SettingsHooks cases (the Settings Install/Remove-hooks buttons run the same engine).
+    'Install hooks from Settings works' = 'Session hooks install works'
+    'Hook remove works'                 = 'Session hooks remove works'
 
     # §0 FRE agent-setup overlay controls (Feature.FreAgentSetup) — the FRE-specific UI half.
     'Copilot preinstalled'              = 'FRE agent dropdown shows Copilot as installed'
