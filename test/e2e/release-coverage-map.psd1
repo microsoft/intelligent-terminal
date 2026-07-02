@@ -118,4 +118,18 @@
     'Add custom ACP agent'              = 'A configured custom ACP agent connects and chats'
     'Edit custom ACP agent'             = 'Edit custom ACP agent updates the command used by new agent panes'
     'Delete custom ACP agent'           = 'Delete custom ACP agent returns to a valid built-in selection'
+
+    # §5 delegate agent (Feature.Delegate) — the delegate ENGINE driven directly via `wta delegate`
+    # (the exact command Alt+Shift+B / the Alt+Shift+/ palette build), with Copilot as the delegate.
+    # NOT mapped (stay manual): 'Alt+Shift+B launches background delegate' + 'Alt+Shift+/ opens
+    # agent delegation palette' are WT accelerators (send-keys reaches the conpty, not WT's keybinding
+    # handler); 'Command palette prompt launches delegate' + 'Command palette cancel is safe' are the
+    # WT XAML command-palette UI (not harness-drivable) — though the engine the prompt path drives is
+    # covered by "Delegate with Copilot works". 'Delegate model is correct' is not observable in WT
+    # state or wta-delegate.log (the model is passed into the launched CLI) — UT-locked (command
+    # construction / delegateModel roundtrip). 'Delegate with non-Copilot agents' is env-gated.
+    'Delegate cwd is correct'           = 'Delegate cwd is correct'
+    'Delegate provider is correct'      = 'Delegate provider is correct'
+    'Delegate with Copilot works'       = 'Delegate with Copilot works'
+    'Delegate errors are actionable'    = 'Delegate errors are actionable'
 }
