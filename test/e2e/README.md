@@ -141,6 +141,18 @@ Outputs (all under `test/e2e/artifacts/`):
   `-SkipReleaseReport`; regenerate standalone from an existing `results.xml` with
   `pwsh -File test/e2e/New-ReleaseReport.ps1`. Items listed in `test/e2e/release-exclude.psd1`
   (by title regex, e.g. RTL) are dropped from the report to keep it focused on the sign-off set.
+
+  **Incremental update (no full-suite re-run needed).** `New-ReleaseReport.ps1` regenerates the
+  whole report, so a single-suite run would blank every item it didn't cover. To refresh just the
+  rows a partial run touched, use `Update-ReleaseReport.ps1`, which takes the EXISTING
+  `release-report.md` as the source of truth and overlays only this run's results: a covered item
+  that **passed** becomes `[x]`, one that **failed** becomes `[ ] ⚠️ AUTOMATION FAILED`, a covered
+  item that only **skipped** is left unchanged (a flaky skip never un-ticks a prior pass), and every
+  item **out of scope** for the run is preserved exactly. One-liner via the runner:
+  `pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.Delegate.Tests.ps1 -UpdateReport`
+  (runs the suite, then overlays only its items onto the existing report; falls back to a fresh
+  generate if no report exists yet). Or standalone after a run wrote `results.xml`:
+  `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
