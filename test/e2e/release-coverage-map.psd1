@@ -110,4 +110,12 @@
     'Custom agent is Settings-only'     = 'Custom agent is Settings-only'
     'Custom agent runs the standard agent-pane behaviours' = 'A configured custom ACP agent connects and chats'
     'Custom failure is safe'            = 'Custom failure is safe'
+    # "Add" a custom agent = configure custom:<id> + command and have it launch/connect — exactly
+    # what the connects-and-chats case proves (same basis as the already-ticked "Save custom ACP
+    # agent"). Edit/Delete are exercised behaviorally (Copilot as the arbitrary ACP agent): edit
+    # rewrites acpCustomCommand and the new command is what launches; delete switches back to a
+    # valid built-in. "Model selection visible" stays manual (Settings-editor UI, not harness-openable).
+    'Add custom ACP agent'              = 'A configured custom ACP agent connects and chats'
+    'Edit custom ACP agent'             = 'Edit custom ACP agent updates the command used by new agent panes'
+    'Delete custom ACP agent'           = 'Delete custom ACP agent returns to a valid built-in selection'
 }
