@@ -1097,11 +1097,30 @@ namespace winrt::TerminalApp::implementation
 
     static winrt::hstring _ResolveEffectiveAgentCliPath(
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
-        const std::function<winrt::hstring()>& detectFallback)
+        const std::function<winrt::hstring()>& detectFallback,
+        const winrt::Microsoft::Terminal::Settings::Model::Profile& profileOverride = nullptr)
     {
-        // Use the policy-aware getter — returns empty if the selected agent
-        // is blocked by GPO, ensuring we never launch a disallowed agent.
-        const auto acpAgent = globals.EffectiveAcpAgent();
+        // Per-profile agent override: if the active profile explicitly sets
+        // AcpAgent (non-empty string), it takes precedence over the global
+        // setting. This lets each profile use a different agent.
+        winrt::hstring acpAgent;
+        if (profileOverride && profileOverride.HasAcpAgent())
+        {
+            const auto profileAgent = profileOverride.AcpAgent();
+            if (!profileAgent.empty())
+            {
+                acpAgent = profileAgent;
+            }
+        }
+
+        // Fall back to the policy-aware global getter — returns empty if the
+        // selected agent is blocked by GPO, ensuring we never launch a
+        // disallowed agent.
+        if (acpAgent.empty())
+        {
+            acpAgent = globals.EffectiveAcpAgent();
+        }
+
         if (acpAgent.empty())
         {
             // The user's selection is blocked or absent. Try auto-detection
@@ -1129,11 +1148,29 @@ namespace winrt::TerminalApp::implementation
 
     // Resolve the effective delegate agent name from structured settings.
     static winrt::hstring _ResolveEffectiveDelegateAgent(
-        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
+        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals,
+        const winrt::Microsoft::Terminal::Settings::Model::Profile& profileOverride = nullptr)
     {
-        // Use the policy-aware getter — returns empty if the selected agent
-        // is blocked by GPO.
-        const auto delegateAgent = globals.EffectiveDelegateAgent();
+        // Per-profile delegate agent override: if the active profile explicitly
+        // sets DelegateAgent (non-empty string), it takes precedence over the
+        // global setting.
+        winrt::hstring delegateAgent;
+        if (profileOverride && profileOverride.HasDelegateAgent())
+        {
+            const auto profileAgent = profileOverride.DelegateAgent();
+            if (!profileAgent.empty())
+            {
+                delegateAgent = profileAgent;
+            }
+        }
+
+        // Fall back to the policy-aware global getter — returns empty if the
+        // selected agent is blocked by GPO.
+        if (delegateAgent.empty())
+        {
+            delegateAgent = globals.EffectiveDelegateAgent();
+        }
+
         if (delegateAgent.empty())
         {
             return winrt::hstring{};
@@ -1671,7 +1708,12 @@ namespace winrt::TerminalApp::implementation
     // driven respawn path (`_RebuildAgentStack` → `SharedWta::Restart`)
     // stay in sync. Each pair is pushed as two separate vector elements
     // so SharedWta can apply its own Windows command-line quoting.
-    std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs()
+    //
+    // `profileOverride` — when non-null, the active tab's profile is
+    // consulted for per-profile AcpAgent/DelegateAgent overrides before
+    // falling back to the global settings.
+    std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs(
+        const winrt::Microsoft::Terminal::Settings::Model::Profile& profileOverride)
     {
         const auto& globals = _settings.GlobalSettings();
         // Resolved here (not on the caller side) so the Restart path
@@ -1679,7 +1721,7 @@ namespace winrt::TerminalApp::implementation
         // empty when no agent CLI is detected but policy doesn't actively
         // block — pass through anyway; wta will surface the failure to
         // spawn the child as an ACP error.
-        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); }, profileOverride);
 
         std::vector<std::wstring> extraArgs;
         const auto pushFlagValue = [&extraArgs](const std::wstring_view flag, const std::wstring_view value) {
@@ -1691,7 +1733,13 @@ namespace winrt::TerminalApp::implementation
             extraArgs.emplace_back(value);
         };
         pushFlagValue(L"--agent", agentCliPath);
-        pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
+        // Prefer per-profile agent id for the master args too.
+        {
+            const auto agentId = (profileOverride && profileOverride.HasAcpAgent() && !profileOverride.AcpAgent().empty())
+                                     ? profileOverride.AcpAgent()
+                                     : globals.EffectiveAcpAgent();
+            pushFlagValue(L"--agent-id", agentId);
+        }
         if (!globals.EffectiveAutoFixEnabled())
         {
             extraArgs.emplace_back(L"--no-autofix");
@@ -1701,7 +1749,7 @@ namespace winrt::TerminalApp::implementation
             pushFlagValue(L"--language", lang);
         }
         pushFlagValue(L"--acp-model", globals.AcpModel());
-        pushFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
+        pushFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals, profileOverride));
         pushFlagValue(L"--delegate-model", globals.DelegateModel());
         return extraArgs;
     }
@@ -1738,10 +1786,13 @@ namespace winrt::TerminalApp::implementation
 
         const auto& globals = _settings.GlobalSettings();
 
+        // Resolve the per-profile agent override for this tab.
+        const auto tabProfile = tab->GetFocusedProfile();
+
         // GPO `AllowedAgents` enforcement — mirror the legacy path so a
         // managed environment that blocks all agents doesn't get a
         // working pane via the shared master.
-        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); }, tabProfile);
         if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: ABORT — all agents blocked by GPO policy");
@@ -1755,7 +1806,7 @@ namespace winrt::TerminalApp::implementation
         // changes flow over event channels (`autofix_enabled_changed`
         // is the existing one). See `_BuildSharedWtaExtraArgs` for the
         // shared arg layout.
-        auto extraArgs = _BuildSharedWtaExtraArgs();
+        auto extraArgs = _BuildSharedWtaExtraArgs(tabProfile);
 
         auto& shared = winrt::TerminalApp::implementation::SharedWta::Instance();
         if (!shared.AcquirePane(std::wstring_view{ wtaPath }, extraArgs))
@@ -1825,9 +1876,16 @@ namespace winrt::TerminalApp::implementation
             QuoteAndEscapeCommandlineArg(value, helperCmd);
         };
         appendHelperFlagValue(L"--agent", agentCliPath);
-        appendHelperFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
+        // Prefer per-profile AcpAgent for the agent-id label shown in the title
+        // bar; fall back to the global effective setting.
+        {
+            const auto agentId = (tabProfile && tabProfile.HasAcpAgent() && !tabProfile.AcpAgent().empty())
+                                     ? tabProfile.AcpAgent()
+                                     : globals.EffectiveAcpAgent();
+            appendHelperFlagValue(L"--agent-id", agentId);
+        }
         appendHelperFlagValue(L"--acp-model", globals.AcpModel());
-        appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
+        appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals, tabProfile));
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
         if (!globals.EffectiveAutoFixEnabled())
         {
