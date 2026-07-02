@@ -265,19 +265,34 @@ function Wait-AgentReady {
 function Get-AgentPaneSession {
     <#
     .SYNOPSIS
-        Resolve the CURRENT agent pane's identity from agent-pane-sessions.jsonl:
+        Resolve THIS run's agent pane identity from agent-pane-sessions.jsonl:
           - PaneSessionId : the WT pane session GUID (use with send-keys / focus-pane /
-                            pane-status). The agent pane is NOT in `list-panes` when
-                            stashed, but it DOES respond to its pane session id.
+                            pane-status / capture-pane). The agent pane is XAML chrome around
+                            the helper's TermControl and is NEVER in list-panes (open OR
+                            stashed), so the jsonl is the only way to find it.
           - AcpSessionId  : the ACP conversation id (use to resume the session).
-        Returns the newest record whose pane session is still 'running', or $null.
+    .DESCRIPTION
+        WT is single-instance: one monarch owns the COM server, and agent-pane-sessions.jsonl is
+        a SHARED, append-only file accumulating records across every window AND every prior test
+        run. Picking the globally "newest alive" record therefore frequently resolved to the
+        WRONG pane — another window/tab or a leftover prior-run instance — which made session-view
+        assertions (Open-SessionList / Get-AgentPaneText) flake nondeterministically.
+
+        Fix: only consider records whose pane_session_id is NEW since this app launched
+        ($App.PreExistingAgentPaneIds, snapshotted before activation). Those are exactly the
+        agent pane(s) this run created; among them return the newest still-alive one.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
     process {
         $jsonl = Join-Path $App.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
         if (-not (Test-Path $jsonl)) { return $null }
+        $preIds = if ($App.PSObject.Properties.Name -contains 'PreExistingAgentPaneIds') { $App.PreExistingAgentPaneIds } else { $null }
         $records = Get-Content -LiteralPath $jsonl | Where-Object { $_.Trim() } |
             ForEach-Object { $_ | ConvertFrom-JsonSafe } | Where-Object { $_ -and $_.pane_session_id }
+        # Keep only agent panes created by THIS launch (not prior runs / other windows).
+        if ($preIds) {
+            $records = @($records | Where-Object { -not $preIds.Contains([string]$_.pane_session_id) })
+        }
         # Newest first; pick the first whose pane is still alive.
         for ($i = $records.Count - 1; $i -ge 0; $i--) {
             $r = $records[$i]

@@ -235,6 +235,22 @@ function Start-Terminal {
     elseif ($PassFre) { Invoke-FrePass -App $app | Out-Null }
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
 
+    # Snapshot the agent-pane-sessions.jsonl BEFORE launching WT so Get-AgentPaneSession can tell
+    # OUR agent pane(s) apart from every pane recorded by prior runs / other windows. The file is
+    # shared + append-only under the single-instance monarch and accumulates across all runs, so
+    # any pane_session_id already present here is NOT ours. Captured before activation, so the
+    # pre-warm agent pane this launch creates is guaranteed to be a NEW id.
+    $agentJsonl = Join-Path $app.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
+    $preIds = New-Object System.Collections.Generic.HashSet[string]
+    if (Test-Path $agentJsonl) {
+        Get-Content -LiteralPath $agentJsonl | Where-Object { $_.Trim() } |
+            ForEach-Object { $_ | ConvertFrom-JsonSafe } |
+            Where-Object { $_ -and $_.pane_session_id } |
+            ForEach-Object { [void]$preIds.Add([string]$_.pane_session_id) }
+    }
+    $app | Add-Member -NotePropertyName PreExistingAgentPaneIds -NotePropertyValue $preIds -Force
+    Write-ItLog -Level INFO -Message "Snapshotted $($preIds.Count) pre-existing agent-pane id(s) before launch."
+
     $existing = @(Get-WtProcessesForApp -App $app | Select-Object -ExpandProperty Id)
     # Launch via AUMID shell activation — this is package-specific by construction
     # (shell:AppsFolder\<PackageFamilyName>!App) and therefore launches EXACTLY the
@@ -285,6 +301,18 @@ function Start-Terminal {
     }
     if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
     else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
+
+    # Capture the WT logical window id (informational; agent panes are XAML chrome and never
+    # appear in list-panes, so window scoping of the agent pane itself relies on the
+    # pre-existing-id snapshot above rather than on this).
+    try {
+        $active = Get-ActivePane -App $app
+        if ($active -and $null -ne $active.window_id) {
+            $app | Add-Member -NotePropertyName WindowId -NotePropertyValue ([string]$active.window_id) -Force
+            Write-ItLog -Level INFO -Message "WT window_id=$($app.WindowId)"
+        }
+    }
+    catch { Write-ItLog -Level WARN -Message "Could not resolve WT window_id: $_" }
 
     Initialize-LogOffsets -App $app | Out-Null
     $app
