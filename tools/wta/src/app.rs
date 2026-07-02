@@ -1950,6 +1950,9 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
+    /// Gates the experimental `/save-tab` and `/restore-tab` slash commands.
+    /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
+    pub eternal_terminal_enabled: bool,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -2165,6 +2168,7 @@ impl App {
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
         autofix_enabled: bool,
+        eternal_terminal_enabled: bool,
         shell_mgr: Arc<crate::shell::ShellManager>,
     ) -> Self {
         let mut tab_sessions = HashMap::new();
@@ -2218,6 +2222,7 @@ impl App {
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
             autofix_enabled,
+            eternal_terminal_enabled,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -9706,6 +9711,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            false,
             Arc::new(crate::shell::ShellManager::new()),
         )
     }
@@ -10178,6 +10184,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            false,
             Arc::new(crate::shell::ShellManager::new()),
         );
         (app, master_rx)
@@ -10410,6 +10417,7 @@ mod tests {
             debug_capture,
             true,
             false,
+            false,
             Arc::new(crate::shell::ShellManager::new()),
         );
 
@@ -10467,6 +10475,7 @@ mod tests {
             master_tx,
             debug_capture,
             true,
+            false,
             false,
             Arc::new(crate::shell::ShellManager::new()),
         );
@@ -10557,6 +10566,7 @@ mod tests {
             master_tx,
             debug_capture,
             true,
+            false,
             false,
             Arc::new(crate::shell::ShellManager::new()),
         );
