@@ -102,6 +102,11 @@
     'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
     # §10 diagnostics — hook trace log (Feature.HookTrace). A hooked copilot prompt is traced.
     'Hook trace log is written'         = 'Hook trace log is written'
+    # §7 multi-window (Feature.MultiWindow) — move an agent tab to a new window via the command
+    # palette (moveTab window:new), assert chat preserved + closing the source window is safe.
+    'Move tab to new window preserves chat' = 'Move tab to new window preserves chat'
+    'Close source window is safe'          = 'Close source window is safe'
+
     # §11 accessibility — keyboard-only agent pane (Feature.KeyboardOnly).
     'Keyboard-only agent pane works'    = 'Keyboard-only agent pane works'
 
