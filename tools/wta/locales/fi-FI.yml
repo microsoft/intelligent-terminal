@@ -206,3 +206,6 @@ model_picker.title: "Valitse malli (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Yhdistetty agentti ei ilmoittanut yhtään valittavissa olevaa mallia."
 system.model_set: "Tämän paneelin malliksi asetettiin %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

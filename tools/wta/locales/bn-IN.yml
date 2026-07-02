@@ -209,3 +209,6 @@ model_picker.title: "মডেল নির্বাচন করুন (↑ ↓
 system.no_models: "সংযুক্ত এজেন্ট কোনো নির্বাচনযোগ্য মডেল ঘোষণা করেনি।"
 system.model_set: "এই পেনের জন্য মডেল %{model}-এ সেট করা হয়েছে।"  # {Locked="%{model}"}
 system.model_unknown: "অজানা মডেল %{model} — উপলব্ধ তালিকা দেখতে /model টাইপ করুন।"  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

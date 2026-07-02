@@ -206,3 +206,6 @@ model_picker.title: "Izberi model (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Povezani agent ni oglaševal nobenega izbirljivega modela."
 system.model_set: "Model za to podokno je nastavljen na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Neznan model %{model} — vnesite /model za prikaz razpoložljivega seznama."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

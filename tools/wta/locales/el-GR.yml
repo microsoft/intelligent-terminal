@@ -207,3 +207,6 @@ model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

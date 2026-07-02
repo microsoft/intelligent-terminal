@@ -206,3 +206,6 @@ model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

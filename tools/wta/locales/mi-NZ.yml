@@ -205,3 +205,6 @@ model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."
 system.model_set: "Kua whakaritea te tauira mō tēnei papa ki %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tauira kāore e mōhiotia %{model} — patohia /model kia kite i te rārangi e wātea ana."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

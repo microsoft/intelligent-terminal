@@ -1715,17 +1715,18 @@ impl TabSession {
     pub fn clear_input(&mut self) {
         self.input.clear();
         self.cursor_pos = 0;
-        self.refresh_command_popup();
+        self.command_popup_candidates.clear();
+        self.command_popup_selected = 0;
     }
 
-    pub fn insert_input_char(&mut self, ch: char) {
+    pub fn insert_input_char(&mut self, ch: char, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert(self.cursor_pos, ch);
         self.cursor_pos += ch.len_utf8();
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
-    pub fn delete_before_cursor(&mut self) {
+    pub fn delete_before_cursor(&mut self, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
             return;
@@ -1734,10 +1735,10 @@ impl TabSession {
         let previous = prev_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(previous..self.cursor_pos, "");
         self.cursor_pos = previous;
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
-    pub fn delete_word_before_cursor(&mut self) {
+    pub fn delete_word_before_cursor(&mut self, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
             return;
@@ -1745,10 +1746,10 @@ impl TabSession {
         let word_start = prev_word_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(word_start..self.cursor_pos, "");
         self.cursor_pos = word_start;
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
-    pub fn delete_at_cursor(&mut self) {
+    pub fn delete_at_cursor(&mut self, eternal_enabled: bool) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos >= self.input.len() {
             return;
@@ -1756,7 +1757,7 @@ impl TabSession {
 
         let next = next_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(self.cursor_pos..next, "");
-        self.refresh_command_popup();
+        self.refresh_command_popup(eternal_enabled);
     }
 
     pub fn move_cursor_left(&mut self) {
@@ -1786,14 +1787,15 @@ impl TabSession {
     /// Recompute the slash-command popup candidates from the current
     /// input. Called after every input mutation. Clamps the selected
     /// index so it stays valid when the candidate list shrinks.
-    pub fn refresh_command_popup(&mut self) {
+    pub fn refresh_command_popup(&mut self, eternal_enabled: bool) {
         if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
             // partial name. `is_command_prefix` already guarantees the
             // shape, so the unwrap is safe.
             let trimmed = self.input.trim_start();
             let name = trimmed.strip_prefix('/').unwrap_or("");
-            self.command_popup_candidates = commands::matches(name);
+            self.command_popup_candidates =
+                commands::matches_gated(name, eternal_enabled);
         } else {
             self.command_popup_candidates.clear();
         }
@@ -1830,7 +1832,7 @@ impl TabSession {
     /// trailing space if the command takes args; otherwise just the
     /// name) and reset the cursor to the end. Triggered by Tab when the
     /// popup is visible.
-    pub fn accept_command_popup_completion(&mut self) {
+    pub fn accept_command_popup_completion(&mut self, eternal_enabled: bool) {
         if let Some(spec) = self.selected_command_spec() {
             self.input = if spec.takes_args {
                 format!("/{} ", spec.name)
@@ -1838,7 +1840,7 @@ impl TabSession {
                 format!("/{}", spec.name)
             };
             self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
+            self.refresh_command_popup(eternal_enabled);
         }
     }
 }
@@ -6886,14 +6888,16 @@ impl App {
                 self.current_tab_mut().command_popup_down();
             }
             KeyCode::Tab if self.command_popup_visible() => {
-                self.current_tab_mut().accept_command_popup_completion();
+                let eternal_enabled = self.eternal_terminal_enabled;
+                self.current_tab_mut().accept_command_popup_completion(eternal_enabled);
             }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 // Input editing only acts when the input is the live caret
                 // target. While a recommendation/permission card or a past
                 // turn is highlighted the input is locked (see Char below).
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().insert_input_char('\n');
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().insert_input_char('\n', eternal_enabled);
                 }
             }
             KeyCode::Enter
@@ -6971,7 +6975,8 @@ impl App {
                     // Drain any Alt+V images queued for this prompt.
                     let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
-                    tab.refresh_command_popup();
+                    tab.command_popup_candidates.clear();
+                    tab.command_popup_selected = 0;
                     // `session_id` may be None on a brand-new tab whose ACP
                     // session is created lazily by `dispatch_prompt_body`.
                     // Fall back to a key that `session_tab_mut`'s
@@ -7034,17 +7039,20 @@ impl App {
             }
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().delete_word_before_cursor();
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().delete_word_before_cursor(eternal_enabled);
                 }
             }
             KeyCode::Backspace => {
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().delete_before_cursor();
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().delete_before_cursor(eternal_enabled);
                 }
             }
             KeyCode::Delete => {
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().delete_at_cursor();
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().delete_at_cursor(eternal_enabled);
                 }
             }
             KeyCode::Left if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -7084,7 +7092,8 @@ impl App {
                 // user (a non-empty buffer disables Tab/↑ history nav). Press
                 // Esc, or Tab/Shift+Tab back past the ends, to return focus.
                 if self.current_tab().input_has_nav_focus() {
-                    self.current_tab_mut().insert_input_char(c);
+                    let eternal_enabled = self.eternal_terminal_enabled;
+                    self.current_tab_mut().insert_input_char(c, eternal_enabled);
                 }
             }
             _ => {}
@@ -7417,6 +7426,18 @@ impl App {
             return;
         }
 
+        // Experimental commands are invisible + inert unless the feature flag
+        // is on. Defense-in-depth: the popup already hides them via
+        // `matches_gated`, but a user could type `/save-tab` blind.
+        if cmd.spec.experimental_eternal && !self.eternal_terminal_enabled {
+            let tab = self.current_tab_mut();
+            tab.messages.push(ChatMessage::System(
+                t!("commands.eternal_disabled").into_owned(),
+            ));
+            tab.scroll_to_bottom();
+            return;
+        }
+
         // Thin dispatch: each arm's logic lives in a `cmd_*` method so a
         // single command can be read and unit-tested in isolation. `in_flight`
         // is computed once here and threaded to the commands that branch on it.
@@ -7427,6 +7448,8 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::SaveTab => self.cmd_save_tab(cmd.rest),
+            CommandKind::RestoreTab => self.cmd_restore_tab(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
         }
@@ -7626,6 +7649,23 @@ impl App {
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
         self.project_active_tab_state();
+    }
+
+    /// `/save-tab <title>` — snapshot this tab. Implemented in Phase E.
+    fn cmd_save_tab(&mut self, _title: String) {
+        let tab = self.current_tab_mut();
+        tab.messages
+            .push(ChatMessage::System("save-tab: not yet implemented".to_string()));
+        tab.scroll_to_bottom();
+    }
+
+    /// `/restore-tab` — open the saved-tab picker. Implemented in Phase E.
+    fn cmd_restore_tab(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.messages.push(ChatMessage::System(
+            "restore-tab: not yet implemented".to_string(),
+        ));
+        tab.scroll_to_bottom();
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
@@ -15707,7 +15747,7 @@ mod tests {
         // type "/" and let refresh_command_popup populate candidates.
         app.current_tab_mut().input.push('/');
         app.current_tab_mut().cursor_pos = 1;
-        app.current_tab_mut().refresh_command_popup();
+        app.current_tab_mut().refresh_command_popup(false);
         assert!(
             app.command_popup_visible(),
             "test prerequisite: command popup must be visible after typing '/'",

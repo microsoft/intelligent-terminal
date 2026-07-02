@@ -201,3 +201,6 @@ model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked=
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

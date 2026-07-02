@@ -206,3 +206,6 @@ model_picker.title: "Выбор модели (↑ ↓ • Enter • Esc)"  # {Lo
 system.no_models: "Подключённый агент не объявил ни одной доступной для выбора модели."
 system.model_set: "Модель для этой панели установлена на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Неизвестная модель %{model} — введите /model, чтобы увидеть доступный список."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."

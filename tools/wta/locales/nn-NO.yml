@@ -206,3 +206,6 @@ model_picker.title: "Vel modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","�
 system.no_models: "Den tilkopla agenten annonserte ingen modellar som kan veljast."
 system.model_set: "Modell for dette panelet sett til %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ukjend modell %{model} — skriv /model for å sjå lista over tilgjengelege."  # {Locked="%{model}","/model"}
+commands.save_tab.summary: "Save this tab (layout + output) to restore later"
+commands.restore_tab.summary: "Restore a saved tab"
+commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
