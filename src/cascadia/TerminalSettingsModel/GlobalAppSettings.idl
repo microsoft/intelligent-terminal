@@ -124,6 +124,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(IVector<String>, SafeUriSchemes);
         INHERITABLE_SETTING(String, DelegateCustomCommand);
         INHERITABLE_SETTING(String, AgentPanePosition);
+        INHERITABLE_SETTING(Boolean, EternalTerminalEnabled);
 
         // AI Integration settings
         INHERITABLE_SETTING(Boolean, AiCoordinatorEnabled);
