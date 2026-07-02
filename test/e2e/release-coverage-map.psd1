@@ -88,6 +88,10 @@
     'FRE save progress works'           = 'FRE save progress'
 
     # §4 session view switching
+    # 'Ended state is correct' (C121-adjacent) — see below.
+    # C085 'View switch preserves input' — the E2E case in Feature.SessionList is intentionally
+    # -Skip'd (no harness-reliable input-free view switch); the contract is covered by the Rust unit
+    # test app.rs::view_switch_preserves_chat_draft_input and credited via the source checklist [x].
     'View switch preserves input'       = 'View switch preserves the draft input'
 
     # §9 packaging / §10 logging (titles differ from test names)

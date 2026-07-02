@@ -12359,6 +12359,51 @@ mod tests {
         );
     }
 
+    // Checklist C085 "View switch preserves input": a typed-but-unsubmitted chat draft must
+    // survive a round-trip through the session (Agents) view. This is the deterministic coverage
+    // for the item whose E2E form is not harness-reliable (opening the session view input-free and
+    // reading it back races the per-tab pre-warm's extra pane; the slash `/sessions` trigger would
+    // itself type into the draft; Esc is overloaded chat-clear vs view-exit). Here we drive the
+    // REAL Esc key handler — the exact path where an accidental input-clear on view exit would
+    // live — not just the open/close_agents_view helpers.
+    #[test]
+    fn view_switch_preserves_chat_draft_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // A user is composing a prompt in the chat view (pane open, draft typed, not submitted).
+        app.tab_mut(&tab_id).pane_open = true;
+        let draft = "unsubmitted draft prompt";
+        app.current_tab_mut().input = draft.into();
+        app.current_tab_mut().cursor_pos = draft.len();
+
+        // Switch chat -> sessions view (the chat->sessions request keeps pane_open=true).
+        app.open_agents_view_for_tab(tab_id.clone());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+        assert_eq!(
+            app.current_tab().input,
+            draft,
+            "the draft must be untouched while the session view is shown"
+        );
+
+        // Esc back to chat (the round-trip return path).
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().current_view, View::Chat);
+
+        // The draft AND the cursor position must still be there after the round-trip.
+        assert_eq!(
+            app.current_tab().input,
+            draft,
+            "returning to chat after a view switch must preserve the unsubmitted draft"
+        );
+        assert_eq!(
+            app.current_tab().cursor_pos,
+            draft.len(),
+            "the cursor position in the draft must be preserved across the view round-trip"
+        );
+    }
+
     // A pane folded *from within* the sessions view (fold keeps current_view ==
     // Agents) and then reopened must re-snapshot the now-folded state, so a
     // later Esc re-folds instead of using a stale "was open" snapshot.
