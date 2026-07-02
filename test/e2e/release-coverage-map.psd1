@@ -97,6 +97,10 @@
     # Rust unit (app.rs::view_switch_preserves_chat_draft_input).
     'View switch preserves input'       = 'View switch preserves the draft input'
 
+    # §10 diagnostics — bug-report zip (Feature.BugReport). The "Report a bug (collect logs)"
+    # command palette entry zips the logs dir to the Desktop; assert it contains agent logs.
+    'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
+
     # §9 packaging / §10 logging (titles differ from test names)
     'Packaged wta.exe is present'       = 'Packaged wta.exe is present'
     # The wta.exe case asserts the resolved binary is NOT the stale dev-build (tools\wta\target);
