@@ -215,7 +215,6 @@ flowchart TB
     BR -->|"presents each helper to the conductor"| CB
     CB -.->|"installs per session"| PSM
     PSM ---|"auto-forward update / permission / terminal / fs"| AC
-    BR --- AC
     CB -.->|"_proxy/initialize"| AFX
     AFX -.->|"_proxy/successor"| CTX
     CTX -.->|"_proxy/successor"| REC
@@ -568,7 +567,6 @@ flowchart TB
     CB -.->|"build_session_from"| AC
     CB -.->|"installs per session"| PSM
     PSM -.-|"auto-forward update / permission / terminal / fs"| AC
-    BR --- AC
     AC -->|"ACP/stdio"| CLI
 ```
 
