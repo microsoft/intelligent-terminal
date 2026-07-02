@@ -589,6 +589,58 @@ int main()
         }
     });
 
+    // ── save-tab ──
+    std::string saveTabId, saveTabTitle;
+    auto* saveTabCmd = app.add_subcommand("save-tab", "Save a tab snapshot");
+    saveTabCmd->add_option("-t,--tab", saveTabId, "Source tab StableId")->required();
+    saveTabCmd->add_option("-n,--title", saveTabTitle, "Snapshot title")->required();
+    saveTabCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        wil::unique_bstr tab{ Bstr(saveTabId) }, title{ Bstr(saveTabTitle) };
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) { return server->SaveTabSession(tab.get(), title.get(), j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "SaveTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        PrintJson(result);
+    });
+
+    // ── list-saved-tabs ──
+    auto* listSavedCmd = app.add_subcommand("list-saved-tabs", "List saved tab snapshots");
+    listSavedCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) { return server->ListSavedTabSessions(j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "ListSavedTabSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        PrintJson(result);
+    });
+
+    // ── restore-tab ──
+    std::string restoreTabId;
+    auto* restoreTabCmd = app.add_subcommand("restore-tab", "Restore a saved tab snapshot");
+    restoreTabCmd->add_option("-i,--id", restoreTabId, "Snapshot id")->required();
+    restoreTabCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        wil::unique_bstr sid{ Bstr(restoreTabId) };
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) { return server->RestoreTabSession(sid.get(), j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "RestoreTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        PrintJson(result);
+    });
+
+    // ── delete-saved-tab ──
+    std::string deleteTabId;
+    auto* deleteSavedCmd = app.add_subcommand("delete-saved-tab", "Delete a saved tab snapshot");
+    deleteSavedCmd->add_option("-i,--id", deleteTabId, "Snapshot id")->required();
+    deleteSavedCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        wil::unique_bstr sid{ Bstr(deleteTabId) };
+        auto hr = server->DeleteSavedTabSession(sid.get());
+        if (FAILED(hr)) { fprintf(stderr, "DeleteSavedTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+    });
+
     // ── test-pipe ──
     auto* testPipeCmd = app.add_subcommand("test-pipe", "Test connection to Windows Terminal");
     testPipeCmd->callback([&]() {
