@@ -366,10 +366,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## Source notes used to build this checklist
 
-- [ ] `C214` FRE, Settings, and policy behavior: `src\cascadia\TerminalApp\FreOverlay.cpp`, `src\cascadia\TerminalSettingsEditor\AIAgents.xaml`.
-- [ ] `C215` Default actions and shortcuts: `src\cascadia\TerminalSettingsModel\defaults.json`.
-- [ ] `C216` Built-in agent definitions: `tools\wta\src\agent_registry.rs`.
-- [ ] `C217` Slash commands: `tools\wta\src\commands.rs`.
-- [ ] `C218` Session state model: `tools\wta\src\agent_sessions.rs`, `tools\wta\AGENTS.md`.
-- [ ] `C219` Multi-window agent pane architecture: `doc\specs\Multi-window-agent-pane.md`.
-- [ ] `C220` Autofix flow and logging/runtime layout: `AGENTS.md`.
+- FRE, Settings, and policy behavior: `src\cascadia\TerminalApp\FreOverlay.cpp`, `src\cascadia\TerminalSettingsEditor\AIAgents.xaml`.
+- Default actions and shortcuts: `src\cascadia\TerminalSettingsModel\defaults.json`.
+- Built-in agent definitions: `tools\wta\src\agent_registry.rs`.
+- Slash commands: `tools\wta\src\commands.rs`.
+- Session state model: `tools\wta\src\agent_sessions.rs`, `tools\wta\AGENTS.md`.
+- Multi-window agent pane architecture: `doc\specs\Multi-window-agent-pane.md`.
+- Autofix flow and logging/runtime layout: `AGENTS.md`.
