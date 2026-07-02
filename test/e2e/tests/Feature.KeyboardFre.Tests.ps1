@@ -25,8 +25,9 @@ Describe 'Feature §11 keyboard-only FRE' -Tag 'Feature' -Skip:(-not $script:Rea
         for ($a = 0; $a -lt 3 -and -not $advanced; $a++) {
             Set-WtWindowForeground -App $script:app | Out-Null
             & winapp ui focus 'NextButton' -w $hwnd 2>&1 | Out-Null
-            $focused = (& winapp ui get-focused -w $hwnd 2>&1 | Out-String)
-            if ($focused -notmatch '(?i)Next') { continue }
+            # winapp focus targets the AutomationId (locale-independent). Don't gate the Enter on the
+            # focused element's NAME ("Next") — that's localized; rely on the post-action structural
+            # check (SaveButton appears) + the retry loop instead.
             Send-WtWindowKey -App $script:app -Vk 0x0D | Out-Null   # Enter activates the focused Next
             $advanced = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { Test-UiElementExists -App $script:app -Selector 'SaveButton' -TimeoutSec 1 }
         }
@@ -38,8 +39,7 @@ Describe 'Feature §11 keyboard-only FRE' -Tag 'Feature' -Skip:(-not $script:Rea
         for ($a = 0; $a -lt 3 -and -not $completed; $a++) {
             Set-WtWindowForeground -App $script:app | Out-Null
             & winapp ui focus 'SaveButton' -w $hwnd 2>&1 | Out-Null
-            $focused = (& winapp ui get-focused -w $hwnd 2>&1 | Out-String)
-            if ($focused -notmatch '(?i)Save') { continue }
+            # As above: don't gate on the localized focused-name "Save"; rely on the completion check.
             Send-WtWindowKey -App $script:app -Vk 0x0D | Out-Null   # Enter activates the focused Save
             $completed = Test-Until -TimeoutSec 8 -IntervalSec 1 -Condition {
                 (-not (Test-UiElementExists -App $script:app -Selector 'WelcomePage' -TimeoutSec 1)) -and (Get-FreCompleted -App $script:app)

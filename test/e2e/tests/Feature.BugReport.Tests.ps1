@@ -32,7 +32,7 @@ Describe 'Feature §10 bug report zip (collect logs)' -Tag 'Feature' -Skip:(-not
         for ($attempt = 0; $attempt -lt 3 -and -not $zip; $attempt++) {
             Set-WtWindowForeground -App $script:app | Out-Null
             Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift | Out-Null   # Ctrl+Shift+P
-            if (-not (Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { (Find-UiElement -App $script:app -Selector 'Command palette') -match '(?i)Command palette' })) { continue }
+            if (-not (Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { Test-CommandPaletteOpen -App $script:app })) { continue }
             Set-UiValue -App $script:app -Selector '_searchBox' -Value 'Report a bug' | Out-Null
             Start-Sleep -Milliseconds 800
             Send-WtWindowKey -App $script:app -Vk 0x0D | Out-Null   # Enter -> run the command

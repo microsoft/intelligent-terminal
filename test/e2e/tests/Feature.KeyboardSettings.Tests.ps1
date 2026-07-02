@@ -30,8 +30,9 @@ Describe 'Feature §11 keyboard-only Settings' -Tag 'Feature' -Skip:(-not $scrip
         for ($a = 0; $a -lt 3 -and -not $navigated; $a++) {
             Set-WtWindowForeground -App $script:app | Out-Null
             & winapp ui focus 'AIAgentsNavItem' -w $hwnd 2>&1 | Out-Null
-            $focused = (& winapp ui get-focused -w $hwnd 2>&1 | Out-String)
-            if ($focused -notmatch '(?i)Agents') { continue }
+            # winapp focus targets the AutomationId (locale-independent). Don't gate the Enter on the
+            # focused element's NAME ("Agents") — that's localized; rely on the post-action structural
+            # check (the AcpAgent group renders) + the retry loop instead.
             Send-WtWindowKey -App $script:app -Vk 0x0D | Out-Null   # Enter activates the focused nav item
             $navigated = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { Test-UiElementExists -App $script:app -Selector 'AcpAgent' -TimeoutSec 1 }
         }

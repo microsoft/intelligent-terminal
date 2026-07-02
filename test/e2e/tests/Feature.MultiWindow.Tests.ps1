@@ -48,7 +48,7 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
         for ($a = 0; $a -lt 3 -and -not $newWin; $a++) {
             Set-WtWindowForeground -App $script:app | Out-Null
             Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift | Out-Null   # Ctrl+Shift+P
-            $palOpen = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { (Find-UiElement -App $script:app -Selector 'Command palette') -match '(?i)Command palette' }
+            $palOpen = Test-Until -TimeoutSec 6 -IntervalSec 0.5 -Condition { Test-CommandPaletteOpen -App $script:app }
             if (-not $palOpen) { continue }
             Set-UiValue -App $script:app -Selector '_searchBox' -Value 'Move tab to a new window' | Out-Null
             Start-Sleep -Milliseconds 1000
