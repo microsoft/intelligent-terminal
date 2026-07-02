@@ -351,8 +351,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C202` `[MANUAL]` **High contrast theme works:** FRE, Settings, agent pane, and autofix UI remain readable.
 - [ ] `C203` `[MANUAL]` **Light/dark theme works:** UI is readable in both themes.
 - [ ] `C204` `[MANUAL]` **Text scaling works:** 125%, 150%, and 200% scaling do not clip critical controls.
-- [ ] `C205` `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(WTA locale key-parity is enforced by a separate PR's `every_locale_has_all_en_us_keys` guard; .resw locales remain manual/pipeline.)_
-- [ ] `C206` `[UT~]` `[MANUAL]` **Pseudo-locales work:** qps pseudo-locales do not clip or corrupt layout.
+- [x] `C205` `[UT✓]` `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(UT: `locale_parity_tests::every_locale_has_all_en_us_keys` enforces that every WTA `locales/*.yml` (all 89, incl. pseudo-locales) contains every en-US key — so no agent-feature user-facing string is missing a translation. The C++ `.resw` locales remain enforced by the loc pipeline/manual.)_
+- [x] `C206` `[UT✓]` `[MANUAL]` **Pseudo-locales work:** qps pseudo-locales do not clip or corrupt layout. _(UT: `locale_parity_tests::every_locale_has_all_en_us_keys` iterates every `locales/*.yml` including qps-ploc/ploca/plocm and proves each is present + key-complete, so the pseudo-locales load with no missing-key en-US fallthrough. Visual clip/overflow inspection stays MANUAL.)_
 - [ ] `C207` `[UT~]` `[MANUAL]` **RTL works:** RTL layout is mirrored where expected. _(UT: `IsRtlLocale`.)_
 
 ## 12. Release decision

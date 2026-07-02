@@ -14800,6 +14800,8 @@ mod tests {
     /// intended out-of-focus appearance.
     #[test]
     fn render_input_box_intact_when_pane_unfocused() {
+        let _g = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
         let mut app = test_app();
         app.state = ConnectionState::Connected;
 
@@ -14836,6 +14838,8 @@ mod tests {
     #[test]
     fn render_agent_input_accepts_non_ascii() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let _g = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
         let mut app = test_app();
         app.state = ConnectionState::Connected;
         let sample = "café Ω 你好";
