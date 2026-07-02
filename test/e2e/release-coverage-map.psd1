@@ -102,6 +102,8 @@
     'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
     # §10 diagnostics — hook trace log (Feature.HookTrace). A hooked copilot prompt is traced.
     'Hook trace log is written'         = 'Hook trace log is written'
+    # §11 accessibility — keyboard-only agent pane (Feature.KeyboardOnly).
+    'Keyboard-only agent pane works'    = 'Keyboard-only agent pane works'
 
     # §9 packaging / §10 logging (titles differ from test names)
     'Packaged wta.exe is present'       = 'Packaged wta.exe is present'
