@@ -51,7 +51,11 @@ Describe 'Feature §2 master death is a consistent degraded state (#329)' -Tag '
     It 'killing wta-master enters a degraded state, blocks all slash commands but /restart, does not silently respawn, and recovers via /restart' {
         # --- there is exactly one live master while connected ---
         $masters = & $script:GetMasters
-        $masters.Count | Should -BeGreaterThan 0 -Because 'a connected agent pane implies a running wta-master'
+        # A connected agent pane runs EXACTLY ONE wta-master per WindowsTerminal process — the
+        # C++ SharedWta singleton owns a single master and fans every pane onto it. Asserting
+        # `-Be 1` (not just `> 0`) makes this gate itself catch a split-brain regression where a
+        # second master already exists while connected.
+        $masters.Count | Should -Be 1 -Because 'a connected agent pane implies exactly one shared wta-master (SharedWta is a singleton)'
         $killedPids = @($masters.ProcessId)
 
         # --- kill the master out from under the live helper ---
