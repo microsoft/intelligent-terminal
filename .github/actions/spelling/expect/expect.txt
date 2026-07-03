@@ -1865,6 +1865,7 @@ Widthx
 Wiggum
 wil
 WINAPI
+winapp
 winbasep
 wincon
 winconp

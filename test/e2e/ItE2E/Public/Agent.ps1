@@ -66,6 +66,59 @@ function Set-AgentPaneFocus {
     }
 }
 
+function Get-WtReswTextValues {
+    <#
+    .SYNOPSIS
+        Distinct <value> strings for a C++ .resw resource key across EVERY bundled TerminalApp AND
+        TerminalSettingsEditor locale. Returns @() when the resources/key can't be read. Cached per
+        key. Underpins Get-WtReswTextRegex (all-locales match) and locale-robust name SEARCHES (a
+        caller can try each localized value as a winapp search query, since search needs a literal).
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Key)
+    if (-not $script:WtReswValsCache) { $script:WtReswValsCache = @{} }
+    if ($script:WtReswValsCache.ContainsKey($Key)) { return $script:WtReswValsCache[$Key] }
+    $vals = @()
+    try {
+        $resDirs = @(
+            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalApp\Resources'),
+            (Join-Path $PSScriptRoot '..\..\..\..\src\cascadia\TerminalSettingsEditor\Resources')
+        ) | Where-Object { Test-Path $_ }
+        $raw = foreach ($resDir in $resDirs) {
+            foreach ($f in Get-ChildItem -Path $resDir -Filter 'Resources.resw' -Recurse -ErrorAction SilentlyContinue) {
+                try {
+                    $xml = [xml](Get-Content -LiteralPath $f.FullName -Raw)
+                    $node = $xml.root.data | Where-Object { $_.name -eq $Key } | Select-Object -First 1
+                    if ($node) { $v = "$($node.value)".Trim(); if ($v) { $v } }
+                }
+                catch {}
+            }
+        }
+        $vals = @($raw | Where-Object { $_ } | Select-Object -Unique)
+    }
+    catch { $vals = @() }
+    $script:WtReswValsCache[$Key] = $vals
+    $vals
+}
+
+function Get-WtReswTextRegex {
+    <#
+    .SYNOPSIS
+        Case-insensitive regex alternation of a C++ .resw resource key's <value> across EVERY
+        bundled TerminalApp locale (src/cascadia/TerminalApp/Resources/*/Resources.resw), so
+        assertions on localized WT/FRE UI text (e.g. FreOverlay_AgentStatusInstalled) work on
+        non-en-US machines. Returns $null when the resources/key can't be read so callers can fall
+        back to an en-US literal. Cached per key.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Key)
+    if (-not $script:WtReswRegexCache) { $script:WtReswRegexCache = @{} }
+    if ($script:WtReswRegexCache.ContainsKey($Key)) { return $script:WtReswRegexCache[$Key] }
+    $result = $null
+    $pats = @(Get-WtReswTextValues -Key $Key | ForEach-Object { [regex]::Escape($_) })
+    if ($pats.Count) { $result = '(?i)(' + ($pats -join '|') + ')' }
+    $script:WtReswRegexCache[$Key] = $result
+    $result
+}
+
 function Get-WtaLocalizedTextRegex {
     <#
     .SYNOPSIS
@@ -232,19 +285,34 @@ function Wait-AgentReady {
 function Get-AgentPaneSession {
     <#
     .SYNOPSIS
-        Resolve the CURRENT agent pane's identity from agent-pane-sessions.jsonl:
+        Resolve THIS run's agent pane identity from agent-pane-sessions.jsonl:
           - PaneSessionId : the WT pane session GUID (use with send-keys / focus-pane /
-                            pane-status). The agent pane is NOT in `list-panes` when
-                            stashed, but it DOES respond to its pane session id.
+                            pane-status / capture-pane). The agent pane is XAML chrome around
+                            the helper's TermControl and is NEVER in list-panes (open OR
+                            stashed), so the jsonl is the only way to find it.
           - AcpSessionId  : the ACP conversation id (use to resume the session).
-        Returns the newest record whose pane session is still 'running', or $null.
+    .DESCRIPTION
+        WT is single-instance: one monarch owns the COM server, and agent-pane-sessions.jsonl is
+        a SHARED, append-only file accumulating records across every window AND every prior test
+        run. Picking the globally "newest alive" record therefore frequently resolved to the
+        WRONG pane — another window/tab or a leftover prior-run instance — which made session-view
+        assertions (Open-SessionList / Get-AgentPaneText) flake nondeterministically.
+
+        Fix: only consider records whose pane_session_id is NEW since this app launched
+        ($App.PreExistingAgentPaneIds, snapshotted before activation). Those are exactly the
+        agent pane(s) this run created; among them return the newest still-alive one.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
     process {
         $jsonl = Join-Path $App.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
         if (-not (Test-Path $jsonl)) { return $null }
+        $preIds = if ($App.PSObject.Properties.Name -contains 'PreExistingAgentPaneIds') { $App.PreExistingAgentPaneIds } else { $null }
         $records = Get-Content -LiteralPath $jsonl | Where-Object { $_.Trim() } |
             ForEach-Object { $_ | ConvertFrom-JsonSafe } | Where-Object { $_ -and $_.pane_session_id }
+        # Keep only agent panes created by THIS launch (not prior runs / other windows).
+        if ($preIds) {
+            $records = @($records | Where-Object { -not $preIds.Contains([string]$_.pane_session_id) })
+        }
         # Newest first; pick the first whose pane is still alive.
         for ($i = $records.Count - 1; $i -ge 0; $i--) {
             $r = $records[$i]
