@@ -40,14 +40,11 @@
 // top level.)
 //
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 
 #[allow(dead_code)]
 const TITLE_TAIL_BYTES: u64 = 64 * 1024;
-
-/// Upper bound on bytes read when streaming a JSONL line-by-line.
-const CLASSIFY_SCAN_BYTES_CAP: u64 = 8 * 1024 * 1024;
 
 /// Whether to scan WSL distros for historical sessions. Single
 /// choke point + env opt-in (`WTA_WSL_SESSIONS=1|true|yes|on`).
@@ -69,33 +66,7 @@ pub(crate) fn wsl_sessions_enabled() -> bool {
     }
 }
 
-// ─── Copilot per-key helpers ────────────────────────────────────────────
-
-/// Resolve the Copilot session-state directory for `key`.
-/// Always returns a path (no I/O); callers must `is_dir`/`exists` it.
-pub(crate) fn copilot_session_dir_for_key(home: &Path, key: &str) -> PathBuf {
-    home.join(".copilot").join("session-state").join(key)
-}
-
 // ─── Codex per-key helpers ──────────────────────────────────────────────
-
-struct CodexSessionMeta {
-    id: String,
-}
-
-fn read_codex_session_meta(path: &Path) -> Option<CodexSessionMeta> {
-    use std::io::BufRead;
-    let f = fs::File::open(path).ok()?;
-    let mut reader = std::io::BufReader::new(f);
-    let mut line = String::new();
-    reader.read_line(&mut line).ok()?;
-    let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-    if v.get("type")?.as_str()? != "session_meta" { return None; }
-    let payload = v.get("payload")?;
-    Some(CodexSessionMeta {
-        id: payload.get("id")?.as_str()?.to_string(),
-    })
-}
 
 /// True if a Codex rollout record is the `session_meta` of an internal
 /// multi-agent subagent / forked thread. Codex's `multi_agent_v1` / `spawn_agent`
@@ -115,59 +86,6 @@ pub(crate) fn codex_payload_is_subagent(payload: &serde_json::Value) -> bool {
         .get("source")
         .and_then(|s| s.get("subagent"))
         .is_some()
-}
-
-/// Read a Codex session's working directory from its rollout `session_meta`
-/// record (always the first line). Shell-pane Codex rows have no path-encoded
-/// cwd (unlike Claude), and Codex writes no title until the user's first
-/// message — so without this the row would have an empty cwd and the session
-/// view's cwd-basename title fallback would render a placeholder for the ~20s
-/// before that first message. Returns `None` if the file/field is absent.
-pub(crate) fn codex_cwd_from_rollout(path: &Path) -> Option<PathBuf> {
-    let first = stream_jsonl_lines(path, CLASSIFY_SCAN_BYTES_CAP)?.next()?;
-    let v: serde_json::Value = serde_json::from_str(&first).ok()?;
-    let cwd = v.get("payload")?.get("cwd")?.as_str()?;
-    if cwd.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(cwd))
-}
-
-/// Locate the rollout file for a given session UUID.
-///
-/// Defensive walking: only an unreadable ROOT (`~/.codex/sessions`) returns
-/// None. Subtree errors (an unreadable year / month / day directory)
-/// `continue` so the search proceeds across siblings — same contract as
-/// `load_codex`.
-///
-/// The filename suffix `<id>.jsonl` is a fast pre-filter; we still verify
-/// `payload.id == id` to guard against renamed files or UUID-prefix
-/// collisions.
-pub(crate) fn find_codex_rollout_by_id(home: &Path, id: &str) -> Option<PathBuf> {
-    let root = home.join(".codex").join("sessions");
-    let Ok(years) = fs::read_dir(&root) else { return None };
-    for y in years.flatten() {
-        let Ok(months) = fs::read_dir(y.path()) else { continue };
-        for m in months.flatten() {
-            let Ok(days) = fs::read_dir(m.path()) else { continue };
-            for d in days.flatten() {
-                let Ok(files) = fs::read_dir(d.path()) else { continue };
-                for f in files.flatten() {
-                    let p = f.path();
-                    let Some(name) = p.file_name().and_then(|s| s.to_str()) else { continue };
-                    if !(name.starts_with("rollout-") && name.ends_with(&format!("-{}.jsonl", id))) {
-                        continue;
-                    }
-                    if let Some(meta) = read_codex_session_meta(&p) {
-                        if meta.id == id {
-                            return Some(p);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Parse a subset of ISO 8601 timestamps into `SystemTime`.
@@ -475,30 +393,6 @@ fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
     out
 }
 
-/// Decode Claude's drive-dash project directory back into a CWD path.
-///
-/// Layout: `C--Users-name-repo` ⇒ `C:\Users\name\repo`. The first `--`
-/// after the drive letter is the drive separator; remaining `-` become
-/// path separators. Cannot disambiguate hyphens inside actual file names
-/// (best-effort; reference impl backtracks via filesystem probing).
-pub(crate) fn decode_claude_cwd(encoded: &str) -> PathBuf {
-    let bytes = encoded.as_bytes();
-    if bytes.len() >= 4
-        && bytes[0].is_ascii_alphabetic()
-        && &bytes[1..3] == b"--"
-    {
-        let drive = bytes[0] as char;
-        let rest = &encoded[3..];
-        let path_part = rest.replace('-', "\\");
-        return PathBuf::from(format!("{}:\\{}", drive, path_part));
-    }
-    // Linux/macOS encoding: leading `-` -> root
-    if let Some(stripped) = encoded.strip_prefix('-') {
-        return PathBuf::from(format!("/{}", stripped.replace('-', "/")));
-    }
-    PathBuf::from(encoded)
-}
-
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
 enum ClaudeOrGemini { Claude, Gemini }
@@ -568,24 +462,6 @@ fn read_first_bytes(path: &Path, max: u64) -> std::io::Result<String> {
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
-/// Open `path` and return an iterator that yields each line as a
-/// `String`, with the underlying read capped at `cap_bytes` total.
-///
-/// Lines that fail to decode as UTF-8 cleanly or fail I/O mid-read
-/// are silently skipped — the classifiers parse each line as JSON
-/// independently and treat junk lines as "not real content", which
-/// matches the previous read-then-split-on-lines behavior.
-fn stream_jsonl_lines(
-    path: &Path,
-    cap_bytes: u64,
-) -> Option<impl Iterator<Item = String>> {
-    use std::io::{BufRead, BufReader, Read};
-    let file = fs::File::open(path).ok()?;
-    let limited = file.take(cap_bytes);
-    let reader = BufReader::new(limited);
-    Some(reader.lines().filter_map(|r| r.ok()))
-}
-
 #[allow(dead_code)]
 fn truncate_chars(s: &str, n: usize) -> String {
     if s.chars().count() <= n { return s.to_string(); }
@@ -600,6 +476,7 @@ fn truncate_chars(s: &str, n: usize) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
 
     fn tmp_root(label: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
@@ -627,29 +504,6 @@ mod tests {
         assert_eq!(parse_simple_yaml(text, "summary_count").as_deref(), Some("0"));
         // Querying a nonexistent prefix must not partial-match a longer key.
         assert_eq!(parse_simple_yaml(text, "summa"), None);
-    }
-
-    #[test]
-    fn codex_cwd_from_rollout_reads_session_meta() {
-        let dir = tmp_root("codex-cwd");
-        let path = dir.join("rollout-x.jsonl");
-        write_file(
-            &path,
-            "{\"type\":\"session_meta\",\"payload\":{\"id\":\"abc\",\"cwd\":\"C:\\\\Users\\\\user\"}}\n\
-             {\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n",
-        );
-        assert_eq!(
-            codex_cwd_from_rollout(&path),
-            Some(PathBuf::from("C:\\Users\\user"))
-        );
-    }
-
-    #[test]
-    fn codex_cwd_from_rollout_none_when_absent() {
-        let dir = tmp_root("codex-cwd-none");
-        let path = dir.join("rollout-y.jsonl");
-        write_file(&path, "{\"type\":\"session_meta\",\"payload\":{\"id\":\"abc\"}}\n");
-        assert_eq!(codex_cwd_from_rollout(&path), None);
     }
 
     #[test]
@@ -721,14 +575,6 @@ mod tests {
         assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("My session"));
         assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("Bug fix #42"));
         assert_eq!(parse_simple_yaml(text, "missing"),            None);
-    }
-
-    #[test]
-    fn claude_cwd_decoding_unix_root() {
-        assert_eq!(
-            decode_claude_cwd("-home-user-repo"),
-            PathBuf::from("/home/user/repo")
-        );
     }
 
 

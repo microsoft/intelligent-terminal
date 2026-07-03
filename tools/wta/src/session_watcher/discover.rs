@@ -1,22 +1,19 @@
 //! Map a changed session-file path under one of the four watched roots to the
-//! CLI, session key, and (where the path encodes it) the session's cwd.
+//! CLI and session key.
 //!
 //! Path → identity, verified against real layouts:
 //!   Copilot : ~/.copilot/session-state/<UUID>/events.jsonl        key=<UUID>
-//!   Claude  : ~/.claude/projects/<encoded-cwd>/<UUID>.jsonl       key=<UUID>, cwd=decode(<encoded-cwd>)
+//!   Claude  : ~/.claude/projects/<encoded-cwd>/<UUID>.jsonl       key=<UUID>
 //!   Codex   : ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<UUID>.jsonl  key=<UUID>
 //!   Gemini  : ~/.gemini/tmp/<slug>/chats/session-*.jsonl          key=<file-stem>
 
 use crate::agent_sessions::CliSource;
-use crate::history_loader::decode_claude_cwd;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Discovered {
     pub cli: CliSource,
     pub key: String,
-    /// Path-encoded cwd when available (Claude only, today).
-    pub cwd: Option<PathBuf>,
 }
 
 /// Classify a changed path. Returns `None` for paths that are not a
@@ -31,7 +28,6 @@ pub fn identify(path: &Path) -> Option<Discovered> {
             return Some(Discovered {
                 cli: CliSource::Copilot,
                 key,
-                cwd: None,
             });
         }
     }
@@ -53,7 +49,6 @@ pub fn identify(path: &Path) -> Option<Discovered> {
         return Some(Discovered {
             cli: CliSource::Codex,
             key,
-            cwd: None,
         });
     }
 
@@ -66,22 +61,15 @@ pub fn identify(path: &Path) -> Option<Discovered> {
         return Some(Discovered {
             cli: CliSource::Gemini,
             key,
-            cwd: None,
         });
     }
 
     // Claude: .../projects/<encoded-cwd>/<UUID>.jsonl
     if name.ends_with(".jsonl") && path.components().any(|c| c.as_os_str() == "projects") {
         let key = name.trim_end_matches(".jsonl").to_string();
-        let cwd = path
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|d| d.to_str())
-            .map(decode_claude_cwd);
         return Some(Discovered {
             cli: CliSource::Claude,
             key,
-            cwd,
         });
     }
 
@@ -117,12 +105,11 @@ mod tests {
     }
 
     #[test]
-    fn claude_path_decodes_cwd() {
+    fn claude_path() {
         let p = Path::new(r"C:\Users\u\.claude\projects\C--Users-u\aaaa-bbbb.jsonl");
         let d = identify(p).unwrap();
         assert_eq!(d.cli, CliSource::Claude);
         assert_eq!(d.key, "aaaa-bbbb");
-        assert!(d.cwd.is_some());
     }
 
     #[test]
