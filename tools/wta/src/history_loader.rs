@@ -40,7 +40,7 @@
 // top level.)
 //
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 
 #[allow(dead_code)]
@@ -473,6 +473,7 @@ fn truncate_chars(s: &str, n: usize) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
 
     fn tmp_root(label: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
