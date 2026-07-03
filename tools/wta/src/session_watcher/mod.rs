@@ -260,7 +260,9 @@ fn read_gemini_session_id(path: &Path) -> Option<String> {
 /// (ReadDirectoryChangesW) can coalesce/drop the event for a turn's final write
 /// (e.g. Codex `task_complete`), which may briefly leave a fallback row on its
 /// last status until the next file write; that imperfection is acceptable for a
-/// fallback, and Ctrl+C cleanup is handled by master's pid-liveness poll.
+/// fallback. The watcher now only supplies STATUS to #266 born-bound rows (it
+/// no longer surfaces user-typed sessions); those rows end via their pane's
+/// `PaneClosed` event, not a pid poll.
 pub fn watch(tx: Sender<Emitted>) -> notify::Result<()> {
     use notify::{RecursiveMode, Watcher};
 
