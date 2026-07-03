@@ -9,7 +9,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 - `[UT~]` — partially UT-coverable: decision/logic core can be unit-tested, full behavior still needs E2E/UI.
 - `[E2E]` — needs mock-ACP end-to-end or UI automation; not a UT.
 - `[MANUAL]` — human judgment (visual polish, real LLM quality, install/auth UX).
-- `[new]` — test case newly added for this release (v0.1.2); not exercised in a prior sign-off. Orthogonal to the coverage markers above — read it alongside the `[UT*]`/`[E2E]`/`[MANUAL]` marker.
+- `[new]` — test case added for the current release cycle and not yet exercised in a prior sign-off. Orthogonal to the coverage markers above — read it alongside the `[UT*]`/`[E2E]`/`[MANUAL]` marker. Clear the `[new]` tag once the item has been through a release sign-off (it then becomes an ordinary tracked item).
 
 > **Checkbox semantics:** a ticked `- [x]` box means the item is fully verified by an automated unit test (pure `[UT✓]` items). Items tagged `[UT✓]` *and* `[E2E]`/`[MANUAL]` keep the `[UT✓]` marker to show the logic core is unit-tested, but stay unchecked because release sign-off still needs the E2E / manual portion.
 
@@ -200,7 +200,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C102` `[UT✓]` `[E2E]` **Autofix target pane is correct:** Failure in one pane does not offer/run a fix in the wrong pane. _(UT: target-tab routing — busy-pane tests + `autofix_still_triggers_for_non_agent_pane`.)_
 - [ ] `C103` `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot returns a useful suggestion.
 - [ ] `C104` `[E2E]` **Autofix with non-Copilot agents works:** Autofix produces a usable suggestion with a non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent — same path as Copilot, covered once across the available agents.
-- [ ] `C221` `[new]` `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a non-existent command. _(#306.)_
+- [ ] `C221` `[new]` `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a nonexistent command. _(#306.)_
 
 ### Autofix across layout changes
 
