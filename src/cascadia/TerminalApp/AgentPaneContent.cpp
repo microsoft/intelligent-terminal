@@ -173,6 +173,31 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
+    // Follow the window's tab theme colors so the agent-pane top bar matches
+    // the tab / terminal it belongs to instead of a hard-coded black (#348).
+    // The agent logo is a monochrome BitmapIcon, so it takes the foreground
+    // tint too; the label text takes the same foreground. The 1px top/bottom
+    // hairline uses the accent (primary) color so it stays visible even when
+    // the bar blends with the terminal background.
+    void AgentPaneContent::ApplyThemeColors(const Media::Brush& background,
+                                            const Media::Brush& foreground,
+                                            const Media::Brush& divider)
+    {
+        if (const auto barRoot = AgentBarRoot())
+        {
+            barRoot.Background(background);
+            barRoot.BorderBrush(divider);
+        }
+        if (const auto label = AgentLabelText())
+        {
+            label.Foreground(foreground);
+        }
+        if (const auto logo = AgentLogo())
+        {
+            logo.Foreground(foreground);
+        }
+    }
+
     void AgentPaneContent::_refreshLabel()
     {
         // Session-management view takes over the bar — the wta TUI below no
@@ -213,25 +238,21 @@ namespace winrt::TerminalApp::implementation
     {
         if (_isSessionsView)
         {
-            AgentLogo().Source(nullptr);
+            AgentLogo().UriSource(nullptr);
             AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
         if (_agentName.empty())
         {
-            AgentLogo().Source(nullptr);
+            AgentLogo().UriSource(nullptr);
             AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
         std::wstring uri{ L"ms-appx:///AgentIcons/" };
         uri.append(_logoFileForAgent(_agentName));
-        const winrt::Windows::Foundation::Uri parsed{ winrt::hstring{ uri } };
-        winrt::Windows::UI::Xaml::Media::Imaging::SvgImageSource source{ parsed };
-        source.RasterizePixelWidth(28.0);
-        source.RasterizePixelHeight(28.0);
-        AgentLogo().Source(source);
+        AgentLogo().UriSource(winrt::Windows::Foundation::Uri{ winrt::hstring{ uri } });
         AgentLogo().Visibility(Visibility::Visible);
     }
 

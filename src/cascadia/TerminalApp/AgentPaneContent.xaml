@@ -30,11 +30,14 @@
                             VerticalAlignment="Center"
                             Spacing="4">
                     <!--  Agent logo. Source is a packaged white-filled SVG;
-                          the URI is set from code-behind to ms-appx:///AgentIcons/<id>.svg.  -->
-                    <Image x:Name="AgentLogo"
-                           Width="14"
-                           Height="14"
-                           Stretch="Uniform" />
+                          the URI is set from code-behind to ms-appx:///AgentIcons/<id>.svg.
+                          BitmapIcon + ShowAsMonochrome so the logo takes the
+                          theme-aware Foreground set in ApplyThemeColors (#348)
+                          instead of staying white on a light bar.  -->
+                    <BitmapIcon x:Name="AgentLogo"
+                                Width="14"
+                                Height="14"
+                                ShowAsMonochrome="True" />
                     <TextBlock x:Name="AgentLabelText"
                                VerticalAlignment="Center"
                                FontFamily="Segoe UI Variable, Segoe UI"

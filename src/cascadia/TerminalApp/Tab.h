@@ -74,6 +74,12 @@ namespace winrt::TerminalApp::implementation
         void ActivateTabRenamer();
 
         std::optional<winrt::Windows::UI::Color> GetTabColor();
+        // The effective background color the TabViewItem is painted with,
+        // resolved the same way _RecalculateAndApplyTabColor does (runtime /
+        // content tabColor, else theme.tab.background evaluated against the
+        // terminal brush). nullopt means "no color — TabView default". Used
+        // by the agent bars (#348) to stay consistent with the tab strip.
+        std::optional<til::color> GetEffectiveTabColor();
         void SetRuntimeTabColor(const winrt::Windows::UI::Color& color);
         void ResetRuntimeTabColor();
 

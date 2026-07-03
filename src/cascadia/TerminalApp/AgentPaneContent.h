@@ -23,7 +23,6 @@ namespace winrt::TerminalApp::implementation
                                const winrt::hstring& state);
 
         void SetSessionsView(bool active);
-
         // Whether the agent pane is currently displaying its sessions view
         // (vs the chat view). Reflects the last `agent_state_changed` snapshot
         // from wta for this pane. Read by the window-level bottom bar to
@@ -72,13 +71,20 @@ namespace winrt::TerminalApp::implementation
         // own fresh StableId), the page walks the agent leaves and emits a
         // `tab_renamed` event so the wta-helper can rekey its `--owner-tab-id`.
         // Internal-only (not on IDL) — only TerminalPage calls these.
-        void SetPendingRenameFromTabId(const winrt::hstring& value) noexcept { _pendingRenameFromTabId = value; }
-        winrt::hstring TakePendingRenameFromTabId() noexcept
+        void SetPendingRenameFromTabId(const winrt::hstring& value) noexcept { _pendingRenameFromTabId = value; }        winrt::hstring TakePendingRenameFromTabId() noexcept
         {
             const auto v = _pendingRenameFromTabId;
             _pendingRenameFromTabId = {};
             return v;
         }
+
+        // Apply the active theme's tab-row/titlebar colors to the agent-pane
+        // top bar so it reads as window chrome instead of a hard-coded black
+        // (#348). Internal-only (not on IDL) — driven by
+        // TerminalPage::_updateThemeColors, which computes the shared brush.
+        void ApplyThemeColors(const winrt::Windows::UI::Xaml::Media::Brush& background,
+                              const winrt::Windows::UI::Xaml::Media::Brush& foreground,
+                              const winrt::Windows::UI::Xaml::Media::Brush& divider);
 
         // Accessors for state that the window-level bottom bar projects.
         AutofixState GetAutofixState() const noexcept { return _autofixState; }
