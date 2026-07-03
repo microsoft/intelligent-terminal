@@ -5,10 +5,8 @@
 //! one parsed record plus the session key and return zero or more
 //! `SessionEvent`s. The watch loop ([`watch`]) is the thin impure shell that
 //! tails files (by byte offset — all four CLIs are append logs) and feeds
-//! records through them. Binding a discovered session to its pane lives in
-//! [`bind`]; path → identity in [`discover`].
+//! records through them. Path → session identity lives in [`discover`].
 
-pub mod bind;
 pub mod classify_claude;
 pub mod classify_codex;
 pub mod classify_copilot;
@@ -41,7 +39,8 @@ pub struct Emitted {
     pub cli: CliSource,
     pub key: String,
     /// Path-encoded session cwd when available (Claude only today; `None`
-    /// for Copilot/Codex/Gemini). Consumed by master pane-binding.
+    /// for Copilot/Codex/Gemini). Retained for parity with the classifiers;
+    /// the watcher no longer pane-binds, so master ignores it.
     pub cwd: Option<PathBuf>,
     pub event: SessionEvent,
 }
