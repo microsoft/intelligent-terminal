@@ -4396,7 +4396,6 @@ mod tests {
         crate::session_watcher::Emitted {
             cli: crate::agent_sessions::CliSource::Codex,
             key: key.to_string(),
-            cwd: None,
             event: crate::agent_sessions::SessionEvent::ToolStarting {
                 key: key.to_string(),
                 tool_name: String::new(),

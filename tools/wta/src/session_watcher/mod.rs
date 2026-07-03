@@ -38,10 +38,6 @@ use crate::agent_sessions::{CliSource, SessionEvent};
 pub struct Emitted {
     pub cli: CliSource,
     pub key: String,
-    /// Path-encoded session cwd when available (Claude only today; `None`
-    /// for Copilot/Codex/Gemini). Retained for parity with the classifiers;
-    /// the watcher no longer pane-binds, so master ignores it.
-    pub cwd: Option<PathBuf>,
     pub event: SessionEvent,
 }
 
@@ -116,7 +112,6 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     out.push(Emitted {
                         cli: CliSource::Gemini,
                         key: key.clone(),
-                        cwd: disc.cwd.clone(),
                         event,
                     });
                 }
@@ -162,7 +157,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), cwd: disc.cwd.clone(), event });
+                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), event });
                 }
             }
         }

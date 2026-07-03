@@ -390,30 +390,6 @@ fn join_block(raw: &[String], style: BlockScalarStyle) -> String {
     out
 }
 
-/// Decode Claude's drive-dash project directory back into a CWD path.
-///
-/// Layout: `C--Users-name-repo` ⇒ `C:\Users\name\repo`. The first `--`
-/// after the drive letter is the drive separator; remaining `-` become
-/// path separators. Cannot disambiguate hyphens inside actual file names
-/// (best-effort; reference impl backtracks via filesystem probing).
-pub(crate) fn decode_claude_cwd(encoded: &str) -> PathBuf {
-    let bytes = encoded.as_bytes();
-    if bytes.len() >= 4
-        && bytes[0].is_ascii_alphabetic()
-        && &bytes[1..3] == b"--"
-    {
-        let drive = bytes[0] as char;
-        let rest = &encoded[3..];
-        let path_part = rest.replace('-', "\\");
-        return PathBuf::from(format!("{}:\\{}", drive, path_part));
-    }
-    // Linux/macOS encoding: leading `-` -> root
-    if let Some(stripped) = encoded.strip_prefix('-') {
-        return PathBuf::from(format!("/{}", stripped.replace('-', "/")));
-    }
-    PathBuf::from(encoded)
-}
-
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
 enum ClaudeOrGemini { Claude, Gemini }
@@ -595,14 +571,6 @@ mod tests {
         assert_eq!(parse_simple_yaml(text, "name").as_deref(),    Some("My session"));
         assert_eq!(parse_simple_yaml(text, "summary").as_deref(), Some("Bug fix #42"));
         assert_eq!(parse_simple_yaml(text, "missing"),            None);
-    }
-
-    #[test]
-    fn claude_cwd_decoding_unix_root() {
-        assert_eq!(
-            decode_claude_cwd("-home-user-repo"),
-            PathBuf::from("/home/user/repo")
-        );
     }
 
 
