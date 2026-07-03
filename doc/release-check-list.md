@@ -120,6 +120,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Different positions work:** Open/hide/focus works for bottom, right, left, and top pane positions.
 - [ ] `[E2E]` **Stash preserves chat:** Hiding and restoring the pane preserves helper process, connection state, and chat history.
 - [ ] `[E2E]` **Tab close cleans up:** Closing the owning tab cleans up the helper and does not leave a broken pane.
+- [ ] `[E2E]` **Agent panes are not persisted into saved layout:** Saving and restoring a window layout does not resurrect a previously-open agent pane; restored windows come back without an unexpected agent pane. _(#360/#275.)_
 
 ### Built-in agent chat matrix
 
@@ -127,6 +128,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT~]` `[E2E]` **Copilot missing CLI path works:** Missing Copilot shows actionable setup/auth guidance, not a silent failure. _(UT: registry install hint.)_
 - [ ] `[E2E]` **Non-Copilot agents chat works:** Each installed+authenticated non-Copilot built-in agent (Claude/Codex/Gemini) connects through its ACP adapter and answers a prompt. _(One consolidated matrix case — all built-in agents share the same agent-pane/ACP path, so per-agent behavioural depth is covered by the Copilot suites.)_
 - [ ] `[UT~]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `AgentFailure::AuthRequired` classification; in-pane auth screen render via `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message`.)_
+- [ ] `[E2E]` **GitHub Enterprise Copilot sign-in works:** On the auth screen, pressing **E** lets the user enter a GHE domain (e.g. `*.ghe.com`) and sign in; the last-used host is remembered and the device-verification URL targets that host. _(#362.)_
 - [ ] `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
 
 ### Input and rendering
@@ -135,6 +137,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[E2E]` **Prompt out-of-focus appearance is correct:** Input box looks correct when focus leaves the agent pane.
 - [ ] `[E2E]` **Typing works:** User can type, edit, and submit prompt text correctly.
 - [ ] `[E2E]` **Paste works:** Pasted multi-line text is handled correctly.
+- [ ] `[UT✓]` `[E2E]` **Image paste (Alt+V) works:** A copied screenshot (`CF_DIB`/`CF_DIBV5`) or image file is sent to the agent as an ACP image content block; the action is gated on the agent advertising image support and is a no-op otherwise. _(UT: `clipboard_image` + `mock_agent_tests` `seen_images` side-channel; #354.)_
 - [ ] `[E2E]` **Keyboard navigation works:** Arrow keys, Tab completion, Ctrl combinations, and Esc behave correctly.
 - [ ] `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing.
 - [ ] `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; streaming-JSON unwrap incl. emoji/surrogate pairs in `ui::chat::tests`.)_
@@ -170,6 +173,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 ### Shell integration and detection
 
 - [ ] `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events.
+- [ ] `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_
+- [ ] `[E2E]` **Shells self-report identity (`OSC 9001;ShellType`):** The terminal knows which shell owns a pane — including after a nested shell (`pwsh` → `wsl` → `exit`) returns — so autofix suggests commands for the *current* shell (no PowerShell suggestions inside a WSL/bash pane). `wtcli list-panes` exposes the live shell + version per pane. _(#345.)_
 - [ ] `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
 - [x] `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
 - [x] `[UT✓]` **Successful commands ignored:** Successful commands do not trigger autofix. _(UT: `classify_wt_event` + `success_exit_code_does_not_arm_autofix`.)_
@@ -190,6 +195,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Autofix target pane is correct:** Failure in one pane does not offer/run a fix in the wrong pane. _(UT: target-tab routing — busy-pane tests + `autofix_still_triggers_for_non_agent_pane`.)_
 - [ ] `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot returns a useful suggestion.
 - [ ] `[E2E]` **Autofix with non-Copilot agents works:** Autofix produces a usable suggestion with a non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent — same path as Copilot, covered once across the available agents.
+- [ ] `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a non-existent command. _(#306.)_
 
 ### Autofix across layout changes
 
@@ -209,7 +215,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Slash command works:** `/sessions` opens the session view. _(UT: `/sessions` classify.)_
 - [ ] `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies the action parses; opening the view is E2E.)_
 - [ ] `[UT✓]` `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken. _(UT: `render_sessions_view_shows_footer_hint` paints the agents-view chrome/footer with an empty registry; live data still E2E.)_
-- [ ] `[E2E]` **Session view refresh works:** Newly created sessions appear without restarting Terminal when hooks are active.
+- [ ] `[E2E]` **Session view refresh works:** Pressing **F5** re-scans history on demand so sessions that appeared after launch show up without restarting Terminal — including a WSL distro started after Intelligent Terminal booted or a CLI session started in another shell. Works independently of whether session hooks are active. _(#344.)_
 
 ### Session states
 
@@ -218,7 +224,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Waiting-for-input state is correct:** A session waiting for user input/attention shows the waiting/attention state. _(UT: Attention activity.)_
 - [ ] `[UT✓]` `[E2E]` **Idle state is correct:** A live session waiting for the next prompt shows idle/ready state.
 - [ ] `[UT✓]` `[E2E]` **Ended state is correct:** A session whose pane was closed becomes ended and does not stay falsely live. _(UT: PaneClosed tombstone.)_
-- [ ] `[UT✓]` `[E2E]` **Historical state is correct:** On-disk sessions show as historical when not live.
+- [ ] `[UT✓]` `[E2E]` **Historical state is correct:** Historical sessions (now sourced from the agent's ACP `session/list`, not on-disk file parsing) show as historical when not live. _(#365.)_
 - [ ] `[UT✓]` `[E2E]` **State transitions are correct:** Live -> ended, historical -> live, and working -> idle transitions update without duplicate/stale rows. _(UT: `apply_alive_session_join` / `apply_master_session_ended`.)_
 
 ### Focus and restore
@@ -227,6 +233,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Focus active stashed agent pane:** Selecting an active stashed agent-pane session restores/focuses the pane if applicable.
 - [ ] `[UT✓]` `[E2E]` **Restore old session:** Selecting a supported old session resumes it successfully.
 - [ ] `[UT✓]` `[E2E]` **Restore old shell-pane session:** Supported shell-pane sessions resume through the CLI resume path. _(UT: `ResumeCliFlag` decision.)_
+- [ ] `[UT~]` `[E2E]` **WSL distro sessions are visible and resumable:** Agent-CLI sessions that were run *inside* a WSL distro appear in the session list tagged `[WSL-<distro>]`, and Enter resumes the session in that distro (via the wsl.exe ACP bridge). _(#323; UT: WSL session sourcing/classification.)_
 - [ ] `[UT✓]` `[E2E]` **Restore old agent-pane session:** Supported agent-pane sessions resume through agent-pane/session-load path when enabled. _(UT: `ResumeInAgentPane` decision.)_
 - [ ] `[UT✓]` `[E2E]` **Unsupported restore is clear:** Unknown CLI, missing resume support, or missing on-disk session shows a clear not-resumable message. _(UT: `NotResumable` reasons.)_
 - [ ] `[UT✓]` `[E2E]` **Enter behavior works:** Enter performs the expected focus/resume action.
