@@ -255,24 +255,26 @@ Resume routing already exists: `decide_enter_action` (`session_mgmt.rs`) →
    (ACP `session/load`) is suppressed for `Wsl` location (helper/agent are
    host-side); both Enter and Shift+Enter route to the CLI-flag resume above.
 
-## Gating: `wta`-side choke point + env kill-switch (real setting deferred)
+## Gating: `wta`-side choke point + env opt-in (real setting deferred)
 
 Following the repo's own MVP-gate convention
 (`app.rs:62-78` — `MVP_SESSIONS_ORIGIN_FILTER` const + `WTA_SESSIONS_SHOW_AGENT_PANE`
-env override), the WSL scan is gated at a **single choke point** in `load_all`:
+env override), the WSL scan is gated at a **single choke point**:
 
 - A function `wsl_sessions_enabled() -> bool` reads `WTA_WSL_SESSIONS`
-  (`0`/`false` disables) and otherwise returns the build default (**enabled**).
-- `load_all` only enumerates/scans distros when `wsl_sessions_enabled()` is true.
+  (`1`/`true`/`yes`/`on` enables) and otherwise returns the build default
+  (**disabled** — WSL rows are hidden until the mixed host/WSL TUI is designed).
+- The WSL seed (`spawn_wsl_seed`) only enumerates/scans distros when
+  `wsl_sessions_enabled()` is true.
 
 Rationale:
 
-- **Gate at the scan, not the display.** Disabling means WSL rows never enter the
-  registry → never rendered → and **no** `wsl.exe` spawn cost is paid. (Trade-off:
-  re-enabling needs a re-scan to repopulate — acceptable for a kill-switch.)
-- **Immediate safety, zero C++/settings-model/XAML work.** If WSL scanning
-  misbehaves on a user's machine (slow distro, odd `wsl` build), they can set
-  `WTA_WSL_SESSIONS=0` without a new build.
+- **Gate at the scan, not the display.** Keeping WSL off means WSL rows never
+  enter the registry → never rendered → and **no** `wsl.exe` spawn cost is paid.
+  (Trade-off: enabling needs a re-scan to repopulate — acceptable for a toggle.)
+- **Immediate control, zero C++/settings-model/XAML work.** Users who want the
+  mixed host/WSL view early (or need to debug the scan) can set
+  `WTA_WSL_SESSIONS=1` without a new build; if it misbehaves they simply unset it.
 - **Future-proofed wiring.** When a real `wslSessions` setting is added later
   (`MTSMSettings.h` X-macro → `GlobalAppSettings` → C++ passes a `--wsl-sessions`
   flag to `wta`, same as `acpAgent`/`language`), it overrides the env default at
@@ -281,7 +283,8 @@ Rationale:
   is needed.
 
 This is a deferred follow-up, not MVP work; the spec only commits to the
-choke point + env override now.
+choke point + env override now. **The build default ships disabled** so the
+session view stays host-only until the WSL TUI is designed.
 
 ## Where this plugs into the existing pipeline
 
@@ -315,8 +318,8 @@ async reactor / UI thread).
   existing `DispatchedCommand` test seam), and the host-disk phantom guard is
   bypassed for WSL keys.
 - **Gate:** `wsl_sessions_enabled()` honors `WTA_WSL_SESSIONS=0/1` and the build
-  default (guard env mutation with the existing serialization mutex pattern used
-  by the `WTA_SESSIONS_SHOW_AGENT_PANE` tests).
+  default (**disabled**) (guard env mutation with the existing serialization mutex
+  pattern used by the `WTA_SESSIONS_SHOW_AGENT_PANE` tests).
 - **No real `wsl.exe` in unit tests** — the spawn boundary is injected/mocked;
   `running_distros()` and the spawn helper take their raw bytes from a seam so
   CI (no WSL) stays deterministic.
