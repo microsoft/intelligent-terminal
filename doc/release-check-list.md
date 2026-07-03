@@ -218,7 +218,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Slash command works:** `/sessions` opens the session view. _(UT: `/sessions` classify.)_
 - [ ] `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies the action parses; opening the view is E2E.)_
 - [ ] `[UT✓]` `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken. _(UT: `render_sessions_view_shows_footer_hint` paints the agents-view chrome/footer with an empty registry; live data still E2E.)_
-- [ ] `[E2E]` **Session view refresh works:** Pressing **F5** re-scans history on demand so sessions that appeared after launch show up without restarting Terminal — including a WSL distro started after Intelligent Terminal booted or a CLI session started in another shell. Works independently of whether session hooks are active. _(#344.)_
+- [ ] `[E2E]` **Session view refresh works:** Pressing **F5** re-scans history on demand so sessions that appeared after launch show up without restarting Terminal — e.g. a CLI session started in another shell. Works independently of whether session hooks are active. _(#344.)_
 - [ ] `[new]` `[E2E]` **Session titles are clean:** Session rows show a meaningful title and never a bare "# AGENTS.md instructions" Codex heading or raw markdown artifact. _(#355.)_
 
 ### Session states
@@ -238,7 +238,6 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `[UT✓]` `[E2E]` **Focus active stashed agent pane:** Selecting an active stashed agent-pane session restores/focuses the pane if applicable.
 - [ ] `[UT✓]` `[E2E]` **Restore old session:** Selecting a supported old session resumes it successfully.
 - [ ] `[UT✓]` `[E2E]` **Restore old shell-pane session:** Supported shell-pane sessions resume through the CLI resume path. _(UT: `ResumeCliFlag` decision.)_
-- [ ] `[new]` `[UT~]` `[E2E]` **WSL distro sessions are visible and resumable:** Agent-CLI sessions that were run *inside* a WSL distro appear in the session list tagged `[WSL-<distro>]`, and Enter resumes the session in that distro (via the wsl.exe ACP bridge). _(#323; UT: WSL session sourcing/classification.)_
 - [ ] `[UT✓]` `[E2E]` **Restore old agent-pane session:** Supported agent-pane sessions resume through agent-pane/session-load path when enabled. _(UT: `ResumeInAgentPane` decision.)_
 - [ ] `[UT✓]` `[E2E]` **Unsupported restore is clear:** Unknown CLI, missing resume support, or missing on-disk session shows a clear not-resumable message. _(UT: `NotResumable` reasons.)_
 - [ ] `[UT✓]` `[E2E]` **Enter behavior works:** Enter performs the expected focus/resume action.
