@@ -14,14 +14,14 @@ const MUTED: Color = Color::Rgb(0x8b, 0x8b, 0x8b);
 pub fn render(f: &mut Frame, area: Rect, view: &SavedTabsViewState) {
     if view.loading {
         f.render_widget(
-            Paragraph::new("Loading saved tabs…").style(Style::default().fg(MUTED)),
+            Paragraph::new("Loading saved workspaces…").style(Style::default().fg(MUTED)),
             area,
         );
         return;
     }
     if view.entries.is_empty() {
         f.render_widget(
-            Paragraph::new("No saved tabs yet.").style(Style::default().fg(MUTED)),
+            Paragraph::new("No saved workspaces yet.").style(Style::default().fg(MUTED)),
             area,
         );
         return;
