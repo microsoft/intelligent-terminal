@@ -40,11 +40,11 @@ pub enum CommandKind {
     /// Snapshot this tab for later restore.
     ///
     /// Gated behind `experimental.eternalTerminal.enabled`.
-    SaveTab,
+    SaveWs,
     /// Open the saved-tab picker.
     ///
     /// Gated behind `experimental.eternalTerminal.enabled`.
-    RestoreTab,
+    RestoreWs,
     /// Pick the ACP model for *this* agent pane.
     ///
     /// Bare `/model` opens an interactive picker listing the models the
@@ -143,16 +143,16 @@ pub const REGISTRY: &[CommandSpec] = &[
         experimental_eternal: false,
     },
     CommandSpec {
-        name: "save-tab",
-        summary_key: "commands.save_tab.summary",
-        kind: CommandKind::SaveTab,
+        name: "save-ws",
+        summary_key: "commands.save_ws.summary",
+        kind: CommandKind::SaveWs,
         takes_args: true,
         experimental_eternal: true,
     },
     CommandSpec {
-        name: "restore-tab",
-        summary_key: "commands.restore_tab.summary",
-        kind: CommandKind::RestoreTab,
+        name: "restore-ws",
+        summary_key: "commands.restore_ws.summary",
+        kind: CommandKind::RestoreWs,
         takes_args: false,
         experimental_eternal: true,
     },
@@ -341,15 +341,15 @@ mod tests {
     }
 
     #[test]
-    fn save_and_restore_tab_parse() {
-        let s = parse("/save-tab my work").unwrap();
-        assert_eq!(s.kind, CommandKind::SaveTab);
+    fn save_and_restore_ws_parse() {
+        let s = parse("/save-ws my work").unwrap();
+        assert_eq!(s.kind, CommandKind::SaveWs);
         assert_eq!(s.rest, "my work");
-        assert!(lookup("save-tab").unwrap().takes_args);
+        assert!(lookup("save-ws").unwrap().takes_args);
 
-        let r = parse("/restore-tab").unwrap();
-        assert_eq!(r.kind, CommandKind::RestoreTab);
-        assert!(!lookup("restore-tab").unwrap().takes_args);
+        let r = parse("/restore-ws").unwrap();
+        assert_eq!(r.kind, CommandKind::RestoreWs);
+        assert!(!lookup("restore-ws").unwrap().takes_args);
     }
 
     #[test]
@@ -358,22 +358,22 @@ mod tests {
             .into_iter()
             .map(|c| c.name)
             .collect();
-        assert!(!visible.contains(&"save-tab"));
-        assert!(!visible.contains(&"restore-tab"));
+        assert!(!visible.contains(&"save-ws"));
+        assert!(!visible.contains(&"restore-ws"));
         assert!(visible.contains(&"help"));
 
         let visible_on: Vec<&str> = matches_gated("", true)
             .into_iter()
             .map(|c| c.name)
             .collect();
-        assert!(visible_on.contains(&"save-tab"));
-        assert!(visible_on.contains(&"restore-tab"));
+        assert!(visible_on.contains(&"save-ws"));
+        assert!(visible_on.contains(&"restore-ws"));
     }
 
     #[test]
     fn gated_flag_marks_only_eternal_commands() {
-        assert!(lookup("save-tab").unwrap().experimental_eternal);
-        assert!(lookup("restore-tab").unwrap().experimental_eternal);
+        assert!(lookup("save-ws").unwrap().experimental_eternal);
+        assert!(lookup("restore-ws").unwrap().experimental_eternal);
         assert!(!lookup("help").unwrap().experimental_eternal);
     }
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `/save-tab <title>` and `/restore-tab` agent-pane commands that snapshot a single tab's layout + scrollback content and restore it later (focus the original tab if still open, else open a new tab), gated behind `experimental.eternalTerminal.enabled`.
+**Goal:** Add `/save-ws <title>` and `/restore-ws` agent-pane commands that snapshot a single tab's layout + scrollback content and restore it later (focus the original tab if still open, else open a new tab), gated behind `experimental.eternalTerminal.enabled`.
 
 **Architecture:** The Rust `wta` helper renders UI and issues four request/response COM calls via `wtcli`. C++ owns storage (`ApplicationState.SavedTabSessions`), serialization (`Tab::BuildStartupActions(Persist)`), snapshot buffers (a private `SettingsDirectory\SavedTabSessions\{id}\` folder), and the focus-vs-new-tab decision. Content restore reuses WT's existing `buffer_{sessionId}.txt` → `RestoreFromPath` path unchanged, by staging snapshot buffers into the settings root just before replaying the tab's startup actions with `ProcessStartupActions`.
 
@@ -141,7 +141,7 @@ git commit -m "TerminalPage: pass --eternal-terminal to agent-pane helper when e
 In `main.rs`, next to `no_autofix`:
 
 ```rust
-    /// Enable the experimental Eternal Terminal save/restore-tab commands
+    /// Enable the experimental Eternal Terminal save/restore-ws commands
     #[arg(long)]
     eternal_terminal: bool,
 ```
@@ -151,7 +151,7 @@ In `main.rs`, next to `no_autofix`:
 In `app.rs`, next to `pub autofix_enabled: bool,`:
 
 ```rust
-    /// Gates the experimental `/save-tab` and `/restore-tab` slash commands.
+    /// Gates the experimental `/save-ws` and `/restore-ws` slash commands.
     /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
     pub eternal_terminal_enabled: bool,
 ```
@@ -206,12 +206,12 @@ Add to the `tests` module in `commands.rs`:
 ```rust
     #[test]
     fn save_and_restore_tab_parse() {
-        let s = parse("/save-tab my work").unwrap();
+        let s = parse("/save-ws my work").unwrap();
         assert_eq!(s.kind, CommandKind::SaveTab);
         assert_eq!(s.rest, "my work");
         assert!(lookup("save-tab").unwrap().takes_args);
 
-        let r = parse("/restore-tab").unwrap();
+        let r = parse("/restore-ws").unwrap();
         assert_eq!(r.kind, CommandKind::RestoreTab);
         assert!(!lookup("restore-tab").unwrap().takes_args);
     }
@@ -273,7 +273,7 @@ Set `experimental_eternal: false` on every existing `REGISTRY` entry, and append
         name: "save-tab",
         summary_key: "commands.save_tab.summary",
         kind: CommandKind::SaveTab,
-        takes_args: true, // `/save-tab <title>`
+        takes_args: true, // `/save-ws <title>`
         experimental_eternal: true,
     },
     CommandSpec {
@@ -309,7 +309,7 @@ Expected: PASS.
 
 ```powershell
 git add tools/wta/src/commands.rs
-git commit -m "wta/commands: add gated /save-tab and /restore-tab kinds + matches_gated"
+git commit -m "wta/commands: add gated /save-ws and /restore-ws kinds + matches_gated"
 ```
 
 ### Task A5: Wire gating into the popup + dispatcher
@@ -331,7 +331,7 @@ Immediately before the `match`, add the gating guard (after the `transport_lost`
 ```rust
         // Experimental commands are invisible + inert unless the feature
         // flag is on. Defense-in-depth: the popup already hides them via
-        // `matches_gated`, but a user could type `/save-tab` blind.
+        // `matches_gated`, but a user could type `/save-ws` blind.
         if cmd.spec.experimental_eternal && !self.eternal_terminal_enabled {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(
@@ -347,14 +347,14 @@ Immediately before the `match`, add the gating guard (after the `transport_lost`
 Add near `cmd_sessions` (app.rs ~7616):
 
 ```rust
-    /// `/save-tab <title>` — snapshot this tab. Implemented in Phase E.
+    /// `/save-ws <title>` — snapshot this tab. Implemented in Phase E.
     fn cmd_save_tab(&mut self, _title: String) {
         let tab = self.current_tab_mut();
         tab.messages.push(ChatMessage::System("save-tab: not yet implemented".to_string()));
         tab.scroll_to_bottom();
     }
 
-    /// `/restore-tab` — open the saved-tab picker. Implemented in Phase E.
+    /// `/restore-ws` — open the saved-tab picker. Implemented in Phase E.
     fn cmd_restore_tab(&mut self) {
         let tab = self.current_tab_mut();
         tab.messages.push(ChatMessage::System("restore-tab: not yet implemented".to_string()));
@@ -394,7 +394,7 @@ Expected: PASS (existing tests + Task A4). Fix compile errors from missed `App::
 
 ```powershell
 git add tools/wta/src/app.rs tools/wta/src/ui/command_popup.rs tools/wta/locales
-git commit -m "wta: gate /save-tab + /restore-tab in popup/dispatcher; stub handlers"
+git commit -m "wta: gate /save-ws + /restore-ws in popup/dispatcher; stub handlers"
 ```
 
 ---
@@ -1131,7 +1131,7 @@ Expected: build succeeds; `wtcli save-tab -t X -n Y`, `wtcli list-saved-tabs`, e
 
 ```powershell
 git add src/tools/wtcli/main.cpp
-git commit -m "wtcli: add save-tab/list-saved-tabs/restore-tab/delete-saved-tab subcommands"
+git commit -m "wtcli: add save-tab/list-saved-tabs/restore-ws/delete-saved-tab subcommands"
 ```
 
 ---
@@ -1466,9 +1466,9 @@ Add the locale strings to `tools/wta/locales/en-US.yml` (+ other locales):
 ```yaml
 commands:
   save_tab:
-    needs_title: "Please provide a title: /save-tab <name>"
+    needs_title: "Please provide a title: /save-ws <name>"
     no_tab: "Cannot determine this tab. Save is unavailable."
-    saved: "Saved this tab as \"%{title}\". Restore it later with /restore-tab."
+    saved: "Saved this tab as \"%{title}\". Restore it later with /restore-ws."
     failed: "Save failed: %{error}"
   restore_tab:
     focused: "Switched to the original tab."
@@ -1486,7 +1486,7 @@ Expected: PASS.
 
 ```powershell
 git add tools/wta/src/app.rs tools/wta/src/shell/wt_channel/cli_channel.rs tools/wta/locales
-git commit -m "wta: implement /save-tab + /restore-tab dispatch and picker state"
+git commit -m "wta: implement /save-ws + /restore-ws dispatch and picker state"
 ```
 
 ### Task E3: Render the picker
@@ -1591,9 +1591,9 @@ git commit -m "wta/ui: render the saved-tab picker"
 Mirror an existing agent-pane feature test (e.g. `Feature.AgentPaneInteraction.Tests.ps1`). Gate on `winapp` availability (per repo convention). The test must:
 1. `Set-WtSetting experimental.eternalTerminal.enabled $true` and start Terminal.
 2. Open the agent pane; type `/` and assert `save-tab` appears in the popup (locale-robust regex via `Get-WtaLocalizedTextRegex 'commands.save_tab.summary'`).
-3. Send `/save-tab e2e-snapshot` + Enter; assert the "Saved this tab as" system message (locale-robust).
+3. Send `/save-ws e2e-snapshot` + Enter; assert the "Saved this tab as" system message (locale-robust).
 4. `wtcli list-saved-tabs` (via `Get-WtCli`) returns a row with `title == "e2e-snapshot"`.
-5. Send `/restore-tab`; assert the picker shows `e2e-snapshot`; press Enter; assert tab count increased OR focus outcome (per whether the source tab is still open).
+5. Send `/restore-ws`; assert the picker shows `e2e-snapshot`; press Enter; assert tab count increased OR focus outcome (per whether the source tab is still open).
 6. Cleanup: `wtcli delete-saved-tab -i <id>`; assert `list-saved-tabs` no longer contains it.
 
 ```powershell
@@ -1603,7 +1603,7 @@ Describe 'Eternal Terminal — save/restore tab' {
         # ... Start-Terminal with experimental.eternalTerminal.enabled = $true
     }
     It 'saves a tab and lists it' {
-        # send /save-tab, then assert list-saved-tabs contains the title
+        # send /save-ws, then assert list-saved-tabs contains the title
     }
     It 'restores a saved tab' {
         # open picker, Enter, assert outcome
@@ -1621,22 +1621,22 @@ Expected: PASS.
 
 ```powershell
 git add test/e2e/tests/Feature.EternalTerminal.Tests.ps1
-git commit -m "e2e: cover /save-tab + /restore-tab end to end"
+git commit -m "e2e: cover /save-ws + /restore-ws end to end"
 ```
 
 ### Task F2: Manual smoke (F5)
 
 - [ ] Build wta (vcvars64) then C++ (`bcz no_clean`), F5 `CascadiaPackage`.
 - [ ] With `experimental.eternalTerminal.enabled: true`, open agent pane, `/` shows `save-tab`/`restore-tab`; with it `false`, they are absent.
-- [ ] `/save-tab hello`, run some commands to fill scrollback, close the tab, `/restore-tab` → Enter → new tab restores cwd + splits + scrollback content.
-- [ ] Re-`/save-tab` on an open restored/original tab twice → only one snapshot per source tab in `wtcli list-saved-tabs`.
-- [ ] `/restore-tab` on a snapshot whose source tab is still open → focuses it (no duplicate).
+- [ ] `/save-ws hello`, run some commands to fill scrollback, close the tab, `/restore-ws` → Enter → new tab restores cwd + splits + scrollback content.
+- [ ] Re-`/save-ws` on an open restored/original tab twice → only one snapshot per source tab in `wtcli list-saved-tabs`.
+- [ ] `/restore-ws` on a snapshot whose source tab is still open → focuses it (no duplicate).
 - [ ] Picker `D` removes the row and the `SavedTabSessions\{id}` folder.
 
 ---
 
 ## Self-review notes (author)
 
-- **Spec coverage:** `/save-tab` (A5/E2), `/restore-tab` picker (E2/E3), title input inline (E2), overwrite-by-StableId (B3 `UpsertSavedTabSession`), content save (C2 `PersistTo` to folder) + restore (C4 stage-into-root), focus-if-open (C4 `_FindTabByStableId` + `_SelectTab`), gating (A1/A2/A4/A5), separate discoverable folder (C1 `_SavedTabSessionDir`), `D` delete (E2/C5). All covered.
+- **Spec coverage:** `/save-ws` (A5/E2), `/restore-ws` picker (E2/E3), title input inline (E2), overwrite-by-StableId (B3 `UpsertSavedTabSession`), content save (C2 `PersistTo` to folder) + restore (C4 stage-into-root), focus-if-open (C4 `_FindTabByStableId` + `_SelectTab`), gating (A1/A2/A4/A5), separate discoverable folder (C1 `_SavedTabSessionDir`), `D` delete (E2/C5). All covered.
 - **Open verification items flagged inline (must confirm during impl, not invent):** the tab leaf-pane enumerator (C2 note), `_SelectTab` overload (C4 note), `_bstrFromHstring`/existing BSTR helper (D2 note), the App event-sender field name and `new_for_test` constructor (E2 note), the exact `commands::matches(` call site feeding the popup (A5). Each note says where to look.
 - **Deferred (not in this plan, per design doc):** agent-pane restore, workspaces, crash-recovery integration, restored-tab rebinding.

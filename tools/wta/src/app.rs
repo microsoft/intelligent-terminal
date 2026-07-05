@@ -1960,7 +1960,7 @@ pub struct App {
     // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
     // `TabSession.autofix`.
     pub autofix_enabled: bool,
-    /// Gates the experimental `/save-tab` and `/restore-tab` slash commands.
+    /// Gates the experimental `/save-ws` and `/restore-ws` slash commands.
     /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
     pub eternal_terminal_enabled: bool,
     pub saved_tabs: Option<SavedTabsViewState>,
@@ -5186,8 +5186,8 @@ impl App {
             }
             AppEvent::SavedTabResult(result) => {
                 let message = match result {
-                    Ok(title) => t!("commands.save_tab.saved", title = title.as_str()).into_owned(),
-                    Err(error) => t!("commands.save_tab.failed", error = error.as_str()).into_owned(),
+                    Ok(title) => t!("commands.save_ws.saved", title = title.as_str()).into_owned(),
+                    Err(error) => t!("commands.save_ws.failed", error = error.as_str()).into_owned(),
                 };
                 let tab = self.current_tab_mut();
                 tab.messages.push(ChatMessage::System(message));
@@ -5203,11 +5203,11 @@ impl App {
             AppEvent::RestoredTabResult(result) => {
                 let message = match result {
                     Ok(outcome) if outcome == "focused" => {
-                        t!("commands.restore_tab.focused").into_owned()
+                        t!("commands.restore_ws.focused").into_owned()
                     }
-                    Ok(_) => t!("commands.restore_tab.opened").into_owned(),
+                    Ok(_) => t!("commands.restore_ws.opened").into_owned(),
                     Err(error) => {
-                        t!("commands.restore_tab.failed", error = error.as_str()).into_owned()
+                        t!("commands.restore_ws.failed", error = error.as_str()).into_owned()
                     }
                 };
                 let tab = self.current_tab_mut();
@@ -6321,7 +6321,7 @@ impl App {
                         self.last_restore_tab_id = Some(entry.id.clone());
                     }
                     self.saved_tabs = None;
-                    self.dispatch_restore_tab(&entry.id);
+                    self.dispatch_restore_ws(&entry.id);
                 }
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
@@ -7561,7 +7561,7 @@ impl App {
 
         // Experimental commands are invisible + inert unless the feature flag
         // is on. Defense-in-depth: the popup already hides them via
-        // `matches_gated`, but a user could type `/save-tab` blind.
+        // `matches_gated`, but a user could type `/save-ws` blind.
         if cmd.spec.experimental_eternal && !self.eternal_terminal_enabled {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(
@@ -7581,8 +7581,8 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
-            CommandKind::SaveTab => self.cmd_save_tab(cmd.rest),
-            CommandKind::RestoreTab => self.cmd_restore_tab(),
+            CommandKind::SaveWs => self.cmd_save_ws(cmd.rest),
+            CommandKind::RestoreWs => self.cmd_restore_ws(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Model => self.cmd_model(cmd.rest),
         }
@@ -7784,13 +7784,13 @@ impl App {
         self.project_active_tab_state();
     }
 
-    /// `/save-tab <title>` — snapshot this tab. Implemented in Phase E.
-    fn cmd_save_tab(&mut self, title: String) {
+    /// `/save-ws <title>` — snapshot this tab. Implemented in Phase E.
+    fn cmd_save_ws(&mut self, title: String) {
         let title = title.trim().to_string();
         if title.is_empty() {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::System(
-                t!("commands.save_tab.needs_title").into_owned(),
+                t!("commands.save_ws.needs_title").into_owned(),
             ));
             tab.scroll_to_bottom();
             return;
@@ -7798,7 +7798,7 @@ impl App {
         let Some(tab_id) = self.owner_tab_id.clone() else {
             let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::System(t!("commands.save_tab.no_tab").into_owned()));
+                .push(ChatMessage::System(t!("commands.save_ws.no_tab").into_owned()));
             tab.scroll_to_bottom();
             return;
         };
@@ -7814,8 +7814,8 @@ impl App {
         );
     }
 
-    /// `/restore-tab` — open the saved-tab picker. Implemented in Phase E.
-    fn cmd_restore_tab(&mut self) {
+    /// `/restore-ws` — open the saved-tab picker. Implemented in Phase E.
+    fn cmd_restore_ws(&mut self) {
         let Some(tx) = self.event_tx.clone() else {
             return;
         };
@@ -7833,7 +7833,7 @@ impl App {
         }));
     }
 
-    fn dispatch_restore_tab(&mut self, id: &str) {
+    fn dispatch_restore_ws(&mut self, id: &str) {
         let Some(tx) = self.event_tx.clone() else {
             return;
         };
@@ -10026,7 +10026,7 @@ mod tests {
 
         let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
         app.set_event_tx(event_tx);
-        app.cmd_restore_tab();
+        app.cmd_restore_ws();
         assert!(app.saved_tabs.is_some());
         assert_eq!(app.current_tab().current_view, View::Chat);
     }
@@ -10036,7 +10036,7 @@ mod tests {
         let mut app = test_app();
         app.eternal_terminal_enabled = true;
 
-        app.cmd_restore_tab();
+        app.cmd_restore_ws();
 
         assert!(app.saved_tabs.is_none());
     }

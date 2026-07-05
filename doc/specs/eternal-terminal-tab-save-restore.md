@@ -12,15 +12,23 @@ PersistedLayoutAndContent`).
 
 Two new agent-pane slash commands drive it:
 
-- **`/save-tab <title>`** — snapshot this tab's layout + scrollback content under
+- **`/save-ws <title>`** — snapshot this tab's layout + scrollback content under
   a user-supplied title. Re-saving the same tab overwrites its snapshot.
-- **`/restore-tab`** — open a picker of saved snapshots (↑/↓ + Enter); Enter
+- **`/restore-ws`** — open a picker of saved snapshots (↑/↓ + Enter); Enter
   restores the snapshot. If the original tab is still open, focus it instead of
   duplicating it.
 
 Both commands are gated behind a new global setting
 `experimental.eternalTerminal.enabled` (default `false`): when off, neither
 command appears in the `/` menu.
+
+> **Naming note.** The user-facing commands are `/save-ws` / `/restore-ws` (ws =
+> workspace). The internal plumbing keeps its original names — the `wtcli`
+> subcommands (`save-tab`, `list-saved-tabs`, `restore-tab`, `delete-saved-tab`),
+> the COM methods (`SaveTabSession`, …) and the `ApplicationState.SavedTabSessions`
+> storage are unchanged; only the agent-pane command surface (Rust `CommandKind`,
+> `cmd_*`, and the `commands.save_ws.*` / `commands.restore_ws.*` locale keys) was
+> renamed to `ws`.
 
 This step restores **layout + scrollback content only**. Restoring the tab's
 **agent pane** alongside the shell, **workspaces** (multi-tab / tab-group /
@@ -91,8 +99,8 @@ Two consequences shape the design:
 
 ```
 Agent pane (Rust wta-helper TUI)
-  /save-tab <title>  ─┐
-  /restore-tab ───────┤  helper knows its own (pane_id, tab_id, window_id)
+  /save-ws <title>  ─┐
+  /restore-ws ───────┤  helper knows its own (pane_id, tab_id, window_id)
                       v
              CliChannel → wtcli.exe ──► COM IProtocolServer
                                           (TerminalProtocolComServer)
@@ -132,7 +140,7 @@ fire-and-forget `send_wt_protocol_event` bus (which stays for state pushes like
   `--eternal-terminal` / `--no-eternal-terminal`) reflecting
   `GlobalSettings().EternalTerminalEnabled()`.
 - The helper stores the flag on `App`. The slash-command registry becomes
-  **flag-aware**: `/save-tab` and `/restore-tab` are only returned by
+  **flag-aware**: `/save-ws` and `/restore-ws` are only returned by
   `commands::matches()` / accepted by `commands::parse()` when the flag is on, so
   they never appear in the `/` popup, `/help`, or Tab-completion when disabled.
 
@@ -176,11 +184,11 @@ New methods on `IProtocolServer` (`TerminalProtocol.idl`), implemented in
 `tabId` is the helper's own tab (StableId), discovered via the existing
 PID-matching pane-identity mechanism.
 
-### 4. Save flow (`/save-tab <title>`)
+### 4. Save flow (`/save-ws <title>`)
 
-1. Helper parses `/save-tab <title>` (title = the free-form `rest`, like
+1. Helper parses `/save-ws <title>` (title = the free-form `rest`, like
    `/fix <hint>`). Empty title → advisory: "please provide a title:
-   `/save-tab <name>`" and no-op.
+   `/save-ws <name>`" and no-op.
 2. Helper calls `SaveTabSession(ownTabId, title)`.
 3. C++:
    - `_FindTabByStableId(tabId)` → the live `Tab`; error if not found.
@@ -197,12 +205,12 @@ PID-matching pane-identity mechanism.
    - Persist `ApplicationState`.
    - Return `savedId`.
 4. Helper pushes a system message: *"Saved this tab as «title». Restore it later
-   with /restore-tab."* (localized).
+   with /restore-ws."* (localized).
 
 No `SessionId` rewriting is needed: the snapshot's private folder keeps the
 buffers frozen regardless of the live pane's later persists.
 
-### 5. Restore flow (`/restore-tab`)
+### 5. Restore flow (`/restore-ws`)
 
 1. Helper calls `ListSavedTabSessions()` and opens a picker view
    (`saved_tabs_view`, modeled on `ui/agents_view.rs`): ↑/↓ move, Enter select,
@@ -269,8 +277,8 @@ makes it a clean, contained operation.
 ## Testing
 
 - **Rust (`cargo test`, run under VS2022 vcvars64)**:
-  - `commands.rs`: `/save-tab`, `/restore-tab` present iff the flag is on;
-    hidden from `matches()` / rejected by `parse()` when off; `/save-tab`
+  - `commands.rs`: `/save-ws`, `/restore-ws` present iff the flag is on;
+    hidden from `matches()` / rejected by `parse()` when off; `/save-ws`
     captures the title as `rest`.
   - `saved_tabs_view` render test (mirror `agents_view` render tests):
     rows, selection marker, empty state, `D`/Enter/Esc handling —
@@ -283,7 +291,7 @@ makes it a clean, contained operation.
   - Focus-if-open vs new-tab-restore branch selection by StableId presence.
   - Content: a saved buffer folder is restored into the new tab's panes;
     delete removes the folder.
-- **E2E (`ItE2E`)**: `/save-tab` creates a record; `/restore-tab` shows it;
+- **E2E (`ItE2E`)**: `/save-ws` creates a record; `/restore-ws` shows it;
   Enter opens (closed original) / focuses (open original). Assertions derived
   from `tools/wta/locales/*.yml` (locale-robust, per repo convention).
 
@@ -293,7 +301,7 @@ makes it a clean, contained operation.
    re-saving it creates a *new* snapshot rather than overwriting its origin. If
    desired later, tag the restored tab with its origin `savedId` and have
    `SaveTabSession` prefer that tag over StableId matching.
-2. **Title input UX**: inline `/save-tab <title>` for this step; a pre-filled
+2. **Title input UX**: inline `/save-ws <title>` for this step; a pre-filled
    overlay input could be a later polish.
 3. **Step 2**: restore the tab's agent pane + conversation alongside the shell
    (couples to the existing agent-session resume / `session/load`).
@@ -301,6 +309,6 @@ makes it a clean, contained operation.
 
 ## Command / setting naming (decided)
 
-- Commands: `/save-tab`, `/restore-tab` (tab-level, distinct from the existing
+- Commands: `/save-ws`, `/restore-ws` (tab-level, distinct from the existing
   `/sessions` agent-conversation picker).
 - Setting: `experimental.eternalTerminal.enabled` (bool, default `false`).

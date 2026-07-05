@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Eternal Terminal `/save-tab` + `/restore-tab` end-to-end coverage.
+# Eternal Terminal `/save-ws` + `/restore-ws` end-to-end coverage.
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
@@ -57,15 +57,15 @@ Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -S
             $null
         }
         # The popup row can clip the full summary at narrow widths; match a localized prefix from the bundled yml instead.
-        $script:SaveTabSummaryPrefixRegex = & $script:GetWtaLocalizedTextPrefixRegex -Key 'commands.save_tab.summary'
-        $script:SaveTabSummaryPrefixRegex | Should -Not -BeNullOrEmpty -Because 'the /save-tab command summary prefix must be asserted through bundled WTA locale keys'
-        $saveTabSavedRegex = Get-WtaLocalizedTextRegex -Key 'commands.save_tab.saved'
-        $saveTabSavedRegex | Should -Not -BeNullOrEmpty -Because 'the /save-tab success text must be asserted through bundled WTA locale keys'
+        $script:SaveTabSummaryPrefixRegex = & $script:GetWtaLocalizedTextPrefixRegex -Key 'commands.save_ws.summary'
+        $script:SaveTabSummaryPrefixRegex | Should -Not -BeNullOrEmpty -Because 'the /save-ws command summary prefix must be asserted through bundled WTA locale keys'
+        $saveTabSavedRegex = Get-WtaLocalizedTextRegex -Key 'commands.save_ws.saved'
+        $saveTabSavedRegex | Should -Not -BeNullOrEmpty -Because 'the /save-ws success text must be asserted through bundled WTA locale keys'
         $script:SaveTabSavedRegex = $saveTabSavedRegex.Replace([regex]::Escape('%{title}'), [regex]::Escape($script:SnapshotTitle))
-        $restoreOpenedRegex = Get-WtaLocalizedTextRegex -Key 'commands.restore_tab.opened'
-        $restoreFocusedRegex = Get-WtaLocalizedTextRegex -Key 'commands.restore_tab.focused'
+        $restoreOpenedRegex = Get-WtaLocalizedTextRegex -Key 'commands.restore_ws.opened'
+        $restoreFocusedRegex = Get-WtaLocalizedTextRegex -Key 'commands.restore_ws.focused'
         $script:RestoreOutcomeRegex = (@($restoreOpenedRegex, $restoreFocusedRegex) | Where-Object { $_ }) -join '|'
-        $script:RestoreOutcomeRegex | Should -Not -BeNullOrEmpty -Because 'the /restore-tab outcome text must be asserted through bundled WTA locale keys'
+        $script:RestoreOutcomeRegex | Should -Not -BeNullOrEmpty -Because 'the /restore-ws outcome text must be asserted through bundled WTA locale keys'
 
         $script:GetSavedTabs = {
             $rows = Invoke-WtCli -App $script:app -Arguments @('list-saved-tabs') -TimeoutSec 20
@@ -115,7 +115,7 @@ Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -S
         }
     }
 
-    It 'shows /save-tab in the command menu when enabled' {
+    It 'shows /save-ws in the command menu when enabled' {
         Clear-AgentInput -App $script:app | Out-Null
         Send-AgentPrompt -App $script:app -Text '/save' -NoSubmit | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern $script:SaveTabSummaryPrefixRegex -TimeoutSec 10
@@ -124,7 +124,7 @@ Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -S
 
     It 'saves a tab and lists it' {
         Clear-AgentInput -App $script:app | Out-Null
-        Send-AgentPrompt -App $script:app -Text "/save-tab $($script:SnapshotTitle)" | Out-Null
+        Send-AgentPrompt -App $script:app -Text "/save-ws $($script:SnapshotTitle)" | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern $script:SaveTabSavedRegex -TimeoutSec 20
 
         $row = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Because "wtcli list-saved-tabs to include '$($script:SnapshotTitle)'" -Condition {
@@ -153,7 +153,7 @@ Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -S
         }
 
         Clear-AgentInput -App $script:app | Out-Null
-        $agentSession = (Send-AgentPrompt -App $script:app -Text '/restore-tab').PaneSessionId
+        $agentSession = (Send-AgentPrompt -App $script:app -Text '/restore-ws').PaneSessionId
         $savedRows = @(& $script:GetSavedTabs)
         $savedRows.Count | Should -BeGreaterThan 0
         Assert-AgentPaneText -App $script:app -Pattern ([regex]::Escape($savedRows[0].title)) -TimeoutSec 15

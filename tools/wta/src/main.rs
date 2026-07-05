@@ -180,7 +180,7 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
-    /// Enable the experimental Eternal Terminal save/restore-tab commands
+    /// Enable the experimental Eternal Terminal /save-ws + /restore-ws commands
     #[arg(long)]
     eternal_terminal: bool,
 

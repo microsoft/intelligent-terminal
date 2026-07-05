@@ -38,8 +38,8 @@ scrollback content) under a user-typed title and **restore it later** — focusi
 the original tab if it is still open, otherwise opening a new tab. Two new
 agent-pane slash commands drive it, gated behind a global experimental setting.
 
-- **`/save-tab <title>`** — snapshot this tab; re-saving the same tab overwrites.
-- **`/restore-tab`** — picker (↑/↓, Enter to restore, `D` to delete, Esc close).
+- **`/save-ws <title>`** — snapshot this tab; re-saving the same tab overwrites.
+- **`/restore-ws`** — picker (↑/↓, Enter to restore, `D` to delete, Esc close).
 - Gate: global bool **`experimental.eternalTerminal.enabled`** (default `false`);
   when off, neither command appears in the `/` menu and both are inert.
 
@@ -76,8 +76,8 @@ environment; the plan holds the *code*.
 
 **Commits so far (newest first):**
 ```
-09427c9e2  wta: gate /save-tab + /restore-tab in popup/dispatcher; stub handlers   (A5)
-8bc80ed9e  wta/commands: add gated /save-tab and /restore-tab kinds + matches_gated (A4)
+09427c9e2  wta: gate /save-ws + /restore-ws in popup/dispatcher; stub handlers   (A5)
+8bc80ed9e  wta/commands: add gated /save-ws and /restore-ws kinds + matches_gated (A4)
 e6aafd823  wta: receive --eternal-terminal flag into App.eternal_terminal_enabled   (A3)
 f2fcda72c  doc: implementation plan …
 766e2df0d  doc: design …
@@ -92,7 +92,7 @@ Resolved with the user during brainstorming; full rationale in the design doc.
 - **Gate:** one `settings.json` global bool `experimental.eternalTerminal.enabled`
   (mirror `autoFixEnabled`), passed to the helper as a CLI flag `--eternal-terminal`.
   Gates BOTH commands (hidden + inert when off).
-- **Command names:** `/save-tab`, `/restore-tab` (tab-level; distinct from the
+- **Command names:** `/save-ws`, `/restore-ws` (tab-level; distinct from the
   existing `/sessions` agent-conversation picker).
 - **Architecture:** Rust helper renders UI + issues **request/response COM calls**
   via `wtcli`; **C++ owns** storage, serialization, snapshot buffers, and the
@@ -117,7 +117,7 @@ Resolved with the user during brainstorming; full rationale in the design doc.
   (`TerminalPage.cpp:2948`) is a coroutine that **suspends between actions**
   (`co_await resume_foreground`) whenever the window already has tabs, so a
   set-before/clear-after member override cannot bracket the async pane creation.
-- **Title:** inline `/save-tab <title>` (rest = title, like `/fix <hint>`).
+- **Title:** inline `/save-ws <title>` (rest = title, like `/fix <hint>`).
 
 ## 5. Environment + build/test gotchas (CRITICAL)
 
