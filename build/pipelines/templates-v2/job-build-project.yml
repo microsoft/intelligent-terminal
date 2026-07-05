@@ -57,13 +57,11 @@ parameters:
     type: stepList
     default: []
   - name: beforeRustBuildSteps
-    # Runs BEFORE the Rust toolchain install / cargo build. Use this for
-    # any step that rewrites source files Rust depends on — most notably
-    # the M.W.T.V versioning overlay, which edits
-    # `src/cascadia/TerminalApp/init.cpp` and
-    # `dep/telemetry/ProjectTelemetry.h` (both read by `tools/wta/build.rs`
-    # at cargo-build time). If you leave this empty, cargo builds against
-    # the on-disk OSS sources.
+    # Runs BEFORE the Rust toolchain install / cargo build. Used to restore
+    # sources that `tools/wta/build.rs` reads at cargo time — notably the
+    # `terminal-internals` telemetry header overlay
+    # (`src/inc/telemetry/ProjectTelemetry.h`) and the M.W.T.V versioning step.
+    # If empty, cargo builds against the on-disk OSS sources (stub header).
     type: stepList
     default: []
   - name: variables
@@ -176,10 +174,10 @@ jobs:
       .\build\scripts\Generate-ThirdPartyNotices.ps1 -MarkdownNoticePath .\NOTICE.md -OutputPath .\src\cascadia\CascadiaPackage\NOTICE.html
     displayName: Generate NOTICE.html from NOTICE.md
 
-  # Steps that need to run BEFORE the Rust build — typically the M.W.T.V
-  # versioning overlay, so that `tools/wta/build.rs` sees the same source
-  # files the C++ side will compile. See the `beforeRustBuildSteps`
-  # parameter doc above for details.
+  # Steps that need to run BEFORE the Rust build — restore the sources
+  # `tools/wta/build.rs` reads at cargo time (terminal-internals telemetry
+  # header overlay + M.W.T.V versioning). See the `beforeRustBuildSteps`
+  # parameter doc above.
   - ${{ parameters.beforeRustBuildSteps }}
 
   # ────────────────────────────────────────────────────────────────────────

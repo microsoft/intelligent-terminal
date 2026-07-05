@@ -364,19 +364,22 @@ and `liveness()` derive from it (see `agent_sessions.rs`).
   immediately, even if master's `session_removed` notification
   hasn't landed yet.
 
-* **Class B** is tracked by a **hybrid** of three producers (full design:
+* **Class B** is tracked by hooks + #266 **born-bound** bindings, with the file
+  **watcher** as a **status-only fallback for born-bound rows** (full design:
   [`doc/specs/hybrid-agent-session-tracking.md`](../../doc/specs/hybrid-agent-session-tracking.md)):
   a real PowerShell **hook** owns a session outright; #266 **born-bound**
-  (delegate `?<prompt>` / `/sessions` resume) owns only its pane binding; and a
-  file/process **watcher** is the fallback — it surfaces user-typed sessions and
-  supplies **status** for born-bound sessions that have no hook. The master keeps
-  two disjoint sets, `hook_owned` and `born_bound`, so the three never
-  double-track (`master/mod.rs`: `apply_watcher_event` / `handle_session_hook`).
+  (delegate `?<prompt>` / `/sessions` resume) owns its pane binding; and the
+  watcher — which no longer discovers or pane-binds user-typed shell-pane
+  sessions (that required reading a foreign process's PEB, since removed) —
+  only supplies **status** for born-bound sessions that have no hook. The master
+  keeps two disjoint sets, `hook_owned` and `born_bound`, so hooks and the
+  watcher never double-track (`master/mod.rs`: `apply_watcher_event` /
+  `handle_session_hook`).
 
 ### Status (Working / Idle / Attention) from the log
 
-When a Class-B session has no hook, the watcher derives status from the CLI's
-transcript (`session_watcher/classify_*.rs` -> `ToolStarting` = Working /
+When a born-bound Class-B session has no hook, the watcher derives status from
+the CLI's transcript (`session_watcher/classify_*.rs` -> `ToolStarting` = Working /
 `ToolCompleted` = Idle / `Notification` = Attention):
 
 * **Claude** — turn-based, keyed on `stop_reason` (a `user` record -> Working;

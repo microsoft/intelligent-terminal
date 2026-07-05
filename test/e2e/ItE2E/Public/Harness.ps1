@@ -47,6 +47,39 @@ function Restore-WtConfig {
     }
 }
 
+function Clear-WtConfig {
+    <#
+    .SYNOPSIS
+        Strip agent/AI keys from settings.json so NO stale provider-specific value leaks into a
+        test that only patches a subset of keys.
+    .DESCRIPTION
+        Tests apply settings by PATCHING individual keys (Set-WtSetting), layering on top of the
+        existing settings.json. If the user's real file carries provider-specific keys — e.g.
+        `acpModel`/`acpBaseUrl` pointing at a Foundry-local model that is only valid for
+        `acpAgent: native` — a test that merely flips `acpAgent` to `copilot` would launch
+        `copilot --acp --stdio --model <foundry>`, which the Copilot CLI rejects ("Invalid model
+        …") and the agent handshake dies. Starting every test from an agent-clean config makes the
+        launch deterministic and provider-pure.
+
+        We REMOVE every agent/AI top-level key (acp*, delegate*, agentPane*, autoFix*,
+        aiIntegration*) while PRESERVING the rest of the file (profiles, theme, keybindings). A
+        full schema-only wipe is deliberately NOT used: WindowsTerminal rejects a settings.json
+        with no usable profile and pops a "Failed to load settings" dialog that would destabilize
+        UI tests. When called via Start-Terminal (the normal path) the user's real settings are
+        preserved in `.e2ebak` (Backup-WtConfig) and restored by Stop-Terminal, so this stays
+        non-destructive across a run. If called standalone WITHOUT a prior backup, there is no
+        `.e2ebak` to restore from — the caller owns preserving the original.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory)]$App)
+    $obj = Get-WtSettingsObject -App $App
+    if (-not $obj) { Write-ItLog -Level INFO -Message "Clear-WtConfig: no parseable settings.json to clean"; return }
+    $agentKeys = @($obj.PSObject.Properties.Name | Where-Object { $_ -match '^(acp|delegate|agentPane|autoFix|aiIntegration)' })
+    foreach ($k in $agentKeys) { $obj.PSObject.Properties.Remove($k) }
+    ($obj | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $App.SettingsPath -Encoding utf8
+    $preserved = if (Test-Path "$($App.SettingsPath).e2ebak") { "; original preserved in .e2ebak" } else { "" }
+    Write-ItLog -Level INFO -Message "Cleared agent/AI keys from settings.json (removed: $($agentKeys -join ', '))$preserved"
+}
+
 function Get-WtProcessesForApp {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     $loc = $App.InstallLocation
@@ -158,6 +191,10 @@ function Start-Terminal {
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
+    .PARAMETER CleanSettings  Strip agent/AI keys from settings.json after backup so the user's
+                         real config (e.g. a Foundry acpModel/acpBaseUrl set for acpAgent=native)
+                         cannot leak into a test that only patches a subset of keys (default
+                         $true; ignored when Backup is $false).
     .PARAMETER ShowFre   Leave the agent FRE overlay SHOWING (writes agentFreCompleted=false).
                          COM resolution is best-effort in this mode. A fresh monarch is always
                          started (see Stop-StaleItInstances below), which is what lets the FRE
@@ -169,6 +206,7 @@ function Start-Terminal {
         [hashtable]$Settings,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
+        [bool]$CleanSettings = $true,
         [switch]$ShowFre,
         [int]$TimeoutSec = 60
     )
@@ -188,9 +226,32 @@ function Start-Terminal {
     Stop-StaleItInstances
 
     if ($Backup) { Backup-WtConfig -App $app }
+    # Strip agent/AI keys from settings.json so the user's real config (e.g. a Foundry
+    # acpModel/acpBaseUrl set for acpAgent=native) cannot leak into a test that only patches a
+    # subset of keys. Requires a backup so Stop-Terminal can restore the real settings.
+    if ($CleanSettings -and $Backup) { Clear-WtConfig -App $app }
+    elseif ($CleanSettings) { Write-ItLog -Level WARN -Message "CleanSettings requested but Backup is off; skipping clean to avoid destroying user settings." }
     if ($ShowFre) { Reset-Fre -App $app | Out-Null }
     elseif ($PassFre) { Invoke-FrePass -App $app | Out-Null }
     if ($Settings) { Set-WtSettings -App $app -Settings $Settings | Out-Null }
+
+    # Snapshot the agent-pane-sessions.jsonl BEFORE launching WT so Get-AgentPaneSession can tell
+    # OUR agent pane(s) apart from every pane recorded by prior runs / other windows. The file is
+    # shared + append-only under the single-instance monarch and accumulates across all runs, so
+    # any pane_session_id already present here is NOT ours. Captured before activation, so the
+    # pre-warm agent pane this launch creates is guaranteed to be a NEW id.
+    $agentJsonl = Join-Path $app.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
+    # Case-insensitive set: pane_session_id GUIDs can vary in casing between producer/serializer, so
+    # an ordinal (case-sensitive) HashSet would miss a match and treat a pre-existing pane as new.
+    $preIds = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+    if (Test-Path $agentJsonl) {
+        Get-Content -LiteralPath $agentJsonl | Where-Object { $_.Trim() } |
+            ForEach-Object { $_ | ConvertFrom-JsonSafe } |
+            Where-Object { $_ -and $_.pane_session_id } |
+            ForEach-Object { [void]$preIds.Add([string]$_.pane_session_id) }
+    }
+    $app | Add-Member -NotePropertyName PreExistingAgentPaneIds -NotePropertyValue $preIds -Force
+    Write-ItLog -Level INFO -Message "Snapshotted $($preIds.Count) pre-existing agent-pane id(s) before launch."
 
     $existing = @(Get-WtProcessesForApp -App $app | Select-Object -ExpandProperty Id)
     # Launch via AUMID shell activation — this is package-specific by construction
@@ -242,6 +303,18 @@ function Start-Terminal {
     }
     if ($hwnd) { $app.Hwnd = $hwnd; Write-ItLog -Level INFO -Message "WT window hwnd=$hwnd" }
     else { Write-ItLog -Level WARN -Message "Could not resolve WT HWND; UI primitives will fall back to -a pid." }
+
+    # Capture the WT logical window id (informational; agent panes are XAML chrome and never
+    # appear in list-panes, so window scoping of the agent pane itself relies on the
+    # pre-existing-id snapshot above rather than on this).
+    try {
+        $active = Get-ActivePane -App $app
+        if ($active -and $null -ne $active.window_id) {
+            $app | Add-Member -NotePropertyName WindowId -NotePropertyValue ([string]$active.window_id) -Force
+            Write-ItLog -Level INFO -Message "WT window_id=$($app.WindowId)"
+        }
+    }
+    catch { Write-ItLog -Level WARN -Message "Could not resolve WT window_id: $_" }
 
     Initialize-LogOffsets -App $app | Out-Null
     $app

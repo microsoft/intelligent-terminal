@@ -11995,6 +11995,51 @@ mod tests {
         );
     }
 
+    // Checklist C085 "View switch preserves input": a typed-but-unsubmitted chat draft must
+    // survive a round-trip through the session (Agents) view. This is the deterministic coverage
+    // for the item whose E2E form is not harness-reliable (opening the session view input-free and
+    // reading it back races the per-tab pre-warm's extra pane; the slash `/sessions` trigger would
+    // itself type into the draft; Esc is overloaded chat-clear vs view-exit). Here we drive the
+    // REAL Esc key handler — the exact path where an accidental input-clear on view exit would
+    // live — not just the open/close_agents_view helpers.
+    #[test]
+    fn view_switch_preserves_chat_draft_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // A user is composing a prompt in the chat view (pane open, draft typed, not submitted).
+        app.tab_mut(&tab_id).pane_open = true;
+        let draft = "unsubmitted draft prompt";
+        app.current_tab_mut().input = draft.into();
+        app.current_tab_mut().cursor_pos = draft.len();
+
+        // Switch chat -> sessions view (the chat->sessions request keeps pane_open=true).
+        app.open_agents_view_for_tab(tab_id.clone());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+        assert_eq!(
+            app.current_tab().input,
+            draft,
+            "the draft must be untouched while the session view is shown"
+        );
+
+        // Esc back to chat (the round-trip return path).
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().current_view, View::Chat);
+
+        // The draft AND the cursor position must still be there after the round-trip.
+        assert_eq!(
+            app.current_tab().input,
+            draft,
+            "returning to chat after a view switch must preserve the unsubmitted draft"
+        );
+        assert_eq!(
+            app.current_tab().cursor_pos,
+            draft.len(),
+            "the cursor position in the draft must be preserved across the view round-trip"
+        );
+    }
+
     // A pane folded *from within* the sessions view (fold keeps current_view ==
     // Agents) and then reopened must re-snapshot the now-folded state, so a
     // later Esc re-folds instead of using a stale "was open" snapshot.
@@ -14053,6 +14098,79 @@ mod tests {
         out
     }
 
+    /// Render (C063 "prompt out-of-focus appearance"): when keyboard focus leaves the agent pane
+    /// (`pane_focused = false`) the input box must still look correct — the prompt marker and the
+    /// connection placeholder still paint, the box is not blanked or broken. Only the caret styling
+    /// changes (a solid REVERSED block when focused → DIM when not; input.rs:69/90), which is the
+    /// intended out-of-focus appearance.
+    #[test]
+    fn render_input_box_intact_when_pane_unfocused() {
+        let _g = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        // Focused baseline: the input box paints the prompt + connected placeholder.
+        app.pane_focused = true;
+        let focused = render_to_text(&mut app, 80, 24);
+        let placeholder = rust_i18n::t!("input.placeholder.connected").into_owned();
+        assert!(
+            focused.contains('>') && focused.contains(&placeholder),
+            "sanity: the focused input must paint the prompt + placeholder; rendered:\n{focused}"
+        );
+
+        // Focus leaves the pane: the input box must remain intact (prompt + placeholder still there),
+        // i.e. losing focus does not blank or corrupt the input surface.
+        app.pane_focused = false;
+        let unfocused = render_to_text(&mut app, 80, 24);
+        assert!(
+            unfocused.contains('>'),
+            "the out-of-focus input must still paint the prompt marker; rendered:\n{unfocused}"
+        );
+        assert!(
+            unfocused.contains(&placeholder),
+            "the out-of-focus input must still paint the connection placeholder (box intact); rendered:\n{unfocused}"
+        );
+    }
+
+    /// Render (C067 "non-ASCII input"): non-ASCII characters typed into the agent-pane input must be
+    /// accepted and painted correctly (multi-byte UTF-8: accented Latin, Greek, CJK). Drives the real
+    /// key handler with `KeyCode::Char` events (a Rust `char` is a full Unicode scalar, exactly what a
+    /// keyboard/IME commit produces) and asserts they render. The E2E send path (wtcli send-keys)
+    /// cannot carry non-ASCII, so this unit test is the deterministic coverage for the product side;
+    /// the IME-composition half stays MANUAL. `insert_input_char` advances the caret by
+    /// `ch.len_utf8()` (app.rs:1842), so multi-byte chars must round-trip.
+    #[test]
+    fn render_agent_input_accepts_non_ascii() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let _g = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        let sample = "café Ω 你好";
+        for c in sample.chars() {
+            app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        // The input buffer holds the exact non-ASCII string (the product contract: non-ASCII input
+        // is accepted verbatim, multi-byte caret advance included)...
+        assert_eq!(
+            app.current_tab().input,
+            sample,
+            "non-ASCII characters must be accepted verbatim into the input buffer"
+        );
+        // ...and the painted input line shows the multi-byte glyphs. (CJK are double-width; the
+        // ratatui TestBackend splits a wide glyph across two cells so the raw cell-join may not
+        // reconstruct the CJK codepoint — assert the single-width non-ASCII glyphs render, and rely
+        // on the input-buffer assertion above for the wide-char acceptance contract.)
+        let text = render_to_text(&mut app, 80, 24);
+        for needle in ["café", "Ω"] {
+            assert!(
+                text.contains(needle),
+                "the agent input must paint the non-ASCII text {needle:?}; rendered:\n{text}"
+            );
+        }
+    }
+
     /// Render: a committed agent message must actually appear in the painted
     /// chat view (not just in `App` state). Lifts `ui/chat.rs` coverage.
     #[test]
@@ -14067,6 +14185,33 @@ mod tests {
         assert!(
             text.contains("VISIBLE_REPLY_XYZ"),
             "the chat view must paint the agent message; rendered:\n{text}"
+        );
+    }
+
+    /// Render (C134 "Hooks off behavior is safe"): with session management OFF — no tracked
+    /// sessions, exactly as when wt-agent-hooks are not installed — the session-management (Agents)
+    /// view must still paint a STABLE empty state (the draw does not panic and the navigation footer
+    /// hint is drawn) rather than a broken/blank surface.
+    #[test]
+    fn render_agents_view_empty_when_no_sessions_is_stable() {
+        let mut app = test_app();
+        let key = app.active_tab_key().to_string();
+        // No SessionStarted events applied => the registry is empty, exactly as when session
+        // management is off (no wt-agent-hooks tracking any sessions).
+        assert!(
+            app.agents_rows_for_tab(&key).is_empty(),
+            "precondition: no tracked sessions (hooks off)"
+        );
+        app.current_tab_mut().current_view = View::Agents;
+
+        // render_to_text asserts the draw does not panic.
+        let text = render_to_text(&mut app, 80, 24);
+
+        // The navigation footer hint (agents.footer_hint) is drawn in the empty state too; its
+        // leading "↑ ↓" arrows are invariant across every bundled locale, so assert on those.
+        assert!(
+            text.contains('↑') && text.contains('↓'),
+            "the empty session view must paint the stable navigation footer hint; rendered:\n{text}"
         );
     }
 
