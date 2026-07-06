@@ -949,7 +949,7 @@ pub fn needs_shell_launch(commandline: &str) -> bool {
 /// Returns true if the first token of `commandline` can actually be launched —
 /// i.e. it resolves to a real program: a shell, an `.exe`/`.cmd`/`.bat`/`.com`
 /// found on PATH, or an existing file. Used to detect a misconfigured /
-/// non-existent delegate agent *before* spawning the tab: without this, WT
+/// nonexistent delegate agent *before* spawning the tab: without this, WT
 /// creates the tab, the not-found command exits instantly, and WT closes the
 /// pane before the user can see the error (the tab just flashes shut). Known
 /// built-in agents are covered because `resolve_commandline_executable` first
@@ -1368,7 +1368,7 @@ mod tests {
         assert!(super::delegate_command_launchable("cmd.exe /c echo hi"));
         assert!(
             !super::delegate_command_launchable("wt-nonexistent-delegate-xyz"),
-            "a non-existent bare command must be reported as not launchable"
+            "a nonexistent bare command must be reported as not launchable"
         );
         assert!(
             !super::delegate_command_launchable("wt-nonexistent-delegate-xyz -i \"hi\""),

@@ -390,7 +390,14 @@ where
     let handle_io = {
         let cell = cell.clone();
         async move {
-            let r = done_rx.await.unwrap_or(Ok(()));
+            // The connection task always reports its result on `done_tx`. A
+            // receive error means it was dropped/panicked before reporting — a
+            // real failure, so surface it as an error rather than masking it as a
+            // clean `Ok(())` shutdown.
+            let r = done_rx.await.unwrap_or_else(|_| {
+                Err(acp::Error::internal_error()
+                    .data("ACP connection task ended without reporting a result"))
+            });
             // Connection ended; if it never became ready, wake waiters so they
             // surface an error instead of spinning/blocking forever.
             cell.failed.store(true, std::sync::atomic::Ordering::Release);
@@ -435,7 +442,13 @@ where
     let handle_io = {
         let cell = cell.clone();
         async move {
-            let r = done_rx.await.unwrap_or(Ok(()));
+            // See `spawn_client`: a receive error means the connection task ended
+            // without reporting — surface it as an error, don't mask it as a
+            // clean `Ok(())` shutdown.
+            let r = done_rx.await.unwrap_or_else(|_| {
+                Err(acp::Error::internal_error()
+                    .data("ACP connection task ended without reporting a result"))
+            });
             cell.failed.store(true, std::sync::atomic::Ordering::Release);
             cell.notify.notify_waiters();
             r
@@ -629,12 +642,12 @@ mod transport_death_tests {
     #[test]
     fn death_watch_read_signals_on_eof() {
         let death = std::sync::Arc::new(TransportDeath::default());
-        let mut dwr = DeathWatchRead {
+        let mut reader = DeathWatchRead {
             inner: ScriptedRead(Some(Ok(0))),
             death: death.clone(),
         };
         let mut buf = [0u8; 8];
-        let poll = poll_once(&mut dwr, &mut buf);
+        let poll = poll_once(&mut reader, &mut buf);
         assert!(matches!(poll, std::task::Poll::Ready(Ok(0))));
         assert!(
             is_dead(&death),
@@ -648,12 +661,12 @@ mod transport_death_tests {
         // mistaken for peer death (the `!buf.is_empty()` guard). Getting this
         // wrong would tear a live connection down on a spurious empty read.
         let death = std::sync::Arc::new(TransportDeath::default());
-        let mut dwr = DeathWatchRead {
+        let mut reader = DeathWatchRead {
             inner: ScriptedRead(Some(Ok(0))),
             death: death.clone(),
         };
         let mut empty: [u8; 0] = [];
-        let poll = poll_once(&mut dwr, &mut empty);
+        let poll = poll_once(&mut reader, &mut empty);
         assert!(matches!(poll, std::task::Poll::Ready(Ok(0))));
         assert!(
             !is_dead(&death),
@@ -665,12 +678,12 @@ mod transport_death_tests {
     fn death_watch_read_signals_on_error() {
         let death = std::sync::Arc::new(TransportDeath::default());
         let err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe gone");
-        let mut dwr = DeathWatchRead {
+        let mut reader = DeathWatchRead {
             inner: ScriptedRead(Some(Err(err))),
             death: death.clone(),
         };
         let mut buf = [0u8; 8];
-        let poll = poll_once(&mut dwr, &mut buf);
+        let poll = poll_once(&mut reader, &mut buf);
         assert!(matches!(poll, std::task::Poll::Ready(Err(_))));
         assert!(is_dead(&death), "a read error must signal death");
     }
@@ -678,12 +691,12 @@ mod transport_death_tests {
     #[test]
     fn death_watch_read_passes_through_normal_read() {
         let death = std::sync::Arc::new(TransportDeath::default());
-        let mut dwr = DeathWatchRead {
+        let mut reader = DeathWatchRead {
             inner: ScriptedRead(Some(Ok(4))),
             death: death.clone(),
         };
         let mut buf = [0u8; 8];
-        let poll = poll_once(&mut dwr, &mut buf);
+        let poll = poll_once(&mut reader, &mut buf);
         assert!(matches!(poll, std::task::Poll::Ready(Ok(4))));
         assert!(
             !is_dead(&death),

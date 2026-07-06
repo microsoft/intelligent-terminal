@@ -2058,7 +2058,7 @@ async fn delegate_with_context(
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
     // Pre-flight: if the configured delegate agent can't actually be launched
-    // (a non-existent / misconfigured command), don't spawn a doomed tab. WT
+    // (a nonexistent / misconfigured command), don't spawn a doomed tab. WT
     // would create it, the not-found command would exit instantly, and the pane
     // would close before the user could see the error (the tab just flashes
     // shut). Open a persistent single-line error tab instead so the failure is
