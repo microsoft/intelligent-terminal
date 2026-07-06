@@ -580,4 +580,163 @@ mod transport_death_tests {
             );
         });
     }
+
+    // ── Unit guards for the two primitives the fix is built on ──────────────
+    //
+    // The integration tests above prove the end-to-end contract; the ones below
+    // pin the individual pieces so a future refactor of either primitive can't
+    // silently reintroduce the hang (or, for `DeathWatchRead`, over-eagerly tear
+    // down a live connection).
+
+    /// A `futures::AsyncRead` that yields a single scripted `poll_read` result.
+    struct ScriptedRead(Option<std::io::Result<usize>>);
+
+    impl futures::AsyncRead for ScriptedRead {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            _buf: &mut [u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            std::task::Poll::Ready(self.0.take().expect("ScriptedRead polled twice"))
+        }
+    }
+
+    /// A no-op `Waker` so `DeathWatchRead::poll_read` can be driven synchronously
+    /// without a runtime (uses `std::task::Wake`, so no `futures` test helpers).
+    fn noop_waker() -> std::task::Waker {
+        struct NoopWake;
+        impl std::task::Wake for NoopWake {
+            fn wake(self: std::sync::Arc<Self>) {}
+            fn wake_by_ref(self: &std::sync::Arc<Self>) {}
+        }
+        std::sync::Arc::new(NoopWake).into()
+    }
+
+    /// Poll a `DeathWatchRead<ScriptedRead>` exactly once with the given buffer.
+    fn poll_once(
+        read: &mut DeathWatchRead<ScriptedRead>,
+        buf: &mut [u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let waker = noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+        futures::AsyncRead::poll_read(std::pin::Pin::new(read), &mut cx, buf)
+    }
+
+    fn is_dead(d: &TransportDeath) -> bool {
+        d.dead.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[test]
+    fn death_watch_read_signals_on_eof() {
+        let death = std::sync::Arc::new(TransportDeath::default());
+        let mut dwr = DeathWatchRead {
+            inner: ScriptedRead(Some(Ok(0))),
+            death: death.clone(),
+        };
+        let mut buf = [0u8; 8];
+        let poll = poll_once(&mut dwr, &mut buf);
+        assert!(matches!(poll, std::task::Poll::Ready(Ok(0))));
+        assert!(
+            is_dead(&death),
+            "a 0-byte read into a non-empty buffer is a real EOF and must signal death"
+        );
+    }
+
+    #[test]
+    fn death_watch_read_ignores_benign_empty_read() {
+        // A 0-byte read into a *zero-length* buffer is NOT EOF — it must not be
+        // mistaken for peer death (the `!buf.is_empty()` guard). Getting this
+        // wrong would tear a live connection down on a spurious empty read.
+        let death = std::sync::Arc::new(TransportDeath::default());
+        let mut dwr = DeathWatchRead {
+            inner: ScriptedRead(Some(Ok(0))),
+            death: death.clone(),
+        };
+        let mut empty: [u8; 0] = [];
+        let poll = poll_once(&mut dwr, &mut empty);
+        assert!(matches!(poll, std::task::Poll::Ready(Ok(0))));
+        assert!(
+            !is_dead(&death),
+            "an empty-buffer 0-byte read must not be treated as peer death"
+        );
+    }
+
+    #[test]
+    fn death_watch_read_signals_on_error() {
+        let death = std::sync::Arc::new(TransportDeath::default());
+        let err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe gone");
+        let mut dwr = DeathWatchRead {
+            inner: ScriptedRead(Some(Err(err))),
+            death: death.clone(),
+        };
+        let mut buf = [0u8; 8];
+        let poll = poll_once(&mut dwr, &mut buf);
+        assert!(matches!(poll, std::task::Poll::Ready(Err(_))));
+        assert!(is_dead(&death), "a read error must signal death");
+    }
+
+    #[test]
+    fn death_watch_read_passes_through_normal_read() {
+        let death = std::sync::Arc::new(TransportDeath::default());
+        let mut dwr = DeathWatchRead {
+            inner: ScriptedRead(Some(Ok(4))),
+            death: death.clone(),
+        };
+        let mut buf = [0u8; 8];
+        let poll = poll_once(&mut dwr, &mut buf);
+        assert!(matches!(poll, std::task::Poll::Ready(Ok(4))));
+        assert!(
+            !is_dead(&death),
+            "a normal non-empty read must not signal death"
+        );
+    }
+
+    #[test]
+    fn transport_death_wait_returns_when_already_signaled() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let d = TransportDeath::default();
+            d.signal();
+            // Must return immediately; bound it so a regression fails fast
+            // instead of hanging the whole test binary.
+            tokio::time::timeout(std::time::Duration::from_secs(1), d.wait())
+                .await
+                .expect("wait() must return immediately when death was already signaled");
+        });
+    }
+
+    #[test]
+    fn transport_death_wait_wakes_on_later_signal() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let d = TransportDeath::default();
+            // The signal races in *after* wait() has registered its Notify
+            // interest — the exact case the `notified()`-before-`load` ordering
+            // in `wait()` exists to handle.
+            let guarded = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                tokio::join!(d.wait(), async {
+                    tokio::task::yield_now().await;
+                    d.signal();
+                });
+            });
+            guarded
+                .await
+                .expect("wait() must be woken by a signal that arrives after it starts waiting");
+        });
+    }
+
+    #[test]
+    fn transport_death_signal_is_idempotent() {
+        let d = TransportDeath::default();
+        assert!(!is_dead(&d));
+        d.signal();
+        d.signal(); // a second signal must be a harmless no-op
+        assert!(is_dead(&d));
+    }
 }
