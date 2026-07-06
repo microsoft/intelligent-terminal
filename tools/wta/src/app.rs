@@ -323,7 +323,7 @@ pub fn build_setup_options(
                     display_name: status.display_name.clone(),
                 });
             }
-        } else if !status.has_credential || *reason == SetupReason::AgentError {
+        } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
             if status.id == "copilot" {
                 // Copilot: we can drive the device-flow sign-in
@@ -5997,32 +5997,10 @@ impl App {
                         // Install succeeded → proceed to connect or auth
                         let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
 
-                        if crate::agent_check::has_credential(&agent_id) {
-                            // Has credential → connect directly
-                            let new_cmd = self.build_agent_cmd(&agent_id);
-                            let _ = self.restart_tx.send(RestartRequest {
-                                agent_cmd: Some(new_cmd),
-                            });
-                            self.mode = AppMode::Chat;
-                            self.state =
-                                ConnectionState::Connecting(t!("connection.starting").into_owned());
-                            let tab = self.current_tab_mut();
-                            tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
-                            tab.chat_scroll.reset();
-                            self.setup = None;
-                            let (enterprise_mode, enterprise_host) =
-                                copilot_enterprise_prefill(&agent_id);
-                            self.auth = Some(AuthState {
-                                agent_id: agent_id.clone(),
-                                agent_name: status.display_name.clone(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                                checking: false,
-                                status_message: String::new(),
-                                enterprise_mode,
-                                enterprise_host,
-                            });
-                        } else if agent_id == "copilot" {
-                            // Copilot installed but not authenticated → auth screen.
+                        if agent_id == "copilot" {
+                            // Copilot was just installed by IT. Route directly
+                            // to sign-in instead of probing local credentials or
+                            // paying for a doomed ACP auth roundtrip.
                             self.mode = AppMode::Auth;
                             self.setup = None;
                             let (enterprise_mode, enterprise_host) =
@@ -14736,7 +14714,6 @@ mod tests {
             display_name: display.into(),
             cli_found,
             cli_path: None,
-            has_credential: false,
             install_hint: String::new(),
             auth_hint: String::new(),
         }
@@ -14744,16 +14721,14 @@ mod tests {
 
     #[test]
     fn diagnostic_setup_options_route_auth_by_agent() {
-        let mut copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
-        copilot.has_credential = false;
+        let copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
         let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
         assert!(
             matches!(copilot_options.as_slice(), [SetupOption::SignIn { agent_id, .. }] if agent_id == "copilot"),
             "Copilot auth failures must offer the in-app SignIn flow"
         );
 
-        let mut codex = agent_status_for_test("codex", "Codex", true);
-        codex.has_credential = false;
+        let codex = agent_status_for_test("codex", "Codex", true);
         let codex_options = build_setup_options(&SetupReason::AgentError, Some(&codex));
         assert!(
             matches!(codex_options.as_slice(), [SetupOption::Retry]),

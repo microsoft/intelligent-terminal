@@ -4,77 +4,6 @@
 #[cfg(windows)]
 use std::io;
 
-/// Copilot CLI stores its OAuth credential in Windows Credential Manager under
-/// target names containing `copilot-cli`. This predicate is deliberately kept
-/// pure so the matching behavior is testable without touching a user's
-/// Credential Manager store.
-pub(crate) fn credential_target_matches_copilot(target: &str) -> bool {
-    target.to_ascii_lowercase().contains("copilot-cli")
-}
-
-#[cfg(windows)]
-unsafe fn wide_ptr_to_string(ptr: *const u16) -> String {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-
-    if ptr.is_null() {
-        return String::new();
-    }
-    let mut len = 0usize;
-    while unsafe { *ptr.add(len) } != 0 {
-        len += 1;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    OsString::from_wide(slice).to_string_lossy().into_owned()
-}
-
-#[cfg(windows)]
-struct CredentialArray(*mut *mut windows_sys::Win32::Security::Credentials::CREDENTIALW);
-
-#[cfg(windows)]
-impl Drop for CredentialArray {
-    fn drop(&mut self) {
-        unsafe {
-            windows_sys::Win32::Security::Credentials::CredFree(self.0 as _);
-        }
-    }
-}
-
-/// Read-only Copilot credential presence check using the native Credential
-/// Manager API. We inspect target names only; the credential secret/blob is
-/// never read.
-#[cfg(windows)]
-pub(crate) fn copilot_credential_present() -> bool {
-    use windows_sys::Win32::Security::Credentials::{CredEnumerateW, CREDENTIALW};
-
-    let mut count = 0u32;
-    let mut credentials: *mut *mut CREDENTIALW = std::ptr::null_mut();
-    // Enumerate all targets and apply our own substring predicate to preserve
-    // parity with the old shell-based substring probe. Copilot CLI has
-    // used both prefix (`copilot-cli/...`) and suffix (`... .copilot-cli`)
-    // target shapes; CredEnumerateW's filter is prefix-only and would miss the
-    // suffix form. We still inspect target names only — never credential blobs.
-    let ok = unsafe { CredEnumerateW(std::ptr::null(), 0, &mut count, &mut credentials) != 0 };
-    if !ok || credentials.is_null() || count == 0 {
-        return false;
-    }
-
-    let _guard = CredentialArray(credentials);
-    let entries = unsafe { std::slice::from_raw_parts(credentials, count as usize) };
-    entries.iter().any(|&cred| {
-        if cred.is_null() {
-            return false;
-        }
-        let target = unsafe { wide_ptr_to_string((*cred).TargetName) };
-        credential_target_matches_copilot(&target)
-    })
-}
-
-#[cfg(not(windows))]
-pub(crate) fn copilot_credential_present() -> bool {
-    false
-}
-
 #[cfg(windows)]
 struct ClipboardGuard;
 
@@ -195,23 +124,4 @@ pub(crate) fn open_url_in_default_browser(_url: &str) -> std::io::Result<()> {
         std::io::ErrorKind::Unsupported,
         "opening URLs is only supported on Windows",
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::credential_target_matches_copilot;
-
-    #[test]
-    fn copilot_credential_match_accepts_known_target_shapes() {
-        assert!(credential_target_matches_copilot("copilot-cli/https://github.com:user"));
-        assert!(credential_target_matches_copilot("https://github.com:user.copilot-cli"));
-        assert!(credential_target_matches_copilot("COPILOT-CLI/https://example.ghe.com:user"));
-    }
-
-    #[test]
-    fn copilot_credential_match_rejects_unrelated_targets() {
-        assert!(!credential_target_matches_copilot(""));
-        assert!(!credential_target_matches_copilot("github.com:user"));
-        assert!(!credential_target_matches_copilot("other-agent-cli"));
-    }
 }

@@ -2869,13 +2869,9 @@ async fn run_acp_app(
                             app::CheckStatus::Failed("Not found on PATH".to_string())
                         },
                         cli_path: status.cli_path.clone(),
-                        auth_status: if !status.cli_found {
-                            app::CheckStatus::Skipped
-                        } else if status.has_credential {
-                            app::CheckStatus::Passed
-                        } else {
-                            app::CheckStatus::Skipped
-                        },
+                        // Authentication is checked by the ACP handshake rather
+                        // than by a local credential-store preflight.
+                        auth_status: app::CheckStatus::Skipped,
                         install_hint: status.install_hint.clone(),
                         install_url: String::new(),
                         auth_hint: status.auth_hint.clone(),
