@@ -1141,40 +1141,58 @@ impl HelperHandler {
         Ok(acp::schema::v1::ListSessionsResponse::new(sessions))
     }
 
-    async fn prompt(&self, args: acp::schema::v1::PromptRequest) -> acp::Result<acp::schema::v1::PromptResponse> {
+    async fn prompt(
+        &self,
+        args: acp::schema::v1::PromptRequest,
+        responder: acp::Responder<serde_json::Value>,
+    ) -> acp::Result<()> {
+        let helper_id = self.helper_id;
         tracing::info!(
             target: "master",
             step = "helper→agent",
             op = "prompt",
-            helper_id = ?self.helper_id,
+            helper_id = ?helper_id,
             session_id = ?args.session_id,
             content_chunks = args.prompt.len(),
-            "forwarding prompt to agent CLI"
+            "forwarding prompt to agent CLI (non-blocking)"
         );
         let started = std::time::Instant::now();
-        let resp = self.agent_conn.prompt(args).await;
-        let elapsed_ms = started.elapsed().as_millis();
-        match &resp {
-            Ok(ok) => tracing::info!(
-                target: "master",
-                step = "helper→agent",
-                op = "prompt",
-                helper_id = ?self.helper_id,
-                stop_reason = ?ok.stop_reason,
-                elapsed_ms = elapsed_ms as u64,
-                "prompt completed"
-            ),
-            Err(err) => tracing::warn!(
-                target: "master",
-                step = "helper→agent",
-                op = "prompt",
-                helper_id = ?self.helper_id,
-                error = %err,
-                elapsed_ms = elapsed_ms as u64,
-                "prompt failed"
-            ),
-        }
-        resp
+        // Forward WITHOUT awaiting the turn: awaiting here would block this
+        // helper's dispatch loop for the whole turn, so a reentrant
+        // request_permission / create_terminal the agent issues mid-turn could
+        // never be read back off the same loop — a cross-loop deadlock that
+        // wedges the shared agent CLI. Register a continuation instead so the
+        // loop stays free; the response is delivered to `responder` when the
+        // agent replies. See ClientLink::prompt_forwarding.
+        self.agent_conn
+            .prompt_forwarding(args, move |resp| async move {
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                match &resp {
+                    Ok(ok) => tracing::info!(
+                        target: "master",
+                        step = "helper→agent",
+                        op = "prompt",
+                        helper_id = ?helper_id,
+                        stop_reason = ?ok.stop_reason,
+                        elapsed_ms,
+                        "prompt completed"
+                    ),
+                    Err(err) => tracing::warn!(
+                        target: "master",
+                        step = "helper→agent",
+                        op = "prompt",
+                        helper_id = ?helper_id,
+                        error = %err,
+                        elapsed_ms,
+                        "prompt failed"
+                    ),
+                }
+                conn::respond_enum(
+                    responder,
+                    resp.map(acp::schema::v1::AgentResponse::PromptResponse),
+                )
+            })
+            .await
     }
 
     async fn cancel(&self, args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
@@ -1908,7 +1926,7 @@ async fn serve_helper(
                 Q::SetSessionModeRequest(a) => conn::respond_enum(responder, h.set_session_mode(a).await.map(R::SetSessionModeResponse)),
                 Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(responder, h.set_session_config_option(a).await.map(R::SetSessionConfigOptionResponse)),
                 Q::ListSessionsRequest(a) => conn::respond_enum(responder, h.list_sessions(a).await.map(R::ListSessionsResponse)),
-                Q::PromptRequest(a) => conn::respond_enum(responder, h.prompt(a).await.map(R::PromptResponse)),
+                Q::PromptRequest(a) => h.prompt(a, responder).await,
                 Q::ExtMethodRequest(a) => conn::respond_enum(responder, h.ext_method(a).await.map(R::ExtMethodResponse)),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
@@ -3079,6 +3097,252 @@ mod tests {
                 assert!(
                     format!("{err}").contains("agent CLI session/new timed out"),
                     "error should identify master->agent session/new timeout: {err}"
+                );
+            })
+            .await;
+    }
+
+    /// Regression for the reentrant-permission deadlock: a `prompt` in flight
+    /// must NOT block the master's helper-side ACP dispatch loop. If it does, a
+    /// `request_permission` the agent issues *mid-turn* deadlocks the shared
+    /// agent CLI — the helper answers the permission, but the blocked loop can
+    /// never read that answer, so the turn (and every later `session/new`)
+    /// hangs. Wire the full two hops the incident exercised:
+    ///
+    /// ```text
+    ///   mock helper --prompt--> master --prompt--> mock agent
+    ///        ^                                          |
+    ///        +---- request_permission (reentrant) <-----+   (answered "allow")
+    /// ```
+    ///
+    /// With the old inline `agent_conn.prompt(a).await` the prompt never
+    /// returns (the timeout below fires); with `prompt_forwarding` the loop
+    /// stays free, the permission round-trips, and the turn ends with `EndTurn`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn prompt_forward_survives_reentrant_permission() {
+        use acp::schema::v1::{
+            AgentRequest, AgentResponse, ClientRequest, ClientResponse, PermissionOption,
+            PermissionOptionId, PermissionOptionKind, PromptRequest, PromptResponse,
+            RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+            SelectedPermissionOutcome, StopReason, ToolCallId, ToolCallUpdate,
+            ToolCallUpdateFields,
+        };
+
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let state = make_state();
+                let sid = SessionId::new("reentrant-sess");
+
+                // ---- hop 1: master (agent-side client) <-> mock reentrant agent ----
+                let (master_agent_pipe, mock_agent_pipe) = tokio::io::duplex(64 * 1024);
+
+                // mock agent: on prompt, ask permission (reentrant, from a spawned
+                // task so the mock's own dispatch loop stays free), then EndTurn.
+                {
+                    let (ar, aw) = tokio::io::split(mock_agent_pipe);
+                    let builder = acp::Agent
+                        .builder()
+                        .name("mock-reentrant-agent")
+                        .on_receive_request(
+                            move |req: ClientRequest,
+                                  responder,
+                                  cx: acp::ConnectionTo<acp::Client>| async move {
+                                match req {
+                                    ClientRequest::PromptRequest(a) => {
+                                        let sid = a.session_id.clone();
+                                        tokio::task::spawn_local(async move {
+                                            let perm = RequestPermissionRequest::new(
+                                                sid,
+                                                ToolCallUpdate::new(
+                                                    ToolCallId::new("tool-1"),
+                                                    ToolCallUpdateFields::new()
+                                                        .title("Run: echo hi"),
+                                                ),
+                                                vec![PermissionOption::new(
+                                                    PermissionOptionId::new("allow-once"),
+                                                    "Allow once",
+                                                    PermissionOptionKind::AllowOnce,
+                                                )],
+                                            );
+                                            // block_task from a spawned task is safe.
+                                            let _ = cx.send_request(perm).block_task().await;
+                                            let _ = conn::respond_enum(
+                                                responder,
+                                                Ok(AgentResponse::PromptResponse(
+                                                    PromptResponse::new(StopReason::EndTurn),
+                                                )),
+                                            );
+                                        });
+                                        Ok(())
+                                    }
+                                    _ => responder
+                                        .respond_with_error(acp::Error::method_not_found()),
+                                }
+                            },
+                            acp::on_receive_request!(),
+                        );
+                    let (_agent_link, agent_io) = conn::spawn_agent(
+                        builder,
+                        conn::byte_streams(aw.compat_write(), ar.compat()),
+                    );
+                    tokio::task::spawn_local(async move {
+                        let _ = agent_io.await;
+                    });
+                }
+
+                // master's client side of hop 1: MasterClient routes the agent's
+                // reentrant request_permission back out to the owning helper.
+                let master_client = MasterClient {
+                    state: Arc::clone(&state),
+                };
+                let agent_conn = {
+                    let (cr, cw) = tokio::io::split(master_agent_pipe);
+                    let builder = acp::Client
+                        .builder()
+                        .name("master-agent-side")
+                        .on_receive_request(
+                            {
+                                let c = master_client.clone();
+                                move |req: AgentRequest, responder, _cx| {
+                                    let c = c.clone();
+                                    async move {
+                                        match req {
+                                            AgentRequest::RequestPermissionRequest(a) => {
+                                                conn::respond_enum(
+                                                    responder,
+                                                    c.request_permission(a).await.map(
+                                                        ClientResponse::RequestPermissionResponse,
+                                                    ),
+                                                )
+                                            }
+                                            _ => responder.respond_with_error(
+                                                acp::Error::method_not_found(),
+                                            ),
+                                        }
+                                    }
+                                }
+                            },
+                            acp::on_receive_request!(),
+                        );
+                    let (link, io) = conn::spawn_client(
+                        builder,
+                        conn::byte_streams(cw.compat_write(), cr.compat()),
+                    );
+                    tokio::task::spawn_local(async move {
+                        let _ = io.await;
+                    });
+                    link
+                };
+
+                // ---- hop 2: master (helper-side agent) <-> mock helper client ----
+                let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                let handler = HelperHandler {
+                    helper_id: HelperId(1),
+                    agent_conn,
+                    state: Arc::clone(&state),
+                    notif_tx: notif_tx.clone(),
+                    agent_side_slot: Arc::new(OnceLock::new()),
+                };
+                let (mock_helper_pipe, master_helper_pipe) = tokio::io::duplex(64 * 1024);
+                let master_to_helper = {
+                    let (mr, mw) = tokio::io::split(master_helper_pipe);
+                    let builder = acp::Agent
+                        .builder()
+                        .name("master-helper-side")
+                        .on_receive_request(
+                            {
+                                let h = handler.clone();
+                                move |req: ClientRequest, responder, _cx| {
+                                    let h = h.clone();
+                                    async move {
+                                        match req {
+                                            ClientRequest::PromptRequest(a) => {
+                                                h.prompt(a, responder).await
+                                            }
+                                            _ => responder.respond_with_error(
+                                                acp::Error::method_not_found(),
+                                            ),
+                                        }
+                                    }
+                                }
+                            },
+                            acp::on_receive_request!(),
+                        );
+                    let (link, io) = conn::spawn_agent(
+                        builder,
+                        conn::byte_streams(mw.compat_write(), mr.compat()),
+                    );
+                    tokio::task::spawn_local(async move {
+                        let _ = io.await;
+                    });
+                    link
+                };
+
+                // Route the session so the agent's reentrant request_permission
+                // reaches the mock helper.
+                state.session_to_helper.lock().await.insert(
+                    sid.clone(),
+                    HelperRoute {
+                        helper_id: HelperId(1),
+                        notif_tx,
+                        forwarder: Some(master_to_helper),
+                        consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                    },
+                );
+
+                // mock helper: approves any permission with "allow-once".
+                let helper_link = {
+                    let (hr, hw) = tokio::io::split(mock_helper_pipe);
+                    let builder = acp::Client
+                        .builder()
+                        .name("mock-helper")
+                        .on_receive_request(
+                            move |req: AgentRequest, responder, _cx| async move {
+                                match req {
+                                    AgentRequest::RequestPermissionRequest(_a) => {
+                                        conn::respond_enum(
+                                            responder,
+                                            Ok(ClientResponse::RequestPermissionResponse(
+                                                RequestPermissionResponse::new(
+                                                    RequestPermissionOutcome::Selected(
+                                                        SelectedPermissionOutcome::new(
+                                                            PermissionOptionId::new("allow-once"),
+                                                        ),
+                                                    ),
+                                                ),
+                                            )),
+                                        )
+                                    }
+                                    _ => responder
+                                        .respond_with_error(acp::Error::method_not_found()),
+                                }
+                            },
+                            acp::on_receive_request!(),
+                        );
+                    let (link, io) = conn::spawn_client(
+                        builder,
+                        conn::byte_streams(hw.compat_write(), hr.compat()),
+                    );
+                    tokio::task::spawn_local(async move {
+                        let _ = io.await;
+                    });
+                    link
+                };
+
+                // The helper's prompt must complete despite the reentrant
+                // permission — no deadlock, no timeout.
+                let resp = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    helper_link.prompt(PromptRequest::new(sid.clone(), vec!["hi".into()])),
+                )
+                .await
+                .expect("prompt deadlocked: helper dispatch loop blocked during in-flight prompt")
+                .expect("prompt should succeed");
+
+                assert!(
+                    matches!(resp.stop_reason, StopReason::EndTurn),
+                    "expected EndTurn, got {:?}",
+                    resp.stop_reason
                 );
             })
             .await;

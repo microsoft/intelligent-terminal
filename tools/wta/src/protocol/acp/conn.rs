@@ -134,6 +134,31 @@ impl ClientLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
+    /// Non-blocking counterpart of [`ClientLink::prompt`], for use **from
+    /// inside an ACP `on_receive_request` dispatch handler**.
+    ///
+    /// Every other method here `block_task().await`s the agent round-trip. That
+    /// is correct from a spawned task, but **deadlocks when called from a
+    /// dispatch handler**: awaiting freezes that connection's single dispatch
+    /// loop, so a reentrant `request_permission` / `create_terminal` the agent
+    /// issues *during* the prompt can never have its response read — the exact
+    /// hazard the ACP `ordering` docs call out. Instead of awaiting, this
+    /// registers `on_response` (run by the SDK when the agent finally replies)
+    /// and returns as soon as the request is on the wire, keeping the loop free.
+    pub async fn prompt_forwarding<Fut>(
+        &self,
+        req: PromptRequest,
+        on_response: impl FnOnce(acp::Result<PromptResponse>) -> Fut + 'static + Send,
+    ) -> acp::Result<()>
+    where
+        Fut: Future<Output = acp::Result<()>> + 'static + Send,
+    {
+        self.cx()
+            .await?
+            .send_request(req)
+            .on_receiving_result(on_response)
+    }
+
     pub async fn cancel(&self, notif: CancelNotification) -> acp::Result<()> {
         self.cx().await?.send_notification(notif)
     }
