@@ -2057,6 +2057,50 @@ async fn delegate_with_context(
         .first()
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
+    // Pre-flight: if the configured delegate agent can't actually be launched
+    // (a non-existent / misconfigured command), don't spawn a doomed tab. WT
+    // would create it, the not-found command would exit instantly, and the pane
+    // would close before the user could see the error (the tab just flashes
+    // shut). Open a persistent single-line error tab instead so the failure is
+    // visible. Kept out of the prompt-baking path below so no multi-line prompt
+    // can truncate the command before the message renders.
+    if !crate::coordinator::delegate_command_launchable(&runtime.commandline) {
+        let exe = crate::coordinator::split_windows_commandline(&runtime.commandline)
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+        // Sanitize for display: drop cmd-special characters so the echo can't be
+        // hijacked by a weird agent name (`&`, `|`, `>`, `%`, …).
+        let safe_exe: String = exe
+            .trim_matches('"')
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '\\' | '/' | ':' | ' ') {
+                    c
+                } else {
+                    '?'
+                }
+            })
+            .collect();
+        // `cmd /k` keeps the pane open after echoing; a single-line message can't
+        // be truncated by a stray newline the way a baked-in prompt can.
+        let err_cmd = format!(
+            "cmd /k echo Delegate agent not found: {safe_exe} - check the delegate agent setting."
+        );
+        let windows_home = std::env::var("USERPROFILE").ok();
+        let sanitized_cwd =
+            crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+        shell_mgr
+            .wt_create_tab(Some(&err_cmd), sanitized_cwd.as_deref(), None, None)
+            .await?;
+        tracing::warn!(
+            target: "delegate",
+            agent = %safe_exe,
+            "delegate agent not launchable — opened error tab instead of a doomed launch",
+        );
+        return Ok(());
+    }
+
     // Pin a session id we choose, so the launched CLI writes its session under a
     // known id and we can bind it to the pane without hooks. Only for agents that
     // advertise `--session-id` (Copilot/Claude/Gemini); `None` otherwise. We
