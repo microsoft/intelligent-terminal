@@ -213,6 +213,8 @@ commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"
 commands.save_ws.no_tab: "Cannot determine this workspace. Save is unavailable."
 commands.save_ws.saved: "Saved this workspace as \"%{title}\". Restore it later with /restore-ws."
 commands.save_ws.failed: "Save failed: %{error}"
+commands.save_ws.conflict_prompt: "Esta pestaña ya está guardada como \"%{title}\". Presiona 1 para sobrescribirla, 2 para guardarla como un área de trabajo nueva o Esc para cancelar."  # {Locked="1","2","Esc"} keyboard keys; %{title} is the existing saved workspace name
+commands.save_ws.conflict_cancelled: "Guardado cancelado."
 commands.restore_ws.focused: "Switched to the original workspace."
 commands.restore_ws.opened: "Workspace restored in a new tab."
 commands.restore_ws.failed: "Restore failed: %{error}"

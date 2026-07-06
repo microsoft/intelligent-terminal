@@ -14,7 +14,9 @@ Abstract:
 
 #include "ApplicationState.g.h"
 #include "WindowLayout.g.h"
-#include "SavedTabSession.g.h"
+#include "SavedWorkspaceSession.g.h"
+#include "SavedWorkspaceTab.g.h"
+#include "SavedWorkspaceAgentPane.g.h"
 
 #include <inc/cppwinrt_utils.h>
 #include <JsonUtils.h>
@@ -39,7 +41,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Shared, winrt::hstring, SettingsHash, "settingsHash")                                                                                                   \
     X(FileSource::Shared, std::unordered_set<winrt::guid>, GeneratedProfiles, "generatedProfiles")                                                                        \
     X(FileSource::Local, Windows::Foundation::Collections::IVector<Model::WindowLayout>, PersistedWindowLayouts, "persistedWindowLayouts")                                \
-    X(FileSource::Local, Windows::Foundation::Collections::IVector<Model::SavedTabSession>, SavedTabSessions, "savedTabSessions")                                         \
+    X(FileSource::Local, Windows::Foundation::Collections::IVector<Model::SavedWorkspaceSession>, SavedWorkspaceSessions, "savedWorkspaceSessions")                       \
     X(FileSource::Shared, Windows::Foundation::Collections::IVector<hstring>, RecentCommands, "recentCommands")                                                           \
     X(FileSource::Shared, Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::InfoBarMessage>, DismissedMessages, "dismissedMessages") \
     X(FileSource::Local, Windows::Foundation::Collections::IVector<hstring>, AllowedCommandlines, "allowedCommandlines")                                                  \
@@ -61,19 +63,41 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::WindowLayout>;
     };
 
-    struct SavedTabSession : SavedTabSessionT<SavedTabSession>
+    struct SavedWorkspaceAgentPane : SavedWorkspaceAgentPaneT<SavedWorkspaceAgentPane>
     {
-        static winrt::hstring ToJson(const Model::SavedTabSession& session);
-        static Model::SavedTabSession FromJson(const winrt::hstring& json);
+        SavedWorkspaceAgentPane() = default;
+
+        WINRT_PROPERTY(winrt::hstring, Cli);
+        WINRT_PROPERTY(winrt::hstring, Model);
+        WINRT_PROPERTY(winrt::hstring, AgentSessionId);
+        WINRT_PROPERTY(winrt::hstring, Position);
+
+        friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::SavedWorkspaceAgentPane>;
+    };
+
+    struct SavedWorkspaceTab : SavedWorkspaceTabT<SavedWorkspaceTab>
+    {
+        SavedWorkspaceTab() = default;
+
+        WINRT_PROPERTY(winrt::hstring, SourceStableId);
+        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<Model::ActionAndArgs>, TabActions, nullptr);
+        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<winrt::hstring>, BufferSessionIds, nullptr);
+        WINRT_PROPERTY(Model::SavedWorkspaceAgentPane, AgentPane, nullptr);
+
+        friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::SavedWorkspaceTab>;
+    };
+
+    struct SavedWorkspaceSession : SavedWorkspaceSessionT<SavedWorkspaceSession>
+    {
+        static winrt::hstring ToJson(const Model::SavedWorkspaceSession& session);
+        static Model::SavedWorkspaceSession FromJson(const winrt::hstring& json);
 
         WINRT_PROPERTY(winrt::hstring, Id);
         WINRT_PROPERTY(winrt::hstring, Title);
-        WINRT_PROPERTY(winrt::hstring, SourceStableId);
         WINRT_PROPERTY(winrt::hstring, SavedAt);
-        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<Model::ActionAndArgs>, TabActions, nullptr);
-        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<winrt::hstring>, BufferSessionIds, nullptr);
+        WINRT_PROPERTY(Windows::Foundation::Collections::IVector<Model::SavedWorkspaceTab>, Tabs, nullptr);
 
-        friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::SavedTabSession>;
+        friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::SavedWorkspaceSession>;
     };
 
     struct ApplicationState : public ApplicationStateT<ApplicationState>
@@ -91,8 +115,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         Json::Value ToJson(FileSource parseSource) const noexcept;
 
         void AppendPersistedWindowLayout(Model::WindowLayout layout);
-        void UpsertSavedTabSession(Model::SavedTabSession session);
-        bool RemoveSavedTabSession(const hstring& id);
+        void UpsertSavedWorkspaceSession(Model::SavedWorkspaceSession session);
+        bool RemoveSavedWorkspaceSession(const hstring& id);
         bool DismissBadge(const hstring& badgeId);
         bool BadgeDismissed(const hstring& badgeId) const;
 
@@ -130,6 +154,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 namespace winrt::Microsoft::Terminal::Settings::Model::factory_implementation
 {
     BASIC_FACTORY(WindowLayout)
-    BASIC_FACTORY(SavedTabSession)
+    BASIC_FACTORY(SavedWorkspaceSession)
+    BASIC_FACTORY(SavedWorkspaceTab)
+    BASIC_FACTORY(SavedWorkspaceAgentPane)
     BASIC_FACTORY(ApplicationState);
 }

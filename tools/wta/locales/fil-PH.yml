@@ -213,6 +213,8 @@ commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"
 commands.save_ws.no_tab: "Cannot determine this workspace. Save is unavailable."
 commands.save_ws.saved: "Saved this workspace as \"%{title}\". Restore it later with /restore-ws."
 commands.save_ws.failed: "Save failed: %{error}"
+commands.save_ws.conflict_prompt: "Naka-save na ang tab na ito bilang \"%{title}\". Pindutin ang 1 para i-overwrite ito, 2 para i-save bilang bagong workspace, o Esc para mag-cancel."  # {Locked="1","2","Esc"} keyboard keys; %{title} is the existing saved workspace name
+commands.save_ws.conflict_cancelled: "Kinansela ang pag-save."
 commands.restore_ws.focused: "Switched to the original workspace."
 commands.restore_ws.opened: "Workspace restored in a new tab."
 commands.restore_ws.failed: "Restore failed: %{error}"

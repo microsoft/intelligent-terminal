@@ -77,9 +77,9 @@ import "unknwn.idl";
     HRESULT Unsubscribe();
     HRESULT SendEvent([in] BSTR eventJson);
 
-    // ── Eternal Terminal: per-tab save/restore ──
-    HRESULT SaveTabSession([in] BSTR tabStableId, [in] BSTR title, [out, retval] BSTR* json);
-    HRESULT ListSavedTabSessions([out, retval] BSTR* json);
-    HRESULT RestoreTabSession([in] BSTR id, [out, retval] BSTR* json);
-    HRESULT DeleteSavedTabSession([in] BSTR id);
+    // ── Eternal Terminal: workspace save/restore ──
+    HRESULT SaveWorkspaceSession([in] BSTR tabStableId, [in] BSTR title, [in] BSTR mode, [out, retval] BSTR* json);
+    HRESULT ListSavedWorkspaceSessions([out, retval] BSTR* json);
+    HRESULT RestoreWorkspaceSession([in] BSTR id, [out, retval] BSTR* json);
+    HRESULT DeleteSavedWorkspaceSession([in] BSTR id);
 };

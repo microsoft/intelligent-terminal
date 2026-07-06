@@ -214,6 +214,8 @@ commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"
 commands.save_ws.no_tab: "Cannot determine this workspace. Save is unavailable."
 commands.save_ws.saved: "Saved this workspace as \"%{title}\". Restore it later with /restore-ws."
 commands.save_ws.failed: "Save failed: %{error}"
+commands.save_ws.conflict_prompt: "यह टैब पहले से \"%{title}\" के रूप में सहेजी गई है। इसे अधिलेखित करने के लिए 1 दबाएँ, नए कार्यक्षेत्र के रूप में सहेजने के लिए 2 दबाएँ, या रद्द करने के लिए Esc दबाएँ।"  # {Locked="1","2","Esc"} keyboard keys; %{title} is the existing saved workspace name
+commands.save_ws.conflict_cancelled: "सहेजना रद्द किया गया।"
 commands.restore_ws.focused: "Switched to the original workspace."
 commands.restore_ws.opened: "Workspace restored in a new tab."
 commands.restore_ws.failed: "Restore failed: %{error}"

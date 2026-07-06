@@ -978,7 +978,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::SaveTabSession(BSTR tabStableId, BSTR title, BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -991,7 +991,7 @@ try
         if (!page)
             continue;
 
-        const auto result = page.SaveTabSessionProtocol(_hstr(tabStableId), _hstr(title)).get();
+        const auto result = page.SaveWorkspaceSessionProtocol(_hstr(tabStableId), _hstr(title), _hstr(mode)).get();
         if (!result.empty())
         {
             *json = _bstrFromHstring(result);
@@ -1003,7 +1003,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::ListSavedTabSessions(BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::ListSavedWorkspaceSessions(BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -1016,7 +1016,7 @@ try
         if (!page)
             continue;
 
-        *json = _bstrFromHstring(page.ListSavedTabSessionsProtocol().get());
+        *json = _bstrFromHstring(page.ListSavedWorkspaceSessionsProtocol().get());
         return S_OK;
     }
 
@@ -1024,7 +1024,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::RestoreTabSession(BSTR id, BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::RestoreWorkspaceSession(BSTR id, BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -1035,7 +1035,7 @@ try
     const auto page = mostRecent ? _getPage(mostRecent) : nullptr;
     RETURN_HR_IF(E_FAIL, !page);
 
-    const auto result = page.RestoreTabSessionProtocol(_hstr(id)).get();
+    const auto result = page.RestoreWorkspaceSessionProtocol(_hstr(id)).get();
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), result.empty());
 
     *json = _bstrFromHstring(result);
@@ -1043,7 +1043,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::DeleteSavedTabSession(BSTR id)
+STDMETHODIMP TerminalProtocolComServer::DeleteSavedWorkspaceSession(BSTR id)
 try
 {
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
@@ -1054,7 +1054,7 @@ try
         if (!page)
             continue;
 
-        (void)page.DeleteSavedTabSessionProtocol(_hstr(id)).get();
+        (void)page.DeleteSavedWorkspaceSessionProtocol(_hstr(id)).get();
         return S_OK;
     }
 

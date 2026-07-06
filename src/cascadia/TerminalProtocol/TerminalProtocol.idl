@@ -130,10 +130,13 @@ namespace Microsoft.Terminal.Protocol
         // Client-originated event publishing (agent → WT → listeners)
         void SendEvent(String eventJson);
 
-        // Eternal Terminal — per-tab save/restore
-        String SaveTabSession(String tabStableId, String title);
-        String ListSavedTabSessions();
-        String RestoreTabSession(String id);
-        void DeleteSavedTabSession(String id);
+        // Eternal Terminal — workspace save/restore
+        // mode ∈ { "auto", "overwrite", "new" }: auto returns a "conflict"
+        // outcome (without writing) when the tab is already bound to a saved
+        // workspace, so the caller can prompt overwrite-vs-save-new.
+        String SaveWorkspaceSession(String tabStableId, String title, String mode);
+        String ListSavedWorkspaceSessions();
+        String RestoreWorkspaceSession(String id);
+        void DeleteSavedWorkspaceSession(String id);
     }
 }

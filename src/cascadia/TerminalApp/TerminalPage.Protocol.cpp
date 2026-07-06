@@ -671,15 +671,15 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
-    std::filesystem::path TerminalPage::_SavedTabSessionDir(const winrt::hstring& id)
+    std::filesystem::path TerminalPage::_SavedWorkspaceSessionDir(const winrt::hstring& id)
     {
         std::filesystem::path dir{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
-        dir /= L"SavedTabSessions";
+        dir /= L"SavedWorkspaceSessions";
         dir /= std::wstring_view{ id };
         return dir;
     }
 
-    IAsyncOperation<winrt::hstring> TerminalPage::SaveTabSessionProtocol(winrt::hstring tabStableId, winrt::hstring title)
+    IAsyncOperation<winrt::hstring> TerminalPage::SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode)
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
@@ -690,25 +690,58 @@ namespace winrt::TerminalApp::implementation
             co_return winrt::hstring{};
         }
 
-        winrt::hstring id;
-        const auto existing = ApplicationState::SharedInstance().SavedTabSessions();
-        if (existing)
+        // Resolve the workspace this tab is currently bound to (set on restore
+        // or first save). This is the identity we key overwrite on — not the
+        // tab StableId — so it survives resume into a fresh tab and generalizes
+        // to multi-tab workspaces.
+        const auto boundId = tabImpl->BoundWorkspaceId();
+        Model::SavedWorkspaceSession existing{ nullptr };
+        if (!boundId.empty())
         {
-            for (const auto& s : existing)
+            if (const auto sessions = ApplicationState::SharedInstance().SavedWorkspaceSessions())
             {
-                if (s.SourceStableId() == tabStableId)
+                for (const auto& s : sessions)
                 {
-                    id = s.Id();
-                    break;
+                    if (s.Id() == boundId)
+                    {
+                        existing = s;
+                        break;
+                    }
                 }
             }
+        }
+
+        auto modeStr = winrt::to_string(mode);
+        if (modeStr.empty())
+        {
+            modeStr = "auto";
+        }
+
+        // auto + an existing bound workspace ⇒ surface a conflict so the caller
+        // can prompt overwrite-vs-save-new. Nothing is written in this case.
+        if (modeStr == "auto" && existing)
+        {
+            Json::Value out{ Json::objectValue };
+            out["outcome"] = "conflict";
+            out["existingId"] = winrt::to_string(existing.Id());
+            out["existingTitle"] = winrt::to_string(existing.Title());
+            Json::StreamWriterBuilder wb;
+            co_return winrt::to_hstring(Json::writeString(wb, out));
+        }
+
+        // Decide the target workspace id: overwrite reuses the bound id;
+        // auto (no conflict) and new mint a fresh GUID.
+        winrt::hstring id;
+        if (modeStr == "overwrite" && !boundId.empty())
+        {
+            id = boundId;
         }
         if (id.empty())
         {
             id = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
         }
 
-        const auto dir = _SavedTabSessionDir(id);
+        const auto dir = _SavedWorkspaceSessionDir(id);
         std::error_code ec;
         std::filesystem::remove_all(dir, ec);
         std::filesystem::create_directories(dir, ec);
@@ -754,40 +787,61 @@ namespace winrt::TerminalApp::implementation
             });
         }
 
-        Model::SavedTabSession record;
+        // Build the nested workspace record. Today a workspace holds exactly
+        // one tab; the schema supports many so agent-pane/multi-tab restore can
+        // extend it without a format change. agentPane is reserved (left null).
+        Model::SavedWorkspaceTab tabRecord;
+        tabRecord.SourceStableId(tabStableId);
+        tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
+        tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
+
+        Model::SavedWorkspaceSession record;
         record.Id(id);
         record.Title(title);
-        record.SourceStableId(tabStableId);
         const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         record.SavedAt(winrt::to_hstring(nowMs));
-        record.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
-        record.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
-        ApplicationState::SharedInstance().UpsertSavedTabSession(record);
+        record.Tabs(winrt::single_threaded_vector<Model::SavedWorkspaceTab>({ tabRecord }));
+        ApplicationState::SharedInstance().UpsertSavedWorkspaceSession(record);
+
+        // Bind (or rebind on save-as-new) this tab to the workspace so a later
+        // /save-ws detects the conflict and overwrites the right record.
+        tabImpl->BoundWorkspaceId(id);
 
         Json::Value out{ Json::objectValue };
+        out["outcome"] = "saved";
         out["id"] = winrt::to_string(id);
         out["title"] = winrt::to_string(title);
         Json::StreamWriterBuilder wb;
         co_return winrt::to_hstring(Json::writeString(wb, out));
     }
 
-    IAsyncOperation<winrt::hstring> TerminalPage::ListSavedTabSessionsProtocol()
+    IAsyncOperation<winrt::hstring> TerminalPage::ListSavedWorkspaceSessionsProtocol()
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
 
         Json::Value arr{ Json::arrayValue };
-        const auto sessions = ApplicationState::SharedInstance().SavedTabSessions();
+        const auto sessions = ApplicationState::SharedInstance().SavedWorkspaceSessions();
         if (sessions)
         {
             for (const auto& s : sessions)
             {
+                // A workspace is "open" when some live tab is bound to it.
+                bool isOpen = false;
+                for (const auto& t : _tabs)
+                {
+                    if (const auto ti = _GetTabImpl(t); ti && ti->BoundWorkspaceId() == s.Id())
+                    {
+                        isOpen = true;
+                        break;
+                    }
+                }
+
                 Json::Value o{ Json::objectValue };
                 o["id"] = winrt::to_string(s.Id());
                 o["title"] = winrt::to_string(s.Title());
-                o["sourceStableId"] = winrt::to_string(s.SourceStableId());
                 o["savedAt"] = winrt::to_string(s.SavedAt());
-                o["isOpen"] = static_cast<bool>(_FindTabByStableId(s.SourceStableId()));
+                o["isOpen"] = isOpen;
                 arr.append(o);
             }
         }
@@ -795,13 +849,13 @@ namespace winrt::TerminalApp::implementation
         co_return winrt::to_hstring(Json::writeString(wb, arr));
     }
 
-    IAsyncOperation<winrt::hstring> TerminalPage::RestoreTabSessionProtocol(winrt::hstring id)
+    IAsyncOperation<winrt::hstring> TerminalPage::RestoreWorkspaceSessionProtocol(winrt::hstring id)
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
 
-        Model::SavedTabSession record{ nullptr };
-        const auto sessions = ApplicationState::SharedInstance().SavedTabSessions();
+        Model::SavedWorkspaceSession record{ nullptr };
+        const auto sessions = ApplicationState::SharedInstance().SavedWorkspaceSessions();
         if (sessions)
         {
             for (const auto& s : sessions)
@@ -818,37 +872,80 @@ namespace winrt::TerminalApp::implementation
             co_return winrt::hstring{};
         }
 
-        if (const auto live = _FindTabByStableId(record.SourceStableId()))
+        // Already open? Focus the live tab bound to this workspace.
+        for (const auto& t : _tabs)
         {
-            FocusTab(*live);
-
-            Json::Value out{ Json::objectValue };
-            out["outcome"] = "focused";
-            Json::StreamWriterBuilder wb;
-            co_return winrt::to_hstring(Json::writeString(wb, out));
-        }
-
-        const auto dir = _SavedTabSessionDir(id);
-        const std::filesystem::path settingsRoot{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
-        if (const auto ids = record.BufferSessionIds())
-        {
-            using namespace std::string_view_literals;
-
-            const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
-            for (const auto& sid : ids)
+            if (const auto ti = _GetTabImpl(t); ti && ti->BoundWorkspaceId() == id)
             {
-                const std::wstring storedName = std::wstring{ L"buffer_" } + std::wstring{ sid } + L".txt";
-                const std::wstring stagedName = std::wstring{ filenamePrefix } + std::wstring{ sid } + L".txt";
-                _copyBufferFileForRestore(dir / storedName, settingsRoot / stagedName, IsRunningElevated());
+                FocusTab(*ti);
+
+                Json::Value out{ Json::objectValue };
+                out["outcome"] = "focused";
+                Json::StreamWriterBuilder wb;
+                co_return winrt::to_hstring(Json::writeString(wb, out));
             }
         }
 
+        const auto dir = _SavedWorkspaceSessionDir(id);
+        const std::filesystem::path settingsRoot{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+
+        // Stage every tab's buffers into the settings root and gather the
+        // replay actions across all tabs (a workspace holds one tab today).
         std::vector<Model::ActionAndArgs> actions;
-        if (const auto tabActions = record.TabActions())
+        if (const auto tabs = record.Tabs())
         {
-            actions = wil::to_vector(tabActions);
+            using namespace std::string_view_literals;
+            const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
+
+            for (const auto& tab : tabs)
+            {
+                if (const auto ids = tab.BufferSessionIds())
+                {
+                    for (const auto& sid : ids)
+                    {
+                        const std::wstring storedName = std::wstring{ L"buffer_" } + std::wstring{ sid } + L".txt";
+                        const std::wstring stagedName = std::wstring{ filenamePrefix } + std::wstring{ sid } + L".txt";
+                        _copyBufferFileForRestore(dir / storedName, settingsRoot / stagedName, IsRunningElevated());
+                    }
+                }
+                if (const auto tabActions = tab.TabActions())
+                {
+                    for (const auto& a : tabActions)
+                    {
+                        actions.push_back(a);
+                    }
+                }
+            }
         }
-        ProcessStartupActions(std::move(actions), winrt::hstring{}, winrt::hstring{});
+
+        const auto tabCountBefore = _tabs.Size();
+
+        // Replay the workspace's startup actions inline (mirrors
+        // ProcessStartupActions' GH#13136 suspend-between-panes discipline) so
+        // this coroutine can await completion and then bind the created tabs.
+        // ProcessStartupActions itself is fire-and-forget and, with tabs
+        // already open, suspends before creating the tab — so we can't await it
+        // or read back the new tab.
+        auto suspend = _tabs.Size() > 0;
+        for (auto&& a : actions)
+        {
+            if (suspend)
+            {
+                co_await wil::resume_foreground(Dispatcher(), winrt::Windows::UI::Core::CoreDispatcherPriority::Low);
+            }
+            _actionDispatch->DoAction(a);
+            suspend = true;
+        }
+
+        // Bind every newly created tab to this workspace so a later /save-ws
+        // detects the conflict and overwrites the right record.
+        for (uint32_t i = tabCountBefore; i < _tabs.Size(); ++i)
+        {
+            if (const auto ti = _GetTabImpl(_tabs.GetAt(i)))
+            {
+                ti->BoundWorkspaceId(id);
+            }
+        }
 
         Json::Value out{ Json::objectValue };
         out["outcome"] = "opened";
@@ -856,14 +953,14 @@ namespace winrt::TerminalApp::implementation
         co_return winrt::to_hstring(Json::writeString(wb, out));
     }
 
-    IAsyncOperation<bool> TerminalPage::DeleteSavedTabSessionProtocol(winrt::hstring id)
+    IAsyncOperation<bool> TerminalPage::DeleteSavedWorkspaceSessionProtocol(winrt::hstring id)
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
 
-        const bool removed = ApplicationState::SharedInstance().RemoveSavedTabSession(id);
+        const bool removed = ApplicationState::SharedInstance().RemoveSavedWorkspaceSession(id);
         std::error_code ec;
-        std::filesystem::remove_all(_SavedTabSessionDir(id), ec);
+        std::filesystem::remove_all(_SavedWorkspaceSessionDir(id), ec);
         co_return removed;
     }
 

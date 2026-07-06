@@ -213,6 +213,8 @@ commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"
 commands.save_ws.no_tab: "Cannot determine this workspace. Save is unavailable."
 commands.save_ws.saved: "Saved this workspace as \"%{title}\". Restore it later with /restore-ws."
 commands.save_ws.failed: "Save failed: %{error}"
+commands.save_ws.conflict_prompt: "Den här fliken har redan sparats som \"%{title}\". Tryck på 1 för att skriva över den, 2 för att spara som en ny arbetsyta eller Esc för att avbryta."  # {Locked="1","2","Esc"} keyboard keys; %{title} is the existing saved workspace name
+commands.save_ws.conflict_cancelled: "Sparandet avbröts."
 commands.restore_ws.focused: "Switched to the original workspace."
 commands.restore_ws.opened: "Workspace restored in a new tab."
 commands.restore_ws.failed: "Restore failed: %{error}"

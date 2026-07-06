@@ -6,12 +6,12 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::SavedTabsViewState;
+use crate::app::SavedWorkspacesViewState;
 
 const ACCENT_CYAN: Color = Color::Cyan;
 const MUTED: Color = Color::Rgb(0x8b, 0x8b, 0x8b);
 
-pub fn render(f: &mut Frame, area: Rect, view: &SavedTabsViewState) {
+pub fn render(f: &mut Frame, area: Rect, view: &SavedWorkspacesViewState) {
     if view.loading {
         f.render_widget(
             Paragraph::new("Loading saved workspaces…").style(Style::default().fg(MUTED)),

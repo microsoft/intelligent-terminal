@@ -214,6 +214,8 @@ commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"
 commands.save_ws.no_tab: "Cannot determine this workspace. Save is unavailable."
 commands.save_ws.saved: "Saved this workspace as \"%{title}\". Restore it later with /restore-ws."
 commands.save_ws.failed: "Save failed: %{error}"
+commands.save_ws.conflict_prompt: "ఈ ట్యాబ్ ఇప్పటికే \"%{title}\" గా సేవ్ చేయబడింది. దానిని ఓవర్‌రైట్ చేయడానికి 1, కొత్త వర్క్‌స్పేస్‌గా సేవ్ చేయడానికి 2, లేదా రద్దు చేయడానికి Esc నొక్కండి."  # {Locked="1","2","Esc"} keyboard keys; %{title} is the existing saved workspace name
+commands.save_ws.conflict_cancelled: "సేవ్ రద్దు చేయబడింది."
 commands.restore_ws.focused: "Switched to the original workspace."
 commands.restore_ws.opened: "Workspace restored in a new tab."
 commands.restore_ws.failed: "Restore failed: %{error}"

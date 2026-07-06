@@ -1284,14 +1284,14 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
-    /// Result of `wtcli save-tab`: Ok(title) or Err(message).
-    SavedTabResult(Result<String, String>),
-    /// Result of `wtcli list-saved-tabs`: the parsed rows (may be empty).
-    SavedTabsListed(Vec<crate::app::SavedTabEntry>),
-    /// Result of `wtcli restore-tab`: outcome "focused" | "opened", or Err.
-    RestoredTabResult(Result<String, String>),
-    /// A saved tab was deleted; carries the id so the picker can drop the row.
-    SavedTabDeleted(String),
+    /// Result of `wtcli save-workspace`: Saved/Conflict outcome, or Err(message).
+    SaveWorkspaceResult(Result<crate::app::SaveWorkspaceOutcome, String>),
+    /// Result of `wtcli list-saved-workspaces`: the parsed rows (may be empty).
+    SavedWorkspacesListed(Vec<crate::app::SavedWorkspaceEntry>),
+    /// Result of `wtcli restore-workspace`: outcome "focused" | "opened", or Err.
+    RestoredWorkspaceResult(Result<String, String>),
+    /// A saved workspace was deleted; carries the id so the picker can drop the row.
+    SavedWorkspaceDeleted(String),
 }
 
 // --- Per-tab session storage ---
@@ -1963,7 +1963,13 @@ pub struct App {
     /// Gates the experimental `/save-ws` and `/restore-ws` slash commands.
     /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
     pub eternal_terminal_enabled: bool,
-    pub saved_tabs: Option<SavedTabsViewState>,
+    pub saved_workspaces: Option<SavedWorkspacesViewState>,
+    /// Pending overwrite-vs-save-new prompt after a `/save-ws` conflict.
+    /// While `Some`, 1/2/Esc are intercepted in the key handler.
+    pub pending_save_conflict: Option<PendingSaveConflict>,
+    /// Title the user typed on the `auto` save that produced a conflict, kept
+    /// so the chosen mode (overwrite/new) can re-dispatch with the same title.
+    pub pending_save_title: Option<String>,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -2117,7 +2123,7 @@ pub struct AgentsViewState {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
-pub struct SavedTabEntry {
+pub struct SavedWorkspaceEntry {
     pub id: String,
     pub title: String,
     #[serde(rename = "sourceStableId", default)]
@@ -2129,10 +2135,30 @@ pub struct SavedTabEntry {
 }
 
 #[derive(Debug, Default)]
-pub struct SavedTabsViewState {
-    pub entries: Vec<SavedTabEntry>,
+pub struct SavedWorkspacesViewState {
+    pub entries: Vec<SavedWorkspaceEntry>,
     pub selected: usize,
     pub loading: bool,
+}
+
+/// Outcome of a `wtcli save-workspace` call. `auto` mode returns `Conflict`
+/// when the tab is already bound to a saved workspace, so the UI can prompt
+/// overwrite-vs-save-new before any write happens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaveWorkspaceOutcome {
+    Saved { title: String },
+    Conflict {
+        existing_id: String,
+        existing_title: String,
+    },
+}
+
+/// Pending overwrite-vs-save-new prompt raised after a `Conflict` outcome.
+/// Holds the title the user typed so a chosen mode can re-dispatch the save.
+#[derive(Debug, Clone)]
+pub struct PendingSaveConflict {
+    pub title: String,
+    pub existing_title: String,
 }
 
 // (Historical-session load-state tracking was removed: the helper no longer
@@ -2255,7 +2281,9 @@ impl App {
             show_notification_banner: false,
             autofix_enabled,
             eternal_terminal_enabled,
-            saved_tabs: None,
+            saved_workspaces: None,
+            pending_save_conflict: None,
+            pending_save_title: None,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -3437,7 +3465,7 @@ impl App {
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
-        self.saved_tabs = None;
+        self.saved_workspaces = None;
         let rows_available = !self.agents_rows_for_tab(&tab_id).is_empty();
         {
             let tab = self.tab_mut(&tab_id);
@@ -4309,10 +4337,10 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
-            AppEvent::SavedTabResult(_) => "saved_tab_result",
-            AppEvent::SavedTabsListed(_) => "saved_tabs_listed",
-            AppEvent::RestoredTabResult(_) => "restored_tab_result",
-            AppEvent::SavedTabDeleted(_) => "saved_tab_deleted",
+            AppEvent::SaveWorkspaceResult(_) => "save_workspace_result",
+            AppEvent::SavedWorkspacesListed(_) => "saved_workspaces_listed",
+            AppEvent::RestoredWorkspaceResult(_) => "restored_workspace_result",
+            AppEvent::SavedWorkspaceDeleted(_) => "saved_workspace_deleted",
         }
     }
 
@@ -5184,23 +5212,51 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
-            AppEvent::SavedTabResult(result) => {
-                let message = match result {
-                    Ok(title) => t!("commands.save_ws.saved", title = title.as_str()).into_owned(),
-                    Err(error) => t!("commands.save_ws.failed", error = error.as_str()).into_owned(),
-                };
-                let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(message));
-                tab.scroll_to_bottom();
+            AppEvent::SaveWorkspaceResult(result) => {
+                match result {
+                    Ok(SaveWorkspaceOutcome::Saved { title }) => {
+                        let message =
+                            t!("commands.save_ws.saved", title = title.as_str()).into_owned();
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(message));
+                        tab.scroll_to_bottom();
+                    }
+                    Ok(SaveWorkspaceOutcome::Conflict {
+                        existing_id: _,
+                        existing_title,
+                    }) => {
+                        // Raise the overwrite-vs-save-new prompt. 1/2/Esc are
+                        // handled in the key dispatcher while this is Some.
+                        let prompt = t!(
+                            "commands.save_ws.conflict_prompt",
+                            title = existing_title.as_str()
+                        )
+                        .into_owned();
+                        self.pending_save_conflict = Some(PendingSaveConflict {
+                            title: self.pending_save_title.clone().unwrap_or_default(),
+                            existing_title,
+                        });
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(prompt));
+                        tab.scroll_to_bottom();
+                    }
+                    Err(error) => {
+                        let message =
+                            t!("commands.save_ws.failed", error = error.as_str()).into_owned();
+                        let tab = self.current_tab_mut();
+                        tab.messages.push(ChatMessage::System(message));
+                        tab.scroll_to_bottom();
+                    }
+                }
             }
-            AppEvent::SavedTabsListed(entries) => {
-                if let Some(view) = self.saved_tabs.as_mut() {
+            AppEvent::SavedWorkspacesListed(entries) => {
+                if let Some(view) = self.saved_workspaces.as_mut() {
                     view.selected = view.selected.min(entries.len().saturating_sub(1));
                     view.entries = entries;
                     view.loading = false;
                 }
             }
-            AppEvent::RestoredTabResult(result) => {
+            AppEvent::RestoredWorkspaceResult(result) => {
                 let message = match result {
                     Ok(outcome) if outcome == "focused" => {
                         t!("commands.restore_ws.focused").into_owned()
@@ -5214,7 +5270,7 @@ impl App {
                 tab.messages.push(ChatMessage::System(message));
                 tab.scroll_to_bottom();
             }
-            AppEvent::SavedTabDeleted(_id) => {}
+            AppEvent::SavedWorkspaceDeleted(_id) => {}
             AppEvent::WtEvent {
                 method,
                 pane_id,
@@ -6290,20 +6346,20 @@ impl App {
         matches!(Self::tab_visible_stream_len(tab), Some(len) if tab.reveal_chars < len)
     }
 
-    fn handle_saved_tabs_key(&mut self, key: KeyEvent) {
+    fn handle_saved_workspaces_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc => {
-                self.saved_tabs = None;
+                self.saved_workspaces = None;
             }
             KeyCode::Up => {
-                if let Some(view) = self.saved_tabs.as_mut() {
+                if let Some(view) = self.saved_workspaces.as_mut() {
                     if view.selected > 0 {
                         view.selected -= 1;
                     }
                 }
             }
             KeyCode::Down => {
-                if let Some(view) = self.saved_tabs.as_mut() {
+                if let Some(view) = self.saved_workspaces.as_mut() {
                     let max = view.entries.len().saturating_sub(1);
                     if view.selected < max {
                         view.selected += 1;
@@ -6312,7 +6368,7 @@ impl App {
             }
             KeyCode::Enter => {
                 let selected = self
-                    .saved_tabs
+                    .saved_workspaces
                     .as_ref()
                     .and_then(|view| view.entries.get(view.selected).cloned());
                 if let Some(entry) = selected {
@@ -6320,12 +6376,12 @@ impl App {
                     {
                         self.last_restore_tab_id = Some(entry.id.clone());
                     }
-                    self.saved_tabs = None;
+                    self.saved_workspaces = None;
                     self.dispatch_restore_ws(&entry.id);
                 }
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
-                let deleted = if let Some(view) = self.saved_tabs.as_mut() {
+                let deleted = if let Some(view) = self.saved_workspaces.as_mut() {
                     if let Some(entry) = view.entries.get(view.selected).cloned() {
                         view.entries.remove(view.selected);
                         if view.selected >= view.entries.len() {
@@ -6339,9 +6395,9 @@ impl App {
                     None
                 };
                 if let Some(id) = deleted {
-                    crate::shell::wt_channel::spawn_wtcli_delete_saved_tab(&id);
+                    crate::shell::wt_channel::spawn_wtcli_delete_saved_workspace(&id);
                     if let Some(tx) = self.event_tx.clone() {
-                        let _ = tx.send(AppEvent::SavedTabDeleted(id));
+                        let _ = tx.send(AppEvent::SavedWorkspaceDeleted(id));
                     }
                 }
             }
@@ -6596,8 +6652,43 @@ impl App {
             return;
         }
 
-        if self.saved_tabs.is_some() {
-            self.handle_saved_tabs_key(key);
+        // Overwrite-vs-save-new prompt: 1 overwrites, 2 saves a new copy, Esc
+        // cancels. Intercept before anything else so the digits don't reach the
+        // input line. Any other key is ignored while the prompt is up.
+        if self.pending_save_conflict.is_some() {
+            match key.code {
+                KeyCode::Char('1') => {
+                    let title = self
+                        .pending_save_conflict
+                        .take()
+                        .map(|p| p.title)
+                        .unwrap_or_default();
+                    self.dispatch_save_ws(title, "overwrite");
+                }
+                KeyCode::Char('2') => {
+                    let title = self
+                        .pending_save_conflict
+                        .take()
+                        .map(|p| p.title)
+                        .unwrap_or_default();
+                    self.dispatch_save_ws(title, "new");
+                }
+                KeyCode::Esc => {
+                    self.pending_save_conflict = None;
+                    self.pending_save_title = None;
+                    let tab = self.current_tab_mut();
+                    tab.messages.push(ChatMessage::System(
+                        t!("commands.save_ws.conflict_cancelled").into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        if self.saved_workspaces.is_some() {
+            self.handle_saved_workspaces_key(key);
             return;
         }
 
@@ -7784,7 +7875,9 @@ impl App {
         self.project_active_tab_state();
     }
 
-    /// `/save-ws <title>` — snapshot this tab. Implemented in Phase E.
+    /// `/save-ws <title>` — snapshot this tab. Dispatches in `auto` mode; if
+    /// the tab is already bound to a saved workspace, the save returns a
+    /// conflict and the UI prompts overwrite-vs-save-new.
     fn cmd_save_ws(&mut self, title: String) {
         let title = title.trim().to_string();
         if title.is_empty() {
@@ -7795,6 +7888,13 @@ impl App {
             tab.scroll_to_bottom();
             return;
         }
+        self.dispatch_save_ws(title, "auto");
+    }
+
+    /// Fire a `wtcli save-workspace` with the given mode (auto/overwrite/new).
+    /// Stashes the title so a conflict prompt can re-dispatch with the same
+    /// title once the user picks overwrite or save-new.
+    fn dispatch_save_ws(&mut self, title: String, mode: &str) {
         let Some(tab_id) = self.owner_tab_id.clone() else {
             let tab = self.current_tab_mut();
             tab.messages
@@ -7805,16 +7905,19 @@ impl App {
         let Some(tx) = self.event_tx.clone() else {
             return;
         };
-        crate::shell::wt_channel::spawn_wtcli_save_tab(
+        self.pending_save_title = Some(title.clone());
+        let mode = mode.to_string();
+        crate::shell::wt_channel::spawn_wtcli_save_workspace(
             &tab_id,
             &title,
+            &mode,
             Box::new(move |res| {
-                let _ = tx.send(AppEvent::SavedTabResult(res));
+                let _ = tx.send(AppEvent::SaveWorkspaceResult(res));
             }),
         );
     }
 
-    /// `/restore-ws` — open the saved-tab picker. Implemented in Phase E.
+    /// `/restore-ws` — open the saved-workspace picker.
     fn cmd_restore_ws(&mut self) {
         let Some(tx) = self.event_tx.clone() else {
             return;
@@ -7824,12 +7927,12 @@ impl App {
             self.close_agents_view_for_tab(&tab_id);
             self.project_active_tab_state();
         }
-        self.saved_tabs = Some(SavedTabsViewState {
+        self.saved_workspaces = Some(SavedWorkspacesViewState {
             loading: true,
             ..Default::default()
         });
-        crate::shell::wt_channel::spawn_wtcli_list_saved_tabs(Box::new(move |rows| {
-            let _ = tx.send(AppEvent::SavedTabsListed(rows));
+        crate::shell::wt_channel::spawn_wtcli_list_saved_workspaces(Box::new(move |rows| {
+            let _ = tx.send(AppEvent::SavedWorkspacesListed(rows));
         }));
     }
 
@@ -7837,10 +7940,10 @@ impl App {
         let Some(tx) = self.event_tx.clone() else {
             return;
         };
-        crate::shell::wt_channel::spawn_wtcli_restore_tab(
+        crate::shell::wt_channel::spawn_wtcli_restore_workspace(
             id,
             Box::new(move |res| {
-                let _ = tx.send(AppEvent::RestoredTabResult(res));
+                let _ = tx.send(AppEvent::RestoredWorkspaceResult(res));
             }),
         );
     }
@@ -9934,19 +10037,19 @@ mod tests {
     }
 
     #[test]
-    fn saved_tabs_navigation_clamps() {
+    fn saved_workspaces_navigation_clamps() {
         let mut app = test_app();
         app.eternal_terminal_enabled = true;
-        app.saved_tabs = Some(SavedTabsViewState {
+        app.saved_workspaces = Some(SavedWorkspacesViewState {
             entries: vec![
-                SavedTabEntry {
+                SavedWorkspaceEntry {
                     id: "a".into(),
                     title: "A".into(),
                     source_stable_id: "".into(),
                     saved_at: "0".into(),
                     is_open: false,
                 },
-                SavedTabEntry {
+                SavedWorkspaceEntry {
                     id: "b".into(),
                     title: "B".into(),
                     source_stable_id: "".into(),
@@ -9958,28 +10061,28 @@ mod tests {
             loading: false,
         });
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 1);
+        assert_eq!(app.saved_workspaces.as_ref().unwrap().selected, 1);
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 1);
+        assert_eq!(app.saved_workspaces.as_ref().unwrap().selected, 1);
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(app.saved_tabs.as_ref().unwrap().selected, 0);
+        assert_eq!(app.saved_workspaces.as_ref().unwrap().selected, 0);
     }
 
     #[test]
-    fn saved_tabs_esc_closes() {
+    fn saved_workspaces_esc_closes() {
         let mut app = test_app();
         app.eternal_terminal_enabled = true;
-        app.saved_tabs = Some(SavedTabsViewState::default());
+        app.saved_workspaces = Some(SavedWorkspacesViewState::default());
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(app.saved_tabs.is_none());
+        assert!(app.saved_workspaces.is_none());
     }
 
     #[test]
-    fn saved_tabs_enter_dispatches_restore() {
+    fn saved_workspaces_enter_dispatches_restore() {
         let mut app = test_app();
         app.eternal_terminal_enabled = true;
-        app.saved_tabs = Some(SavedTabsViewState {
-            entries: vec![SavedTabEntry {
+        app.saved_workspaces = Some(SavedWorkspacesViewState {
+            entries: vec![SavedWorkspaceEntry {
                 id: "sid-1".into(),
                 title: "T".into(),
                 source_stable_id: "".into(),
@@ -9994,16 +10097,16 @@ mod tests {
     }
 
     #[test]
-    fn saved_tabs_list_result_does_not_reopen_after_esc() {
+    fn saved_workspaces_list_result_does_not_reopen_after_esc() {
         let mut app = test_app();
         app.eternal_terminal_enabled = true;
-        app.saved_tabs = Some(SavedTabsViewState {
+        app.saved_workspaces = Some(SavedWorkspacesViewState {
             loading: true,
             ..Default::default()
         });
 
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        app.handle_event(AppEvent::SavedTabsListed(vec![SavedTabEntry {
+        app.handle_event(AppEvent::SavedWorkspacesListed(vec![SavedWorkspaceEntry {
             id: "late".into(),
             title: "Late".into(),
             source_stable_id: "".into(),
@@ -10011,23 +10114,23 @@ mod tests {
             is_open: false,
         }]));
 
-        assert!(app.saved_tabs.is_none());
+        assert!(app.saved_workspaces.is_none());
     }
 
     #[test]
-    fn saved_tabs_picker_and_agents_view_are_mutually_exclusive() {
+    fn saved_workspaces_picker_and_agents_view_are_mutually_exclusive() {
         let mut app = test_app();
         app.eternal_terminal_enabled = true;
 
-        app.saved_tabs = Some(SavedTabsViewState::default());
+        app.saved_workspaces = Some(SavedWorkspacesViewState::default());
         app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
-        assert!(app.saved_tabs.is_none());
+        assert!(app.saved_workspaces.is_none());
         assert_eq!(app.current_tab().current_view, View::Agents);
 
         let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
         app.set_event_tx(event_tx);
         app.cmd_restore_ws();
-        assert!(app.saved_tabs.is_some());
+        assert!(app.saved_workspaces.is_some());
         assert_eq!(app.current_tab().current_view, View::Chat);
     }
 
@@ -10038,7 +10141,7 @@ mod tests {
 
         app.cmd_restore_ws();
 
-        assert!(app.saved_tabs.is_none());
+        assert!(app.saved_workspaces.is_none());
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event

@@ -61,10 +61,10 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
-    STDMETHODIMP SaveTabSession(BSTR tabStableId, BSTR title, BSTR* json) override;
-    STDMETHODIMP ListSavedTabSessions(BSTR* json) override;
-    STDMETHODIMP RestoreTabSession(BSTR id, BSTR* json) override;
-    STDMETHODIMP DeleteSavedTabSession(BSTR id) override;
+    STDMETHODIMP SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR* json) override;
+    STDMETHODIMP ListSavedWorkspaceSessions(BSTR* json) override;
+    STDMETHODIMP RestoreWorkspaceSession(BSTR id, BSTR* json) override;
+    STDMETHODIMP DeleteSavedWorkspaceSession(BSTR id) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;

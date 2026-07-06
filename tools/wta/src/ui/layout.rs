@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
-    recommendations, saved_tabs_view, setup,
+    recommendations, saved_workspaces_view, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -49,8 +49,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         (area, None)
     };
 
-    if let Some(view) = app.saved_tabs.as_ref() {
-        saved_tabs_view::render(frame, main_area, view);
+    if let Some(view) = app.saved_workspaces.as_ref() {
+        saved_workspaces_view::render(frame, main_area, view);
         return;
     }
 

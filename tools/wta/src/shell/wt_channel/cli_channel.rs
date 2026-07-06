@@ -185,29 +185,57 @@ pub fn spawn_wtcli_async(args: &[String]) {
     }
 }
 
-pub fn spawn_wtcli_save_tab(
+pub fn spawn_wtcli_save_workspace(
     tab_stable_id: &str,
     title: &str,
-    on_done: Box<dyn FnOnce(Result<String, String>) + Send>,
+    mode: &str,
+    on_done: Box<dyn FnOnce(Result<crate::app::SaveWorkspaceOutcome, String>) + Send>,
 ) {
     let path = resolve_wtcli_path();
-    let (tab, title) = (tab_stable_id.to_string(), title.to_string());
+    let (tab, title, mode) = (
+        tab_stable_id.to_string(),
+        title.to_string(),
+        mode.to_string(),
+    );
     std::thread::spawn(move || {
         let out = std::process::Command::new(&path)
-            .args(["save-tab", "-t", &tab, "-n", &title])
+            .args(["save-workspace", "-t", &tab, "-n", &title, "-m", &mode])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output();
         let result = match out {
             Ok(o) if o.status.success() => {
                 let s = String::from_utf8_lossy(&o.stdout);
-                match serde_json::from_str::<serde_json::Value>(s.trim()) {
-                    Ok(v) => Ok(v
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or(&title)
-                        .to_string()),
-                    Err(_) => Ok(title.clone()),
+                let v = serde_json::from_str::<serde_json::Value>(s.trim()).ok();
+                let outcome = v
+                    .as_ref()
+                    .and_then(|v| v.get("outcome"))
+                    .and_then(|o| o.as_str())
+                    .unwrap_or("saved");
+                if outcome == "conflict" {
+                    Ok(crate::app::SaveWorkspaceOutcome::Conflict {
+                        existing_id: v
+                            .as_ref()
+                            .and_then(|v| v.get("existingId"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        existing_title: v
+                            .as_ref()
+                            .and_then(|v| v.get("existingTitle"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                } else {
+                    Ok(crate::app::SaveWorkspaceOutcome::Saved {
+                        title: v
+                            .as_ref()
+                            .and_then(|v| v.get("title"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or(&title)
+                            .to_string(),
+                    })
                 }
             }
             Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
@@ -217,30 +245,35 @@ pub fn spawn_wtcli_save_tab(
     });
 }
 
-pub fn spawn_wtcli_list_saved_tabs(
-    on_done: Box<dyn FnOnce(Vec<crate::app::SavedTabEntry>) + Send>,
+pub fn spawn_wtcli_list_saved_workspaces(
+    on_done: Box<dyn FnOnce(Vec<crate::app::SavedWorkspaceEntry>) + Send>,
 ) {
     let path = resolve_wtcli_path();
     std::thread::spawn(move || {
         let rows = std::process::Command::new(&path)
-            .args(["list-saved-tabs"])
+            .args(["list-saved-workspaces"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output()
             .ok()
             .filter(|o| o.status.success())
-            .and_then(|o| serde_json::from_slice::<Vec<crate::app::SavedTabEntry>>(&o.stdout).ok())
+            .and_then(|o| {
+                serde_json::from_slice::<Vec<crate::app::SavedWorkspaceEntry>>(&o.stdout).ok()
+            })
             .unwrap_or_default();
         on_done(rows);
     });
 }
 
-pub fn spawn_wtcli_restore_tab(id: &str, on_done: Box<dyn FnOnce(Result<String, String>) + Send>) {
+pub fn spawn_wtcli_restore_workspace(
+    id: &str,
+    on_done: Box<dyn FnOnce(Result<String, String>) + Send>,
+) {
     let path = resolve_wtcli_path();
     let id = id.to_string();
     std::thread::spawn(move || {
         let out = std::process::Command::new(&path)
-            .args(["restore-tab", "-i", &id])
+            .args(["restore-workspace", "-i", &id])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output();
@@ -263,8 +296,8 @@ pub fn spawn_wtcli_restore_tab(id: &str, on_done: Box<dyn FnOnce(Result<String, 
     });
 }
 
-pub fn spawn_wtcli_delete_saved_tab(id: &str) {
-    spawn_wtcli_async(&["delete-saved-tab".into(), "-i".into(), id.to_string()]);
+pub fn spawn_wtcli_delete_saved_workspace(id: &str) {
+    spawn_wtcli_async(&["delete-saved-workspace".into(), "-i".into(), id.to_string()]);
 }
 
 /// Run `wtcli --json <args>`, parse the resulting `sessionId` (or `SessionId`)

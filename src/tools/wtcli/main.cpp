@@ -589,56 +589,57 @@ int main()
         }
     });
 
-    // ── save-tab ──
-    std::string saveTabId, saveTabTitle;
-    auto* saveTabCmd = app.add_subcommand("save-tab", "Save a tab snapshot");
+    // ── save-workspace ──
+    std::string saveTabId, saveTabTitle, saveMode;
+    auto* saveTabCmd = app.add_subcommand("save-workspace", "Save a workspace snapshot");
     saveTabCmd->add_option("-t,--tab", saveTabId, "Source tab StableId")->required();
     saveTabCmd->add_option("-n,--title", saveTabTitle, "Snapshot title")->required();
+    saveTabCmd->add_option("-m,--mode", saveMode, "Save mode: auto|overwrite|new")->default_val("auto");
     saveTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        wil::unique_bstr tab{ Bstr(saveTabId) }, title{ Bstr(saveTabTitle) };
+        wil::unique_bstr tab{ Bstr(saveTabId) }, title{ Bstr(saveTabTitle) }, mode{ Bstr(saveMode) };
         Json::Value result;
-        auto hr = CallJson([&](BSTR* j) { return server->SaveTabSession(tab.get(), title.get(), j); }, result);
-        if (FAILED(hr)) { fprintf(stderr, "SaveTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        auto hr = CallJson([&](BSTR* j) { return server->SaveWorkspaceSession(tab.get(), title.get(), mode.get(), j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "SaveWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         PrintJson(result);
     });
 
-    // ── list-saved-tabs ──
-    auto* listSavedCmd = app.add_subcommand("list-saved-tabs", "List saved tab snapshots");
+    // ── list-saved-workspaces ──
+    auto* listSavedCmd = app.add_subcommand("list-saved-workspaces", "List saved workspace snapshots");
     listSavedCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         Json::Value result;
-        auto hr = CallJson([&](BSTR* j) { return server->ListSavedTabSessions(j); }, result);
-        if (FAILED(hr)) { fprintf(stderr, "ListSavedTabSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        auto hr = CallJson([&](BSTR* j) { return server->ListSavedWorkspaceSessions(j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "ListSavedWorkspaceSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         PrintJson(result);
     });
 
-    // ── restore-tab ──
+    // ── restore-workspace ──
     std::string restoreTabId;
-    auto* restoreTabCmd = app.add_subcommand("restore-tab", "Restore a saved tab snapshot");
+    auto* restoreTabCmd = app.add_subcommand("restore-workspace", "Restore a saved workspace snapshot");
     restoreTabCmd->add_option("-i,--id", restoreTabId, "Snapshot id")->required();
     restoreTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         wil::unique_bstr sid{ Bstr(restoreTabId) };
         Json::Value result;
-        auto hr = CallJson([&](BSTR* j) { return server->RestoreTabSession(sid.get(), j); }, result);
-        if (FAILED(hr)) { fprintf(stderr, "RestoreTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        auto hr = CallJson([&](BSTR* j) { return server->RestoreWorkspaceSession(sid.get(), j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "RestoreWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         PrintJson(result);
     });
 
-    // ── delete-saved-tab ──
+    // ── delete-saved-workspace ──
     std::string deleteTabId;
-    auto* deleteSavedCmd = app.add_subcommand("delete-saved-tab", "Delete a saved tab snapshot");
+    auto* deleteSavedCmd = app.add_subcommand("delete-saved-workspace", "Delete a saved workspace snapshot");
     deleteSavedCmd->add_option("-i,--id", deleteTabId, "Snapshot id")->required();
     deleteSavedCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
         wil::unique_bstr sid{ Bstr(deleteTabId) };
-        auto hr = server->DeleteSavedTabSession(sid.get());
-        if (FAILED(hr)) { fprintf(stderr, "DeleteSavedTabSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        auto hr = server->DeleteSavedWorkspaceSession(sid.get());
+        if (FAILED(hr)) { fprintf(stderr, "DeleteSavedWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
     });
 
     // ── test-pipe ──

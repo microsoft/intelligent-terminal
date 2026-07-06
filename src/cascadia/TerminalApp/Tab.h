@@ -135,6 +135,14 @@ namespace winrt::TerminalApp::implementation
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
 
+        // In-memory binding to a saved workspace (Eternal Terminal). Set when
+        // this tab is opened via RestoreWorkspaceSession, or on the first
+        // /save-ws of this tab. Drives the overwrite-vs-save-new prompt. Not
+        // persisted — the association is always re-established through
+        // /restore-ws, so it need not survive a WT restart.
+        const winrt::hstring& BoundWorkspaceId() const noexcept { return _boundWorkspaceId; }
+        void BoundWorkspaceId(const winrt::hstring& id) { _boundWorkspaceId = id; }
+
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
             return _tabStatus;
@@ -255,6 +263,7 @@ namespace winrt::TerminalApp::implementation
         bool _changingActivePane{ false };
 
         winrt::hstring _stableId{};
+        winrt::hstring _boundWorkspaceId{};
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };
