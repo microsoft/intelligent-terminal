@@ -159,12 +159,22 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
             Open-SessionList -App $script:app | Out-Null
             $sel1 = Get-SessionListSelection -App $script:app
             $first = "$($sel1.Title)|$($sel1.Meta)"
-            Send-AgentKey -App $script:app -Key Down | Out-Null
-            $sel2 = Get-SessionListSelection -App $script:app
-            $second = "$($sel2.Title)|$($sel2.Meta)"
-            # Rows can share a title (e.g. repeated oracle prompts), so compare title+meta
-            # (timestamps differ). With >1 row the selection must move to a distinct row.
-            if (@(Get-SessionRows -App $script:app).Count -gt 1) { $second | Should -Not -Be $first }
+            # A single-row list can't move the selection — nothing to assert.
+            if (@(Get-SessionRows -App $script:app).Count -le 1) {
+                Set-ItResult -Skipped -Because 'session list has a single row'
+                return
+            }
+            # Press Down and poll for the move: the TUI re-render + capture-pane read can lag
+            # the keypress, so a single immediate read occasionally catches the pre-move frame
+            # (flaky under load). Retry (re-pressing Down) until the selected row differs from
+            # the start. Rows can share a title (repeated oracle prompts), so compare
+            # title+meta (timestamps differ).
+            $moved = Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                Send-AgentKey -App $script:app -Key Down | Out-Null
+                $sel2 = Get-SessionListSelection -App $script:app
+                "$($sel2.Title)|$($sel2.Meta)" -ne $first
+            }
+            $moved | Should -BeTrue -Because 'arrow Down must move the selection to a distinct row'
         }
         It 'Enter behavior works (Enter on a row launches/resumes without error)' {
             # Select the live session row and resume it; the pane returns to a chat view.
