@@ -3848,6 +3848,24 @@ impl App {
         }
     }
 
+    fn show_copilot_auth_screen(&mut self) {
+        let agent_id = "copilot";
+        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+        let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(agent_id);
+        self.current_agent_id = agent_id.to_string();
+        self.mode = AppMode::Auth;
+        self.setup = None;
+        self.auth = Some(AuthState {
+            agent_id: agent_id.to_string(),
+            agent_name: profile.display_name.to_string(),
+            login_command: crate::agent_check::build_login_cmd(agent_id, None),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode,
+            enterprise_host,
+        });
+    }
+
     /// Diagnostic setup-mode key handler. Covers install, sign-in, and retry
     /// actions via the `SetupOption` variants.
     fn handle_setup_key(&mut self, key: KeyEvent) {
@@ -3953,19 +3971,17 @@ impl App {
             }
             SetupOption::SignIn {
                 agent_id,
-                display_name,
+                display_name: _,
             } => {
-                self.mode = AppMode::Auth;
-                let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(&agent_id);
-                self.auth = Some(AuthState {
-                    agent_id: agent_id.clone(),
-                    agent_name: display_name,
-                    login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                    checking: false,
-                    status_message: String::new(),
-                    enterprise_mode,
-                    enterprise_host,
-                });
+                if agent_id == "copilot" {
+                    self.show_copilot_auth_screen();
+                } else {
+                    tracing::warn!(
+                        target: "setup_key",
+                        agent_id = %agent_id,
+                        "ignoring SignIn option for non-Copilot agent"
+                    );
+                }
             }
             SetupOption::Retry => {
                 // Re-run preflight detection and try to reconnect
@@ -6001,19 +6017,7 @@ impl App {
                             // Copilot was just installed by IT. Route directly
                             // to sign-in instead of probing local credentials or
                             // paying for a doomed ACP auth roundtrip.
-                            self.mode = AppMode::Auth;
-                            self.setup = None;
-                            let (enterprise_mode, enterprise_host) =
-                                copilot_enterprise_prefill(&agent_id);
-                            self.auth = Some(AuthState {
-                                agent_id: agent_id.clone(),
-                                agent_name: status.display_name.clone(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                                checking: false,
-                                status_message: String::new(),
-                                enterprise_mode,
-                                enterprise_host,
-                            });
+                            self.show_copilot_auth_screen();
                         } else {
                             // Future-proofing: only Copilot has an in-app auth
                             // screen. If another agent ever becomes
@@ -14734,6 +14738,35 @@ mod tests {
             matches!(codex_options.as_slice(), [SetupOption::Retry]),
             "external-auth agents stay on the diagnostic Retry flow"
         );
+    }
+
+    #[test]
+    fn show_copilot_auth_screen_sets_expected_state() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentError,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("copilot"),
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options: vec![SetupOption::Retry],
+            title: "setup".into(),
+            subtitle: "sub".into(),
+        });
+
+        app.show_copilot_auth_screen();
+
+        assert_eq!(app.mode, AppMode::Auth);
+        assert!(app.setup.is_none(), "auth screen should replace setup state");
+        assert_eq!(app.current_agent_id, "copilot");
+        let auth = app.auth.as_ref().expect("copilot auth state");
+        assert_eq!(auth.agent_id, "copilot");
+        assert_eq!(auth.agent_name, "GitHub Copilot");
+        assert!(auth.login_command.contains("copilot"));
+        assert!(!auth.checking);
+        assert!(auth.status_message.is_empty());
     }
 
     /// Render: a setup screen with a full options list while a winget install
