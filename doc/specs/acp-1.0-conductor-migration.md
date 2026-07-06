@@ -369,11 +369,24 @@ checklist, and the structure that actually landed.
 Phase 0 is a behavior-preserving swap, but the surface area is large because 1.0
 rewrote the SDK. The main blocks:
 
-1. **Programming model: traits → builder/dispatch.** `impl acp::Client/Agent` is
-   gone; you register `on_receive_request` / `on_receive_notification` closures on
-   `Client.builder()` / `Agent.builder()` and dispatch the whole `ClientRequest` /
-   `AgentRequest` enum (responses serialize to `serde_json::Value`). Outbound
-   `conn.method(req).await` → `cx.send_request(req).block_task().await`.
+1. **Programming model: traits → builder/dispatch.** In 0.10 you `impl acp::Client`
+   / `impl acp::Agent` — one typed `async fn` per ACP method, with the compiler
+   guaranteeing you covered them all and the library owning the routing. 1.0 has no
+   trait: you attach a single `on_receive_request` (plus one `on_receive_notification`)
+   closure to `Client.builder()` / `Agent.builder()`, and it is handed the **whole
+   `AgentRequest` / `ClientRequest` enum** together with a `responder`. *You* now write
+   the `match` that routes each variant to a handler and replies via
+   `responder.respond(..)` / `respond_with_error(..)` (results cross a
+   `serde_json::Value` boundary instead of a statically-typed return), with a trailing
+   `on_receive_request!()` macro wiring the dispatch table. Exhaustiveness is no longer
+   the compiler's job — it is your `_ => method_not_found()` arm. That dynamic dispatch
+   is precisely what Phase 1/2 need: a **proxy** can match the few messages it
+   transforms and forward the rest verbatim, which a trait you must fully implement
+   cannot express — so the rewrite is the enabling change, not gratuitous churn. WTA
+   keeps the old typed ergonomics *behind* the `conn.rs` shim — `WtaClient` /
+   `HelperHandler` / `MasterClient` keep their per-method fns (now invoked from the
+   dispatch `match`) and `ClientLink` / `AgentLink` still expose `conn.method(req).await`
+   for the ~10K call sites (outbound `.await` mechanics in #7).
 2. **Connection objects removed.** `ClientSideConnection` / `AgentSideConnection`
    (object + separate `handle_io`) are gone; `connect_with(transport, main_fn)`
    hands you a `ConnectionTo<…>` plus the I/O future. We confine this to a compat
@@ -412,6 +425,42 @@ rewrote the SDK. The main blocks:
    actor-split (separate read / parse / write tasks joined by channels),
    pipelining the large/bursty messages 0.10's single `select!` loop processed
    serially.
+
+Concretely, the inbound half of the trait→builder shift (client side; the agent
+side is the mirror image):
+
+```rust
+// 0.10 — implement the trait; the library routes each RPC to a typed method and
+// the compiler makes you cover every one.
+impl acp::Client for WtaClient {
+    async fn request_permission(&self, a: RequestPermissionRequest)
+        -> acp::Result<RequestPermissionResponse> { /* … */ }
+    async fn create_terminal(&self, a: CreateTerminalRequest)
+        -> acp::Result<CreateTerminalResponse> { /* … */ }
+    // … one method per request + notification …
+}
+
+// 1.0 — register one dispatch closure on the builder; you match the whole enum
+// and reply through `responder`. The `_` arm is now your responsibility.
+let builder = acp::Client.builder()
+    .on_receive_request(move |req: AgentRequest, responder, _cx| async move {
+        use AgentRequest as Q; use ClientResponse as R;
+        match req {
+            Q::RequestPermissionRequest(a) =>
+                respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
+            Q::CreateTerminalRequest(a) =>
+                respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
+            // … terminal_output / wait_for_terminal_exit / release / kill …
+            _ => responder.respond_with_error(acp::Error::method_not_found()),
+        }
+    }, acp::on_receive_request!())
+    .on_receive_notification(/* match AgentNotification { SessionNotification(n) => …, _ => {} } */,
+                             acp::on_receive_notification!());
+
+// outbound stays behind the conn.rs shim, so the ~10K call sites don't change:
+//   0.10:  conn.new_session(req).await
+//   1.0:   cx.send_request(req).block_task().await     // block_task/on_receiving_result: see #7
+```
 
 #### Phase 0 migration checklist (grounded in current code)
 
