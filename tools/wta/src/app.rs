@@ -3848,7 +3848,7 @@ impl App {
         }
     }
 
-    fn show_copilot_auth_screen(&mut self) {
+    pub(crate) fn show_copilot_auth_screen(&mut self) {
         let agent_id = "copilot";
         let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
         let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(agent_id);

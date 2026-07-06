@@ -160,6 +160,13 @@ struct Cli {
     #[arg(long)]
     agent_id: Option<String>,
 
+    /// Boot-time hint from Windows Terminal: start directly on the auth screen
+    /// for the given agent instead of attempting the initial ACP session. Used
+    /// when FRE just installed Copilot, where the next expected action is
+    /// signing in. Hidden — only Windows Terminal should pass it.
+    #[arg(long, hide = true, value_name = "AGENT_ID")]
+    initial_auth_agent: Option<String>,
+
     /// Model override for the ACP agent. Sent via ACP setSessionModel after
     /// handshake. Used by adapter-style launches (claude, codex via npx)
     /// where the model can't be passed on the command line; native ACP
@@ -2648,12 +2655,95 @@ async fn run_acp_app(
             // events by the same StableId C++ routes per-tab events with.
             protocol::acp::client::set_helper_owner_tab_id(cli.owner_tab_id.as_deref());
 
+            let explicit_agent_id = cli
+                .agent_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let canonical_agent_id: String = explicit_agent_id
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_else(|| {
+                    agent_registry::resolve_agent_id_from_cmd(&agent_cmd).to_string()
+                });
+            let canonical_agent_source = if explicit_agent_id.is_some() {
+                "--agent-id"
+            } else {
+                "resolved-from-cmd"
+            };
+            let initial_load_requested = cli
+                .initial_load_session_id
+                .as_deref()
+                .map(str::trim)
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
+            let initial_auth_agent = match cli
+                .initial_auth_agent
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                Some(requested) if cli.assume_master_down => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --assume-master-down is active"
+                    );
+                    None
+                }
+                Some(requested) if cli.start_stashed => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --start-stashed is active"
+                    );
+                    None
+                }
+                Some(requested) if cli.setup.is_some() => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --setup is active"
+                    );
+                    None
+                }
+                Some(requested) if initial_load_requested => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --initial-load-session-id is active"
+                    );
+                    None
+                }
+                Some(requested) => {
+                    let requested_agent = requested.to_ascii_lowercase();
+                    if requested_agent != canonical_agent_id {
+                        tracing::warn!(
+                            target: "initial_auth",
+                            requested_agent = %requested_agent,
+                            current_agent = %canonical_agent_id,
+                            "--initial-auth-agent ignored because it does not match the effective agent"
+                        );
+                        None
+                    } else if requested_agent != "copilot" {
+                        tracing::warn!(
+                            target: "initial_auth",
+                            requested_agent = %requested_agent,
+                            "--initial-auth-agent ignored for unsupported agent"
+                        );
+                        None
+                    } else {
+                        Some(requested_agent)
+                    }
+                }
+                None => None,
+            };
+            let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
+
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
-            // master owns the agent lifecycle, so we always spawn the
-            // pipe-attached variant immediately — there's no FRE flow to defer
-            // to. If the user is mid-FRE the initial handshake fails with
-            // `Authentication required` and `try_start_acp` re-spawns this task
-            // post-login.
+            // master owns the agent lifecycle, so normal panes spawn the
+            // pipe-attached variant immediately. FRE-installed Copilot is the
+            // exception: `--initial-auth-agent copilot` starts on Auth and lets
+            // `LoginComplete` spawn the first pipe client after sign-in.
             if cli.assume_master_down {
                 // Degraded open: master is known down, so don't even try the
                 // (dead) pipe — go straight to the disconnected view that an
@@ -2707,6 +2797,29 @@ async fn run_acp_app(
                     load_session_rx,
                     drop_session_rx,
                     rename_session_rx,
+                    session_hook_rx,
+                    master_ext_rx,
+                ));
+            } else if start_in_initial_auth {
+                tracing::info!(
+                    target: "initial_auth",
+                    agent_id = %canonical_agent_id,
+                    "starting helper on auth screen; initial ACP task skipped"
+                );
+                // The Auth screen's LoginComplete path uses
+                // `set_master_pipe_acp_params` below and `try_start_acp` to
+                // create fresh channels and reconnect through the master pipe
+                // after login. Dropping the boot channels here avoids an
+                // explicit initial ACP race and makes the startup ordering
+                // independent from tokio task polling.
+                drop((
+                    prompt_rx,
+                    cancel_rx,
+                    new_session_rx,
+                    load_session_rx,
+                    drop_session_rx,
+                    rename_session_rx,
+                    restart_rx,
                     session_hook_rx,
                     master_ext_rx,
                 ));
@@ -2825,43 +2938,36 @@ async fn run_acp_app(
                 wt_connected,
             );
 
+            if cli.setup.is_none() {
+                app_state.current_agent_id = canonical_agent_id.clone();
+                tracing::info!(
+                    target: "agents_view_filter",
+                    agent_id = %canonical_agent_id,
+                    agent_cmd = %agent_cmd,
+                    source = canonical_agent_source,
+                    "current_agent_id assigned",
+                );
+            }
+            if start_in_initial_auth {
+                app_state.show_copilot_auth_screen();
+            }
+
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
-            if cli.setup.is_none() {
-                // Prefer the canonical id the host passed via `--agent-id`
-                // — that's the user's actual setting value (`acpAgent`).
-                // Fall back to reverse-parsing the `--agent` command line
-                // for manual runs / older hosts.
-                let canonical_id: String = cli
-                    .agent_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_ascii_lowercase)
-                    .unwrap_or_else(|| {
-                        agent_registry::resolve_agent_id_from_cmd(&agent_cmd).to_string()
-                    });
-                app_state.current_agent_id = canonical_id.clone();
-                tracing::info!(
-                    target: "agents_view_filter",
-                    agent_id = %canonical_id,
-                    agent_cmd = %agent_cmd,
-                    source = if cli.agent_id.is_some() { "--agent-id" } else { "resolved-from-cmd" },
-                    "current_agent_id assigned",
-                );
-                let agent_id = canonical_id.as_str();
+            if cli.setup.is_none() && !start_in_initial_auth {
+                let agent_id = canonical_agent_id.as_str();
                 let preflight_result = if agent_id.starts_with("custom:")
                     || agent_registry::lookup_profile_by_id(agent_id).id == "unknown"
                 {
                     // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
                     // shell function, …); a PATH probe would lie. The real spawn produces
                     // the authoritative error via `ConnectionFailed`, so skip preflight.
-                    app::PreflightResult::passed_for_custom_agent(&canonical_id)
+                    app::PreflightResult::passed_for_custom_agent(&canonical_agent_id)
                 } else {
                     let status = agent_check::check_agent(agent_id);
                     app::PreflightResult {
-                        agent_id: canonical_id.clone(),
+                        agent_id: canonical_agent_id.clone(),
                         display_name: status.display_name.clone(),
                         cli_status: if status.cli_found {
                             app::CheckStatus::Passed
@@ -3052,7 +3158,10 @@ async fn run_acp_app(
             //
             // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if cli.setup.is_none() && cli.initial_view == InitialView::Sessions {
+            if cli.setup.is_none()
+                && !start_in_initial_auth
+                && cli.initial_view == InitialView::Sessions
+            {
                 tracing::info!(target: "initial_view", "starting in agent session view");
                 let tab_id = app_state
                     .tab_id
