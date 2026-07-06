@@ -273,30 +273,116 @@ impl AgentLink {
     }
 }
 
+/// One-shot "the transport peer died" latch. Set + notified the first time the
+/// incoming byte stream hits EOF or a read error — i.e. when wta-master (helper
+/// side) or the agent CLI (master side) goes away.
+///
+/// This exists because ACP 1.0's `connect_with` only surfaces peer death by
+/// *returning* — and it returns early only when the internal background I/O
+/// **errors**. A *clean* EOF (exactly what `taskkill`-ing wta-master produces)
+/// does not error, so with a `pending` `main_fn` `connect_with` would hang
+/// forever and `handle_io` would never resolve, leaving the pane stuck on
+/// `Connected`. We instead watch the reader directly and complete `main_fn` on
+/// death so `connect_with` returns and `handle_io` fires.
+#[derive(Debug, Default)]
+struct TransportDeath {
+    dead: std::sync::atomic::AtomicBool,
+    notify: tokio::sync::Notify,
+}
+
+impl TransportDeath {
+    fn signal(&self) {
+        self.dead.store(true, std::sync::atomic::Ordering::Release);
+        self.notify.notify_waiters();
+    }
+
+    async fn wait(&self) {
+        loop {
+            // Register interest before checking so a signal racing between the
+            // check and the await can't be missed (Notify keeps no permit).
+            let notified = self.notify.notified();
+            if self.dead.load(std::sync::atomic::Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+/// `AsyncRead` adapter that fires a [`TransportDeath`] the first time the wrapped
+/// reader reports EOF (`Ok(0)` for a non-empty buffer) or an error.
+struct DeathWatchRead<I> {
+    inner: I,
+    death: std::sync::Arc<TransportDeath>,
+}
+
+impl<I> futures::AsyncRead for DeathWatchRead<I>
+where
+    I: futures::AsyncRead + Unpin,
+{
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut [u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let this = &mut *self;
+        let poll = std::pin::Pin::new(&mut this.inner).poll_read(cx, buf);
+        if let std::task::Poll::Ready(result) = &poll {
+            match result {
+                // A real EOF (peer closed the pipe): a 0-byte read into a
+                // non-empty buffer. Guard on `!buf.is_empty()` so a benign empty
+                // read isn't mistaken for death.
+                Ok(0) if !buf.is_empty() => this.death.signal(),
+                Err(_) => this.death.signal(),
+                _ => {}
+            }
+        }
+        poll
+    }
+}
+
+/// A byte-stream transport plus the [`TransportDeath`] latch that fires when its
+/// incoming half dies. Produced by [`byte_streams`], consumed by
+/// [`spawn_client`] / [`spawn_agent`].
+pub struct WatchedTransport<O, I> {
+    inner: acp::ByteStreams<O, DeathWatchRead<I>>,
+    death: std::sync::Arc<TransportDeath>,
+}
+
 /// Drive a pre-wired client builder over `transport`, returning a [`ClientLink`]
 /// for sending requests plus a `handle_io` future. The future resolves when the
-/// connection ends: clean EOF → `Ok(())`, transport error → `Err`.
+/// connection ends: peer death (EOF/error) → `Ok(())`, transport error surfaced
+/// by the SDK → `Err`.
 ///
 /// **Must be called inside a `tokio::task::LocalSet`** — it drives the connection
 /// I/O via [`tokio::task::spawn_local`] and will panic on a runtime without one
 /// (the WTA helper/master/probe/CLI entry points all establish a `LocalSet`).
-pub fn spawn_client<H, Run>(
+pub fn spawn_client<H, Run, O, I>(
     builder: acp::Builder<acp::Client, H, Run>,
-    transport: impl acp::ConnectTo<acp::Client> + 'static,
+    transport: WatchedTransport<O, I>,
 ) -> (ClientLink, impl Future<Output = acp::Result<()>>)
 where
     H: acp::HandleDispatchFrom<acp::Agent> + 'static,
     Run: acp::RunWithConnectionTo<acp::Agent> + 'static,
+    O: futures::AsyncWrite + Send + Unpin + 'static,
+    I: futures::AsyncRead + Send + Unpin + 'static,
 {
+    let WatchedTransport { inner, death } = transport;
     let cell = std::sync::Arc::new(Ready::default());
     let fill = cell.clone();
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
         let result = builder
-            .connect_with(transport, async move |cx| {
+            .connect_with(inner, async move |cx| {
                 let _ = fill.slot.set(cx.clone());
                 fill.notify.notify_waiters();
-                std::future::pending::<acp::Result<()>>().await
+                // Stay alive until the transport peer dies. On EOF/read-error the
+                // `DeathWatchRead` fires `death`, this `main_fn` completes, and
+                // `connect_with` returns (via `run_until`'s foreground branch) so
+                // `handle_io` can resolve. A bare `pending` here would hang
+                // `connect_with` forever on a clean EOF.
+                death.wait().await;
+                Ok(())
             })
             .await;
         let _ = done_tx.send(result);
@@ -319,23 +405,29 @@ where
 /// plus a `handle_io` future with the same liveness contract as [`spawn_client`].
 ///
 /// **Must be called inside a `tokio::task::LocalSet`** (see [`spawn_client`]).
-pub fn spawn_agent<H, Run>(
+pub fn spawn_agent<H, Run, O, I>(
     builder: acp::Builder<acp::Agent, H, Run>,
-    transport: impl acp::ConnectTo<acp::Agent> + 'static,
+    transport: WatchedTransport<O, I>,
 ) -> (AgentLink, impl Future<Output = acp::Result<()>>)
 where
     H: acp::HandleDispatchFrom<acp::Client> + 'static,
     Run: acp::RunWithConnectionTo<acp::Client> + 'static,
+    O: futures::AsyncWrite + Send + Unpin + 'static,
+    I: futures::AsyncRead + Send + Unpin + 'static,
 {
+    let WatchedTransport { inner, death } = transport;
     let cell = std::sync::Arc::new(Ready::default());
     let fill = cell.clone();
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
         let result = builder
-            .connect_with(transport, async move |cx| {
+            .connect_with(inner, async move |cx| {
                 let _ = fill.slot.set(cx.clone());
                 fill.notify.notify_waiters();
-                std::future::pending::<acp::Result<()>>().await
+                // See `spawn_client`: complete on peer death so `connect_with`
+                // returns and `handle_io` resolves instead of hanging on EOF.
+                death.wait().await;
+                Ok(())
             })
             .await;
         let _ = done_tx.send(result);
@@ -352,13 +444,23 @@ where
     (AgentLink { cell }, handle_io)
 }
 
-/// Build a `ByteStreams` transport from compat read/write halves.
-pub fn byte_streams<O, I>(outgoing: O, incoming: I) -> acp::ByteStreams<O, I>
+/// Build a peer-death-watching `ByteStreams` transport from compat read/write
+/// halves. The incoming half is wrapped so EOF / read errors trip a
+/// [`TransportDeath`] latch that lets `handle_io` resolve when the peer dies.
+pub fn byte_streams<O, I>(outgoing: O, incoming: I) -> WatchedTransport<O, I>
 where
     O: futures::AsyncWrite + Send + Unpin + 'static,
     I: futures::AsyncRead + Send + Unpin + 'static,
 {
-    acp::ByteStreams::new(outgoing, incoming)
+    let death = std::sync::Arc::new(TransportDeath::default());
+    let incoming = DeathWatchRead {
+        inner: incoming,
+        death: death.clone(),
+    };
+    WatchedTransport {
+        inner: acp::ByteStreams::new(outgoing, incoming),
+        death,
+    }
 }
 
 /// Bridge an enum-typed `acp::Result<T>` into a builder request handler
@@ -379,3 +481,103 @@ pub fn respond_enum<T: serde::Serialize>(
 
 #[allow(unused_imports)]
 use v1 as _schema_marker;
+
+#[cfg(test)]
+mod transport_death_tests {
+    //! Regression guard for AgentMasterDeath (#329): `spawn_client` /
+    //! `spawn_agent`'s `handle_io` must resolve when the transport peer dies, so
+    //! the helper can leave `Connected` and show the `/restart` degraded state
+    //! (`client.rs`: `handle_io.await` -> `AgentFailure::TransportLost`).
+    //!
+    //! Under ACP 1.0 a `pending` `main_fn` left `connect_with` hung on a *clean*
+    //! EOF (exactly what killing wta-master produces), so `handle_io` never fired
+    //! and the pane stuck on `Connected`. The [`DeathWatchRead`] +
+    //! [`TransportDeath`] wiring fixes that; these tests would hang (3s timeout)
+    //! without it.
+    use super::*;
+    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    /// Drops the transport far end (clean EOF, as a real `taskkill` on
+    /// wta-master produces) and asserts the client `handle_io` resolves promptly.
+    #[test]
+    fn client_handle_io_resolves_when_peer_far_end_dies() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&rt, async {
+            let (near, far) = tokio::io::duplex(64 * 1024);
+            let (near_r, near_w) = tokio::io::split(near);
+
+            let builder = acp::Client
+                .builder()
+                .name("test-client")
+                .on_receive_request(
+                    |_req: v1::AgentRequest, responder: acp::Responder<serde_json::Value>, _cx| async move {
+                        responder.respond_with_error(acp::Error::method_not_found())
+                    },
+                    acp::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    |_notif: v1::AgentNotification, _cx| async move { Ok(()) },
+                    acp::on_receive_notification!(),
+                );
+
+            let (_link, handle_io) =
+                spawn_client(builder, byte_streams(near_w.compat_write(), near_r.compat()));
+
+            // Simulate wta-master death: closing the far end makes `near` read EOF.
+            drop(far);
+
+            let res =
+                tokio::time::timeout(std::time::Duration::from_secs(3), handle_io).await;
+            assert!(
+                res.is_ok(),
+                "client handle_io must resolve when the master (transport far end) \
+                 dies, but it hung — the helper would stay Connected forever"
+            );
+        });
+    }
+
+    /// Symmetric guard for the master side: when a helper (or the agent CLI) dies,
+    /// the `spawn_agent` `handle_io` must resolve too.
+    #[test]
+    fn agent_handle_io_resolves_when_peer_far_end_dies() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&rt, async {
+            let (near, far) = tokio::io::duplex(64 * 1024);
+            let (near_r, near_w) = tokio::io::split(near);
+
+            let builder = acp::Agent
+                .builder()
+                .name("test-agent")
+                .on_receive_request(
+                    |_req: v1::ClientRequest, responder: acp::Responder<serde_json::Value>, _cx| async move {
+                        responder.respond_with_error(acp::Error::method_not_found())
+                    },
+                    acp::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    |_notif: v1::ClientNotification, _cx| async move { Ok(()) },
+                    acp::on_receive_notification!(),
+                );
+
+            let (_link, handle_io) =
+                spawn_agent(builder, byte_streams(near_w.compat_write(), near_r.compat()));
+
+            drop(far);
+
+            let res =
+                tokio::time::timeout(std::time::Duration::from_secs(3), handle_io).await;
+            assert!(
+                res.is_ok(),
+                "agent handle_io must resolve when the peer (transport far end) dies"
+            );
+        });
+    }
+}
