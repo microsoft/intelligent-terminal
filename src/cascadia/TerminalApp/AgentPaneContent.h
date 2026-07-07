@@ -83,8 +83,7 @@ namespace winrt::TerminalApp::implementation
         // (#348). Internal-only (not on IDL) — driven by
         // TerminalPage::_updateThemeColors, which computes the shared brush.
         void ApplyThemeColors(const winrt::Windows::UI::Xaml::Media::Brush& background,
-                              const winrt::Windows::UI::Xaml::Media::Brush& foreground,
-                              const winrt::Windows::UI::Xaml::Media::Brush& divider);
+                              const winrt::Windows::UI::Xaml::Media::Brush& foreground);
 
         // Accessors for state that the window-level bottom bar projects.
         AutofixState GetAutofixState() const noexcept { return _autofixState; }

@@ -16,13 +16,16 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!--  ========= Agent bar (Figma: 36px tall, black, 1px top/bottom hairline) =========  -->
+        <!--  ========= Agent bar (Figma: 36px tall, 1px bottom hairline) =========
+              Only a bottom hairline: the top edge sits against the terminal
+              pane / focused-pane border above, which already provides the
+              separation, so a top border would double it up (#348).  -->
         <Border x:Name="AgentBarRoot"
                 Grid.Row="0"
                 Height="36"
                 Background="#FF000000"
                 BorderBrush="#26FFFFFF"
-                BorderThickness="0,1,0,1">
+                BorderThickness="0,0,0,1">
             <Grid Padding="10,0,0,0">
                 <!--  Left cluster: logo + label. History and other actions
                       live on the window-level bottom agent bar.  -->

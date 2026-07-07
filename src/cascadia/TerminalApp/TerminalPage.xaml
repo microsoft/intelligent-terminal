@@ -99,11 +99,10 @@
                 <RowDefinition Height="40" />
             </Grid.RowDefinitions>
 
-            <!-- Divider between the terminal pane and the bottom bar. When the
-                 bar matched the dark chrome a subtle white hairline read fine,
-                 but now the bar follows the tab/terminal color and can blend
-                 in, so _updateThemeColors repaints this with the accent
-                 (primary) color to keep the separator visible (#348). -->
+            <!-- Divider between the terminal pane and the bottom bar.
+                 _updateThemeColors repaints this with the bar's foreground
+                 color at ~15% alpha, so it reads as a soft hairline that stays
+                 consistent with the icons/text on any background (#348). -->
             <Border x:Name="BottomBarDivider" Grid.Row="0" Background="#26FFFFFF" />
 
         <Grid x:Name="BottomBar"

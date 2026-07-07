@@ -1529,7 +1529,7 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
             {
-                agentImpl->ApplyThemeColors(_agentBarBackgroundBrush, _agentBarForegroundBrush, _paneResources.focusedBorderBrush);
+                agentImpl->ApplyThemeColors(_agentBarBackgroundBrush, _agentBarForegroundBrush);
             }
         }
         return std::make_shared<Pane>(agentContent);
@@ -8816,14 +8816,15 @@ namespace winrt::TerminalApp::implementation
             {
                 label.Foreground(barForeground);
             }
-            // The 1px divider uses the accent (primary) color, because the bar
-            // follows the agent pane color and a translucent white hairline
-            // would vanish on a light background (#348). _updatePaneResources
-            // (called at the top of this function) already resolved the accent brush.
-            const auto dividerBrush = _paneResources.focusedBorderBrush;
+            // The 1px divider uses the bar's foreground color at ~15% alpha,
+            // so it reads as a soft hairline (like the original #26FFFFFF) —
+            // consistent with the text/glyphs but not a hard full-white/black
+            // line (#348).
             if (const auto divider = BottomBarDivider())
             {
-                divider.Background(dividerBrush);
+                auto dividerColor = barForeground.Color();
+                dividerColor.A = 0x26;
+                divider.Background(Media::SolidColorBrush{ dividerColor });
             }
 
             // Each tab's agent-pane top bar follows ITS OWN pane's background
@@ -8839,7 +8840,7 @@ namespace winrt::TerminalApp::implementation
                         {
                             const til::color agentColor = agentPaneColor(agentContent).value_or(bottomColor);
                             const auto [agentBackground, agentForeground] = brushesFor(agentColor);
-                            agentImpl->ApplyThemeColors(agentBackground, agentForeground, dividerBrush);
+                            agentImpl->ApplyThemeColors(agentBackground, agentForeground);
                         }
                     }
                 }

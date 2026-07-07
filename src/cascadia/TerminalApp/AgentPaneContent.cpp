@@ -174,19 +174,28 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Follow the window's tab theme colors so the agent-pane top bar matches
-    // the tab / terminal it belongs to instead of a hard-coded black (#348).
-    // The agent logo is a monochrome BitmapIcon, so it takes the foreground
-    // tint too; the label text takes the same foreground. The 1px top/bottom
-    // hairline uses the accent (primary) color so it stays visible even when
-    // the bar blends with the terminal background.
+    // the agent pane it belongs to instead of a hard-coded black (#348). The
+    // agent logo is a monochrome BitmapIcon, so it takes the foreground tint
+    // too; the label text takes the same foreground. The 1px bottom hairline
+    // uses the foreground color at ~15% alpha, so it reads as a soft separator
+    // (like the original #26FFFFFF) — consistent with the text but not a hard
+    // full-white/black line.
     void AgentPaneContent::ApplyThemeColors(const Media::Brush& background,
-                                            const Media::Brush& foreground,
-                                            const Media::Brush& divider)
+                                            const Media::Brush& foreground)
     {
         if (const auto barRoot = AgentBarRoot())
         {
             barRoot.Background(background);
-            barRoot.BorderBrush(divider);
+            if (const auto fgSolid = foreground.try_as<Media::SolidColorBrush>())
+            {
+                auto c = fgSolid.Color();
+                c.A = 0x26;
+                barRoot.BorderBrush(Media::SolidColorBrush{ c });
+            }
+            else
+            {
+                barRoot.BorderBrush(foreground);
+            }
         }
         if (const auto label = AgentLabelText())
         {
