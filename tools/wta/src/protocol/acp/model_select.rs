@@ -111,7 +111,14 @@ fn model_option_from_config(
 
 /// Switch the model on a live session, routing to `session/set_model` or
 /// `session/set_config_option` depending on the channel recorded by
-/// [`models_from_new_session`].
+/// [`models_from_new_session`]. On the config-option path, a `MethodNotFound`
+/// response falls back to legacy `session/set_model`: some agents advertise a
+/// config-option model selector for discovery yet only implement the legacy
+/// switch method (the module docs call this out for Copilot/Gemini). Before
+/// schema 1.1 removed `NewSessionResponse.models`, that field took priority and
+/// this mismatch couldn't arise; now it can, so the fallback keeps model
+/// switching working — and records `Legacy` so later switches skip the dead
+/// config channel.
 pub(crate) async fn apply_session_model(
     conn: &crate::protocol::acp::conn::ClientLink,
     session_id: acp::schema::v1::SessionId,
@@ -121,22 +128,51 @@ pub(crate) async fn apply_session_model(
     // guard isn't Send and must not be held across the suspension point.
     let channel = MODEL_SWITCH.read().unwrap().clone();
     match channel {
-        ModelSwitchChannel::Config { config_id } => conn
-            .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
-                session_id, config_id, model_id,
-            ))
-            .await
-            .map(|_| ()),
-        ModelSwitchChannel::Legacy => conn
-            .set_session_model(crate::protocol::acp::conn::SetSessionModelRequest::new(session_id, model_id))
-            .await
-            .map(|_| ()),
+        ModelSwitchChannel::Config { config_id } => {
+            match conn
+                .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
+                    session_id.clone(),
+                    config_id,
+                    model_id.clone(),
+                ))
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) if e.code == acp::ErrorCode::MethodNotFound => {
+                    *MODEL_SWITCH.write().unwrap() = ModelSwitchChannel::Legacy;
+                    apply_legacy_set_model(conn, session_id, model_id).await
+                }
+                Err(e) => Err(e),
+            }
+        }
+        ModelSwitchChannel::Legacy => apply_legacy_set_model(conn, session_id, model_id).await,
     }
+}
+
+/// Legacy `session/set_model` switch.
+async fn apply_legacy_set_model(
+    conn: &crate::protocol::acp::conn::ClientLink,
+    session_id: acp::schema::v1::SessionId,
+    model_id: String,
+) -> acp::Result<()> {
+    conn.set_session_model(crate::protocol::acp::conn::SetSessionModelRequest::new(
+        session_id, model_id,
+    ))
+    .await
+    .map(|_| ())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    // `MODEL_SWITCH` is a process global; every test that reads or writes it
+    // serializes on this lock so parallel test execution can't interleave.
+    static SWITCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     // Real `session/new` wire shape from @agentclientprotocol/claude-agent-acp
     // (v0.44): no legacy `models` field — the model selector lives in
@@ -177,6 +213,7 @@ mod tests {
 
     #[test]
     fn model_extraction_across_channels() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         // Run sequentially in one test: the recorded switch channel is a
         // process-global, so splitting these into parallel #[test]s would race.
 
@@ -245,5 +282,137 @@ mod tests {
                 config_id: "llm".to_string()
             }
         );
+    }
+
+    /// Wire a client `ClientLink` to a minimal agent that answers
+    /// `session/set_config_option` as unimplemented (MethodNotFound when
+    /// `config_method_not_found`, else a generic error) and the custom
+    /// `session/set_model` with success — flipping `set_model_hit`. Lets the
+    /// `apply_session_model` fallback be exercised end-to-end over real ACP.
+    fn spawn_switch_mock(
+        config_method_not_found: bool,
+        set_model_hit: Arc<AtomicBool>,
+    ) -> crate::protocol::acp::conn::ClientLink {
+        use crate::protocol::acp::conn;
+        let (client_io, agent_io) = tokio::io::duplex(64 * 1024);
+        let (cr, cw) = tokio::io::split(client_io);
+        let (ar, aw) = tokio::io::split(agent_io);
+
+        let client_builder = acp::Client
+            .builder()
+            .name("model-switch-test-client")
+            .on_receive_request(
+                |_req: acp::schema::v1::AgentRequest,
+                 responder: acp::Responder<serde_json::Value>,
+                 _cx| async move { responder.respond_with_error(acp::Error::method_not_found()) },
+                acp::on_receive_request!(),
+            )
+            .on_receive_notification(
+                |_n: acp::schema::v1::AgentNotification, _cx| async move { Ok(()) },
+                acp::on_receive_notification!(),
+            );
+        let (client, client_io_fut) =
+            conn::spawn_client(client_builder, conn::byte_streams(cw.compat_write(), cr.compat()));
+
+        let agent_builder = acp::Agent
+            .builder()
+            .name("model-switch-test-agent")
+            // Typed handler for the custom (schema-1.1-dropped) session/set_model.
+            .on_receive_request(
+                move |_req: conn::SetSessionModelRequest,
+                      responder: acp::Responder<conn::SetSessionModelResponse>,
+                      _cx| {
+                    let hit = set_model_hit.clone();
+                    async move {
+                        hit.store(true, Ordering::SeqCst);
+                        responder.respond(conn::SetSessionModelResponse::default())
+                    }
+                },
+                acp::on_receive_request!(),
+            )
+            // Standard client->agent methods (notably session/set_config_option)
+            // are answered as failures so the fallback path is exercised.
+            .on_receive_request(
+                move |_req: acp::schema::v1::ClientRequest,
+                      responder: acp::Responder<serde_json::Value>,
+                      _cx| async move {
+                    let err = if config_method_not_found {
+                        acp::Error::method_not_found()
+                    } else {
+                        acp::Error::internal_error()
+                    };
+                    responder.respond_with_error(err)
+                },
+                acp::on_receive_request!(),
+            )
+            .on_receive_notification(
+                |_n: acp::schema::v1::ClientNotification, _cx| async move { Ok(()) },
+                acp::on_receive_notification!(),
+            );
+        let (_agent, agent_io_fut) =
+            conn::spawn_agent(agent_builder, conn::byte_streams(aw.compat_write(), ar.compat()));
+
+        tokio::task::spawn_local(async move {
+            let _ = client_io_fut.await;
+        });
+        tokio::task::spawn_local(async move {
+            let _ = agent_io_fut.await;
+        });
+        client
+    }
+
+    #[test]
+    fn config_channel_falls_back_to_set_model_on_method_not_found() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&rt, async {
+            let hit = Arc::new(AtomicBool::new(false));
+            let client = spawn_switch_mock(true, hit.clone());
+
+            record_channel_config("model");
+            let r = apply_session_model(&client, "s-fallback".into(), "haiku".to_string()).await;
+
+            assert!(r.is_ok(), "fallback to set_model must succeed, got {r:?}");
+            assert!(
+                hit.load(Ordering::SeqCst),
+                "set_model must be invoked as the fallback"
+            );
+            assert_eq!(
+                *MODEL_SWITCH.read().unwrap(),
+                ModelSwitchChannel::Legacy,
+                "MethodNotFound on set_config_option must flip the channel to Legacy"
+            );
+        });
+    }
+
+    #[test]
+    fn config_channel_does_not_fall_back_on_other_errors() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&rt, async {
+            let hit = Arc::new(AtomicBool::new(false));
+            let client = spawn_switch_mock(false, hit.clone());
+
+            record_channel_config("model");
+            let r = apply_session_model(&client, "s-other".into(), "haiku".to_string()).await;
+
+            assert!(r.is_err(), "a non-MethodNotFound error must propagate");
+            assert!(
+                !hit.load(Ordering::SeqCst),
+                "set_model must NOT be called for a non-MethodNotFound error"
+            );
+            assert!(
+                matches!(*MODEL_SWITCH.read().unwrap(), ModelSwitchChannel::Config { .. }),
+                "a non-MethodNotFound error must leave the channel on Config"
+            );
+        });
     }
 }
