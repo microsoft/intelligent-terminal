@@ -2495,6 +2495,28 @@ async fn run_info_mode() -> Result<()> {
     Ok(())
 }
 
+fn spawn_restart_agent_stack_forwarder(
+    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
+        protocol::acp::client::RestartRequest,
+    >,
+) {
+    tokio::task::spawn_local(async move {
+        while let Some(req) = restart_rx.recv().await {
+            tracing::info!(
+                target: "helper",
+                new_agent = ?req.agent_cmd,
+                "restart requested before ACP task is running; asking WT to force-restart the agent stack"
+            );
+            let evt = serde_json::json!({
+                "type": "event",
+                "method": "restart_agent_stack",
+                "params": {},
+            });
+            crate::app::send_wt_protocol_event(evt.to_string());
+        }
+    });
+}
+
 async fn run_acp_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     cli: Cli,
@@ -2767,26 +2789,7 @@ async fn run_acp_app(
                 // The other receivers (prompt/new_session/…) genuinely have no
                 // master to reach, so they're dropped; they're re-created when
                 // /restart reopens this pane fresh.
-                {
-                    let mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
-                        protocol::acp::client::RestartRequest,
-                    > = restart_rx;
-                    tokio::task::spawn_local(async move {
-                        while let Some(req) = restart_rx.recv().await {
-                            tracing::info!(
-                                target: "helper",
-                                new_agent = ?req.agent_cmd,
-                                "restart requested while disconnected — asking WT to force-restart the agent stack"
-                            );
-                            let evt = serde_json::json!({
-                                "type": "event",
-                                "method": "restart_agent_stack",
-                                "params": {},
-                            });
-                            crate::app::send_wt_protocol_event(evt.to_string());
-                        }
-                    });
-                }
+                spawn_restart_agent_stack_forwarder(restart_rx);
                 // The remaining receivers have no master to forward to. They
                 // get re-created when /restart respawns the stack and reopens
                 // this pane fresh.
@@ -2812,6 +2815,12 @@ async fn run_acp_app(
                 // after login. Dropping the boot channels here avoids an
                 // explicit initial ACP race and makes the startup ordering
                 // independent from tokio task polling.
+                //
+                // Keep the /restart path alive even though no ACP task is
+                // running yet. The boot App holds the sole restart sender; when
+                // LoginComplete calls `try_start_acp`, it replaces that sender
+                // with a fresh channel and this forwarder exits.
+                spawn_restart_agent_stack_forwarder(restart_rx);
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -2819,7 +2828,6 @@ async fn run_acp_app(
                     load_session_rx,
                     drop_session_rx,
                     rename_session_rx,
-                    restart_rx,
                     session_hook_rx,
                     master_ext_rx,
                 ));
