@@ -134,7 +134,9 @@ namespace Microsoft.Terminal.Protocol
         // mode ∈ { "auto", "overwrite", "new" }: auto returns a "conflict"
         // outcome (without writing) when the tab is already bound to a saved
         // workspace, so the caller can prompt overwrite-vs-save-new.
-        String SaveWorkspaceSession(String tabStableId, String title, String mode);
+        // agentSessionId: the tab's ACP agent-pane session id (empty when the
+        // pane has no live session); persisted so restore can session/load it.
+        String SaveWorkspaceSession(String tabStableId, String title, String mode, String agentSessionId);
         String ListSavedWorkspaceSessions();
         String RestoreWorkspaceSession(String id);
         void DeleteSavedWorkspaceSession(String id);

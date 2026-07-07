@@ -189,17 +189,24 @@ pub fn spawn_wtcli_save_workspace(
     tab_stable_id: &str,
     title: &str,
     mode: &str,
+    agent_session_id: &str,
     on_done: Box<dyn FnOnce(Result<crate::app::SaveWorkspaceOutcome, String>) + Send>,
 ) {
     let path = resolve_wtcli_path();
-    let (tab, title, mode) = (
+    let (tab, title, mode, agent_sid) = (
         tab_stable_id.to_string(),
         title.to_string(),
         mode.to_string(),
+        agent_session_id.to_string(),
     );
     std::thread::spawn(move || {
+        let mut args: Vec<&str> = vec!["save-workspace", "-t", &tab, "-n", &title, "-m", &mode];
+        if !agent_sid.is_empty() {
+            args.push("-s");
+            args.push(&agent_sid);
+        }
         let out = std::process::Command::new(&path)
-            .args(["save-workspace", "-t", &tab, "-n", &title, "-m", &mode])
+            .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output();

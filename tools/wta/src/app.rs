@@ -7907,10 +7907,15 @@ impl App {
         };
         self.pending_save_title = Some(title.clone());
         let mode = mode.to_string();
+        // The agent pane where /save-ws is typed owns this tab's ACP session;
+        // pass its id so C++ can persist it for session/load on restore. Empty
+        // when the pane has no live session yet.
+        let agent_session_id = self.current_tab().session_id.clone().unwrap_or_default();
         crate::shell::wt_channel::spawn_wtcli_save_workspace(
             &tab_id,
             &title,
             &mode,
+            &agent_session_id,
             Box::new(move |res| {
                 let _ = tx.send(AppEvent::SaveWorkspaceResult(res));
             }),

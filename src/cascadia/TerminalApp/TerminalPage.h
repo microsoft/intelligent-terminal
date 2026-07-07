@@ -206,7 +206,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        Windows::Foundation::IAsyncOperation<winrt::hstring> SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode);
+        Windows::Foundation::IAsyncOperation<winrt::hstring> SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode, winrt::hstring agentSessionId);
         Windows::Foundation::IAsyncOperation<winrt::hstring> ListSavedWorkspaceSessionsProtocol();
         Windows::Foundation::IAsyncOperation<winrt::hstring> RestoreWorkspaceSessionProtocol(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<bool> DeleteSavedWorkspaceSessionProtocol(winrt::hstring id);

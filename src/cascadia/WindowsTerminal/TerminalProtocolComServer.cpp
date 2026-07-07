@@ -978,7 +978,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR agentSessionId, BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -991,7 +991,7 @@ try
         if (!page)
             continue;
 
-        const auto result = page.SaveWorkspaceSessionProtocol(_hstr(tabStableId), _hstr(title), _hstr(mode)).get();
+        const auto result = page.SaveWorkspaceSessionProtocol(_hstr(tabStableId), _hstr(title), _hstr(mode), _hstr(agentSessionId)).get();
         if (!result.empty())
         {
             *json = _bstrFromHstring(result);

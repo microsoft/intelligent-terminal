@@ -679,7 +679,7 @@ namespace winrt::TerminalApp::implementation
         return dir;
     }
 
-    IAsyncOperation<winrt::hstring> TerminalPage::SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode)
+    IAsyncOperation<winrt::hstring> TerminalPage::SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode, winrt::hstring agentSessionId)
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
@@ -794,6 +794,24 @@ namespace winrt::TerminalApp::implementation
         tabRecord.SourceStableId(tabStableId);
         tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
         tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
+
+        // Persist the agent pane when the tab has a live/visible one so
+        // restore can reopen it and session/load the conversation. agentSessionId
+        // is supplied by the helper (which owns the tab's ACP session); the
+        // C++ side fills the agent identity + position from settings. Empty
+        // agentSessionId with a visible pane still records the pane so restore
+        // reopens a (blank) agent pane.
+        const bool hasVisibleAgentPane = tabImpl->FindAgentPane() && !tabImpl->HasStashedAgentPane();
+        if (!agentSessionId.empty() || hasVisibleAgentPane)
+        {
+            const auto& globals = _settings.GlobalSettings();
+            Model::SavedWorkspaceAgentPane agentPane;
+            agentPane.Cli(globals.EffectiveAcpAgent());
+            agentPane.Model(globals.AcpModel());
+            agentPane.AgentSessionId(agentSessionId);
+            agentPane.Position(globals.AgentPanePosition());
+            tabRecord.AgentPane(agentPane);
+        }
 
         Model::SavedWorkspaceSession record;
         record.Id(id);
@@ -937,14 +955,44 @@ namespace winrt::TerminalApp::implementation
             suspend = true;
         }
 
-        // Bind every newly created tab to this workspace so a later /save-ws
-        // detects the conflict and overwrites the right record.
+        // Bind every newly created tab to this workspace (so a later /save-ws
+        // overwrites the right record) and restore its agent pane when the
+        // record has one. Runs synchronously so any pending load-session is
+        // registered before the deferred pre-warm tick fires.
+        const auto tabs = record.Tabs();
         for (uint32_t i = tabCountBefore; i < _tabs.Size(); ++i)
         {
-            if (const auto ti = _GetTabImpl(_tabs.GetAt(i)))
+            const auto ti = _GetTabImpl(_tabs.GetAt(i));
+            if (!ti)
             {
-                ti->BoundWorkspaceId(id);
+                continue;
             }
+            ti->BoundWorkspaceId(id);
+
+            const uint32_t recIdx = i - tabCountBefore;
+            if (!tabs || recIdx >= tabs.Size())
+            {
+                continue;
+            }
+            const auto ap = tabs.GetAt(recIdx).AgentPane();
+            if (!ap)
+            {
+                continue;
+            }
+
+            const auto stableId = ti->StableId();
+            const auto sid = winrt::to_string(ap.AgentSessionId());
+            if (!sid.empty() && !stableId.empty())
+            {
+                // The deferred pre-warm consumes this and boots the helper with
+                // --initial-load-session-id, so the saved conversation is
+                // rehydrated via ACP session/load. Empty sid ⇒ a fresh pane.
+                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{} };
+            }
+            // /save-ws is only typed in a visible agent pane, so restore
+            // reopens it visible. The echo of this request lands in
+            // OnAgentStateChanged, which un-stashes / spawns the (loaded) pane.
+            _RequestAgentStateForTab(ti, std::nullopt, /*paneOpen*/ true);
         }
 
         Json::Value out{ Json::objectValue };

@@ -365,10 +365,25 @@ namespace winrt::TerminalApp::implementation
                 // unrelated new-tab pre-warm).
                 if (agentLeavesSeen == 0)
                 {
+                    // Consume a pending load-session hint for this tab (set by
+                    // RestoreWorkspaceSessionProtocol or OnResumeInNewAgentTabRequested)
+                    // so the pre-warmed helper boots with --initial-load-session-id
+                    // and session/loads the saved conversation instead of a fresh
+                    // one. Erased on consume so the pane-open echo path doesn't
+                    // double-spawn.
+                    std::string preloadSid;
+                    std::string preloadCwd;
+                    if (const auto it = self->_pendingLoadSessions.find(newTabId); it != self->_pendingLoadSessions.end())
+                    {
+                        preloadSid = std::move(it->second.sessionId);
+                        preloadCwd = std::move(it->second.cwd);
+                        self->_pendingLoadSessions.erase(it);
+                    }
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
-                        winrt::to_string(newTabId));
-                    self->_AutoCreateHiddenAgentPaneShared(tabImplCom, /*intoSessionsView*/ false, /*autoStash*/ true);
+                        winrt::to_string(newTabId) +
+                        (preloadSid.empty() ? "" : (" with load_session=" + preloadSid)));
+                    self->_AutoCreateHiddenAgentPaneShared(tabImplCom, /*intoSessionsView*/ false, /*autoStash*/ true, preloadSid, preloadCwd);
                 }
                 else
                 {

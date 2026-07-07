@@ -61,7 +61,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
-    STDMETHODIMP SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR* json) override;
+    STDMETHODIMP SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR agentSessionId, BSTR* json) override;
     STDMETHODIMP ListSavedWorkspaceSessions(BSTR* json) override;
     STDMETHODIMP RestoreWorkspaceSession(BSTR id, BSTR* json) override;
     STDMETHODIMP DeleteSavedWorkspaceSession(BSTR id) override;
