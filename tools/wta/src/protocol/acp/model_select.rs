@@ -376,7 +376,7 @@ mod tests {
             record_channel_config("model");
             let r = apply_session_model(&client, "s-fallback".into(), "haiku".to_string()).await;
 
-            assert!(r.is_ok(), "fallback to set_model must succeed, got {r:?}");
+            assert!(r.is_ok(), "fall back to set_model must succeed, got {r:?}");
             assert!(
                 hit.load(Ordering::SeqCst),
                 "set_model must be invoked as the fallback"
