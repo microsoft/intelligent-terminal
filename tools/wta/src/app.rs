@@ -306,6 +306,36 @@ fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFail
     )
 }
 
+/// True when a post-login reconnect could not even reach wta-master.
+///
+/// This is distinct from auth failure: after the IT setup flow installs Copilot,
+/// the old master may already be gone because it was spawned while `copilot`
+/// was missing. Login succeeds in the browser, but reconnecting to the saved
+/// pipe fails before initialize/authenticate/new_session can run. The right
+/// recovery is still the same fresh-master restart used for stale auth state.
+fn is_post_login_master_unavailable(
+    failure: &crate::protocol::acp::failure::AgentFailure,
+) -> bool {
+    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+    matches!(
+        failure,
+        AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            ..
+        }
+    )
+}
+
+fn should_trigger_post_login_recovery(
+    post_login_auth: bool,
+    is_external_auth_agent: bool,
+    failure: &crate::protocol::acp::failure::AgentFailure,
+) -> bool {
+    post_login_auth
+        && ((is_external_auth_agent && is_post_login_auth_failure(failure))
+            || is_post_login_master_unavailable(failure))
+}
+
 /// Build the diagnostic setup options list based on the configured agent state:
 /// install when the CLI is missing and auto-installable, sign in for Copilot
 /// auth failures, or retry for external-auth / manually repaired cases.
@@ -323,7 +353,7 @@ pub fn build_setup_options(
                     display_name: status.display_name.clone(),
                 });
             }
-        } else if !status.has_credential || *reason == SetupReason::AgentError {
+        } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
             if status.id == "copilot" {
                 // Copilot: we can drive the device-flow sign-in
@@ -2425,28 +2455,33 @@ impl App {
                                 &e,
                                 crate::protocol::acp::failure::HandshakeStage::Initialize,
                             );
-                            // A post-login reconnect for an External-auth agent
-                            // that STILL fails auth means the long-lived shared
-                            // master CLI is poisoned and `authenticate` won't
-                            // refresh it. Request a fresh master (auth recovery)
-                            // instead of looping back to the sign-in screen.
-                            // Match BOTH the plain AuthRequired and the post-
-                            // login HandshakeFailed{NewSession} the client
-                            // wraps a still-AuthRequired new_session into.
+                            // A post-login reconnect may fail because the old
+                            // shared master is stale/dead after login:
+                            //   * External-auth agent still AuthRequired after
+                            //     authenticate/new_session → the long-lived CLI
+                            //     cached unauthenticated state.
+                            //   * PipeConnect failure → the master died before
+                            //     login (e.g. Copilot was missing during IT
+                            //     install flow), so the saved pipe no longer
+                            //     exists.
+                            // Both need a fresh master rather than another
+                            // sign-in screen.
                             let is_external = matches!(
                                 crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
                                     .acp_auth_flow,
                                 crate::agent_registry::AcpAuthFlow::External
                             );
-                            if post_login_auth
-                                && is_external
-                                && is_post_login_auth_failure(&failure)
-                            {
+                            if should_trigger_post_login_recovery(
+                                post_login_auth,
+                                is_external,
+                                &failure,
+                            ) {
                                 tracing::warn!(
                                     target: "auth_recovery",
                                     agent_id = %recovery_agent_id,
                                     tab_id = ?recovery_tab_id,
-                                    "post-login reconnect still auth-failing on shared master CLI; requesting auth recovery"
+                                    failure_class = failure.class(),
+                                    "post-login reconnect needs fresh master; requesting auth recovery"
                                 );
                                 let _ = event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
                                     failure,
@@ -3848,6 +3883,24 @@ impl App {
         }
     }
 
+    pub(crate) fn show_copilot_auth_screen(&mut self) {
+        let agent_id = "copilot";
+        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+        let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(agent_id);
+        self.current_agent_id = agent_id.to_string();
+        self.mode = AppMode::Auth;
+        self.setup = None;
+        self.auth = Some(AuthState {
+            agent_id: agent_id.to_string(),
+            agent_name: profile.display_name.to_string(),
+            login_command: crate::agent_check::build_login_cmd(agent_id, None),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode,
+            enterprise_host,
+        });
+    }
+
     /// Diagnostic setup-mode key handler. Covers install, sign-in, and retry
     /// actions via the `SetupOption` variants.
     fn handle_setup_key(&mut self, key: KeyEvent) {
@@ -3953,19 +4006,17 @@ impl App {
             }
             SetupOption::SignIn {
                 agent_id,
-                display_name,
+                display_name: _,
             } => {
-                self.mode = AppMode::Auth;
-                let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(&agent_id);
-                self.auth = Some(AuthState {
-                    agent_id: agent_id.clone(),
-                    agent_name: display_name,
-                    login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                    checking: false,
-                    status_message: String::new(),
-                    enterprise_mode,
-                    enterprise_host,
-                });
+                if agent_id == "copilot" {
+                    self.show_copilot_auth_screen();
+                } else {
+                    tracing::warn!(
+                        target: "setup_key",
+                        agent_id = %agent_id,
+                        "ignoring SignIn option for non-Copilot agent"
+                    );
+                }
             }
             SetupOption::Retry => {
                 // Re-run preflight detection and try to reconnect
@@ -4693,8 +4744,7 @@ impl App {
                     failure_class = failure.class(),
                     tab_id = ?tab_id,
                     agent_id = %agent_id,
-                    "post-login auth recovery: shared master CLI still AuthRequired \
-                     after a successful login; reconnecting via a fresh master \
+                    "post-login recovery: reconnecting via a fresh master \
                      (restart_agent_stack)"
                 );
                 let resolved = if !agent_id.is_empty() {
@@ -5997,45 +6047,11 @@ impl App {
                         // Install succeeded → proceed to connect or auth
                         let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
 
-                        if crate::agent_check::has_credential(&agent_id) {
-                            // Has credential → connect directly
-                            let new_cmd = self.build_agent_cmd(&agent_id);
-                            let _ = self.restart_tx.send(RestartRequest {
-                                agent_cmd: Some(new_cmd),
-                            });
-                            self.mode = AppMode::Chat;
-                            self.state =
-                                ConnectionState::Connecting(t!("connection.starting").into_owned());
-                            let tab = self.current_tab_mut();
-                            tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
-                            tab.chat_scroll.reset();
-                            self.setup = None;
-                            let (enterprise_mode, enterprise_host) =
-                                copilot_enterprise_prefill(&agent_id);
-                            self.auth = Some(AuthState {
-                                agent_id: agent_id.clone(),
-                                agent_name: status.display_name.clone(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                                checking: false,
-                                status_message: String::new(),
-                                enterprise_mode,
-                                enterprise_host,
-                            });
-                        } else if agent_id == "copilot" {
-                            // Copilot installed but not authenticated → auth screen.
-                            self.mode = AppMode::Auth;
-                            self.setup = None;
-                            let (enterprise_mode, enterprise_host) =
-                                copilot_enterprise_prefill(&agent_id);
-                            self.auth = Some(AuthState {
-                                agent_id: agent_id.clone(),
-                                agent_name: status.display_name.clone(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                                checking: false,
-                                status_message: String::new(),
-                                enterprise_mode,
-                                enterprise_host,
-                            });
+                        if agent_id == "copilot" {
+                            // Copilot was just installed by IT. Route directly
+                            // to sign-in instead of probing local credentials or
+                            // paying for a doomed ACP auth roundtrip.
+                            self.show_copilot_auth_screen();
                         } else {
                             // Future-proofing: only Copilot has an in-app auth
                             // screen. If another agent ever becomes
@@ -12845,6 +12861,93 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn post_login_master_unavailable_matches_only_pipe_connect() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        assert!(is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::PipeConnect,
+                detail: "pipe missing".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Initialize,
+                detail: "init failed".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Authenticate,
+                detail: "auth failed".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::NewSession,
+                detail: "session failed".to_string()
+            }
+        ));
+    }
+
+    #[test]
+    fn typed_pipe_connect_failure_survives_classify_anyhow() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        let err = anyhow::Error::new(AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            detail: "connect to master pipe after 3 attempts: missing".into(),
+        });
+
+        assert_eq!(
+            crate::protocol::acp::failure::classify_anyhow(&err, HandshakeStage::Initialize),
+            AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::PipeConnect,
+                detail: "connect to master pipe after 3 attempts: missing".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        let pipe_connect = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            detail: "pipe missing".to_string(),
+        };
+        assert!(
+            should_trigger_post_login_recovery(
+                true,
+                false,
+                &pipe_connect
+            ),
+            "post-login master-unavailable recovery must not be gated on External auth flow"
+        );
+        assert!(
+            !should_trigger_post_login_recovery(
+                false,
+                false,
+                &pipe_connect
+            ),
+            "non-post-login pipe failures should surface normally"
+        );
+
+        let still_auth = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::NewSession,
+            detail: "still auth".to_string(),
+        };
+        assert!(
+            should_trigger_post_login_recovery(true, true, &still_auth),
+            "external post-login auth failures still recover via fresh master"
+        );
+        assert!(
+            !should_trigger_post_login_recovery(true, false, &still_auth),
+            "non-external auth failures should not use auth-stale recovery"
+        );
+    }
+
     /// `PostLoginAuthRecovery` shows a transient "Reconnecting…" (NOT the
     /// sign-in screen, so there is no flash), and the `AuthRecoveryTimedOut`
     /// dead-man only falls back to the sign-in screen if the restart never
@@ -14736,7 +14839,6 @@ mod tests {
             display_name: display.into(),
             cli_found,
             cli_path: None,
-            has_credential: false,
             install_hint: String::new(),
             auth_hint: String::new(),
         }
@@ -14744,21 +14846,48 @@ mod tests {
 
     #[test]
     fn diagnostic_setup_options_route_auth_by_agent() {
-        let mut copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
-        copilot.has_credential = false;
+        let copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
         let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
         assert!(
             matches!(copilot_options.as_slice(), [SetupOption::SignIn { agent_id, .. }] if agent_id == "copilot"),
             "Copilot auth failures must offer the in-app SignIn flow"
         );
 
-        let mut codex = agent_status_for_test("codex", "Codex", true);
-        codex.has_credential = false;
+        let codex = agent_status_for_test("codex", "Codex", true);
         let codex_options = build_setup_options(&SetupReason::AgentError, Some(&codex));
         assert!(
             matches!(codex_options.as_slice(), [SetupOption::Retry]),
             "external-auth agents stay on the diagnostic Retry flow"
         );
+    }
+
+    #[test]
+    fn show_copilot_auth_screen_sets_expected_state() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentError,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("copilot"),
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options: vec![SetupOption::Retry],
+            title: "setup".into(),
+            subtitle: "sub".into(),
+        });
+
+        app.show_copilot_auth_screen();
+
+        assert_eq!(app.mode, AppMode::Auth);
+        assert!(app.setup.is_none(), "auth screen should replace setup state");
+        assert_eq!(app.current_agent_id, "copilot");
+        let auth = app.auth.as_ref().expect("copilot auth state");
+        assert_eq!(auth.agent_id, "copilot");
+        assert_eq!(auth.agent_name, "GitHub Copilot");
+        assert!(auth.login_command.contains("copilot"));
+        assert!(!auth.checking);
+        assert!(auth.status_message.is_empty());
     }
 
     /// Render: a setup screen with a full options list while a winget install
