@@ -71,7 +71,8 @@ namespace winrt::TerminalApp::implementation
         // own fresh StableId), the page walks the agent leaves and emits a
         // `tab_renamed` event so the wta-helper can rekey its `--owner-tab-id`.
         // Internal-only (not on IDL) — only TerminalPage calls these.
-        void SetPendingRenameFromTabId(const winrt::hstring& value) noexcept { _pendingRenameFromTabId = value; }        winrt::hstring TakePendingRenameFromTabId() noexcept
+        void SetPendingRenameFromTabId(const winrt::hstring& value) noexcept { _pendingRenameFromTabId = value; }
+        winrt::hstring TakePendingRenameFromTabId() noexcept
         {
             const auto v = _pendingRenameFromTabId;
             _pendingRenameFromTabId = {};
