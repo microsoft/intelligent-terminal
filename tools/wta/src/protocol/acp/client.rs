@@ -1,4 +1,4 @@
-use super::failure::AgentFailure;
+use super::failure::{AgentFailure, HandshakeStage};
 use super::prompt;
 use super::prompt_context::{self, ContextRequest};
 use super::soft_stop::SoftStopReason;
@@ -18,6 +18,20 @@ use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
+// Normal helper startup can race a slow wta-master cold start: master opens its
+// pipe only after spawning and initializing the agent CLI (up to 60s for npx
+// adapters), so keep a long budget there.
+const MASTER_PIPE_BACKOFF_MS: &[u64] = &[
+    50, 100, 100, 200, 200, 500, 500, 1000, 1000, 2000, 2000, 2000, 5000, 5000, 5000, 5000,
+    10000, 10000, 10000, 15000,
+];
+// Post-login reconnect is different: if the old master pipe is gone, the right
+// recovery is a fresh master restart. Keep a short bounded retry so brief
+// respawn/ERROR_PIPE_BUSY windows are tolerated without stranding the user for
+// the full cold-start budget.
+const POST_LOGIN_MASTER_PIPE_BACKOFF_MS: &[u64] = &[
+    50, 100, 100, 200, 200, 500, 500, 1000, 1000, 2000, 2000, 2000,
+];
 
 // Form A mock-ACP-agent harness + scenario tests (in-process, deterministic).
 // Lives as a sibling file so it stays out of this large module, but is a child
@@ -2107,12 +2121,11 @@ pub async fn run_acp_client_over_pipe(
     const ERROR_PIPE_BUSY: i32 = 231;
     let pipe = {
         let mut attempt: u32 = 0;
-        // Backoff schedule, summing to ~75s total. Most masters come
-        // up in 1-2s; the long tail is npx adapter cold starts.
-        let backoff_ms: &[u64] = &[
-            50, 100, 100, 200, 200, 500, 500, 1000, 1000, 2000, 2000, 2000, 5000, 5000, 5000, 5000,
-            10000, 10000, 10000, 15000,
-        ];
+        let backoff_ms = if post_login_reconnect {
+            POST_LOGIN_MASTER_PIPE_BACKOFF_MS
+        } else {
+            MASTER_PIPE_BACKOFF_MS
+        };
         loop {
             match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
                 Ok(pipe) => {
@@ -2140,12 +2153,16 @@ pub async fn run_acp_client_over_pipe(
                             error = %e,
                             "master pipe connect giving up"
                         );
-                        return Err(anyhow::anyhow!(
+                        let detail = format!(
                             "connect to master pipe '{}' after {} attempt(s): {}",
                             pipe_name,
                             attempt + 1,
                             e
-                        ));
+                        );
+                        return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
+                            stage: HandshakeStage::PipeConnect,
+                            detail,
+                        }));
                     }
                     let wait = backoff_ms[attempt as usize];
                     tracing::debug!(

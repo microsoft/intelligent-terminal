@@ -306,6 +306,36 @@ fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFail
     )
 }
 
+/// True when a post-login reconnect could not even reach wta-master.
+///
+/// This is distinct from auth failure: after the IT setup flow installs Copilot,
+/// the old master may already be gone because it was spawned while `copilot`
+/// was missing. Login succeeds in the browser, but reconnecting to the saved
+/// pipe fails before initialize/authenticate/new_session can run. The right
+/// recovery is still the same fresh-master restart used for stale auth state.
+fn is_post_login_master_unavailable(
+    failure: &crate::protocol::acp::failure::AgentFailure,
+) -> bool {
+    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+    matches!(
+        failure,
+        AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            ..
+        }
+    )
+}
+
+fn should_trigger_post_login_recovery(
+    post_login_auth: bool,
+    is_external_auth_agent: bool,
+    failure: &crate::protocol::acp::failure::AgentFailure,
+) -> bool {
+    post_login_auth
+        && ((is_external_auth_agent && is_post_login_auth_failure(failure))
+            || is_post_login_master_unavailable(failure))
+}
+
 /// Build the diagnostic setup options list based on the configured agent state:
 /// install when the CLI is missing and auto-installable, sign in for Copilot
 /// auth failures, or retry for external-auth / manually repaired cases.
@@ -2425,28 +2455,33 @@ impl App {
                                 &e,
                                 crate::protocol::acp::failure::HandshakeStage::Initialize,
                             );
-                            // A post-login reconnect for an External-auth agent
-                            // that STILL fails auth means the long-lived shared
-                            // master CLI is poisoned and `authenticate` won't
-                            // refresh it. Request a fresh master (auth recovery)
-                            // instead of looping back to the sign-in screen.
-                            // Match BOTH the plain AuthRequired and the post-
-                            // login HandshakeFailed{NewSession} the client
-                            // wraps a still-AuthRequired new_session into.
+                            // A post-login reconnect may fail because the old
+                            // shared master is stale/dead after login:
+                            //   * External-auth agent still AuthRequired after
+                            //     authenticate/new_session → the long-lived CLI
+                            //     cached unauthenticated state.
+                            //   * PipeConnect failure → the master died before
+                            //     login (e.g. Copilot was missing during IT
+                            //     install flow), so the saved pipe no longer
+                            //     exists.
+                            // Both need a fresh master rather than another
+                            // sign-in screen.
                             let is_external = matches!(
                                 crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
                                     .acp_auth_flow,
                                 crate::agent_registry::AcpAuthFlow::External
                             );
-                            if post_login_auth
-                                && is_external
-                                && is_post_login_auth_failure(&failure)
-                            {
+                            if should_trigger_post_login_recovery(
+                                post_login_auth,
+                                is_external,
+                                &failure,
+                            ) {
                                 tracing::warn!(
                                     target: "auth_recovery",
                                     agent_id = %recovery_agent_id,
                                     tab_id = ?recovery_tab_id,
-                                    "post-login reconnect still auth-failing on shared master CLI; requesting auth recovery"
+                                    failure_class = failure.class(),
+                                    "post-login reconnect needs fresh master; requesting auth recovery"
                                 );
                                 let _ = event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
                                     failure,
@@ -4709,8 +4744,7 @@ impl App {
                     failure_class = failure.class(),
                     tab_id = ?tab_id,
                     agent_id = %agent_id,
-                    "post-login auth recovery: shared master CLI still AuthRequired \
-                     after a successful login; reconnecting via a fresh master \
+                    "post-login recovery: reconnecting via a fresh master \
                      (restart_agent_stack)"
                 );
                 let resolved = if !agent_id.is_empty() {
@@ -12825,6 +12859,93 @@ mod tests {
             stage: HandshakeStage::Initialize,
             detail: "boom".to_string()
         }));
+    }
+
+    #[test]
+    fn post_login_master_unavailable_matches_only_pipe_connect() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        assert!(is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::PipeConnect,
+                detail: "pipe missing".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Initialize,
+                detail: "init failed".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Authenticate,
+                detail: "auth failed".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::NewSession,
+                detail: "session failed".to_string()
+            }
+        ));
+    }
+
+    #[test]
+    fn typed_pipe_connect_failure_survives_classify_anyhow() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        let err = anyhow::Error::new(AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            detail: "connect to master pipe after 3 attempts: missing".into(),
+        });
+
+        assert_eq!(
+            crate::protocol::acp::failure::classify_anyhow(&err, HandshakeStage::Initialize),
+            AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::PipeConnect,
+                detail: "connect to master pipe after 3 attempts: missing".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        let pipe_connect = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            detail: "pipe missing".to_string(),
+        };
+        assert!(
+            should_trigger_post_login_recovery(
+                true,
+                false,
+                &pipe_connect
+            ),
+            "post-login master-unavailable recovery must not be gated on External auth flow"
+        );
+        assert!(
+            !should_trigger_post_login_recovery(
+                false,
+                false,
+                &pipe_connect
+            ),
+            "non-post-login pipe failures should surface normally"
+        );
+
+        let still_auth = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::NewSession,
+            detail: "still auth".to_string(),
+        };
+        assert!(
+            should_trigger_post_login_recovery(true, true, &still_auth),
+            "external post-login auth failures still recover via fresh master"
+        );
+        assert!(
+            !should_trigger_post_login_recovery(true, false, &still_auth),
+            "non-external auth failures should not use auth-stale recovery"
+        );
     }
 
     /// `PostLoginAuthRecovery` shows a transient "Reconnecting…" (NOT the
