@@ -8726,12 +8726,13 @@ namespace winrt::TerminalApp::implementation
         }
 
         // #348: The AI agent bars (window-level bottom bar + each tab's
-        // agent-pane top bar) used to be hard-coded black. Make them follow
-        // the *tab's* effective color (Tab::GetEffectiveTabColor — the same
-        // color the TabViewItem is painted with), so they read as consistent
-        // with the tab strip. With the built-in themes (tab.background =
-        // "terminalBackground") this resolves to the terminal background, so
-        // each bar blends with the pane content beneath it.
+        // agent-pane top bar) used to be hard-coded black. They now follow the
+        // AGENT PANE's own background color (its coordinator profile), *not*
+        // the tab's effective color — the tab color tracks whichever pane is
+        // focused, so following it would recolor the agent chrome when the
+        // user clicks a sibling terminal pane. The agent pane background is
+        // fixed by its profile, so the chrome stays stable and blends with the
+        // agent pane it belongs to regardless of focus.
         {
             constexpr auto lightnessThreshold = 0.6f;
             // Given a background color, produce an opaque background brush plus
@@ -8740,7 +8741,7 @@ namespace winrt::TerminalApp::implementation
             // Opacity is forced to 255: the bars are window chrome and must be
             // a solid fill (a translucent color would let the desktop show
             // through — see the BottomBar XAML comments).
-            const auto brushesFor = [](const til::color c) {
+            const auto brushesFor = [lightnessThreshold](const til::color c) {
                 const til::color opaque{ c.r, c.g, c.b, 255 };
                 const auto fg = ColorFix::GetLightness(opaque) >= lightnessThreshold ?
                                     winrt::Windows::UI::Colors::Black() :
@@ -8749,20 +8750,28 @@ namespace winrt::TerminalApp::implementation
                                   Media::SolidColorBrush{ fg } };
             };
 
-            // The window-level bottom bar reflects the *active* tab, so it
-            // follows that tab's effective color. Fall back to the focused
-            // terminal background, then the tab-row color, when the tab has no
-            // explicit color (TabView default).
+            // Helper: resolve an agent pane's own background color (visible or
+            // stashed — FindAgentPaneContent finds hidden panes too).
+            const auto agentPaneColor = [](const winrt::TerminalApp::AgentPaneContent& agent) -> std::optional<til::color> {
+                if (agent)
+                {
+                    if (const auto b = agent.BackgroundBrush())
+                    {
+                        return til::color{ ThemeColor::ColorFromBrush(b) };
+                    }
+                }
+                return std::nullopt;
+            };
+
+            // The window-level bottom bar reflects the *active* tab's agent
+            // pane. Fall back to the tab-row color only when the active tab has
+            // no agent pane at all.
             til::color bottomColor = bgColor;
             if (const auto focused = _GetFocusedTabImpl())
             {
-                if (const auto c = focused->GetEffectiveTabColor())
+                if (const auto c = agentPaneColor(focused->FindAgentPaneContent()))
                 {
                     bottomColor = *c;
-                }
-                else if (terminalBrush)
-                {
-                    bottomColor = til::color{ ThemeColor::ColorFromBrush(terminalBrush) };
                 }
             }
             const auto [barBackground, barForeground] = brushesFor(bottomColor);
@@ -8807,21 +8816,19 @@ namespace winrt::TerminalApp::implementation
             {
                 label.Foreground(barForeground);
             }
-            // The 1px divider between the terminal pane and the bar now uses
-            // the accent (primary) color, because the bar follows the
-            // tab/terminal color and a translucent white hairline would vanish
-            // on a light background (#348). _updatePaneResources (called at the
-            // top of this function) already resolved the accent brush.
+            // The 1px divider uses the accent (primary) color, because the bar
+            // follows the agent pane color and a translucent white hairline
+            // would vanish on a light background (#348). _updatePaneResources
+            // (called at the top of this function) already resolved the accent brush.
             const auto dividerBrush = _paneResources.focusedBorderBrush;
             if (const auto divider = BottomBarDivider())
             {
                 divider.Background(dividerBrush);
             }
 
-            // Each tab's agent-pane top bar follows ITS OWN tab's effective
-            // color (so a background/unfocused agent tab is themed too),
-            // falling back to that pane's terminal background, then the
-            // bottom-bar color.
+            // Each tab's agent-pane top bar follows ITS OWN pane's background
+            // (so it is stable regardless of which pane is focused), falling
+            // back to the bottom-bar color only if the pane has no brush yet.
             for (const auto& tab : _tabs)
             {
                 if (const auto tabImpl{ _GetTabImpl(tab) })
@@ -8830,15 +8837,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
                         {
-                            til::color agentColor = bottomColor;
-                            if (const auto c = tabImpl->GetEffectiveTabColor())
-                            {
-                                agentColor = *c;
-                            }
-                            else if (const auto innerBrush = agentContent.BackgroundBrush())
-                            {
-                                agentColor = til::color{ ThemeColor::ColorFromBrush(innerBrush) };
-                            }
+                            const til::color agentColor = agentPaneColor(agentContent).value_or(bottomColor);
                             const auto [agentBackground, agentForeground] = brushesFor(agentColor);
                             agentImpl->ApplyThemeColors(agentBackground, agentForeground, dividerBrush);
                         }
