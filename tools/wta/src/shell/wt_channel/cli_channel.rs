@@ -241,13 +241,24 @@ pub fn spawn_wtcli_save_workspace(
     });
 }
 
-pub fn spawn_wtcli_list_tabs(on_done: Box<dyn FnOnce(Vec<crate::app::SaveTabRow>) + Send>) {
+pub fn spawn_wtcli_list_tabs(
+    window_id: Option<String>,
+    on_done: Box<dyn FnOnce(Vec<crate::app::SaveTabRow>) + Send>,
+) {
     let path = resolve_wtcli_path();
     std::thread::spawn(move || {
         // `list-tabs` prints a human table by default; `--json` is required for
         // machine output, and that output is wrapped as `{ "tabs": [...] }`.
+        // Scope to THIS window — without `--window-id`, wtcli defaults to the
+        // first window, which lists the wrong tabs when /save-ws runs in a
+        // restored (second) window.
+        let mut args: Vec<String> = vec!["--json".to_string(), "list-tabs".to_string()];
+        if let Some(w) = window_id.as_deref().filter(|w| !w.is_empty()) {
+            args.push("--window-id".to_string());
+            args.push(w.to_string());
+        }
         let rows = std::process::Command::new(&path)
-            .args(["--json", "list-tabs"])
+            .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output()

@@ -214,6 +214,16 @@ struct Cli {
     #[arg(long, hide = true)]
     owner_tab_id: Option<String>,
 
+    /// Numeric WT window id (peasant id) that owns this wta process — the
+    /// same id `list_windows` / `tab_changed` report. Passed in by
+    /// TerminalPage alongside `--owner-tab-id`, and seeded into
+    /// `app_state.window_id` at boot so window-scoped commands (e.g.
+    /// `/save-ws`, which lists this window's tabs) work immediately — even
+    /// for a pre-warmed/stashed pane whose own pane isn't yet enumerable
+    /// for pane-identity discovery. Hidden — only WT should set it.
+    #[arg(long, hide = true)]
+    owner_window_id: Option<String>,
+
     /// Boot-time hint: instead of letting the helper create a fresh ACP
     /// session via `session/new`, immediately resume the given session id
     /// via `session/load`. Used by the "Enter on Historical/Ended row in
@@ -3171,6 +3181,24 @@ async fn run_acp_app(
                 // is passed by WT via --owner-tab-id (see below) and seeded
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
+            }
+
+            // Seed window_id from --owner-window-id (passed by TerminalPage
+            // alongside --owner-tab-id). This is authoritative and, unlike
+            // pane-identity discovery above, works for a pre-warmed / stashed
+            // pane whose own pane isn't enumerable yet — so window-scoped
+            // commands like `/save-ws` can scope `list-tabs` to this window
+            // from the very first interaction, without waiting for a
+            // tab_changed to learn it.
+            if let Some(ref wid) = cli.owner_window_id {
+                if !wid.is_empty() {
+                    tracing::info!(
+                        target: "tab_session",
+                        window_id = %wid,
+                        "seeded app_state.window_id from --owner-window-id"
+                    );
+                    app_state.window_id = Some(wid.clone());
+                }
             }
 
             // Seed tab_id from --owner-tab-id (passed by TerminalPage when

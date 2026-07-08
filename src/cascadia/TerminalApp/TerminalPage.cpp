@@ -1797,6 +1797,11 @@ namespace winrt::TerminalApp::implementation
         helperCmd.push_back(L'"');
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
+        // Tell the helper which window it lives in (same numeric id as
+        // list_windows / tab_changed) so window-scoped commands like
+        // /save-ws can scope list-tabs to this window immediately — even
+        // while the pane is pre-warmed/stashed and not yet enumerable.
+        helperCmd.append(L" --owner-window-id \"").append(std::to_wstring(_WindowProperties.WindowId())).append(L"\"");
 
         // If master is degraded (died unexpectedly, not yet recovered via
         // /restart), AcquirePane opened this pane without respawning master.

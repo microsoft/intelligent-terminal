@@ -8055,9 +8055,12 @@ impl App {
             loading: true,
             ..Default::default()
         });
-        crate::shell::wt_channel::spawn_wtcli_list_tabs(Box::new(move |rows| {
-            let _ = tx.send(AppEvent::SaveTabsListed(rows));
-        }));
+        crate::shell::wt_channel::spawn_wtcli_list_tabs(
+            self.window_id.clone(),
+            Box::new(move |rows| {
+                let _ = tx.send(AppEvent::SaveTabsListed(rows));
+            }),
+        );
     }
 
     /// Fire a `wtcli save-workspace` for the given tab set + title + mode. The
