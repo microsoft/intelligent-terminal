@@ -119,6 +119,9 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
         Windows.Foundation.IAsyncOperation<String> SaveWorkspaceSessionProtocol(String tabIds, String title, String mode);
         Windows.Foundation.IAsyncOperation<String> ListSavedWorkspaceSessionsProtocol();
+        String GetWorkspaceBindings(String workspaceId);
+        String PlanWorkspaceRestore(String workspaceId, String allLiveBindingsJson);
+        void RestoreMissingWorkspaceTabs(String workspaceId, String missingTabIdsJson);
         // Stash a workspace id so this (freshly created) window self-restores
         // that workspace once its page finishes startup (Initialized).
         void SetRestoreWorkspaceOnInit(String id);

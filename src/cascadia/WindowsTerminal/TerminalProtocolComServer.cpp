@@ -1033,10 +1033,9 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    // Always restore into a BRAND-NEW window. Queue the id + post to the
-    // emperor's message window so window creation runs on the UI thread; the
-    // new window's page self-restores the workspace once it's Initialized.
-    s_emperor->RequestRestoreWorkspaceInNewWindow(_hstr(id));
+    // Queue the id + post to the emperor's message window so cross-window
+    // restore routing runs on the UI thread.
+    s_emperor->RequestRestoreWorkspace(_hstr(id));
 
     Json::Value out{ Json::objectValue };
     out["outcome"] = "opened";
