@@ -1284,7 +1284,7 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
-    /// Result of `wtcli list-tabs` for the `/save-ws` multi-select picker.
+    /// Result of `wtcli list-tabs` for the window-scoped `/save-ws` title prompt.
     SaveTabsListed(Vec<crate::app::SaveTabRow>),
     /// Result of `wtcli save-workspace`: Saved/Conflict outcome, or Err(message).
     SaveWorkspaceResult(Result<crate::app::SaveWorkspaceOutcome, String>),
@@ -1974,16 +1974,16 @@ pub struct App {
     /// Set from the `--eternal-terminal` CLI flag (mirrors `--no-autofix`).
     pub eternal_terminal_enabled: bool,
     pub saved_workspaces: Option<SavedWorkspacesViewState>,
-    /// Pending overwrite-vs-save-new prompt after a `/save-ws` conflict.
-    /// While `Some`, 1/2/Esc are intercepted in the key handler.
+    /// Pending overwrite-only prompt after a `/save-ws` conflict.
+    /// While `Some`, y/Enter/1/n/Esc are intercepted in the key handler.
     pub pending_save_conflict: Option<PendingSaveConflict>,
     /// Title the user typed on the `auto` save that produced a conflict, kept
-    /// so the chosen mode (overwrite/new) can re-dispatch with the same title.
+    /// so the overwrite confirmation can re-dispatch with the same title.
     pub pending_save_title: Option<String>,
-    /// Selected tab StableIds for the in-flight `/save-ws`, kept so an
-    /// overwrite/save-new choice re-dispatches the same tab set.
+    /// Current-window tab StableIds for the in-flight `/save-ws`, kept so an
+    /// overwrite choice re-dispatches the same tab set.
     pub pending_save_tab_ids: Vec<String>,
-    /// `/save-ws` multi-select + title-input interactive state.
+    /// `/save-ws` title-input interactive state.
     pub save_ws_select: Option<SaveWorkspaceSelectState>,
     /// Last `(completed_turns.len(), session_id)` signature persisted to this
     /// tab's agent-pane-history file, so we only rewrite it on change.
@@ -2162,8 +2162,8 @@ pub struct SavedWorkspacesViewState {
 }
 
 /// Outcome of a `wtcli save-workspace` call. `auto` mode returns `Conflict`
-/// when the tab is already bound to a saved workspace, so the UI can prompt
-/// overwrite-vs-save-new before any write happens.
+/// when the window is already bound to a saved workspace, so the UI can ask
+/// before overwriting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SaveWorkspaceOutcome {
     Saved { title: String },
@@ -2173,17 +2173,15 @@ pub enum SaveWorkspaceOutcome {
     },
 }
 
-/// Pending overwrite-vs-save-new prompt raised after a `Conflict` outcome.
-/// Holds the title the user typed so a chosen mode can re-dispatch the save.
+/// Pending overwrite-only prompt raised after a `Conflict` outcome. Holds the
+/// title the user typed so an overwrite confirmation can re-dispatch the save.
 #[derive(Debug, Clone)]
 pub struct PendingSaveConflict {
     pub title: String,
-    pub existing_title: String,
 }
 
-/// A window tab as returned by `wtcli list-tabs`, used to populate the
-/// `/save-ws` multi-select. `stable_id` is the WT tab StableId passed back to
-/// `save-workspace --tabs`.
+/// A window tab as returned by `wtcli list-tabs`. `/save-ws` saves every row
+/// from the current window; `stable_id` is passed back to `save-workspace --tabs`.
 #[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
 pub struct SaveTabRow {
     #[serde(rename = "stable_id", default)]
@@ -2198,15 +2196,12 @@ pub struct SaveTabRow {
     pub cwd: String,
 }
 
-/// `/save-ws` interactive state: first a multi-select tab checklist (all
-/// checked by default), then a title-input sub-mode after ENTER.
+/// `/save-ws` interactive state: all current-window tabs are saved, so the
+/// only user input is the workspace title.
 #[derive(Debug, Default)]
 pub struct SaveWorkspaceSelectState {
     pub rows: Vec<SaveTabRow>,
-    pub checked: Vec<bool>,
-    pub selected: usize,
     pub loading: bool,
-    /// Once true, keys edit `title_input` and ENTER dispatches the save.
     pub in_title_input: bool,
     pub title_input: String,
 }
@@ -5304,12 +5299,9 @@ impl App {
                     "save-ws tab list"
                 );
                 if let Some(state) = self.save_ws_select.as_mut() {
-                    let n = usable.len();
-                    let sel = usable.iter().position(|r| r.is_active).unwrap_or(0);
-                    state.checked = vec![true; n];
-                    state.selected = sel.min(n.saturating_sub(1));
                     state.rows = usable;
                     state.loading = false;
+                    state.in_title_input = true;
                 }
             }
             AppEvent::SaveWorkspaceResult(result) => {
@@ -5325,7 +5317,7 @@ impl App {
                         existing_id: _,
                         existing_title,
                     }) => {
-                        // Raise the overwrite-vs-save-new prompt. 1/2/Esc are
+                        // Raise the overwrite-only prompt. y/Enter/1/n/Esc are
                         // handled in the key dispatcher while this is Some.
                         let prompt = t!(
                             "commands.save_ws.conflict_prompt",
@@ -5334,7 +5326,6 @@ impl App {
                         .into_owned();
                         self.pending_save_conflict = Some(PendingSaveConflict {
                             title: self.pending_save_title.clone().unwrap_or_default(),
-                            existing_title,
                         });
                         let tab = self.current_tab_mut();
                         tab.messages.push(ChatMessage::System(prompt));
@@ -6805,12 +6796,15 @@ impl App {
             return;
         }
 
-        // Overwrite-vs-save-new prompt: 1 overwrites, 2 saves a new copy, Esc
-        // cancels. Intercept before anything else so the digits don't reach the
-        // input line. Any other key is ignored while the prompt is up.
+        // Overwrite-only prompt. Intercept before anything else so the
+        // response keys don't reach the input line. Any other key is ignored
+        // while the prompt is up.
         if self.pending_save_conflict.is_some() {
             match key.code {
-                KeyCode::Char('1') => {
+                KeyCode::Char('y')
+                | KeyCode::Char('Y')
+                | KeyCode::Char('1')
+                | KeyCode::Enter => {
                     let title = self
                         .pending_save_conflict
                         .take()
@@ -6819,16 +6813,7 @@ impl App {
                     let ids = self.pending_save_tab_ids.clone();
                     self.dispatch_save_ws_multi(ids, title, "overwrite");
                 }
-                KeyCode::Char('2') => {
-                    let title = self
-                        .pending_save_conflict
-                        .take()
-                        .map(|p| p.title)
-                        .unwrap_or_default();
-                    let ids = self.pending_save_tab_ids.clone();
-                    self.dispatch_save_ws_multi(ids, title, "new");
-                }
-                KeyCode::Esc => {
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                     self.pending_save_conflict = None;
                     self.pending_save_title = None;
                     self.pending_save_tab_ids.clear();
@@ -8036,10 +8021,10 @@ impl App {
         self.project_active_tab_state();
     }
 
-    /// `/save-ws` — open the tab multi-select (all checked). After ENTER the
-    /// user types a title; the selected tabs are then snapshotted as one
-    /// workspace. Any text typed after `/save-ws` is ignored (title is asked
-    /// interactively). Gated behind the experimental Eternal-Terminal flag.
+    /// `/save-ws` — enumerate the current window's tabs, then ask for a title.
+    /// The whole window is snapshotted as one workspace. Any text typed after
+    /// `/save-ws` is ignored (title is asked interactively). Gated behind the
+    /// experimental Eternal-Terminal flag.
     fn cmd_save_ws(&mut self, _title: String) {
         let Some(tx) = self.event_tx.clone() else {
             return;
@@ -8093,87 +8078,39 @@ impl App {
         );
     }
 
-    /// Key handling for the `/save-ws` multi-select + title-input picker.
+    /// Key handling for the `/save-ws` title-input prompt.
     fn handle_save_ws_select_key(&mut self, key: KeyEvent) {
-        let in_title = self
-            .save_ws_select
-            .as_ref()
-            .map(|s| s.in_title_input)
-            .unwrap_or(false);
-        if in_title {
-            match key.code {
-                KeyCode::Esc => {
-                    self.save_ws_select = None;
-                }
-                KeyCode::Backspace => {
-                    if let Some(s) = self.save_ws_select.as_mut() {
-                        s.title_input.pop();
-                    }
-                }
-                KeyCode::Char(c) => {
-                    if let Some(s) = self.save_ws_select.as_mut() {
-                        s.title_input.push(c);
-                    }
-                }
-                KeyCode::Enter => {
-                    let picked = self.save_ws_select.as_ref().and_then(|s| {
-                        let title = s.title_input.trim().to_string();
-                        if title.is_empty() {
-                            return None;
-                        }
-                        let ids: Vec<String> = s
-                            .rows
-                            .iter()
-                            .zip(s.checked.iter())
-                            .filter(|(_, &c)| c)
-                            .map(|(r, _)| r.stable_id.clone())
-                            .collect();
-                        if ids.is_empty() {
-                            None
-                        } else {
-                            Some((ids, title))
-                        }
-                    });
-                    if let Some((ids, title)) = picked {
-                        self.save_ws_select = None;
-                        self.dispatch_save_ws_multi(ids, title, "auto");
-                    }
-                }
-                _ => {}
-            }
-            return;
-        }
         match key.code {
             KeyCode::Esc => {
                 self.save_ws_select = None;
             }
-            KeyCode::Up => {
+            KeyCode::Backspace => {
                 if let Some(s) = self.save_ws_select.as_mut() {
-                    if s.selected > 0 {
-                        s.selected -= 1;
-                    }
+                    s.title_input.pop();
                 }
             }
-            KeyCode::Down => {
+            KeyCode::Char(c) => {
                 if let Some(s) = self.save_ws_select.as_mut() {
-                    let max = s.rows.len().saturating_sub(1);
-                    if s.selected < max {
-                        s.selected += 1;
-                    }
-                }
-            }
-            KeyCode::Char(' ') => {
-                if let Some(s) = self.save_ws_select.as_mut() {
-                    if let Some(c) = s.checked.get_mut(s.selected) {
-                        *c = !*c;
-                    }
+                    s.title_input.push(c);
                 }
             }
             KeyCode::Enter => {
-                if let Some(s) = self.save_ws_select.as_mut() {
-                    if s.checked.iter().any(|&c| c) {
-                        s.in_title_input = true;
+                let picked = self.save_ws_select.as_ref().and_then(|s| {
+                    let title = s.title_input.trim().to_string();
+                    if title.is_empty() {
+                        return None;
                     }
+                    let ids: Vec<String> =
+                        s.rows.iter().map(|r| r.stable_id.clone()).collect();
+                    if ids.is_empty() {
+                        None
+                    } else {
+                        Some((ids, title))
+                    }
+                });
+                if let Some((ids, title)) = picked {
+                    self.save_ws_select = None;
+                    self.dispatch_save_ws_multi(ids, title, "auto");
                 }
             }
             _ => {}
@@ -10381,6 +10318,81 @@ mod tests {
         assert_eq!(app.saved_workspaces.as_ref().unwrap().selected, 1);
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         assert_eq!(app.saved_workspaces.as_ref().unwrap().selected, 0);
+    }
+
+    #[test]
+    fn save_tabs_listed_goes_directly_to_title_input_with_current_window_tabs() {
+        let mut app = test_app();
+        app.window_id = Some("7".to_string());
+        app.save_ws_select = Some(SaveWorkspaceSelectState {
+            loading: true,
+            ..Default::default()
+        });
+
+        app.handle_event(AppEvent::SaveTabsListed(vec![
+            SaveTabRow {
+                stable_id: "tab-1".to_string(),
+                title: "one".to_string(),
+                window_id: 7,
+                is_active: false,
+                cwd: String::new(),
+            },
+            SaveTabRow {
+                stable_id: "tab-2".to_string(),
+                title: "two".to_string(),
+                window_id: 7,
+                is_active: true,
+                cwd: String::new(),
+            },
+            SaveTabRow {
+                stable_id: "other-window".to_string(),
+                title: "other".to_string(),
+                window_id: 8,
+                is_active: false,
+                cwd: String::new(),
+            },
+        ]));
+
+        let state = app.save_ws_select.as_ref().unwrap();
+        assert!(!state.loading);
+        assert!(state.in_title_input);
+        assert_eq!(
+            state
+                .rows
+                .iter()
+                .map(|row| row.stable_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["tab-1", "tab-2"]
+        );
+    }
+
+    #[test]
+    fn save_workspace_conflict_ignores_legacy_save_as_new_key() {
+        let mut app = test_app();
+        app.pending_save_conflict = Some(PendingSaveConflict {
+            title: "typed title".to_string(),
+        });
+        app.pending_save_title = Some("typed title".to_string());
+        app.pending_save_tab_ids = vec!["tab-1".to_string()];
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+
+        assert!(app.pending_save_conflict.is_some());
+        assert_eq!(app.pending_save_title.as_deref(), Some("typed title"));
+        assert_eq!(app.pending_save_tab_ids, vec!["tab-1".to_string()]);
+    }
+
+    #[test]
+    fn save_workspace_conflict_enter_accepts_overwrite_prompt() {
+        let mut app = test_app();
+        app.pending_save_conflict = Some(PendingSaveConflict {
+            title: "typed title".to_string(),
+        });
+        app.pending_save_tab_ids = vec!["tab-1".to_string()];
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.pending_save_conflict.is_none());
     }
 
     #[test]

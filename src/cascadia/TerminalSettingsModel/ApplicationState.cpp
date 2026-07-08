@@ -109,6 +109,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
         {
             auto tab = winrt::make_self<implementation::SavedWorkspaceTab>();
             GetValueForKey(json, "sourceStableId", tab->_SourceStableId);
+            GetValueForKey(json, "workspaceTabId", tab->_WorkspaceTabId);
             GetValueForKey(json, "tabActions", tab->_TabActions);
             GetValueForKey(json, "bufferSessionIds", tab->_BufferSessionIds);
             // agentPane is reserved and optional; only populate when present.
@@ -129,6 +130,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
         {
             Json::Value json{ Json::objectValue };
             SetValueForKey(json, "sourceStableId", val.SourceStableId());
+            SetValueForKey(json, "workspaceTabId", val.WorkspaceTabId());
             SetValueForKey(json, "tabActions", val.TabActions());
             SetValueForKey(json, "bufferSessionIds", val.BufferSessionIds());
             if (const auto pane = val.AgentPane())

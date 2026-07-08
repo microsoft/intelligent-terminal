@@ -9,7 +9,7 @@ mod model_popup;
 mod permission;
 mod popup;
 mod recommendations;
-pub mod save_ws_select_view;
+pub mod save_ws_title_view;
 pub mod saved_workspaces_view;
 pub mod agents_view;
 pub mod setup;

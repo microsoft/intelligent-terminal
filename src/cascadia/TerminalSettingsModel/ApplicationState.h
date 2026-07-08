@@ -81,6 +81,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         SavedWorkspaceTab() = default;
 
         WINRT_PROPERTY(winrt::hstring, SourceStableId);
+        WINRT_PROPERTY(winrt::hstring, WorkspaceTabId);
         WINRT_PROPERTY(Windows::Foundation::Collections::IVector<Model::ActionAndArgs>, TabActions, nullptr);
         WINRT_PROPERTY(Windows::Foundation::Collections::IVector<winrt::hstring>, BufferSessionIds, nullptr);
         WINRT_PROPERTY(Model::SavedWorkspaceAgentPane, AgentPane, nullptr);

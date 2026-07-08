@@ -594,8 +594,14 @@ int main()
     auto* saveTabCmd = app.add_subcommand("save-workspace", "Save a workspace snapshot");
     saveTabCmd->add_option("-t,--tabs", saveTabIds, "Comma-separated tab StableIds (first = initiating tab)")->required();
     saveTabCmd->add_option("-n,--title", saveTabTitle, "Snapshot title")->required();
-    saveTabCmd->add_option("-m,--mode", saveMode, "Save mode: auto|overwrite|new")->default_val("auto");
+    saveTabCmd->add_option("-m,--mode", saveMode, "Save mode: auto|overwrite")->default_val("auto");
     saveTabCmd->callback([&]() {
+        if (saveMode != "auto" && saveMode != "overwrite")
+        {
+            fprintf(stderr, "Unsupported save mode: %s\n", saveMode.c_str());
+            exitCode = 1;
+            return;
+        }
         auto server = connect();
         if (!server) return;
         wil::unique_bstr tabs{ Bstr(saveTabIds) }, title{ Bstr(saveTabTitle) }, mode{ Bstr(saveMode) };

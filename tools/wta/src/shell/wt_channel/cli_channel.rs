@@ -223,6 +223,13 @@ pub fn spawn_wtcli_save_workspace(
                             .unwrap_or("")
                             .to_string(),
                     })
+                } else if outcome == "error" {
+                    Err(v
+                        .as_ref()
+                        .and_then(|v| v.get("error"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("Save failed")
+                        .to_string())
                 } else {
                     Ok(crate::app::SaveWorkspaceOutcome::Saved {
                         title: v
