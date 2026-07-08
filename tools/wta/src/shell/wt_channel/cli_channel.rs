@@ -186,27 +186,16 @@ pub fn spawn_wtcli_async(args: &[String]) {
 }
 
 pub fn spawn_wtcli_save_workspace(
-    tab_stable_id: &str,
+    tab_ids: &str,
     title: &str,
     mode: &str,
-    agent_session_id: &str,
     on_done: Box<dyn FnOnce(Result<crate::app::SaveWorkspaceOutcome, String>) + Send>,
 ) {
     let path = resolve_wtcli_path();
-    let (tab, title, mode, agent_sid) = (
-        tab_stable_id.to_string(),
-        title.to_string(),
-        mode.to_string(),
-        agent_session_id.to_string(),
-    );
+    let (tabs, title, mode) = (tab_ids.to_string(), title.to_string(), mode.to_string());
     std::thread::spawn(move || {
-        let mut args: Vec<&str> = vec!["save-workspace", "-t", &tab, "-n", &title, "-m", &mode];
-        if !agent_sid.is_empty() {
-            args.push("-s");
-            args.push(&agent_sid);
-        }
         let out = std::process::Command::new(&path)
-            .args(&args)
+            .args(["save-workspace", "-t", &tabs, "-n", &title, "-m", &mode])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output();
@@ -249,6 +238,28 @@ pub fn spawn_wtcli_save_workspace(
             Err(e) => Err(e.to_string()),
         };
         on_done(result);
+    });
+}
+
+pub fn spawn_wtcli_list_tabs(on_done: Box<dyn FnOnce(Vec<crate::app::SaveTabRow>) + Send>) {
+    let path = resolve_wtcli_path();
+    std::thread::spawn(move || {
+        // `list-tabs` prints a human table by default; `--json` is required for
+        // machine output, and that output is wrapped as `{ "tabs": [...] }`.
+        let rows = std::process::Command::new(&path)
+            .args(["--json", "list-tabs"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| {
+                let v: serde_json::Value = serde_json::from_slice(&o.stdout).ok()?;
+                let arr = v.get("tabs").cloned().unwrap_or(v);
+                serde_json::from_value::<Vec<crate::app::SaveTabRow>>(arr).ok()
+            })
+            .unwrap_or_default();
+        on_done(rows);
     });
 }
 

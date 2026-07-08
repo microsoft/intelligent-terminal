@@ -78,7 +78,7 @@ import "unknwn.idl";
     HRESULT SendEvent([in] BSTR eventJson);
 
     // ── Eternal Terminal: workspace save/restore ──
-    HRESULT SaveWorkspaceSession([in] BSTR tabStableId, [in] BSTR title, [in] BSTR mode, [in] BSTR agentSessionId, [out, retval] BSTR* json);
+    HRESULT SaveWorkspaceSession([in] BSTR tabIds, [in] BSTR title, [in] BSTR mode, [out, retval] BSTR* json);
     HRESULT ListSavedWorkspaceSessions([out, retval] BSTR* json);
     HRESULT RestoreWorkspaceSession([in] BSTR id, [out, retval] BSTR* json);
     HRESULT DeleteSavedWorkspaceSession([in] BSTR id);

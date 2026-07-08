@@ -1715,7 +1715,8 @@ namespace winrt::TerminalApp::implementation
                                                         bool intoSessionsView,
                                                         bool autoStash,
                                                         std::string_view initialLoadSessionId,
-                                                        std::string_view initialLoadCwd)
+                                                        std::string_view initialLoadCwd,
+                                                        std::string_view initialChatHistory)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -1873,6 +1874,15 @@ namespace winrt::TerminalApp::implementation
                 const auto cwdW = winrt::to_hstring(initialLoadCwd);
                 appendHelperFlagValue(L"--initial-load-cwd", std::wstring_view{ cwdW });
             }
+        }
+
+        // Eternal-Terminal /restore-ws: rehydrate the exact saved chat UI from
+        // the workspace's per-tab history file (helper reads it on boot and
+        // suppresses the plain-text session/load replay).
+        if (!initialChatHistory.empty())
+        {
+            const auto histW = winrt::to_hstring(initialChatHistory);
+            appendHelperFlagValue(L"--initial-chat-history", std::wstring_view{ histW });
         }
 
         // Resolve cwd. Priority matches the legacy spawn:
@@ -3114,6 +3124,15 @@ namespace winrt::TerminalApp::implementation
                 if (auto self{ weak.get() })
                 {
                     self->Initialized.raise(*self, nullptr);
+
+                    // Eternal-Terminal: if this window was created to restore a
+                    // workspace, do it now that startup tabs exist.
+                    if (!self->_restoreWorkspaceIdOnInit.empty())
+                    {
+                        const auto wsId = self->_restoreWorkspaceIdOnInit;
+                        self->_restoreWorkspaceIdOnInit.clear();
+                        self->_RestoreWorkspaceOnInit(wsId);
+                    }
                 }
             });
         }
@@ -4405,14 +4424,16 @@ namespace winrt::TerminalApp::implementation
                     // tab_changed echo) doesn't accidentally re-spawn.
                     std::string pendingSid;
                     std::string pendingCwd;
+                    std::string pendingHist;
                     if (const auto it = _pendingLoadSessions.find(tabId); it != _pendingLoadSessions.end())
                     {
                         pendingSid = std::move(it->second.sessionId);
                         pendingCwd = std::move(it->second.cwd);
+                        pendingHist = std::move(it->second.chatHistoryPath);
                         _pendingLoadSessions.erase(it);
                         _agentPaneLog("OnAgentStateChanged: consuming pending load_session for tab " + winrt::to_string(tabId));
                     }
-                    _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions, /*autoStash*/ false, pendingSid, pendingCwd);
+                    _AutoCreateHiddenAgentPaneShared(targetTab, intoSessions, /*autoStash*/ false, pendingSid, pendingCwd, pendingHist);
                 }
             }
             else

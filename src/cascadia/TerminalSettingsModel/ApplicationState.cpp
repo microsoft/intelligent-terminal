@@ -76,6 +76,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             GetValueForKey(json, "model", pane->_Model);
             GetValueForKey(json, "agentSessionId", pane->_AgentSessionId);
             GetValueForKey(json, "position", pane->_Position);
+            GetValueForKey(json, "chatHistoryFile", pane->_ChatHistoryFile);
             return *pane;
         }
 
@@ -91,6 +92,7 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             SetValueForKey(json, "model", val.Model());
             SetValueForKey(json, "agentSessionId", val.AgentSessionId());
             SetValueForKey(json, "position", val.Position());
+            SetValueForKey(json, "chatHistoryFile", val.ChatHistoryFile());
             return json;
         }
 

@@ -58,6 +58,27 @@ namespace IntelligentTerminal
         return base / L"IntelligentTerminal" / L"logs";
     }
 
+    // The package-private local/cache root: `…\LocalCache\Local\IntelligentTerminal`
+    // (packaged) or bare `%LOCALAPPDATA%\IntelligentTerminal` (unpackaged). This
+    // mirrors wta's Rust `runtime_paths::intelligent_terminal_local_root()` so
+    // both sides agree on sibling folders like `logs\` and
+    // `agent-pane-history\`. Returns empty when `%LOCALAPPDATA%` is unavailable.
+    inline std::filesystem::path LocalCacheRoot()
+    {
+        auto logDir = LogDir();
+        return logDir.empty() ? logDir : logDir.parent_path();
+    }
+
+    // Per-tab agent-pane chat-history dir, shared with wta's Rust side
+    // (`intelligent_terminal_local_root()\agent-pane-history`). Each helper
+    // writes `{tabStableId}.json` here; the Eternal-Terminal workspace save
+    // copies the selected tabs' files into the workspace snapshot.
+    inline std::filesystem::path AgentPaneHistoryDir()
+    {
+        auto root = LocalCacheRoot();
+        return root.empty() ? root : (root / L"agent-pane-history");
+    }
+
     // The current process's package version as `"Major.Minor.Build.Revision"`
     // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
     // shared per-version key — wta's Rust `logging::package_version()` reads

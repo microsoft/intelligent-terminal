@@ -205,7 +205,7 @@ model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}
-commands.save_ws.summary: "Save this workspace (layout + output) to restore later"
+commands.save_ws.summary: "Save shell and agent pane as workspace (layout + output) to restore later"
 commands.restore_ws.summary: "Restore a saved workspace"
 commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
 commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"

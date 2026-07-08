@@ -231,6 +231,8 @@ static Json::Value _toJson(const Protocol::TabInfo& t)
     v["title"] = winrt::to_string(t.Title);
     v["is_active"] = static_cast<bool>(t.IsActive);
     v["pane_count"] = static_cast<Json::UInt>(t.PaneCount);
+    v["stable_id"] = winrt::to_string(t.StableId);
+    v["cwd"] = winrt::to_string(t.Cwd);
     return v;
 }
 
@@ -533,10 +535,10 @@ try
         "subscribe",
         "unsubscribe",
         "send_event",
-        "save_tab_session",
-        "list_saved_tab_sessions",
-        "restore_tab_session",
-        "delete_saved_tab_session",
+        "save_workspace_session",
+        "list_saved_workspace_sessions",
+        "restore_workspace_session",
+        "delete_saved_workspace_session",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -978,7 +980,7 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::SaveWorkspaceSession(BSTR tabStableId, BSTR title, BSTR mode, BSTR agentSessionId, BSTR* json)
+STDMETHODIMP TerminalProtocolComServer::SaveWorkspaceSession(BSTR tabIds, BSTR title, BSTR mode, BSTR* json)
 try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
@@ -991,7 +993,7 @@ try
         if (!page)
             continue;
 
-        const auto result = page.SaveWorkspaceSessionProtocol(_hstr(tabStableId), _hstr(title), _hstr(mode), _hstr(agentSessionId)).get();
+        const auto result = page.SaveWorkspaceSessionProtocol(_hstr(tabIds), _hstr(title), _hstr(mode)).get();
         if (!result.empty())
         {
             *json = _bstrFromHstring(result);
@@ -1031,14 +1033,15 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    const auto mostRecent = s_emperor->GetMostRecentWindow();
-    const auto page = mostRecent ? _getPage(mostRecent) : nullptr;
-    RETURN_HR_IF(E_FAIL, !page);
+    // Always restore into a BRAND-NEW window. Queue the id + post to the
+    // emperor's message window so window creation runs on the UI thread; the
+    // new window's page self-restores the workspace once it's Initialized.
+    s_emperor->RequestRestoreWorkspaceInNewWindow(_hstr(id));
 
-    const auto result = page.RestoreWorkspaceSessionProtocol(_hstr(id)).get();
-    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_NOT_FOUND), result.empty());
-
-    *json = _bstrFromHstring(result);
+    Json::Value out{ Json::objectValue };
+    out["outcome"] = "opened";
+    Json::StreamWriterBuilder wb;
+    *json = _bstrFromHstring(winrt::to_hstring(Json::writeString(wb, out)));
     return S_OK;
 }
 CATCH_RETURN()

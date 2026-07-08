@@ -590,18 +590,17 @@ int main()
     });
 
     // ── save-workspace ──
-    std::string saveTabId, saveTabTitle, saveMode, saveAgentSid;
+    std::string saveTabIds, saveTabTitle, saveMode;
     auto* saveTabCmd = app.add_subcommand("save-workspace", "Save a workspace snapshot");
-    saveTabCmd->add_option("-t,--tab", saveTabId, "Source tab StableId")->required();
+    saveTabCmd->add_option("-t,--tabs", saveTabIds, "Comma-separated tab StableIds (first = initiating tab)")->required();
     saveTabCmd->add_option("-n,--title", saveTabTitle, "Snapshot title")->required();
     saveTabCmd->add_option("-m,--mode", saveMode, "Save mode: auto|overwrite|new")->default_val("auto");
-    saveTabCmd->add_option("-s,--agent-session-id", saveAgentSid, "Agent pane ACP session id to persist");
     saveTabCmd->callback([&]() {
         auto server = connect();
         if (!server) return;
-        wil::unique_bstr tab{ Bstr(saveTabId) }, title{ Bstr(saveTabTitle) }, mode{ Bstr(saveMode) }, agentSid{ Bstr(saveAgentSid) };
+        wil::unique_bstr tabs{ Bstr(saveTabIds) }, title{ Bstr(saveTabTitle) }, mode{ Bstr(saveMode) };
         Json::Value result;
-        auto hr = CallJson([&](BSTR* j) { return server->SaveWorkspaceSession(tab.get(), title.get(), mode.get(), agentSid.get(), j); }, result);
+        auto hr = CallJson([&](BSTR* j) { return server->SaveWorkspaceSession(tabs.get(), title.get(), mode.get(), j); }, result);
         if (FAILED(hr)) { fprintf(stderr, "SaveWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         PrintJson(result);
     });

@@ -206,7 +206,7 @@ model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}
-commands.save_ws.summary: "Save this workspace (layout + output) to restore later"
+commands.save_ws.summary: "Save shell and agent pane as workspace (layout + output) to restore later"
 commands.restore_ws.summary: "Restore a saved workspace"
 commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
 commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"

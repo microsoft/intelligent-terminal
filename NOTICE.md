@@ -584,6 +584,7 @@ if it were canonical for the whole group.
 - **bytes** v1.11.1 -- [https://github.com/tokio-rs/bytes](https://github.com/tokio-rs/bytes) -- `MIT`
 - **castaway** v0.2.4 -- [https://github.com/sagebind/castaway](https://github.com/sagebind/castaway) -- `MIT`
 - **cfg-if** v1.0.4 -- [https://github.com/rust-lang/cfg-if](https://github.com/rust-lang/cfg-if) -- `Apache-2.0 OR MIT`
+- **chrono** v0.4.45 -- [https://github.com/chronotope/chrono](https://github.com/chronotope/chrono) -- `Apache-2.0 OR MIT`
 - **clap** v4.5.60 -- [https://github.com/clap-rs/clap](https://github.com/clap-rs/clap) -- `Apache-2.0 OR MIT`
 - **clap_builder** v4.5.60 -- [https://github.com/clap-rs/clap](https://github.com/clap-rs/clap) -- `Apache-2.0 OR MIT`
 - **clap_derive** v4.5.55 -- [https://github.com/clap-rs/clap](https://github.com/clap-rs/clap) -- `Apache-2.0 OR MIT`
@@ -829,7 +830,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 164 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v0.10.0, agent-client-protocol-schema v0.11.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, ... (+156 more)
+Applies to 165 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v0.10.0, agent-client-protocol-schema v0.11.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, ... (+157 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -923,6 +924,7 @@ Copyright (c) 2014 Chris Morgan and the Teepee project developers
 Copyright (c) 2014 Paho Lurie-Gregg
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2026 Alex Crichton
+Copyright (c) 2014, Kang Seonghoon.
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
 Copyright (c) 2015 nwin
@@ -1157,7 +1159,7 @@ express Statement of Purpose.
 
 ### `MIT`
 
-Applies to 240 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+232 more)
+Applies to 241 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+233 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
@@ -1200,6 +1202,7 @@ Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2014-2019 Geoffroy Couprie
 Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
 Copyright (c) 2014-2026 Alex Crichton
+Copyright (c) 2014, Kang Seonghoon.
 Copyright (c) 2015 Alice Maz
 Copyright (c) 2015 Andrew Gallant
 Copyright (c) 2015 Bartłomiej Kamiński

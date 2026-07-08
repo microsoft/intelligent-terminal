@@ -206,9 +206,10 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
-        Windows::Foundation::IAsyncOperation<winrt::hstring> SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode, winrt::hstring agentSessionId);
+        Windows::Foundation::IAsyncOperation<winrt::hstring> SaveWorkspaceSessionProtocol(winrt::hstring tabIds, winrt::hstring title, winrt::hstring mode);
         Windows::Foundation::IAsyncOperation<winrt::hstring> ListSavedWorkspaceSessionsProtocol();
         Windows::Foundation::IAsyncOperation<winrt::hstring> RestoreWorkspaceSessionProtocol(winrt::hstring id);
+        void SetRestoreWorkspaceOnInit(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<bool> DeleteSavedWorkspaceSessionProtocol(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
@@ -450,8 +451,13 @@ namespace winrt::TerminalApp::implementation
         {
             std::string sessionId;
             std::string cwd;
+            std::string chatHistoryPath;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        // Set on a freshly created window (by WindowEmperor) so the page
+        // self-restores that Eternal-Terminal workspace once it's Initialized.
+        winrt::hstring _restoreWorkspaceIdOnInit{};
+        safe_void_coroutine _RestoreWorkspaceOnInit(winrt::hstring id);
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
         // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
@@ -514,7 +520,8 @@ namespace winrt::TerminalApp::implementation
                                               bool intoSessionsView = false,
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
-                                              std::string_view initialLoadCwd = {});
+                                              std::string_view initialLoadCwd = {},
+                                              std::string_view initialChatHistory = {});
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

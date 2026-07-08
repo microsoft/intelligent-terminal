@@ -14,11 +14,13 @@
 #include "pch.h"
 #include "TerminalPage.h"
 #include "../../types/inc/utils.hpp"
+#include "../inc/IntelligentTerminalPaths.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <json/json.h>
 #include <sddl.h>
 #include <wil/resource.h>
@@ -255,7 +257,28 @@ namespace winrt::TerminalApp::implementation
             Protocol::TabInfo info{};
             info.TabId = i;
             info.Title = tab.Title();
+            info.StableId = tabImpl->StableId();
             info.IsActive = focusedIdx.has_value() && (focusedIdx.value() == i);
+            // Working dir of the first non-agent shell pane (tab distinguisher).
+            if (const auto rootPane = tabImpl->GetRootPane())
+            {
+                rootPane->WalkTree([&](const auto& pane) {
+                    if (!info.Cwd.empty() || pane->IsAgentPane())
+                    {
+                        return;
+                    }
+                    if (const auto term = pane->GetContent().try_as<TerminalApp::ITerminalPaneContent>())
+                    {
+                        if (const auto ctrl = term.GetTermControl())
+                        {
+                            if (const auto cwd = ctrl.WorkingDirectory(); !cwd.empty())
+                            {
+                                info.Cwd = cwd;
+                            }
+                        }
+                    }
+                });
+            }
             // Count terminal panes only (those with a SessionId).
             uint32_t terminalPaneCount = 0;
             if (const auto rootPane = tabImpl->GetRootPane())
@@ -679,22 +702,50 @@ namespace winrt::TerminalApp::implementation
         return dir;
     }
 
-    IAsyncOperation<winrt::hstring> TerminalPage::SaveWorkspaceSessionProtocol(winrt::hstring tabStableId, winrt::hstring title, winrt::hstring mode, winrt::hstring agentSessionId)
+    IAsyncOperation<winrt::hstring> TerminalPage::SaveWorkspaceSessionProtocol(winrt::hstring tabIds, winrt::hstring title, winrt::hstring mode)
     {
         auto strong = get_strong();
         co_await wil::resume_foreground(Dispatcher());
 
-        const auto tabImpl = _FindTabByStableId(tabStableId);
-        if (!tabImpl)
+        // Parse the comma-separated StableId list. The first entry is the
+        // initiating /save-ws tab (used for overwrite-conflict binding).
+        std::vector<winrt::hstring> stableIds;
+        {
+            const auto csv = winrt::to_string(tabIds);
+            size_t start = 0;
+            while (start <= csv.size())
+            {
+                const auto comma = csv.find(',', start);
+                const auto len = (comma == std::string::npos) ? std::string::npos : comma - start;
+                auto tok = csv.substr(start, len);
+                if (!tok.empty())
+                {
+                    stableIds.push_back(winrt::to_hstring(tok));
+                }
+                if (comma == std::string::npos)
+                {
+                    break;
+                }
+                start = comma + 1;
+            }
+        }
+        if (stableIds.empty())
         {
             co_return winrt::hstring{};
         }
 
-        // Resolve the workspace this tab is currently bound to (set on restore
-        // or first save). This is the identity we key overwrite on — not the
-        // tab StableId — so it survives resume into a fresh tab and generalizes
-        // to multi-tab workspaces.
-        const auto boundId = tabImpl->BoundWorkspaceId();
+        const auto initiatingTab = _FindTabByStableId(stableIds.front());
+        if (!initiatingTab)
+        {
+            // The initiating tab isn't in this window/page — let the COM
+            // server try the next window.
+            co_return winrt::hstring{};
+        }
+
+        // Overwrite-conflict is keyed on the initiating tab's workspace binding
+        // (set on restore or a prior save), not on the tab StableId — so it
+        // survives resume into a fresh tab and generalizes to multi-tab.
+        const auto boundId = initiatingTab->BoundWorkspaceId();
         Model::SavedWorkspaceSession existing{ nullptr };
         if (!boundId.empty())
         {
@@ -717,8 +768,6 @@ namespace winrt::TerminalApp::implementation
             modeStr = "auto";
         }
 
-        // auto + an existing bound workspace ⇒ surface a conflict so the caller
-        // can prompt overwrite-vs-save-new. Nothing is written in this case.
         if (modeStr == "auto" && existing)
         {
             Json::Value out{ Json::objectValue };
@@ -729,8 +778,6 @@ namespace winrt::TerminalApp::implementation
             co_return winrt::to_hstring(Json::writeString(wb, out));
         }
 
-        // Decide the target workspace id: overwrite reuses the bound id;
-        // auto (no conflict) and new mint a fresh GUID.
         winrt::hstring id;
         if (modeStr == "overwrite" && !boundId.empty())
         {
@@ -746,71 +793,122 @@ namespace winrt::TerminalApp::implementation
         std::filesystem::remove_all(dir, ec);
         std::filesystem::create_directories(dir, ec);
 
-        auto actions = tabImpl->BuildStartupActions(BuildStartupKind::Persist);
-
-        std::vector<winrt::hstring> bufferIds;
-        if (const auto rootPane = tabImpl->GetRootPane())
+        // Build one SavedWorkspaceTab per selected tab. Buffer files (keyed by
+        // globally-unique pane SessionId) and per-tab chat-history files
+        // (agent-chat-{i}.json) all share the workspace dir.
+        auto tabRecords = winrt::single_threaded_vector<Model::SavedWorkspaceTab>();
+        uint32_t tabIdx = 0;
+        for (const auto& stableId : stableIds)
         {
-            rootPane->WalkTree([&](const auto& pane) {
-                try
+            const auto tabImpl = _FindTabByStableId(stableId);
+            if (!tabImpl)
+            {
+                continue;
+            }
+
+            auto actions = tabImpl->BuildStartupActions(BuildStartupKind::Persist);
+
+            std::vector<winrt::hstring> bufferIds;
+            if (const auto rootPane = tabImpl->GetRootPane())
+            {
+                rootPane->WalkTree([&](const auto& pane) {
+                    try
+                    {
+                        const auto term = pane->GetContent().try_as<TerminalApp::ITerminalPaneContent>();
+                        if (!term)
+                        {
+                            return;
+                        }
+                        const auto control = term.GetTermControl();
+                        if (!control)
+                        {
+                            return;
+                        }
+                        const auto connection = control.Connection();
+                        if (!connection)
+                        {
+                            return;
+                        }
+                        const auto sessionId = connection.SessionId();
+                        if (sessionId == winrt::guid{})
+                        {
+                            return;
+                        }
+
+                        const auto sidStr = winrt::hstring{ fmt::format(FMT_COMPILE(L"{}"), sessionId) };
+                        const auto path = dir / (std::wstring{ L"buffer_" } + std::wstring{ sidStr } + L".txt");
+                        if (auto file = _createBufferFileForWrite(path, IsRunningElevated()))
+                        {
+                            control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                            bufferIds.push_back(sidStr);
+                        }
+                    }
+                    CATCH_LOG();
+                });
+            }
+
+            Model::SavedWorkspaceTab tabRecord;
+            tabRecord.SourceStableId(stableId);
+            tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
+            tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
+
+            // Locate the helper-written chat-history file for this tab (braces
+            // stripped, matching the Rust writer).
+            auto histStem = std::wstring{ std::wstring_view{ stableId } };
+            std::erase(histStem, L'{');
+            std::erase(histStem, L'}');
+            const auto histSrc = ::IntelligentTerminal::AgentPaneHistoryDir() / (histStem + L".json");
+            std::error_code hec;
+            const bool hasHistory = !histSrc.empty() && std::filesystem::exists(histSrc, hec);
+            const bool hasVisibleAgentPane = tabImpl->FindAgentPane() && !tabImpl->HasStashedAgentPane();
+
+            if (hasHistory || hasVisibleAgentPane)
+            {
+                const auto& globals = _settings.GlobalSettings();
+                Model::SavedWorkspaceAgentPane agentPane;
+                agentPane.Cli(globals.EffectiveAcpAgent());
+                agentPane.Model(globals.AcpModel());
+                agentPane.Position(globals.AgentPanePosition());
+
+                if (hasHistory)
                 {
-                    const auto term = pane->GetContent().try_as<TerminalApp::ITerminalPaneContent>();
-                    if (!term)
+                    const auto histName = std::wstring{ L"agent-chat-" } + std::to_wstring(tabIdx) + L".json";
+                    std::error_code cec;
+                    std::filesystem::copy_file(histSrc, dir / histName, std::filesystem::copy_options::overwrite_existing, cec);
+                    if (!cec)
                     {
-                        return;
-                    }
-                    const auto control = term.GetTermControl();
-                    if (!control)
-                    {
-                        return;
-                    }
-                    const auto connection = control.Connection();
-                    if (!connection)
-                    {
-                        return;
-                    }
-                    const auto sessionId = connection.SessionId();
-                    if (sessionId == winrt::guid{})
-                    {
-                        return;
+                        agentPane.ChatHistoryFile(winrt::hstring{ histName });
                     }
 
-                    const auto sidStr = winrt::hstring{ fmt::format(FMT_COMPILE(L"{}"), sessionId) };
-                    const auto path = dir / (std::wstring{ L"buffer_" } + std::wstring{ sidStr } + L".txt");
-                    if (auto file = _createBufferFileForWrite(path, IsRunningElevated()))
+                    // Read the tab's ACP session id from its history JSON so
+                    // restore can session/load it (agent memory).
+                    try
                     {
-                        control.PersistTo(reinterpret_cast<int64_t>(file.get()));
-                        bufferIds.push_back(sidStr);
+                        std::ifstream f{ histSrc, std::ios::binary };
+                        Json::Value root;
+                        Json::CharReaderBuilder rb;
+                        std::string errs;
+                        if (f && Json::parseFromStream(rb, f, &root, &errs) && root.isObject() && root["session_id"].isString())
+                        {
+                            agentPane.AgentSessionId(winrt::to_hstring(root["session_id"].asString()));
+                        }
                     }
+                    CATCH_LOG();
                 }
-                CATCH_LOG();
-            });
+
+                tabRecord.AgentPane(agentPane);
+            }
+
+            tabRecords.Append(tabRecord);
+            // Bind every saved tab to the workspace so a later /save-ws on any
+            // of them detects the conflict and overwrites the right record.
+            tabImpl->BoundWorkspaceId(id);
+            tabIdx++;
         }
 
-        // Build the nested workspace record. Today a workspace holds exactly
-        // one tab; the schema supports many so agent-pane/multi-tab restore can
-        // extend it without a format change. agentPane is reserved (left null).
-        Model::SavedWorkspaceTab tabRecord;
-        tabRecord.SourceStableId(tabStableId);
-        tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
-        tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
-
-        // Persist the agent pane when the tab has a live/visible one so
-        // restore can reopen it and session/load the conversation. agentSessionId
-        // is supplied by the helper (which owns the tab's ACP session); the
-        // C++ side fills the agent identity + position from settings. Empty
-        // agentSessionId with a visible pane still records the pane so restore
-        // reopens a (blank) agent pane.
-        const bool hasVisibleAgentPane = tabImpl->FindAgentPane() && !tabImpl->HasStashedAgentPane();
-        if (!agentSessionId.empty() || hasVisibleAgentPane)
+        if (tabRecords.Size() == 0)
         {
-            const auto& globals = _settings.GlobalSettings();
-            Model::SavedWorkspaceAgentPane agentPane;
-            agentPane.Cli(globals.EffectiveAcpAgent());
-            agentPane.Model(globals.AcpModel());
-            agentPane.AgentSessionId(agentSessionId);
-            agentPane.Position(globals.AgentPanePosition());
-            tabRecord.AgentPane(agentPane);
+            co_return winrt::hstring{};
         }
 
         Model::SavedWorkspaceSession record;
@@ -818,12 +916,8 @@ namespace winrt::TerminalApp::implementation
         record.Title(title);
         const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         record.SavedAt(winrt::to_hstring(nowMs));
-        record.Tabs(winrt::single_threaded_vector<Model::SavedWorkspaceTab>({ tabRecord }));
+        record.Tabs(tabRecords);
         ApplicationState::SharedInstance().UpsertSavedWorkspaceSession(record);
-
-        // Bind (or rebind on save-as-new) this tab to the workspace so a later
-        // /save-ws detects the conflict and overwrites the right record.
-        tabImpl->BoundWorkspaceId(id);
 
         Json::Value out{ Json::objectValue };
         out["outcome"] = "saved";
@@ -982,12 +1076,22 @@ namespace winrt::TerminalApp::implementation
 
             const auto stableId = ti->StableId();
             const auto sid = winrt::to_string(ap.AgentSessionId());
-            if (!sid.empty() && !stableId.empty())
+
+            // Resolve the saved chat-history file (workspace-relative) to an
+            // absolute path so the helper can rehydrate the exact UI.
+            std::string histPath;
+            if (const auto histFile = ap.ChatHistoryFile(); !histFile.empty())
             {
-                // The deferred pre-warm consumes this and boots the helper with
-                // --initial-load-session-id, so the saved conversation is
-                // rehydrated via ACP session/load. Empty sid ⇒ a fresh pane.
-                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{} };
+                histPath = winrt::to_string((_SavedWorkspaceSessionDir(id) / std::wstring_view{ histFile }).wstring());
+            }
+
+            if ((!sid.empty() || !histPath.empty()) && !stableId.empty())
+            {
+                // The deferred pre-warm consumes this: --initial-load-session-id
+                // rehydrates agent memory via session/load, --initial-chat-history
+                // restores the exact saved chat UI (and suppresses the load's
+                // plain-text replay). Either may be empty independently.
+                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{}, histPath };
             }
             // /save-ws is only typed in a visible agent pane, so restore
             // reopens it visible. The echo of this request lands in
@@ -999,6 +1103,131 @@ namespace winrt::TerminalApp::implementation
         out["outcome"] = "opened";
         Json::StreamWriterBuilder wb;
         co_return winrt::to_hstring(Json::writeString(wb, out));
+    }
+
+    void TerminalPage::SetRestoreWorkspaceOnInit(winrt::hstring id)
+    {
+        _restoreWorkspaceIdOnInit = id;
+    }
+
+    // Self-restore an Eternal-Terminal workspace into THIS (freshly created)
+    // window once its page is Initialized. Mirrors RestoreWorkspaceSessionProtocol
+    // but, because the window was created empty (with a default startup tab),
+    // it also closes those pre-existing default tab(s) afterwards so the window
+    // shows exactly the restored workspace.
+    safe_void_coroutine TerminalPage::_RestoreWorkspaceOnInit(winrt::hstring id)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        Model::SavedWorkspaceSession record{ nullptr };
+        if (const auto sessions = ApplicationState::SharedInstance().SavedWorkspaceSessions())
+        {
+            for (const auto& s : sessions)
+            {
+                if (s.Id() == id)
+                {
+                    record = s;
+                    break;
+                }
+            }
+        }
+        if (!record)
+        {
+            co_return;
+        }
+
+        // Capture the fresh window's default tab(s) to close after restoring.
+        std::vector<winrt::com_ptr<Tab>> preexisting;
+        for (const auto& t : _tabs)
+        {
+            if (const auto ti = _GetTabImpl(t))
+            {
+                preexisting.push_back(ti);
+            }
+        }
+
+        const auto dir = _SavedWorkspaceSessionDir(id);
+        const std::filesystem::path settingsRoot{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+
+        std::vector<Model::ActionAndArgs> actions;
+        if (const auto tabs = record.Tabs())
+        {
+            using namespace std::string_view_literals;
+            const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
+            for (const auto& tab : tabs)
+            {
+                if (const auto ids = tab.BufferSessionIds())
+                {
+                    for (const auto& sid : ids)
+                    {
+                        const std::wstring storedName = std::wstring{ L"buffer_" } + std::wstring{ sid } + L".txt";
+                        const std::wstring stagedName = std::wstring{ filenamePrefix } + std::wstring{ sid } + L".txt";
+                        _copyBufferFileForRestore(dir / storedName, settingsRoot / stagedName, IsRunningElevated());
+                    }
+                }
+                if (const auto tabActions = tab.TabActions())
+                {
+                    for (const auto& a : tabActions)
+                    {
+                        actions.push_back(a);
+                    }
+                }
+            }
+        }
+
+        const auto tabCountBefore = _tabs.Size();
+        auto suspend = _tabs.Size() > 0;
+        for (auto&& a : actions)
+        {
+            if (suspend)
+            {
+                co_await wil::resume_foreground(Dispatcher(), winrt::Windows::UI::Core::CoreDispatcherPriority::Low);
+            }
+            _actionDispatch->DoAction(a);
+            suspend = true;
+        }
+
+        const auto tabs = record.Tabs();
+        for (uint32_t i = tabCountBefore; i < _tabs.Size(); ++i)
+        {
+            const auto ti = _GetTabImpl(_tabs.GetAt(i));
+            if (!ti)
+            {
+                continue;
+            }
+            ti->BoundWorkspaceId(id);
+
+            const uint32_t recIdx = i - tabCountBefore;
+            if (!tabs || recIdx >= tabs.Size())
+            {
+                continue;
+            }
+            const auto ap = tabs.GetAt(recIdx).AgentPane();
+            if (!ap)
+            {
+                continue;
+            }
+
+            const auto stableId = ti->StableId();
+            const auto sid = winrt::to_string(ap.AgentSessionId());
+            std::string histPath;
+            if (const auto histFile = ap.ChatHistoryFile(); !histFile.empty())
+            {
+                histPath = winrt::to_string((_SavedWorkspaceSessionDir(id) / std::wstring_view{ histFile }).wstring());
+            }
+            if ((!sid.empty() || !histPath.empty()) && !stableId.empty())
+            {
+                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{}, histPath };
+            }
+            _RequestAgentStateForTab(ti, std::nullopt, /*paneOpen*/ true);
+        }
+
+        // Drop the fresh window's default startup tab(s).
+        for (const auto& def : preexisting)
+        {
+            _RemoveTab(*def);
+        }
     }
 
     IAsyncOperation<bool> TerminalPage::DeleteSavedWorkspaceSessionProtocol(winrt::hstring id)

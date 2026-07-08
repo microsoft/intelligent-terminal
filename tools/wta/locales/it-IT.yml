@@ -206,7 +206,7 @@ model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="
 system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
 system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}
-commands.save_ws.summary: "Save this workspace (layout + output) to restore later"
+commands.save_ws.summary: "Save shell and agent pane as workspace (layout + output) to restore later"
 commands.restore_ws.summary: "Restore a saved workspace"
 commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
 commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"

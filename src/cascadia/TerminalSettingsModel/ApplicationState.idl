@@ -37,6 +37,7 @@ namespace Microsoft.Terminal.Settings.Model
         String Model;          // model override, empty for default
         String AgentSessionId; // ACP session key to session/load on restore
         String Position;       // agent pane position at save time
+        String ChatHistoryFile; // workspace-relative file of the saved chat UI history
     };
 
     runtimeclass SavedWorkspaceTab

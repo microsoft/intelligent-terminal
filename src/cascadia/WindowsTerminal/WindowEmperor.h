@@ -17,6 +17,9 @@ Abstract:
 
 #pragma once
 
+#include <deque>
+#include <mutex>
+
 class AppHost;
 struct TerminalProtocolComServer;
 
@@ -30,6 +33,7 @@ public:
         WM_MESSAGE_BOX_CLOSED,
         WM_IDENTIFY_ALL_WINDOWS,
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
+        WM_RESTORE_WORKSPACE_IN_NEW_WINDOW,
     };
 
     WindowEmperor();
@@ -39,6 +43,11 @@ public:
     AppHost* GetWindowById(uint64_t id) const noexcept;
     AppHost* GetWindowByName(std::wstring_view name) const noexcept;
     void CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args);
+    // Thread-safe (callable from the COM MTA thread): request that a brand-new
+    // window open and self-restore the given Eternal-Terminal workspace id.
+    // Queues the id and posts to the emperor's message window so the actual
+    // window creation runs on the main/UI thread.
+    void RequestRestoreWorkspaceInNewWindow(winrt::hstring id);
     void HandleCommandlineArgs(int nCmdShow);
     void FocusTabInAnyWindow(const winrt::TerminalApp::Tab& tab) const;
 
@@ -84,6 +93,11 @@ private:
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
     std::vector<std::shared_ptr<::AppHost>> _windows;
+
+    // Workspace ids queued by RequestRestoreWorkspaceInNewWindow (COM thread),
+    // drained on the UI thread in the WM_RESTORE_WORKSPACE_IN_NEW_WINDOW handler.
+    std::mutex _pendingRestoreWsMutex;
+    std::deque<std::wstring> _pendingRestoreWs;
 
     // Protocol server for AI CLI integration
     std::wstring _comClsid; // Stringified CLSID for WT_COM_CLSID env var

@@ -257,6 +257,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "chrono",
+          "version": "0.4.45"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "clap",
           "version": "4.5.60"
         }

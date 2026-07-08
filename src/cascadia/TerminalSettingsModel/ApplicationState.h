@@ -71,6 +71,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         WINRT_PROPERTY(winrt::hstring, Model);
         WINRT_PROPERTY(winrt::hstring, AgentSessionId);
         WINRT_PROPERTY(winrt::hstring, Position);
+        WINRT_PROPERTY(winrt::hstring, ChatHistoryFile);
 
         friend ::Microsoft::Terminal::Settings::Model::JsonUtils::ConversionTrait<Model::SavedWorkspaceAgentPane>;
     };

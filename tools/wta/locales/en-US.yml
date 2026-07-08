@@ -270,7 +270,7 @@ time.days_other: "%{count} days ago"
 # month names or day/month/year ordering. Microsoft's CLDR data covers
 # every locale Windows supports with higher fidelity than we could
 # maintain by hand.
-commands.save_ws.summary: "Save this workspace (layout + output) to restore later"
+commands.save_ws.summary: "Save shell and agent pane as workspace (layout + output) to restore later"
 commands.restore_ws.summary: "Restore a saved workspace"
 commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
 commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"

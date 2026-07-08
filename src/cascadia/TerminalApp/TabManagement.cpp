@@ -373,17 +373,19 @@ namespace winrt::TerminalApp::implementation
                     // double-spawn.
                     std::string preloadSid;
                     std::string preloadCwd;
+                    std::string preloadHist;
                     if (const auto it = self->_pendingLoadSessions.find(newTabId); it != self->_pendingLoadSessions.end())
                     {
                         preloadSid = std::move(it->second.sessionId);
                         preloadCwd = std::move(it->second.cwd);
+                        preloadHist = std::move(it->second.chatHistoryPath);
                         self->_pendingLoadSessions.erase(it);
                     }
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
                         winrt::to_string(newTabId) +
                         (preloadSid.empty() ? "" : (" with load_session=" + preloadSid)));
-                    self->_AutoCreateHiddenAgentPaneShared(tabImplCom, /*intoSessionsView*/ false, /*autoStash*/ true, preloadSid, preloadCwd);
+                    self->_AutoCreateHiddenAgentPaneShared(tabImplCom, /*intoSessionsView*/ false, /*autoStash*/ true, preloadSid, preloadCwd, preloadHist);
                 }
                 else
                 {

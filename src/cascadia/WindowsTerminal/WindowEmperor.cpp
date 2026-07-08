@@ -316,6 +316,22 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
 }
 
+void WindowEmperor::RequestRestoreWorkspaceInNewWindow(winrt::hstring id)
+{
+    if (id.empty())
+    {
+        return;
+    }
+    {
+        std::lock_guard lock{ _pendingRestoreWsMutex };
+        _pendingRestoreWs.emplace_back(std::wstring{ std::wstring_view{ id } });
+    }
+    if (_window)
+    {
+        PostMessageW(_window.get(), WM_RESTORE_WORKSPACE_IN_NEW_WINDOW, 0, 0);
+    }
+}
+
 AppHost* WindowEmperor::_mostRecentWindow() const noexcept
 {
     int64_t max = INT64_MIN;
@@ -1131,6 +1147,35 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             _messageBoxCount -= 1;
             _postQuitMessageIfNeeded();
             return 0;
+        case WM_RESTORE_WORKSPACE_IN_NEW_WINDOW:
+        {
+            // Eternal-Terminal /restore-ws: open a brand-new window per queued
+            // workspace id and let its page self-restore on Initialized. Runs
+            // on the UI thread (posted here from the COM MTA thread).
+            std::deque<std::wstring> ids;
+            {
+                std::lock_guard lock{ _pendingRestoreWsMutex };
+                ids.swap(_pendingRestoreWs);
+            }
+            for (const auto& wsId : ids)
+            {
+                // Build a default new-window request (empty commandline ⇒ one
+                // default tab). We must NOT use the (window, content, bounds)
+                // ctor with empty content: AppHost::_HandleCommandlineArgs then
+                // takes the `else` branch and dereferences a null Command().
+                winrt::TerminalApp::CommandlineArgs cmdArgs{};
+                cmdArgs.ShowWindowCommand(SW_SHOWNORMAL);
+                CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ 0, cmdArgs });
+                if (!_windows.empty())
+                {
+                    if (const auto page = _windows.back()->Logic().GetRoot().try_as<winrt::TerminalApp::TerminalPage>())
+                    {
+                        page.SetRestoreWorkspaceOnInit(winrt::hstring{ wsId });
+                    }
+                }
+            }
+            return 0;
+        }
         case WM_IDENTIFY_ALL_WINDOWS:
             for (const auto& host : _windows)
             {
