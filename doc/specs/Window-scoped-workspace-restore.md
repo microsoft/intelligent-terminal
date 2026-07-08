@@ -1,10 +1,5 @@
 # Window-scoped Workspace Save/Restore — Design
 
-Status: approved (brainstorming)
-Date: 2026-07-08
-Branch: `dev/yuazha/eternal-terminal-save-restore`
-Owner: @DDKinger
-
 ## 1. Motivation & Summary
 
 The "Eternal Terminal" workspace feature currently:
