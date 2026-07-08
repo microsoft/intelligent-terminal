@@ -8203,8 +8203,18 @@ impl App {
         if sig == self.last_persisted_history_sig {
             return;
         }
+        // Only persist the ACP session id when there's an actual conversation.
+        // A pre-warmed-but-never-used agent pane has a session_id (from the
+        // bootstrap session/new) that the CLI never wrote to disk, so a later
+        // /restore-ws session/load would fail with "session not found". No
+        // conversation ⇒ no resume target ⇒ restore opens a fresh pane cleanly.
+        let session_id = if tab.completed_turns.is_empty() {
+            None
+        } else {
+            tab.session_id.clone()
+        };
         let history = crate::chat_history::ChatHistoryFile {
-            session_id: tab.session_id.clone(),
+            session_id,
             completed_turns: tab.completed_turns.clone(),
         };
         match crate::chat_history::write(&tab_id, &history) {

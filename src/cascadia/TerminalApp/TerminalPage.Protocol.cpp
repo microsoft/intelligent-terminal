@@ -852,17 +852,44 @@ namespace winrt::TerminalApp::implementation
             tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
             tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
 
-            // Locate the helper-written chat-history file for this tab (braces
-            // stripped, matching the Rust writer).
+            // Read the tab's chat-history file once (if any): its ACP session
+            // id and whether there's an actual conversation (non-empty turns).
+            // Braces stripped, matching the Rust writer.
             auto histStem = std::wstring{ std::wstring_view{ stableId } };
             std::erase(histStem, L'{');
             std::erase(histStem, L'}');
             const auto histSrc = ::IntelligentTerminal::AgentPaneHistoryDir() / (histStem + L".json");
             std::error_code hec;
-            const bool hasHistory = !histSrc.empty() && std::filesystem::exists(histSrc, hec);
+            bool hasConversation = false;
+            std::string historySessionId;
+            if (!histSrc.empty() && std::filesystem::exists(histSrc, hec))
+            {
+                try
+                {
+                    std::ifstream f{ histSrc, std::ios::binary };
+                    Json::Value root;
+                    Json::CharReaderBuilder rb;
+                    std::string errs;
+                    if (f && Json::parseFromStream(rb, f, &root, &errs) && root.isObject())
+                    {
+                        hasConversation = root["completed_turns"].isArray() && !root["completed_turns"].empty();
+                        if (root["session_id"].isString())
+                        {
+                            historySessionId = root["session_id"].asString();
+                        }
+                    }
+                }
+                CATCH_LOG();
+            }
+
             const bool hasVisibleAgentPane = tabImpl->FindAgentPane() && !tabImpl->HasStashedAgentPane();
 
-            if (hasHistory || hasVisibleAgentPane)
+            // Record the agent pane only when the user actually engaged it: a
+            // visible pane, or a real conversation to rehydrate/resume. A
+            // pre-warmed-but-unused stashed pane is skipped so restore doesn't
+            // reopen empty agent panes (and never tries to session/load a
+            // bootstrap session the CLI never persisted).
+            if (hasVisibleAgentPane || hasConversation)
             {
                 const auto& globals = _settings.GlobalSettings();
                 Model::SavedWorkspaceAgentPane agentPane;
@@ -870,7 +897,7 @@ namespace winrt::TerminalApp::implementation
                 agentPane.Model(globals.AcpModel());
                 agentPane.Position(globals.AgentPanePosition());
 
-                if (hasHistory)
+                if (hasConversation)
                 {
                     const auto histName = std::wstring{ L"agent-chat-" } + std::to_wstring(tabIdx) + L".json";
                     std::error_code cec;
@@ -879,21 +906,10 @@ namespace winrt::TerminalApp::implementation
                     {
                         agentPane.ChatHistoryFile(winrt::hstring{ histName });
                     }
-
-                    // Read the tab's ACP session id from its history JSON so
-                    // restore can session/load it (agent memory).
-                    try
+                    if (!historySessionId.empty())
                     {
-                        std::ifstream f{ histSrc, std::ios::binary };
-                        Json::Value root;
-                        Json::CharReaderBuilder rb;
-                        std::string errs;
-                        if (f && Json::parseFromStream(rb, f, &root, &errs) && root.isObject() && root["session_id"].isString())
-                        {
-                            agentPane.AgentSessionId(winrt::to_hstring(root["session_id"].asString()));
-                        }
+                        agentPane.AgentSessionId(winrt::to_hstring(historySessionId));
                     }
-                    CATCH_LOG();
                 }
 
                 tabRecord.AgentPane(agentPane);
