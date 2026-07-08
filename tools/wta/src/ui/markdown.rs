@@ -90,7 +90,7 @@ fn markdown_to_runs(text: &str, base_style: Style) -> Vec<StyledRun> {
                     let indent = "  ".repeat(lists.len().saturating_sub(1));
                     let marker = if let Some(list) = lists.last_mut() {
                         if let Some(n) = list.next {
-                            list.next = Some(n + 1);
+                            list.next = Some(n.saturating_add(1));
                             format!("{indent}{n}. ")
                         } else {
                             format!("{indent}- ")
@@ -435,6 +435,10 @@ fn styled_chars(runs: &[StyledRun]) -> Vec<StyledChar> {
 }
 
 fn trim_trailing_space(chars: &[StyledChar]) -> usize {
+    if chars.iter().all(|ch| ch.ch.is_whitespace()) {
+        return chars.len();
+    }
+
     let mut end = chars.len();
     while end > 0 && chars[end - 1].ch.is_whitespace() {
         end -= 1;
@@ -579,6 +583,42 @@ beta
                 line_text(&line)
             );
         }
+    }
+
+    #[test]
+    fn trim_trailing_space_preserves_whitespace_only_slices() {
+        let spaces = vec![
+            StyledChar { ch: ' ', style: theme::AGENT_TEXT },
+            StyledChar { ch: ' ', style: theme::AGENT_TEXT },
+            StyledChar { ch: ' ', style: theme::AGENT_TEXT },
+            StyledChar { ch: ' ', style: theme::AGENT_TEXT },
+        ];
+        assert_eq!(
+            trim_trailing_space(&spaces),
+            spaces.len(),
+            "pure indentation is content in code/list blocks and must not be dropped"
+        );
+
+        let mixed = vec![
+            StyledChar { ch: 'a', style: theme::AGENT_TEXT },
+            StyledChar { ch: ' ', style: theme::AGENT_TEXT },
+            StyledChar { ch: ' ', style: theme::AGENT_TEXT },
+        ];
+        assert_eq!(
+            trim_trailing_space(&mixed),
+            1,
+            "trailing separator whitespace after content should still be trimmed"
+        );
+    }
+
+    #[test]
+    fn huge_ordered_list_start_does_not_overflow() {
+        let lines = render_text("18446744073709551615. item", 80);
+        let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+        assert!(
+            text.contains("18446744073709551615. item"),
+            "huge ordered-list marker should render without overflow: {text:?}"
+        );
     }
 
     #[test]
