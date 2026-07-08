@@ -5,6 +5,7 @@ mod command_popup;
 mod debug_panel;
 mod input;
 mod layout;
+pub(crate) mod markdown;
 mod model_popup;
 mod permission;
 mod popup;
