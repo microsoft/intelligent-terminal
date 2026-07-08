@@ -114,7 +114,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 
 | Setting | Options |
 |---------|---------|
-| Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. |
+| Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
 | Pane placement | Top, Bottom (default), Left, Right |
 | Error detection | Allows Intelligent Terminal to automatically detect command failures |
 | Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
@@ -138,13 +138,28 @@ The agent status bar sits at the bottom of the window and gives you quick access
   <img src="./images/intelligent-terminal-agent-pane.png" alt="Screenshot of the agent pane with a development conversation">
 </p>
 
-A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells. Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
+A context-aware, docked pane with your agent CLI of choice. The pane has context on your shell output across all your shells (PowerShell, Git Bash, and WSL distributions). Toggle with <kbd>Ctrl+Shift+.</kbd>, switch focus with <kbd>Ctrl+Shift+I</kbd>. If the agent needs to do multiple or complex tasks, it spins up background tasks in new tabs so your active shell stays focused.
 
 <p align="center">
   <img src="./images/intelligent-terminal-agent-focus.png" alt="Screenshot of the agent pane with focus, showing multiple panes">
 </p>
 
 When you have multiple panes active, a small "Agent" indicator will appear on the pane that your agent has "focus" on.
+
+#### Slash Commands
+
+Inside the agent pane, type `/` to see available commands. Type `/help` at any time to show the list.
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show the command list |
+| `/clear` | Clear the chat scrollback (keeps the current session) |
+| `/new` | Start a fresh agent session (drops history) |
+| `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
+| `/restart` | Restart the agent with a clean session |
+| `/stop` | Cancel the in-flight prompt |
+| `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
+| `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
 
 ### Agent Management
 
@@ -160,7 +175,7 @@ View all active agents, their status, and past sessions. Pick up a workflow wher
   <img src="./images/intelligent-terminal-error-detection.png" alt="Screenshot of automatic error detection with a suggested fix">
 </p>
 
-When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and suggest or run a fix. Configure your settings to auto-detect errors only, or to also auto-suggest fixes.
+When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and suggest or run a fix. Configure your settings to auto-detect errors only, or to also auto-suggest fixes. You can also trigger a fix at any time from the agent pane with the `/fix` slash command.
 
 ### Command Palette
 
