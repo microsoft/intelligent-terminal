@@ -2064,48 +2064,28 @@ async fn delegate_with_context(
         .first()
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
-    // Pre-flight: if the configured delegate agent can't actually be launched
-    // (a nonexistent / misconfigured command), don't spawn a doomed tab. WT
-    // would create it, the not-found command would exit instantly, and the pane
-    // would close before the user could see the error (the tab just flashes
-    // shut). Open a persistent single-line error tab instead so the failure is
-    // visible. Kept out of the prompt-baking path below so no multi-line prompt
-    // can truncate the command before the message renders.
-    if !crate::coordinator::delegate_command_launchable(&runtime.commandline) {
-        let exe = crate::coordinator::split_windows_commandline(&runtime.commandline)
-            .into_iter()
-            .next()
-            .unwrap_or_default();
-        // Sanitize for display: drop cmd-special characters so the echo can't be
-        // hijacked by a weird agent name (`&`, `|`, `>`, `%`, …).
-        let safe_exe: String = exe
-            .trim_matches('"')
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '\\' | '/' | ':' | ' ') {
-                    c
-                } else {
-                    '?'
-                }
-            })
-            .collect();
-        // `cmd /k` keeps the pane open after echoing; a single-line message can't
-        // be truncated by a stray newline the way a baked-in prompt can.
-        let err_cmd = format!(
-            "cmd /k echo Delegate agent not found: {safe_exe} - check the delegate agent setting."
-        );
-        let windows_home = std::env::var("USERPROFILE").ok();
-        let sanitized_cwd =
-            crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
-        shell_mgr
-            .wt_create_tab(Some(&err_cmd), sanitized_cwd.as_deref(), None, None)
-            .await?;
+    // Pre-flight: can the configured delegate agent actually be launched? A
+    // misconfigured / non-existent command still gets its own tab and stays
+    // there showing the real failure — cmd's "'<agent>' is not recognized …",
+    // then WT's "[process exited with code 1] … press Enter to restart" — just
+    // like mistyping a command in any shell. WT keeps a non-zero-exit pane open
+    // under closeOnExit=automatic, so there's nothing to "fix" for the common
+    // case; we do NOT open a second, canned-message tab.
+    //
+    // The flag is only used to keep a doomed launch OUT of the prompt-baking
+    // path below. Baking the active pane's output into `cmd /c <agent>
+    // -i "<context>"` is fragile: a stray `"`/`&` in that arbitrary text can
+    // unbalance cmd's quote tracking so cmd runs a trailing token and exits 0,
+    // which — under closeOnExit=automatic — closes the pane before the error is
+    // readable (the original "flash shut"). A bare `cmd /c <agent>` instead
+    // fails cleanly with a non-zero code and stays put.
+    let launchable = crate::coordinator::delegate_command_launchable(&runtime.commandline);
+    if !launchable {
         tracing::warn!(
             target: "delegate",
-            agent = %safe_exe,
-            "delegate agent not launchable — opened error tab instead of a doomed launch",
+            commandline = %runtime.commandline,
+            "delegate agent not launchable — opening its tab with the bare command so the real error stays visible",
         );
-        return Ok(());
     }
 
     // Pin a session id we choose, so the launched CLI writes its session under a
@@ -2115,17 +2095,25 @@ async fn delegate_with_context(
     // `split_whitespace`) so quoted/space-containing paths and adapter launches
     // resolve correctly -- and so this decision matches the one the command
     // builder makes when it appends the flag, keeping the pinned id and the
-    // actual launch flag in agreement.
-    let pinned_session_id: Option<String> = crate::agent_registry::lookup_profile_by_id(
-        crate::agent_registry::resolve_agent_id_from_cmd(&runtime.commandline),
-    )
-    .new_session_id_flag
-    .map(|_| uuid::Uuid::new_v4().to_string());
+    // actual launch flag in agreement. A non-launchable command will never
+    // produce a session, so skip pinning (and the born-bound registration below).
+    let pinned_session_id: Option<String> = if launchable {
+        crate::agent_registry::lookup_profile_by_id(
+            crate::agent_registry::resolve_agent_id_from_cmd(&runtime.commandline),
+        )
+        .new_session_id_flag
+        .map(|_| uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
 
     let commandline = match prompt {
-        // Prompt present → enrich it with the active pane's recent output and
-        // bake it into the new tab's agent CLI (the `?<prompt>` path).
-        Some(prompt) if !prompt.trim().is_empty() => {
+        // Prompt present AND the agent is launchable → enrich it with the
+        // active pane's recent output and bake it into the new tab's agent CLI
+        // (the `?<prompt>` path). A non-launchable agent deliberately skips this
+        // and falls through to the bare launch below, so it fails cleanly with a
+        // non-zero exit and the error stays visible in the tab.
+        Some(prompt) if !prompt.trim().is_empty() && launchable => {
             let active = shell_mgr.wt_get_active_pane().await.ok();
             let active_pane_id = active
                 .as_ref()
@@ -2162,7 +2150,11 @@ async fn delegate_with_context(
                 pinned_session_id.as_deref(),
             )?
         }
-        // No prompt → open the delegate agent interactively in the new tab.
+        // No prompt, or a non-launchable agent → open the delegate agent's bare
+        // command in the new tab. For a launchable agent this is the interactive
+        // CLI; for a misconfigured one it's the real `cmd /c <agent>`, whose
+        // "not recognized" error (exit code 1 → WT keeps the pane open) stays
+        // visible in the tab instead of flashing shut.
         _ => crate::coordinator::build_delegate_launch_commandline_with_session(
             runtime,
             None,

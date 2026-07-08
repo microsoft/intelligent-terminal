@@ -566,6 +566,37 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::TabCreationResult result{};
 
+        // A protocol create_tab that carries a commandline but no profile would
+        // otherwise resolve (via CascadiaSettings::GetProfileForArgs) to the
+        // "Defaults" profile, whose panes are auto-closed on *any* process exit
+        // — even a non-zero one. So a command that runs and exits (e.g. a
+        // misconfigured delegate agent that prints "'x' is not recognized" and
+        // exits with code 1) flashes the tab shut before the user can read the
+        // error. Pin a real profile instead so its closeOnExit (automatic/
+        // graceful) keeps a non-zero exit visible, exactly like a normally-
+        // opened tab.
+        //
+        // Prefer the profile of the pane the user is currently working in, so a
+        // delegate/agent tab opened from e.g. a WSL/Ubuntu session matches that
+        // session (same intent as PR #366); fall back to the user's global
+        // default profile when there is no focused terminal. Either way this is
+        // never left empty — that's what re-introduces the auto-closing
+        // "Defaults" profile. An explicitly-requested profile is left as-is; if
+        // the resolved GUID somehow can't be matched, GetProfileForArgs falls
+        // back to the same "Defaults" profile as before (no regression).
+        if (args && args.Profile().empty())
+        {
+            auto profileGuid = _settings.GlobalSettings().DefaultProfile();
+            if (const auto focusedTab = _GetFocusedTabImpl())
+            {
+                if (const auto focusedProfile = focusedTab->GetFocusedProfile())
+                {
+                    profileGuid = focusedProfile.Guid();
+                }
+            }
+            args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
+        }
+
         auto pane = _MakePane(args, nullptr);
         if (!pane)
             co_return result;
