@@ -366,7 +366,7 @@ namespace winrt::TerminalApp::implementation
                 if (agentLeavesSeen == 0)
                 {
                     // Consume a pending load-session hint for this tab (set by
-                    // RestoreWorkspaceSessionProtocol or OnResumeInNewAgentTabRequested)
+                    // _RestoreWorkspaceOnInit or OnResumeInNewAgentTabRequested)
                     // so the pre-warmed helper boots with --initial-load-session-id
                     // and session/loads the saved conversation instead of a fresh
                     // one. Erased on consume so the pane-open echo path doesn't

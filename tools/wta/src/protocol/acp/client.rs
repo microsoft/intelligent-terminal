@@ -3027,13 +3027,34 @@ fn dispatch_load_session(
                     error = ?e,
                     "load_session failed"
                 );
-                let message = format!(
-                    "Failed to resume session in agent pane: {}. \
-                     The connected agent may not recognize this \
-                     session id (CLI mismatch), or `session/load` \
-                     is unsupported.",
-                    e
-                );
+                // The same session can only be live in one agent pane at a
+                // time (ACP forbids two clients on one session). When the
+                // original pane is still open, `session/load` fails as "in
+                // use" — give a clear message for that case vs a genuine
+                // not-found / unsupported failure. Agents word the busy error
+                // differently, so match heuristically.
+                let err_str = format!("{}", e);
+                let looks_busy = {
+                    let l = err_str.to_lowercase();
+                    l.contains("in use")
+                        || l.contains("already")
+                        || l.contains("busy")
+                        || l.contains("active session")
+                        || l.contains("locked")
+                };
+                let message = if looks_busy {
+                    "This conversation is still open in another window, so it \
+                     can't be resumed here. Starting a fresh session — new \
+                     messages here won't have the earlier context."
+                        .to_string()
+                } else {
+                    format!(
+                        "Couldn't resume the previous conversation ({err_str}). \
+                         It may still be open in another window, or the agent no \
+                         longer recognizes this session. Starting a fresh session \
+                         — new messages here won't have the earlier context."
+                    )
+                };
                 dispatch_load_failure(
                     use_load_failure_handler,
                     old_sid.as_ref(),

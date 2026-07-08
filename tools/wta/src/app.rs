@@ -5700,28 +5700,48 @@ impl App {
                     {
                         let tab = self.tab_mut(tab_id);
                         tab.current_view = View::Chat;
-                        tab.clear_chat_history();
-                        tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
                         tab.session_id = None;
-                        // Open the replay window: chunk handlers will
-                        // now accept session/update events for this
-                        // tab even though `turn` stays Idle. Closed by
-                        // the SessionAttached handler when the attach
-                        // event arrives for THIS specific session id
-                        // (unrelated SessionAttached events — e.g. the
-                        // bootstrap `session/new` racing with a
-                        // boot-time Plan-C initial-load — must not
-                        // close it).
-                        tab.loading_session = true;
-                        tab.loading_target_session_id = Some(session_id.to_string());
-                        tab.messages.push(ChatMessage::System(
-                            t!(
-                                "system.resuming_session",
-                                session_id = session_id
-                            )
-                            .into_owned(),
-                        ));
+
+                        if tab.suppress_load_replay {
+                            // Eternal-Terminal restore: the saved rich chat UI
+                            // was already rehydrated into `completed_turns` from
+                            // the history file (main.rs, before this load). Keep
+                            // it and DON'T open the replay window — leaving
+                            // `loading_session` false makes every session/update
+                            // replay chunk hit the chunk handlers'
+                            // `!loading_session` gate and get dropped, so the
+                            // agent's plain-text transcript (incl. the injected
+                            // system-prompt turn) never overwrites the saved UI.
+                            // The session/load below still runs, purely to
+                            // restore the agent's server-side memory; the
+                            // SessionAttached handler binds `session_id` before
+                            // its `loading_session` check, so that still works.
+                            // One-shot: consume the flag now (the SessionAttached
+                            // suppress branch won't run with the window closed).
+                            tab.suppress_load_replay = false;
+                        } else {
+                            tab.clear_chat_history();
+                            tab.completed_turns.clear();
+                            // Open the replay window: chunk handlers will
+                            // now accept session/update events for this
+                            // tab even though `turn` stays Idle. Closed by
+                            // the SessionAttached handler when the attach
+                            // event arrives for THIS specific session id
+                            // (unrelated SessionAttached events — e.g. the
+                            // bootstrap `session/new` racing with a
+                            // boot-time Plan-C initial-load — must not
+                            // close it).
+                            tab.loading_session = true;
+                            tab.loading_target_session_id = Some(session_id.to_string());
+                            tab.messages.push(ChatMessage::System(
+                                t!(
+                                    "system.resuming_session",
+                                    session_id = session_id
+                                )
+                                .into_owned(),
+                            ));
+                        }
                         tab.scroll_to_bottom();
                     }
                     // If the load_session target IS the active tab, push the

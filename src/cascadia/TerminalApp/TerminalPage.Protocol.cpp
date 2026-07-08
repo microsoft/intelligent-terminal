@@ -977,109 +977,42 @@ namespace winrt::TerminalApp::implementation
         co_return winrt::to_hstring(Json::writeString(wb, arr));
     }
 
-    IAsyncOperation<winrt::hstring> TerminalPage::RestoreWorkspaceSessionProtocol(winrt::hstring id)
+    void TerminalPage::SetRestoreWorkspaceOnInit(winrt::hstring id)
     {
-        auto strong = get_strong();
-        co_await wil::resume_foreground(Dispatcher());
+        _restoreWorkspaceIdOnInit = id;
+    }
 
-        Model::SavedWorkspaceSession record{ nullptr };
-        const auto sessions = ApplicationState::SharedInstance().SavedWorkspaceSessions();
-        if (sessions)
-        {
-            for (const auto& s : sessions)
-            {
-                if (s.Id() == id)
-                {
-                    record = s;
-                    break;
-                }
-            }
-        }
-        if (!record)
-        {
-            co_return winrt::hstring{};
-        }
-
-        // Already open? Focus the live tab bound to this workspace.
-        for (const auto& t : _tabs)
-        {
-            if (const auto ti = _GetTabImpl(t); ti && ti->BoundWorkspaceId() == id)
-            {
-                FocusTab(*ti);
-
-                Json::Value out{ Json::objectValue };
-                out["outcome"] = "focused";
-                Json::StreamWriterBuilder wb;
-                co_return winrt::to_hstring(Json::writeString(wb, out));
-            }
-        }
-
-        const auto dir = _SavedWorkspaceSessionDir(id);
-        const std::filesystem::path settingsRoot{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
-
-        // Stage every tab's buffers into the settings root and gather the
-        // replay actions across all tabs (a workspace holds one tab today).
-        std::vector<Model::ActionAndArgs> actions;
-        if (const auto tabs = record.Tabs())
-        {
-            using namespace std::string_view_literals;
-            const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
-
-            for (const auto& tab : tabs)
-            {
-                if (const auto ids = tab.BufferSessionIds())
-                {
-                    for (const auto& sid : ids)
-                    {
-                        const std::wstring storedName = std::wstring{ L"buffer_" } + std::wstring{ sid } + L".txt";
-                        const std::wstring stagedName = std::wstring{ filenamePrefix } + std::wstring{ sid } + L".txt";
-                        _copyBufferFileForRestore(dir / storedName, settingsRoot / stagedName, IsRunningElevated());
-                    }
-                }
-                if (const auto tabActions = tab.TabActions())
-                {
-                    for (const auto& a : tabActions)
-                    {
-                        actions.push_back(a);
-                    }
-                }
-            }
-        }
-
-        const auto tabCountBefore = _tabs.Size();
-
-        // Replay the workspace's startup actions inline (mirrors
-        // ProcessStartupActions' GH#13136 suspend-between-panes discipline) so
-        // this coroutine can await completion and then bind the created tabs.
-        // ProcessStartupActions itself is fire-and-forget and, with tabs
-        // already open, suspends before creating the tab — so we can't await it
-        // or read back the new tab.
-        auto suspend = _tabs.Size() > 0;
-        for (auto&& a : actions)
-        {
-            if (suspend)
-            {
-                co_await wil::resume_foreground(Dispatcher(), winrt::Windows::UI::Core::CoreDispatcherPriority::Low);
-            }
-            _actionDispatch->DoAction(a);
-            suspend = true;
-        }
-
-        // Bind every newly created tab to this workspace (so a later /save-ws
-        // overwrites the right record) and restore its agent pane when the
-        // record has one. Runs synchronously so any pending load-session is
-        // registered before the deferred pre-warm tick fires.
+    // Bind restored tabs in the range [tabCountBefore + boundTabs, _tabs.Size())
+    // to the workspace and register each tab's pending agent-pane load hint.
+    //
+    // This MUST run synchronously right after each replayed DoAction — BEFORE
+    // the dispatch loop's next `co_await` yields the UI thread — because a
+    // tab's agent-pane pre-warm is a Low-priority dispatcher tick queued during
+    // its NewTab. If we deferred all binding to after the whole dispatch loop
+    // (as we used to), an earlier tab's pre-warm would fire during a later
+    // action's `co_await`, find no pending hint, and boot a fresh empty agent
+    // session — silently dropping the saved conversation.
+    //
+    // `boundTabs` is carried by the caller across calls so each created tab is
+    // bound exactly once. One record tab == one NewTab action, so the record
+    // index tracks `boundTabs` (intra-tab SplitPane actions don't grow _tabs).
+    void TerminalPage::_BindRestoredWorkspaceTabs(const winrt::hstring& id,
+                                                  const Model::SavedWorkspaceSession& record,
+                                                  uint32_t tabCountBefore,
+                                                  uint32_t& boundTabs)
+    {
         const auto tabs = record.Tabs();
-        for (uint32_t i = tabCountBefore; i < _tabs.Size(); ++i)
+        while (tabCountBefore + boundTabs < _tabs.Size())
         {
-            const auto ti = _GetTabImpl(_tabs.GetAt(i));
+            const auto ti = _GetTabImpl(_tabs.GetAt(tabCountBefore + boundTabs));
+            const uint32_t recIdx = boundTabs;
+            ++boundTabs;
             if (!ti)
             {
                 continue;
             }
             ti->BoundWorkspaceId(id);
 
-            const uint32_t recIdx = i - tabCountBefore;
             if (!tabs || recIdx >= tabs.Size())
             {
                 continue;
@@ -1092,15 +1025,11 @@ namespace winrt::TerminalApp::implementation
 
             const auto stableId = ti->StableId();
             const auto sid = winrt::to_string(ap.AgentSessionId());
-
-            // Resolve the saved chat-history file (workspace-relative) to an
-            // absolute path so the helper can rehydrate the exact UI.
             std::string histPath;
             if (const auto histFile = ap.ChatHistoryFile(); !histFile.empty())
             {
                 histPath = winrt::to_string((_SavedWorkspaceSessionDir(id) / std::wstring_view{ histFile }).wstring());
             }
-
             if ((!sid.empty() || !histPath.empty()) && !stableId.empty())
             {
                 // The deferred pre-warm consumes this: --initial-load-session-id
@@ -1114,23 +1043,16 @@ namespace winrt::TerminalApp::implementation
             // OnAgentStateChanged, which un-stashes / spawns the (loaded) pane.
             _RequestAgentStateForTab(ti, std::nullopt, /*paneOpen*/ true);
         }
-
-        Json::Value out{ Json::objectValue };
-        out["outcome"] = "opened";
-        Json::StreamWriterBuilder wb;
-        co_return winrt::to_hstring(Json::writeString(wb, out));
-    }
-
-    void TerminalPage::SetRestoreWorkspaceOnInit(winrt::hstring id)
-    {
-        _restoreWorkspaceIdOnInit = id;
     }
 
     // Self-restore an Eternal-Terminal workspace into THIS (freshly created)
-    // window once its page is Initialized. Mirrors RestoreWorkspaceSessionProtocol
-    // but, because the window was created empty (with a default startup tab),
-    // it also closes those pre-existing default tab(s) afterwards so the window
-    // shows exactly the restored workspace.
+    // window once its page is Initialized. Because the window was created empty
+    // (with a default startup tab), it also closes those pre-existing default
+    // tab(s) afterwards so the window shows exactly the restored workspace.
+    // This is the sole restore path: the COM server always requests a brand-new
+    // window (WindowEmperor::RequestRestoreWorkspaceInNewWindow), so there is no
+    // "focus the already-open workspace" branch — a saved workspace can be
+    // restored repeatedly, template-style.
     safe_void_coroutine TerminalPage::_RestoreWorkspaceOnInit(winrt::hstring id)
     {
         auto strong = get_strong();
@@ -1193,6 +1115,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto tabCountBefore = _tabs.Size();
+        uint32_t boundTabs = 0;
         auto suspend = _tabs.Size() > 0;
         for (auto&& a : actions)
         {
@@ -1202,42 +1125,12 @@ namespace winrt::TerminalApp::implementation
             }
             _actionDispatch->DoAction(a);
             suspend = true;
+            // Bind whatever this action just created, synchronously, before the
+            // next co_await can hand the thread to a tab's pre-warm tick.
+            _BindRestoredWorkspaceTabs(id, record, tabCountBefore, boundTabs);
         }
-
-        const auto tabs = record.Tabs();
-        for (uint32_t i = tabCountBefore; i < _tabs.Size(); ++i)
-        {
-            const auto ti = _GetTabImpl(_tabs.GetAt(i));
-            if (!ti)
-            {
-                continue;
-            }
-            ti->BoundWorkspaceId(id);
-
-            const uint32_t recIdx = i - tabCountBefore;
-            if (!tabs || recIdx >= tabs.Size())
-            {
-                continue;
-            }
-            const auto ap = tabs.GetAt(recIdx).AgentPane();
-            if (!ap)
-            {
-                continue;
-            }
-
-            const auto stableId = ti->StableId();
-            const auto sid = winrt::to_string(ap.AgentSessionId());
-            std::string histPath;
-            if (const auto histFile = ap.ChatHistoryFile(); !histFile.empty())
-            {
-                histPath = winrt::to_string((_SavedWorkspaceSessionDir(id) / std::wstring_view{ histFile }).wstring());
-            }
-            if ((!sid.empty() || !histPath.empty()) && !stableId.empty())
-            {
-                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{}, histPath };
-            }
-            _RequestAgentStateForTab(ti, std::nullopt, /*paneOpen*/ true);
-        }
+        // Catch tabs created by the final action (no co_await follows it).
+        _BindRestoredWorkspaceTabs(id, record, tabCountBefore, boundTabs);
 
         // Drop the fresh window's default startup tab(s).
         for (const auto& def : preexisting)
