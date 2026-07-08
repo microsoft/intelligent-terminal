@@ -41,7 +41,17 @@ pub(crate) fn render_agent_markdown_lines(
 }
 
 pub(crate) fn agent_markdown_height(text: &str, wrap_width: usize) -> usize {
-    render_agent_markdown_lines(text, wrap_width, theme::DOT_AGENT, theme::AGENT_TEXT).len()
+    let mut runs = markdown_to_runs(text, theme::AGENT_TEXT);
+    trim_trailing_newlines(&mut runs);
+
+    if visible_text_is_empty(&runs) && !text.trim().is_empty() {
+        runs = vec![StyledRun {
+            text: text.to_string(),
+            style: theme::AGENT_TEXT,
+        }];
+    }
+
+    dot_prefixed_wrapped_line_count(&runs, wrap_width)
 }
 
 fn markdown_to_runs(text: &str, base_style: Style) -> Vec<StyledRun> {
@@ -308,6 +318,31 @@ fn dot_prefixed_wrapped_lines(
     out
 }
 
+fn dot_prefixed_wrapped_line_count(runs: &[StyledRun], wrap_width: usize) -> usize {
+    let body_width = wrap_width.saturating_sub(2).max(1);
+    let logical_lines = split_runs_on_newlines(runs);
+    let mut count = 0usize;
+    let mut first_row = true;
+
+    for logical in logical_lines {
+        if runs_visible_width(&logical) == 0 {
+            if first_row {
+                continue;
+            }
+            count += 1;
+            continue;
+        }
+
+        let wrapped = wrap_runs_to_width(&logical, body_width);
+        if !wrapped.is_empty() {
+            first_row = false;
+            count += wrapped.len();
+        }
+    }
+
+    count
+}
+
 fn split_runs_on_newlines(runs: &[StyledRun]) -> Vec<Vec<StyledRun>> {
     let mut lines: Vec<Vec<StyledRun>> = vec![Vec::new()];
     for run in runs {
@@ -408,9 +443,18 @@ fn trim_trailing_space(chars: &[StyledChar]) -> usize {
 }
 
 fn chars_to_runs(chars: &[StyledChar]) -> Vec<StyledRun> {
-    let mut runs = Vec::new();
+    let mut runs: Vec<StyledRun> = Vec::new();
     for ch in chars {
-        append_text(&mut runs, &ch.ch.to_string(), ch.style);
+        if let Some(last) = runs.last_mut() {
+            if last.style == ch.style {
+                last.text.push(ch.ch);
+                continue;
+            }
+        }
+        runs.push(StyledRun {
+            text: ch.ch.to_string(),
+            style: ch.style,
+        });
     }
     runs
 }
