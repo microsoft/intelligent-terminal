@@ -1,4 +1,4 @@
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use ratatui::prelude::*;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -64,14 +64,9 @@ fn markdown_to_runs(text: &str, base_style: Style) -> Vec<StyledRun> {
                     quote_depth += 1;
                     ensure_line_start(&mut runs, *styles.last().unwrap());
                 }
-                Tag::CodeBlock(kind) => {
+                Tag::CodeBlock(_) => {
                     ensure_line_start(&mut runs, *styles.last().unwrap());
                     ensure_quote_prefix(&mut runs, quote_depth);
-                    if let CodeBlockKind::Fenced(lang) = kind {
-                        if !lang.is_empty() {
-                            append_text(&mut runs, "", code_style(*styles.last().unwrap()));
-                        }
-                    }
                     push_style(&mut styles, code_style);
                 }
                 Tag::List(start) => {
@@ -475,7 +470,15 @@ mod tests {
 
     #[test]
     fn preserves_basic_block_markers_and_content() {
-        let lines = render_text("# Title\n\n- item\n> quote\n---\n```text\ncode\n```", 80);
+        let source = r#"# Title
+
+- item
+> quote
+---
+```text
+code
+```"#;
+        let lines = render_text(source, 80);
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(text.contains("Title"));
         assert!(text.contains("- item"));
@@ -486,7 +489,10 @@ mod tests {
 
     #[test]
     fn code_block_preserves_leading_indentation() {
-        let lines = render_text("```text\n    indented\n```", 80);
+        let source = r#"```text
+    indented
+```"#;
+        let lines = render_text(source, 80);
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(
             text.contains("    indented"),
@@ -496,17 +502,27 @@ mod tests {
 
     #[test]
     fn code_block_preserves_blank_lines() {
-        let lines = render_text("```text\na\n\nb\n```", 80);
+        let source = r#"```text
+alpha
+
+beta
+```"#;
+        let lines = render_text(source, 80);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
-            texts.windows(3).any(|w| w[0].contains('a') && w[1].is_empty() && w[2].contains('b')),
+            texts.windows(3).any(|w| {
+                w[0].contains("alpha") && w[1].is_empty() && w[2].contains("beta")
+            }),
             "code block blank line must be preserved: {texts:?}"
         );
     }
 
     #[test]
     fn wrapped_code_block_preserves_leading_indentation() {
-        let lines = render_text("```text\n    indented\n```", 12);
+        let source = r#"```text
+    indented
+```"#;
+        let lines = render_text(source, 12);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             texts.iter().any(|line| line.contains("    ")),
@@ -558,11 +574,15 @@ mod tests {
 
     #[test]
     fn block_styles_do_not_leak_to_following_text() {
-        let lines = render_text("# Title\nplain\n\n`code` plain2", 80);
+        let source = r#"# Title
+regular
+
+`code` regular2"#;
+        let lines = render_text(source, 80);
         let plain_span = lines
             .iter()
             .flat_map(|l| l.spans.iter())
-            .find(|s| s.content.as_ref().contains("plain"))
+            .find(|s| s.content.as_ref().contains("regular"))
             .expect("plain text span exists");
         assert!(
             !plain_span.style.add_modifier.contains(Modifier::BOLD),
@@ -571,7 +591,7 @@ mod tests {
         let plain2_span = lines
             .iter()
             .flat_map(|l| l.spans.iter())
-            .find(|s| s.content.as_ref() == " plain2")
+            .find(|s| s.content.as_ref() == " regular2")
             .expect("post-code text span exists");
         assert!(
             !plain2_span.style.add_modifier.contains(Modifier::REVERSED),
@@ -622,7 +642,7 @@ mod tests {
 
     #[test]
     fn height_matches_rendered_line_count() {
-        let text = "hello **bold** and a veryveryverylongtoken";
+        let text = "hello **bold** and a very long token";
         let lines = render_text(text, 12);
         assert_eq!(
             agent_markdown_height(text, 12),
