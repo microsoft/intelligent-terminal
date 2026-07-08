@@ -742,10 +742,33 @@ namespace winrt::TerminalApp::implementation
             co_return winrt::hstring{};
         }
 
-        // Overwrite-conflict is keyed on the initiating tab's workspace binding
-        // (set on restore or a prior save), not on the tab StableId — so it
-        // survives resume into a fresh tab and generalizes to multi-tab.
-        const auto boundId = initiatingTab->BoundWorkspaceId();
+        // Overwrite-conflict is keyed on any current-window tab's workspace
+        // binding (set on restore or a prior save), not on the tab StableId —
+        // so a newly-opened active tab in an already-saved window still
+        // overwrites the window's workspace.
+        const auto currentWindowId = _WindowProperties.WindowId();
+        auto boundId = initiatingTab->BoundWorkspaceId();
+        if (!boundId.empty() && initiatingTab->BoundHomeWindowId() != 0 && initiatingTab->BoundHomeWindowId() != currentWindowId)
+        {
+            boundId = {};
+        }
+        if (boundId.empty())
+        {
+            for (const auto& stableId : stableIds)
+            {
+                const auto tabImpl = _FindTabByStableId(stableId);
+                if (!tabImpl)
+                {
+                    continue;
+                }
+                const auto tabBoundId = tabImpl->BoundWorkspaceId();
+                if (!tabBoundId.empty() && (tabImpl->BoundHomeWindowId() == 0 || tabImpl->BoundHomeWindowId() == currentWindowId))
+                {
+                    boundId = tabBoundId;
+                    break;
+                }
+            }
+        }
         Model::SavedWorkspaceSession existing{ nullptr };
         if (!boundId.empty())
         {
@@ -767,6 +790,14 @@ namespace winrt::TerminalApp::implementation
         {
             modeStr = "auto";
         }
+        if (modeStr != "auto" && modeStr != "overwrite")
+        {
+            Json::Value out{ Json::objectValue };
+            out["outcome"] = "error";
+            out["error"] = "Unsupported save mode";
+            Json::StreamWriterBuilder wb;
+            co_return winrt::to_hstring(Json::writeString(wb, out));
+        }
 
         if (modeStr == "auto" && existing)
         {
@@ -779,7 +810,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         winrt::hstring id;
-        if (modeStr == "overwrite" && !boundId.empty())
+        if (!boundId.empty() && modeStr == "overwrite")
         {
             id = boundId;
         }
@@ -848,7 +879,9 @@ namespace winrt::TerminalApp::implementation
             }
 
             Model::SavedWorkspaceTab tabRecord;
+            const auto wsTabId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
             tabRecord.SourceStableId(stableId);
+            tabRecord.WorkspaceTabId(wsTabId);
             tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
             tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
 
@@ -919,6 +952,8 @@ namespace winrt::TerminalApp::implementation
             // Bind every saved tab to the workspace so a later /save-ws on any
             // of them detects the conflict and overwrites the right record.
             tabImpl->BoundWorkspaceId(id);
+            tabImpl->BoundWorkspaceTabId(wsTabId);
+            tabImpl->BoundHomeWindowId(_WindowProperties.WindowId());
             tabIdx++;
         }
 
@@ -1017,7 +1052,11 @@ namespace winrt::TerminalApp::implementation
             {
                 continue;
             }
-            const auto ap = tabs.GetAt(recIdx).AgentPane();
+            const auto savedTab = tabs.GetAt(recIdx);
+            ti->BoundWorkspaceTabId(savedTab.WorkspaceTabId());
+            ti->BoundHomeWindowId(_WindowProperties.WindowId());
+
+            const auto ap = savedTab.AgentPane();
             if (!ap)
             {
                 continue;

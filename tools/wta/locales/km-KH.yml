@@ -227,9 +227,13 @@ commands.restore_ws.summary: "Restore a saved workspace"
 commands.eternal_disabled: "This command is disabled. Enable experimental.eternalTerminal.enabled in settings."
 commands.save_ws.needs_title: "Please provide a title: /save-ws <name>"
 commands.save_ws.no_tab: "Cannot determine this workspace. Save is unavailable."
+commands.save_ws.loading_tabs: "Loading tabs…"
+commands.save_ws.no_tabs: "No tabs to save."
+commands.save_ws.title_prompt: "Workspace name: "  # Label shown before the /save-ws title input field
+commands.save_ws.title_hint: "Enter save · Esc cancel"  # {Locked="Enter","Esc"} keyboard keys in the /save-ws title prompt
 commands.save_ws.saved: "Saved this workspace as \"%{title}\". Restore it later with /restore-ws."
 commands.save_ws.failed: "Save failed: %{error}"
-commands.save_ws.conflict_prompt: "ផ្ទាំងនេះត្រូវបានរក្សាទុករួចហើយជា \"%{title}\"។ ចុច 1 ដើម្បីសរសេរជាន់លើវា, 2 ដើម្បីរក្សាទុកជាកន្លែងធ្វើការថ្មី, ឬ Esc ដើម្បីបោះបង់។"  # {Locked="1","2","Esc"} keyboard keys; %{title} is the existing saved workspace name
+commands.save_ws.conflict_prompt: "This window is already saved as workspace «%{title}». Overwrite? (y/n)"  # {Locked="y","n"} keyboard keys; %{title} is the existing saved workspace name
 commands.save_ws.conflict_cancelled: "បានបោះបង់ការរក្សាទុក។"
 commands.restore_ws.focused: "Switched to the original workspace."
 commands.restore_ws.opened: "Workspace restored in a new tab."

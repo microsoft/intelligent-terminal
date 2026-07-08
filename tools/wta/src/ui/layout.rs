@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
-    recommendations, save_ws_select_view, saved_workspaces_view, setup,
+    recommendations, save_ws_title_view, saved_workspaces_view, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -50,7 +50,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     };
 
     if let Some(view) = app.save_ws_select.as_ref() {
-        save_ws_select_view::render(frame, main_area, view);
+        save_ws_title_view::render(frame, main_area, view);
         return;
     }
 

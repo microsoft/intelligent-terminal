@@ -45,6 +45,7 @@ namespace Microsoft.Terminal.Settings.Model
         SavedWorkspaceTab();
 
         String SourceStableId; // informational: last live tab this came from
+        String WorkspaceTabId; // workspace-scoped stable identity minted at save time
         Windows.Foundation.Collections.IVector<ActionAndArgs> TabActions;
         Windows.Foundation.Collections.IVector<String> BufferSessionIds;
         SavedWorkspaceAgentPane AgentPane; // reserved; may be null

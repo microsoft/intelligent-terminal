@@ -142,6 +142,10 @@ namespace winrt::TerminalApp::implementation
         // /restore-ws, so it need not survive a WT restart.
         const winrt::hstring& BoundWorkspaceId() const noexcept { return _boundWorkspaceId; }
         void BoundWorkspaceId(const winrt::hstring& id) { _boundWorkspaceId = id; }
+        const winrt::hstring& BoundWorkspaceTabId() const noexcept { return _boundWorkspaceTabId; }
+        void BoundWorkspaceTabId(const winrt::hstring& id) { _boundWorkspaceTabId = id; }
+        uint64_t BoundHomeWindowId() const noexcept { return _boundHomeWindowId; }
+        void BoundHomeWindowId(const uint64_t id) noexcept { _boundHomeWindowId = id; }
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
@@ -264,6 +268,8 @@ namespace winrt::TerminalApp::implementation
 
         winrt::hstring _stableId{};
         winrt::hstring _boundWorkspaceId{};
+        winrt::hstring _boundWorkspaceTabId{};
+        uint64_t _boundHomeWindowId{ 0 };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };
