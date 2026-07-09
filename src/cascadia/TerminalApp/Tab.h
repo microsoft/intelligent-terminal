@@ -146,6 +146,10 @@ namespace winrt::TerminalApp::implementation
         void BoundWorkspaceTabId(const winrt::hstring& id) { _boundWorkspaceTabId = id; }
         uint64_t BoundHomeWindowId() const noexcept { return _boundHomeWindowId; }
         void BoundHomeWindowId(const uint64_t id) noexcept { _boundHomeWindowId = id; }
+        const winrt::hstring& AgentSessionId() const noexcept { return _agentSessionId; }
+        void AgentSessionId(const winrt::hstring& id) { _agentSessionId = id; }
+        bool AgentHasConversation() const noexcept { return _agentHasConversation; }
+        void AgentHasConversation(const bool hasConversation) noexcept { _agentHasConversation = hasConversation; }
 
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
@@ -270,6 +274,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _boundWorkspaceId{};
         winrt::hstring _boundWorkspaceTabId{};
         uint64_t _boundHomeWindowId{ 0 };
+        winrt::hstring _agentSessionId{};
+        bool _agentHasConversation{ false };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };

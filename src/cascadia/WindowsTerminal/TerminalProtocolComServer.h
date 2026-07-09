@@ -137,6 +137,7 @@ private:
     // they marshal SendEvent payloads onto each window's TerminalPage).
     static void _dispatchAutofixStateToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStatusToPage(const winrt::hstring& eventJson);
+    static void _dispatchAgentSessionInfoToPage(const winrt::hstring& eventJson);
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
