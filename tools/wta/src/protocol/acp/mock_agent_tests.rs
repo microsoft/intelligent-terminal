@@ -1362,7 +1362,7 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 Ok(Some(AppEvent::TabError { tab_id, message })) => {
                     assert_eq!(tab_id, "t1");
                     assert!(
-                        message.contains("Failed to resume session"),
+                        message.contains("fresh session"),
                         "unexpected error message: {message}"
                     );
                 }
@@ -1416,7 +1416,7 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 Ok(Some(AppEvent::TabError { tab_id, message })) => {
                     assert_eq!(tab_id, "t1");
                     assert!(
-                        message.contains("Failed to resume session"),
+                        message.contains("fresh session"),
                         "unexpected error message: {message}"
                     );
                 }

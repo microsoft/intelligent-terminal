@@ -86,6 +86,7 @@ pub enum FocusPaneFailureReason {
 ///
 /// Thin wrapper over `spawn_wtcli_focus_pane_with_callback` for callers that
 /// don't care about distinguishing failure modes.
+#[allow(dead_code)]
 pub fn spawn_wtcli_focus_pane(pane_session_id: &str) {
     spawn_wtcli_focus_pane_with_callback(pane_session_id, None);
 }
@@ -183,6 +184,187 @@ pub fn spawn_wtcli_async(args: &[String]) {
             tracing::warn!(target: "wtcli", path = %path, ?args, %err, "spawn failed");
         }
     }
+}
+
+pub fn spawn_wtcli_save_workspace(
+    tab_ids: &str,
+    title: &str,
+    mode: &str,
+    on_done: Box<dyn FnOnce(Result<crate::app::SaveWorkspaceOutcome, String>) + Send>,
+) {
+    let path = resolve_wtcli_path();
+    let (tabs, title, mode) = (tab_ids.to_string(), title.to_string(), mode.to_string());
+    std::thread::spawn(move || {
+        let out = std::process::Command::new(&path)
+            .args(["save-workspace", "-t", &tabs, "-n", &title, "-m", &mode])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output();
+        let result = match out {
+            Ok(o) if o.status.success() => {
+                let s = String::from_utf8_lossy(&o.stdout);
+                let v = serde_json::from_str::<serde_json::Value>(s.trim()).ok();
+                let outcome = v
+                    .as_ref()
+                    .and_then(|v| v.get("outcome"))
+                    .and_then(|o| o.as_str())
+                    .unwrap_or("saved");
+                if outcome == "conflict" {
+                    Ok(crate::app::SaveWorkspaceOutcome::Conflict {
+                        existing_id: v
+                            .as_ref()
+                            .and_then(|v| v.get("existingId"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        existing_title: v
+                            .as_ref()
+                            .and_then(|v| v.get("existingTitle"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                } else if outcome == "error" {
+                    Err(v
+                        .as_ref()
+                        .and_then(|v| v.get("error"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("Save failed")
+                        .to_string())
+                } else {
+                    Ok(crate::app::SaveWorkspaceOutcome::Saved {
+                        title: v
+                            .as_ref()
+                            .and_then(|v| v.get("title"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or(&title)
+                            .to_string(),
+                    })
+                }
+            }
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        on_done(result);
+    });
+}
+
+pub fn spawn_wtcli_list_tabs(
+    window_id: Option<String>,
+    on_done: Box<dyn FnOnce(Vec<crate::app::SaveTabRow>) + Send>,
+) {
+    let path = resolve_wtcli_path();
+    std::thread::spawn(move || {
+        // `list-tabs` prints a human table by default; `--json` is required for
+        // machine output, and that output is wrapped as `{ "tabs": [...] }`.
+        // Scope to THIS window — without `--window-id`, wtcli defaults to the
+        // first window, which lists the wrong tabs when /save-ws runs in a
+        // restored (second) window.
+        let mut args: Vec<String> = vec!["--json".to_string(), "list-tabs".to_string()];
+        if let Some(w) = window_id.as_deref().filter(|w| !w.is_empty()) {
+            args.push("--window-id".to_string());
+            args.push(w.to_string());
+        }
+        // Capture stderr and log on failure so a real transport/COM error is
+        // diagnosable instead of silently masquerading as "no tabs to save".
+        let rows = match std::process::Command::new(&path)
+            .args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+        {
+            Ok(o) if o.status.success() => serde_json::from_slice::<serde_json::Value>(&o.stdout)
+                .ok()
+                .map(|v| v.get("tabs").cloned().unwrap_or(v))
+                .and_then(|arr| serde_json::from_value::<Vec<crate::app::SaveTabRow>>(arr).ok())
+                .unwrap_or_default(),
+            Ok(o) => {
+                tracing::warn!(
+                    target: "save_ws",
+                    exit = ?o.status.code(),
+                    stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                    "wtcli list-tabs failed; showing an empty tab list",
+                );
+                Vec::new()
+            }
+            Err(e) => {
+                tracing::warn!(target: "save_ws", error = %e, "failed to spawn wtcli list-tabs; showing an empty tab list");
+                Vec::new()
+            }
+        };
+        on_done(rows);
+    });
+}
+
+pub fn spawn_wtcli_list_saved_workspaces(
+    on_done: Box<dyn FnOnce(Vec<crate::app::SavedWorkspaceEntry>) + Send>,
+) {
+    let path = resolve_wtcli_path();
+    std::thread::spawn(move || {
+        // As with `list-tabs`, log failures (capturing stderr) so an empty
+        // picker doesn't hide a real wtcli/COM error behind "no saved
+        // workspaces yet".
+        let rows = match std::process::Command::new(&path)
+            .args(["list-saved-workspaces"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+        {
+            Ok(o) if o.status.success() => {
+                serde_json::from_slice::<Vec<crate::app::SavedWorkspaceEntry>>(&o.stdout)
+                    .unwrap_or_default()
+            }
+            Ok(o) => {
+                tracing::warn!(
+                    target: "restore_ws",
+                    exit = ?o.status.code(),
+                    stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                    "wtcli list-saved-workspaces failed; showing an empty list",
+                );
+                Vec::new()
+            }
+            Err(e) => {
+                tracing::warn!(target: "restore_ws", error = %e, "failed to spawn wtcli list-saved-workspaces; showing an empty list");
+                Vec::new()
+            }
+        };
+        on_done(rows);
+    });
+}
+
+pub fn spawn_wtcli_restore_workspace(
+    id: &str,
+    on_done: Box<dyn FnOnce(Result<String, String>) + Send>,
+) {
+    let path = resolve_wtcli_path();
+    let id = id.to_string();
+    std::thread::spawn(move || {
+        let out = std::process::Command::new(&path)
+            .args(["restore-workspace", "-i", &id])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output();
+        let result = match out {
+            Ok(o) if o.status.success() => {
+                let s = String::from_utf8_lossy(&o.stdout);
+                Ok(serde_json::from_str::<serde_json::Value>(s.trim())
+                    .ok()
+                    .and_then(|v| {
+                        v.get("outcome")
+                            .and_then(|o| o.as_str())
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| "opened".to_string()))
+            }
+            Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        on_done(result);
+    });
+}
+
+pub fn spawn_wtcli_delete_saved_workspace(id: &str) {
+    spawn_wtcli_async(&["delete-saved-workspace".into(), "-i".into(), id.to_string()]);
 }
 
 /// Run `wtcli --json <args>`, parse the resulting `sessionId` (or `SessionId`)
@@ -557,10 +739,7 @@ impl WtChannel for CliChannel {
                     .get("direction")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let profile = params
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;

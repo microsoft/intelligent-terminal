@@ -37,6 +37,14 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    /// Snapshot this tab for later restore.
+    ///
+    /// Gated behind `experimental.eternalTerminal.enabled`.
+    SaveWs,
+    /// Open the saved-tab picker.
+    ///
+    /// Gated behind `experimental.eternalTerminal.enabled`.
+    RestoreWs,
     /// Pick the ACP model for *this* agent pane.
     ///
     /// Bare `/model` opens an interactive picker listing the models the
@@ -58,6 +66,8 @@ pub struct CommandSpec {
     /// MVP commands are all zero-arg; the field exists so the popup
     /// knows whether to leave a trailing space after Tab-completion.
     pub takes_args: bool,
+    /// True for commands gated behind the eternal-terminal flag.
+    pub experimental_eternal: bool,
 }
 
 impl CommandSpec {
@@ -79,18 +89,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.help.summary",
         kind: CommandKind::Help,
         takes_args: false,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "clear",
         summary_key: "commands.clear.summary",
         kind: CommandKind::Clear,
         takes_args: false,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "new",
         summary_key: "commands.new.summary",
         kind: CommandKind::New,
         takes_args: false,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "fix",
@@ -98,24 +111,28 @@ pub const REGISTRY: &[CommandSpec] = &[
         kind: CommandKind::Fix,
         // `/fix <hint>` — free-form text after the name steers the fix.
         takes_args: true,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
         takes_args: false,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "stop",
         summary_key: "commands.stop.summary",
         kind: CommandKind::Stop,
         takes_args: false,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
         takes_args: false,
+        experimental_eternal: false,
     },
     CommandSpec {
         name: "model",
@@ -123,6 +140,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
         takes_args: true,
+        experimental_eternal: false,
+    },
+    CommandSpec {
+        name: "save-ws",
+        summary_key: "commands.save_ws.summary",
+        kind: CommandKind::SaveWs,
+        takes_args: true,
+        experimental_eternal: true,
+    },
+    CommandSpec {
+        name: "restore-ws",
+        summary_key: "commands.restore_ws.summary",
+        kind: CommandKind::RestoreWs,
+        takes_args: false,
+        experimental_eternal: true,
     },
 ];
 
@@ -244,6 +276,15 @@ pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
         .collect()
 }
 
+/// Prefix-match like [`matches`], but hide experimental commands unless
+/// `eternal_enabled` is true.
+pub fn matches_gated(prefix: &str, eternal_enabled: bool) -> Vec<&'static CommandSpec> {
+    matches(prefix)
+        .into_iter()
+        .filter(|spec| eternal_enabled || !spec.experimental_eternal)
+        .collect()
+}
+
 /// True if the input *looks like* a slash-command attempt (starts with `/`
 /// and has no whitespace yet). Used to decide whether to show the popup.
 pub fn is_command_prefix(input: &str) -> bool {
@@ -297,6 +338,43 @@ mod tests {
         assert_eq!(hinted.rest, "the path looks wrong");
         // takes_args is advertised so Tab-completion leaves a trailing space.
         assert!(lookup("fix").unwrap().takes_args);
+    }
+
+    #[test]
+    fn save_and_restore_ws_parse() {
+        let s = parse("/save-ws my work").unwrap();
+        assert_eq!(s.kind, CommandKind::SaveWs);
+        assert_eq!(s.rest, "my work");
+        assert!(lookup("save-ws").unwrap().takes_args);
+
+        let r = parse("/restore-ws").unwrap();
+        assert_eq!(r.kind, CommandKind::RestoreWs);
+        assert!(!lookup("restore-ws").unwrap().takes_args);
+    }
+
+    #[test]
+    fn eternal_commands_hidden_without_flag() {
+        let visible: Vec<&str> = matches_gated("", false)
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        assert!(!visible.contains(&"save-ws"));
+        assert!(!visible.contains(&"restore-ws"));
+        assert!(visible.contains(&"help"));
+
+        let visible_on: Vec<&str> = matches_gated("", true)
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        assert!(visible_on.contains(&"save-ws"));
+        assert!(visible_on.contains(&"restore-ws"));
+    }
+
+    #[test]
+    fn gated_flag_marks_only_eternal_commands() {
+        assert!(lookup("save-ws").unwrap().experimental_eternal);
+        assert!(lookup("restore-ws").unwrap().experimental_eternal);
+        assert!(!lookup("help").unwrap().experimental_eternal);
     }
 
     #[test]

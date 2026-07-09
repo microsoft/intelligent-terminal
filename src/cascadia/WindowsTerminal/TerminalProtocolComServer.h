@@ -61,6 +61,10 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
+    STDMETHODIMP SaveWorkspaceSession(BSTR tabIds, BSTR title, BSTR mode, BSTR* json) override;
+    STDMETHODIMP ListSavedWorkspaceSessions(BSTR* json) override;
+    STDMETHODIMP RestoreWorkspaceSession(BSTR id, BSTR* json) override;
+    STDMETHODIMP DeleteSavedWorkspaceSession(BSTR id) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
@@ -133,6 +137,7 @@ private:
     // they marshal SendEvent payloads onto each window's TerminalPage).
     static void _dispatchAutofixStateToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStatusToPage(const winrt::hstring& eventJson);
+    static void _dispatchAgentSessionInfoToPage(const winrt::hstring& eventJson);
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);

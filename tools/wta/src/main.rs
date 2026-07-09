@@ -185,6 +185,10 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
+    /// Enable the experimental Eternal Terminal /save-ws + /restore-ws commands
+    #[arg(long)]
+    eternal_terminal: bool,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]
@@ -213,6 +217,16 @@ struct Cli {
     /// placeholder. Hidden because nothing outside WT should be setting it.
     #[arg(long, hide = true)]
     owner_tab_id: Option<String>,
+
+    /// Numeric WT window id (peasant id) that owns this wta process — the
+    /// same id `list_windows` / `tab_changed` report. Passed in by
+    /// TerminalPage alongside `--owner-tab-id`, and seeded into
+    /// `app_state.window_id` at boot so window-scoped commands (e.g.
+    /// `/save-ws`, which lists this window's tabs) work immediately — even
+    /// for a pre-warmed/stashed pane whose own pane isn't yet enumerable
+    /// for pane-identity discovery. Hidden — only WT should set it.
+    #[arg(long, hide = true)]
+    owner_window_id: Option<String>,
 
     /// Boot-time hint: instead of letting the helper create a fresh ACP
     /// session via `session/new`, immediately resume the given session id
@@ -2937,7 +2951,7 @@ async fn run_acp_app(
             ));
 
             let autofix_enabled = !cli.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, cli.eternal_terminal, Arc::clone(&shell_mgr));
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
             // re-derive the delegate commandline when only the delegate
@@ -3273,6 +3287,24 @@ async fn run_acp_app(
                 // is passed by WT via --owner-tab-id (see below) and seeded
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
+            }
+
+            // Seed window_id from --owner-window-id (passed by TerminalPage
+            // alongside --owner-tab-id). This is authoritative and, unlike
+            // pane-identity discovery above, works for a pre-warmed / stashed
+            // pane whose own pane isn't enumerable yet — so window-scoped
+            // commands like `/save-ws` can scope `list-tabs` to this window
+            // from the very first interaction, without waiting for a
+            // tab_changed to learn it.
+            if let Some(ref wid) = cli.owner_window_id {
+                if !wid.is_empty() {
+                    tracing::info!(
+                        target: "tab_session",
+                        window_id = %wid,
+                        "seeded app_state.window_id from --owner-window-id"
+                    );
+                    app_state.window_id = Some(wid.clone());
+                }
             }
 
             // Seed tab_id from --owner-tab-id (passed by TerminalPage when

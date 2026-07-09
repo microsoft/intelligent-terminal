@@ -20,6 +20,12 @@ namespace Microsoft.Terminal.Protocol
         String Title;
         Boolean IsActive;
         UInt32 PaneCount;
+        // WT stable per-tab GUID (braced). Used by Eternal-Terminal
+        // /save-ws to identify selected tabs across the save round-trip.
+        String StableId;
+        // Working directory of the tab's first shell pane — helps the
+        // /save-ws picker distinguish same-titled tabs.
+        String Cwd;
     };
 
     struct PaneInfo
@@ -129,6 +135,15 @@ namespace Microsoft.Terminal.Protocol
 
         // Client-originated event publishing (agent → WT → listeners)
         void SendEvent(String eventJson);
+
+        // Eternal Terminal — workspace save/restore
+        // tabIds: comma-separated WT tab StableIds to snapshot.
+        // mode ∈ { "auto", "overwrite" }: auto returns a "conflict" outcome
+        // (without writing) when the current window is already bound to a
+        // saved workspace, so the caller can prompt before overwriting.
+        String SaveWorkspaceSession(String tabIds, String title, String mode);
+        String ListSavedWorkspaceSessions();
+        String RestoreWorkspaceSession(String id);
+        void DeleteSavedWorkspaceSession(String id);
     }
 }
-

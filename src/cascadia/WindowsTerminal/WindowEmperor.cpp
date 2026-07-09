@@ -23,6 +23,8 @@
 
 #include <bcrypt.h>
 #include <fstream>
+#include <json/json.h>
+#include <sstream>
 #pragma comment(lib, "bcrypt.lib")
 
 using namespace winrt;
@@ -314,6 +316,22 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
         }
     }
 
+}
+
+void WindowEmperor::RequestRestoreWorkspace(winrt::hstring id)
+{
+    if (id.empty())
+    {
+        return;
+    }
+    {
+        std::lock_guard lock{ _pendingRestoreWsMutex };
+        _pendingRestoreWs.emplace_back(std::wstring{ std::wstring_view{ id } });
+    }
+    if (_window)
+    {
+        PostMessageW(_window.get(), WM_RESTORE_WORKSPACE, 0, 0);
+    }
 }
 
 AppHost* WindowEmperor::_mostRecentWindow() const noexcept
@@ -1131,6 +1149,135 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             _messageBoxCount -= 1;
             _postQuitMessageIfNeeded();
             return 0;
+        case WM_RESTORE_WORKSPACE:
+        {
+            // Eternal-Terminal /restore-ws: route each queued workspace id to
+            // the window that still anchors it, or open a new window if none do.
+            // Runs on the UI thread (posted here from the COM MTA thread).
+            std::deque<std::wstring> ids;
+            {
+                std::lock_guard lock{ _pendingRestoreWsMutex };
+                ids.swap(_pendingRestoreWs);
+            }
+
+            auto restoreInNewWindow = [this](const std::wstring& wsId) {
+                // Build a default new-window request (empty commandline ⇒ one
+                // default tab). We must NOT use the (window, content, bounds)
+                // ctor with empty content: AppHost::_HandleCommandlineArgs then
+                // takes the `else` branch and dereferences a null Command().
+                winrt::TerminalApp::CommandlineArgs cmdArgs{};
+                cmdArgs.ShowWindowCommand(SW_SHOWNORMAL);
+                CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ 0, cmdArgs });
+                if (!_windows.empty())
+                {
+                    if (const auto page = _windows.back()->Logic().GetRoot().try_as<winrt::TerminalApp::TerminalPage>())
+                    {
+                        page.SetRestoreWorkspaceOnInit(winrt::hstring{ wsId });
+                    }
+                }
+            };
+
+            auto summonWindow = [this](const uint64_t windowId) {
+                SummonWindowSelectionArgs args;
+                args.WindowID = windowId;
+                args.SummonBehavior.MoveToCurrentDesktop(false);
+                args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
+                args.SummonBehavior.ToggleVisibility(false);
+                std::ignore = _summonWindow(args);
+            };
+
+            for (const auto& wsId : ids)
+            {
+                if (_windows.empty())
+                {
+                    restoreInNewWindow(wsId);
+                    continue;
+                }
+
+                Json::Value mergedBindings{ Json::arrayValue };
+                winrt::TerminalApp::TerminalPage planningPage{ nullptr };
+                for (const auto& host : _windows)
+                {
+                    const auto page = host->Logic().GetRoot().try_as<winrt::TerminalApp::TerminalPage>();
+                    if (!page)
+                    {
+                        continue;
+                    }
+                    if (!planningPage)
+                    {
+                        planningPage = page;
+                    }
+
+                    const auto bindingsJson = page.GetWorkspaceBindings(winrt::hstring{ wsId });
+                    Json::Value windowBindings;
+                    Json::CharReaderBuilder rb;
+                    std::string errs;
+                    std::istringstream stream{ winrt::to_string(bindingsJson) };
+                    if (Json::parseFromStream(rb, stream, &windowBindings, &errs) && windowBindings.isArray())
+                    {
+                        for (const auto& binding : windowBindings)
+                        {
+                            mergedBindings.append(binding);
+                        }
+                    }
+                }
+
+                if (!planningPage)
+                {
+                    restoreInNewWindow(wsId);
+                    continue;
+                }
+
+                Json::StreamWriterBuilder wb;
+                const auto planJson = planningPage.PlanWorkspaceRestore(winrt::hstring{ wsId }, winrt::to_hstring(Json::writeString(wb, mergedBindings)));
+                Json::Value plan;
+                Json::CharReaderBuilder rb;
+                std::string errs;
+                std::istringstream stream{ winrt::to_string(planJson) };
+                if (!Json::parseFromStream(rb, stream, &plan, &errs) || !plan.isObject())
+                {
+                    restoreInNewWindow(wsId);
+                    continue;
+                }
+
+                if (plan["target"].asString() == "new")
+                {
+                    restoreInNewWindow(wsId);
+                    continue;
+                }
+
+                const auto windowId = plan["windowId"].isUInt64() ? plan["windowId"].asUInt64() : 0;
+                AppHost* targetHost = nullptr;
+                for (const auto& host : _windows)
+                {
+                    if (host->Logic().WindowProperties().WindowId() == windowId)
+                    {
+                        targetHost = host.get();
+                        break;
+                    }
+                }
+
+                if (!targetHost)
+                {
+                    restoreInNewWindow(wsId);
+                    continue;
+                }
+
+                summonWindow(windowId);
+                const auto targetPage = targetHost->Logic().GetRoot().try_as<winrt::TerminalApp::TerminalPage>();
+                if (!targetPage)
+                {
+                    continue;
+                }
+
+                const auto missing = plan["missingTabIds"].isArray() ? plan["missingTabIds"] : Json::Value{ Json::arrayValue };
+                if (!missing.empty())
+                {
+                    targetPage.RestoreMissingWorkspaceTabs(winrt::hstring{ wsId }, winrt::to_hstring(Json::writeString(wb, missing)));
+                }
+            }
+            return 0;
+        }
         case WM_IDENTIFY_ALL_WINDOWS:
             for (const auto& host : _windows)
             {

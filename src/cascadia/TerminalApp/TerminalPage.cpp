@@ -1798,6 +1798,11 @@ namespace winrt::TerminalApp::implementation
         helperCmd.push_back(L'"');
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
+        // Tell the helper which window it lives in (same numeric id as
+        // list_windows / tab_changed) so window-scoped commands like
+        // /save-ws can scope list-tabs to this window immediately — even
+        // while the pane is pre-warmed/stashed and not yet enumerable.
+        helperCmd.append(L" --owner-window-id \"").append(std::to_wstring(_WindowProperties.WindowId())).append(L"\"");
 
         // If master is degraded (died unexpectedly, not yet recovered via
         // /restart), AcquirePane opened this pane without respawning master.
@@ -1834,6 +1839,10 @@ namespace winrt::TerminalApp::implementation
         if (!globals.EffectiveAutoFixEnabled())
         {
             helperCmd.append(L" --no-autofix");
+        }
+        if (globals.EternalTerminalEnabled())
+        {
+            helperCmd.append(L" --eternal-terminal");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -3124,6 +3133,15 @@ namespace winrt::TerminalApp::implementation
                 if (auto self{ weak.get() })
                 {
                     self->Initialized.raise(*self, nullptr);
+
+                    // Eternal-Terminal: if this window was created to restore a
+                    // workspace, do it now that startup tabs exist.
+                    if (!self->_restoreWorkspaceIdOnInit.empty())
+                    {
+                        const auto wsId = self->_restoreWorkspaceIdOnInit;
+                        self->_restoreWorkspaceIdOnInit.clear();
+                        self->_RestoreWorkspaceOnInit(wsId);
+                    }
                 }
             });
         }
@@ -4290,6 +4308,60 @@ namespace winrt::TerminalApp::implementation
                 update(tabImpl);
             }
         }
+    }
+
+    // Inbound event from WTA:
+    //   {method:"agent_session_info", params:{tab_id, session_id, has_conversation}}
+    //
+    // Caches the ACP session id and conversation gate on the owning Tab so
+    // /save-ws can persist a resumable agent pane without reading a history
+    // file. `session_id` may be null/absent when there is no real conversation.
+    void TerminalPage::OnAgentSessionInfoChanged(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject())
+        {
+            return;
+        }
+
+        winrt::hstring tabId;
+        if (params.isMember("tab_id") && params["tab_id"].isString())
+        {
+            tabId = winrt::to_hstring(params["tab_id"].asString());
+        }
+        if (tabId.empty())
+        {
+            _agentPaneLog("OnAgentSessionInfoChanged: missing tab_id, dropping");
+            return;
+        }
+
+        const auto targetTab = _FindTabByStableId(tabId);
+        if (!targetTab)
+        {
+            return;
+        }
+
+        winrt::hstring sessionId;
+        if (params.isMember("session_id") && params["session_id"].isString())
+        {
+            sessionId = winrt::to_hstring(params["session_id"].asString());
+        }
+        const bool hasConversation = params.isMember("has_conversation") &&
+                                     params["has_conversation"].isBool() &&
+                                     params["has_conversation"].asBool();
+
+        targetTab->AgentSessionId(sessionId);
+        targetTab->AgentHasConversation(hasConversation);
+        _agentPaneLog("OnAgentSessionInfoChanged: tab_id=" + winrt::to_string(tabId) +
+                      " has_conversation=" + std::string{ hasConversation ? "true" : "false" });
     }
 
     // Inbound event from WTA:

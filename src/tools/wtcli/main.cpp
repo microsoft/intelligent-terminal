@@ -589,6 +589,65 @@ int main()
         }
     });
 
+    // ── save-workspace ──
+    std::string saveTabIds, saveTabTitle, saveMode;
+    auto* saveTabCmd = app.add_subcommand("save-workspace", "Save a workspace snapshot");
+    saveTabCmd->add_option("-t,--tabs", saveTabIds, "Comma-separated tab StableIds (first = initiating tab)")->required();
+    saveTabCmd->add_option("-n,--title", saveTabTitle, "Snapshot title")->required();
+    saveTabCmd->add_option("-m,--mode", saveMode, "Save mode: auto|overwrite")->default_val("auto");
+    saveTabCmd->callback([&]() {
+        if (saveMode != "auto" && saveMode != "overwrite")
+        {
+            fprintf(stderr, "Unsupported save mode: %s\n", saveMode.c_str());
+            exitCode = 1;
+            return;
+        }
+        auto server = connect();
+        if (!server) return;
+        wil::unique_bstr tabs{ Bstr(saveTabIds) }, title{ Bstr(saveTabTitle) }, mode{ Bstr(saveMode) };
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) { return server->SaveWorkspaceSession(tabs.get(), title.get(), mode.get(), j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "SaveWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        PrintJson(result);
+    });
+
+    // ── list-saved-workspaces ──
+    auto* listSavedCmd = app.add_subcommand("list-saved-workspaces", "List saved workspace snapshots");
+    listSavedCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) { return server->ListSavedWorkspaceSessions(j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "ListSavedWorkspaceSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        PrintJson(result);
+    });
+
+    // ── restore-workspace ──
+    std::string restoreTabId;
+    auto* restoreTabCmd = app.add_subcommand("restore-workspace", "Restore a saved workspace snapshot");
+    restoreTabCmd->add_option("-i,--id", restoreTabId, "Snapshot id")->required();
+    restoreTabCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        wil::unique_bstr sid{ Bstr(restoreTabId) };
+        Json::Value result;
+        auto hr = CallJson([&](BSTR* j) { return server->RestoreWorkspaceSession(sid.get(), j); }, result);
+        if (FAILED(hr)) { fprintf(stderr, "RestoreWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        PrintJson(result);
+    });
+
+    // ── delete-saved-workspace ──
+    std::string deleteTabId;
+    auto* deleteSavedCmd = app.add_subcommand("delete-saved-workspace", "Delete a saved workspace snapshot");
+    deleteSavedCmd->add_option("-i,--id", deleteTabId, "Snapshot id")->required();
+    deleteSavedCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        wil::unique_bstr sid{ Bstr(deleteTabId) };
+        auto hr = server->DeleteSavedWorkspaceSession(sid.get());
+        if (FAILED(hr)) { fprintf(stderr, "DeleteSavedWorkspaceSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+    });
+
     // ── test-pipe ──
     auto* testPipeCmd = app.add_subcommand("test-pipe", "Test connection to Windows Terminal");
     testPipeCmd->callback([&]() {

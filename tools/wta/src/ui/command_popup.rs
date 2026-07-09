@@ -12,7 +12,7 @@ use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use super::popup;
 use crate::app::App;
-use crate::commands::{CommandSpec, REGISTRY};
+use crate::commands::{self, CommandSpec};
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 6;
@@ -109,12 +109,16 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
         theme::DIM,
     )))
     .chain(std::iter::once(Line::default()))
-    .chain(REGISTRY.iter().map(|spec| {
-        Line::from(vec![
-            Span::styled(format!("  /{:<8}  ", spec.name), theme::INPUT_TEXT),
-            Span::styled(spec.summary(), theme::DIM),
-        ])
-    }))
+    .chain(
+        commands::matches_gated("", app.eternal_terminal_enabled)
+            .into_iter()
+            .map(|spec| {
+                Line::from(vec![
+                    Span::styled(format!("  /{:<8}  ", spec.name), theme::INPUT_TEXT),
+                    Span::styled(spec.summary(), theme::DIM),
+                ])
+            }),
+    )
     .chain(std::iter::once(Line::default()))
     .chain(std::iter::once(Line::from(Span::styled(
         t!("commands.help_escape_hint").into_owned(),

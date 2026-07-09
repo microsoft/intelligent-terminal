@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
-    recommendations, setup,
+    recommendations, save_ws_title_view, saved_workspaces_view, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -36,6 +36,26 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             .split(area);
         setup::render(frame, app, chunks[0]);
         input::render(frame, app, chunks[1]);
+        return;
+    }
+
+    let (main_area, debug_area) = if app.show_debug_panel {
+        let h = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(area);
+        (h[0], Some(h[1]))
+    } else {
+        (area, None)
+    };
+
+    if let Some(view) = app.save_ws_select.as_ref() {
+        save_ws_title_view::render(frame, main_area, view);
+        return;
+    }
+
+    if let Some(view) = app.saved_workspaces.as_ref() {
+        saved_workspaces_view::render(frame, main_area, view);
         return;
     }
 
@@ -77,16 +97,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         );
         return;
     }
-
-    let (main_area, debug_area) = if app.show_debug_panel {
-        let h = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-            .split(area);
-        (h[0], Some(h[1]))
-    } else {
-        (area, None)
-    };
 
     let rec_panel_h = if app.current_tab().turn.recommendations().is_some() {
         app.rec_panel_height(main_area.width)

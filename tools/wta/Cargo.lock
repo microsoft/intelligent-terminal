@@ -3342,6 +3342,7 @@ dependencies = [
  "agent-client-protocol",
  "anyhow",
  "async-trait",
+ "chrono",
  "clap",
  "crossterm",
  "futures",

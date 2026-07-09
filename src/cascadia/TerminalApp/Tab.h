@@ -135,6 +135,22 @@ namespace winrt::TerminalApp::implementation
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
 
+        // In-memory binding to a saved workspace (Eternal Terminal). Set when
+        // this tab is opened via RestoreWorkspaceSession, or on the first
+        // /save-ws of this tab. Drives the overwrite-vs-save-new prompt. Not
+        // persisted — the association is always re-established through
+        // /restore-ws, so it need not survive a WT restart.
+        const winrt::hstring& BoundWorkspaceId() const noexcept { return _boundWorkspaceId; }
+        void BoundWorkspaceId(const winrt::hstring& id) { _boundWorkspaceId = id; }
+        const winrt::hstring& BoundWorkspaceTabId() const noexcept { return _boundWorkspaceTabId; }
+        void BoundWorkspaceTabId(const winrt::hstring& id) { _boundWorkspaceTabId = id; }
+        uint64_t BoundHomeWindowId() const noexcept { return _boundHomeWindowId; }
+        void BoundHomeWindowId(const uint64_t id) noexcept { _boundHomeWindowId = id; }
+        const winrt::hstring& AgentSessionId() const noexcept { return _agentSessionId; }
+        void AgentSessionId(const winrt::hstring& id) { _agentSessionId = id; }
+        bool AgentHasConversation() const noexcept { return _agentHasConversation; }
+        void AgentHasConversation(const bool hasConversation) noexcept { _agentHasConversation = hasConversation; }
+
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
             return _tabStatus;
@@ -255,6 +271,11 @@ namespace winrt::TerminalApp::implementation
         bool _changingActivePane{ false };
 
         winrt::hstring _stableId{};
+        winrt::hstring _boundWorkspaceId{};
+        winrt::hstring _boundWorkspaceTabId{};
+        uint64_t _boundHomeWindowId{ 0 };
+        winrt::hstring _agentSessionId{};
+        bool _agentHasConversation{ false };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };

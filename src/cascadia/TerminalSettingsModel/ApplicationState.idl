@@ -26,6 +26,43 @@ namespace Microsoft.Terminal.Settings.Model
         Windows.Foundation.IReference<LaunchMode> LaunchMode;
     };
 
+    // Reserved for a future step: the agent pane belonging to a saved
+    // workspace tab. Not populated or restored yet — the fields exist so the
+    // on-disk schema is forward-compatible when agent-pane restore lands.
+    runtimeclass SavedWorkspaceAgentPane
+    {
+        SavedWorkspaceAgentPane();
+
+        String Cli;            // which agent CLI (copilot/claude/gemini/custom)
+        String Model;          // model override, empty for default
+        String AgentSessionId; // ACP session key to session/load on restore
+        String Position;       // agent pane position at save time
+    };
+
+    runtimeclass SavedWorkspaceTab
+    {
+        SavedWorkspaceTab();
+
+        String SourceStableId; // informational: last live tab this came from
+        String WorkspaceTabId; // workspace-scoped stable identity minted at save time
+        Windows.Foundation.Collections.IVector<ActionAndArgs> TabActions;
+        Windows.Foundation.Collections.IVector<String> BufferSessionIds;
+        SavedWorkspaceAgentPane AgentPane; // reserved; may be null
+    };
+
+    runtimeclass SavedWorkspaceSession
+    {
+        SavedWorkspaceSession();
+
+        static String ToJson(SavedWorkspaceSession session);
+        static SavedWorkspaceSession FromJson(String json);
+
+        String Id;
+        String Title;
+        String SavedAt; // decimal Unix epoch milliseconds, as a string
+        Windows.Foundation.Collections.IVector<SavedWorkspaceTab> Tabs;
+    };
+
     [default_interface] runtimeclass ApplicationState {
         static ApplicationState SharedInstance();
 
@@ -33,11 +70,14 @@ namespace Microsoft.Terminal.Settings.Model
         void Reset();
 
         void AppendPersistedWindowLayout(WindowLayout layout);
+        void UpsertSavedWorkspaceSession(SavedWorkspaceSession session);
+        Boolean RemoveSavedWorkspaceSession(String id);
         Boolean DismissBadge(String badgeId);
         Boolean BadgeDismissed(String badgeId);
 
         String SettingsHash;
         Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts;
+        Windows.Foundation.Collections.IVector<SavedWorkspaceSession> SavedWorkspaceSessions;
         Windows.Foundation.Collections.IVector<String> RecentCommands;
         Windows.Foundation.Collections.IVector<InfoBarMessage> DismissedMessages;
         Windows.Foundation.Collections.IVector<String> AllowedCommandlines;

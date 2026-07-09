@@ -6,6 +6,9 @@
 #include "CascadiaSettings.h"
 #include "ApplicationState.g.cpp"
 #include "WindowLayout.g.cpp"
+#include "SavedWorkspaceSession.g.cpp"
+#include "SavedWorkspaceTab.g.cpp"
+#include "SavedWorkspaceAgentPane.g.cpp"
 #include "ActionAndArgs.h"
 #include "JsonUtils.h"
 #include "FileUtils.h"
@@ -62,6 +65,119 @@ namespace Microsoft::Terminal::Settings::Model::JsonUtils
             return "WindowLayout";
         }
     };
+
+    template<>
+    struct ConversionTrait<SavedWorkspaceAgentPane>
+    {
+        SavedWorkspaceAgentPane FromJson(const Json::Value& json)
+        {
+            auto pane = winrt::make_self<implementation::SavedWorkspaceAgentPane>();
+            GetValueForKey(json, "cli", pane->_Cli);
+            GetValueForKey(json, "model", pane->_Model);
+            GetValueForKey(json, "agentSessionId", pane->_AgentSessionId);
+            GetValueForKey(json, "position", pane->_Position);
+            return *pane;
+        }
+
+        bool CanConvert(const Json::Value& json)
+        {
+            return json.isObject();
+        }
+
+        Json::Value ToJson(const SavedWorkspaceAgentPane& val)
+        {
+            Json::Value json{ Json::objectValue };
+            SetValueForKey(json, "cli", val.Cli());
+            SetValueForKey(json, "model", val.Model());
+            SetValueForKey(json, "agentSessionId", val.AgentSessionId());
+            SetValueForKey(json, "position", val.Position());
+            return json;
+        }
+
+        std::string TypeDescription() const
+        {
+            return "SavedWorkspaceAgentPane";
+        }
+    };
+
+    template<>
+    struct ConversionTrait<SavedWorkspaceTab>
+    {
+        SavedWorkspaceTab FromJson(const Json::Value& json)
+        {
+            auto tab = winrt::make_self<implementation::SavedWorkspaceTab>();
+            GetValueForKey(json, "sourceStableId", tab->_SourceStableId);
+            GetValueForKey(json, "workspaceTabId", tab->_WorkspaceTabId);
+            GetValueForKey(json, "tabActions", tab->_TabActions);
+            GetValueForKey(json, "bufferSessionIds", tab->_BufferSessionIds);
+            // agentPane is reserved and optional; only populate when present.
+            if (json.isObject() && json.isMember("agentPane") && json["agentPane"].isObject())
+            {
+                ConversionTrait<SavedWorkspaceAgentPane> paneTrait;
+                tab->_AgentPane = paneTrait.FromJson(json["agentPane"]);
+            }
+            return *tab;
+        }
+
+        bool CanConvert(const Json::Value& json)
+        {
+            return json.isObject();
+        }
+
+        Json::Value ToJson(const SavedWorkspaceTab& val)
+        {
+            Json::Value json{ Json::objectValue };
+            SetValueForKey(json, "sourceStableId", val.SourceStableId());
+            SetValueForKey(json, "workspaceTabId", val.WorkspaceTabId());
+            SetValueForKey(json, "tabActions", val.TabActions());
+            SetValueForKey(json, "bufferSessionIds", val.BufferSessionIds());
+            if (const auto pane = val.AgentPane())
+            {
+                ConversionTrait<SavedWorkspaceAgentPane> paneTrait;
+                json["agentPane"] = paneTrait.ToJson(pane);
+            }
+            return json;
+        }
+
+        std::string TypeDescription() const
+        {
+            return "SavedWorkspaceTab";
+        }
+    };
+
+    template<>
+    struct ConversionTrait<SavedWorkspaceSession>
+    {
+        SavedWorkspaceSession FromJson(const Json::Value& json)
+        {
+            auto session = winrt::make_self<implementation::SavedWorkspaceSession>();
+            GetValueForKey(json, "id", session->_Id);
+            GetValueForKey(json, "title", session->_Title);
+            GetValueForKey(json, "savedAt", session->_SavedAt);
+            GetValueForKey(json, "tabs", session->_Tabs);
+            return *session;
+        }
+
+        bool CanConvert(const Json::Value& json)
+        {
+            return json.isObject();
+        }
+
+        Json::Value ToJson(const SavedWorkspaceSession& val)
+        {
+            Json::Value json{ Json::objectValue };
+            SetValueForKey(json, "id", val.Id());
+            SetValueForKey(json, "title", val.Title());
+            SetValueForKey(json, "savedAt", val.SavedAt());
+            SetValueForKey(json, "tabs", val.Tabs());
+            return json;
+        }
+
+        std::string TypeDescription() const
+        {
+            return "SavedWorkspaceSession";
+        }
+    };
 }
 
 using namespace ::Microsoft::Terminal::Settings::Model;
@@ -90,6 +206,31 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
         }
         JsonUtils::ConversionTrait<Model::WindowLayout> trait;
+        return trait.FromJson(root);
+    }
+
+    winrt::hstring SavedWorkspaceSession::ToJson(const Model::SavedWorkspaceSession& session)
+    {
+        JsonUtils::ConversionTrait<Model::SavedWorkspaceSession> trait;
+        auto json = trait.ToJson(session);
+
+        Json::StreamWriterBuilder wbuilder;
+        const auto content = Json::writeString(wbuilder, json);
+        return hstring{ til::u8u16(content) };
+    }
+
+    Model::SavedWorkspaceSession SavedWorkspaceSession::FromJson(const hstring& str)
+    {
+        auto data = til::u16u8(str);
+        std::string errs;
+        std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
+
+        Json::Value root;
+        if (!reader->parse(data.data(), data.data() + data.size(), &root, &errs))
+        {
+            throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
+        }
+        JsonUtils::ConversionTrait<Model::SavedWorkspaceSession> trait;
         return trait.FromJson(root);
     }
 
@@ -314,6 +455,63 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
 
         _throttler();
+    }
+
+    void ApplicationState::UpsertSavedWorkspaceSession(Model::SavedWorkspaceSession session)
+    {
+        {
+            const auto state = _state.lock();
+            if (!state->SavedWorkspaceSessions || !*state->SavedWorkspaceSessions)
+            {
+                state->SavedWorkspaceSessions = winrt::single_threaded_vector<Model::SavedWorkspaceSession>();
+            }
+
+            auto& vec = *state->SavedWorkspaceSessions;
+            bool replaced = false;
+            for (uint32_t i = 0; i < vec.Size(); ++i)
+            {
+                if (vec.GetAt(i).Id() == session.Id())
+                {
+                    vec.SetAt(i, session);
+                    replaced = true;
+                    break;
+                }
+            }
+
+            if (!replaced)
+            {
+                vec.Append(std::move(session));
+            }
+        }
+
+        _throttler();
+    }
+
+    bool ApplicationState::RemoveSavedWorkspaceSession(const hstring& id)
+    {
+        bool removed = false;
+        {
+            const auto state = _state.lock();
+            if (state->SavedWorkspaceSessions && *state->SavedWorkspaceSessions)
+            {
+                auto& vec = *state->SavedWorkspaceSessions;
+                for (uint32_t i = 0; i < vec.Size(); ++i)
+                {
+                    if (vec.GetAt(i).Id() == id)
+                    {
+                        vec.RemoveAt(i);
+                        removed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (removed)
+        {
+            _throttler();
+        }
+        return removed;
     }
 
     bool ApplicationState::DismissBadge(const hstring& badgeId)

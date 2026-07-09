@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <filesystem>
+
 #include <ThrottledFunc.h>
 
 #include "TerminalPage.g.h"
@@ -204,12 +206,20 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
+        Windows::Foundation::IAsyncOperation<winrt::hstring> SaveWorkspaceSessionProtocol(winrt::hstring tabIds, winrt::hstring title, winrt::hstring mode);
+        Windows::Foundation::IAsyncOperation<winrt::hstring> ListSavedWorkspaceSessionsProtocol();
+        winrt::hstring GetWorkspaceBindings(winrt::hstring workspaceId);
+        winrt::hstring PlanWorkspaceRestore(winrt::hstring workspaceId, winrt::hstring allLiveBindingsJson);
+        void RestoreMissingWorkspaceTabs(winrt::hstring workspaceId, winrt::hstring missingTabIdsJson);
+        void SetRestoreWorkspaceOnInit(winrt::hstring id);
+        Windows::Foundation::IAsyncOperation<bool> DeleteSavedWorkspaceSessionProtocol(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
+        void OnAgentSessionInfoChanged(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
@@ -446,6 +456,19 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        // Set on a freshly created window (by WindowEmperor) so the page
+        // self-restores that Eternal-Terminal workspace once it's Initialized.
+        winrt::hstring _restoreWorkspaceIdOnInit{};
+        safe_void_coroutine _RestoreWorkspaceOnInit(winrt::hstring id);
+        safe_void_coroutine _RestoreMissingWorkspaceTabs(winrt::hstring id, winrt::hstring missingTabIdsJson);
+        // Bind newly created restored tabs (workspace id + pending agent-pane
+        // load hint) synchronously as they appear, so the hint is registered
+        // before each tab's deferred pre-warm tick can race ahead. `boundTabs`
+        // is carried across calls so each restored tab is bound exactly once.
+        void _BindRestoredWorkspaceTabs(const winrt::hstring& id,
+                                        const std::vector<Microsoft::Terminal::Settings::Model::SavedWorkspaceTab>& restoredTabsInOrder,
+                                        uint32_t tabCountBefore,
+                                        uint32_t& boundTabs);
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
         // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
@@ -526,6 +549,8 @@ namespace winrt::TerminalApp::implementation
         void _NotifyAgentTabClosed(const winrt::hstring& tabId);
         void _NotifyAgentTabReset(const winrt::hstring& tabId);
         void _NotifyAgentTabChanged(const winrt::hstring& tabId);
+        static std::filesystem::path _SavedWorkspaceSessionDir(const winrt::hstring& id);
+
         // Look up a tab by its StableId; returns nullptr if unknown.
         winrt::com_ptr<Tab> _FindTabByStableId(const winrt::hstring& stableId) const;
         // Look up a tab by the AgentPaneContent instance hosted in it.

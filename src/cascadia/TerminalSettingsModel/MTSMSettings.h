@@ -82,6 +82,7 @@ Author(s):
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
     X(hstring, AgentPanePosition, "agentPanePosition", L"bottom")                                                                                                                                       \
+    X(bool, EternalTerminalEnabled, "experimental.eternalTerminal.enabled", false)                                                                                                                       \
     X(bool, AiCoordinatorEnabled, "aiIntegration.coordinator.enabled", false)                                                                                                                          \
     X(hstring, AiCoordinatorCommandline, "aiIntegration.coordinator.commandline", L"wta")                                                                                                                     \
     X(hstring, AiCoordinatorProfile, "aiIntegration.coordinator.profile", L"{fd19208a-412b-4857-8a2d-9ca592b4b16e}")                                                                                   \

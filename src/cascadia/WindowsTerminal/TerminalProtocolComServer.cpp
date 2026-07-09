@@ -231,6 +231,8 @@ static Json::Value _toJson(const Protocol::TabInfo& t)
     v["title"] = winrt::to_string(t.Title);
     v["is_active"] = static_cast<bool>(t.IsActive);
     v["pane_count"] = static_cast<Json::UInt>(t.PaneCount);
+    v["stable_id"] = winrt::to_string(t.StableId);
+    v["cwd"] = winrt::to_string(t.Cwd);
     return v;
 }
 
@@ -302,6 +304,13 @@ static Json::Value _toJson(const Protocol::TabCreationResult& r)
 static winrt::hstring _hstr(BSTR b)
 {
     return b ? winrt::hstring{ b } : winrt::hstring{};
+}
+
+static BSTR _bstrFromHstring(const winrt::hstring& s)
+{
+    BSTR b = ::SysAllocString(s.c_str());
+    THROW_IF_NULL_ALLOC(b);
+    return b;
 }
 
 void TerminalProtocolComServer::_ensurePageEventsRegistered()
@@ -526,6 +535,10 @@ try
         "subscribe",
         "unsubscribe",
         "send_event",
+        "save_workspace_session",
+        "list_saved_workspace_sessions",
+        "restore_workspace_session",
+        "delete_saved_workspace_session",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -967,6 +980,90 @@ try
 }
 CATCH_RETURN()
 
+STDMETHODIMP TerminalProtocolComServer::SaveWorkspaceSession(BSTR tabIds, BSTR title, BSTR mode, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        const auto result = page.SaveWorkspaceSessionProtocol(_hstr(tabIds), _hstr(title), _hstr(mode)).get();
+        if (!result.empty())
+        {
+            *json = _bstrFromHstring(result);
+            return S_OK;
+        }
+    }
+
+    return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListSavedWorkspaceSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        *json = _bstrFromHstring(page.ListSavedWorkspaceSessionsProtocol().get());
+        return S_OK;
+    }
+
+    return E_FAIL;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::RestoreWorkspaceSession(BSTR id, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    // Queue the id + post to the emperor's message window so cross-window
+    // restore routing runs on the UI thread.
+    s_emperor->RequestRestoreWorkspace(_hstr(id));
+
+    Json::Value out{ Json::objectValue };
+    out["outcome"] = "opened";
+    Json::StreamWriterBuilder wb;
+    *json = _bstrFromHstring(winrt::to_hstring(Json::writeString(wb, out)));
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::DeleteSavedWorkspaceSession(BSTR id)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+            continue;
+
+        (void)page.DeleteSavedWorkspaceSessionProtocol(_hstr(id)).get();
+        return S_OK;
+    }
+
+    return E_FAIL;
+}
+CATCH_RETURN()
+
 // ============================================================================
 // Events — push-based via classic sink
 // ============================================================================
@@ -1068,6 +1165,11 @@ try
         return S_OK;
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventH);
+        return S_OK;
+    case ProtocolParsing::SendEventRoute::AgentSessionInfo:
+        // Per-tab ACP session id + conversation gate from wta. Page-side
+        // handler routes by `tab_id` and caches the values on the Tab.
+        _dispatchAgentSessionInfoToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
@@ -1181,6 +1283,41 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
                 try
                 {
                     page.OnAgentStatusChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentSessionInfoToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Tab StableIds are unique across windows; fan out and let each page
+    // route by tab_id. Pages without a matching tab no-op the call.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentSessionInfoChanged(eventJson);
                 }
                 catch (...)
                 {

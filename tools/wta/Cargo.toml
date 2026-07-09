@@ -24,6 +24,7 @@ futures = "0.3"
 unicode-width = "0.2"
 textwrap = "0.16"
 serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
