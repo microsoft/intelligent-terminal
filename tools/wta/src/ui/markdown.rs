@@ -392,7 +392,7 @@ fn wrap_runs_to_width(runs: &[StyledRun], width: usize) -> Vec<Vec<StyledRun>> {
             }
             row_width += ch_width;
             if chars[cursor].ch.is_whitespace() {
-                if seen_non_whitespace {
+                if seen_non_whitespace && !is_code_style(chars[cursor].style) {
                     last_space = Some(cursor);
                 }
             } else {
@@ -447,10 +447,14 @@ fn trim_trailing_space(chars: &[StyledChar]) -> usize {
     }
 
     let mut end = chars.len();
-    while end > 0 && chars[end - 1].ch.is_whitespace() {
+    while end > 0 && chars[end - 1].ch.is_whitespace() && !is_code_style(chars[end - 1].style) {
         end -= 1;
     }
     end
+}
+
+fn is_code_style(style: Style) -> bool {
+    style.add_modifier.contains(Modifier::REVERSED)
 }
 
 fn chars_to_runs(chars: &[StyledChar]) -> Vec<StyledRun> {
@@ -644,6 +648,17 @@ beta
             1,
             "trailing separator whitespace after content should still be trimmed"
         );
+
+        let code = vec![
+            StyledChar { ch: 'a', style: code_style(theme::AGENT_TEXT) },
+            StyledChar { ch: ' ', style: code_style(theme::AGENT_TEXT) },
+            StyledChar { ch: ' ', style: code_style(theme::AGENT_TEXT) },
+        ];
+        assert_eq!(
+            trim_trailing_space(&code),
+            code.len(),
+            "trailing spaces are code content and must not be trimmed"
+        );
     }
 
     #[test]
@@ -741,6 +756,23 @@ regular
         for line in lines {
             assert!(
                 line_display_width(&line) <= 10,
+                "line exceeded width: {:?}",
+                line_text(&line)
+            );
+        }
+    }
+
+    #[test]
+    fn wrapped_inline_code_preserves_spaces() {
+        let lines = render_text("`a  b`", 5);
+        let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+        assert!(
+            text.contains("a  \n  b"),
+            "inline code spaces must survive wrapping: {text:?}"
+        );
+        for line in lines {
+            assert!(
+                line_display_width(&line) <= 5,
                 "line exceeded width: {:?}",
                 line_text(&line)
             );
