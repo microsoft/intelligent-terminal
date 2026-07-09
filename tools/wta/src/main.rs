@@ -2190,16 +2190,17 @@ async fn delegate_with_context(
                         &wsl_agent_cmd,
                     );
                 let login_invocation = format!("bash -lc {}", escaped);
+                let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
                 let wsl_cwd = active_pane
                     .get("cwd")
                     .and_then(|v| v.as_str())
                     .filter(|s| s.starts_with('/') && !s.contains('"'));
                 let wsl_commandline = match wsl_cwd {
                     Some(cwd) => format!(
-                        "wsl -d {distro} --cd \"{cwd}\" -- {login_invocation}"
+                        "wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}"
                     ),
                     None => format!(
-                        "wsl -d {distro} -- {login_invocation}"
+                        "wsl -d {distro_arg} -- {login_invocation}"
                     ),
                 };
 
