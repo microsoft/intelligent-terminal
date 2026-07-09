@@ -196,9 +196,7 @@ fn pop_style(styles: &mut Vec<Style>) {
 }
 
 fn code_style(style: Style) -> Style {
-    style
-        .fg(Color::Yellow)
-        .add_modifier(Modifier::REVERSED)
+    style.add_modifier(Modifier::REVERSED)
 }
 
 fn link_style(style: Style) -> Style {
