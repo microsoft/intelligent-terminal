@@ -2229,10 +2229,10 @@ async fn delegate_with_context(
                 if let (Some(sid), Some(pane)) =
                     (pinned_session_id.as_deref(), pane_guid.as_deref())
                 {
-                    register_launched_session_with_master(
-                        sid, pane, &runtime.id, cwd,
-                    )
-                    .await;
+register_launched_session_with_master(
+    sid, pane, &runtime.id, wsl_cwd.or(cwd),
+)
+.await;
                 }
                 return Ok(());
             }
