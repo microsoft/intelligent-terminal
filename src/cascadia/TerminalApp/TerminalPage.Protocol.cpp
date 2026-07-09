@@ -1215,18 +1215,11 @@ namespace winrt::TerminalApp::implementation
 
             const auto stableId = ti->StableId();
             const auto sid = winrt::to_string(ap.AgentSessionId());
-            std::string histPath;
-            if (const auto histFile = ap.ChatHistoryFile(); !histFile.empty())
-            {
-                histPath = winrt::to_string((_SavedWorkspaceSessionDir(id) / std::wstring_view{ histFile }).wstring());
-            }
-            if ((!sid.empty() || !histPath.empty()) && !stableId.empty())
+            if (!sid.empty() && !stableId.empty())
             {
                 // The deferred pre-warm consumes this: --initial-load-session-id
-                // rehydrates agent memory via session/load, --initial-chat-history
-                // restores the exact saved chat UI (and suppresses the load's
-                // plain-text replay). Either may be empty independently.
-                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{}, histPath };
+                // rehydrates the agent conversation via session/load.
+                _pendingLoadSessions[stableId] = _PendingLoadSession{ sid, std::string{} };
             }
             // /save-ws is only typed in a visible agent pane, so restore
             // reopens it visible. The echo of this request lands in

@@ -432,6 +432,25 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
     out
 }
 
+/// The user's actual request from a replayed planner prompt: everything after
+/// the last `## User Request` marker. Non-planner sessions have no marker and
+/// are returned unchanged.
+fn strip_prompt_scaffolding(text: &str) -> &str {
+    match text.rsplit_once("## User Request\n") {
+        Some((_, tail)) => tail,
+        None => text,
+    }
+}
+
+/// Render a replayed agent message the way the live path would: recommendation
+/// JSON becomes the formatted "Suggested ... Run ..." summary; prose stays raw.
+fn render_replayed_agent_text(text: String) -> String {
+    match crate::coordinator::parse_recommendation_set(&text) {
+        Ok(set) => format_recommendations_for_chat(&set),
+        Err(_) => text,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanEntry {
     pub content: String,
@@ -1373,14 +1392,6 @@ pub struct TabSession {
     /// agent message / thought / tool call starts, OR the load
     /// completes (SessionAttached for the loading tab).
     pub pending_user_replay: String,
-    /// One-shot: when true, a `session/load` completing for this tab
-    /// DISCARDS its replayed transcript instead of packing it into turns.
-    /// Set when the tab's UI was rehydrated from a persisted
-    /// agent-pane-history file (Eternal-Terminal `/restore-ws`), so the
-    /// exact saved UI is shown and the plain-text load replay (plus the
-    /// injected system-prompt turn) isn't duplicated. The load still runs
-    /// for agent-side memory.
-    pub suppress_load_replay: bool,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
     /// call. While set, session/update chunk handlers accept chunks
@@ -1655,13 +1666,20 @@ impl TabSession {
                             trailing_marker: None,
                         });
                     }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
+                    let clean = strip_prompt_scaffolding(&text).to_string();
+                    let preview = collapsed_prompt_preview(&clean);
+                    let details = vec![ChatMessage::User(clean)];
                     current = Some((preview, details));
                 }
                 other => {
                     if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
+                        let display_msg = match other {
+                            ChatMessage::Agent(text) => {
+                                ChatMessage::Agent(render_replayed_agent_text(text))
+                            }
+                            other => other,
+                        };
+                        details.push(display_msg);
                     } else {
                         kept.push(other);
                     }
@@ -4620,18 +4638,8 @@ impl App {
                     .map(|t| t == session_id.as_str())
                     .unwrap_or(false);
                 if tab.loading_session && is_load_target {
-                    if tab.suppress_load_replay {
-                        // UI already rehydrated from a saved history file —
-                        // drop the load's plain-text replay so it isn't
-                        // duplicated (and the injected system-prompt turn
-                        // doesn't show). The load still ran for agent memory.
-                        tab.pending_user_replay.clear();
-                        tab.pending_agent_response.clear();
-                        tab.suppress_load_replay = false;
-                    } else {
-                        tab.flush_load_replay_pending();
-                        tab.pack_replayed_messages_into_turns();
-                    }
+                    tab.flush_load_replay_pending();
+                    tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
                     tab.scroll_to_bottom();
@@ -5694,45 +5702,26 @@ impl App {
                         tab.selected_completed_turn_idx = None;
                         tab.session_id = None;
 
-                        if tab.suppress_load_replay {
-                            // Eternal-Terminal restore: the saved rich chat UI
-                            // was already rehydrated into `completed_turns` from
-                            // the history file (main.rs, before this load). Keep
-                            // it and DON'T open the replay window — leaving
-                            // `loading_session` false makes every session/update
-                            // replay chunk hit the chunk handlers'
-                            // `!loading_session` gate and get dropped, so the
-                            // agent's plain-text transcript (incl. the injected
-                            // system-prompt turn) never overwrites the saved UI.
-                            // The session/load below still runs, purely to
-                            // restore the agent's server-side memory; the
-                            // SessionAttached handler binds `session_id` before
-                            // its `loading_session` check, so that still works.
-                            // One-shot: consume the flag now (the SessionAttached
-                            // suppress branch won't run with the window closed).
-                            tab.suppress_load_replay = false;
-                        } else {
-                            tab.clear_chat_history();
-                            tab.completed_turns.clear();
-                            // Open the replay window: chunk handlers will
-                            // now accept session/update events for this
-                            // tab even though `turn` stays Idle. Closed by
-                            // the SessionAttached handler when the attach
-                            // event arrives for THIS specific session id
-                            // (unrelated SessionAttached events — e.g. the
-                            // bootstrap `session/new` racing with a
-                            // boot-time Plan-C initial-load — must not
-                            // close it).
-                            tab.loading_session = true;
-                            tab.loading_target_session_id = Some(session_id.to_string());
-                            tab.messages.push(ChatMessage::System(
-                                t!(
-                                    "system.resuming_session",
-                                    session_id = session_id
-                                )
-                                .into_owned(),
-                            ));
-                        }
+                        tab.clear_chat_history();
+                        tab.completed_turns.clear();
+                        // Open the replay window: chunk handlers will
+                        // now accept session/update events for this
+                        // tab even though `turn` stays Idle. Closed by
+                        // the SessionAttached handler when the attach
+                        // event arrives for THIS specific session id
+                        // (unrelated SessionAttached events — e.g. the
+                        // bootstrap `session/new` racing with a
+                        // boot-time Plan-C initial-load — must not
+                        // close it).
+                        tab.loading_session = true;
+                        tab.loading_target_session_id = Some(session_id.to_string());
+                        tab.messages.push(ChatMessage::System(
+                            t!(
+                                "system.resuming_session",
+                                session_id = session_id
+                            )
+                            .into_owned(),
+                        ));
                         tab.scroll_to_bottom();
                     }
                     // If the load_session target IS the active tab, push the
@@ -8183,20 +8172,6 @@ impl App {
                 tracing::debug!(target: "chat_history", error = %e, "persist failed")
             }
         }
-    }
-
-    /// Rehydrate the owner tab's chat UI from a persisted agent-pane-history
-    /// file (Eternal-Terminal `/restore-ws`). Restores the exact `CompletedTurn`
-    /// rows (prompt titles, recommendation cards, executed markers) and marks
-    /// the tab so the accompanying `session/load` replay is suppressed.
-    pub fn rehydrate_owner_tab_history(&mut self, history: crate::chat_history::ChatHistoryFile) {
-        let Some(tab_id) = self.owner_tab_id.clone() else {
-            return;
-        };
-        let tab = self.tab_mut(&tab_id);
-        tab.completed_turns = history.completed_turns;
-        tab.suppress_load_replay = true;
-        tab.scroll_to_bottom();
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
@@ -11541,19 +11516,36 @@ mod tests {
     }
 
     /// Replayed history must be packed into collapsed CompletedTurn rows
-    /// after session/load completes. Each User message opens a new turn;
-    /// the prompt header is a short preview (the full original User text
-    /// is kept as the first details entry so expanding shows everything).
-    /// Subsequent non-User messages become later details. Default
-    /// `expanded: false` so the resumed transcript doesn't dump as one
-    /// long wall.
+    /// after session/load completes. User prompts are cleaned to the real
+    /// request text and replayed recommendation JSON is rendered as the
+    /// same summary text used by live turns.
     #[test]
-    fn pack_replayed_messages_groups_into_collapsed_turns() {
+    fn pack_replayed_messages_strips_scaffolding_and_renders_recommendation_card() {
         let mut tab = TabSession::default();
+        let replayed_prompt = "# Terminal Agent\nYou are...\n\n### Pane context\npwd\n\n## User Request\ngetdate";
+        let replayed_recommendation = r#"The recommended fix is:
+
+```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Run Get-Date",
+      "actions": [
+        {
+          "type": "send",
+          "input": "Get-Date"
+        }
+      ]
+    }
+  ]
+}
+```"#;
         tab.messages = vec![
             ChatMessage::System("Resuming session abc...".to_string()),
-            ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
-            ChatMessage::Agent("Hello, I am ready.".to_string()),
+            ChatMessage::User(replayed_prompt.to_string()),
+            ChatMessage::Agent(replayed_recommendation.to_string()),
             ChatMessage::User("list files".to_string()),
             ChatMessage::ToolCall {
                 id: "t1".to_string(),
@@ -11573,12 +11565,10 @@ mod tests {
         assert_eq!(tab.completed_turns.len(), 2);
 
         let t0 = &tab.completed_turns[0];
-        // Preview shows first non-empty line + ellipsis (extra lines below).
-        assert_eq!(t0.prompt, "# Terminal Agent…");
-        // details = [original full User, Agent reply].
+        assert_eq!(t0.prompt, "getdate");
         assert_eq!(t0.details.len(), 2);
-        assert!(matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are")));
-        assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
+        assert!(matches!(&t0.details[0], ChatMessage::User(s) if s == "getdate"));
+        assert!(matches!(&t0.details[1], ChatMessage::Agent(s) if s == "Suggested 1 option:\n  ✓ 1. Run: Get-Date"));
         assert!(!t0.expanded, "replayed turn must default to collapsed");
         assert!(t0.trailing_marker.is_none());
 
@@ -11591,6 +11581,43 @@ mod tests {
         assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
         assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
         assert!(!t1.expanded);
+    }
+
+    /// Replayed plain prose is not recommendation JSON and must remain unchanged.
+    #[test]
+    fn pack_replayed_messages_preserves_plain_prose_agent_messages() {
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::User("explain status".to_string()),
+            ChatMessage::Agent("No actions needed.".to_string()),
+        ];
+
+        tab.pack_replayed_messages_into_turns();
+
+        assert_eq!(tab.completed_turns.len(), 1);
+        let turn = &tab.completed_turns[0];
+        assert_eq!(turn.prompt, "explain status");
+        assert!(matches!(&turn.details[0], ChatMessage::User(s) if s == "explain status"));
+        assert!(matches!(&turn.details[1], ChatMessage::Agent(s) if s == "No actions needed."));
+    }
+
+    /// Clean planner prompts (no leading persona/template) still display only the
+    /// request tail after the marker.
+    #[test]
+    fn pack_replayed_messages_strips_clean_user_request_marker() {
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::User("## User Request\nls".to_string()),
+            ChatMessage::Agent("Listed files.".to_string()),
+        ];
+
+        tab.pack_replayed_messages_into_turns();
+
+        assert_eq!(tab.completed_turns.len(), 1);
+        let turn = &tab.completed_turns[0];
+        assert_eq!(turn.prompt, "ls");
+        assert!(matches!(&turn.details[0], ChatMessage::User(s) if s == "ls"));
+        assert!(matches!(&turn.details[1], ChatMessage::Agent(s) if s == "Listed files."));
     }
 
     /// Preview logic: huge single-line prompt must clip to the cap with

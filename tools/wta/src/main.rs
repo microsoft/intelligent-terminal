@@ -244,14 +244,6 @@ struct Cli {
     #[arg(long, hide = true, value_name = "PATH")]
     initial_load_cwd: Option<String>,
 
-    /// Path to a persisted agent-pane-history JSON file (Eternal-Terminal
-    /// `/restore-ws`). When set, the helper rehydrates the exact saved chat
-    /// UI (turn titles, recommendation cards, executed markers) on boot and
-    /// suppresses the plain-text `session/load` replay. Hidden — only
-    /// Windows Terminal passes it. No-op outside `--connect-master`.
-    #[arg(long, hide = true, value_name = "PATH")]
-    initial_chat_history: Option<String>,
-
     /// Pre-warm mode: the helper is being spawned for a tab whose agent
     /// pane is *already stashed* on the C++ side (see TerminalPage::
     /// _AutoCreateHiddenAgentPaneShared autoStash path). Without this
@@ -3005,30 +2997,6 @@ async fn run_acp_app(
             // (the load_session handler routes by tab id), so we
             // silently skip if owner_tab_id is unset. Logged so a
             // misconfigured spawn is easy to diagnose.
-            // Eternal-Terminal restore: rehydrate the saved chat UI from the
-            // per-tab history file BEFORE any session/load replay so the exact
-            // saved turns are authoritative and the load replay is suppressed.
-            if let Some(ref hist_path) = cli.initial_chat_history {
-                if !hist_path.is_empty() {
-                    if let Some(history) =
-                        crate::chat_history::read_path(std::path::Path::new(hist_path))
-                    {
-                        tracing::info!(
-                            target: "chat_history",
-                            path = %hist_path,
-                            turns = history.completed_turns.len(),
-                            "rehydrating owner-tab chat UI from saved history"
-                        );
-                        app_state.rehydrate_owner_tab_history(history);
-                    } else {
-                        tracing::warn!(
-                            target: "chat_history",
-                            path = %hist_path,
-                            "failed to read/parse initial chat history file"
-                        );
-                    }
-                }
-            }
             if let Some(ref sid) = cli.initial_load_session_id {
                 if !sid.is_empty() {
                     let tab_id_opt = app_state

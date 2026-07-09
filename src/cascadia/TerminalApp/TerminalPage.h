@@ -453,7 +453,6 @@ namespace winrt::TerminalApp::implementation
         {
             std::string sessionId;
             std::string cwd;
-            std::string chatHistoryPath;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
         // Set on a freshly created window (by WindowEmperor) so the page
@@ -531,8 +530,7 @@ namespace winrt::TerminalApp::implementation
                                               bool intoSessionsView = false,
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
-                                              std::string_view initialLoadCwd = {},
-                                              std::string_view initialChatHistory = {});
+                                              std::string_view initialLoadCwd = {});
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

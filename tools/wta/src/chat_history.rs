@@ -9,13 +9,10 @@
 //! …\LocalCache\Local\IntelligentTerminal\agent-pane-history\{ownerTabId}.json
 //! ```
 //!
-//! The Eternal-Terminal workspace save (C++ side,
-//! `IntelligentTerminal::AgentPaneHistoryDir()`) copies the selected tabs'
-//! files into the workspace snapshot so `/restore-ws` can rehydrate the exact
-//! UI (via `--initial-chat-history`) instead of relying on the agent CLI's
-//! plain-text `session/load` replay. Writing proactively (on every turn end)
-//! means save never has to round-trip to the owning helper — it just reads
-//! files — which also generalizes cleanly to multi-tab workspaces.
+//! The Eternal-Terminal workspace save still reads these files to learn the
+//! ACP `session_id` for `session/load`. The chat UI itself is rebuilt from the
+//! agent CLI's replay, so the rendered turn snapshot is transitional data until
+//! the session-id channel moves to events.
 
 use std::path::PathBuf;
 
@@ -61,11 +58,4 @@ pub fn write(tab_id: &str, history: &ChatHistoryFile) -> std::io::Result<()> {
     let json = serde_json::to_vec_pretty(history)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     std::fs::write(&path, json)
-}
-
-/// Read + parse a history file from an explicit path (used on restore, where
-/// C++ passes the workspace-local copy via `--initial-chat-history`).
-pub fn read_path(path: &std::path::Path) -> Option<ChatHistoryFile> {
-    let bytes = std::fs::read(path).ok()?;
-    serde_json::from_slice::<ChatHistoryFile>(&bytes).ok()
 }
