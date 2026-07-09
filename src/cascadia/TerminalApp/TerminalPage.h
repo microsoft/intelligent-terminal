@@ -208,6 +208,9 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
         Windows::Foundation::IAsyncOperation<winrt::hstring> SaveWorkspaceSessionProtocol(winrt::hstring tabIds, winrt::hstring title, winrt::hstring mode);
         Windows::Foundation::IAsyncOperation<winrt::hstring> ListSavedWorkspaceSessionsProtocol();
+        winrt::hstring GetWorkspaceBindings(winrt::hstring workspaceId);
+        winrt::hstring PlanWorkspaceRestore(winrt::hstring workspaceId, winrt::hstring allLiveBindingsJson);
+        void RestoreMissingWorkspaceTabs(winrt::hstring workspaceId, winrt::hstring missingTabIdsJson);
         void SetRestoreWorkspaceOnInit(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<bool> DeleteSavedWorkspaceSessionProtocol(winrt::hstring id);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
@@ -457,12 +460,13 @@ namespace winrt::TerminalApp::implementation
         // self-restores that Eternal-Terminal workspace once it's Initialized.
         winrt::hstring _restoreWorkspaceIdOnInit{};
         safe_void_coroutine _RestoreWorkspaceOnInit(winrt::hstring id);
+        safe_void_coroutine _RestoreMissingWorkspaceTabs(winrt::hstring id, winrt::hstring missingTabIdsJson);
         // Bind newly created restored tabs (workspace id + pending agent-pane
         // load hint) synchronously as they appear, so the hint is registered
         // before each tab's deferred pre-warm tick can race ahead. `boundTabs`
         // is carried across calls so each restored tab is bound exactly once.
         void _BindRestoredWorkspaceTabs(const winrt::hstring& id,
-                                        const Microsoft::Terminal::Settings::Model::SavedWorkspaceSession& record,
+                                        const std::vector<Microsoft::Terminal::Settings::Model::SavedWorkspaceTab>& restoredTabsInOrder,
                                         uint32_t tabCountBefore,
                                         uint32_t& boundTabs);
         // Short-lived marks keyed by tab StableId: set whenever an agent
