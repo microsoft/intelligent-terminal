@@ -33,14 +33,14 @@ pub enum SoftStopReason {
 }
 
 impl SoftStopReason {
-    /// Classify a successful turn's [`acp::StopReason`]. Returns `None` for the
+    /// Classify a successful turn's [`acp::schema::v1::StopReason`]. Returns `None` for the
     /// outcomes that need no notice: `EndTurn` (normal) and `Cancelled`
     /// (already surfaced by the cancel path).
-    pub fn from_stop_reason(reason: acp::StopReason) -> Option<Self> {
+    pub fn from_stop_reason(reason: acp::schema::v1::StopReason) -> Option<Self> {
         match reason {
-            acp::StopReason::MaxTokens => Some(SoftStopReason::MaxTokens),
-            acp::StopReason::MaxTurnRequests => Some(SoftStopReason::MaxTurnRequests),
-            acp::StopReason::Refusal => Some(SoftStopReason::Refusal),
+            acp::schema::v1::StopReason::MaxTokens => Some(SoftStopReason::MaxTokens),
+            acp::schema::v1::StopReason::MaxTurnRequests => Some(SoftStopReason::MaxTurnRequests),
+            acp::schema::v1::StopReason::Refusal => Some(SoftStopReason::Refusal),
             // EndTurn / Cancelled and any future variant: not a soft stop.
             _ => None,
         }
@@ -63,13 +63,13 @@ mod tests {
 
     #[test]
     fn end_turn_is_not_a_soft_stop() {
-        assert_eq!(SoftStopReason::from_stop_reason(acp::StopReason::EndTurn), None);
+        assert_eq!(SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::EndTurn), None);
     }
 
     #[test]
     fn cancelled_is_not_a_soft_stop() {
         assert_eq!(
-            SoftStopReason::from_stop_reason(acp::StopReason::Cancelled),
+            SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::Cancelled),
             None
         );
     }
@@ -77,15 +77,15 @@ mod tests {
     #[test]
     fn limit_and_refusal_reasons_classify() {
         assert_eq!(
-            SoftStopReason::from_stop_reason(acp::StopReason::MaxTokens),
+            SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::MaxTokens),
             Some(SoftStopReason::MaxTokens)
         );
         assert_eq!(
-            SoftStopReason::from_stop_reason(acp::StopReason::MaxTurnRequests),
+            SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::MaxTurnRequests),
             Some(SoftStopReason::MaxTurnRequests)
         );
         assert_eq!(
-            SoftStopReason::from_stop_reason(acp::StopReason::Refusal),
+            SoftStopReason::from_stop_reason(acp::schema::v1::StopReason::Refusal),
             Some(SoftStopReason::Refusal)
         );
     }

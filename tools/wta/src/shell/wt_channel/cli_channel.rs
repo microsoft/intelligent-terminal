@@ -86,6 +86,7 @@ pub enum FocusPaneFailureReason {
 ///
 /// Thin wrapper over `spawn_wtcli_focus_pane_with_callback` for callers that
 /// don't care about distinguishing failure modes.
+#[allow(dead_code)]
 pub fn spawn_wtcli_focus_pane(pane_session_id: &str) {
     spawn_wtcli_focus_pane_with_callback(pane_session_id, None);
 }

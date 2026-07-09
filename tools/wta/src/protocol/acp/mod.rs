@@ -1,4 +1,5 @@
 pub mod client;
+pub mod conn;
 pub mod failure;
 pub mod model_select;
 pub mod probe;

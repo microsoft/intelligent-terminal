@@ -946,6 +946,74 @@ pub fn needs_shell_launch(commandline: &str) -> bool {
     needs_cmd_wrapper(&first_token)
 }
 
+/// Returns true if the first token of `commandline` can actually be launched —
+/// i.e. it resolves to a real program: a shell, an `.exe`/`.cmd`/`.bat`/`.com`
+/// found on PATH, or an existing file. Used to detect a misconfigured /
+/// nonexistent delegate agent *before* spawning the tab: without this, WT
+/// creates the tab, the not-found command exits instantly, and WT closes the
+/// pane before the user can see the error (the tab just flashes shut). Known
+/// built-in agents are covered because `resolve_commandline_executable` first
+/// resolves them to a concrete path.
+pub fn delegate_command_launchable(commandline: &str) -> bool {
+    let resolved = resolve_commandline_executable(commandline);
+    let token = match split_windows_commandline(&resolved).into_iter().next() {
+        Some(t) => t,
+        None => return false,
+    };
+    let unquoted = token.trim_matches('"');
+    if unquoted.is_empty() {
+        return false;
+    }
+    let lower = unquoted.to_ascii_lowercase();
+    let basename = lower
+        .rsplit(|c: char| c == '\\' || c == '/')
+        .next()
+        .unwrap_or(&lower);
+    // Shells are always launchable.
+    if matches!(
+        basename,
+        "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+    ) {
+        return true;
+    }
+    let path = std::path::Path::new(unquoted);
+    // An explicit path (contains a separator): it must exist as a file — try the
+    // common executable extensions when none was given.
+    if unquoted.contains('\\') || unquoted.contains('/') {
+        if path.is_file() {
+            return true;
+        }
+        if path.extension().is_none() {
+            for ext in ["exe", "cmd", "bat", "com"] {
+                if path.with_extension(ext).is_file() {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    // A bare name: search PATH. With an extension look for it verbatim; otherwise
+    // try the common executable extensions.
+    let Ok(path_var) = std::env::var("PATH") else {
+        return false;
+    };
+    let has_ext = path.extension().is_some();
+    for dir in std::env::split_paths(&path_var) {
+        if has_ext {
+            if dir.join(unquoted).is_file() {
+                return true;
+            }
+        } else {
+            for ext in ["exe", "cmd", "bat", "com"] {
+                if dir.join(format!("{unquoted}.{ext}")).is_file() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 // Quote arguments using the standard Windows CommandLineToArgvW escaping rules.
 fn quote_windows_commandline_arg(arg: &str) -> String {
     if arg.is_empty() {
@@ -1289,6 +1357,23 @@ mod tests {
         assert!(commandline.contains("--model claude-haiku-4.5"));
         // No startup-prompt flag is appended when there's no prompt.
         assert!(!commandline.contains("-i "));
+    }
+
+    #[test]
+    fn delegate_command_launchable_detects_missing_agent() {
+        // A shell is always launchable; a real system exe resolves on PATH; a
+        // bogus bare name does not — this is the up-front check that lets the
+        // delegate open a persistent error tab instead of a tab that flashes shut.
+        assert!(super::delegate_command_launchable("cmd"));
+        assert!(super::delegate_command_launchable("cmd.exe /c echo hi"));
+        assert!(
+            !super::delegate_command_launchable("wt-nonexistent-delegate-xyz"),
+            "a nonexistent bare command must be reported as not launchable"
+        );
+        assert!(
+            !super::delegate_command_launchable("wt-nonexistent-delegate-xyz -i \"hi\""),
+            "extra args must not make a missing agent look launchable"
+        );
     }
 
     #[test]

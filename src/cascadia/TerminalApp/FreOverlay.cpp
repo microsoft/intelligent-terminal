@@ -1742,7 +1742,12 @@ namespace winrt::TerminalApp::implementation
             // if anything keeps the overlay alive a moment longer, it
             // doesn't appear stuck in the "saving" visual.
             _SetSavingState(false);
-            Completed.raise(*this, nullptr);
+            winrt::Windows::Foundation::IInspectable completedArgs{ nullptr };
+            if (needsCopilot)
+            {
+                completedArgs = winrt::box_value(winrt::hstring{ L"copilot" });
+            }
+            Completed.raise(*this, completedArgs);
         }
     }
 

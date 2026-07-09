@@ -21,12 +21,18 @@ function Get-SessionViewRenderRegex {
 function Open-SessionList {
     <#
     .SYNOPSIS
-        Open the session-management view in the agent pane (via SessionToggleButton) and
-        wait until the list renders. Returns the agent pane session object.
+        Open the session-management view in the agent pane and wait until the list renders.
+        Returns the agent pane session object.
     .NOTES
-        SessionToggleButton is a TOGGLE: if the view is already open (or a click lands during a
-        transition) a single press can CLOSE it, leaving us in chat view. So we verify the list
-        actually rendered and re-toggle up to a few times instead of trusting one click.
+        PRIMARY mechanism is the `/sessions` SLASH command (Invoke-AgentMenuItem): it is typed into
+        the agent pane BY SESSION ID (focus-independent) and switches+reads the SAME pane, so it is
+        reliable even when the per-tab pre-warm has stashed EXTRA agent panes in the run. The
+        bottom-bar SessionToggleButton click, by contrast, can land on / be read against a different
+        pane and intermittently fails to render ("did not render after N toggles") — see the
+        run-scoped resolution note in release-coverage-map.psd1. The button itself is verified at the
+        product level (it emits `set_agent_state view=sessions`) by Feature.SessionList's dedicated
+        "Session button works" case; here we just need the view open reliably, so we prefer the slash
+        path and fall back to the button only if the slash menu is unavailable.
     #>
     [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 20)
     process {
@@ -34,14 +40,21 @@ function Open-SessionList {
         $sess = Get-AgentPaneSession -App $App
         $renderRe = Get-SessionViewRenderRegex
         $shownNow = { (Get-AgentPaneText -App $App -MaxLines 50) -match $renderRe }
-        $perTry = [Math]::Max(3, [int]($TimeoutSec / 3))
+        if (& $shownNow) { return $sess }
+        $perTry = [Math]::Max(4, [int]($TimeoutSec / 3))
+        # PRIMARY: the `/sessions` slash command (reliable — see .NOTES).
         for ($try = 0; $try -lt 3; $try++) {
-            # Already open? Don't toggle (that would CLOSE it). Otherwise press and verify.
+            if (& $shownNow) { return $sess }
+            try { Invoke-AgentMenuItem -App $App -Name '/sessions' | Out-Null } catch { }
+            if (Test-Until -TimeoutSec $perTry -IntervalSec 0.5 -Condition $shownNow) { return $sess }
+        }
+        # FALLBACK: the bottom-bar toggle button (best-effort if the slash menu didn't take).
+        for ($try = 0; $try -lt 2; $try++) {
             if (& $shownNow) { return $sess }
             Invoke-UiElement -App $App -Selector 'SessionToggleButton' -TimeoutSec 10 | Out-Null
             if (Test-Until -TimeoutSec $perTry -IntervalSec 0.5 -Condition $shownNow) { return $sess }
         }
-        throw "Open-SessionList: the session view did not render after 3 toggles (${TimeoutSec}s)."
+        throw "Open-SessionList: the session view did not render via /sessions or the toggle button (${TimeoutSec}s)."
     }
 }
 

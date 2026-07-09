@@ -133,6 +133,32 @@ Outputs (all under `test/e2e/artifacts/`):
 - `results.xml` — **NUnit XML** for CI test reporting (Azure DevOps / GitHub).
 - `summary.md` — Markdown: one block per **failed** test with the **exact error**, **file:line**,
   and any **artifact paths** (screenshots saved by `Assert-Ui`/`Assert-AgentPaneText`, log slices).
+- `release-report.md` — the **clean, jargon-free release checklist**, auto-generated as the final
+  step from `doc/release-check-list.md` + this run's `results.xml` (via `New-ReleaseReport.ps1`).
+  Every coverage tag (`[UT✓]`/`[E2E]`/`[MANUAL]`) and `_(UT: …)_` note is stripped, and each box is
+  driven purely by automation: **`[x]`** = a test passed, **`[ ] ⚠️ AUTOMATION FAILED`** = a test ran
+  and failed, plain **`[ ]`** = not covered this run, verify manually. Suppress with
+  `-SkipReleaseReport`; regenerate standalone from an existing `results.xml` with
+  `pwsh -File test/e2e/New-ReleaseReport.ps1`. Items listed in `test/e2e/release-exclude.psd1`
+  (by title regex, e.g. RTL) are dropped from the report to keep it focused on the sign-off set.
+
+  **Stable item IDs (`C001`, `C002`, …).** Every checkbox item in `doc/release-check-list.md`
+  carries a stable ID right after the box, and the generators carry it verbatim into
+  `release-report.md` — so you can refer to a case by number ("C136 is failing") and it means the
+  same item in both files. Assign/refresh IDs with `pwsh -File test/e2e/Set-ChecklistIds.ps1`
+  (idempotent: existing IDs are never renumbered; a newly-added item gets the next free number).
+
+  **Incremental update (no full-suite re-run needed).** `New-ReleaseReport.ps1` regenerates the
+  whole report, so a single-suite run would blank every item it didn't cover. To refresh just the
+  rows a partial run touched, use `Update-ReleaseReport.ps1`, which takes the EXISTING
+  `release-report.md` as the source of truth and overlays only this run's results: a covered item
+  that **passed** becomes `[x]`, one that **failed** becomes `[ ] ⚠️ AUTOMATION FAILED`, a covered
+  item that only **skipped** is left unchanged (a flaky skip never un-ticks a prior pass), and every
+  item **out of scope** for the run is preserved exactly. One-liner via the runner:
+  `pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.Delegate.Tests.ps1 -UpdateReport`
+  (runs the suite, then overlays only its items onto the existing report; falls back to a fresh
+  generate if no report exists yet). Or standalone after a run wrote `results.xml`:
+  `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.
