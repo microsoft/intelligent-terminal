@@ -306,6 +306,36 @@ fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFail
     )
 }
 
+/// True when a post-login reconnect could not even reach wta-master.
+///
+/// This is distinct from auth failure: after the IT setup flow installs Copilot,
+/// the old master may already be gone because it was spawned while `copilot`
+/// was missing. Login succeeds in the browser, but reconnecting to the saved
+/// pipe fails before initialize/authenticate/new_session can run. The right
+/// recovery is still the same fresh-master restart used for stale auth state.
+fn is_post_login_master_unavailable(
+    failure: &crate::protocol::acp::failure::AgentFailure,
+) -> bool {
+    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+    matches!(
+        failure,
+        AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            ..
+        }
+    )
+}
+
+fn should_trigger_post_login_recovery(
+    post_login_auth: bool,
+    is_external_auth_agent: bool,
+    failure: &crate::protocol::acp::failure::AgentFailure,
+) -> bool {
+    post_login_auth
+        && ((is_external_auth_agent && is_post_login_auth_failure(failure))
+            || is_post_login_master_unavailable(failure))
+}
+
 /// Build the diagnostic setup options list based on the configured agent state:
 /// install when the CLI is missing and auto-installable, sign in for Copilot
 /// auth failures, or retry for external-auth / manually repaired cases.
@@ -323,7 +353,7 @@ pub fn build_setup_options(
                     display_name: status.display_name.clone(),
                 });
             }
-        } else if !status.has_credential || *reason == SetupReason::AgentError {
+        } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
             if status.id == "copilot" {
                 // Copilot: we can drive the device-flow sign-in
@@ -360,6 +390,9 @@ pub enum ConnectionState {
 pub enum ChatMessage {
     User(String),
     Agent(String),
+    /// App-generated agent-style text that should stay literal (for example
+    /// parsed recommendation summaries containing command strings).
+    AgentLiteral(String),
     System(String),
     ToolCall {
         id: String,
@@ -1247,7 +1280,7 @@ pub enum AppEvent {
     /// Master broadcast that an alive session is gone via
     /// `intellterm.wta/session_removed`. Symmetric counterpart to
     /// `AliveSessionAdded`.
-    AliveSessionRemoved(agent_client_protocol::SessionId),
+    AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
     /// Apply an "upgrade Historical/Ended → Live" join between the
     /// historical-row registry (`agent_sessions`) and the alive-session
     /// mirror. Posted from `AliveSnapshotLoaded` (master's bootstrap
@@ -2082,7 +2115,7 @@ impl Default for View {
 #[derive(Debug, Default, Clone)]
 pub struct AgentsViewState {
     pub snapshot: Option<Vec<crate::session_registry::SessionInfo>>,
-    pub focused_sid: Option<agent_client_protocol::SessionId>,
+    pub focused_sid: Option<agent_client_protocol::schema::v1::SessionId>,
     pub refetch_in_flight: bool,
     pub dirty: bool,
     pub next_request_id: u64,
@@ -2425,28 +2458,33 @@ impl App {
                                 &e,
                                 crate::protocol::acp::failure::HandshakeStage::Initialize,
                             );
-                            // A post-login reconnect for an External-auth agent
-                            // that STILL fails auth means the long-lived shared
-                            // master CLI is poisoned and `authenticate` won't
-                            // refresh it. Request a fresh master (auth recovery)
-                            // instead of looping back to the sign-in screen.
-                            // Match BOTH the plain AuthRequired and the post-
-                            // login HandshakeFailed{NewSession} the client
-                            // wraps a still-AuthRequired new_session into.
+                            // A post-login reconnect may fail because the old
+                            // shared master is stale/dead after login:
+                            //   * External-auth agent still AuthRequired after
+                            //     authenticate/new_session → the long-lived CLI
+                            //     cached unauthenticated state.
+                            //   * PipeConnect failure → the master died before
+                            //     login (e.g. Copilot was missing during IT
+                            //     install flow), so the saved pipe no longer
+                            //     exists.
+                            // Both need a fresh master rather than another
+                            // sign-in screen.
                             let is_external = matches!(
                                 crate::agent_registry::lookup_profile_by_id(&recovery_agent_id)
                                     .acp_auth_flow,
                                 crate::agent_registry::AcpAuthFlow::External
                             );
-                            if post_login_auth
-                                && is_external
-                                && is_post_login_auth_failure(&failure)
-                            {
+                            if should_trigger_post_login_recovery(
+                                post_login_auth,
+                                is_external,
+                                &failure,
+                            ) {
                                 tracing::warn!(
                                     target: "auth_recovery",
                                     agent_id = %recovery_agent_id,
                                     tab_id = ?recovery_tab_id,
-                                    "post-login reconnect still auth-failing on shared master CLI; requesting auth recovery"
+                                    failure_class = failure.class(),
+                                    "post-login reconnect needs fresh master; requesting auth recovery"
                                 );
                                 let _ = event_tx_for_pipe.send(AppEvent::PostLoginAuthRecovery {
                                     failure,
@@ -2539,7 +2577,7 @@ impl App {
         }
         let _ = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SetSessionModel {
-                session_id: session_id.map(agent_client_protocol::SessionId::new),
+                session_id: session_id.map(agent_client_protocol::schema::v1::SessionId::new),
                 model,
             },
         );
@@ -3364,7 +3402,7 @@ impl App {
 
     fn dispatch_session_focus_rpc(&mut self, sid: &str) {
         let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::SessionId::new(sid.to_string());
+        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
         let _ = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SessionFocus {
                 request_id,
@@ -3387,7 +3425,7 @@ impl App {
 
     fn dispatch_session_resume_dispatched_rpc(&mut self, sid: &str) {
         let request_id = self.next_agents_rpc_request_id();
-        let sid = agent_client_protocol::SessionId::new(sid.to_string());
+        let sid = agent_client_protocol::schema::v1::SessionId::new(sid.to_string());
         let _ = self.master_request_tx.send(
             crate::protocol::acp::client::MasterExtRequest::SessionResumeDispatched {
                 request_id,
@@ -3557,7 +3595,7 @@ impl App {
             .unwrap_or_else(|| old_selected.min(rows.len() - 1));
         tab.agents_list_state.select(Some(idx));
         tab.agents_view.focused_sid =
-            Some(agent_client_protocol::SessionId::new(rows[idx].key.clone()));
+            Some(agent_client_protocol::schema::v1::SessionId::new(rows[idx].key.clone()));
     }
 
     fn update_agents_focus_for_tab(&mut self, tab_id: &str) {
@@ -3568,7 +3606,7 @@ impl App {
             .and_then(|t| t.agents_list_state.selected());
         let focused = selected.and_then(|idx| {
             rows.get(idx)
-                .map(|s| agent_client_protocol::SessionId::new(s.key.clone()))
+                .map(|s| agent_client_protocol::schema::v1::SessionId::new(s.key.clone()))
         });
         self.tab_mut(tab_id).agents_view.focused_sid = focused;
     }
@@ -3848,6 +3886,24 @@ impl App {
         }
     }
 
+    pub(crate) fn show_copilot_auth_screen(&mut self) {
+        let agent_id = "copilot";
+        let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+        let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(agent_id);
+        self.current_agent_id = agent_id.to_string();
+        self.mode = AppMode::Auth;
+        self.setup = None;
+        self.auth = Some(AuthState {
+            agent_id: agent_id.to_string(),
+            agent_name: profile.display_name.to_string(),
+            login_command: crate::agent_check::build_login_cmd(agent_id, None),
+            checking: false,
+            status_message: String::new(),
+            enterprise_mode,
+            enterprise_host,
+        });
+    }
+
     /// Diagnostic setup-mode key handler. Covers install, sign-in, and retry
     /// actions via the `SetupOption` variants.
     fn handle_setup_key(&mut self, key: KeyEvent) {
@@ -3953,19 +4009,17 @@ impl App {
             }
             SetupOption::SignIn {
                 agent_id,
-                display_name,
+                display_name: _,
             } => {
-                self.mode = AppMode::Auth;
-                let (enterprise_mode, enterprise_host) = copilot_enterprise_prefill(&agent_id);
-                self.auth = Some(AuthState {
-                    agent_id: agent_id.clone(),
-                    agent_name: display_name,
-                    login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                    checking: false,
-                    status_message: String::new(),
-                    enterprise_mode,
-                    enterprise_host,
-                });
+                if agent_id == "copilot" {
+                    self.show_copilot_auth_screen();
+                } else {
+                    tracing::warn!(
+                        target: "setup_key",
+                        agent_id = %agent_id,
+                        "ignoring SignIn option for non-Copilot agent"
+                    );
+                }
             }
             SetupOption::Retry => {
                 // Re-run preflight detection and try to reconnect
@@ -4693,8 +4747,7 @@ impl App {
                     failure_class = failure.class(),
                     tab_id = ?tab_id,
                     agent_id = %agent_id,
-                    "post-login auth recovery: shared master CLI still AuthRequired \
-                     after a successful login; reconnecting via a fresh master \
+                    "post-login recovery: reconnecting via a fresh master \
                      (restart_agent_stack)"
                 );
                 let resolved = if !agent_id.is_empty() {
@@ -5997,45 +6050,11 @@ impl App {
                         // Install succeeded → proceed to connect or auth
                         let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
 
-                        if crate::agent_check::has_credential(&agent_id) {
-                            // Has credential → connect directly
-                            let new_cmd = self.build_agent_cmd(&agent_id);
-                            let _ = self.restart_tx.send(RestartRequest {
-                                agent_cmd: Some(new_cmd),
-                            });
-                            self.mode = AppMode::Chat;
-                            self.state =
-                                ConnectionState::Connecting(t!("connection.starting").into_owned());
-                            let tab = self.current_tab_mut();
-                            tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
-                            tab.chat_scroll.reset();
-                            self.setup = None;
-                            let (enterprise_mode, enterprise_host) =
-                                copilot_enterprise_prefill(&agent_id);
-                            self.auth = Some(AuthState {
-                                agent_id: agent_id.clone(),
-                                agent_name: status.display_name.clone(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                                checking: false,
-                                status_message: String::new(),
-                                enterprise_mode,
-                                enterprise_host,
-                            });
-                        } else if agent_id == "copilot" {
-                            // Copilot installed but not authenticated → auth screen.
-                            self.mode = AppMode::Auth;
-                            self.setup = None;
-                            let (enterprise_mode, enterprise_host) =
-                                copilot_enterprise_prefill(&agent_id);
-                            self.auth = Some(AuthState {
-                                agent_id: agent_id.clone(),
-                                agent_name: status.display_name.clone(),
-                                login_command: crate::agent_check::build_login_cmd(&agent_id, None),
-                                checking: false,
-                                status_message: String::new(),
-                                enterprise_mode,
-                                enterprise_host,
-                            });
+                        if agent_id == "copilot" {
+                            // Copilot was just installed by IT. Route directly
+                            // to sign-in instead of probing local credentials or
+                            // paying for a doomed ACP auth roundtrip.
+                            self.show_copilot_auth_screen();
                         } else {
                             // Future-proofing: only Copilot has an in-app auth
                             // screen. If another agent ever becomes
@@ -8850,7 +8869,7 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
-        details.push(ChatMessage::Agent(summary));
+        details.push(ChatMessage::AgentLiteral(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: prompt.text.clone(),
             details,
@@ -8932,7 +8951,7 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
-        details.push(ChatMessage::Agent(summary));
+        details.push(ChatMessage::AgentLiteral(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: turn_prompt_label,
             details,
@@ -9953,7 +9972,7 @@ mod tests {
         // documented default), and Enter would fall through to the resume
         // path and fail with "unknown CLI" since cli_source is also None.
         let mut info = crate::session_registry::SessionInfo::new(
-            agent_client_protocol::SessionId::new("sid-live"),
+            agent_client_protocol::schema::v1::SessionId::new("sid-live"),
             std::path::PathBuf::from("/repo"),
         );
         info.pane_session_id = Some("pane-live".to_string());
@@ -9977,7 +9996,7 @@ mod tests {
         // session_info_to_agent_session AND on the master handler
         // comments — silently flipping defaults will mask future bugs.
         let info = crate::session_registry::SessionInfo::new(
-            agent_client_protocol::SessionId::new("sid-bare"),
+            agent_client_protocol::schema::v1::SessionId::new("sid-bare"),
             std::path::PathBuf::from("/repo"),
         );
         let s = crate::app::session_info_to_agent_session(&info);
@@ -11596,7 +11615,7 @@ mod tests {
         });
         app.current_tab_mut().agents_list_state.select(Some(1));
         app.current_tab_mut().agents_view.focused_sid =
-            Some(agent_client_protocol::SessionId::new("b"));
+            Some(agent_client_protocol::schema::v1::SessionId::new("b"));
         app.handle_event(AppEvent::SessionsChanged);
         let second_req = match master_rx.try_recv().unwrap() {
             crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, .. } => {
@@ -11861,7 +11880,7 @@ mod tests {
 
     fn session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
         let mut info = crate::session_registry::SessionInfo::new(
-            agent_client_protocol::SessionId::new(id),
+            agent_client_protocol::schema::v1::SessionId::new(id),
             std::path::PathBuf::from(format!("/repo/{id}")),
         );
         info.title = Some(id.to_string());
@@ -11992,6 +12011,51 @@ mod tests {
         assert!(
             app.current_tab().pane_open,
             "Esc from an expanded chat pane must return to it (stay open)"
+        );
+    }
+
+    // Checklist C085 "View switch preserves input": a typed-but-unsubmitted chat draft must
+    // survive a round-trip through the session (Agents) view. This is the deterministic coverage
+    // for the item whose E2E form is not harness-reliable (opening the session view input-free and
+    // reading it back races the per-tab pre-warm's extra pane; the slash `/sessions` trigger would
+    // itself type into the draft; Esc is overloaded chat-clear vs view-exit). Here we drive the
+    // REAL Esc key handler — the exact path where an accidental input-clear on view exit would
+    // live — not just the open/close_agents_view helpers.
+    #[test]
+    fn view_switch_preserves_chat_draft_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab_id = app.active_tab_key().to_string();
+
+        // A user is composing a prompt in the chat view (pane open, draft typed, not submitted).
+        app.tab_mut(&tab_id).pane_open = true;
+        let draft = "unsubmitted draft prompt";
+        app.current_tab_mut().input = draft.into();
+        app.current_tab_mut().cursor_pos = draft.len();
+
+        // Switch chat -> sessions view (the chat->sessions request keeps pane_open=true).
+        app.open_agents_view_for_tab(tab_id.clone());
+        assert_eq!(app.current_tab().current_view, View::Agents);
+        assert_eq!(
+            app.current_tab().input,
+            draft,
+            "the draft must be untouched while the session view is shown"
+        );
+
+        // Esc back to chat (the round-trip return path).
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().current_view, View::Chat);
+
+        // The draft AND the cursor position must still be there after the round-trip.
+        assert_eq!(
+            app.current_tab().input,
+            draft,
+            "returning to chat after a view switch must preserve the unsubmitted draft"
+        );
+        assert_eq!(
+            app.current_tab().cursor_pos,
+            draft.len(),
+            "the cursor position in the draft must be preserved across the view round-trip"
         );
     }
 
@@ -12800,6 +12864,93 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn post_login_master_unavailable_matches_only_pipe_connect() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        assert!(is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::PipeConnect,
+                detail: "pipe missing".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Initialize,
+                detail: "init failed".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::Authenticate,
+                detail: "auth failed".to_string()
+            }
+        ));
+        assert!(!is_post_login_master_unavailable(
+            &AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::NewSession,
+                detail: "session failed".to_string()
+            }
+        ));
+    }
+
+    #[test]
+    fn typed_pipe_connect_failure_survives_classify_anyhow() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        let err = anyhow::Error::new(AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            detail: "connect to master pipe after 3 attempts: missing".into(),
+        });
+
+        assert_eq!(
+            crate::protocol::acp::failure::classify_anyhow(&err, HandshakeStage::Initialize),
+            AgentFailure::HandshakeFailed {
+                stage: HandshakeStage::PipeConnect,
+                detail: "connect to master pipe after 3 attempts: missing".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
+        use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
+
+        let pipe_connect = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::PipeConnect,
+            detail: "pipe missing".to_string(),
+        };
+        assert!(
+            should_trigger_post_login_recovery(
+                true,
+                false,
+                &pipe_connect
+            ),
+            "post-login master-unavailable recovery must not be gated on External auth flow"
+        );
+        assert!(
+            !should_trigger_post_login_recovery(
+                false,
+                false,
+                &pipe_connect
+            ),
+            "non-post-login pipe failures should surface normally"
+        );
+
+        let still_auth = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::NewSession,
+            detail: "still auth".to_string(),
+        };
+        assert!(
+            should_trigger_post_login_recovery(true, true, &still_auth),
+            "external post-login auth failures still recover via fresh master"
+        );
+        assert!(
+            !should_trigger_post_login_recovery(true, false, &still_auth),
+            "non-external auth failures should not use auth-stale recovery"
+        );
+    }
+
     /// `PostLoginAuthRecovery` shows a transient "Reconnecting…" (NOT the
     /// sign-in screen, so there is no flash), and the `AuthRecoveryTimedOut`
     /// dead-man only falls back to the sign-in screen if the restart never
@@ -13593,7 +13744,7 @@ mod tests {
     async fn mock_agent_reply_streams_into_app_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let local = tokio::task::LocalSet::new();
         local
@@ -13601,14 +13752,14 @@ mod tests {
                 // Borrow the acp-module harness: deterministic mock wired to a
                 // real WtaClient over an in-memory duplex.
                 let (conn, mut event_rx, _seen) = connect_mock_agent();
-                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                     .await
                     .expect("initialize failed");
                 let session = conn
-                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                     .await
                     .expect("new_session failed");
-                conn.prompt(acp::PromptRequest::new(
+                conn.prompt(acp::schema::v1::PromptRequest::new(
                     session.session_id.clone(),
                     vec!["hello".into()],
                 ))
@@ -13661,17 +13812,17 @@ mod tests {
     async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
-        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
             .await
             .expect("initialize failed");
         let session = conn
-            .new_session(acp::NewSessionRequest::new("/test"))
+            .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
             .await
             .expect("new_session failed");
-        conn.prompt(acp::PromptRequest::new(
+        conn.prompt(acp::schema::v1::PromptRequest::new(
             session.session_id.clone(),
             vec!["do it".into()],
         ))
@@ -13830,20 +13981,20 @@ mod tests {
     async fn tool_call_surfaces_card_in_chat() {
         use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
+        
 
         let local = tokio::task::LocalSet::new();
         local
             .run_until(async {
                 let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
-                conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                     .await
                     .expect("initialize failed");
                 let session = conn
-                    .new_session(acp::NewSessionRequest::new("/test"))
+                    .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                     .await
                     .expect("new_session failed");
-                conn.prompt(acp::PromptRequest::new(
+                conn.prompt(acp::schema::v1::PromptRequest::new(
                     session.session_id.clone(),
                     vec!["run it".into()],
                 ))
@@ -13913,18 +14064,18 @@ mod tests {
     /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
     /// owns the `App`.
     async fn app_after_prompt(
-        conn: &agent_client_protocol::ClientSideConnection,
+        conn: &crate::protocol::acp::conn::ClientLink,
     ) {
         use agent_client_protocol as acp;
-        use agent_client_protocol::Agent as _;
-        conn.initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+        
+        conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
             .await
             .expect("initialize failed");
         let session = conn
-            .new_session(acp::NewSessionRequest::new("/test"))
+            .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
             .await
             .expect("new_session failed");
-        conn.prompt(acp::PromptRequest::new(
+        conn.prompt(acp::schema::v1::PromptRequest::new(
             session.session_id.clone(),
             vec!["go".into()],
         ))
@@ -14053,6 +14204,79 @@ mod tests {
         out
     }
 
+    /// Render (C063 "prompt out-of-focus appearance"): when keyboard focus leaves the agent pane
+    /// (`pane_focused = false`) the input box must still look correct — the prompt marker and the
+    /// connection placeholder still paint, the box is not blanked or broken. Only the caret styling
+    /// changes (a solid REVERSED block when focused → DIM when not; input.rs:69/90), which is the
+    /// intended out-of-focus appearance.
+    #[test]
+    fn render_input_box_intact_when_pane_unfocused() {
+        let _g = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+
+        // Focused baseline: the input box paints the prompt + connected placeholder.
+        app.pane_focused = true;
+        let focused = render_to_text(&mut app, 80, 24);
+        let placeholder = rust_i18n::t!("input.placeholder.connected").into_owned();
+        assert!(
+            focused.contains('>') && focused.contains(&placeholder),
+            "sanity: the focused input must paint the prompt + placeholder; rendered:\n{focused}"
+        );
+
+        // Focus leaves the pane: the input box must remain intact (prompt + placeholder still there),
+        // i.e. losing focus does not blank or corrupt the input surface.
+        app.pane_focused = false;
+        let unfocused = render_to_text(&mut app, 80, 24);
+        assert!(
+            unfocused.contains('>'),
+            "the out-of-focus input must still paint the prompt marker; rendered:\n{unfocused}"
+        );
+        assert!(
+            unfocused.contains(&placeholder),
+            "the out-of-focus input must still paint the connection placeholder (box intact); rendered:\n{unfocused}"
+        );
+    }
+
+    /// Render (C067 "non-ASCII input"): non-ASCII characters typed into the agent-pane input must be
+    /// accepted and painted correctly (multi-byte UTF-8: accented Latin, Greek, CJK). Drives the real
+    /// key handler with `KeyCode::Char` events (a Rust `char` is a full Unicode scalar, exactly what a
+    /// keyboard/IME commit produces) and asserts they render. The E2E send path (wtcli send-keys)
+    /// cannot carry non-ASCII, so this unit test is the deterministic coverage for the product side;
+    /// the IME-composition half stays MANUAL. `insert_input_char` advances the caret by
+    /// `ch.len_utf8()` (app.rs:1842), so multi-byte chars must round-trip.
+    #[test]
+    fn render_agent_input_accepts_non_ascii() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let _g = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        let sample = "café Ω 你好";
+        for c in sample.chars() {
+            app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        // The input buffer holds the exact non-ASCII string (the product contract: non-ASCII input
+        // is accepted verbatim, multi-byte caret advance included)...
+        assert_eq!(
+            app.current_tab().input,
+            sample,
+            "non-ASCII characters must be accepted verbatim into the input buffer"
+        );
+        // ...and the painted input line shows the multi-byte glyphs. (CJK are double-width; the
+        // ratatui TestBackend splits a wide glyph across two cells so the raw cell-join may not
+        // reconstruct the CJK codepoint — assert the single-width non-ASCII glyphs render, and rely
+        // on the input-buffer assertion above for the wide-char acceptance contract.)
+        let text = render_to_text(&mut app, 80, 24);
+        for needle in ["café", "Ω"] {
+            assert!(
+                text.contains(needle),
+                "the agent input must paint the non-ASCII text {needle:?}; rendered:\n{text}"
+            );
+        }
+    }
+
     /// Render: a committed agent message must actually appear in the painted
     /// chat view (not just in `App` state). Lifts `ui/chat.rs` coverage.
     #[test]
@@ -14067,6 +14291,33 @@ mod tests {
         assert!(
             text.contains("VISIBLE_REPLY_XYZ"),
             "the chat view must paint the agent message; rendered:\n{text}"
+        );
+    }
+
+    /// Render (C134 "Hooks off behavior is safe"): with session management OFF — no tracked
+    /// sessions, exactly as when wt-agent-hooks are not installed — the session-management (Agents)
+    /// view must still paint a STABLE empty state (the draw does not panic and the navigation footer
+    /// hint is drawn) rather than a broken/blank surface.
+    #[test]
+    fn render_agents_view_empty_when_no_sessions_is_stable() {
+        let mut app = test_app();
+        let key = app.active_tab_key().to_string();
+        // No SessionStarted events applied => the registry is empty, exactly as when session
+        // management is off (no wt-agent-hooks tracking any sessions).
+        assert!(
+            app.agents_rows_for_tab(&key).is_empty(),
+            "precondition: no tracked sessions (hooks off)"
+        );
+        app.current_tab_mut().current_view = View::Agents;
+
+        // render_to_text asserts the draw does not panic.
+        let text = render_to_text(&mut app, 80, 24);
+
+        // The navigation footer hint (agents.footer_hint) is drawn in the empty state too; its
+        // leading "↑ ↓" arrows are invariant across every bundled locale, so assert on those.
+        assert!(
+            text.contains('↑') && text.contains('↓'),
+            "the empty session view must paint the stable navigation footer hint; rendered:\n{text}"
         );
     }
 
@@ -14591,7 +14842,6 @@ mod tests {
             display_name: display.into(),
             cli_found,
             cli_path: None,
-            has_credential: false,
             install_hint: String::new(),
             auth_hint: String::new(),
         }
@@ -14599,21 +14849,48 @@ mod tests {
 
     #[test]
     fn diagnostic_setup_options_route_auth_by_agent() {
-        let mut copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
-        copilot.has_credential = false;
+        let copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
         let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
         assert!(
             matches!(copilot_options.as_slice(), [SetupOption::SignIn { agent_id, .. }] if agent_id == "copilot"),
             "Copilot auth failures must offer the in-app SignIn flow"
         );
 
-        let mut codex = agent_status_for_test("codex", "Codex", true);
-        codex.has_credential = false;
+        let codex = agent_status_for_test("codex", "Codex", true);
         let codex_options = build_setup_options(&SetupReason::AgentError, Some(&codex));
         assert!(
             matches!(codex_options.as_slice(), [SetupOption::Retry]),
             "external-auth agents stay on the diagnostic Retry flow"
         );
+    }
+
+    #[test]
+    fn show_copilot_auth_screen_sets_expected_state() {
+        let mut app = test_app();
+        app.mode = AppMode::Setup;
+        app.setup = Some(SetupState {
+            reason: SetupReason::AgentError,
+            selected_index: 0,
+            preflight: PreflightResult::passed_for_custom_agent("copilot"),
+            install_in_progress: false,
+            install_log: Vec::new(),
+            install_error: None,
+            options: vec![SetupOption::Retry],
+            title: "setup".into(),
+            subtitle: "sub".into(),
+        });
+
+        app.show_copilot_auth_screen();
+
+        assert_eq!(app.mode, AppMode::Auth);
+        assert!(app.setup.is_none(), "auth screen should replace setup state");
+        assert_eq!(app.current_agent_id, "copilot");
+        let auth = app.auth.as_ref().expect("copilot auth state");
+        assert_eq!(auth.agent_id, "copilot");
+        assert_eq!(auth.agent_name, "GitHub Copilot");
+        assert!(auth.login_command.contains("copilot"));
+        assert!(!auth.checking);
+        assert!(auth.status_message.is_empty());
     }
 
     /// Render: a setup screen with a full options list while a winget install

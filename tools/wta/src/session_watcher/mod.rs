@@ -5,10 +5,8 @@
 //! one parsed record plus the session key and return zero or more
 //! `SessionEvent`s. The watch loop ([`watch`]) is the thin impure shell that
 //! tails files (by byte offset — all four CLIs are append logs) and feeds
-//! records through them. Binding a discovered session to its pane lives in
-//! [`bind`]; path → identity in [`discover`].
+//! records through them. Path → session identity lives in [`discover`].
 
-pub mod bind;
 pub mod classify_claude;
 pub mod classify_codex;
 pub mod classify_copilot;
@@ -40,9 +38,6 @@ use crate::agent_sessions::{CliSource, SessionEvent};
 pub struct Emitted {
     pub cli: CliSource,
     pub key: String,
-    /// Path-encoded session cwd when available (Claude only today; `None`
-    /// for Copilot/Codex/Gemini). Consumed by master pane-binding.
-    pub cwd: Option<PathBuf>,
     pub event: SessionEvent,
 }
 
@@ -117,7 +112,6 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     out.push(Emitted {
                         cli: CliSource::Gemini,
                         key: key.clone(),
-                        cwd: disc.cwd.clone(),
                         event,
                     });
                 }
@@ -163,7 +157,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), cwd: disc.cwd.clone(), event });
+                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), event });
                 }
             }
         }
@@ -261,7 +255,9 @@ fn read_gemini_session_id(path: &Path) -> Option<String> {
 /// (ReadDirectoryChangesW) can coalesce/drop the event for a turn's final write
 /// (e.g. Codex `task_complete`), which may briefly leave a fallback row on its
 /// last status until the next file write; that imperfection is acceptable for a
-/// fallback, and Ctrl+C cleanup is handled by master's pid-liveness poll.
+/// fallback. The watcher now only supplies STATUS to #266 born-bound rows (it
+/// no longer surfaces user-typed sessions); those rows end via their pane's
+/// `PaneClosed` event, not a pid poll.
 pub fn watch(tx: Sender<Emitted>) -> notify::Result<()> {
     use notify::{RecursiveMode, Watcher};
 

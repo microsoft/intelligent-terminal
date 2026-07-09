@@ -901,4 +901,50 @@ mod tests {
         };
         assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
     }
+
+    /// Release checklist §4 "Session states": the inline activity badge shown next to a session
+    /// row must reflect the session's status. This is the deterministic, render-layer counterpart
+    /// to the manual/live verification (a live shell copilot session that finished its turn renders
+    /// the "Idle" badge) — the picker's live-badge path can't be driven reliably end-to-end because
+    /// it needs a live shell session whose pane contends with the finicky SessionToggleButton, so
+    /// the badge TEXT is locked down here instead.
+    ///
+    /// Contract (status_badge):
+    ///   Working  -> "Active"            (running/working state)
+    ///   Attention-> "Waiting for input" (waiting-for-input state)
+    ///   Idle     -> "Idle"              (live, ready-for-next-prompt state)
+    ///   Error    -> "Error"
+    ///   Ended / Historical -> ""        (terminal/on-disk rows carry NO badge, so an Ended row is
+    ///                                     visually distinct from any live/idle row — this is why an
+    ///                                     Ended row cannot be "falsely live").
+    #[test]
+    fn status_badge_renders_expected_text_per_state() {
+        let _g = crate::test_support::lock_locale();
+        set_test_locale();
+        let mk = |status: AgentStatus| AgentSession {
+            key:              "k".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "t".to_string(),
+            cwd:              std::path::PathBuf::from("."),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
+        };
+        assert_eq!(status_badge(&mk(AgentStatus::Working)), "Active");
+        assert_eq!(status_badge(&mk(AgentStatus::Attention)), "Waiting for input");
+        assert_eq!(status_badge(&mk(AgentStatus::Idle)), "Idle");
+        assert_eq!(status_badge(&mk(AgentStatus::Error)), "Error");
+        // Terminal / on-disk rows render an empty badge — no live activity to show.
+        assert_eq!(status_badge(&mk(AgentStatus::Ended)), "");
+        assert_eq!(status_badge(&mk(AgentStatus::Historical)), "");
+    }
 }
