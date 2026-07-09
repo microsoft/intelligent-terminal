@@ -7,7 +7,6 @@ mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;
 mod app;
-mod chat_history;
 mod clipboard_image;
 mod command_recall;
 mod commands;

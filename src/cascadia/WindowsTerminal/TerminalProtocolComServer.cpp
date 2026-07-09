@@ -1166,6 +1166,11 @@ try
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::AgentSessionInfo:
+        // Per-tab ACP session id + conversation gate from wta. Page-side
+        // handler routes by `tab_id` and caches the values on the Tab.
+        _dispatchAgentSessionInfoToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
         // thread; the page-side handler resolves the tab via `tab_id`
@@ -1278,6 +1283,41 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
                 try
                 {
                     page.OnAgentStatusChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentSessionInfoToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // Tab StableIds are unique across windows; fan out and let each page
+    // route by tab_id. Pages without a matching tab no-op the call.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentSessionInfoChanged(eventJson);
                 }
                 catch (...)
                 {

@@ -2003,9 +2003,9 @@ pub struct App {
     pub pending_save_tab_ids: Vec<String>,
     /// `/save-ws` title-input interactive state.
     pub save_ws_select: Option<SaveWorkspaceSelectState>,
-    /// Last `(completed_turns.len(), session_id)` signature persisted to this
-    /// tab's agent-pane-history file, so we only rewrite it on change.
-    pub last_persisted_history_sig: (usize, Option<String>),
+    /// Last `(has_conversation, session_id)` snapshot emitted to WT for this
+    /// tab, so C++ can cache workspace-save resume metadata without polling.
+    pub last_emitted_session_info: (bool, Option<String>),
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -2349,7 +2349,7 @@ impl App {
             pending_save_title: None,
             pending_save_tab_ids: Vec::new(),
             save_ws_select: None,
-            last_persisted_history_sig: (usize::MAX, None),
+            last_emitted_session_info: (false, None),
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -4224,7 +4224,7 @@ impl App {
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
                     });
-                    self.persist_chat_history_if_changed();
+                    self.emit_agent_session_info_if_changed();
                     if should_redraw {
                         let draw_started = std::time::Instant::now();
                         self.draw_frame(terminal)?;
@@ -4269,7 +4269,7 @@ impl App {
                         )
                     });
 
-                    self.persist_chat_history_if_changed();
+                    self.emit_agent_session_info_if_changed();
 
                     if should_redraw_now {
                         let draw_started = std::time::Instant::now();
@@ -8137,41 +8137,47 @@ impl App {
         );
     }
 
-    /// Proactively persist this helper's owner-tab chat UI history +
-    /// session id to its per-tab agent-pane-history file, so the
-    /// Eternal-Terminal workspace save can snapshot it without a round-trip.
-    /// Cheap no-op unless `(turn count, session id)` changed since last write.
-    pub(crate) fn persist_chat_history_if_changed(&mut self) {
+    fn agent_session_info_signature_for_tab(tab: &TabSession) -> (bool, Option<String>) {
+        let has_conversation = !tab.completed_turns.is_empty();
+        let session_id = if has_conversation {
+            tab.session_id.clone()
+        } else {
+            None
+        };
+        (has_conversation, session_id)
+    }
+
+    /// Proactively emit this helper's owner-tab session id and conversation
+    /// flag so the Eternal-Terminal workspace save can snapshot it without a
+    /// file read. Cheap no-op unless `(has_conversation, session_id)` changed.
+    pub(crate) fn emit_agent_session_info_if_changed(&mut self) {
         let Some(tab_id) = self.owner_tab_id.clone() else {
             return;
         };
         let Some(tab) = self.tab_sessions.get(&tab_id) else {
             return;
         };
-        let sig = (tab.completed_turns.len(), tab.session_id.clone());
-        if sig == self.last_persisted_history_sig {
+        let sig = Self::agent_session_info_signature_for_tab(tab);
+        if sig == self.last_emitted_session_info {
             return;
         }
-        // Only persist the ACP session id when there's an actual conversation.
+        // Only emit the ACP session id when there's an actual conversation.
         // A pre-warmed-but-never-used agent pane has a session_id (from the
         // bootstrap session/new) that the CLI never wrote to disk, so a later
         // /restore-ws session/load would fail with "session not found". No
         // conversation ⇒ no resume target ⇒ restore opens a fresh pane cleanly.
-        let session_id = if tab.completed_turns.is_empty() {
-            None
-        } else {
-            tab.session_id.clone()
-        };
-        let history = crate::chat_history::ChatHistoryFile {
-            session_id,
-            completed_turns: tab.completed_turns.clone(),
-        };
-        match crate::chat_history::write(&tab_id, &history) {
-            Ok(()) => self.last_persisted_history_sig = sig,
-            Err(e) => {
-                tracing::debug!(target: "chat_history", error = %e, "persist failed")
+        let (has_conversation, session_id) = sig.clone();
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "agent_session_info",
+            "params": {
+                "tab_id": tab_id,
+                "session_id": session_id,
+                "has_conversation": has_conversation,
             }
-        }
+        });
+        send_wt_protocol_event(evt.to_string());
+        self.last_emitted_session_info = sig;
     }
 
     /// `/restart` — reset the agent CLI subprocess. Behavior depends on which
@@ -10260,6 +10266,41 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    #[test]
+    fn agent_session_info_signature_hides_bootstrap_session_without_conversation() {
+        let mut tab = TabSession {
+            session_id: Some("bootstrap-session".into()),
+            ..Default::default()
+        };
+
+        assert_eq!(App::agent_session_info_signature_for_tab(&tab), (false, None));
+
+        tab.session_id = None;
+        assert_eq!(App::agent_session_info_signature_for_tab(&tab), (false, None));
+    }
+
+    #[test]
+    fn agent_session_info_signature_includes_session_id_only_for_conversation() {
+        let mut tab = TabSession {
+            session_id: Some("real-session".into()),
+            ..Default::default()
+        };
+        tab.completed_turns.push(CompletedTurn {
+            prompt: "hello".into(),
+            details: vec![ChatMessage::Agent("world".into())],
+            expanded: false,
+            trailing_marker: None,
+        });
+
+        assert_eq!(
+            App::agent_session_info_signature_for_tab(&tab),
+            (true, Some("real-session".into()))
+        );
+
+        tab.session_id = None;
+        assert_eq!(App::agent_session_info_signature_for_tab(&tab), (true, None));
     }
 
     #[test]

@@ -33,6 +33,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
     {
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
+        AgentSessionInfo,     // Direct to TerminalPage, no broadcast — per-tab ACP session id + conversation gate
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
@@ -75,6 +76,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "agent_status")
             {
                 return SendEventRoute::AgentStatus;
+            }
+            if (method == "agent_session_info")
+            {
+                return SendEventRoute::AgentSessionInfo;
             }
             if (method == "close_agent_pane")
             {

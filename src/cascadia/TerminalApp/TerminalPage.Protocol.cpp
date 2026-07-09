@@ -15,13 +15,11 @@
 #include "TerminalPage.h"
 #include "WorkspaceRestoreDecision.h"
 #include "../../types/inc/utils.hpp"
-#include "../inc/IntelligentTerminalPaths.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <array>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <json/json.h>
 #include <sddl.h>
 #include <sstream>
@@ -891,9 +889,8 @@ namespace winrt::TerminalApp::implementation
         std::filesystem::remove_all(dir, ec);
         std::filesystem::create_directories(dir, ec);
 
-        // Build one SavedWorkspaceTab per selected tab. Buffer files (keyed by
-        // globally-unique pane SessionId) and per-tab chat-history files
-        // (agent-chat-{i}.json) all share the workspace dir.
+        // Build one SavedWorkspaceTab per selected tab. Buffer files are keyed
+        // by globally-unique pane SessionId and live under the workspace dir.
         auto tabRecords = winrt::single_threaded_vector<Model::SavedWorkspaceTab>();
         uint32_t tabIdx = 0;
         for (const auto& stableId : stableIds)
@@ -952,35 +949,8 @@ namespace winrt::TerminalApp::implementation
             tabRecord.TabActions(winrt::single_threaded_vector<Model::ActionAndArgs>(std::move(actions)));
             tabRecord.BufferSessionIds(winrt::single_threaded_vector<winrt::hstring>(std::move(bufferIds)));
 
-            // Read the tab's chat-history file once (if any): its ACP session
-            // id and whether there's an actual conversation (non-empty turns).
-            // Braces stripped, matching the Rust writer.
-            auto histStem = std::wstring{ std::wstring_view{ stableId } };
-            std::erase(histStem, L'{');
-            std::erase(histStem, L'}');
-            const auto histSrc = ::IntelligentTerminal::AgentPaneHistoryDir() / (histStem + L".json");
-            std::error_code hec;
-            bool hasConversation = false;
-            std::string historySessionId;
-            if (!histSrc.empty() && std::filesystem::exists(histSrc, hec))
-            {
-                try
-                {
-                    std::ifstream f{ histSrc, std::ios::binary };
-                    Json::Value root;
-                    Json::CharReaderBuilder rb;
-                    std::string errs;
-                    if (f && Json::parseFromStream(rb, f, &root, &errs) && root.isObject())
-                    {
-                        hasConversation = root["completed_turns"].isArray() && !root["completed_turns"].empty();
-                        if (root["session_id"].isString())
-                        {
-                            historySessionId = root["session_id"].asString();
-                        }
-                    }
-                }
-                CATCH_LOG();
-            }
+            const bool hasConversation = tabImpl->AgentHasConversation();
+            const auto sessionIdW = tabImpl->AgentSessionId();
 
             const bool hasVisibleAgentPane = tabImpl->FindAgentPane() && !tabImpl->HasStashedAgentPane();
 
@@ -999,16 +969,9 @@ namespace winrt::TerminalApp::implementation
 
                 if (hasConversation)
                 {
-                    const auto histName = std::wstring{ L"agent-chat-" } + std::to_wstring(tabIdx) + L".json";
-                    std::error_code cec;
-                    std::filesystem::copy_file(histSrc, dir / histName, std::filesystem::copy_options::overwrite_existing, cec);
-                    if (!cec)
+                    if (!sessionIdW.empty())
                     {
-                        agentPane.ChatHistoryFile(winrt::hstring{ histName });
-                    }
-                    if (!historySessionId.empty())
-                    {
-                        agentPane.AgentSessionId(winrt::to_hstring(historySessionId));
+                        agentPane.AgentSessionId(sessionIdW);
                     }
                 }
 

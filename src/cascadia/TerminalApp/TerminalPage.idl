@@ -141,6 +141,11 @@ namespace TerminalApp
         // to the AgentPaneContent so the XAML agent bar can refresh.
         void OnAgentStatusChanged(String eventJson);
 
+        // Inbound event from WTA carrying
+        // {method:"agent_session_info",params:{tab_id,session_id,has_conversation}}.
+        // The page caches the values on the owning Tab for workspace save.
+        void OnAgentSessionInfoChanged(String eventJson);
+
         // Inbound event from WTA carrying {method:"close_agent_pane",params:{...}}.
         // Emitted when the user presses Ctrl+C twice in the agent pane TUI.
         // The page tears down the shared agent pane; wta dies with its ConPty.
