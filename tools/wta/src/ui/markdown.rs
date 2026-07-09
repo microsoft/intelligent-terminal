@@ -546,7 +546,10 @@ code
 
     #[test]
     fn paragraph_break_preserves_blank_line() {
-        let lines = render_text("first\n\nsecond", 80);
+        let source = r#"first
+
+second"#;
+        let lines = render_text(source, 80);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             texts.windows(3).any(|w| {
