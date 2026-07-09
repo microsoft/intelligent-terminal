@@ -1341,8 +1341,6 @@ pub enum AppEvent {
     SavedWorkspacesListed(Vec<crate::app::SavedWorkspaceEntry>),
     /// Result of `wtcli restore-workspace`: outcome "focused" | "opened", or Err.
     RestoredWorkspaceResult(Result<String, String>),
-    /// A saved workspace was deleted; carries the id so the picker can drop the row.
-    SavedWorkspaceDeleted(String),
 }
 
 // --- Per-tab session storage ---
@@ -4461,7 +4459,6 @@ impl App {
             AppEvent::SaveWorkspaceResult(_) => "save_workspace_result",
             AppEvent::SavedWorkspacesListed(_) => "saved_workspaces_listed",
             AppEvent::RestoredWorkspaceResult(_) => "restored_workspace_result",
-            AppEvent::SavedWorkspaceDeleted(_) => "saved_workspace_deleted",
         }
     }
 
@@ -5425,7 +5422,6 @@ impl App {
                 tab.messages.push(ChatMessage::System(message));
                 tab.scroll_to_bottom();
             }
-            AppEvent::SavedWorkspaceDeleted(_id) => {}
             AppEvent::WtEvent {
                 method,
                 pane_id,
@@ -6494,9 +6490,6 @@ impl App {
                     };
                     if let Some(id) = deleted {
                         crate::shell::wt_channel::spawn_wtcli_delete_saved_workspace(&id);
-                        if let Some(tx) = self.event_tx.clone() {
-                            let _ = tx.send(AppEvent::SavedWorkspaceDeleted(id));
-                        }
                     }
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
