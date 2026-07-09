@@ -200,9 +200,7 @@ fn code_style(style: Style) -> Style {
 }
 
 fn link_style(style: Style) -> Style {
-    style
-        .fg(Color::Cyan)
-        .add_modifier(Modifier::UNDERLINED)
+    style.add_modifier(Modifier::UNDERLINED)
 }
 
 fn append_text(runs: &mut Vec<StyledRun>, text: &str, style: Style) {
