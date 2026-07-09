@@ -87,33 +87,33 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
         }
         It 'View switch preserves the draft input (type, open session view, return -> draft remains)' {
             # Checklist §2 "View switch preserves input" (C085). Switch views via the BOTTOM-BAR
-            # BUTTONS (no typing into the chat input, unlike the `/sessions` slash) and observe the
-            # view state via the AgentLabelText UIA element, NOT a conpty capture: the buttons flip
-            # C++'s _isSessionsView through the set_agent_state round-trip, which sets AgentLabelText
-            # to the localized "Agent sessions[: <agent>]" title (AgentPaneContent.cpp:181) — a clean,
-            # per-focused-window XAML label with no agent-pane-sessions.jsonl newest-alive ambiguity.
-            # We compare against the captured chat label (locale-robust) rather than matching English.
-            # Both view switches go through XAML buttons (SessionToggleButton / AgentToggleButton), so
-            # neither touches the input, and we never use Esc (overloaded: view-exit vs. input-clear).
+            # BUTTONS (SessionToggleButton / AgentToggleButton) — not the `/sessions` slash (which
+            # types into the chat input) and not Esc (overloaded: view-exit vs. input-clear).
             #
-            # Ensure the agent pane is actually visible first — a prior test may have left it stashed,
-            # in which case AgentLabelText isn't in the tree at all (sustained empty reads).
+            # Detect the view from the PANE TEXT (locale-robust Get-SessionViewRenderRegex, the same
+            # signal Open-SessionList uses), NOT the AgentLabelText UIA value: winapp `get-value` on
+            # that XAML label returns empty here (its text is exposed via Name, not a Value pattern,
+            # and the per-tab pre-warm can target another pane), which turned the old baseline read
+            # into a hard setup failure. The session view's footer nav hint ("↑ ↓ …") is the reliable
+            # "the list is rendered" signal.
             Open-AgentPane -App $script:app | Out-Null
             Start-Sleep -Milliseconds 500
-            # Normalize to a CLEAN chat baseline: a prior test can return to chat via Esc, whose
-            # TUI-internal switch does not reliably notify C++, leaving _isSessionsView (hence the
-            # label) stale on "Agent sessions". Clicking the chat button forces view=chat. winapp
-            # get-value can transiently return empty while the pane content rebuilds after the click,
-            # so we poll for the same non-empty label value observed twice (robust to empty blips).
-            Invoke-UiElement -App $script:app -Selector 'AgentToggleButton' -TimeoutSec 10 | Out-Null
-            $chatLabel = $null
-            $seen = @{}
-            for ($i = 0; $i -lt 24 -and -not $chatLabel; $i++) {
-                Start-Sleep -Milliseconds 500
-                $v = Get-UiValue -App $script:app -Selector 'AgentLabelText'
-                if ($v) { $seen[$v] = 1 + ($seen[$v]); if ($seen[$v] -ge 2) { $chatLabel = $v } }
+            $sessionRe = Get-SessionViewRenderRegex
+            $inSessionsView = { (Get-AgentPaneText -App $script:app -MaxLines 50) -match $sessionRe }
+            $inChatView = { -not ((Get-AgentPaneText -App $script:app -MaxLines 50) -match $sessionRe) }
+
+            # Start from a CLEAN chat baseline: a prior test can leave the pane in the session view.
+            # Only click the chat button when we are actually in the session view — clicking it while
+            # already in chat would STASH the pane (the old code's unconditional click was itself a
+            # flake source / empty-read cause).
+            $startedChat = $false
+            for ($c = 0; $c -lt 4 -and -not $startedChat; $c++) {
+                if (& $inChatView) { $startedChat = $true; break }
+                Invoke-UiElement -App $script:app -Selector 'AgentToggleButton' -TimeoutSec 10 | Out-Null
+                $startedChat = Test-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition $inChatView
             }
-            $chatLabel | Should -Not -BeNullOrEmpty -Because 'setup: a stable chat-view agent label must be readable'
+            $startedChat | Should -BeTrue -Because 'setup: the pane must start in the chat view before typing a draft'
+
             $draft = "draft$(Get-Random)"
             $typed = $false
             for ($t = 0; $t -lt 3 -and -not $typed; $t++) {
@@ -122,31 +122,27 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
                 $typed = Test-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 40) -match $draft }
             }
             $typed | Should -BeTrue -Because 'setup: the draft must be typed into the chat input'
-            # Switch chat -> sessions via the button; confirm via the UIA label (not conpty). Retry
-            # the invoke (occasional no-op), re-checking before each click so we don't over-toggle.
+
+            # Switch chat -> sessions via the button; confirm the session list actually renders.
+            # Re-check before each click so we never over-toggle back out of the session view.
             $inSessions = $false
             for ($c = 0; $c -lt 4 -and -not $inSessions; $c++) {
-                if ((Get-UiValue -App $script:app -Selector 'AgentLabelText') -ne $chatLabel) { $inSessions = $true; break }
+                if (& $inSessionsView) { $inSessions = $true; break }
                 Invoke-UiElement -App $script:app -Selector 'SessionToggleButton' -TimeoutSec 10 | Out-Null
-                $inSessions = Test-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition {
-                    (Get-UiValue -App $script:app -Selector 'AgentLabelText') -ne $chatLabel
-                }
+                $inSessions = Test-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition $inSessionsView
             }
-            $inSessions | Should -BeTrue -Because 'the button must switch the pane into the session view (AgentLabelText changes)'
-            # Return sessions -> chat via the AgentToggleButton (a XAML button routed through the same
-            # set_agent_state round-trip, view="chat" — _AgentToggleButtonOnClick). This avoids Esc
-            # entirely (Esc's TUI-internal return doesn't reliably notify C++ to restore the label and
-            # risks clearing the chat input). The winapp invoke occasionally no-ops, so retry, and
-            # re-check the label BEFORE each click so we never over-toggle back into sessions.
+            $inSessions | Should -BeTrue -Because 'the button must switch the pane into the session view (session list renders)'
+
+            # Return sessions -> chat via the AgentToggleButton (routed through set_agent_state
+            # view="chat", _AgentToggleButtonOnClick). Avoids Esc, which risks clearing the input.
+            # Re-check before each click so we never over-toggle back into the session view.
             $backToChat = $false
             for ($c = 0; $c -lt 4 -and -not $backToChat; $c++) {
-                if ((Get-UiValue -App $script:app -Selector 'AgentLabelText') -eq $chatLabel) { $backToChat = $true; break }
+                if (& $inChatView) { $backToChat = $true; break }
                 Invoke-UiElement -App $script:app -Selector 'AgentToggleButton' -TimeoutSec 10 | Out-Null
-                $backToChat = Test-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition {
-                    (Get-UiValue -App $script:app -Selector 'AgentLabelText') -eq $chatLabel
-                }
+                $backToChat = Test-Until -TimeoutSec 5 -IntervalSec 0.5 -Condition $inChatView
             }
-            $backToChat | Should -BeTrue -Because 'the chat button must return the pane to the chat view (AgentLabelText restores)'
+            $backToChat | Should -BeTrue -Because 'the chat button must return the pane to the chat view (session list gone)'
             # The draft must still be in the chat input after the round-trip.
             Assert-AgentPaneText -App $script:app -Pattern $draft -TimeoutSec 8
             Clear-AgentInput -App $script:app | Out-Null
@@ -163,12 +159,22 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
             Open-SessionList -App $script:app | Out-Null
             $sel1 = Get-SessionListSelection -App $script:app
             $first = "$($sel1.Title)|$($sel1.Meta)"
-            Send-AgentKey -App $script:app -Key Down | Out-Null
-            $sel2 = Get-SessionListSelection -App $script:app
-            $second = "$($sel2.Title)|$($sel2.Meta)"
-            # Rows can share a title (e.g. repeated oracle prompts), so compare title+meta
-            # (timestamps differ). With >1 row the selection must move to a distinct row.
-            if (@(Get-SessionRows -App $script:app).Count -gt 1) { $second | Should -Not -Be $first }
+            # A single-row list can't move the selection — nothing to assert.
+            if (@(Get-SessionRows -App $script:app).Count -le 1) {
+                Set-ItResult -Skipped -Because 'session list has a single row'
+                return
+            }
+            # Press Down and poll for the move: the TUI re-render + capture-pane read can lag
+            # the keypress, so a single immediate read occasionally catches the pre-move frame
+            # (flaky under load). Retry (re-pressing Down) until the selected row differs from
+            # the start. Rows can share a title (repeated oracle prompts), so compare
+            # title+meta (timestamps differ).
+            $moved = Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                Send-AgentKey -App $script:app -Key Down | Out-Null
+                $sel2 = Get-SessionListSelection -App $script:app
+                "$($sel2.Title)|$($sel2.Meta)" -ne $first
+            }
+            $moved | Should -BeTrue -Because 'arrow Down must move the selection to a distinct row'
         }
         It 'Enter behavior works (Enter on a row launches/resumes without error)' {
             # Select the live session row and resume it; the pane returns to a chat view.

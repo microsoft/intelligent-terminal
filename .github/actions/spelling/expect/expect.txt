@@ -696,6 +696,7 @@ gwsz
 HABCDEF
 Hackathon
 HALTCOND
+handrolled
 HANGEUL
 hardlinks
 hashalg
@@ -1329,6 +1330,7 @@ propsys
 PROPTITLE
 propvar
 propvariant
+proxyable
 psa
 PSECURITY
 pseudoconsole
@@ -1566,6 +1568,7 @@ sln
 slnf
 slnx
 slpit
+SLU
 SManifest
 SMARTQUOTE
 SMTO
@@ -2051,3 +2054,12 @@ Hinnant
 LONGDATE
 MRT
 Uninstalls
+agentclientprotocol
+AHP
+boxfnonce
+INJ
+jsonrpcmsg
+reorderable
+sacp
+Takeaways
+workstream

@@ -2,28 +2,25 @@
 //!
 //! Basic functions (atomic, single-responsibility):
 //!   - `find_exe`          — find agent executable on PATH (registry-fresh)
-//!   - `has_credential`    — fast credential check (Credential Manager / config files)
-//!   - `run_auth_command`  — run auth_check_command from registry
 //!   - `build_login_cmd`   — build login command with full path
 //!   - `install`           — install agent via winget (async, streaming logs)
 //!   - `refresh_path`      — re-read PATH from Windows registry
 //!
 //! Composite functions (combine basics):
-//!   - `check_agent`       — find_exe + has_credential → AgentStatus
+//!   - `check_agent`       — find_exe → AgentStatus
 //!   - `ensure_installed`  — find_exe → install if missing → refresh_path → find_exe
 
 use crate::agent_registry;
 
 // ─── Data types ─────────────────────────────────────────────────────────────
 
-/// Status of a single agent, combining CLI detection + credential check.
+/// Status of a single agent, combining CLI detection and setup hints.
 #[derive(Debug, Clone)]
 pub struct AgentStatus {
     pub id: String,
     pub display_name: String,
     pub cli_found: bool,
     pub cli_path: Option<String>,
-    pub has_credential: bool,
     pub install_hint: String,
     pub auth_hint: String,
 }
@@ -69,74 +66,6 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
-}
-
-/// Fast synchronous credential check. Returns true if a credential is
-/// likely present. Used to decide: connect directly vs show auth screen.
-///
-/// Strategy:
-///   1. If `auth_check_command` is defined → run it (exit 0 = true)
-///   2. Else → agent-specific fast check (Credential Manager / config files)
-pub fn has_credential(agent_id: &str) -> bool {
-    let profile = agent_registry::lookup_profile_by_id(agent_id);
-
-    // Strategy 1: auth_check_command
-    if let Some(result) = run_auth_command(profile.auth_check_command) {
-        return result;
-    }
-
-    // Strategy 2: agent-specific fast check
-    let home = std::env::var("USERPROFILE").unwrap_or_default();
-    let home = std::path::PathBuf::from(&home);
-
-    match agent_id {
-        "copilot" => {
-            let found = crate::win32::copilot_credential_present();
-            tracing::debug!(target: "agent_check", agent = "copilot", found, "copilot credential check (Credential Manager API)");
-            found
-        }
-        "claude" => {
-            let path = home.join(".claude").join(".credentials.json");
-            let exists = path.exists();
-            tracing::debug!(target: "agent_check", path = %path.display(), exists, "claude credential check");
-            exists
-        }
-        "codex" => {
-            std::env::var("OPENAI_API_KEY").is_ok() || home.join(".codex").exists()
-        }
-        "gemini" => {
-            // Check GEMINI_API_KEY or GOOGLE_API_KEY env var, or OAuth token in ~/.gemini/
-            std::env::var("GEMINI_API_KEY").is_ok()
-                || std::env::var("GOOGLE_API_KEY").is_ok()
-                || home.join(".gemini").exists()
-        }
-        _ => false,
-    }
-}
-
-/// Run an auth_check_command from the agent registry.
-/// Returns Some(true) if authenticated, Some(false) if not, None if command is empty.
-pub fn run_auth_command(command: &str) -> Option<bool> {
-    if command.is_empty() {
-        return None;
-    }
-
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    let (program, args) = match parts.split_first() {
-        Some((prog, args)) => (*prog, args),
-        None => return None,
-    };
-
-    let result = std::process::Command::new(program)
-        .args(args)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-
-    match result {
-        Ok(status) => Some(status.success()),
-        Err(_) => Some(false),
-    }
 }
 
 /// Build the login command for an agent, resolving the full executable path.
@@ -293,19 +222,17 @@ fn merge_paths(fresh: &str, current: &str) -> String {
 
 // ─── Composite functions ────────────────────────────────────────────────────
 
-/// Check a single agent: find executable + check credential.
+/// Check a single agent: find executable and surface setup hints.
 pub fn check_agent(agent_id: &str) -> AgentStatus {
     let profile = agent_registry::lookup_profile_by_id(agent_id);
     let cli_path = find_exe(agent_id);
     let cli_found = cli_path.is_some();
-    let cred = if cli_found { has_credential(agent_id) } else { false };
 
     AgentStatus {
         id: agent_id.to_string(),
         display_name: profile.display_name.to_string(),
         cli_found,
         cli_path,
-        has_credential: cred,
         install_hint: profile.install_hint.to_string(),
         auth_hint: profile.auth_hint.to_string(),
     }

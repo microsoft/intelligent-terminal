@@ -214,12 +214,12 @@ mod tests {
     use std::path::PathBuf;
     use std::time::SystemTime;
 
-    fn session_info(id: &str, cwd: &str) -> acp::SessionInfo {
-        acp::SessionInfo::new(acp::SessionId::new(id.to_string()), PathBuf::from(cwd))
+    fn session_info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
+        acp::schema::v1::SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd))
     }
 
     fn map_wsl_session(
-        info: &acp::SessionInfo,
+        info: &acp::schema::v1::SessionInfo,
         distro: &str,
         cli: &CliSource,
     ) -> AgentSession {

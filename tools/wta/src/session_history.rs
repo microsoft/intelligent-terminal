@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::time::SystemTime;
 
 pub(crate) fn acp_session_to_agent_session(
-    info: &agent_client_protocol::SessionInfo,
+    info: &agent_client_protocol::schema::v1::SessionInfo,
     location: SessionLocation,
     cli: &CliSource,
 ) -> AgentSession {
@@ -47,7 +47,7 @@ pub(crate) fn acp_session_to_agent_session(
 }
 
 pub(crate) fn classify_and_map(
-    sessions: &[agent_client_protocol::SessionInfo],
+    sessions: &[agent_client_protocol::schema::v1::SessionInfo],
     agent_pane_index: &HashSet<String>,
     location: SessionLocation,
     cli: &CliSource,
@@ -77,8 +77,8 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
-    fn info(id: &str, cwd: &str) -> acp::SessionInfo {
-        acp::SessionInfo::new(acp::SessionId::new(id.to_string()), PathBuf::from(cwd))
+    fn info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
+        acp::schema::v1::SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd))
     }
 
     #[test]

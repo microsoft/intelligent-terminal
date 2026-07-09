@@ -48,7 +48,7 @@ $publicFns = @(
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Set-ClipboardImage',
     'Wait-Autofix', 'Wait-WtCommandFailure', 'Send-AutofixState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Invoke-Wta',
-    'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionRows',
+    'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionViewRenderRegex', 'Get-SessionRows',
     'Get-SessionListSelection', 'Select-SessionRow', 'Resume-Session', 'Get-SessionListJson',
     # Verify
     'Assert-Setting', 'Assert-State', 'Assert-Ui', 'Assert-Xaml', 'Assert-Script', 'Assert-Pane',

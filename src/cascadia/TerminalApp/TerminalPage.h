@@ -508,7 +508,8 @@ namespace winrt::TerminalApp::implementation
                                               bool intoSessionsView = false,
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
-                                              std::string_view initialLoadCwd = {});
+                                              std::string_view initialLoadCwd = {},
+                                              std::wstring_view initialAuthAgent = {});
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.
@@ -748,7 +749,7 @@ namespace winrt::TerminalApp::implementation
         // per-pane-wta architecture was deleted. Helper processes are now
         // ordinary conpty children of TermControl — TermControl /
         // ConptyConnection owns their lifetime.
-        void _OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource);
+        void _OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource, std::wstring_view initialAuthAgent = {});
         void _FocusAgentPane();
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
