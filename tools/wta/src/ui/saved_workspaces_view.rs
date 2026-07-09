@@ -61,7 +61,10 @@ pub fn render(f: &mut Frame, area: Rect, view: &SavedWorkspacesViewState) {
         })
         .collect();
     let mut state = ListState::default();
-    state.select(Some(view.selected));
+    // Clamp the selection: a stale `selected` (e.g. after a list refresh or a
+    // delete) would otherwise index past the rendered rows and panic ratatui's
+    // list renderer.
+    state.select(Some(view.selected.min(view.entries.len().saturating_sub(1))));
 
     let (list_area, hint_area) = if area.height >= 2 {
         let hint = Rect {

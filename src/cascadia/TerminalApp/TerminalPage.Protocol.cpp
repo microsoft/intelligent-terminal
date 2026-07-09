@@ -888,6 +888,18 @@ namespace winrt::TerminalApp::implementation
         std::error_code ec;
         std::filesystem::remove_all(dir, ec);
         std::filesystem::create_directories(dir, ec);
+        if (ec)
+        {
+            // Snapshot dir couldn't be prepared (permissions, disk full, bad
+            // path). Fail loudly instead of returning "saved" with no buffers
+            // persisted — a later /restore-ws would otherwise silently produce
+            // empty panes.
+            Json::Value out{ Json::objectValue };
+            out["outcome"] = "error";
+            out["error"] = "Failed to prepare the workspace snapshot directory";
+            Json::StreamWriterBuilder wb;
+            co_return winrt::to_hstring(Json::writeString(wb, out));
+        }
 
         // Build one SavedWorkspaceTab per selected tab. Buffer files are keyed
         // by globally-unique pane SessionId and live under the workspace dir.

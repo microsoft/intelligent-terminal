@@ -2,7 +2,7 @@
 # Eternal Terminal `/save-ws` + `/restore-ws` end-to-end coverage.
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
-BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
+BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
 Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
@@ -68,12 +68,12 @@ Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -S
         $script:RestoreOutcomeRegex | Should -Not -BeNullOrEmpty -Because 'the /restore-ws outcome text must be asserted through bundled WTA locale keys'
 
         $script:GetSavedTabs = {
-            $rows = Invoke-WtCli -App $script:app -Arguments @('list-saved-tabs') -TimeoutSec 20
+            $rows = Invoke-WtCli -App $script:app -Arguments @('list-saved-workspaces') -TimeoutSec 20
             @($rows) | Where-Object { $_ }
         }
         $script:DeleteSavedTab = {
             param([Parameter(Mandatory)][string]$Id)
-            Invoke-WtCli -App $script:app -Arguments @('delete-saved-tab', '-i', $Id) -TimeoutSec 20 -NoThrow | Out-Null
+            Invoke-WtCli -App $script:app -Arguments @('delete-saved-workspace', '-i', $Id) -TimeoutSec 20 -NoThrow | Out-Null
         }
         $script:DeleteSnapshotsByTitle = {
             param([Parameter(Mandatory)][string]$Title)
@@ -127,7 +127,7 @@ Describe 'Feature: Eternal Terminal save/restore tab commands' -Tag 'Feature' -S
         Send-AgentPrompt -App $script:app -Text "/save-ws $($script:SnapshotTitle)" | Out-Null
         Assert-AgentPaneText -App $script:app -Pattern $script:SaveTabSavedRegex -TimeoutSec 20
 
-        $row = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Because "wtcli list-saved-tabs to include '$($script:SnapshotTitle)'" -Condition {
+        $row = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 -Because "wtcli list-saved-workspaces to include '$($script:SnapshotTitle)'" -Condition {
             $rows = @(& $script:GetSavedTabs)
             $rows | Where-Object { $_.title -eq $script:SnapshotTitle } | Select-Object -First 1
         }

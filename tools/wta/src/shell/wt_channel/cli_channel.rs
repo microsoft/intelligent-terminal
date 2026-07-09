@@ -265,19 +265,33 @@ pub fn spawn_wtcli_list_tabs(
             args.push("--window-id".to_string());
             args.push(w.to_string());
         }
-        let rows = std::process::Command::new(&path)
+        // Capture stderr and log on failure so a real transport/COM error is
+        // diagnosable instead of silently masquerading as "no tabs to save".
+        let rows = match std::process::Command::new(&path)
             .args(&args)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| {
-                let v: serde_json::Value = serde_json::from_slice(&o.stdout).ok()?;
-                let arr = v.get("tabs").cloned().unwrap_or(v);
-                serde_json::from_value::<Vec<crate::app::SaveTabRow>>(arr).ok()
-            })
-            .unwrap_or_default();
+        {
+            Ok(o) if o.status.success() => serde_json::from_slice::<serde_json::Value>(&o.stdout)
+                .ok()
+                .map(|v| v.get("tabs").cloned().unwrap_or(v))
+                .and_then(|arr| serde_json::from_value::<Vec<crate::app::SaveTabRow>>(arr).ok())
+                .unwrap_or_default(),
+            Ok(o) => {
+                tracing::warn!(
+                    target: "save_ws",
+                    exit = ?o.status.code(),
+                    stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                    "wtcli list-tabs failed; showing an empty tab list",
+                );
+                Vec::new()
+            }
+            Err(e) => {
+                tracing::warn!(target: "save_ws", error = %e, "failed to spawn wtcli list-tabs; showing an empty tab list");
+                Vec::new()
+            }
+        };
         on_done(rows);
     });
 }
@@ -287,17 +301,33 @@ pub fn spawn_wtcli_list_saved_workspaces(
 ) {
     let path = resolve_wtcli_path();
     std::thread::spawn(move || {
-        let rows = std::process::Command::new(&path)
+        // As with `list-tabs`, log failures (capturing stderr) so an empty
+        // picker doesn't hide a real wtcli/COM error behind "no saved
+        // workspaces yet".
+        let rows = match std::process::Command::new(&path)
             .args(["list-saved-workspaces"])
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| {
-                serde_json::from_slice::<Vec<crate::app::SavedWorkspaceEntry>>(&o.stdout).ok()
-            })
-            .unwrap_or_default();
+        {
+            Ok(o) if o.status.success() => {
+                serde_json::from_slice::<Vec<crate::app::SavedWorkspaceEntry>>(&o.stdout)
+                    .unwrap_or_default()
+            }
+            Ok(o) => {
+                tracing::warn!(
+                    target: "restore_ws",
+                    exit = ?o.status.code(),
+                    stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                    "wtcli list-saved-workspaces failed; showing an empty list",
+                );
+                Vec::new()
+            }
+            Err(e) => {
+                tracing::warn!(target: "restore_ws", error = %e, "failed to spawn wtcli list-saved-workspaces; showing an empty list");
+                Vec::new()
+            }
+        };
         on_done(rows);
     });
 }
