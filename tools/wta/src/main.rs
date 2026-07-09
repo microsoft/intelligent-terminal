@@ -2065,7 +2065,7 @@ async fn delegate_with_context(
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
     // Pre-flight: can the configured delegate agent actually be launched? A
-    // misconfigured / non-existent command still gets its own tab and stays
+    // misconfigured / nonexistent command still gets its own tab and stays
     // there showing the real failure — cmd's "'<agent>' is not recognized …",
     // then WT's "[process exited with code 1] … press Enter to restart" — just
     // like mistyping a command in any shell. WT keeps a non-zero-exit pane open
@@ -2081,9 +2081,16 @@ async fn delegate_with_context(
     // fails cleanly with a non-zero code and stays put.
     let launchable = crate::coordinator::delegate_command_launchable(&runtime.commandline);
     if !launchable {
+        // Log only the executable (first token), never the full commandline: a
+        // custom agent command can embed tokens/credentials that shouldn't land
+        // in the log. The full commandline stays trace-only (below).
+        let exe = crate::coordinator::split_windows_commandline(&runtime.commandline)
+            .into_iter()
+            .next()
+            .unwrap_or_default();
         tracing::warn!(
             target: "delegate",
-            commandline = %runtime.commandline,
+            agent = %exe,
             "delegate agent not launchable — opening its tab with the bare command so the real error stays visible",
         );
     }

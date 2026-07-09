@@ -581,10 +581,16 @@ namespace winrt::TerminalApp::implementation
         // session (same intent as PR #366); fall back to the user's global
         // default profile when there is no focused terminal. Either way this is
         // never left empty — that's what re-introduces the auto-closing
-        // "Defaults" profile. An explicitly-requested profile is left as-is; if
-        // the resolved GUID somehow can't be matched, GetProfileForArgs falls
-        // back to the same "Defaults" profile as before (no regression).
-        if (args && args.Profile().empty())
+        // "Defaults" profile.
+        //
+        // Scope this narrowly to the case that actually hits the bug: a
+        // commandline with no explicit profile selection. A caller that omits
+        // the commandline already lands on the user's real default profile (not
+        // the auto-closing "Defaults"), and one that asked for a profile by name
+        // or index must keep it — so those are left untouched. If the resolved
+        // GUID somehow can't be matched, GetProfileForArgs falls back to the
+        // same "Defaults" profile as before (no regression).
+        if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
         {
             auto profileGuid = _settings.GlobalSettings().DefaultProfile();
             if (const auto focusedTab = _GetFocusedTabImpl())

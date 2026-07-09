@@ -950,12 +950,13 @@ pub fn needs_shell_launch(commandline: &str) -> bool {
 /// i.e. it resolves to a real program: a shell, an `.exe`/`.cmd`/`.bat`/`.com`
 /// found on PATH, or an existing file. Used to detect a misconfigured /
 /// nonexistent delegate agent so the delegate can keep that doomed launch out
-/// of the prompt-baking path: a bare `cmd /c <agent>` fails cleanly with a
-/// non-zero exit and WT keeps the pane open (closeOnExit=automatic) showing the
-/// real "not recognized" error, whereas baking the active pane's output into
-/// `cmd /c <agent> -i "<context>"` can let a stray `"`/`&` in that text
-/// unbalance cmd's quoting so cmd exits 0 and the pane closes before the error
-/// is readable. Known built-in agents are covered because
+/// of the prompt-baking path and instead launch it bare, where the failure is
+/// clean and stays visible (a shell-wrapped miss prints "not recognized" and
+/// exits non-zero; a direct `.exe` miss fails to start — either way WT keeps
+/// the pane open). Baking the active pane's output into the launch is fragile:
+/// once the command is shell-wrapped, a stray `"`/`&` in that arbitrary text
+/// can unbalance the shell's quoting so it exits 0 and the pane closes before
+/// the error is readable. Known built-in agents are covered because
 /// `resolve_commandline_executable` first resolves them to a concrete path.
 pub fn delegate_command_launchable(commandline: &str) -> bool {
     let resolved = resolve_commandline_executable(commandline);
