@@ -111,8 +111,14 @@ fn markdown_to_runs(text: &str, base_style: Style) -> Vec<StyledRun> {
                 _ => {}
             },
             Event::End(tag) => match tag {
-                TagEnd::Paragraph
-                | TagEnd::Item
+                TagEnd::Paragraph => {
+                    if lists.is_empty() {
+                        append_paragraph_break(&mut runs, *styles.last().unwrap());
+                    } else {
+                        append_newline(&mut runs, *styles.last().unwrap());
+                    }
+                }
+                TagEnd::Item
                 | TagEnd::FootnoteDefinition => append_newline(&mut runs, *styles.last().unwrap()),
                 TagEnd::Heading(_) | TagEnd::CodeBlock => {
                     append_newline(&mut runs, *styles.last().unwrap());
@@ -248,6 +254,11 @@ fn append_newline(runs: &mut Vec<StyledRun>, style: Style) {
 
 fn append_forced_newline(runs: &mut Vec<StyledRun>, style: Style) {
     append_text(runs, "\n", style);
+}
+
+fn append_paragraph_break(runs: &mut Vec<StyledRun>, style: Style) {
+    append_newline(runs, style);
+    append_forced_newline(runs, style);
 }
 
 fn ensure_line_start(runs: &mut Vec<StyledRun>, style: Style) {
@@ -533,6 +544,31 @@ code
         assert!(text.contains("> quote"));
         assert!(text.contains("---"));
         assert!(text.contains("code"));
+    }
+
+    #[test]
+    fn paragraph_break_preserves_blank_line() {
+        let lines = render_text("first\n\nsecond", 80);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(
+            texts.windows(3).any(|w| {
+                w[0].contains("first") && w[1].is_empty() && w[2].contains("second")
+            }),
+            "separate paragraphs must keep a blank line: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn list_items_stay_compact_without_extra_blank_lines() {
+        let lines = render_text("- first\n- second", 80);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        let first = texts.iter().position(|line| line.contains("- first")).unwrap();
+        let second = texts.iter().position(|line| line.contains("- second")).unwrap();
+        assert_eq!(
+            second,
+            first + 1,
+            "adjacent list items should not get an inserted blank line: {texts:?}"
+        );
     }
 
     #[test]
