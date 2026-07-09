@@ -1869,6 +1869,27 @@ fn helper_owner_tab_id() -> Option<String> {
     HELPER_OWNER_TAB_ID.get().cloned().flatten()
 }
 
+/// Process-wide WT window id for this helper, seeded once at startup from
+/// `--window-id` (passed by TerminalPage when it spawns the agent pane, next
+/// to `--owner-tab-id`). Read by [`inject_wta_pane_meta`] on every
+/// `session/new` / `session/load`. Best-effort crash-recovery hint only — see
+/// [`crate::session_registry::WtaMeta::window_id`].
+static HELPER_WINDOW_ID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Seed the process-wide WT window id. Idempotent — only the first call wins.
+/// Empty/blank ids are stored as `None`.
+pub fn set_helper_window_id(window_id: Option<&str>) {
+    let normalized = window_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let _ = HELPER_WINDOW_ID.set(normalized);
+}
+
+fn helper_window_id() -> Option<String> {
+    HELPER_WINDOW_ID.get().cloned().flatten()
+}
+
 /// Inject `_meta.wta.pane_session_id = $WT_SESSION` (lowercased, no
 /// braces) and `_meta.wta.owner_tab_id = <this helper's StableId>` into
 /// an outbound ACP `session/new` or `session/load` request, when this
@@ -1896,7 +1917,8 @@ fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>) {
         }
     };
     let owner_tab_id = helper_owner_tab_id();
-    if pane_session_id.is_none() && owner_tab_id.is_none() {
+    let window_id = helper_window_id();
+    if pane_session_id.is_none() && owner_tab_id.is_none() && window_id.is_none() {
         return;
     }
     crate::session_registry::inject_wta_meta(
@@ -1904,6 +1926,7 @@ fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>) {
         &crate::session_registry::WtaMeta {
             pane_session_id,
             owner_tab_id,
+            window_id,
         },
     );
 }

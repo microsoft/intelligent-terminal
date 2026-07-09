@@ -43,11 +43,18 @@ pub struct WtaMeta {
     /// same StableId C++ routes every other per-tab event with. `None`
     /// for non-agent-pane helpers / legacy callers.
     pub owner_tab_id: Option<String>,
+    /// The WT window id (`--window-id`) of the window the agent pane was
+    /// created in. Best-effort, captured at `session/new` and **not** updated
+    /// if the tab is later dragged to another window; carried so master's
+    /// crash-recovery `restart_agent_pane` event can name the origin window
+    /// alongside the globally-unique, drag-stable `owner_tab_id`. `None` for
+    /// non-agent-pane helpers / legacy callers.
+    pub window_id: Option<String>,
 }
 
 impl WtaMeta {
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none() && self.owner_tab_id.is_none()
+        self.pane_session_id.is_none() && self.owner_tab_id.is_none() && self.window_id.is_none()
     }
 }
 
@@ -84,6 +91,11 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(String::from),
+        window_id: obj
+            .get("window_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from),
     }
 }
 
@@ -112,6 +124,12 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
         wta_obj.insert(
             "owner_tab_id".to_string(),
             serde_json::Value::String(tab.clone()),
+        );
+    }
+    if let Some(win) = &wta.window_id {
+        wta_obj.insert(
+            "window_id".to_string(),
+            serde_json::Value::String(win.clone()),
         );
     }
     map.insert(
@@ -3001,6 +3019,7 @@ mod tests {
         let original = WtaMeta {
             pane_session_id: Some("pane-X".to_string()),
             owner_tab_id: Some("{tab-owner-X}".to_string()),
+            window_id: Some("42".to_string()),
         };
         let mut meta: Option<acp::schema::v1::Meta> = None;
         inject_wta_meta(&mut meta, &original);

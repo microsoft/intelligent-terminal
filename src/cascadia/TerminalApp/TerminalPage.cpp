@@ -1799,6 +1799,16 @@ namespace winrt::TerminalApp::implementation
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
 
+        // Origin WT window id, carried in `_meta.wta.window_id` so the master's
+        // crash-recovery `restart_agent_pane` event can name the origin window
+        // (best-effort; the globally-unique `--owner-tab-id` remains the stable,
+        // drag-safe routing key). Skipped when the window id isn't assigned yet.
+        if (const auto ownerWindowId = WindowProperties().WindowId(); ownerWindowId != 0)
+        {
+            const auto ownerWindowIdStr = winrt::to_hstring(ownerWindowId);
+            helperCmd.append(L" --window-id \"").append(std::wstring_view{ ownerWindowIdStr }).append(L"\"");
+        }
+
         // If master is degraded (died unexpectedly, not yet recovered via
         // /restart), AcquirePane opened this pane without respawning master.
         // Tell the helper so it comes up directly in the disconnected view
@@ -4591,7 +4601,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Inbound event from WTA: {method:"restart_agent_pane",
-    //                          params:{tab_id, session_id?, reason}}.
+    //                          params:{tab_id, window_id?, session_id?, reason}}.
     // Emitted by wta-master when a helper's master pipe disconnects — both
     // genuine crash and clean exit take this path. We resolve the owning
     // tab by StableId and re-warm a fresh helper, resuming `session_id` so
