@@ -347,3 +347,61 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(json_str_or_num(&v, "nl"), "-");
     assert_eq!(json_str_or_num(&v, "missing"), "-");
 }
+
+// ── Delegate: WSL panes bypass the Windows-host launchability pre-flight ─────
+//
+// `delegate_command_launchable` only checks the Windows PATH, which is
+// meaningless for a WSL pane (the agent runs inside the distro). These lock in
+// that a WSL pane is treated as launchable regardless of the host check, so a
+// `?<prompt>` from a WSL pane still gets its prompt enriched/delivered when the
+// agent (e.g. Copilot) is installed only inside the distro. Regression guard
+// for the "prompt silently dropped" bug.
+
+/// Build a minimal active-pane JSON value with the given `shell` field, as
+/// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
+fn pane_with_shell(shell: &str) -> serde_json::Value {
+    serde_json::json!({ "shell": shell })
+}
+
+#[test]
+fn active_pane_is_wsl_detects_wsl_shell() {
+    assert!(active_pane_is_wsl(Some(&pane_with_shell("wsl:Ubuntu"))));
+    assert!(active_pane_is_wsl(Some(&pane_with_shell("wsl:Debian"))));
+    // Bare `wsl:` prefix (no distro name) still counts as WSL.
+    assert!(active_pane_is_wsl(Some(&pane_with_shell("wsl:"))));
+}
+
+#[test]
+fn active_pane_is_wsl_rejects_non_wsl_shells() {
+    assert!(!active_pane_is_wsl(Some(&pane_with_shell("pwsh"))));
+    assert!(!active_pane_is_wsl(Some(&pane_with_shell("cmd"))));
+    // A pane name that merely contains "wsl" is not the `wsl:` prefix.
+    assert!(!active_pane_is_wsl(Some(&pane_with_shell("mywsl"))));
+    // `shell` field absent.
+    let no_shell = serde_json::json!({ "cwd": "/home/u" });
+    assert!(!active_pane_is_wsl(Some(&no_shell)));
+    // `shell` present but not a string.
+    let numeric_shell = serde_json::json!({ "shell": 42 });
+    assert!(!active_pane_is_wsl(Some(&numeric_shell)));
+    // No active pane at all.
+    assert!(!active_pane_is_wsl(None));
+}
+
+#[test]
+fn delegate_launchable_for_target_bypasses_host_check_for_wsl() {
+    let wsl = pane_with_shell("wsl:Ubuntu");
+    let pwsh = pane_with_shell("pwsh");
+
+    // The regression: agent not launchable on the Windows host, but the active
+    // pane is WSL → still launchable, so the prompt is enriched, not dropped.
+    assert!(delegate_launchable_for_target(false, Some(&wsl)));
+
+    // Not launchable on host AND not a WSL pane → stays non-launchable (the
+    // bare-command path, where the prompt is intentionally not baked in).
+    assert!(!delegate_launchable_for_target(false, Some(&pwsh)));
+    assert!(!delegate_launchable_for_target(false, None));
+
+    // Launchable on the host is always launchable, WSL pane or not.
+    assert!(delegate_launchable_for_target(true, Some(&pwsh)));
+    assert!(delegate_launchable_for_target(true, Some(&wsl)));
+}
