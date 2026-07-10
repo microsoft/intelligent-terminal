@@ -348,7 +348,7 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(json_str_or_num(&v, "missing"), "-");
 }
 
-// ── Delegate: WSL panes bypass the Windows-host launchability pre-flight ─────
+// ── Delegate: WSL panes bypass the Windows-host launchable check ─────────────
 //
 // `delegate_command_launchable` only checks the Windows PATH, which is
 // meaningless for a WSL pane (the agent runs inside the distro). These lock in
@@ -376,7 +376,7 @@ fn active_pane_is_wsl_rejects_non_wsl_shells() {
     assert!(!active_pane_is_wsl(Some(&pane_with_shell("pwsh"))));
     assert!(!active_pane_is_wsl(Some(&pane_with_shell("cmd"))));
     // A pane name that merely contains "wsl" is not the `wsl:` prefix.
-    assert!(!active_pane_is_wsl(Some(&pane_with_shell("mywsl"))));
+    assert!(!active_pane_is_wsl(Some(&pane_with_shell("my-wsl"))));
     // `shell` field absent.
     let no_shell = serde_json::json!({ "cwd": "/home/u" });
     assert!(!active_pane_is_wsl(Some(&no_shell)));

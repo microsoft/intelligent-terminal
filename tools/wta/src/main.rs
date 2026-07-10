@@ -2111,7 +2111,7 @@ async fn delegate_with_context(
     let launchable = crate::coordinator::delegate_command_launchable(&runtime.commandline);
 
     // A WSL pane runs the agent *inside the distro* (`wsl -d <distro> -- …`), so
-    // the Windows-host launchability pre-flight does not apply to it. Fetch the
+    // the Windows-host launchable check does not apply to it. Fetch the
     // active pane up front so both the gate below and the WSL branch further
     // down can see it. See `delegate_launchable_for_target`.
     let active = shell_mgr.wt_get_active_pane().await.ok();
