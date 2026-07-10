@@ -936,6 +936,99 @@ fn build_delegate_startup_prompt_commandline(commandline: &str, input: &str) -> 
     Ok(join_windows_commandline(&args))
 }
 
+/// Quote a string for safe use inside `bash -c '...'`.
+///
+/// Wraps the input in single quotes, preventing ALL shell expansion
+/// (variable expansion, command substitution, globbing, etc.).  The only
+/// character that cannot appear inside single quotes is a single quote
+/// itself, which is escaped using the standard POSIX idiom:
+///
+///   `'text'\''more text'`
+///
+/// Safety through `CreateProcessW`: Windows only treats `\"` specially
+/// inside double-quoted strings — the `'\''` sequence's `\'` passes
+/// through as a literal backslash + single quote, which is exactly what
+/// bash expects for the escaped quote.
+pub(crate) fn sh_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// Build the delegate agent commandline for execution inside a WSL distro.
+///
+/// Unlike the Windows path which PATH-resolves and wraps with `cmd /c`, the
+/// WSL path uses the bare agent identity from `runtime.commandline` and
+/// applies `sh_quote` to the prompt so it survives `bash -lc "..."` without
+/// any shell expansion inside the distro.
+///
+/// Callers wrap the result with `quote_windows_commandline_arg`,
+/// embed in `bash -lc <escaped>`, then
+/// `wsl -d <distro> --cd "<cwd>" -- <full>` before `CreateProcessW`.
+pub(crate) fn build_wsl_delegate_commandline(
+    runtime: &DelegateAgentRuntime,
+    input: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<String> {
+    let agent_cmd = runtime.commandline.trim();
+    if agent_cmd.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+    let profile = agent_registry::lookup_profile_by_id(
+        agent_registry::resolve_agent_id_from_cmd(agent_cmd),
+    );
+
+    let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
+        .into_iter()
+        .map(|t| sh_quote(&t))
+        .collect();
+    if parts.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+
+    if let Some(ref model) = runtime.model {
+        if let Some(flag) = profile.model_flags.first() {
+            parts.push(sh_quote(flag));
+            parts.push(sh_quote(model));
+        }
+    }
+
+    if let (Some(sid), Some(flag)) = (session_id, profile.new_session_id_flag) {
+        parts.push(sh_quote(flag));
+        parts.push(sh_quote(sid));
+    }
+
+    if let Some(input) = input {
+        match runtime.prompt_delivery {
+            DelegatePromptDelivery::LaunchWithStartupPrompt if !input.is_empty() => {
+                match profile.delegate_prompt_flag {
+                    PromptFlag::Flag(flag) => {
+                        parts.push(flag.to_string());
+                        parts.push(sh_quote(input));
+                    }
+                    PromptFlag::Positional => {
+                        parts.push(sh_quote(input));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(parts.join(" "))
+}
+
 /// Returns true if the command cannot be launched directly via CreateProcess
 /// and should be typed into a shell tab instead (e.g. npm .cmd/.bat shims).
 pub fn needs_shell_launch(commandline: &str) -> bool {
@@ -1019,7 +1112,7 @@ pub fn delegate_command_launchable(commandline: &str) -> bool {
 }
 
 // Quote arguments using the standard Windows CommandLineToArgvW escaping rules.
-fn quote_windows_commandline_arg(arg: &str) -> String {
+pub(crate) fn quote_windows_commandline_arg(arg: &str) -> String {
     if arg.is_empty() {
         return "\"\"".to_string();
     }
