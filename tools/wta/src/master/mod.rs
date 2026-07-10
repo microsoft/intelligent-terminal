@@ -2253,7 +2253,18 @@ async fn host_titles_via_acp(
         .filter_map(|row| {
             row.title
                 .clone()
-                .filter(|title| !title.is_empty())
+                .filter(|title| {
+                    // Drop the delegate's injected first-message echo. An agent CLI
+                    // (e.g. Copilot) can briefly report the baked `?<prompt>` — which
+                    // embeds the `## Terminal Context (pane …)` block — as a session's
+                    // `session/list` title before it generates its real summary.
+                    // Adopting it would leak the injected context (pane GUID included)
+                    // and, being non-synthetic, lock the row out of the later upgrade
+                    // to the CLI's real name. Skipping it leaves the born-bound row
+                    // synthetic so a subsequent poll adopts the real summary instead.
+                    !title.is_empty()
+                        && !crate::session_registry::title_is_injected_context_echo(title)
+                })
                 .map(|title| (row.session_id.to_string(), title))
         })
         .collect()

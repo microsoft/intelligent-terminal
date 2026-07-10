@@ -1017,6 +1017,30 @@ pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
     }
 }
 
+/// The literal heading the delegate `?<prompt>` flow injects into the prompt it
+/// bakes into a freshly launched agent CLI: `"<prompt>\n\n## Terminal Context
+/// (pane <id>)\n```…```"` (built in `main.rs`, which references this same
+/// constant so the two can't drift).
+///
+/// Agent CLIs (e.g. Copilot) briefly surface a session's *first user message* as
+/// its `session/list` title before they generate their real chat summary. For a
+/// delegate session that first message is the baked prompt above, so the echoed
+/// title contains this marker; a genuine CLI-generated summary never does. That
+/// lets [`title_is_injected_context_echo`] tell the two apart.
+pub(crate) const TERMINAL_CONTEXT_TITLE_MARKER: &str = "## Terminal Context (pane ";
+
+/// Whether `title` is the delegate's injected first-message echo (contains
+/// [`TERMINAL_CONTEXT_TITLE_MARKER`]) rather than a real CLI-generated summary.
+///
+/// Such a title must not be adopted as a session's display title: it leaks the
+/// injected terminal context (pane GUID included), and adopting it would lock
+/// the row out of the later upgrade to the CLI's real summary name (an echoed
+/// title is non-synthetic, so `refresh_synthetic_titles_from` would skip it
+/// forever). Callers drop it so the row stays synthetic and keeps upgrading.
+pub(crate) fn title_is_injected_context_echo(title: &str) -> bool {
+    title.contains(TERMINAL_CONTEXT_TITLE_MARKER)
+}
+
 #[async_trait::async_trait]
 impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
@@ -1769,6 +1793,26 @@ mod tests {
         assert!(title_is_synthetic(&info_with("s-empty", "/repo/proj", Some(""))));
         assert!(title_is_synthetic(&info_with("s-leaf", "/repo/proj", Some("proj"))));
         assert!(!title_is_synthetic(&info_with("s-real", "/repo/proj", Some("Real Title"))));
+    }
+
+    #[test]
+    fn title_is_injected_context_echo_detects_delegate_marker_only() {
+        // Mirrors the `?<prompt>` prompt built in `main.rs` from
+        // `TERMINAL_CONTEXT_TITLE_MARKER`: an agent CLI can echo this whole first
+        // user message back as a `session/list` title before it generates a real
+        // summary. Such an echo must be dropped (see `host_titles_via_acp`) so the
+        // born-bound row stays synthetic and keeps upgrading — the counterpart
+        // behaviour is covered by `refresh_synthetic_titles_from_skips_when_id_absent`.
+        let echo = format!(
+            "hi test\n\n{}8A9B4ABA-BEB4-4F94-B0D3-55569420B902)\n```\nPowerShell 7.6.3\n```",
+            TERMINAL_CONTEXT_TITLE_MARKER
+        );
+        assert!(title_is_injected_context_echo(&echo));
+        // A real CLI-generated summary, the bare user prompt, and empty never
+        // contain the injected marker.
+        assert!(!title_is_injected_context_echo("PowerShell Terminal Session"));
+        assert!(!title_is_injected_context_echo("hi test"));
+        assert!(!title_is_injected_context_echo(""));
     }
 
     #[tokio::test]

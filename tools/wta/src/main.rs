@@ -2144,10 +2144,18 @@ async fn delegate_with_context(
                 None
             };
 
+            // The `## Terminal Context (pane …)` heading is built from
+            // `TERMINAL_CONTEXT_TITLE_MARKER` (the single source of truth) so the
+            // master-side title filter (`host_titles_via_acp`) can recognise —
+            // and skip — this injected block if an agent CLI echoes the first
+            // user message back as a `session/list` title.
             Some(match (pane_context, active_pane_id) {
                 (Some(context), Some(pane_id)) => format!(
-                    "{}\n\n## Terminal Context (pane {})\n```\n{}\n```",
-                    prompt, pane_id, context
+                    "{}\n\n{}{})\n```\n{}\n```",
+                    prompt,
+                    crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER,
+                    pane_id,
+                    context
                 ),
                 _ => prompt.to_string(),
             })
