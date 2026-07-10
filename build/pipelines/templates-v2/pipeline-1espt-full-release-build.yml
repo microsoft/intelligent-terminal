@@ -130,6 +130,8 @@ extends:
                 - template: ./build/pipelines/templates-v2/steps-setup-versioning.yml@self
               beforeBuildSteps:
                 - template: ./build/pipelines/templates-v2/steps-install-terrapin.yml@self
+                  parameters:
+                    nugetFeed: "https://pkgs.dev.azure.com/microsoft/_packaging/WindowsTerminal/nuget/v3/index.json"
 
           - ${{ if eq(parameters.buildWPF, true) }}:
             # Add an Any CPU build flavor for the WPF control bits
