@@ -610,7 +610,7 @@ where
     // Their hooks inherit the parent's WT pane but carry a distinct
     // `sidekick-*` session id. Treating those ids as user sessions rebinds the
     // pane away from its real owner and creates a duplicate `/sessions` row.
-    if matches!(cli_source, CliSource::Copilot) && asid.starts_with("sidekick-") {
+    if cli_source == CliSource::Copilot && asid.starts_with("sidekick-") {
         tracing::debug!(
             target: "agent_route",
             event = %event,
