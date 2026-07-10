@@ -1317,6 +1317,21 @@ pub enum AppEvent {
     MasterMutationCompleted {
         request_id: u64,
     },
+    /// A `Send` action completed and terminal output was captured from the
+    /// target pane. The App feeds this back to the agent as a follow-up
+    /// prompt so the agent can observe what happened and continue reasoning
+    /// (multi-turn command execution loop). Emitted by
+    /// `coordinator::capture_and_feed_output` after the command runs.
+    CommandOutputReady {
+        /// ACP session id that dispatched the original recommendation.
+        session_id: String,
+        /// WT pane id that the command was sent to.
+        pane_id: String,
+        /// The command text that was sent (used for context in the prompt).
+        command: String,
+        /// Captured terminal output (truncated to 4000 chars).
+        output: String,
+    },
 }
 
 // --- Per-tab session storage ---
@@ -4322,6 +4337,7 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
+            AppEvent::CommandOutputReady { .. } => "command_output_ready",
         }
     }
 
@@ -5191,6 +5207,14 @@ impl App {
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::CommandOutputReady {
+                session_id,
+                pane_id,
+                command,
+                output,
+            } => {
+                self.handle_command_output_ready(session_id, pane_id, command, output);
             }
             AppEvent::WtEvent {
                 method,
@@ -8193,6 +8217,55 @@ impl App {
 
     fn push_execution_info(&mut self, _message: String) {}
 
+    /// Handle the result of `capture_and_feed_output` from the coordinator.
+    ///
+    /// Submits a follow-up prompt to the ACP agent so it can observe the
+    /// terminal output and continue reasoning (multi-turn command execution).
+    /// The follow-up is a synthesized user message describing what happened.
+    /// The agent receives the command and its output and can decide next steps.
+    fn handle_command_output_ready(
+        &mut self,
+        session_id: String,
+        pane_id: String,
+        command: String,
+        output: String,
+    ) {
+        tracing::debug!(
+            target: "coordinator",
+            session_id = %session_id,
+            pane_id = %pane_id,
+            command_chars = command.chars().count(),
+            output_chars = output.chars().count(),
+            "command_output_ready: submitting follow-up turn"
+        );
+
+        // Build a synthesized follow-up prompt with the command output.
+        // The agent already knows what command it recommended; we give it
+        // the actual terminal output so it can verify success or diagnose
+        // issues and continue.
+        let follow_up_text = format!(
+            "## Command Output\n\nThe command `{}` was executed in pane `{}`.\n\nHere is the terminal output:\n\n```\n{}\n```\n\nPlease review the output and continue helping the user. If the command succeeded, let me know. If there were any errors or unexpected results, please help diagnose and resolve them.",
+            command, pane_id, output
+        );
+
+        let pane_context = crate::pane_context::PaneContext {
+            pane_id: Some(pane_id.clone()),
+            source_pane_id: Some(pane_id),
+            ..Default::default()
+        };
+
+        let prompt = PromptSubmission::new(follow_up_text, Some(pane_context));
+        let submitted = SubmittedPrompt {
+            id: prompt.id,
+            text: prompt.text.clone(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            autofix: None,
+        };
+
+        self.turn_submit_prompt(&session_id, submitted);
+        let _ = self.prompt_tx.send(prompt);
+    }
+
     fn selected_recommendation_choice(&self) -> Option<&RecommendationChoice> {
         let tab = self.current_tab();
         tab.turn
@@ -8722,6 +8795,7 @@ impl App {
             .send(crate::coordinator::ChoiceExecution {
                 choice,
                 insert_only,
+                session_id: Some(session_id.to_string()),
             });
         if armed_pane.is_some() {
             self.emit_autofix_state_cleared(&target_tab);
@@ -9727,6 +9801,79 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    /// `CommandOutputReady` submits a follow-up prompt to the ACP agent so
+    /// it can read the terminal output and continue reasoning (multi-turn).
+    ///
+    /// After a `Send` action the coordinator captures pane output and emits
+    /// `CommandOutputReady`. The App handler must:
+    ///   1. Build a synthesized prompt text containing the command + output.
+    ///   2. Submit it as a new `SubmittedPrompt` via `turn_submit_prompt`.
+    ///   3. Forward it to the ACP client via `prompt_tx.send`.
+    #[test]
+    fn command_output_ready_submits_follow_up_prompt() {
+        let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
+        let debug_capture = Arc::new(AtomicBool::new(false));
+        let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            debug_capture,
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        );
+
+        // Wire up the session so `tab_for_session` resolves.
+        let session_id = "test-session-multi-turn";
+        app.session_to_tab
+            .insert(session_id.to_string(), DEFAULT_TAB_ID.to_string());
+
+        // Dispatch the event.
+        app.handle_event(AppEvent::CommandOutputReady {
+            session_id: session_id.to_string(),
+            pane_id: "pane-42".to_string(),
+            command: "cargo build".to_string(),
+            output: "   Compiling foo v0.1.0\n   Finished dev [unoptimized] target(s) in 3.1s"
+                .to_string(),
+        });
+
+        // A PromptSubmission must have been forwarded to the ACP client.
+        let submission = prompt_rx
+            .try_recv()
+            .expect("CommandOutputReady must forward a PromptSubmission to prompt_tx");
+
+        // The prompt text must contain the command and the output.
+        assert!(
+            submission.text.contains("cargo build"),
+            "prompt text should reference the command"
+        );
+        assert!(
+            submission.text.contains("Compiling foo"),
+            "prompt text should include the captured output"
+        );
+        // Must not be flagged as an autofix prompt — it's a planner follow-up.
+        assert!(
+            !submission.is_autofix,
+            "multi-turn follow-up should not be an autofix prompt"
+        );
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event

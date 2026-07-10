@@ -466,6 +466,7 @@ impl App {
                 .send(crate::coordinator::ChoiceExecution {
                     choice,
                     insert_only: false,
+                    session_id: None,
                 });
         }
         self.push_execution_info(format!("Auto-executing choice {}.", choice_label));
