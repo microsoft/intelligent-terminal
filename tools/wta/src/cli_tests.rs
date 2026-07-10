@@ -367,8 +367,6 @@ fn pane_with_shell(shell: &str) -> serde_json::Value {
 fn active_pane_is_wsl_detects_wsl_shell() {
     assert!(active_pane_is_wsl(Some(&pane_with_shell("wsl:Ubuntu"))));
     assert!(active_pane_is_wsl(Some(&pane_with_shell("wsl:Debian"))));
-    // Bare `wsl:` prefix (no distro name) still counts as WSL.
-    assert!(active_pane_is_wsl(Some(&pane_with_shell("wsl:"))));
 }
 
 #[test]
@@ -377,6 +375,9 @@ fn active_pane_is_wsl_rejects_non_wsl_shells() {
     assert!(!active_pane_is_wsl(Some(&pane_with_shell("cmd"))));
     // A pane name that merely contains "wsl" is not the `wsl:` prefix.
     assert!(!active_pane_is_wsl(Some(&pane_with_shell("my-wsl"))));
+    // Bare `wsl:` with an empty distro name is not a valid WSL pane — shell
+    // integration only emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set.
+    assert!(!active_pane_is_wsl(Some(&pane_with_shell("wsl:"))));
     // `shell` field absent.
     let no_shell = serde_json::json!({ "cwd": "/home/u" });
     assert!(!active_pane_is_wsl(Some(&no_shell)));

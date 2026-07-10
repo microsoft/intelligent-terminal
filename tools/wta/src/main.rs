@@ -2044,14 +2044,19 @@ async fn run_delegate(
 }
 
 /// True when the delegate's active pane runs inside a WSL distro — i.e. its
-/// shell, reported via `OSC 9001;ShellType`, is `wsl:<distro>` (e.g.
-/// `wsl:Ubuntu`). Returns `false` when the pane is missing, has no `shell`
-/// field, or the shell is anything else (PowerShell, cmd, …).
+/// shell, reported via `OSC 9001;ShellType`, is `wsl:<distro>` with a
+/// **non-empty** distro name (e.g. `wsl:Ubuntu`). The shipped Bash shell
+/// integration only emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set
+/// (otherwise it reports `bash`), so a bare `wsl:` never occurs in practice;
+/// rejecting it defensively keeps us from ever building a `wsl -d "" …`
+/// command. Returns `false` when the pane is missing, has no `shell` field, or
+/// the shell is anything else (PowerShell, cmd, …).
 fn active_pane_is_wsl(active: Option<&serde_json::Value>) -> bool {
     active
         .and_then(|p| p.get("shell"))
         .and_then(|v| v.as_str())
-        .map(|s| s.starts_with("wsl:"))
+        .and_then(|s| s.strip_prefix("wsl:"))
+        .map(|distro| !distro.is_empty())
         .unwrap_or(false)
 }
 
@@ -2215,7 +2220,10 @@ async fn delegate_with_context(
     // characters: ' is special to bash, " is special to Windows.
     if let Some(ref active_pane) = active {
         if let Some(shell) = active_pane.get("shell").and_then(|v| v.as_str()) {
-            if let Some(distro) = shell.strip_prefix("wsl:") {
+            // Require a non-empty distro name — shell integration only reports
+            // `wsl:<distro>` when `$WSL_DISTRO_NAME` is set, so a bare `wsl:`
+            // would otherwise build an invalid `wsl -d "" …` command.
+            if let Some(distro) = shell.strip_prefix("wsl:").filter(|d| !d.is_empty()) {
                 let wsl_agent_cmd =
                     crate::coordinator::build_wsl_delegate_commandline(
                         runtime,

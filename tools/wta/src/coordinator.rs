@@ -1014,7 +1014,7 @@ pub(crate) fn build_wsl_delegate_commandline(
             DelegatePromptDelivery::LaunchWithStartupPrompt if !input.is_empty() => {
                 match profile.delegate_prompt_flag {
                     PromptFlag::Flag(flag) => {
-                        parts.push(flag.to_string());
+                        parts.push(sh_quote(flag));
                         parts.push(sh_quote(input));
                     }
                     PromptFlag::Positional => {
