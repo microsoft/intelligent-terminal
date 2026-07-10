@@ -616,6 +616,7 @@ where
             event = %event,
             asid = %asid,
             pane_session_id = %pane_session_id,
+            cli_source = ?cli_source,
             "skipped: internal Copilot sidekick session"
         );
         return false;
