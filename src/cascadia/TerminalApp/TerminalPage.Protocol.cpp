@@ -14,6 +14,7 @@
 #include "pch.h"
 #include "TerminalPage.h"
 #include "WorkspaceRestoreDecision.h"
+#include "AgentPaneLog.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -1076,6 +1077,9 @@ namespace winrt::TerminalApp::implementation
         }
 
         Json::StreamWriterBuilder wb;
+        _agentPaneLog("GetWorkspaceBindings ws=" + winrt::to_string(workspaceId) +
+                      " curWin=" + std::to_string(currentWindowId) +
+                      " matched=" + std::to_string(arr.size()));
         return winrt::to_hstring(Json::writeString(wb, arr));
     }
 
@@ -1117,6 +1121,18 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto plan = DecideWorkspaceRestore(savedTabIds, liveBindings);
+
+        {
+            std::string dbg = "PlanWorkspaceRestore ws=" + winrt::to_string(workspaceId) +
+                              " saved=" + std::to_string(savedTabIds.size()) +
+                              " live=" + std::to_string(liveBindings.size());
+            for (const auto& b : liveBindings)
+            {
+                dbg += " {cur=" + std::to_string(b.currentWindowId) + ",home=" + std::to_string(b.homeWindowId) + "}";
+            }
+            dbg += plan.newWindow ? " -> NEW" : (" -> EXISTING win=" + std::to_string(plan.windowId) + " missing=" + std::to_string(plan.missingTabIds.size()));
+            _agentPaneLog(dbg);
+        }
 
         Json::Value out{ Json::objectValue };
         if (plan.newWindow)
@@ -1181,6 +1197,9 @@ namespace winrt::TerminalApp::implementation
             const auto savedTab = restoredTabsInOrder.at(recIdx);
             ti->BoundWorkspaceTabId(savedTab.WorkspaceTabId());
             ti->BoundHomeWindowId(_WindowProperties.WindowId());
+            _agentPaneLog("_BindRestoredWorkspaceTabs: bound tab " + winrt::to_string(ti->StableId()) +
+                          " ws=" + winrt::to_string(id) +
+                          " homeWin=" + std::to_string(_WindowProperties.WindowId()));
 
             const auto ap = savedTab.AgentPane();
             if (!ap)
