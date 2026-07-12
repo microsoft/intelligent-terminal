@@ -2077,6 +2077,30 @@ fn delegate_launchable_for_target(
     host_launchable || active_pane_is_wsl(active)
 }
 
+/// Max bytes of captured terminal context baked into a delegate prompt.
+///
+/// The enriched prompt rides the `wt_create_tab` commandline (base64-encoded).
+/// Windows caps a process commandline at ~32,767 chars, and base64 inflates by
+/// 4/3, so an unbounded 30-line capture from a very wide pane could overflow it
+/// and fail the launch with "filename or extension is too long". Capping the
+/// context keeps the encoded commandline comfortably under that limit; the user
+/// prompt itself is assumed small.
+const MAX_DELEGATE_CONTEXT_BYTES: usize = 12 * 1024;
+
+/// Trim captured terminal context to at most `max_bytes`, keeping the **tail**
+/// (most recent output) and prepending a truncation marker. Cuts on a UTF-8 char
+/// boundary so the result is always valid UTF-8.
+fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
+    if context.len() <= max_bytes {
+        return context.to_string();
+    }
+    let mut start = context.len() - max_bytes;
+    while start < context.len() && !context.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("…(truncated)\n{}", &context[start..])
+}
+
 /// Shared delegation logic: enrich the prompt with the active pane's recent
 /// output (when available), build the delegate-agent commandline, and create a
 /// new tab to launch it. WT's GetActivePane already resolves the agent pane to
@@ -2197,7 +2221,7 @@ async fn delegate_with_context(
                     prompt,
                     crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER,
                     pane_id,
-                    context
+                    cap_delegate_context(&context, MAX_DELEGATE_CONTEXT_BYTES)
                 ),
                 _ => prompt.to_string(),
             })
@@ -2217,15 +2241,16 @@ async fn delegate_with_context(
     // that runs the agent CLI inside the distro (using the Linux toolchain
     // and filesystem) instead of the Windows-host fallback.
     //
-    // Quoting strategy (two disjoint layers):
-    //   1. prompt → sh_quote() → bash '...' quoting (only ' is special)
-    //   2. wsl_agent_cmd → quote_windows_commandline_arg() → Windows
-    //      CommandLineToArgvW escaping (only " is special)
+    // Delivery (see `build_wsl_delegate_commandline`): the prompt rides as an
+    // inline base64 payload decoded in-distro — base64's alphabet has no shell
+    // metacharacter and no `%`, so it survives WT's `ExpandEnvironmentStringsW`
+    // and the `wsl.exe` interop's expansion pass. The bash command is escaped for
+    // that pass, then wrapped once for Windows `CommandLineToArgvW`:
+    //   1. build_wsl_delegate_commandline() → base64-inline bash command,
+    //      pre-escaped for the wsl.exe expansion pass (`\`, `$`, backtick)
+    //   2. quote_windows_commandline_arg() → Windows CommandLineToArgvW escaping
     //      → embed in format!("bash -lc {}")
     //   3. → wsl -d <distro> --cd "<cwd>" -- bash -lc <escaped>
-    //
-    // Composability works because the two layers have disjoint special
-    // characters: ' is special to bash, " is special to Windows.
     if let Some(ref active_pane) = active {
         if let Some(shell) = active_pane.get("shell").and_then(|v| v.as_str()) {
             // Require a non-empty distro name — shell integration only reports
@@ -3471,3 +3496,37 @@ async fn run_acp_app(
 
 #[cfg(test)]
 mod cli_tests;
+
+#[cfg(test)]
+mod delegate_context_tests {
+    use super::cap_delegate_context;
+
+    #[test]
+    fn cap_returns_short_context_unchanged() {
+        let ctx = "small output";
+        assert_eq!(cap_delegate_context(ctx, 1024), ctx);
+    }
+
+    #[test]
+    fn cap_keeps_tail_and_marks_truncation() {
+        let ctx: String = (0..5000u32)
+            .map(|i| char::from(b'a' + (i % 26) as u8))
+            .collect();
+        let out = cap_delegate_context(&ctx, 1000);
+        assert!(out.starts_with("…(truncated)\n"));
+        // keeps the tail (most recent output)
+        assert!(out.ends_with(&ctx[ctx.len() - 100..]));
+        // trimmed to roughly the cap plus the marker
+        assert!(out.len() <= 1000 + "…(truncated)\n".len() + 4);
+    }
+
+    #[test]
+    fn cap_is_char_boundary_safe() {
+        // Each '⭐' is 3 bytes; cutting must land on a char boundary (no panic).
+        let ctx: String = std::iter::repeat('⭐').take(500).collect();
+        let out = cap_delegate_context(&ctx, 100);
+        assert!(out
+            .chars()
+            .all(|c| c == '⭐' || "…(truncated)\n".contains(c)));
+    }
+}
