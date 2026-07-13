@@ -239,10 +239,14 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
         return profile.id;
     }
 
-    // Bare / path form: take the first whitespace-delimited token and let
-    // `lookup_profile` strip path and extension before matching.
-    let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
-    lookup_profile(first).id
+    // Bare / path form: parse the first Windows commandline token so a quoted
+    // executable path containing spaces stays intact, then let `lookup_profile`
+    // strip path and extension before matching.
+    let tokens = crate::coordinator::split_windows_commandline(trimmed);
+    tokens
+        .first()
+        .map(|first| lookup_profile(first).id)
+        .unwrap_or(DEFAULT_PROFILE.id)
 }
 
 // ─── ACP Command Building ────────────────────────────────────────────────────
@@ -478,6 +482,10 @@ mod tests {
             "gemini",
         );
         assert_eq!(resolve_agent_id_from_cmd("copilot.cmd"), "copilot");
+        assert_eq!(
+            resolve_agent_id_from_cmd(r#""C:\npm tools\codex.cmd" --search"#),
+            "codex",
+        );
     }
 
     #[test]
