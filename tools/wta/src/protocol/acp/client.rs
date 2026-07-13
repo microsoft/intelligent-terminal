@@ -48,7 +48,7 @@ fn post_login_authenticate_error(method_id: &str, e: &acp::Error) -> anyhow::Err
         stage: HandshakeStage::Authenticate,
         detail: format!(
             "authenticate({}) failed: {} (code {}). \
-             The agent did not accept the credentials. \
+             The agent returned an error during authentication. \
              Try restarting Intelligent Terminal.",
             method_id,
             e.message,
@@ -2385,7 +2385,7 @@ pub async fn run_acp_client_over_pipe(
                         method_id = %method_id.0,
                         error_code = Into::<i32>::into(e.code),
                         error_message = %e.message,
-                        "post-login authenticate failed — agent rejected credentials"
+                        "post-login authenticate failed"
                     );
                     if failure.is_auth() {
                         tracing::warn!(
