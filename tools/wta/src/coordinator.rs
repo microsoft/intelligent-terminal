@@ -794,6 +794,41 @@ fn is_direct_known_agent_command(commandline: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Split an agent commandline into PowerShell invocation tokens, replacing a
+/// batch shim only with its adjacent `.ps1` companion or the known profile id.
+fn powershell_invocation_tokens(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+) -> Vec<String> {
+    let mut tokens = split_windows_commandline(commandline);
+    let Some(first) = tokens.first_mut() else {
+        return tokens;
+    };
+    let path = std::path::Path::new(first);
+    let is_batch = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+        })
+        .unwrap_or(false);
+    if !is_batch {
+        return tokens;
+    }
+
+    let is_explicit_path = first.contains('\\') || first.contains('/');
+    if is_explicit_path {
+        let companion = path.with_extension("ps1");
+        if companion.is_file() {
+            *first = companion.to_string_lossy().into_owned();
+            return tokens;
+        }
+    }
+
+    *first = profile.id.to_string();
+    tokens
+}
+
 /// Build a delegate launch commandline that runs a `.cmd`/`.bat` shim agent from
 /// PowerShell 7 with the prompt delivered as inline base64 (issue #403).
 ///
@@ -816,7 +851,10 @@ fn build_pwsh_base64_launch(
     // `& <agent tokens> [flags] $p` — every literal token single-quoted for
     // PowerShell; `$p` (the decoded prompt) stays a bare variable reference.
     let mut call = String::from("& ");
-    for (i, tok) in split_windows_commandline(commandline).iter().enumerate() {
+    for (i, tok) in powershell_invocation_tokens(commandline, profile)
+        .iter()
+        .enumerate()
+    {
         if i > 0 {
             call.push(' ');
         }
@@ -878,7 +916,10 @@ fn build_windows_powershell_base64_launch(
 ) -> String {
     let b64 = crate::osc52::base64_encode(input.as_bytes());
     let mut call = String::from("& ");
-    for (i, token) in split_windows_commandline(commandline).iter().enumerate() {
+    for (i, token) in powershell_invocation_tokens(commandline, profile)
+        .iter()
+        .enumerate()
+    {
         if i > 0 {
             call.push(' ');
         }
@@ -2648,6 +2689,125 @@ mod tests {
         );
     }
 
+    fn powershell_base64_launches(
+        commandline: &str,
+        profile: &crate::agent_registry::AgentProfile,
+    ) -> [String; 2] {
+        [
+            build_pwsh_base64_launch(commandline, profile, None, None, "prompt"),
+            build_windows_powershell_base64_launch(commandline, profile, None, None, "prompt"),
+        ]
+    }
+
+    #[test]
+    fn powershell_base64_launches_use_sibling_ps1_for_quoted_batch_path() {
+        let root =
+            std::env::temp_dir().join(format!("wta PowerShell companion {}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let cmd_path = root.join("codex.cmd");
+        let ps1_path = root.join("codex.ps1");
+        std::fs::write(&cmd_path, "@exit /b 0\r\n").expect("write batch shim");
+        std::fs::write(&ps1_path, "exit 0\r\n").expect("write PowerShell companion");
+        let commandline = format!(
+            "{} --search --full-auto",
+            super::quote_windows_commandline_arg(
+                cmd_path.to_str().expect("test shim path is UTF-8")
+            )
+        );
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for launch in powershell_base64_launches(&commandline, profile) {
+            assert!(
+                launch.contains(&format!(
+                    "& {} '--search' '--full-auto' $p",
+                    super::ps_single_quote(
+                        ps1_path.to_str().expect("test companion path is UTF-8")
+                    )
+                )),
+                "PowerShell companion and flags missing: {launch}"
+            );
+            assert!(
+                !launch.contains(".cmd"),
+                "batch shim should not be invoked: {launch}"
+            );
+        }
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn powershell_base64_launches_fall_back_to_profile_for_batch_without_companion() {
+        let root = std::env::temp_dir().join(format!(
+            "wta-missing-powershell-companion-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let cmd_path = root.join("codex.cmd");
+        std::fs::write(&cmd_path, "@exit /b 0\r\n").expect("write batch shim");
+        let commandline = format!(
+            "{} --search",
+            super::quote_windows_commandline_arg(
+                cmd_path.to_str().expect("test shim path is UTF-8")
+            )
+        );
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for launch in powershell_base64_launches(&commandline, profile) {
+            assert!(
+                launch.contains("& 'codex' '--search' $p"),
+                "profile fallback and flags missing: {launch}"
+            );
+            assert!(
+                !launch.contains(".cmd"),
+                "missing companion path should not be invoked: {launch}"
+            );
+        }
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn powershell_base64_launches_fall_back_to_profile_for_bare_batch_name() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for commandline in [
+            "codex.cmd --search",
+            "codex.CMD --search",
+            "codex.BaT --search",
+        ] {
+            for launch in powershell_base64_launches(commandline, profile) {
+                assert!(
+                    launch.contains("& 'codex' '--search' $p"),
+                    "bare batch fallback and flags missing: {launch}"
+                );
+                assert!(
+                    !launch.contains("codex.cmd")
+                        && !launch.contains("codex.CMD")
+                        && !launch.contains("codex.BaT"),
+                    "bare batch shim should not be invoked: {launch}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn powershell_base64_launches_preserve_non_batch_first_tokens() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for commandline in ["codex.ps1 --search", "codex.exe --search"] {
+            let first = super::split_windows_commandline(commandline)
+                .into_iter()
+                .next()
+                .expect("first commandline token");
+            for launch in powershell_base64_launches(commandline, profile) {
+                assert!(
+                    launch.contains(&format!("& '{}' '--search' $p", first)),
+                    "non-batch token or flags changed: {launch}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn pwsh_base64_launch_propagates_agent_exit_code() {
         let root =
@@ -2782,6 +2942,28 @@ mod tests {
                 "line1\\\n"
             )
         );
+    }
+
+    #[test]
+    fn mixed_case_known_batch_delegate_with_multiline_prompt_uses_powershell() {
+        for commandline in ["codex.CMD", "codex.BaT"] {
+            let runtime = base64_runtime(commandline);
+            let launch = build_delegate_launch_commandline(
+                &runtime,
+                Some("fix it\n\n## Terminal Context\ncommand output"),
+                None,
+            )
+            .expect("delegate launch commandline");
+
+            assert!(
+                launch.starts_with("pwsh ") || launch.starts_with("powershell.exe "),
+                "mixed-case known batch command must use a PowerShell builder: {launch}"
+            );
+            assert!(
+                !launch.starts_with("cmd /c "),
+                "multiline prompt must not use cmd /c: {launch}"
+            );
+        }
     }
 
     #[test]

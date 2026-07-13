@@ -184,15 +184,15 @@ pub fn lookup_profile(executable: &str) -> &'static AgentProfile {
         .rsplit(|ch: char| ch == '\\' || ch == '/')
         .next()
         .unwrap_or(executable);
-    let lower = basename
+    let lower = basename.to_ascii_lowercase();
+    let normalized = lower
         .strip_suffix(".exe")
-        .or_else(|| basename.strip_suffix(".cmd"))
-        .or_else(|| basename.strip_suffix(".bat"))
-        .unwrap_or(basename)
-        .to_ascii_lowercase();
+        .or_else(|| lower.strip_suffix(".cmd"))
+        .or_else(|| lower.strip_suffix(".bat"))
+        .unwrap_or(&lower);
     KNOWN_AGENTS
         .iter()
-        .find(|p| p.id == lower)
+        .find(|p| p.id == normalized)
         .unwrap_or(&DEFAULT_PROFILE)
 }
 
@@ -485,6 +485,20 @@ mod tests {
         assert_eq!(
             resolve_agent_id_from_cmd(r#""C:\npm tools\codex.cmd" --search"#),
             "codex",
+        );
+    }
+
+    #[test]
+    fn lookup_and_resolve_recognize_mixed_case_batch_extensions() {
+        assert_eq!(lookup_profile(r"C:\Tools\codex.CMD").id, "codex");
+        assert_eq!(lookup_profile(r"C:\Tools\copilot.BaT").id, "copilot");
+        assert_eq!(
+            resolve_agent_id_from_cmd(r#""C:\npm tools\codex.CMD" --search"#),
+            "codex",
+        );
+        assert_eq!(
+            resolve_agent_id_from_cmd(r"C:\npm\copilot.BaT --model gpt-5"),
+            "copilot",
         );
     }
 

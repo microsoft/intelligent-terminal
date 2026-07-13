@@ -3540,6 +3540,6 @@ mod delegate_context_tests {
 
     #[test]
     fn cap_omits_marker_when_limit_is_too_small() {
-        assert_eq!(cap_delegate_context("abcdef", 4), "cdef");
+        assert_eq!(cap_delegate_context("prefix-tail", 4), "tail");
     }
 }
