@@ -2087,18 +2087,25 @@ fn delegate_launchable_for_target(
 /// prompt itself is assumed small.
 const MAX_DELEGATE_CONTEXT_BYTES: usize = 12 * 1024;
 
-/// Trim captured terminal context to at most `max_bytes`, keeping the **tail**
-/// (most recent output) and prepending a truncation marker. Cuts on a UTF-8 char
-/// boundary so the result is always valid UTF-8.
+/// Trim captured terminal context to at most `max_bytes`, including the
+/// truncation marker, while keeping the **tail** (most recent output). Cuts on a
+/// UTF-8 char boundary. If the marker does not fit, returns only the valid tail.
 fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
     if context.len() <= max_bytes {
         return context.to_string();
     }
-    let mut start = context.len() - max_bytes;
+    const TRUNCATION_MARKER: &str = "…(truncated)\n";
+    let marker = if TRUNCATION_MARKER.len() <= max_bytes {
+        TRUNCATION_MARKER
+    } else {
+        ""
+    };
+    let tail_bytes = max_bytes - marker.len();
+    let mut start = context.len() - tail_bytes;
     while start < context.len() && !context.is_char_boundary(start) {
         start += 1;
     }
-    format!("…(truncated)\n{}", &context[start..])
+    format!("{marker}{}", &context[start..])
 }
 
 /// Shared delegation logic: enrich the prompt with the active pane's recent
@@ -2243,7 +2250,7 @@ async fn delegate_with_context(
     //
     // Delivery (see `build_wsl_delegate_commandline`): the prompt rides as an
     // inline base64 payload decoded in-distro — base64's alphabet has no shell
-    // metacharacter and no `%`, so it survives WT's `ExpandEnvironmentStringsW`
+    // syntax characters and no `%`, so it survives WT's `ExpandEnvironmentStringsW`
     // and the `wsl.exe` interop's expansion pass. The bash command is escaped for
     // that pass, then wrapped once for Windows `CommandLineToArgvW`:
     //   1. build_wsl_delegate_commandline() → base64-inline bash command,
@@ -3516,8 +3523,7 @@ mod delegate_context_tests {
         assert!(out.starts_with("…(truncated)\n"));
         // keeps the tail (most recent output)
         assert!(out.ends_with(&ctx[ctx.len() - 100..]));
-        // trimmed to roughly the cap plus the marker
-        assert!(out.len() <= 1000 + "…(truncated)\n".len() + 4);
+        assert!(out.len() <= 1000);
     }
 
     #[test]
@@ -3525,8 +3531,15 @@ mod delegate_context_tests {
         // Each '⭐' is 3 bytes; cutting must land on a char boundary (no panic).
         let ctx: String = std::iter::repeat('⭐').take(500).collect();
         let out = cap_delegate_context(&ctx, 100);
+        assert!(out.len() <= 100);
+        assert!(out.ends_with('⭐'));
         assert!(out
             .chars()
             .all(|c| c == '⭐' || "…(truncated)\n".contains(c)));
+    }
+
+    #[test]
+    fn cap_omits_marker_when_limit_is_too_small() {
+        assert_eq!(cap_delegate_context("abcdef", 4), "cdef");
     }
 }

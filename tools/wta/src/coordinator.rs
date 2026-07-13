@@ -798,12 +798,12 @@ fn is_direct_known_agent_command(commandline: &str) -> bool {
 /// PowerShell 7 with the prompt delivered as inline base64 (issue #403).
 ///
 /// The prompt is base64-encoded (an inert `[A-Za-z0-9+/=]` payload — no shell
-/// metacharacter, no `%`, so it survives WT's `ExpandEnvironmentStringsW` and the
-/// commandline transport untouched), decoded inside pwsh into `$p`, then handed to
-/// the agent via `& <agent> … $p` — the same PATH-resolved invocation a user would
-/// type. pwsh's native-argument passing delivers the multi-line `$p` to the CLI
-/// verbatim (unlike Windows PowerShell 5.1). Requires `pwsh` on PATH; callers gate
-/// on [`pwsh_available`].
+/// syntax characters and no `%`, so it survives WT's
+/// `ExpandEnvironmentStringsW` and the commandline transport untouched), decoded
+/// inside pwsh into `$p`, then handed to the agent via `& <agent> … $p` — the same
+/// PATH-resolved invocation a user would type. pwsh's native-argument passing
+/// delivers the multi-line `$p` to the CLI verbatim (unlike Windows PowerShell
+/// 5.1). Requires `pwsh` on PATH; callers gate on [`pwsh_available`].
 fn build_pwsh_base64_launch(
     commandline: &str,
     profile: &agent_registry::AgentProfile,
@@ -841,7 +841,7 @@ fn build_pwsh_base64_launch(
     call.push_str(" $p");
 
     let script = format!(
-        "$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64}')); {call}"
+        "$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64}')); {call}; exit $LASTEXITCODE"
     );
     format!(
         "pwsh -NoProfile -Command {}",
@@ -1136,10 +1136,10 @@ pub(crate) fn sh_quote(s: &str) -> String {
 
 /// Build the bash command that launches the delegate agent inside a WSL distro.
 ///
-/// The (possibly multi-line, metacharacter-laden) prompt is delivered as an
-/// **inline base64 payload**, decoded in-distro into `$prompt` and handed to the
-/// agent as a single `"$prompt"` argument. base64's alphabet
-/// (`[A-Za-z0-9+/=]`) has no shell metacharacter, no whitespace, and no `%`, so
+/// The (possibly multi-line) prompt may contain shell syntax characters and is
+/// delivered as an **inline base64 payload**, decoded in-distro into `$prompt`
+/// and handed to the agent as a single `"$prompt"` argument. base64's alphabet
+/// (`[A-Za-z0-9+/=]`) has no shell syntax characters, whitespace, or `%`, so
 /// the payload is immune to every re-parsing layer between here and the inner
 /// login bash:
 ///
@@ -2582,7 +2582,7 @@ mod tests {
 
         // The whole command is a single line — no raw newline rides the commandline.
         assert!(!cmd.contains('\n'), "commandline must be single-line: {cmd}");
-        // The raw prompt and its metacharacters never appear literally.
+        // The raw prompt and its shell syntax characters never appear literally.
         assert!(!cmd.contains("$(whoami)"));
         assert!(!cmd.contains("%TEMP%"));
         // The base64 of the prompt is present, decoded via a here-string.
@@ -2631,7 +2631,10 @@ mod tests {
         let b64 = crate::osc52::base64_encode(prompt.as_bytes());
         assert!(cmd.contains(&b64), "base64 payload missing: {cmd}");
         assert!(cmd.contains("FromBase64String"));
-        assert!(cmd.trim_end().ends_with("$p\""), "ends with the $p arg: {cmd}");
+        assert!(
+            cmd.trim_end().ends_with("$p; exit $LASTEXITCODE\""),
+            "propagates the agent exit code: {cmd}"
+        );
         assert!(!cmd.contains("l1\nl2"), "no raw multi-line prompt: {cmd:?}");
     }
 
@@ -2640,15 +2643,42 @@ mod tests {
         let profile = crate::agent_registry::lookup_profile_by_id("copilot"); // -i flag
         let cmd = build_pwsh_base64_launch("copilot", profile, None, None, "a\nb");
         assert!(
-            cmd.contains("& 'copilot' '-i' $p"),
+            cmd.contains("& 'copilot' '-i' $p; exit $LASTEXITCODE"),
             "flag prompt form: {cmd}"
         );
     }
 
     #[test]
+    fn pwsh_base64_launch_propagates_agent_exit_code() {
+        let root =
+            std::env::temp_dir().join(format!("wta-pwsh-exit-code-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let shim = root.join("agent.ps1");
+        std::fs::write(&shim, "exit 7\r\n").expect("write PowerShell shim");
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+        let commandline =
+            super::quote_windows_commandline_arg(shim.to_str().expect("test shim path is UTF-8"));
+        let launch = build_pwsh_base64_launch(&commandline, profile, None, None, "prompt");
+        let raw_args = launch
+            .strip_prefix("pwsh ")
+            .expect("PowerShell executable prefix");
+        let status = std::process::Command::new("pwsh")
+            .raw_arg(raw_args)
+            .status()
+            .expect("launch PowerShell agent");
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+        assert_eq!(status.code(), Some(7));
+    }
+
+    #[test]
     fn windows_powershell_base64_launch_normalizes_prompt_for_black_box_agent() {
         let profile = crate::agent_registry::lookup_profile_by_id("codex");
-        let prompt = "line1\nline2 \"quoted\" & literal &quot; trailing\\";
+        let prompt = concat!(
+            "line1",
+            "\n",
+            "line2 \"quoted\" & literal &quot; trailing\\"
+        );
 
         let cmd =
             build_windows_powershell_base64_launch("codex --search", profile, None, None, prompt);
@@ -2727,13 +2757,17 @@ mod tests {
     #[test]
     fn windows_powershell_fallback_reaches_native_black_box_with_safe_prompt() {
         assert_eq!(
-            capture_windows_powershell_fallback(
-                "line1\nline2 \"quoted\" & literal &quot; trailing\\"
-            ),
+            capture_windows_powershell_fallback(concat!(
+                "line1",
+                "\n",
+                "line2 \"quoted\" & literal &quot; trailing\\"
+            )),
             concat!(
                 "[WTA transport note: decode HTML entities exactly once before ",
                 "interpreting the task and terminal context.]\n\n",
-                "line1\nline2 &quot;quoted&quot; &amp; literal &amp;quot; trailing&#92;"
+                "line1",
+                "\n",
+                "line2 &quot;quoted&quot; &amp; literal &amp;quot; trailing&#92;"
             )
         );
     }
@@ -2770,7 +2804,7 @@ mod tests {
             profile,
             None,
             None,
-            "line1\nline2",
+            concat!("line1", "\n", "line2"),
             false,
         );
 
