@@ -1588,7 +1588,7 @@ mod tests {
         build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
         default_delegate_agent_runtimes, escape_for_intermediate_shell,
         is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
-        resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
+        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
         validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
@@ -2810,6 +2810,10 @@ mod tests {
 
     #[test]
     fn pwsh_base64_launch_propagates_agent_exit_code() {
+        if !pwsh_available() {
+            eprintln!("skipping pwsh exit-code test: pwsh.exe is not on PATH");
+            return;
+        }
         let root =
             std::env::temp_dir().join(format!("wta-pwsh-exit-code-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).expect("create test directory");
@@ -2950,7 +2954,13 @@ mod tests {
             let runtime = base64_runtime(commandline);
             let launch = build_delegate_launch_commandline(
                 &runtime,
-                Some("fix it\n\n## Terminal Context\ncommand output"),
+                Some(concat!(
+                    "fix it",
+                    "\n\n",
+                    "## Terminal Context",
+                    "\n",
+                    "command output"
+                )),
                 None,
             )
             .expect("delegate launch commandline");
