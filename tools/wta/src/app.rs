@@ -8053,12 +8053,14 @@ impl App {
         let Some(tx) = self.event_tx.clone() else {
             return;
         };
-        let mut ordered = ids;
-        if let Some(owner) = self.owner_tab_id.clone() {
-            if let Some(pos) = ordered.iter().position(|x| *x == owner) {
-                ordered.swap(0, pos);
-            }
-        }
+        // Preserve the visual (left-to-right) tab order from `list-tabs` so the
+        // workspace restores in the same order it was saved. Do NOT move the
+        // /save-ws initiating (owner) tab to the front — the C++ side only uses
+        // the first entry to route to the owning window (all ids are already
+        // window-filtered) and falls back to scanning every id for the
+        // overwrite-conflict binding, so reordering here only corrupts the
+        // saved tab order.
+        let ordered = ids;
         if ordered.is_empty() {
             return;
         }

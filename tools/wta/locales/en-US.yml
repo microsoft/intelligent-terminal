@@ -284,6 +284,6 @@ commands.save_ws.failed: "Save failed: %{error}"
 commands.save_ws.conflict_prompt: "This window is already saved as workspace «%{title}». Overwrite? (y/n)"  # {Locked="y","n"} keyboard keys; %{title} is the existing saved workspace name
 commands.save_ws.conflict_cancelled: "Save cancelled."
 commands.restore_ws.focused: "Switched to the original workspace."
-commands.restore_ws.opened: "Workspace restored in a new tab."
+commands.restore_ws.opened: "Workspace restored in a new window."
 commands.restore_ws.failed: "Restore failed: %{error}"
 commands.restore_ws.empty: "No saved workspaces yet."
