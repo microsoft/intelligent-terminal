@@ -2043,6 +2043,40 @@ async fn run_delegate(
     }
 }
 
+/// True when the delegate's active pane runs inside a WSL distro — i.e. its
+/// shell, reported via `OSC 9001;ShellType`, is `wsl:<distro>` with a
+/// **non-empty** distro name (e.g. `wsl:Ubuntu`). The shipped Bash shell
+/// integration only emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set
+/// (otherwise it reports `bash`), so a bare `wsl:` never occurs in practice;
+/// rejecting it defensively keeps us from ever building a `wsl -d "" …`
+/// command. Returns `false` when the pane is missing, has no `shell` field, or
+/// the shell is anything else (PowerShell, cmd, …).
+fn active_pane_is_wsl(active: Option<&serde_json::Value>) -> bool {
+    active
+        .and_then(|p| p.get("shell"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.strip_prefix("wsl:"))
+        .map(|distro| !distro.is_empty())
+        .unwrap_or(false)
+}
+
+/// Whether the delegate agent should be treated as launchable for the active
+/// pane's *target* environment.
+///
+/// `host_launchable` comes from [`crate::coordinator::delegate_command_launchable`],
+/// which only inspects the Windows PATH. That check is meaningless for a WSL
+/// pane, whose agent runs *inside* the distro (`wsl -d <distro> -- …`), so a
+/// WSL pane is always launchable here. Without this bypass a Copilot/Claude
+/// installed only in the distro would be treated as non-launchable and
+/// silently drop its `?<prompt>` text — the prompt-enrichment and session-pin
+/// gates in `delegate_with_context` both key off this value.
+fn delegate_launchable_for_target(
+    host_launchable: bool,
+    active: Option<&serde_json::Value>,
+) -> bool {
+    host_launchable || active_pane_is_wsl(active)
+}
+
 /// Shared delegation logic: enrich the prompt with the active pane's recent
 /// output (when available), build the delegate-agent commandline, and create a
 /// new tab to launch it. WT's GetActivePane already resolves the agent pane to
@@ -2080,7 +2114,15 @@ async fn delegate_with_context(
     // readable (the original "flash shut"). A bare `cmd /c <agent>` instead
     // fails cleanly with a non-zero code and stays put.
     let launchable = crate::coordinator::delegate_command_launchable(&runtime.commandline);
-    if !launchable {
+
+    // A WSL pane runs the agent *inside the distro* (`wsl -d <distro> -- …`), so
+    // the Windows-host launchable check does not apply to it. Fetch the
+    // active pane up front so both the gate below and the WSL branch further
+    // down can see it. See `delegate_launchable_for_target`.
+    let active = shell_mgr.wt_get_active_pane().await.ok();
+    let launchable_for_target = delegate_launchable_for_target(launchable, active.as_ref());
+
+    if !launchable_for_target {
         // Log only the executable (first token), never the full commandline: a
         // custom agent command can embed tokens/credentials that shouldn't land
         // in the log. The full commandline stays trace-only (below).
@@ -2103,8 +2145,10 @@ async fn delegate_with_context(
     // resolve correctly -- and so this decision matches the one the command
     // builder makes when it appends the flag, keeping the pinned id and the
     // actual launch flag in agreement. A non-launchable command will never
-    // produce a session, so skip pinning (and the born-bound registration below).
-    let pinned_session_id: Option<String> = if launchable {
+    // produce a session, so skip pinning (and the born-bound registration
+    // below). A WSL pane is launchable via the distro, so it pins like any
+    // other supported agent.
+    let pinned_session_id: Option<String> = if launchable_for_target {
         crate::agent_registry::lookup_profile_by_id(
             crate::agent_registry::resolve_agent_id_from_cmd(&runtime.commandline),
         )
@@ -2114,14 +2158,13 @@ async fn delegate_with_context(
         None
     };
 
-    let commandline = match prompt {
-        // Prompt present AND the agent is launchable → enrich it with the
-        // active pane's recent output and bake it into the new tab's agent CLI
-        // (the `?<prompt>` path). A non-launchable agent deliberately skips this
-        // and falls through to the bare launch below, so it fails cleanly with a
-        // non-zero exit and the error stays visible in the tab.
-        Some(prompt) if !prompt.trim().is_empty() && launchable => {
-            let active = shell_mgr.wt_get_active_pane().await.ok();
+    // ── Enriched prompt ──────────────────────────────────────────────────
+    // Bake the active pane's output into the prompt when the agent is
+    // launchable for the target environment — the Windows pre-flight, or a WSL
+    // pane that will run the agent inside the distro. A non-launchable agent
+    // stays in the bare-command path so its failure is clean and visible.
+    let enriched_prompt: Option<String> = match prompt {
+        Some(prompt) if !prompt.trim().is_empty() && launchable_for_target => {
             let active_pane_id = active
                 .as_ref()
                 .and_then(|v| v.get("session_id"))
@@ -2143,42 +2186,118 @@ async fn delegate_with_context(
                 None
             };
 
-            let full_prompt = match (pane_context, active_pane_id) {
+            // The `## Terminal Context (pane …)` heading is built from
+            // `TERMINAL_CONTEXT_TITLE_MARKER` (the single source of truth) so the
+            // master-side title filter (`host_titles_via_acp`) can recognise —
+            // and skip — this injected block if an agent CLI echoes the first
+            // user message back as a `session/list` title.
+            Some(match (pane_context, active_pane_id) {
                 (Some(context), Some(pane_id)) => format!(
-                    "{}\n\n## Terminal Context (pane {})\n```\n{}\n```",
-                    prompt, pane_id, context
+                    "{}\n\n{}{})\n```\n{}\n```",
+                    prompt,
+                    crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER,
+                    pane_id,
+                    context
                 ),
                 _ => prompt.to_string(),
-            };
-
-            crate::coordinator::build_delegate_launch_commandline_with_session(
-                runtime,
-                Some(&full_prompt),
-                pinned_session_id.as_deref(),
-            )?
+            })
         }
-        // No prompt, or a non-launchable agent → open the delegate agent's bare
-        // command in the new tab. For a launchable agent this is the interactive
-        // CLI; for a misconfigured one it's the real `cmd /c <agent>`, whose
-        // "not recognized" error (exit code 1 → WT keeps the pane open) stays
-        // visible in the tab instead of flashing shut.
-        _ => crate::coordinator::build_delegate_launch_commandline_with_session(
-            runtime,
-            None,
-            pinned_session_id.as_deref(),
-        )?,
+        _ => None,
     };
 
-    // The commandline bakes in the user prompt (`-i "<prompt>"`); keep it out
-    // of the debug log and only emit it at trace.
-    tracing::debug!("delegate_with_context: launching");
-    tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
+    // ── Windows-native commandline (fallback for non-WSL) ────────────────
+    let commandline = crate::coordinator::build_delegate_launch_commandline_with_session(
+        runtime,
+        enriched_prompt.as_deref(),
+        pinned_session_id.as_deref(),
+    )?;
 
+    // ── WSL delegate path ───────────────────────────────────────────────────
+    // If the active pane is inside a WSL distro, build a WSL-native command
+    // that runs the agent CLI inside the distro (using the Linux toolchain
+    // and filesystem) instead of the Windows-host fallback.
+    //
+    // Quoting strategy (two disjoint layers):
+    //   1. prompt → sh_quote() → bash '...' quoting (only ' is special)
+    //   2. wsl_agent_cmd → quote_windows_commandline_arg() → Windows
+    //      CommandLineToArgvW escaping (only " is special)
+    //      → embed in format!("bash -lc {}")
+    //   3. → wsl -d <distro> --cd "<cwd>" -- bash -lc <escaped>
+    //
+    // Composability works because the two layers have disjoint special
+    // characters: ' is special to bash, " is special to Windows.
+    if let Some(ref active_pane) = active {
+        if let Some(shell) = active_pane.get("shell").and_then(|v| v.as_str()) {
+            // Require a non-empty distro name — shell integration only reports
+            // `wsl:<distro>` when `$WSL_DISTRO_NAME` is set, so a bare `wsl:`
+            // would otherwise build an invalid `wsl -d "" …` command.
+            if let Some(distro) = shell.strip_prefix("wsl:").filter(|d| !d.is_empty()) {
+                let wsl_agent_cmd =
+                    crate::coordinator::build_wsl_delegate_commandline(
+                        runtime,
+                        enriched_prompt.as_deref(),
+                        pinned_session_id.as_deref(),
+                    )?;
+                let escaped =
+                    crate::coordinator::quote_windows_commandline_arg(
+                        &wsl_agent_cmd,
+                    );
+                let login_invocation = format!("bash -lc {}", escaped);
+                let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
+                let wsl_cwd = active_pane
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| s.starts_with('/') && !s.contains('"'));
+                let wsl_commandline = match wsl_cwd {
+                    Some(cwd) => format!(
+                        "wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}"
+                    ),
+                    None => format!(
+                        "wsl -d {distro_arg} -- {login_invocation}"
+                    ),
+                };
+
+                tracing::debug!("delegate_with_context: launching in WSL ({distro})");
+                tracing::trace!(
+                    target: "delegate.content",
+                    commandline = %wsl_commandline,
+                    "wsl delegate commandline",
+                );
+
+                let create_resp = shell_mgr
+                    .wt_create_tab(Some(&wsl_commandline), None, None, None)
+                    .await?;
+                let pane_guid = create_resp
+                    .get("session_id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                tracing::info!(
+                    target: "delegate",
+                    pane_guid = ?pane_guid,
+                    pinned = ?pinned_session_id,
+                    distro,
+                    "delegate WSL tab created",
+                );
+
+                if let (Some(sid), Some(pane)) =
+                    (pinned_session_id.as_deref(), pane_guid.as_deref())
+                {
+                    register_launched_session_with_master(sid, pane, &runtime.id, wsl_cwd.or(cwd))
+                        .await;
+                }
+                return Ok(());
+            }
+        }
+    }
+
+    // ── Windows (existing) path ────────────────────────────────────────────
     // The delegate always launches a Windows agent CLI (Copilot/Claude/Gemini).
     // If the active pane is WSL, `cwd` is a POSIX path (e.g. "/home/user") that
     // a Windows process can't use as a working directory — sanitize it to the
-    // Windows home so the CLI still launches. (WSL-native agents are a separate
-    // future feature.)
+    // Windows home so the CLI still launches.
+    tracing::debug!("delegate_with_context: launching");
+    tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
+
     let windows_home = std::env::var("USERPROFILE").ok();
     let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
 
