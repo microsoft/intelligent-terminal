@@ -33,6 +33,30 @@ const POST_LOGIN_MASTER_PIPE_BACKOFF_MS: &[u64] = &[
     50, 100, 100, 200, 200, 500, 500, 1000, 1000, 2000, 2000, 2000,
 ];
 
+fn post_login_authenticate_error(method_id: &str, e: &acp::Error) -> anyhow::Error {
+    let failure = AgentFailure::from_acp_error(e);
+    if failure.is_auth() {
+        return anyhow::Error::new(failure).context(format!(
+            "authenticate({}) still requires authentication after login: {} (code {})",
+            method_id,
+            e.message,
+            Into::<i32>::into(e.code),
+        ));
+    }
+
+    anyhow::Error::new(AgentFailure::HandshakeFailed {
+        stage: HandshakeStage::Authenticate,
+        detail: format!(
+            "authenticate({}) failed: {} (code {}). \
+             The agent returned an error during authentication. \
+             Try restarting Intelligent Terminal.",
+            method_id,
+            e.message,
+            Into::<i32>::into(e.code),
+        ),
+    })
+}
+
 // Form A mock-ACP-agent harness + scenario tests (in-process, deterministic).
 // Lives as a sibling file so it stays out of this large module, but is a child
 // of `client` so it can reach the private `WtaClient` / `ClientState`.
@@ -2355,24 +2379,22 @@ pub async fn run_acp_client_over_pipe(
                     post_login_authenticated = true;
                 }
                 Ok(Err(e)) => {
+                    let failure = AgentFailure::from_acp_error(e);
                     tracing::error!(
                         target: "helper",
                         method_id = %method_id.0,
                         error_code = Into::<i32>::into(e.code),
                         error_message = %e.message,
-                        "post-login authenticate failed — agent rejected credentials"
+                        "post-login authenticate failed"
                     );
-                    return Err(anyhow::Error::new(AgentFailure::HandshakeFailed {
-                        stage: crate::protocol::acp::failure::HandshakeStage::Authenticate,
-                        detail: format!(
-                            "authenticate({}) failed: {} (code {}). \
-                             The agent did not accept the credentials. \
-                             Try restarting Intelligent Terminal.",
-                            method_id.0,
-                            e.message,
-                            Into::<i32>::into(e.code),
-                        ),
-                    }));
+                    if failure.is_auth() {
+                        tracing::warn!(
+                            target: "auth_recovery",
+                            method_id = %method_id.0,
+                            "post-login authenticate still AuthRequired; requesting fresh-master recovery"
+                        );
+                    }
+                    return Err(post_login_authenticate_error(&method_id.0, e));
                 }
                 Err(_timeout) => {
                     tracing::error!(
@@ -3673,9 +3695,11 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta, shell_from_active,
-        timeout_result_failure_fields, user_locale_tag, PromptTimingState, SoftStopReason,
+        post_login_authenticate_error, timeout_result_failure_fields, user_locale_tag,
+        PromptTimingState, SoftStopReason,
     };
     use super::acp;
+    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::app::AppEvent;
     use tokio::sync::mpsc;
 
@@ -3713,6 +3737,41 @@ mod tests {
             None
         );
         assert_eq!(shell_from_active(&serde_json::json!({ "shell": "" })), None);
+    }
+
+    #[test]
+    fn post_login_authenticate_auth_required_routes_to_recovery_failure() {
+        let err = post_login_authenticate_error("copilot-login", &acp::Error::auth_required());
+        let failure = crate::protocol::acp::failure::classify_anyhow(
+            &err,
+            HandshakeStage::Authenticate,
+        );
+        assert!(
+            matches!(failure, AgentFailure::AuthRequired { .. }),
+            "AuthRequired from post-login authenticate should stay recoverable, got {failure:?}"
+        );
+    }
+
+    #[test]
+    fn post_login_authenticate_non_auth_stays_authenticate_handshake_failure() {
+        let err = post_login_authenticate_error(
+            "copilot-login",
+            &acp::Error::new(-32603, "boom"),
+        );
+        let failure = crate::protocol::acp::failure::classify_anyhow(
+            &err,
+            HandshakeStage::Authenticate,
+        );
+        assert!(
+            matches!(
+                failure,
+                AgentFailure::HandshakeFailed {
+                    stage: HandshakeStage::Authenticate,
+                    ..
+                }
+            ),
+            "non-auth authenticate errors should not trigger fresh-master recovery, got {failure:?}"
+        );
     }
 
     /// Helper-only: round-trip a `_meta` blob through `inject_wta_pane_meta`
