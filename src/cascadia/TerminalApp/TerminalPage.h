@@ -478,7 +478,10 @@ namespace winrt::TerminalApp::implementation
         // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
         // (first acquire) and `_RebuildAgentStack` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
-        std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        // `profileOverride` — when non-null, per-profile AcpAgent/DelegateAgent
+        // are checked first before falling back to global settings.
+        std::vector<std::wstring> _BuildSharedWtaExtraArgs(
+            const winrt::Microsoft::Terminal::Settings::Model::Profile& profileOverride = nullptr);
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
