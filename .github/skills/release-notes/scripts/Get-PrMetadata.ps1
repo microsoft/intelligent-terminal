@@ -57,7 +57,7 @@ foreach ($pr in $PRNumbers) {
     }
     if (-not $json) { continue }
     try {
-        $data = $json | ConvertFrom-Json
+    $data = ($json -join "`n") | ConvertFrom-Json
 
         # Check for linked issues
         $issues = @()

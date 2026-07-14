@@ -20,6 +20,7 @@ Generate polished, user-facing release notes for Intelligent Terminal releases b
 
 1. Determine the **last release point**. Ask the user or check:
    - The latest git tag: `git tag --sort=-version:refname | head -5`
+     (PowerShell: `git tag --sort=-version:refname | Select-Object -First 5`)
    - The last release notes file
    - The user may specify a commit hash directly
 2. List all commits since that point:
