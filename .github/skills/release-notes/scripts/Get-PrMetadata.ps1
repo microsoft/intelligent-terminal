@@ -28,7 +28,7 @@ param(
 # Source of truth is references/core-team.md, parsed at runtime so the
 # script and the docs can't drift. Falls back to a built-in list only
 # if that reference file is missing or unparseable.
-$coreTeamRef = Join-Path $PSScriptRoot '..\references\core-team.md'
+$coreTeamRef = [IO.Path]::Combine($PSScriptRoot, '..', 'references', 'core-team.md')
 $CoreTeam = @()
 if (Test-Path $coreTeamRef) {
     $CoreTeam = Get-Content $coreTeamRef |

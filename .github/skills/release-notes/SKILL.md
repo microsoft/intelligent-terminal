@@ -34,8 +34,10 @@ Generate polished, user-facing release notes for Intelligent Terminal releases b
 For each PR number, look up linked issues and author info:
 
 ```bash
-gh pr view <number> --repo microsoft/intelligent-terminal --json number,title,body,author,closingIssuesReferences
+gh pr view <number> --repo <owner>/<repo> --json number,title,body,author,closingIssuesReferences
 ```
+
+> `<owner>/<repo>` is `microsoft/intelligent-terminal` for this repo's own PRs, or `microsoft/terminal` for upstream `#20xxx` PRs.
 
 Collect:
 - **PR → Issue mapping**: Which PRs fix/close GitHub issues
@@ -63,7 +65,7 @@ Use the [release notes template](./templates/release-notes-template.md) and foll
 
 3. **Omit purely internal changes** — CI fixes, code refactors, dev docs, test-only changes, localization bot updates — unless they have direct user-visible impact
 
-4. **Never mention security fixes publicly** — fold security-related stability fixes into the Bug Fixes section without calling them security issues
+4. **Avoid detailed security disclosures in public release notes** — fold security-related stability fixes into the Bug Fixes section rather than calling them out as security issues, and coordinate any security-sensitive wording with maintainers per [SECURITY.md](../../../SECURITY.md)
 
 5. **Thank community contributors** in a 💜 Community section with GitHub profile links:
    ```markdown
@@ -87,7 +89,7 @@ Use these sections in order:
 
 ## Gotchas
 
-- **Never include a 🔒 Security section** — the project policy is to not discuss security fixes publicly. Fold stability improvements into Bug Fixes.
+- **Avoid a dedicated 🔒 Security section** — prefer folding security-related stability improvements into Bug Fixes rather than publicly detailing security issues; see [SECURITY.md](../../../SECURITY.md) for vulnerability handling and coordinate sensitive wording with maintainers.
 - **Upstream Windows Terminal PRs** (#20xxx numbers) should be looked up on `microsoft/terminal`, not `microsoft/intelligent-terminal`.
 - **The "Verbed + Impact + Scenario" format is non-negotiable** — every single bullet must follow it. "Fixed X" alone is not enough; you must explain the user impact.
 - **Some commits are cherry-picks from upstream** — check both repos when looking up PRs.
