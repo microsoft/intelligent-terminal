@@ -2311,11 +2311,27 @@ async fn delegate_with_context(
                     "delegate WSL tab created",
                 );
 
-                if let (Some(sid), Some(pane)) =
-                    (pinned_session_id.as_deref(), pane_guid.as_deref())
-                {
-                    register_launched_session_with_master(sid, pane, &runtime.id, wsl_cwd.or(cwd))
+                // Born-bound registration for the WSL delegate session — but
+                // only when WSL sessions are enabled. The whole WSL surface is
+                // gated on `WTA_WSL_SESSIONS`; with it off we must not surface
+                // *any* WSL session, born-bound delegate rows included (the
+                // master-side historical WSL scan is already gated, so skipping
+                // this registration is what keeps a `?<prompt>` WSL delegate out
+                // of the session view). The tab still opens and the CLI still
+                // runs — it's just untracked, exactly like every other WSL
+                // session while the flag is off.
+                if crate::history_loader::wsl_sessions_enabled() {
+                    if let (Some(sid), Some(pane)) =
+                        (pinned_session_id.as_deref(), pane_guid.as_deref())
+                    {
+                        register_launched_session_with_master(
+                            sid,
+                            pane,
+                            &runtime.id,
+                            wsl_cwd.or(cwd),
+                        )
                         .await;
+                    }
                 }
                 return Ok(());
             }
