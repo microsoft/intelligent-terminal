@@ -261,6 +261,11 @@ struct MasterStateInner {
     /// for its in-distro title. `None` until the first poll-triggered seed; the
     /// explicit F5 rescan + startup discovery seeds don't touch it.
     wsl_titles_seed_at: Mutex<Option<std::time::Instant>>,
+    /// Set while a WSL ACP scan ([`spawn_wsl_seed`]) is running, so the
+    /// startup / F5 / poll seeds never overlap. A scan can outlive the poll
+    /// throttle (a cold snap distro pays a 40 s ACP init), so a time throttle
+    /// alone can't prevent concurrent `wsl.exe` processes — this guard does.
+    wsl_seed_in_flight: std::sync::atomic::AtomicBool,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -1579,6 +1584,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         born_bound: Mutex::new(HashSet::new()),
         host_list_cache: Mutex::new(None),
         wsl_titles_seed_at: Mutex::new(None),
+        wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
 
     // ── Hookless Class-B session watcher ──────────────────────────────
@@ -2382,8 +2388,21 @@ async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> us
 /// title before the in-distro CLI generated its summary), broadcasting when
 /// either lands. No-op when WSL sessions are disabled — the whole WSL surface,
 /// born-bound rows included, is gated on `wsl_sessions_enabled()`.
+///
+/// **Non-overlapping.** A single `wsl_seed_in_flight` guard serializes every WSL
+/// scan (startup / F5 / poll): a scan can outlive the poll throttle (a cold snap
+/// distro pays a 40 s ACP init), so without this a later poll could spawn a
+/// second scan while the first is still running and double the `wsl.exe` ACP
+/// processes. When one is already running, this is a no-op.
 fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
     if !crate::history_loader::wsl_sessions_enabled() {
+        return;
+    }
+    // Claim the single scan slot; skip if a scan is already running.
+    if state
+        .wsl_seed_in_flight
+        .swap(true, std::sync::atomic::Ordering::AcqRel)
+    {
         return;
     }
     let inner = std::sync::Arc::clone(state);
@@ -2417,6 +2436,10 @@ fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
             )
             .await;
         }
+        // Release the scan slot for the next startup / F5 / poll seed.
+        inner
+            .wsl_seed_in_flight
+            .store(false, std::sync::atomic::Ordering::Release);
     });
 }
 
@@ -3208,6 +3231,7 @@ mod tests {
             born_bound: Mutex::new(HashSet::new()),
             host_list_cache: Mutex::new(None),
             wsl_titles_seed_at: Mutex::new(None),
+            wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -4316,6 +4340,7 @@ mod tests {
             born_bound: Mutex::new(HashSet::new()),
             host_list_cache: Mutex::new(None),
             wsl_titles_seed_at: Mutex::new(None),
+            wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
         })
     }
 

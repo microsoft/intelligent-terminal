@@ -811,9 +811,12 @@ pub fn parse_born_bound_params(
         wsl_distro: Option<String>,
     }
     let event = parse_session_hook_params(raw)?;
-    let distro = serde_json::from_str::<WslDistroField>(raw.get())
-        .map(|f| f.wsl_distro)
-        .unwrap_or(None);
+    // Propagate a malformed `wsl_distro` (present but the wrong JSON type) as a
+    // parse error so the master answers `invalid_params`, rather than silently
+    // dropping the distro and mislabelling the row as a host session. A missing
+    // field deserializes to `None` via `#[serde(default)]`, so the plain host
+    // body (no `wsl_distro`) still parses cleanly.
+    let distro = serde_json::from_str::<WslDistroField>(raw.get())?.wsl_distro;
     Ok((event, distro))
 }
 
@@ -3088,6 +3091,32 @@ mod tests {
                 .expect("wsl body ignores the extra wsl_distro key"),
             event,
             "the extra wsl_distro key must not break the plain hook parser",
+        );
+    }
+
+    #[test]
+    fn parse_born_bound_params_rejects_malformed_wsl_distro() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let event = SessionEvent::SessionStarted {
+            key: "bb-bad".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane".to_string(),
+            cwd: PathBuf::from("/mnt/c"),
+            title: String::new(),
+        };
+        // Build a valid WSL body, then corrupt `wsl_distro` to the wrong type.
+        let good = build_born_bound_request_wsl(&event, "Ubuntu");
+        let mut value: serde_json::Value = serde_json::from_str(good.params.get()).unwrap();
+        value["wsl_distro"] = serde_json::json!(123);
+        let raw = serde_json::value::RawValue::from_string(value.to_string()).unwrap();
+
+        // The event still parses, but the malformed distro must surface as an
+        // error rather than being silently dropped (which would mislabel the
+        // WSL row as a host session).
+        assert!(parse_session_hook_params(&raw).is_ok());
+        assert!(
+            parse_born_bound_params(&raw).is_err(),
+            "a wrong-typed wsl_distro must be rejected, not silently ignored"
         );
     }
 
