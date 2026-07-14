@@ -24,11 +24,24 @@ param(
     [string]$Repo = 'microsoft/intelligent-terminal'
 )
 
-# Core team members — do NOT thank as community contributors
-$CoreTeam = @(
-    'yeelam-gordon', 'vanzue', 'DDKinger', 'haonanttt',
-    'hamza-usmani', 'pabhojwa'
-)
+# Core team members — do NOT thank as community contributors.
+# Source of truth is references/core-team.md, parsed at runtime so the
+# script and the docs can't drift. Falls back to a built-in list only
+# if that reference file is missing or unparseable.
+$coreTeamRef = Join-Path $PSScriptRoot '..\references\core-team.md'
+$CoreTeam = @()
+if (Test-Path $coreTeamRef) {
+    $CoreTeam = Get-Content $coreTeamRef |
+        Where-Object { $_ -match '^\s*\|' } |
+        ForEach-Object { ($_ -split '\|')[1].Trim() } |
+        Where-Object { $_ -and $_ -notmatch '^-+$' -and $_ -ne 'GitHub Username' }
+}
+if (-not $CoreTeam -or $CoreTeam.Count -eq 0) {
+    $CoreTeam = @(
+        'yeelam-gordon', 'vanzue', 'DDKinger', 'haonanttt',
+        'hamza-usmani', 'pabhojwa'
+    )
+}
 
 $results = @{
     WithIssues       = @()
@@ -37,9 +50,13 @@ $results = @{
 }
 
 foreach ($pr in $PRNumbers) {
+    $json = gh pr view $pr --repo $Repo --json number,title,author,closingIssuesReferences 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Failed to look up PR #$pr (gh exited $LASTEXITCODE): $json"
+        continue
+    }
+    if (-not $json) { continue }
     try {
-        $json = gh pr view $pr --repo $Repo --json number,title,author,closingIssuesReferences 2>$null
-        if (-not $json) { continue }
         $data = $json | ConvertFrom-Json
 
         # Check for linked issues
@@ -52,7 +69,7 @@ foreach ($pr in $PRNumbers) {
             $results.WithIssues += [PSCustomObject]@{
                 PR     = $pr
                 Title  = $data.title
-                Issues = $issues -join ', '
+                Issues = ($issues | ForEach-Object { "#$_" }) -join ', '
             }
         }
         else {
@@ -70,7 +87,7 @@ foreach ($pr in $PRNumbers) {
         }
     }
     catch {
-        Write-Warning "Failed to look up PR #$pr`: $_"
+        Write-Warning "Failed to process PR #$pr`: $_"
     }
 }
 
@@ -79,7 +96,7 @@ Write-Host "`n## PRs with linked issues" -ForegroundColor Cyan
 if ($results.WithIssues.Count -eq 0) { Write-Host "  (none)" }
 else {
     $results.WithIssues | ForEach-Object {
-        Write-Host "  PR #$($_.PR) → fixes #$($_.Issues): $($_.Title)"
+        Write-Host "  PR #$($_.PR) → fixes $($_.Issues): $($_.Title)"
     }
 }
 
