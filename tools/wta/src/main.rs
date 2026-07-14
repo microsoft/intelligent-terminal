@@ -1540,6 +1540,7 @@ async fn register_launched_session_with_master(
     pane_session_id: &str,
     cli_id: &str,
     cwd: Option<&str>,
+    wsl_distro: Option<&str>,
 ) {
     let event = crate::agent_sessions::SessionEvent::SessionStarted {
         key: session_id.to_string(),
@@ -1552,7 +1553,12 @@ async fn register_launched_session_with_master(
         // on-disk session artefacts once they appear.
         title: String::new(),
     };
-    let req = session_registry::build_born_bound_request(&event);
+    // A WSL delegate carries its distro so the master stamps the row
+    // `Wsl { distro }` → the session view shows the `[WSL-<distro>]` prefix.
+    let req = match wsl_distro {
+        Some(distro) => session_registry::build_born_bound_request_wsl(&event, distro),
+        None => session_registry::build_born_bound_request(&event),
+    };
 
     // Own LocalSet so the `spawn_local` transport works regardless of how the
     // delegate's runtime was set up (mirrors `run_sessions_list`).
@@ -2329,6 +2335,7 @@ async fn delegate_with_context(
                             pane,
                             &runtime.id,
                             wsl_cwd.or(cwd),
+                            Some(distro),
                         )
                         .await;
                     }
@@ -2368,7 +2375,7 @@ async fn delegate_with_context(
     // bind them with no hooks (best-effort). Only when both are known —
     // i.e. a pinnable agent (Copilot/Claude/Gemini) whose tab was created.
     if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
-        register_launched_session_with_master(sid, pane, &runtime.id, cwd).await;
+        register_launched_session_with_master(sid, pane, &runtime.id, cwd, None).await;
     }
 
     Ok(())

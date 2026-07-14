@@ -1234,7 +1234,9 @@ impl HelperHandler {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
             Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
-            Req::SessionBornBound(ev) => handle_session_hook(&self.state, ev, true).await,
+            Req::SessionBornBound(ev, wsl_distro) => {
+                handle_session_born_bound(&self.state, ev, wsl_distro).await
+            }
             Req::SessionResumeDispatched(p) => handle_session_resume_dispatched(&self.state, &p).await,
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
             Req::ForwardToAgent(raw) => self.agent_conn.ext_method(raw).await,
@@ -2674,6 +2676,40 @@ async fn handle_session_hook(
     }
 
     Ok(crate::session_registry::build_session_hook_response(applied))
+}
+
+/// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
+///
+/// Applies the event exactly like [`handle_session_hook`] (binding-only), then —
+/// for a WSL delegate — stamps the freshly-created row `SessionLocation::Wsl {
+/// distro }`. The `SessionStarted` reducer defaults every row to `Host`, so
+/// without this a born-bound WSL delegate row would render without the
+/// `[WSL-<distro>]` prefix the session view already shows for in-distro rows.
+/// Re-broadcasts `sessions/changed` only when the location actually changed, so
+/// the host path (no distro) adds no extra push.
+async fn handle_session_born_bound(
+    state: &MasterStateInner,
+    event: crate::agent_sessions::SessionEvent,
+    wsl_distro: Option<String>,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    // Capture the key before `event` is moved into the reducer.
+    let key = session_event_key(&event).map(str::to_owned);
+    let response = handle_session_hook(state, event, true).await?;
+    if let (Some(distro), Some(key)) = (wsl_distro, key) {
+        let sid = acp::schema::v1::SessionId::new(key);
+        let changed = state
+            .registry
+            .set_location(&sid, crate::agent_sessions::SessionLocation::Wsl { distro })
+            .await;
+        if changed {
+            broadcast_ext_to_helpers(
+                state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+    }
+    Ok(response)
 }
 
 /// Apply one watcher-emitted session event to master's registry and, if it
@@ -4921,6 +4957,56 @@ mod tests {
         assert!(
             !state.hook_owned.lock().await.contains(&sid),
             "born-bound is binding-only — must NOT be hook-owned"
+        );
+    }
+
+    #[tokio::test]
+    async fn born_bound_wsl_stamps_wsl_location() {
+        // A WSL `?<prompt>` delegate registers with a distro; the master must
+        // stamp the row `Wsl { distro }` (the reducer defaults to Host) so the
+        // session view renders the [WSL-<distro>] prefix.
+        let state = make_state();
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bb-wsl-loc".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane-wsl".to_string(),
+            cwd: std::path::PathBuf::from("/mnt/c/Users/dev"),
+            title: String::new(),
+        };
+        handle_session_born_bound(&state, event, Some("Ubuntu".to_string()))
+            .await
+            .expect("wsl born-bound accepted");
+
+        let sid = acp::schema::v1::SessionId::new("bb-wsl-loc".to_string());
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().location,
+            crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+            "WSL born-bound row must be stamped Wsl {{ distro }}"
+        );
+        // Still binding-only, like any born-bound row.
+        assert!(state.born_bound.lock().await.contains(&sid));
+    }
+
+    #[tokio::test]
+    async fn born_bound_host_stays_host_location() {
+        // A host `?<prompt>` delegate carries no distro; the row stays Host.
+        let state = make_state();
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bb-host-loc".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane-host".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        };
+        handle_session_born_bound(&state, event, None)
+            .await
+            .expect("host born-bound accepted");
+
+        let sid = acp::schema::v1::SessionId::new("bb-host-loc".to_string());
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().location,
+            crate::agent_sessions::SessionLocation::Host,
+            "host born-bound row must stay Host"
         );
     }
 

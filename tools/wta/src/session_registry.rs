@@ -368,8 +368,11 @@ pub enum WtaExtRequest {
     /// `_intellterm.wta/session_hook` — a real per-session hook event.
     SessionHook(crate::agent_sessions::SessionEvent),
     /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
-    /// (same body as `SessionHook`, distinct method → binding-only semantics).
-    SessionBornBound(crate::agent_sessions::SessionEvent),
+    /// (same body as `SessionHook` plus an optional `wsl_distro` → binding-only
+    /// semantics). The second field is the WSL distro when the born-bound
+    /// session runs inside a distro (delegate `?<prompt>` from a WSL pane), so
+    /// the master can stamp the row `Wsl { distro }` for the `[WSL-…]` prefix.
+    SessionBornBound(crate::agent_sessions::SessionEvent, Option<String>),
     /// `_intellterm.wta/session_resume_dispatched` — optimistic resume flip.
     SessionResumeDispatched(SessionResumeDispatchedParams),
     /// `_intellterm.wta/session_focus` — focus + typed focus result.
@@ -411,7 +414,13 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
-        decode!(SessionBornBound, parse_session_hook_params)
+        match parse_born_bound_params(&req.params) {
+            Ok((ev, wsl_distro)) => WtaExtRequest::SessionBornBound(ev, wsl_distro),
+            Err(err) => WtaExtRequest::Malformed {
+                method: req.method.to_string(),
+                error: err.to_string(),
+            },
+        }
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED) {
         decode!(SessionResumeDispatched, parse_session_resume_dispatched_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_FOCUS) {
@@ -749,8 +758,35 @@ pub fn build_session_hook_request(event: &crate::agent_sessions::SessionEvent) -
 /// ([`INTELLTERM_METHOD_SESSION_BORN_BOUND`]) so the master treats it as
 /// binding-only (watcher may still supply status), not hook-owned.
 pub fn build_born_bound_request(event: &crate::agent_sessions::SessionEvent) -> acp::schema::v1::ExtRequest {
+    build_born_bound_request_inner(event, None)
+}
+
+/// Like [`build_born_bound_request`] but tags the session as running inside a
+/// WSL distro. The master stamps the created row `SessionLocation::Wsl {
+/// distro }` (the reducer defaults `SessionStarted` to `Host`) so the session
+/// view renders the `[WSL-<distro>]` prefix — used by the `?<prompt>` delegate
+/// path when the active pane is a WSL pane.
+pub fn build_born_bound_request_wsl(
+    event: &crate::agent_sessions::SessionEvent,
+    distro: &str,
+) -> acp::schema::v1::ExtRequest {
+    build_born_bound_request_inner(event, Some(distro.to_string()))
+}
+
+/// Serialize the born-bound body: the shared `SessionHookParams` object with an
+/// optional `wsl_distro` key merged in (omitted when `None`, so the host body
+/// stays byte-compatible with `session_hook`).
+fn build_born_bound_request_inner(
+    event: &crate::agent_sessions::SessionEvent,
+    wsl_distro: Option<String>,
+) -> acp::schema::v1::ExtRequest {
     let params = SessionHookParams::from(event);
-    let json = serde_json::to_string(&params).expect("SessionHookParams serialization is infallible");
+    let mut value =
+        serde_json::to_value(&params).expect("SessionHookParams serialization is infallible");
+    if let (Some(obj), Some(distro)) = (value.as_object_mut(), wsl_distro) {
+        obj.insert("wsl_distro".to_string(), serde_json::Value::String(distro));
+    }
+    let json = serde_json::to_string(&value).expect("serde_json::Value serialization is infallible");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_BORN_BOUND, Arc::from(raw))
@@ -761,6 +797,24 @@ pub fn parse_session_hook_params(
     raw: &serde_json::value::RawValue,
 ) -> Result<crate::agent_sessions::SessionEvent, serde_json::Error> {
     serde_json::from_str::<SessionHookParams>(raw.get()).map(Into::into)
+}
+
+/// Parse a born-bound body into `(event, wsl_distro)`. Reuses
+/// [`parse_session_hook_params`] for the event (it ignores the extra
+/// `wsl_distro` key) and separately extracts the optional distro.
+pub fn parse_born_bound_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<(crate::agent_sessions::SessionEvent, Option<String>), serde_json::Error> {
+    #[derive(serde::Deserialize)]
+    struct WslDistroField {
+        #[serde(default)]
+        wsl_distro: Option<String>,
+    }
+    let event = parse_session_hook_params(raw)?;
+    let distro = serde_json::from_str::<WslDistroField>(raw.get())
+        .map(|f| f.wsl_distro)
+        .unwrap_or(None);
+    Ok((event, distro))
 }
 
 /// Build a master response for `session_hook`.
@@ -951,6 +1005,17 @@ pub trait SessionRegistry: Send + Sync {
     /// Update origin metadata on an existing row.
     async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool;
 
+    /// Update the `location` (Host / WSL distro) of an existing row. Returns
+    /// `true` iff the value actually changed. Used to stamp a born-bound WSL
+    /// delegate row as `Wsl { distro }` after the reducer creates it (the
+    /// reducer defaults every `SessionStarted` to `Host`), so the session view
+    /// renders the `[WSL-<distro>]` prefix.
+    async fn set_location(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        location: crate::agent_sessions::SessionLocation,
+    ) -> bool;
+
     /// Atomically flip a Historical row to Idle for resume dispatch (Task C).
     /// Returns Some((flipped, current_status_label)) where `flipped` is true
     /// only when the row was Historical and was transitioned this call.
@@ -1102,6 +1167,22 @@ impl SessionRegistry for InMemoryRegistry {
             return false;
         }
         entry.origin = Some(origin);
+        true
+    }
+
+    async fn set_location(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        location: crate::agent_sessions::SessionLocation,
+    ) -> bool {
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(sid) else {
+            return false;
+        };
+        if entry.location == location {
+            return false;
+        }
+        entry.location = location;
         true
     }
 
@@ -2757,7 +2838,7 @@ mod tests {
         assert!(matches!(parse_ext_request(build_focus_session_request(&sid)), WtaExtRequest::FocusSession(_)));
         assert!(matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan));
         assert!(matches!(parse_ext_request(build_session_hook_request(&ev)), WtaExtRequest::SessionHook(_)));
-        assert!(matches!(parse_ext_request(build_born_bound_request(&ev)), WtaExtRequest::SessionBornBound(_)));
+        assert!(matches!(parse_ext_request(build_born_bound_request(&ev)), WtaExtRequest::SessionBornBound(..)));
         assert!(matches!(parse_ext_request(build_session_resume_dispatched_request(&sid)), WtaExtRequest::SessionResumeDispatched(_)));
         assert!(matches!(parse_ext_request(build_session_focus_request(&sid)), WtaExtRequest::SessionFocus(_)));
     }
@@ -2772,7 +2853,7 @@ mod tests {
         assert!(matches!(parse_ext_request(strip_leading_underscore(build_focus_session_request(&sid))), WtaExtRequest::FocusSession(_)));
         assert!(matches!(parse_ext_request(strip_leading_underscore(build_sessions_list_request(false))), WtaExtRequest::SessionsList(_)));
         assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_hook_request(&ev))), WtaExtRequest::SessionHook(_)));
-        assert!(matches!(parse_ext_request(strip_leading_underscore(build_born_bound_request(&ev))), WtaExtRequest::SessionBornBound(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_born_bound_request(&ev))), WtaExtRequest::SessionBornBound(..)));
         assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_resume_dispatched_request(&sid))), WtaExtRequest::SessionResumeDispatched(_)));
         assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_focus_request(&sid))), WtaExtRequest::SessionFocus(_)));
     }
@@ -2970,6 +3051,75 @@ mod tests {
         let parsed =
             parse_session_hook_params(&request.params).expect("born-bound body must round-trip");
         assert_eq!(parsed, event);
+    }
+
+    #[test]
+    fn born_bound_request_carries_optional_wsl_distro() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let event = SessionEvent::SessionStarted {
+            key: "bb-wsl".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane-wsl".to_string(),
+            cwd: PathBuf::from("/mnt/c/Users/yuazha"),
+            title: String::new(),
+        };
+
+        // Host (no distro): parses back to the event with no distro, and the
+        // event still round-trips through the plain hook parser.
+        let host = build_born_bound_request(&event);
+        let (ev_host, distro_host) =
+            parse_born_bound_params(&host.params).expect("host born-bound parses");
+        assert_eq!(ev_host, event);
+        assert_eq!(distro_host, None);
+        assert_eq!(
+            parse_session_hook_params(&host.params).expect("host body is hook-shaped"),
+            event,
+            "host born-bound body must stay compatible with the plain hook parser",
+        );
+
+        // WSL: the distro rides alongside, and the event still parses cleanly.
+        let wsl = build_born_bound_request_wsl(&event, "Ubuntu");
+        let (ev_wsl, distro_wsl) =
+            parse_born_bound_params(&wsl.params).expect("wsl born-bound parses");
+        assert_eq!(ev_wsl, event);
+        assert_eq!(distro_wsl.as_deref(), Some("Ubuntu"));
+        assert_eq!(
+            parse_session_hook_params(&wsl.params)
+                .expect("wsl body ignores the extra wsl_distro key"),
+            event,
+            "the extra wsl_distro key must not break the plain hook parser",
+        );
+    }
+
+    #[tokio::test]
+    async fn set_location_updates_only_on_change() {
+        use crate::agent_sessions::SessionLocation;
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("loc-1".to_string());
+        reg.upsert(SessionInfo::new(sid.clone(), PathBuf::from("/mnt/c/proj")))
+            .await;
+        // Default row is Host → stamping Wsl changes it.
+        assert!(
+            reg.set_location(&sid, SessionLocation::Wsl { distro: "Ubuntu".to_string() })
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().location,
+            SessionLocation::Wsl { distro: "Ubuntu".to_string() }
+        );
+        // Idempotent: same value → no change reported.
+        assert!(
+            !reg.set_location(&sid, SessionLocation::Wsl { distro: "Ubuntu".to_string() })
+                .await
+        );
+        // Absent id → no change.
+        assert!(
+            !reg.set_location(
+                &acp::schema::v1::SessionId::new("missing".to_string()),
+                SessionLocation::Host
+            )
+            .await
+        );
     }
 
     #[test]
