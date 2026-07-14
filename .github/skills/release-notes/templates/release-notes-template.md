@@ -1,6 +1,6 @@
 # Intelligent Terminal — Release Notes (vX.X.X)
 
-<one-line summary of what this release brings>
+_One-line summary of what this release brings._
 
 ## ✨ New Features
 

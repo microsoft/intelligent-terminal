@@ -39,6 +39,8 @@ gh pr view <number> --repo <owner>/<repo> --json number,title,body,author,closin
 
 > `<owner>/<repo>` is `microsoft/intelligent-terminal` for this repo's own PRs, or `microsoft/terminal` for upstream `#20xxx` PRs.
 
+To batch this lookup across many PRs at once, run [`scripts/Get-PrMetadata.ps1`](./scripts/Get-PrMetadata.ps1) with a list of PR numbers — it reports linked issues and flags community contributors (authors not in `references/core-team.md`).
+
 Collect:
 - **PR → Issue mapping**: Which PRs fix/close GitHub issues
 - **Community contributors**: Authors NOT in the core team list
