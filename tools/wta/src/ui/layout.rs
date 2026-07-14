@@ -2,8 +2,8 @@ use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
 use ratatui::prelude::*;
 
 use super::{
-    agents_view, auth, chat, command_popup, debug_panel, input, model_popup, permission,
-    recommendations, setup,
+    agent_popup, agents_view, auth, chat, command_popup, debug_panel, input, model_popup,
+    permission, recommendations, setup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -227,6 +227,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // command popup isn't visible while it's up.
     if let Some(model_state) = app.model_popup_state() {
         model_popup::render_popup(frame, model_state, chunks[6]);
+    }
+
+    // `/agent` picker modal: same anchor and mutual-exclusion as `/model`.
+    if let Some(agent_state) = app.agent_popup_state() {
+        agent_popup::render_popup(frame, agent_state, chunks[6]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

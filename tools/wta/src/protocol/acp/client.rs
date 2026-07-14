@@ -117,12 +117,31 @@ impl TemplateMemo {
     }
 }
 
+/// A custom-agent system-prompt override carried with a planner prompt.
+///
+/// When a tab has a non-built-in custom agent selected (via `/agent`), each
+/// user prompt on that tab carries the agent's `.agent.md` body here so
+/// [`build_prompt_text`] uses it as the planner template instead of the
+/// default `terminal-agent` prompt. `None`/absent = the built-in default.
+#[derive(Debug, Clone)]
+pub struct AgentPromptOverride {
+    /// The agent's display name (for prompt-source telemetry / the loaded-name
+    /// event), mirroring `PlannerPromptTemplate::display_name`.
+    pub display_name: String,
+    /// The agent's system-prompt body (the `.agent.md` markdown after the
+    /// frontmatter), used verbatim as the planner template.
+    pub body: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct PromptSubmission {
     pub id: u64,
     pub text: String,
     pub pane_context: Option<PaneContext>,
     pub submitted_at_unix_s: f64,
+    /// Custom-agent override for this prompt's planner template (`/agent`
+    /// selection). `None` for autofix prompts and for the built-in agent.
+    pub agent_override: Option<AgentPromptOverride>,
     /// True when this prompt was synthesized by the auto-fix flow rather
     /// than typed by a human. The host uses this to skip broadcasting it
     /// as a User message (the client already shows the error line), and
@@ -273,8 +292,17 @@ impl PromptSubmission {
             pane_context,
             submitted_at_unix_s: now_unix_s(),
             is_autofix,
+            agent_override: None,
             images: Vec::new(),
         }
+    }
+
+    /// Attach a custom-agent system-prompt override (from a `/agent`
+    /// selection) to a human-entered planner prompt. No-op semantics for the
+    /// built-in agent — callers pass `None` there.
+    pub fn with_agent_override(mut self, agent_override: Option<AgentPromptOverride>) -> Self {
+        self.agent_override = agent_override;
+        self
     }
 
     /// Attach pasted images (Alt+V) to a human-entered prompt.
@@ -1198,6 +1226,7 @@ async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
+    agent_override: Option<&AgentPromptOverride>,
 ) -> (String, String, String, Option<String>) {
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
@@ -1210,6 +1239,10 @@ async fn build_prompt_text(
     let template_started = std::time::Instant::now();
     let planner_template = if is_autofix {
         prompt::load_autofix_prompt_template()
+    } else if let Some(agent) = agent_override {
+        // A custom agent is selected on this tab: use its `.agent.md` body as
+        // the planner template instead of the default `terminal-agent` prompt.
+        prompt::planner_template_from_agent_override(&agent.display_name, &agent.body)
     } else {
         prompt::load_planner_prompt_template()
     };
@@ -3574,6 +3607,7 @@ async fn dispatch_prompt_body(
         &shell_mgr_task,
         wt_connected,
         prompt.pane_context.as_ref(),
+        prompt.agent_override.as_ref(),
     )
     .await;
     // A manual `/fix` resolved its working pane in build_prompt_text (it had no
@@ -4256,7 +4290,7 @@ mod tests {
         let mgr = crate::shell::ShellManager::new();
         let expected = super::prompt::load_planner_prompt_template();
         let (prompt, _source, display_name, fix_pane) =
-            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
+            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
             prompt.contains("### Supported Delegate Agents"),
@@ -4269,15 +4303,41 @@ mod tests {
         assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
     }
 
-    /// An autofix turn loads the *autofix* persona (not the planner), appends a
-    /// non-empty hint as a User Request, and omits planner-only sections.
+    /// A planner turn with a custom-agent override ships the agent's `.agent.md`
+    /// body as the template instead of the default `terminal-agent` prompt, and
+    /// still appends the user request.
+    #[tokio::test]
+    async fn build_prompt_text_planner_uses_agent_override_body() {
+        let mgr = crate::shell::ShellManager::new();
+        let default_tpl = super::prompt::load_planner_prompt_template();
+        let over = super::AgentPromptOverride {
+            display_name: "DevOps Helper".to_string(),
+            body: "You are a DevOps specialist. Fix CI failures.".to_string(),
+        };
+        let (prompt, _source, display_name, _fix) =
+            super::build_prompt_text(8, 0.0, "why is my build red", false, true, &mgr, false, None, Some(&over))
+                .await;
+        assert_eq!(display_name, "DevOps Helper");
+        assert_ne!(
+            display_name, default_tpl.display_name,
+            "override must not reuse the default planner persona name"
+        );
+        assert!(
+            prompt.contains("You are a DevOps specialist."),
+            "override body must be shipped as the template"
+        );
+        assert!(
+            prompt.contains("## User Request\nwhy is my build red"),
+            "override turns still append the user text"
+        );
+    }
     #[tokio::test]
     async fn build_prompt_text_autofix_appends_hint_and_omits_planner_sections() {
         let mgr = crate::shell::ShellManager::new();
         let planner = super::prompt::load_planner_prompt_template();
         let autofix = super::prompt::load_autofix_prompt_template();
         let (prompt, _s, display_name, fix_pane) =
-            super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
+            super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None, None).await;
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
             display_name, planner.display_name,
@@ -4300,7 +4360,7 @@ mod tests {
     async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
         let mgr = crate::shell::ShellManager::new();
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
+            super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None, None).await;
         assert!(
             !prompt.contains("## User Request"),
             "blank autofix hint must not add a User Request section"
@@ -4319,7 +4379,7 @@ mod tests {
             "test precondition: planner template body is non-empty"
         );
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
+            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None, None).await;
         assert!(
             !prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
@@ -4340,7 +4400,7 @@ mod tests {
             "is_agent_pane": false,
         }));
         let (prompt, _s, _d, fix_pane) =
-            super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
+            super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None, None).await;
         assert_eq!(
             fix_pane.as_deref(),
             Some("work-pane"),
@@ -4367,7 +4427,7 @@ mod tests {
             ..Default::default()
         };
         let (_p, _s, _d, fix_pane) =
-            super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
+            super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx), None).await;
         assert!(
             fix_pane.is_none(),
             "error-triggered autofix carries its source; resolved_fix_pane stays None"
@@ -4407,7 +4467,7 @@ mod tests {
             ..Default::default()
         };
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
+            super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx), None).await;
         assert!(prompt.contains("### Shell Context"), "got: {prompt}");
         // The shell-context JSON must carry the SOURCE pane's shell + cwd…
         assert!(

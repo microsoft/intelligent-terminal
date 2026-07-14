@@ -274,6 +274,69 @@ fn slash_model_direct_switch_sets_override() {
     );
 }
 
+// ---- /agent custom-agent picker ----
+
+#[test]
+fn slash_agent_bare_opens_picker() {
+    let mut app = test_app();
+    // The built-in `terminal-agent` is always discoverable, so the picker
+    // always has at least one row to show.
+    run_slash(&mut app, "agent");
+    assert!(
+        app.current_tab().agent_picker_open,
+        "bare /agent must open the agent picker"
+    );
+}
+
+#[test]
+fn slash_agent_direct_builtin_selects_default() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-1".into());
+
+    run_slash_args(&mut app, "agent", "terminal-agent");
+
+    assert!(
+        app.current_tab().active_agent.is_none(),
+        "selecting the built-in agent leaves the tab on the default (None)"
+    );
+    assert!(
+        !app.current_tab().agent_picker_open,
+        "a direct /agent <name> switch must not leave the picker open"
+    );
+    assert!(
+        app.current_tab().session_id.is_none(),
+        "switching agent starts a fresh session (session_id cleared)"
+    );
+}
+
+#[test]
+fn slash_agent_unknown_notes_system_and_keeps_default() {
+    let mut app = test_app();
+    run_slash_args(&mut app, "agent", "no-such-agent-xyz");
+
+    assert!(
+        app.current_tab().active_agent.is_none(),
+        "an unknown /agent name must not change the active agent"
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
+}
+
+#[test]
+fn degraded_blocks_agent_command_too() {
+    let mut app = test_app();
+    app.transport_lost = true;
+
+    run_slash(&mut app, "agent");
+
+    assert!(
+        !app.current_tab().agent_picker_open,
+        "/agent must be refused while the transport is lost"
+    );
+}
+
 // ---- Degraded (transport-lost) gating: only /restart runs ----
 
 #[test]
