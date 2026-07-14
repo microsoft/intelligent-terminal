@@ -50,14 +50,20 @@ $results = @{
 }
 
 foreach ($pr in $PRNumbers) {
-    $json = gh pr view $pr --repo $Repo --json number,title,author,closingIssuesReferences 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Failed to look up PR #$pr (gh exited $LASTEXITCODE): $json"
-        continue
-    }
-    if (-not $json) { continue }
+    # Capture stdout and stderr separately (stderr -> temp file) so a
+    # 'gh' warning/progress line can never corrupt the JSON stream fed
+    # to ConvertFrom-Json. Mirrors the repo's Invoke-Gh pattern in
+    # .github/skills/copilot-pr-review-loop/scripts/_lib.ps1.
+    $errFile = [IO.Path]::GetTempFileName()
     try {
-    $data = ($json -join "`n") | ConvertFrom-Json
+        $json = & gh pr view $pr --repo $Repo --json number,title,author,closingIssuesReferences 2>$errFile
+        if ($LASTEXITCODE -ne 0) {
+            $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue)
+            Write-Warning "Failed to look up PR #$pr (gh exited $LASTEXITCODE): $($err.Trim())"
+            continue
+        }
+        if (-not $json) { continue }
+        $data = ($json | Out-String) | ConvertFrom-Json
 
         # Check for linked issues
         $issues = @()
@@ -88,6 +94,11 @@ foreach ($pr in $PRNumbers) {
     }
     catch {
         Write-Warning "Failed to process PR #$pr`: $_"
+    }
+    finally {
+        if (Test-Path -LiteralPath $errFile) {
+            Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+        }
     }
 }
 
