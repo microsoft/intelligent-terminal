@@ -339,9 +339,12 @@ fn parse_resolve_output(stdout: &str) -> Option<Vec<CommandResolution>> {
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
+    // Use the LAST sentinel, not the first: the real marker is printed by
+    // `-Command` *after* the profile has finished loading, so any earlier
+    // sentinel-looking line is profile stdout noise and must be skipped past.
     let start = lines
         .iter()
-        .position(|l| *l == ENUM_SENTINEL)
+        .rposition(|l| *l == ENUM_SENTINEL)
         .map_or(0, |i| i + 1);
     let resolutions: Vec<CommandResolution> = lines[start..]
         .iter()
@@ -472,9 +475,12 @@ fn parse_enumerate_output(stdout: &str) -> Option<Vec<String>> {
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
+    // Use the LAST sentinel, not the first: the real marker is printed by
+    // `-Command` *after* the profile has finished loading, so any earlier
+    // sentinel-looking line is profile stdout noise and must be skipped past.
     let start = lines
         .iter()
-        .position(|l| *l == ENUM_SENTINEL)
+        .rposition(|l| *l == ENUM_SENTINEL)
         .map_or(0, |i| i + 1);
     let names: Vec<String> = lines[start..].iter().map(|s| s.to_string()).collect();
 
@@ -703,6 +709,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_output_uses_last_sentinel_when_noise_contains_one() {
+        // A profile that echoes the sentinel string as stdout noise must not
+        // fool the parser: the real marker is the LAST one, printed after the
+        // profile loads. Everything up to and including it (incl. the fake) is
+        // dropped, so the fake sentinel never leaks in as a command name.
+        let raw = [
+            "profile prints the marker as noise:",
+            ENUM_SENTINEL,
+            "still profile noise",
+            ENUM_SENTINEL,
+            "git",
+            "Get-ChildItem",
+        ]
+        .join("\n");
+        let got = parse_enumerate_output(&raw).expect("names after the last sentinel");
+        assert_eq!(got, names(&["git", "Get-ChildItem"]));
+    }
+
+    #[test]
     fn parse_resolve_output_parses_tab_rows_after_sentinel() {
         // Rows built with join("\t") so the source has no `\t`-glued tokens.
         let alias_row = ["Alias", "which", "where.exe"].join("\t");
@@ -728,6 +753,18 @@ mod tests {
     fn parse_resolve_output_none_when_no_rows() {
         // Sentinel only (token didn't resolve) → None.
         assert!(parse_resolve_output(ENUM_SENTINEL).is_none());
+    }
+
+    #[test]
+    fn parse_resolve_output_uses_last_sentinel_when_noise_contains_one() {
+        // Same last-sentinel guarantee as the enumerate parser: a profile that
+        // echoes the sentinel as noise must not shift the data window.
+        let row = ["Alias", "which", "where.exe"].join("\t");
+        let raw = [ENUM_SENTINEL, "profile noise", ENUM_SENTINEL, &row].join("\n");
+        let got = parse_resolve_output(&raw).expect("resolutions after the last sentinel");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].name, "which");
+        assert_eq!(got[0].target, "where.exe");
     }
 
     #[test]

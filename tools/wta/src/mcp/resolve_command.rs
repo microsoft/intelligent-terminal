@@ -75,8 +75,8 @@ impl Tool for ResolveCommand {
             .to_string());
         }
 
-        // Every branch returns the same `{token, status, …}` shape so callers /
-        // LLMs never special-case a path.
+        // Every branch returns the same `{token, status, …}` shape so callers
+        // (and the agent) never have to special-case a path.
         match crate::command_recall::powershell_resolve(shell, token).await {
             // Existing command → what it resolves to (the "what is X" answer the
             // agent's own -NoProfile probe can't give).
