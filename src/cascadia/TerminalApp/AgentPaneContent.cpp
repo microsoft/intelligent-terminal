@@ -7,8 +7,6 @@
 
 #include <algorithm>
 #include <cwctype>
-#include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 
 using namespace winrt::Windows::UI;
@@ -22,19 +20,27 @@ namespace winrt::TerminalApp::implementation
 {
     namespace
     {
-        // Map the agent's display name (case-insensitive substring) to the
-        // packaged white-filled SVG. Unknown agents fall back to Copilot.
-        std::wstring_view _logoFileForAgent(const winrt::hstring& name)
+        enum class AgentLogoKind
+        {
+            Copilot,
+            Claude,
+            Gemini,
+            Codex,
+        };
+
+        // Map the agent's display name (case-insensitive substring) to its
+        // XAML path. Unknown agents fall back to Copilot.
+        AgentLogoKind _logoForAgent(const winrt::hstring& name)
         {
             std::wstring lower{ name };
             std::transform(lower.begin(), lower.end(), lower.begin(),
                            [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-            if (lower.find(L"claude") != std::wstring::npos) return L"claude.svg";
-            if (lower.find(L"codex") != std::wstring::npos) return L"codex.svg";
-            if (lower.find(L"openai") != std::wstring::npos) return L"codex.svg";
-            if (lower.find(L"gpt") != std::wstring::npos) return L"codex.svg";
-            if (lower.find(L"gemini") != std::wstring::npos) return L"gemini.svg";
-            return L"copilot.svg";
+            if (lower.find(L"claude") != std::wstring::npos) return AgentLogoKind::Claude;
+            if (lower.find(L"codex") != std::wstring::npos) return AgentLogoKind::Codex;
+            if (lower.find(L"openai") != std::wstring::npos) return AgentLogoKind::Codex;
+            if (lower.find(L"gpt") != std::wstring::npos) return AgentLogoKind::Codex;
+            if (lower.find(L"gemini") != std::wstring::npos) return AgentLogoKind::Gemini;
+            return AgentLogoKind::Copilot;
         }
 
     }
@@ -200,10 +206,6 @@ namespace winrt::TerminalApp::implementation
         {
             label.Foreground(foreground);
         }
-        if (const auto logo = AgentLogo())
-        {
-            logo.Foreground(foreground);
-        }
     }
 
     void AgentPaneContent::_refreshLabel()
@@ -246,21 +248,21 @@ namespace winrt::TerminalApp::implementation
     {
         if (_isSessionsView)
         {
-            AgentLogo().UriSource(nullptr);
             AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
         if (_agentName.empty())
         {
-            AgentLogo().UriSource(nullptr);
             AgentLogo().Visibility(Visibility::Collapsed);
             return;
         }
 
-        std::wstring uri{ L"ms-appx:///AgentIcons/" };
-        uri.append(_logoFileForAgent(_agentName));
-        AgentLogo().UriSource(winrt::Windows::Foundation::Uri{ winrt::hstring{ uri } });
+        const auto logo = _logoForAgent(_agentName);
+        CopilotLogo().Visibility(logo == AgentLogoKind::Copilot ? Visibility::Visible : Visibility::Collapsed);
+        ClaudeLogo().Visibility(logo == AgentLogoKind::Claude ? Visibility::Visible : Visibility::Collapsed);
+        GeminiLogo().Visibility(logo == AgentLogoKind::Gemini ? Visibility::Visible : Visibility::Collapsed);
+        CodexLogo().Visibility(logo == AgentLogoKind::Codex ? Visibility::Visible : Visibility::Collapsed);
         AgentLogo().Visibility(Visibility::Visible);
     }
 
