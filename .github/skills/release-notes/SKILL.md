@@ -62,33 +62,41 @@ Use the [release notes template](./templates/release-notes-template.md) and foll
 
 #### Formatting Rules
 
-1. **Every bullet uses "Verbed + Impact + Scenario"** — a human must understand what changed and why it matters to them
-   - ✅ `**Fixed empty agent session views after first login** so the first tab's AI session reconnects and shows your conversation instead of appearing blank: #188`
-   - ❌ `Fixed bug #188` (no impact or scenario)
+1. **Use numbered lists** (`1.`, `2.`, `3.`) within every section — matches the house style of prior releases (e.g. `doc/release-notes/v0.1.2.md`), not bullet points.
+
+2. **Every item uses "Verbed + Impact + Scenario"** — a human must understand what changed and why it matters to them
+   - ✅ `**Press F5 to refresh the session list.** Re-scans history on demand so sessions that appeared after launch show up without restarting. #344`
+   - ❌ `Fixed bug #344` (no impact or scenario)
    - ❌ `emit connection_state:closed on UI-initiated pane/tab close` (developer jargon)
 
-2. **Every bullet has a PR or issue number** at the end (e.g., `: #195` or `: #188, #199`)
-   - If the PR has a linked issue, use the issue number
-   - If no linked issue, use the PR number
-   - Group related fixes that share user impact into one bullet with multiple numbers
+3. **Every item ends with its PR number(s)** — a space then `#PR` after the trailing period (e.g. `… without restarting. #344` or `… in strict-mode shells. #340`).
+   - Use the **PR number** as the primary reference (the shipped notes are PR-centric).
+   - In the 💜 Community section you may add the linked issue too, e.g. `(#366, closes #351)`.
+   - Group related items that share user impact into one entry with multiple numbers (e.g. `#305, #365`).
 
-3. **Omit purely internal changes** — CI fixes, code refactors, dev docs, test-only changes, localization bot updates — unless they have direct user-visible impact
+4. **Open with a metadata blockquote header**, mirroring `v0.1.2.md`: the base release tag + commit + build, the head `main` commit, the new-PR count, the CI-injects-build-number note, and the "base is the tag, not `stable`" note.
 
-4. **Avoid detailed security disclosures in public release notes** — fold security-related stability fixes into the Bug Fixes section rather than calling them out as security issues, and coordinate any security-sensitive wording with maintainers per [SECURITY.md](../../../SECURITY.md)
+5. **Frame the notes** with a one-paragraph plain-language intro (the release's headline theme) after the header, and a closing call-to-action inviting users to file issues.
 
-5. **Thank community contributors** in a 💜 Community section with GitHub profile links:
+6. **Omit purely internal changes** — CI fixes, code refactors, dev docs, test-only changes, localization bot updates — unless they have direct user-visible impact. (Prior releases sometimes collect these under a `## Development` section instead of omitting them; follow the maintainer's preference for the release at hand.)
+
+7. **Avoid detailed security disclosures in public release notes** — fold security-related stability fixes into the Bug Fixes section rather than calling them out as security issues, and coordinate any security-sensitive wording with maintainers per [SECURITY.md](../../../SECURITY.md)
+
+8. **Thank community contributors** in a 💜 Community section with GitHub profile links:
    ```markdown
-   - [@username](https://github.com/username) (Display Name) — what they contributed (#PR)
+   1. [@username](https://github.com/username) (Display Name) — what they contributed. (#PR, closes #issue)
    ```
 
 #### Section Structure
 
-Use these sections in order:
+Open with the metadata blockquote header and the intro paragraph, then use these sections in order:
 - `## ✨ New Features` — new capabilities users can use
 - `## 🔧 Improvements` — enhancements to existing features
 - `## 🐛 Bug Fixes` — things that were broken and are now fixed
 - `## 💜 Community` — external contributor thanks
 - `## 🚀 Top 5 Elevator-Pitch Points` — the most compelling highlights for social media / announcements
+
+Close with the call-to-action paragraph.
 
 ### Phase 4: Output
 
