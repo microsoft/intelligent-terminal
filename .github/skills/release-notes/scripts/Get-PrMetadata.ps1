@@ -59,6 +59,7 @@ foreach ($pr in $PRNumbers) {
         $json = & gh pr view $pr --repo $Repo --json number,title,author,closingIssuesReferences 2>$errFile
         if ($LASTEXITCODE -ne 0) {
             $err = (Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue)
+            if ($null -eq $err) { $err = '' }
             Write-Warning "Failed to look up PR #$pr (gh exited $LASTEXITCODE): $($err.Trim())"
             continue
         }
