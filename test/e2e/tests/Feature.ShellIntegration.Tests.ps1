@@ -51,11 +51,7 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
             $listener = Start-WtEventListener -App $script:app
             Invoke-RunCommand -App $script:app -SessionId $sid -Command "'x' -match '['" | Out-Null
 
-            $ev = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
-                $_.method -eq 'vt_sequence' -and
-                "$($_.params.sequence)" -match '(?i)osc:133;D;' -and
-                "$($_.params.pane_id)" -eq "$sid"
-            }
+            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
             "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
         }
         finally {
