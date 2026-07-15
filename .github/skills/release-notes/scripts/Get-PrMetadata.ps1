@@ -34,7 +34,7 @@ $ghCmd = Get-Command gh -ErrorAction SilentlyContinue
 if (-not $ghCmd) {
     throw "Prerequisite missing: 'gh' CLI is not on PATH. Install with: winget install GitHub.cli (Windows) or brew install gh (macOS). Then run: gh auth login"
 }
-$authStatus = gh auth status 2>&1
+gh auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Prerequisite missing: 'gh' CLI is not authenticated. Run: gh auth login"
 }
