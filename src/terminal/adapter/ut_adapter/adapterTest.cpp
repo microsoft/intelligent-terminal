@@ -3602,7 +3602,7 @@ public:
         // and the resulting cell size must stay within the hard storage max.
         Log::Comment(L"Short glyph with many trailing sixel bands");
         const std::wstring shortGlyphOverrun{ L"????????" + std::wstring(12, L'/') };
-        loadGlyph(8, 8, shortGlyphOverrun);
+        VERIFY_IS_TRUE(loadGlyph(8, 8, shortGlyphOverrun));
         VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().width, 16);
         VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().height, 32);
 
@@ -3611,7 +3611,7 @@ public:
         // must complete without signed-overflow UB and stay in bounds.
         Log::Comment(L"Payload of only sixel line breaks");
         const std::wstring onlyLineBreaks(4096, L'/');
-        loadGlyph(8, 8, onlyLineBreaks);
+        VERIFY_IS_TRUE(loadGlyph(8, 8, onlyLineBreaks));
         VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().height, 32);
 
         // A tall (16x32) glyph that exactly fills its stride, followed by extra
