@@ -39,6 +39,30 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
         finally { Stop-WtEventListener -Listener $listener }
     }
 
+    It 'PowerShell-level errors emit a non-zero command-finished mark (invalid-regex .NET exception; Windows PowerShell 5.1 regression)' {
+        # A PowerShell-internal error — here an invalid -match regex, which throws a .NET
+        # ArgumentException (OperationStopped) — never sets $LASTEXITCODE. Windows PowerShell 5.1
+        # additionally stamps $Error[0].InvocationInfo.HistoryId = -1 on such .NET-exception-class
+        # errors, so the shell-integration exit-code resolver must NOT rely on a HistoryId match to
+        # detect them. Run a NATIVE success first so $LASTEXITCODE is deterministically 0: the old
+        # resolver then fell through to that stale 0 and emitted OSC 133;D;0 (autofix-blind), while
+        # the fix reports a non-zero mark. This asserts the failure is surfaced regardless of shell
+        # version.
+        $pane = Get-ActivePane -App $script:app
+        $sid = $pane.session_id
+        # Deterministic native success -> $LASTEXITCODE = 0 (the precondition that exposes the bug).
+        Invoke-RunCommand -App $script:app -SessionId $sid -Command 'cmd /c "exit 0"' -SettleSec 6 | Out-Null
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            # 'x' -match '[' -> Unterminated [] set -> ArgumentException. $? is False but
+            # $LASTEXITCODE stays 0, so only the fixed resolver reports a non-zero exit code.
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command "'x' -match '['" | Out-Null
+            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $pane.session_id -TimeoutSec 20
+            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+    }
+
     It 'PowerShell shell integration emits a zero-exit mark on success (OSC 133;D;0)' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $listener = Start-WtEventListener -App $script:app
