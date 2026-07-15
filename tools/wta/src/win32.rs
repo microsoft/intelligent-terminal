@@ -111,14 +111,16 @@ pub(crate) fn read_paste_string_from_clipboard() -> io::Result<String> {
             let size = GlobalSize(handle);
             if size == 0 || size > MAX_CLIPBOARD_TEXT_BYTES {
                 GlobalUnlock(handle);
-                return Ok(String::new());
+            } else {
+                let units = std::slice::from_raw_parts(
+                    ptr as *const u16,
+                    size / std::mem::size_of::<u16>(),
+                );
+                let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
+                let text = String::from_utf16_lossy(&units[..end]);
+                GlobalUnlock(handle);
+                return Ok(text);
             }
-
-            let units = std::slice::from_raw_parts(ptr as *const u16, size / std::mem::size_of::<u16>());
-            let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
-            let text = String::from_utf16_lossy(&units[..end]);
-            GlobalUnlock(handle);
-            return Ok(text);
         }
 
         if let Some(path) = clipboard_file_path_from_open_clipboard() {
