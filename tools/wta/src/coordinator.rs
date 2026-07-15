@@ -136,15 +136,17 @@ pub fn default_delegate_agent_runtimes(
 
 /// Derive a (id, display_name) pair from a delegate agent commandline.
 fn derive_agent_identity(commandline: &str) -> (String, String) {
-    let first_token = commandline
-        .split_whitespace()
-        .next()
-        .unwrap_or(commandline);
-    let unquoted = first_token.trim_matches('"');
-    let profile = agent_registry::lookup_profile(unquoted);
+    let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
+        commandline,
+    ));
     if profile.id != "unknown" {
         return (profile.id.to_string(), profile.display_name.to_string());
     }
+    let first_token = split_windows_commandline(commandline)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| commandline.to_string());
+    let unquoted = first_token.trim_matches('"');
     // Unknown agent — use the basename as both id and name.
     let basename = unquoted
         .rsplit(|ch: char| ch == '\\' || ch == '/')
@@ -750,13 +752,220 @@ fn build_delegate_launch_commandline(
             }
         },
     };
-    // .cmd/.bat shims (e.g. npm-installed CLIs) can't be launched directly
-    // via CreateProcess — wrap with cmd /c so the command interpreter finds them.
+    // .cmd/.bat shims (e.g. npm-installed CLIs) can't be launched directly via
+    // CreateProcess — normally we wrap with `cmd /c` so the interpreter resolves
+    // them. But `cmd /c` truncates a command-line argument at the first newline
+    // (#403), dropping the multi-line `## Terminal Context` block. For a
+    // multi-line prompt, prefer PowerShell 7 (`pwsh`) and otherwise invoke a
+    // known agent through Windows PowerShell just as a user would. Both paths
+    // keep the prompt base64-encoded until after the WT commandline transport.
+    // The Windows PowerShell fallback replaces its black-box-unsafe characters
+    // with ASCII HTML entities before handing the prompt to the agent.
     if needs_shell_launch(&resolved) {
-        Ok(format!("cmd /c {}", raw))
-    } else {
-        Ok(raw)
+        if let Some(input) = input {
+            if input.contains('\n')
+                && matches!(
+                    runtime.prompt_delivery,
+                    DelegatePromptDelivery::LaunchWithStartupPrompt
+                )
+            {
+                if is_direct_known_agent_command(commandline) {
+                    let commandline = build_shell_multiline_delegate_launch(
+                        commandline,
+                        profile,
+                        runtime.model.as_deref(),
+                        session_id,
+                        input,
+                        pwsh_available(),
+                    );
+                    return Ok(commandline);
+                }
+            }
+        }
+        return Ok(format!("cmd /c {}", raw));
     }
+    Ok(raw)
+}
+
+fn is_direct_known_agent_command(commandline: &str) -> bool {
+    split_windows_commandline(commandline)
+        .first()
+        .map(|command| agent_registry::lookup_profile(command).id != "unknown")
+        .unwrap_or(false)
+}
+
+/// Split an agent commandline into PowerShell invocation tokens, replacing a
+/// batch shim only with its adjacent `.ps1` companion or the known profile id.
+fn powershell_invocation_tokens(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+) -> Vec<String> {
+    let mut tokens = split_windows_commandline(commandline);
+    let Some(first) = tokens.first_mut() else {
+        return tokens;
+    };
+    let path = std::path::Path::new(first);
+    let is_batch = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
+        })
+        .unwrap_or(false);
+    if !is_batch {
+        return tokens;
+    }
+
+    let is_explicit_path = first.contains('\\') || first.contains('/');
+    if is_explicit_path {
+        let companion = path.with_extension("ps1");
+        if companion.is_file() {
+            *first = companion.to_string_lossy().into_owned();
+            return tokens;
+        }
+    }
+
+    *first = profile.id.to_string();
+    tokens
+}
+
+/// Build a delegate launch commandline that runs a `.cmd`/`.bat` shim agent from
+/// PowerShell 7 with the prompt delivered as inline base64 (issue #403).
+///
+/// The prompt is base64-encoded (an inert `[A-Za-z0-9+/=]` payload — no shell
+/// syntax characters and no `%`, so it survives WT's
+/// `ExpandEnvironmentStringsW` and the commandline transport untouched), decoded
+/// inside pwsh into `$p`, then handed to the agent via `& <agent> … $p` — the same
+/// PATH-resolved invocation a user would type. pwsh's native-argument passing
+/// delivers the multi-line `$p` to the CLI verbatim (unlike Windows PowerShell
+/// 5.1). Requires `pwsh` on PATH; callers gate on [`pwsh_available`].
+fn build_pwsh_base64_launch(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+    model: Option<&str>,
+    session_id: Option<&str>,
+    input: &str,
+) -> String {
+    let b64 = crate::osc52::base64_encode(input.as_bytes());
+
+    // `& <agent tokens> [flags] $p` — every literal token single-quoted for
+    // PowerShell; `$p` (the decoded prompt) stays a bare variable reference.
+    let mut call = String::from("& ");
+    for (i, tok) in powershell_invocation_tokens(commandline, profile)
+        .iter()
+        .enumerate()
+    {
+        if i > 0 {
+            call.push(' ');
+        }
+        call.push_str(&ps_single_quote(tok));
+    }
+    if let (Some(model), Some(flag)) = (model, profile.model_flags.first()) {
+        call.push(' ');
+        call.push_str(&ps_single_quote(flag));
+        call.push(' ');
+        call.push_str(&ps_single_quote(model));
+    }
+    if let (Some(sid), Some(flag)) = (session_id, profile.new_session_id_flag) {
+        call.push(' ');
+        call.push_str(&ps_single_quote(flag));
+        call.push(' ');
+        call.push_str(&ps_single_quote(sid));
+    }
+    if let PromptFlag::Flag(flag) = profile.delegate_prompt_flag {
+        call.push(' ');
+        call.push_str(&ps_single_quote(flag));
+    }
+    call.push_str(" $p");
+
+    let script = format!(
+        "$p = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64}')); {call}; exit $LASTEXITCODE"
+    );
+    format!(
+        "pwsh -NoProfile -Command {}",
+        quote_windows_commandline_arg(&script)
+    )
+}
+
+fn build_shell_multiline_delegate_launch(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+    model: Option<&str>,
+    session_id: Option<&str>,
+    input: &str,
+    has_pwsh: bool,
+) -> String {
+    if has_pwsh {
+        return build_pwsh_base64_launch(commandline, profile, model, session_id, input);
+    }
+    build_windows_powershell_base64_launch(commandline, profile, model, session_id, input)
+}
+
+/// Build the host fallback for a known agent using Windows PowerShell 5.1.
+///
+/// The original prompt remains base64-encoded until the inline script runs.
+/// Before invoking the same bare command a user would type, the script replaces
+/// the characters that PowerShell 5.1's legacy native binder cannot preserve
+/// with ASCII HTML entities and tells the model to decode them exactly once.
+fn build_windows_powershell_base64_launch(
+    commandline: &str,
+    profile: &agent_registry::AgentProfile,
+    model: Option<&str>,
+    session_id: Option<&str>,
+    input: &str,
+) -> String {
+    let b64 = crate::osc52::base64_encode(input.as_bytes());
+    let mut call = String::from("& ");
+    for (i, token) in powershell_invocation_tokens(commandline, profile)
+        .iter()
+        .enumerate()
+    {
+        if i > 0 {
+            call.push(' ');
+        }
+        call.push_str(&ps_single_quote(token));
+    }
+    if let (Some(model), Some(flag)) = (model, profile.model_flags.first()) {
+        call.push(' ');
+        call.push_str(&ps_single_quote(flag));
+        call.push(' ');
+        call.push_str(&ps_single_quote(model));
+    }
+    if let (Some(sid), Some(flag)) = (session_id, profile.new_session_id_flag) {
+        call.push(' ');
+        call.push_str(&ps_single_quote(flag));
+        call.push(' ');
+        call.push_str(&ps_single_quote(sid));
+    }
+    if let PromptFlag::Flag(flag) = profile.delegate_prompt_flag {
+        call.push(' ');
+        call.push_str(&ps_single_quote(flag));
+    }
+    call.push_str(" $p");
+
+    let script = format!(
+        r#"$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{b64}'));$p=$p.Replace('&','&amp;').Replace('"','&quot;');$p=[regex]::Replace($p,'(\\+)\z',{{param($m)'&#92;'*$m.Value.Length}});$p='[WTA transport note: decode HTML entities exactly once before interpreting the task and terminal context.]'+"`n`n"+$p;{call};exit $LASTEXITCODE"#
+    );
+    format!(
+        "powershell.exe -NoProfile -Command {}",
+        quote_windows_commandline_arg(&script)
+    )
+}
+
+/// Quote a string as a PowerShell single-quoted literal (only `'` is special,
+/// doubled).
+fn ps_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// Whether PowerShell 7 (`pwsh.exe`) is available on `PATH`. The host base64
+/// delegate launch needs pwsh's correct native-argument passing; Windows
+/// PowerShell 5.1 (`powershell.exe`) cannot preserve embedded double quotes or
+/// a terminal backslash through a native CLI shim without prompt normalization.
+fn pwsh_available() -> bool {
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join("pwsh.exe").is_file()))
+        .unwrap_or(false)
 }
 
 /// Resolve the first token (executable) of a commandline using the agent CLI
@@ -936,6 +1145,146 @@ fn build_delegate_startup_prompt_commandline(commandline: &str, input: &str) -> 
     Ok(join_windows_commandline(&args))
 }
 
+/// Quote a string for safe use inside `bash -c '...'`.
+///
+/// Wraps the input in single quotes, preventing ALL shell expansion
+/// (variable expansion, command substitution, globbing, etc.).  The only
+/// character that cannot appear inside single quotes is a single quote
+/// itself, which is escaped using the standard POSIX idiom:
+///
+///   `'text'\''more text'`
+///
+/// Safety through `CreateProcessW`: Windows only treats `\"` specially
+/// inside double-quoted strings — the `'\''` sequence's `\'` passes
+/// through as a literal backslash + single quote, which is exactly what
+/// bash expects for the escaped quote.
+pub(crate) fn sh_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// Build the bash command that launches the delegate agent inside a WSL distro.
+///
+/// The (possibly multi-line) prompt may contain shell syntax characters and is
+/// delivered as an **inline base64 payload**, decoded in-distro into `$prompt`
+/// and handed to the agent as a single `"$prompt"` argument. base64's alphabet
+/// (`[A-Za-z0-9+/=]`) has no shell syntax characters, whitespace, or `%`, so
+/// the payload is immune to every re-parsing layer between here and the inner
+/// login bash:
+///
+/// * WT `ConptyConnection` runs `ExpandEnvironmentStringsW` on the commandline
+///   before `CreateProcessW` (see `ConptyConnection.cpp`), so a raw `%VAR%` in
+///   the prompt would be Windows-expanded — base64 has no `%`.
+/// * the `wsl.exe` interop performs one round of double-quote-context expansion
+///   (`$(…)`, backtick, `$…`) — even inside single quotes — before the inner
+///   `bash -lc` runs. base64 triggers none of it.
+///
+/// The agent invocation and the fixed decode wrapper are escaped for that
+/// `wsl.exe` expansion pass via [`escape_for_intermediate_shell`], so the inner
+/// bash receives the command verbatim and performs the `$(base64 -d …)` /
+/// `$prompt` expansion exactly once. Validated md5-exact through an
+/// `ExpandEnvironmentStringsW` + `CreateProcessW` probe (issue #404).
+///
+/// Callers wrap the result with `quote_windows_commandline_arg`, embed in
+/// `bash -lc <escaped>`, then `wsl -d <distro> --cd "<cwd>" -- <full>` before
+/// `CreateProcessW`.
+pub(crate) fn build_wsl_delegate_commandline(
+    runtime: &DelegateAgentRuntime,
+    input: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<String> {
+    let agent_cmd = runtime.commandline.trim();
+    if agent_cmd.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+    let profile = agent_registry::lookup_profile_by_id(
+        agent_registry::resolve_agent_id_from_cmd(agent_cmd),
+    );
+
+    // Agent invocation: the CLI tokens plus model / session-id flags, each
+    // single-quoted for the inner bash.
+    let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
+        .into_iter()
+        .map(|t| sh_quote(&t))
+        .collect();
+    if parts.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+    if let Some(ref model) = runtime.model {
+        if let Some(flag) = profile.model_flags.first() {
+            parts.push(sh_quote(flag));
+            parts.push(sh_quote(model));
+        }
+    }
+    if let (Some(sid), Some(flag)) = (session_id, profile.new_session_id_flag) {
+        parts.push(sh_quote(flag));
+        parts.push(sh_quote(sid));
+    }
+    let agent_invocation = parts.join(" ");
+
+    // Only bake a startup prompt when the delivery mode asks for one.
+    let startup_prompt = match input {
+        Some(input)
+            if matches!(
+                runtime.prompt_delivery,
+                DelegatePromptDelivery::LaunchWithStartupPrompt
+            ) && !input.is_empty() =>
+        {
+            Some(input)
+        }
+        _ => None,
+    };
+
+    // `exec` so the agent CLI replaces bash as the pane's process.
+    let bash_command = match startup_prompt {
+        Some(input) => {
+            let b64 = crate::osc52::base64_encode(input.as_bytes());
+            let prompt_arg = match profile.delegate_prompt_flag {
+                PromptFlag::Flag(flag) => format!("{} \"$prompt\"", sh_quote(flag)),
+                PromptFlag::Positional => "\"$prompt\"".to_string(),
+            };
+            format!("prompt=$(base64 -d <<< '{b64}'); exec {agent_invocation} {prompt_arg}")
+        }
+        None => format!("exec {agent_invocation}"),
+    };
+
+    Ok(escape_for_intermediate_shell(&bash_command))
+}
+
+/// Escape a bash command so it survives the single round of double-quote-context
+/// shell expansion the `wsl.exe` interop applies to `bash -lc "<cmd>"` before the
+/// inner login bash sees it.
+///
+/// That pass performs command substitution (`$(…)`, backtick) and parameter
+/// expansion (`$…`) — even inside single quotes — plus one level of backslash
+/// processing, but not full command parsing. Escaping every `$`, backtick, and
+/// `\` with a leading backslash makes the pass a no-op: it consumes exactly one
+/// backslash level and hands the inner bash the command verbatim.
+fn escape_for_intermediate_shell(cmd: &str) -> String {
+    let mut out = String::with_capacity(cmd.len() + 16);
+    for ch in cmd.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '$' => out.push_str("\\$"),
+            '`' => out.push_str("\\`"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 /// Returns true if the command cannot be launched directly via CreateProcess
 /// and should be typed into a shell tab instead (e.g. npm .cmd/.bat shims).
 pub fn needs_shell_launch(commandline: &str) -> bool {
@@ -1019,7 +1368,7 @@ pub fn delegate_command_launchable(commandline: &str) -> bool {
 }
 
 // Quote arguments using the standard Windows CommandLineToArgvW escaping rules.
-fn quote_windows_commandline_arg(arg: &str) -> String {
+pub(crate) fn quote_windows_commandline_arg(arg: &str) -> String {
     if arg.is_empty() {
         return "\"\"".to_string();
     }
@@ -1234,14 +1583,17 @@ fn extract_balanced_json_object(text: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_delegate_launch_commandline,
-        build_delegate_launch_commandline_with_session, default_delegate_agent_runtimes,
-        parse_autofix_response, parse_recommendation_set, resolve_agent_profile,
-        resolve_created_pane_id, sanitize_windows_agent_cwd,
+        build_delegate_launch_commandline, build_delegate_launch_commandline_with_session,
+        build_pwsh_base64_launch, build_shell_multiline_delegate_launch,
+        build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
+        default_delegate_agent_runtimes, escape_for_intermediate_shell,
+        is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
+        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
         validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
     use serde_json::json;
+    use std::os::windows::process::CommandExt;
 
     #[test]
     fn default_delegate_runtime_uses_cli_default_model() {
@@ -1301,6 +1653,18 @@ mod tests {
             runtime.commandline,
             "C:\\Users\\kaitao\\AppData\\Local\\Microsoft\\WinGet\\Links\\copilot.exe --model claude-haiku-4.5"
         );
+    }
+
+    #[test]
+    fn delegate_runtime_identifies_quoted_agent_path_with_spaces() {
+        let runtime =
+            default_delegate_agent_runtimes(Some(r#""C:\npm tools\codex.cmd""#), None, None)
+                .into_iter()
+                .next()
+                .expect("delegate runtime");
+
+        assert_eq!(runtime.id, "codex");
+        assert_eq!(runtime.name, "Codex");
     }
 
     #[test]
@@ -2236,5 +2600,409 @@ mod tests {
             parse_autofix_response(text),
             AutofixDecision::Ignore
         ));
+    }
+
+    // ── #404: WSL delegate inline base64 ─────────────────────────────────
+
+    fn base64_runtime(commandline: &str) -> DelegateAgentRuntime {
+        DelegateAgentRuntime {
+            id: commandline.to_string(),
+            name: commandline.to_string(),
+            description: String::new(),
+            commandline: commandline.to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        }
+    }
+
+    #[test]
+    fn wsl_delegate_delivers_prompt_as_inline_base64() {
+        let runtime = base64_runtime("claude"); // positional prompt flag
+        let prompt = "fix it\n\n## Terminal Context\n```\n$(whoami) `id` %TEMP% \"q\"\n```";
+        let cmd = build_wsl_delegate_commandline(&runtime, Some(prompt), None).expect("cmd");
+
+        // The whole command is a single line — no raw newline rides the commandline.
+        assert!(!cmd.contains('\n'), "commandline must be single-line: {cmd}");
+        // The raw prompt and its shell syntax characters never appear literally.
+        assert!(!cmd.contains("$(whoami)"));
+        assert!(!cmd.contains("%TEMP%"));
+        // The base64 of the prompt is present, decoded via a here-string.
+        let b64 = crate::osc52::base64_encode(prompt.as_bytes());
+        assert!(cmd.contains(&b64), "base64 payload missing: {cmd}");
+        assert!(cmd.contains("base64 -d <<<"));
+        // The decode wrapper is escaped for the wsl.exe expansion pass.
+        assert!(cmd.contains("\\$(base64 -d"), "escaped $() missing: {cmd}");
+        assert!(cmd.contains("exec 'claude' \"\\$prompt\""), "exec form: {cmd}");
+    }
+
+    #[test]
+    fn wsl_delegate_uses_prompt_flag_for_flag_agents() {
+        let runtime = base64_runtime("copilot"); // -i flag agent
+        let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
+        assert!(cmd.contains("'-i' \"\\$prompt\""), "flag prompt form: {cmd}");
+    }
+
+    #[test]
+    fn wsl_delegate_interactive_has_no_base64() {
+        let runtime = base64_runtime("claude");
+        let cmd = build_wsl_delegate_commandline(&runtime, None, None).expect("cmd");
+        assert_eq!(cmd, "exec 'claude'");
+    }
+
+    #[test]
+    fn escape_for_intermediate_shell_escapes_expansion_chars() {
+        assert_eq!(escape_for_intermediate_shell("a$b`c\\d"), "a\\$b\\`c\\\\d");
+        assert_eq!(escape_for_intermediate_shell("plain text"), "plain text");
+    }
+
+    // ── #403: host pwsh + inline base64 (avoids cmd /c truncation) ───────
+
+    #[test]
+    fn pwsh_base64_launch_uses_bare_name_and_base64() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex"); // positional
+        let prompt = "l1\nl2 \"q\" %TEMP%";
+        let cmd = build_pwsh_base64_launch("codex", profile, None, None, prompt);
+
+        assert!(cmd.starts_with("pwsh -NoProfile -Command "));
+        // launched like a user: bare name, no .cmd / underlying exe resolution.
+        assert!(cmd.contains("& 'codex'"));
+        assert!(!cmd.contains(".cmd"));
+        assert!(!cmd.contains("node "));
+        // prompt delivered as base64, decoded to $p inside pwsh (never raw).
+        let b64 = crate::osc52::base64_encode(prompt.as_bytes());
+        assert!(cmd.contains(&b64), "base64 payload missing: {cmd}");
+        assert!(cmd.contains("FromBase64String"));
+        assert!(
+            cmd.trim_end().ends_with("$p; exit $LASTEXITCODE\""),
+            "propagates the agent exit code: {cmd}"
+        );
+        assert!(!cmd.contains("l1\nl2"), "no raw multi-line prompt: {cmd:?}");
+    }
+
+    #[test]
+    fn pwsh_base64_launch_appends_prompt_flag_for_flag_agents() {
+        let profile = crate::agent_registry::lookup_profile_by_id("copilot"); // -i flag
+        let cmd = build_pwsh_base64_launch("copilot", profile, None, None, "a\nb");
+        assert!(
+            cmd.contains("& 'copilot' '-i' $p; exit $LASTEXITCODE"),
+            "flag prompt form: {cmd}"
+        );
+    }
+
+    fn powershell_base64_launches(
+        commandline: &str,
+        profile: &crate::agent_registry::AgentProfile,
+    ) -> [String; 2] {
+        [
+            build_pwsh_base64_launch(commandline, profile, None, None, "prompt"),
+            build_windows_powershell_base64_launch(commandline, profile, None, None, "prompt"),
+        ]
+    }
+
+    #[test]
+    fn powershell_base64_launches_use_sibling_ps1_for_quoted_batch_path() {
+        let root =
+            std::env::temp_dir().join(format!("wta PowerShell companion {}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let cmd_path = root.join("codex.cmd");
+        let ps1_path = root.join("codex.ps1");
+        std::fs::write(&cmd_path, "@exit /b 0\r\n").expect("write batch shim");
+        std::fs::write(&ps1_path, "exit 0\r\n").expect("write PowerShell companion");
+        let commandline = format!(
+            "{} --search --full-auto",
+            super::quote_windows_commandline_arg(
+                cmd_path.to_str().expect("test shim path is UTF-8")
+            )
+        );
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for launch in powershell_base64_launches(&commandline, profile) {
+            assert!(
+                launch.contains(&format!(
+                    "& {} '--search' '--full-auto' $p",
+                    super::ps_single_quote(
+                        ps1_path.to_str().expect("test companion path is UTF-8")
+                    )
+                )),
+                "PowerShell companion and flags missing: {launch}"
+            );
+            assert!(
+                !launch.contains(".cmd"),
+                "batch shim should not be invoked: {launch}"
+            );
+        }
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn powershell_base64_launches_fall_back_to_profile_for_batch_without_companion() {
+        let root = std::env::temp_dir().join(format!(
+            "wta-missing-powershell-companion-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let cmd_path = root.join("codex.cmd");
+        std::fs::write(&cmd_path, "@exit /b 0\r\n").expect("write batch shim");
+        let commandline = format!(
+            "{} --search",
+            super::quote_windows_commandline_arg(
+                cmd_path.to_str().expect("test shim path is UTF-8")
+            )
+        );
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for launch in powershell_base64_launches(&commandline, profile) {
+            assert!(
+                launch.contains("& 'codex' '--search' $p"),
+                "profile fallback and flags missing: {launch}"
+            );
+            assert!(
+                !launch.contains(".cmd"),
+                "missing companion path should not be invoked: {launch}"
+            );
+        }
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+    }
+
+    #[test]
+    fn powershell_base64_launches_fall_back_to_profile_for_bare_batch_name() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for commandline in [
+            "codex.cmd --search",
+            "codex.CMD --search",
+            "codex.BaT --search",
+        ] {
+            for launch in powershell_base64_launches(commandline, profile) {
+                assert!(
+                    launch.contains("& 'codex' '--search' $p"),
+                    "bare batch fallback and flags missing: {launch}"
+                );
+                assert!(
+                    !launch.contains("codex.cmd")
+                        && !launch.contains("codex.CMD")
+                        && !launch.contains("codex.BaT"),
+                    "bare batch shim should not be invoked: {launch}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn powershell_base64_launches_preserve_non_batch_first_tokens() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        for commandline in ["codex.ps1 --search", "codex.exe --search"] {
+            let first = super::split_windows_commandline(commandline)
+                .into_iter()
+                .next()
+                .expect("first commandline token");
+            for launch in powershell_base64_launches(commandline, profile) {
+                assert!(
+                    launch.contains(&format!("& '{}' '--search' $p", first)),
+                    "non-batch token or flags changed: {launch}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pwsh_base64_launch_propagates_agent_exit_code() {
+        if !pwsh_available() {
+            eprintln!("skipping pwsh exit-code test: pwsh.exe is not on PATH");
+            return;
+        }
+        let root =
+            std::env::temp_dir().join(format!("wta-pwsh-exit-code-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let shim = root.join("agent.ps1");
+        std::fs::write(&shim, "exit 7\r\n").expect("write PowerShell shim");
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+        let commandline =
+            super::quote_windows_commandline_arg(shim.to_str().expect("test shim path is UTF-8"));
+        let launch = build_pwsh_base64_launch(&commandline, profile, None, None, "prompt");
+        let raw_args = launch
+            .strip_prefix("pwsh ")
+            .expect("PowerShell executable prefix");
+        let status = std::process::Command::new("pwsh")
+            .raw_arg(raw_args)
+            .status()
+            .expect("launch PowerShell agent");
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+        assert_eq!(status.code(), Some(7));
+    }
+
+    #[test]
+    fn windows_powershell_base64_launch_normalizes_prompt_for_black_box_agent() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+        let prompt = concat!(
+            "line1",
+            "\n",
+            "line2 \"quoted\" & literal &quot; trailing\\"
+        );
+
+        let cmd =
+            build_windows_powershell_base64_launch("codex --search", profile, None, None, prompt);
+
+        assert!(cmd.starts_with("powershell.exe -NoProfile -Command "));
+        assert!(!cmd.contains(prompt), "raw prompt leaked: {cmd:?}");
+        assert!(
+            cmd.contains("& 'codex' '--search' $p"),
+            "bare call missing: {cmd}"
+        );
+        let prompt_b64 = crate::osc52::base64_encode(prompt.as_bytes());
+        assert!(cmd.contains(&prompt_b64), "prompt payload missing: {cmd}");
+        assert!(
+            cmd.contains(r#".Replace('&','&amp;').Replace('\"','&quot;')"#),
+            "HTML entity normalization missing: {cmd}"
+        );
+        assert!(
+            cmd.contains("'&#92;'*$m.Value.Length"),
+            "terminal slash normalization missing: {cmd}"
+        );
+        assert!(
+            cmd.contains("decode HTML entities exactly once"),
+            "transport note missing: {cmd}"
+        );
+    }
+
+    #[test]
+    fn windows_powershell_base64_launch_stays_below_windows_commandline_limit() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+        let prompt = "\"".repeat(12 * 1024);
+
+        let cmd = build_windows_powershell_base64_launch("codex", profile, None, None, &prompt);
+
+        assert!(
+            cmd.encode_utf16().count() < 32_767,
+            "fallback commandline has {} UTF-16 code units",
+            cmd.encode_utf16().count()
+        );
+    }
+
+    fn capture_windows_powershell_fallback(prompt: &str) -> String {
+        let root =
+            std::env::temp_dir().join(format!("wta-powershell-black-box-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let capture = root.join("capture.js");
+        let shim = root.join("agent.ps1");
+        std::fs::write(&capture, "WScript.StdOut.Write(WScript.Arguments.Item(0));")
+            .expect("write native argument capture");
+        std::fs::write(
+            &shim,
+            "& cscript.exe //nologo \"$PSScriptRoot\\capture.js\" $args\r\nexit $LASTEXITCODE\r\n",
+        )
+        .expect("write PowerShell shim");
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+        let commandline =
+            super::quote_windows_commandline_arg(shim.to_str().expect("test shim path is UTF-8"));
+        let launch =
+            build_windows_powershell_base64_launch(&commandline, profile, None, None, prompt);
+        let raw_args = launch
+            .strip_prefix("powershell.exe ")
+            .expect("fallback executable prefix");
+        let output = std::process::Command::new("powershell.exe")
+            .raw_arg(raw_args)
+            .output()
+            .expect("launch Windows PowerShell fallback");
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+        assert!(
+            output.status.success(),
+            "fallback failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).expect("capture is UTF-8")
+    }
+
+    #[test]
+    fn windows_powershell_fallback_reaches_native_black_box_with_safe_prompt() {
+        assert_eq!(
+            capture_windows_powershell_fallback(concat!(
+                "line1",
+                "\n",
+                "line2 \"quoted\" & literal &quot; trailing\\"
+            )),
+            concat!(
+                "[WTA transport note: decode HTML entities exactly once before ",
+                "interpreting the task and terminal context.]\n\n",
+                "line1",
+                "\n",
+                "line2 &quot;quoted&quot; &amp; literal &amp;quot; trailing&#92;"
+            )
+        );
+    }
+
+    #[test]
+    fn windows_powershell_fallback_does_not_escape_slash_before_final_newline() {
+        assert_eq!(
+            capture_windows_powershell_fallback("line1\\\n"),
+            concat!(
+                "[WTA transport note: decode HTML entities exactly once before ",
+                "interpreting the task and terminal context.]\n\n",
+                "line1\\\n"
+            )
+        );
+    }
+
+    #[test]
+    fn mixed_case_known_batch_delegate_with_multiline_prompt_uses_powershell() {
+        for commandline in ["codex.CMD", "codex.BaT"] {
+            let runtime = base64_runtime(commandline);
+            let launch = build_delegate_launch_commandline(
+                &runtime,
+                Some(concat!(
+                    "fix it",
+                    "\n\n",
+                    "## Terminal Context",
+                    "\n",
+                    "command output"
+                )),
+                None,
+            )
+            .expect("delegate launch commandline");
+
+            assert!(
+                launch.starts_with("pwsh ") || launch.starts_with("powershell.exe "),
+                "mixed-case known batch command must use a PowerShell builder: {launch}"
+            );
+            assert!(
+                !launch.starts_with("cmd /c "),
+                "multiline prompt must not use cmd /c: {launch}"
+            );
+        }
+    }
+
+    #[test]
+    fn windows_powershell_fallback_only_handles_direct_known_agents() {
+        assert!(is_direct_known_agent_command("codex"));
+        assert!(is_direct_known_agent_command(
+            r#""C:\npm tools\codex.cmd" --search"#
+        ));
+        assert!(!is_direct_known_agent_command(
+            "npx -y @zed-industries/codex-acp"
+        ));
+    }
+
+    #[test]
+    fn windows_powershell_is_used_when_pwsh_is_unavailable() {
+        let profile = crate::agent_registry::lookup_profile_by_id("codex");
+
+        let cmd = build_shell_multiline_delegate_launch(
+            "codex",
+            profile,
+            None,
+            None,
+            concat!("line1", "\n", "line2"),
+            false,
+        );
+
+        assert!(
+            cmd.starts_with("powershell.exe "),
+            "must not fall back to cmd: {cmd}"
+        );
     }
 }

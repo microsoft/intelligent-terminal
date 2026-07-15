@@ -14,7 +14,6 @@
   </supportedOn>
   <categories>
     <category name="IntelligentTerminal" displayName="$(string.IntelligentTerminal)">
-      <parentCategory ref="windows:WindowsComponents" />
     </category>
   </categories>
   <policies>

@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{App, ChatMessage, CompletedTurn, PlanEntryStatus};
 use crate::theme;
+use crate::ui::markdown;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
@@ -52,8 +53,7 @@ fn pending_stream_height(tab: &crate::app::TabSession, wrap_width: usize) -> usi
     let Some(text) = pending_render_text(tab) else {
         return 0;
     };
-    let body_width = wrap_width.saturating_sub(2).max(1);
-    dot_wrap_count(&text, body_width)
+    markdown::agent_markdown_height(&text, wrap_width)
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -79,7 +79,9 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
     match msg {
-        ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
+        ChatMessage::Agent(t) => markdown::agent_markdown_height(t, wrap_width) + 1,
+        ChatMessage::AgentLiteral(t) => dot_wrap_count(t, body_width) + 1,
+        ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
@@ -459,15 +461,12 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
             Cow::Owned(text.chars().take(shown).collect())
         }
     };
-    let mut lines = Vec::new();
-    push_dot_prefixed_lines(
-        &mut lines,
+    markdown::render_agent_markdown_lines(
         &revealed,
         wrap_width,
         theme::DOT_AGENT,
         theme::AGENT_TEXT,
-    );
-    lines
+    )
 }
 
 fn build_message_lines<'a>(
@@ -486,6 +485,17 @@ fn build_message_lines<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
+            lines.extend(markdown::render_agent_markdown_lines(
+                text,
+                wrap_width,
+                theme::DOT_AGENT,
+                theme::AGENT_TEXT,
+            ));
+            if !agent_streaming || !is_last_message {
+                lines.push(Line::default());
+            }
+        }
+        ChatMessage::AgentLiteral(text) => {
             push_dot_prefixed_lines(
                 &mut lines,
                 text,
@@ -842,6 +852,86 @@ mod tests {
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
+        );
+    }
+
+    #[test]
+    fn agent_message_uses_markdown_renderer() {
+        let msg = ChatMessage::Agent("hello **bold**".to_string());
+        let lines = build_message_lines(
+            &msg,
+            false,
+            false,
+            80,
+        );
+        assert_eq!(line_text(&lines[0]), "● hello bold");
+        assert!(lines[0].spans.iter().any(|s| {
+            s.content.as_ref() == "bold" && s.style.add_modifier.contains(Modifier::BOLD)
+        }));
+    }
+
+    #[test]
+    fn agent_markdown_bold_survives_paragraph_render() {
+        use ratatui::{backend::TestBackend, widgets::Paragraph, Terminal};
+
+        let msg = ChatMessage::Agent("hello **bold**".to_string());
+        let lines = build_message_lines(&msg, false, false, 80);
+        let backend = TestBackend::new(80, 4);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        terminal
+            .draw(|frame| frame.render_widget(Paragraph::new(lines), frame.area()))
+            .expect("render must not panic");
+        let buf = terminal.backend().buffer();
+        let width = buf.area.width as usize;
+        let first_row: String = buf.content[..width]
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        let start_byte = first_row.find("bold").expect("bold text rendered");
+        let start = unicode_width::UnicodeWidthStr::width(&first_row[..start_byte]);
+        let bold_cells = &buf.content[start..start + 4];
+        assert!(
+            bold_cells
+                .iter()
+                .all(|cell| cell.modifier.contains(Modifier::BOLD)),
+            "bold chars must stay bold in the final ratatui buffer"
+        );
+    }
+
+    #[test]
+    fn error_message_stays_literal_not_markdown() {
+        let msg = ChatMessage::Error("bad **thing**".to_string());
+        let lines = build_message_lines(
+            &msg,
+            false,
+            false,
+            80,
+        );
+        assert_eq!(line_text(&lines[0]), "● bad **thing**");
+        assert!(
+            !lines[0]
+                .spans
+                .iter()
+                .filter(|s| s.content.as_ref().contains("thing"))
+                .any(|s| s.style.add_modifier.contains(Modifier::BOLD)),
+            "error text must not be parsed as markdown"
+        );
+    }
+
+    #[test]
+    fn agent_literal_message_stays_literal_not_markdown() {
+        let msg = ChatMessage::AgentLiteral("Run: echo **literal**\n  ✓ 1. command".to_string());
+        let lines = build_message_lines(
+            &msg,
+            false,
+            false,
+            80,
+        );
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(texts.iter().any(|line| line.contains("**literal**")));
+        assert!(
+            texts.iter().any(|line| line.contains("✓ 1. command")),
+            "recommendation summary lines must remain separate/literal: {texts:?}"
         );
     }
 }

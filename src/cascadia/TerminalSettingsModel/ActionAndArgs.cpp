@@ -74,6 +74,8 @@ static constexpr std::string_view NewWindowKey{ "newWindow" };
 static constexpr std::string_view IdentifyWindowKey{ "identifyWindow" };
 static constexpr std::string_view IdentifyWindowsKey{ "identifyWindows" };
 static constexpr std::string_view RenameWindowKey{ "renameWindow" };
+static constexpr std::string_view OpenWorkspaceKey{ "openWorkspace" };
+
 static constexpr std::string_view OpenWindowRenamerKey{ "openWindowRenamer" };
 static constexpr std::string_view DisplayWorkingDirectoryKey{ "debugTerminalCwd" };
 static constexpr std::string_view SearchForTextKey{ "searchWeb" };
@@ -109,6 +111,7 @@ static constexpr std::string_view TriggerAutofixKey{ "triggerAutofix" };
 static constexpr std::string_view OpenBackgroundAgentKey{ "openBackgroundAgent" };
 static constexpr std::string_view ShowProtocolInfoKey{ "showProtocolInfo" };
 static constexpr std::string_view BugReportKey{ "bugReport" };
+static constexpr std::string_view WorkspacesKey{ "workspaces" };
 
 static constexpr std::string_view ActionKey{ "action" };
 

@@ -1454,6 +1454,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "pulldown-cmark",
+          "version": "0.10.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "pxfm",
           "version": "0.1.29"
         }
@@ -2230,6 +2239,15 @@
         "cargo": {
           "name": "ucd-trie",
           "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicase",
+          "version": "2.9.0"
         }
       }
     },

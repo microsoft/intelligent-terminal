@@ -78,6 +78,7 @@ extends:
     - 1ES.PT.ViaStartRight
     pool:
       name: SHINE-INT-L
+      demands: ImageOverride -equals SHINE-VS18-Latest
       os: windows
     sdl:
       tsa:
@@ -129,6 +130,8 @@ extends:
                 - template: ./build/pipelines/templates-v2/steps-setup-versioning.yml@self
               beforeBuildSteps:
                 - template: ./build/pipelines/templates-v2/steps-install-terrapin.yml@self
+                  parameters:
+                    nugetFeed: "https://pkgs.dev.azure.com/microsoft/_packaging/WindowsTerminal/nuget/v3/index.json"
 
           - ${{ if eq(parameters.buildWPF, true) }}:
             # Add an Any CPU build flavor for the WPF control bits
@@ -164,6 +167,7 @@ extends:
               parameters:
                 pool:
                   name: SHINE-INT-S
+                  demands: ImageOverride -equals SHINE-VS18-Latest
                   os: windows
                 outerTemplateContext:
                   outputs:
@@ -184,6 +188,7 @@ extends:
               parameters:
                 pool:
                   name: SHINE-INT-S
+                  demands: ImageOverride -equals SHINE-VS18-Latest
                   os: windows
                 outerTemplateContext:
                   outputs:
@@ -202,6 +207,7 @@ extends:
               parameters:
                 pool:
                   name: SHINE-INT-S
+                  demands: ImageOverride -equals SHINE-VS18-Latest
                   os: windows
                 outerTemplateContext:
                   outputs:
@@ -226,6 +232,7 @@ extends:
             parameters:
               pool:
                 name: SHINE-INT-S
+                demands: ImageOverride -equals SHINE-VS18-Latest
                 os: windows
               includePublicSymbolServer: ${{ parameters.publishSymbolsToPublic }}
               symbolExpiryTime: ${{ parameters.symbolExpiryTime }}

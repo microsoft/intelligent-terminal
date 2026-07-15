@@ -390,6 +390,9 @@ pub enum ConnectionState {
 pub enum ChatMessage {
     User(String),
     Agent(String),
+    /// App-generated agent-style text that should stay literal (for example
+    /// parsed recommendation summaries containing command strings).
+    AgentLiteral(String),
     System(String),
     ToolCall {
         id: String,
@@ -603,6 +606,21 @@ where
         .get("agent_session_id")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    // Copilot Memory runs internal sidekick workers in the parent CLI process.
+    // Their hooks inherit the parent's WT pane but carry a distinct
+    // `sidekick-*` session id. Treating those ids as user sessions rebinds the
+    // pane away from its real owner and creates a duplicate `/sessions` row.
+    if cli_source == CliSource::Copilot && asid.starts_with("sidekick-") {
+        tracing::debug!(
+            target: "agent_route",
+            event = %event,
+            asid = %asid,
+            pane_session_id = %pane_session_id,
+            cli_source = ?cli_source,
+            "skipped: internal Copilot sidekick session"
+        );
+        return false;
+    }
     let mut key = reg.resolve_or_synthesize_key(asid, pane_session_id);
     // Some agent CLIs fire hooks
     // without populating either `agent_session_id` (in the JSON
@@ -8866,7 +8884,7 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
-        details.push(ChatMessage::Agent(summary));
+        details.push(ChatMessage::AgentLiteral(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: prompt.text.clone(),
             details,
@@ -8948,7 +8966,7 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
-        details.push(ChatMessage::Agent(summary));
+        details.push(ChatMessage::AgentLiteral(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: turn_prompt_label,
             details,
@@ -9724,6 +9742,34 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    #[test]
+    fn copilot_sidekick_hook_session_is_ignored() {
+        use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
+
+        let mut reg = AgentSessionRegistry::new();
+        let params = json!({
+            "event": "agent.prompt.submit",
+            "cli_source": "copilot",
+            "agent_session_id": "sidekick-github-context-memory-1783651400639",
+            "payload": { "cwd": r#"C:\Users\user"# }
+        });
+        let mut published = Vec::<SessionEvent>::new();
+
+        let dirty = route_agent_event_to_registry_with_hook_sink(
+            &mut reg,
+            "11111111-1111-1111-1111-111111111111",
+            &params,
+            |event| published.push(event),
+        );
+
+        assert!(!dirty, "an internal sidekick event must not dirty the registry");
+        assert!(
+            reg.iter_sorted().is_empty(),
+            "an internal sidekick must not create a session row"
+        );
+        assert!(published.is_empty(), "an internal sidekick event must not reach master");
     }
 
     /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
