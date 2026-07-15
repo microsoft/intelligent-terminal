@@ -32,6 +32,13 @@ export function parseCsv(text) {
   }
   // trailing field / record (file may or may not end with newline)
   if (field.length > 0 || record.length > 0) { record.push(field); records.push(record); }
+  // Fail fast on an unterminated quoted field: if we reached EOF still inside a
+  // quote, the input is structurally broken and later rows have silently
+  // collapsed into one. Writing that back out would corrupt the CSV.
+  if (inQuotes) {
+    throw new Error('Malformed CSV: unterminated quoted field (reached end of input inside a quote). ' +
+                    'The source export is corrupt or was truncated.');
+  }
   return records;
 }
 
@@ -70,9 +77,26 @@ export function writeCsv(path, records, opts) {
  */
 export function indexListing(records) {
   const header = records[0];
+  if (!header || header.length === 0) throw new Error('CSV has no header row.');
   const lower = header.map(h => h.trim().toLowerCase());
   const defaultIdx = lower.indexOf('default');
   if (defaultIdx < 0) throw new Error('CSV header missing "default" column — not a listingData export?');
+
+  // Column-count sanity check: every data row must have exactly as many columns
+  // as the header. A mismatch means the parse went wrong (usually a stray quote
+  // or embedded newline), and reading/writing by column index from here would
+  // silently misalign locale values. Fail fast with the offending row numbers.
+  const width = header.length;
+  const badRows = [];
+  for (let r = 1; r < records.length; r++) {
+    if (records[r].length !== width) badRows.push(`${r + 1}(${records[r].length})`);
+  }
+  if (badRows.length) {
+    throw new Error(`Malformed CSV: ${badRows.length} row(s) have a column count != header (${width}). ` +
+                    `Offending rows [line(cols)]: ${badRows.slice(0, 10).join(', ')}` +
+                    (badRows.length > 10 ? ` …(+${badRows.length - 10} more)` : ''));
+  }
+
   const localeCols = {};
   for (let c = defaultIdx + 1; c < header.length; c++) {
     const name = header[c].trim();

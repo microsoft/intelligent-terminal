@@ -63,12 +63,31 @@ if (!enUsKey) throw new Error('export has no en-us column');
 const enCol = localeCols[enUsKey];
 const targetLocales = Object.keys(localeCols).filter(k => k.toLowerCase() !== 'en-us');
 
-// Case-insensitive lookup into translations.json by locale.
+// Case-insensitive lookup into translations.json by locale. Validates that a
+// found value is a string: null/undefined are treated as "missing" (returns
+// undefined so the caller falls back), while any other non-string type
+// (object/number/array) is a malformed payload and throws with the offending
+// locale+field so the failure is explicit rather than crashing later in
+// applyProductName()'s .replace().
 function transFor(locale, field) {
-  if (translations[locale] && field in translations[locale]) return translations[locale][field];
+  const pick = (obj, srcLoc) => {
+    if (!obj || !(field in obj)) return undefined;
+    const v = obj[field];
+    if (v === null || v === undefined) return undefined;
+    if (typeof v !== 'string') {
+      throw new Error(`translations["${srcLoc}"]["${field}"] is ${typeof v}, expected string. ` +
+                      `Fix the malformed translation payload.`);
+    }
+    return v;
+  };
+  const direct = pick(translations[locale], locale);
+  if (direct !== undefined) return direct;
   const lc = locale.toLowerCase();
   for (const [k, v] of Object.entries(translations)) {
-    if (k.toLowerCase() === lc && field in v) return v[field];
+    if (k.toLowerCase() === lc) {
+      const hit = pick(v, k);
+      if (hit !== undefined) return hit;
+    }
   }
   return undefined;
 }
