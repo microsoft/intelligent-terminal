@@ -743,7 +743,7 @@ struct HelperHandler {
     /// until the helper's `initialize` arrives, but the ACP protocol
     /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
     /// `resolved_agent()` always finds it populated for those.
-    agent: OnceLock<Arc<AgentCli>>,
+    agent: Arc<OnceLock<Arc<AgentCli>>>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -2376,7 +2376,7 @@ async fn serve_helper(
         helper_id,
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
-        agent: OnceLock::new(),
+        agent: Arc::new(OnceLock::new()),
         state: Arc::clone(&state),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
@@ -3813,7 +3813,7 @@ mod tests {
                 // (hangs-on-session/new) connection so
                 // `forward_new_session_to_agent` resolves it and exercises
                 // the timeout path.
-                let agent = OnceLock::new();
+                let agent = Arc::new(OnceLock::new());
                 let _ = agent.set(Arc::new(AgentCli {
                     conn: client_connection_to_pending_new_session_agent(),
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
@@ -3844,6 +3844,24 @@ mod tests {
                 );
             })
             .await;
+    }
+
+    #[test]
+    fn cloned_helper_handlers_share_the_lazy_agent_binding() {
+        let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let handler = HelperHandler {
+            helper_id: HelperId(1),
+            agent: Arc::new(OnceLock::new()),
+            state: make_state(),
+            notif_tx,
+            agent_side_slot: Arc::new(OnceLock::new()),
+        };
+        let request_handler = handler.clone();
+
+        assert!(
+            Arc::ptr_eq(&handler.agent, &request_handler.agent),
+            "all request handler clones must share initialize's binding slot"
+        );
     }
 
     /// Regression for the reentrant-permission deadlock: a `prompt` in flight
@@ -3980,7 +3998,7 @@ mod tests {
 
                 // ---- hop 2: master (helper-side agent) <-> mock helper client ----
                 let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
-                let agent = OnceLock::new();
+                let agent = Arc::new(OnceLock::new());
                 let _ = agent.set(Arc::new(AgentCli {
                     conn: agent_conn,
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
