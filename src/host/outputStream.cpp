@@ -481,3 +481,8 @@ void ConhostInternalGetSet::NotifyVtSequence(std::wstring_view /*sequence*/)
     // Unknown OSCs (not handled in the switch) still pass through to the
     // terminal and are captured by the terminal-side hook.
 }
+
+void ConhostInternalGetSet::ShowNotification(std::wstring_view /*title*/, std::wstring_view /*body*/)
+{
+    // Not implemented for conhost.
+}
