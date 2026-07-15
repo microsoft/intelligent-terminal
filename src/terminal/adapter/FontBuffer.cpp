@@ -334,13 +334,22 @@ void FontBuffer::_addSixelValue(const VTInt value) noexcept
 
 void FontBuffer::_endOfSixelLine()
 {
-    // Move down six rows to the get to the next sixel position.
-    if (_currentCharBuffer >= _buffer.end() || _sixelRow >= MAX_HEIGHT) [[unlikely]]
+    // Move down six rows to get to the next sixel position. The buffer
+    // is packed at _fullHeight rows per glyph, so clamp partial final sixel
+    // rows instead of letting the cursor advance into the next glyph.
+    if (_currentChar >= MAX_CHARS) [[unlikely]]
     {
-        // Advancing the cursor beyond the last row is not OK.
         THROW_HR(E_OUTOFMEMORY);
     }
-    std::advance(_currentCharBuffer, 6);
+
+    const auto currentCharEnd = std::next(_buffer.begin(), gsl::narrow_cast<size_t>((_currentChar + 1) * _fullHeight));
+    if (_currentCharBuffer >= currentCharEnd) [[unlikely]]
+    {
+        THROW_HR(E_OUTOFMEMORY);
+    }
+
+    const auto rowsRemaining = gsl::narrow_cast<VTInt>(std::distance(_currentCharBuffer, currentCharEnd));
+    std::advance(_currentCharBuffer, std::min<VTInt>(6, rowsRemaining));
     _sixelRow += 6;
 
     // Keep track of the maximum width and height covered by the sixel data.
