@@ -1118,6 +1118,16 @@ pub enum AppEvent {
         tab_id: String,
         message: String,
     },
+    AgentPasteTextReady {
+        tab_id: String,
+        generation: u64,
+        text: String,
+    },
+    AgentPasteTextFailed {
+        tab_id: String,
+        generation: u64,
+        error: String,
+    },
     PromptTemplateLoaded {
         name: String,
     },
@@ -1483,6 +1493,13 @@ pub struct TabSession {
     /// into the `PromptSubmission` on Enter and cleared after submit, and on
     /// `/clear` / `/new` / session reset via `clear_chat_history`.
     pub pending_images: Vec<crate::clipboard_image::PastedImage>,
+    /// True while a host-triggered text paste is reading the clipboard on a
+    /// blocking worker. Keystrokes are ignored until the paste resolves so the
+    /// pasted text cannot be reordered after later edits/submits.
+    pub paste_pending: bool,
+    /// Monotonic generation for async text paste. Completion events only apply
+    /// if their captured generation still matches this value.
+    pub paste_generation: u64,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
@@ -1562,6 +1579,7 @@ impl TabSession {
         self.selected_completed_turn_idx.is_none()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
+            && !self.paste_pending
             && !self.model_picker_open
     }
 
@@ -1632,6 +1650,8 @@ impl TabSession {
         // Drop any clipboard image queued but not yet sent — a wiped/fresh
         // conversation must not carry a stale attachment into the next prompt.
         self.pending_images.clear();
+        self.paste_pending = false;
+        self.paste_generation = self.paste_generation.wrapping_add(1);
     }
 
     /// Flush pending user/agent replay buffers at a turn boundary during
@@ -4313,6 +4333,8 @@ impl App {
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
+            AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
+            AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
@@ -4446,20 +4468,43 @@ impl App {
             return;
         }
 
-        let text = match crate::win32::read_text_from_clipboard() {
-            Ok(text) => text,
-            Err(e) => {
-                tracing::warn!(
-                    target: "agent_paste",
-                    tab_id = target_tab,
-                    error = %e,
-                    "failed to read text from clipboard"
-                );
-                return;
-            }
+        let Some(tx) = self.event_tx.clone() else {
+            tracing::warn!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                "cannot read clipboard: app event channel is not initialized"
+            );
+            return;
         };
         let target_tab = target_tab.to_string();
-        self.insert_agent_paste_text(&target_tab, &text);
+        let generation = {
+            let tab = self.tab_mut(&target_tab);
+            tab.paste_generation = tab.paste_generation.wrapping_add(1);
+            tab.paste_pending = true;
+            tab.paste_generation
+        };
+        tokio::task::spawn_local(async move {
+            let tab_for_result = target_tab.clone();
+            let result = tokio::task::spawn_blocking(crate::win32::read_text_from_clipboard).await;
+            let event = match result {
+                Ok(Ok(text)) => AppEvent::AgentPasteTextReady {
+                    tab_id: tab_for_result,
+                    generation,
+                    text,
+                },
+                Ok(Err(e)) => AppEvent::AgentPasteTextFailed {
+                    tab_id: tab_for_result,
+                    generation,
+                    error: e.to_string(),
+                },
+                Err(e) => AppEvent::AgentPasteTextFailed {
+                    tab_id: tab_for_result,
+                    generation,
+                    error: e.to_string(),
+                },
+            };
+            let _ = tx.send(event);
+        });
     }
 
     fn agent_paste_target_tab<'a>(&self, params: &'a serde_json::Value) -> Option<&'a str> {
@@ -4495,8 +4540,39 @@ impl App {
             .unwrap_or(false)
     }
 
-    fn insert_agent_paste_text(&mut self, target_tab: &str, text: &str) {
+    fn insert_agent_paste_text(&mut self, target_tab: &str, generation: u64, text: &str) {
+        if self.mode != AppMode::Chat {
+            if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
+                if tab.paste_generation == generation {
+                    tab.paste_pending = false;
+                }
+            }
+            tracing::debug!(
+                target: "agent_paste",
+                mode = ?self.mode,
+                tab_id = target_tab,
+                "dropping paste because app is not in chat mode"
+            );
+            return;
+        }
+
         let text = normalize_agent_paste_text(text);
+        let Some(tab) = self.tab_sessions.get_mut(target_tab) else {
+            return;
+        };
+        if tab.paste_generation != generation {
+            tracing::debug!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                generation,
+                current_generation = tab.paste_generation,
+                "dropping stale paste completion"
+            );
+            return;
+        }
+        {
+            tab.paste_pending = false;
+        }
         if text.is_empty() {
             tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
             return;
@@ -4531,6 +4607,31 @@ impl App {
     fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
+            AppEvent::AgentPasteTextReady {
+                tab_id,
+                generation,
+                text,
+            } => {
+                self.insert_agent_paste_text(&tab_id, generation, &text);
+            }
+            AppEvent::AgentPasteTextFailed {
+                tab_id,
+                generation,
+                error,
+            } => {
+                if let Some(tab) = self.tab_sessions.get_mut(&tab_id) {
+                    if tab.paste_generation != generation {
+                        return;
+                    }
+                    tab.paste_pending = false;
+                }
+                tracing::warn!(
+                    target: "agent_paste",
+                    tab_id = %tab_id,
+                    error = %error,
+                    "failed to read text from clipboard"
+                );
+            }
             AppEvent::Tick => {
                 // Fan out across all tabs: a background tab with an in-flight
                 // prompt should keep its shimmer phase advancing so when the
@@ -6811,6 +6912,11 @@ impl App {
                 KeyCode::Esc => self.close_model_picker(),
                 _ => {}
             }
+            return;
+        }
+
+        if self.current_tab().paste_pending {
+            tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
             return;
         }
 
@@ -9913,12 +10019,15 @@ mod tests {
         app.window_id = Some("w1".into());
         app.owner_tab_id = Some("tab-a".into());
         app.tab_id = Some("tab-a".into());
+        app.tab_mut("tab-a");
+        let pasted = format!("{}\r\n{}", "alpha", "beta");
+        let expected = ["alpha", "beta"].join("\n");
 
-        app.insert_agent_paste_text("tab-a", "line1\r\nline2");
+        app.insert_agent_paste_text("tab-a", 0, &pasted);
 
         let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
-        assert_eq!(tab.input, "line1\nline2");
-        assert_eq!(tab.cursor_pos, "line1\nline2".len());
+        assert_eq!(tab.input, expected);
+        assert_eq!(tab.cursor_pos, tab.input.len());
         assert!(tab.messages.iter().all(|m| !matches!(m, ChatMessage::User(_))));
     }
 
@@ -9932,13 +10041,15 @@ mod tests {
             let tab = app.tab_mut("tab-a");
             tab.input = "ab".into();
             tab.cursor_pos = 1;
+            tab.paste_pending = true;
         }
 
-        app.insert_agent_paste_text("tab-a", "X\nY");
+        app.insert_agent_paste_text("tab-a", 0, "X\nY");
 
         let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
         assert_eq!(tab.input, "aX\nYb");
         assert_eq!(tab.cursor_pos, "aX\nY".len());
+        assert!(!tab.paste_pending);
     }
 
     #[test]
@@ -9994,7 +10105,7 @@ mod tests {
         app.tab_id = Some("tab-a".into());
         app.tab_mut("tab-a").current_view = View::Agents;
 
-        app.insert_agent_paste_text("tab-a", "hidden");
+        app.insert_agent_paste_text("tab-a", 0, "hidden");
         assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
 
         app.tab_mut("tab-a").current_view = View::Chat;
@@ -10006,7 +10117,7 @@ mod tests {
         });
         app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
 
-        app.insert_agent_paste_text("tab-a", "locked");
+        app.insert_agent_paste_text("tab-a", 0, "locked");
         assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
     }
 
@@ -10017,6 +10128,10 @@ mod tests {
 
         app.tab_mut("tab-a");
         assert!(app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").paste_pending = true;
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+        app.tab_mut("tab-a").paste_pending = false;
 
         app.tab_mut("tab-a").current_view = View::Agents;
         assert!(!app.agent_paste_input_is_live("tab-a"));
@@ -10034,6 +10149,39 @@ mod tests {
         app.tab_mut("tab-a").selected_completed_turn_idx = None;
         app.tab_mut("tab-a").model_picker_open = true;
         assert!(!app.agent_paste_input_is_live("tab-a"));
+    }
+
+    #[test]
+    fn agent_paste_failure_clears_pending_state() {
+        let mut app = test_app();
+        app.tab_mut("tab-a").paste_pending = true;
+        app.tab_mut("tab-a").paste_generation = 1;
+
+        app.handle_event(AppEvent::AgentPasteTextFailed {
+            tab_id: "tab-a".into(),
+            generation: 1,
+            error: "clipboard busy".into(),
+        });
+
+        assert!(!app.tab_sessions.get("tab-a").unwrap().paste_pending);
+    }
+
+    #[test]
+    fn stale_agent_paste_completion_is_ignored() {
+        let mut app = test_app();
+        app.mode = AppMode::Chat;
+        app.tab_mut("tab-a").paste_pending = true;
+        app.tab_mut("tab-a").paste_generation = 2;
+
+        app.handle_event(AppEvent::AgentPasteTextReady {
+            tab_id: "tab-a".into(),
+            generation: 1,
+            text: "stale".into(),
+        });
+
+        let tab = app.tab_sessions.get("tab-a").unwrap();
+        assert!(tab.input.is_empty());
+        assert!(tab.paste_pending, "stale completion must not clear a newer pending paste");
     }
 
     #[test]
