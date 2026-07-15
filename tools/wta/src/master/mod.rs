@@ -26,7 +26,7 @@
 //   * `agent CLI → master → helper` (notifications): inbound
 //     `session_notification`s land in `MasterClient::session_notification`
 //     and are fanned out to the owning helper's notification channel
-//     via the `session_to_helper` map (populated in `new_session` /
+//     via the router's `SessionId -> helper` map (populated in `new_session` /
 //     `load_session`).
 //   * `agent CLI → master → helper` (requests — request_permission,
 //     terminal/*, fs/*): same map carries each helper's `AgentLink`.
@@ -41,13 +41,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-/// Per-helper notification channel capacity. Sized for bursty chunk
-/// streaming during a single agent turn; well above what a healthy
-/// helper pipe needs to drain. If it fills up, the helper's pipe is
-/// genuinely stuck and we'd rather drop chunks (with a warning) than
-/// back-pressure the agent CLI's I/O loop and freeze every other
-/// helper sharing this master.
-const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
@@ -62,97 +55,33 @@ use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::spawn_agent_process;
 use crate::Cli;
 
-/// Opaque identifier for a helper connection. Used in logs only;
-/// routing keys off `acp::schema::v1::SessionId`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct HelperId(u64);
-
-/// Per-session routing entry. Owned by `session_to_helper` and
-/// keyed by `acp::schema::v1::SessionId`.
-///
-/// Two reverse paths share this entry:
-///   * `notif_tx`: master's `Client::session_notification` posts here;
-///     the helper's `serve_helper` loop drains it and writes back
-///     across the pipe.
-///   * `forwarder`: master's `Client::request_permission` / `create_terminal`
-///     / `terminal_*` / `read_text_file` / `write_text_file` calls
-///     directly on this connection. `AgentSideConnection` itself
-///     implements `acp::Client` and re-issues each call as an RPC
-///     request to the helper.
-///
-/// `forwarder` is `Option<_>` for one reason only: unit tests below
-/// construct routing entries without a real connection. The
-/// production path (`new_session` / `load_session`) always sets it
-/// to `Some(_)`, and `MasterClient` treats `None` as a routing bug.
-#[derive(Clone)]
-struct HelperRoute {
-    helper_id: HelperId,
-    notif_tx: mpsc::Sender<acp::schema::v1::SessionNotification>,
-    forwarder: Option<conn::AgentLink>,
-    /// Per-route counter for back-pressure log rate-limiting.
-    ///
-    /// Chunk-streaming during a single agent turn is high-rate, so if
-    /// a helper's pipe stalls and we drop notifications, naively
-    /// `warn!`-ing on every drop would flood the log (and add I/O
-    /// load right when the system is already strained). Instead the
-    /// `session_notification` handler:
-    ///
-    ///   * On the FIRST `Full` (`fetch_add` returns 0): emits one
-    ///     `warn!` announcing that the helper's queue is backed up.
-    ///   * On subsequent `Full`s: silently bumps the counter — the
-    ///     summary on recovery covers them.
-    ///   * On the first `Ok` after at least one drop (`swap` returns
-    ///     >0): emits one `info!` reporting the total dropped chunks
-    ///     and that backpressure has cleared.
-    ///
-    /// This gives operators exactly one log line per stall start and
-    /// one per stall end, with the count in between, regardless of
-    /// how many chunks were dropped.
-    consecutive_drops: Arc<std::sync::atomic::AtomicU64>,
-}
+mod session_router;
+use session_router::{
+    notification_kind, HelperId, HelperRoute, SessionRouter, NOTIF_CHANNEL_CAPACITY,
+};
 
 /// State shared between the master's `acp::Client` impl (receives
 /// notifications from the agent CLI) and each helper's `acp::Agent`
 /// impl (receives requests from one helper).
 struct MasterStateInner {
-    /// Routes inbound traffic from the agent CLI back to the helper
-    /// that owns the session. Inserted by the helper's `new_session`
-    /// / `load_session` handlers atomically (before responding to
-    /// the helper), so no race window.
-    ///
-    /// `HelperRoute.helper_id` lets `drop_sessions_for_helper` reap
-    /// every session belonging to a disconnecting helper without a
-    /// secondary index. Without that cleanup the map would grow
-    /// unboundedly across the master's lifetime — each closed pane
-    /// leaves a dead `SessionId` behind, and every future
-    /// notification for it lights up a "helper notification channel
-    /// closed" warning.
-    ///
-    /// `HelperRoute.notif_tx` is a **bounded** mpsc with capacity
-    /// `NOTIF_CHANNEL_CAPACITY`. Chunk-streaming notifications are
-    /// high-rate, so an unbounded channel would let memory grow without
-    /// bound if a helper's pipe write stalls. On a full channel we
-    /// drop the notification + log a warning (see
-    /// `MasterClient::session_notification`) rather than
-    /// `await`-blocking the agent CLI's I/O loop — head-of-line
-    /// blocking would freeze notification delivery for every other
-    /// helper sharing this master.
-    session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    /// The N:1 helper-session multiplexer: owns the `SessionId -> helper`
+    /// routing table and every agent↔helper forwarding decision, so that
+    /// `agent_conn` below is a plain, standard-ACP client connection. See
+    /// [`session_router`] for the full rationale and the drop / back-pressure
+    /// policy that used to live inline here.
+    router: SessionRouter,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
-    /// via the standard ACP `session/list` request. Kept beside
-    /// `session_to_helper` (rather than fused with it) so the
-    /// per-row metadata that `SessionInfo` carries — cwd, future
-    /// title/updated_at — has a typed home that isn't intertwined
-    /// with notification-channel plumbing.
+    /// via the standard ACP `session/list` request. Kept beside the
+    /// `router` (rather than fused with it) so the per-row metadata that
+    /// `SessionInfo` carries — cwd, future title/updated_at — has a typed
+    /// home that isn't intertwined with notification-channel plumbing.
     ///
-    /// Lock ordering: always take `session_to_helper` *before*
-    /// touching `registry` to keep the helper-disconnect cleanup
-    /// path single-threaded (it walks `session_to_helper` for ids
-    /// and then issues `registry.remove`). Holding `session_to_helper`
-    /// while awaiting on `registry` is safe — the registry's interior
-    /// lock is sub-µs sync HashMap work that does not re-enter
-    /// `session_to_helper`.
+    /// Lock ordering: always complete a `router` operation *before*
+    /// touching `registry` to keep the helper-disconnect cleanup path
+    /// single-threaded (`drop_sessions_for_helper` calls `router.drop_helper`
+    /// for the ids and then issues `registry.remove`). The router releases
+    /// its lock before returning, so this can't deadlock against `registry`.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
@@ -161,7 +90,7 @@ struct MasterStateInner {
     /// broadcast are *about* SessionIds (added/removed) and every
     /// helper learns the full live set.
     ///
-    /// Independent lock from `session_to_helper` and `registry`: the
+    /// Independent lock from the `router` and `registry`: the
     /// broadcast path (`broadcast_ext_to_helpers`) only takes this
     /// one, so it never blocks per-session routing or per-row reads
     /// of the registry.
@@ -221,7 +150,7 @@ struct MasterStateInner {
     /// the most recently created/loaded session, i.e. the one the user
     /// was last looking at, which is the right one to resume.
     ///
-    /// Independent lock from `session_to_helper` so the per-session
+    /// Independent lock from the `router` so the per-session
     /// routing hot path never contends on it.
     pub(crate) helper_meta: Mutex<HashMap<HelperId, HelperRecoveryMeta>>,
     /// Session ids claimed by an *authoritative* producer — a PowerShell agent
@@ -265,6 +194,11 @@ pub(crate) struct HelperRecoveryMeta {
     /// `_meta.wta.owner_tab_id`. `None` for non-agent-pane helpers — in
     /// which case no `restart_agent_pane` is emitted on disconnect.
     pub(crate) owner_tab_id: Option<String>,
+    /// The WT window id (`_meta.wta.window_id`) the agent pane was created
+    /// in. Carried into the `restart_agent_pane` event so C++ can name the
+    /// origin window; best-effort — see
+    /// [`crate::session_registry::WtaMeta::window_id`].
+    pub(crate) window_id: Option<String>,
     /// The most recently created/loaded session for this helper — the
     /// one to resume via `--initial-load-session-id` on recovery.
     pub(crate) last_session_id: Option<acp::schema::v1::SessionId>,
@@ -276,7 +210,7 @@ pub(crate) struct HelperRecoveryMeta {
 /// notification channel. The request-shaped Client methods
 /// (`request_permission`, `create_terminal`, `terminal_*`,
 /// `read_text_file`, `write_text_file`) look up the owning helper by
-/// `args.session_id` in `session_to_helper` and forward the call on
+/// `args.session_id` via the `router` and forward the call on
 /// that helper's `AgentSideConnection` — the helper's `WtaClient`
 /// then runs the same handler it ran pre-helper-split (TUI permission
 /// UI, `ShellManager`, etc.). The agent CLI sees the helper's
@@ -299,42 +233,7 @@ impl MasterClient {
         sid: &acp::schema::v1::SessionId,
         op: &'static str,
     ) -> acp::Result<(HelperId, conn::AgentLink)> {
-        let entry = {
-            let map = self.state.session_to_helper.lock().await;
-            map.get(sid).cloned()
-        };
-        match entry {
-            Some(HelperRoute {
-                helper_id,
-                forwarder: Some(forwarder),
-                ..
-            }) => Ok((helper_id, forwarder)),
-            Some(HelperRoute {
-                forwarder: None,
-                helper_id,
-                ..
-            }) => {
-                tracing::error!(
-                    target: "master",
-                    op = op,
-                    session_id = ?sid,
-                    helper_id = ?helper_id,
-                    "routing entry has no forwarder — bug; routing entry should always carry the helper's AgentSideConnection",
-                );
-                Err(acp::Error::internal_error()
-                    .data(serde_json::json!("master routing entry missing forwarder")))
-            }
-            None => {
-                tracing::warn!(
-                    target: "master",
-                    op = op,
-                    session_id = ?sid,
-                    "agent CLI sent request for unknown SessionId — no helper to route to",
-                );
-                Err(acp::Error::internal_error()
-                    .data(serde_json::json!("no helper bound to session_id")))
-            }
-        }
+        self.state.router.route_for(sid, op).await
     }
 }
 
@@ -368,156 +267,7 @@ impl MasterClient {
     }
 
     async fn session_notification(&self, args: acp::schema::v1::SessionNotification) -> acp::Result<()> {
-        let sid = args.session_id.clone();
-        // Discriminator for "what KIND of notification this is" — useful
-        // when scrolling logs to see prompt/turn lifecycle without
-        // tracing the full payload.
-        let kind = notification_kind(&args);
-        // Snapshot the sender, the per-route drop counter, AND the
-        // owning helper_id under one map lock. `helper_id` is the
-        // identity key the Closed-cleanup path uses to make sure a
-        // rebinding race (helper A disconnects → helper B re-uses the
-        // same SessionId via `load_session`) doesn't make us delete
-        // the *new* helper's entry. Without that check, the sequence
-        //
-        //   1. we snapshot A's `notif_tx`
-        //   2. helper B rebinds `sid` to its own route via load_session
-        //   3. our `try_send` on A's tx returns `Closed` (A's channel
-        //      receiver was dropped when A disconnected)
-        //   4. `map.remove(&sid)` would clobber B's freshly-installed
-        //      route
-        //
-        // would silently break notification delivery for B.
-        let route = {
-            let map = self.state.session_to_helper.lock().await;
-            map.get(&sid).map(|r| {
-                (
-                    r.helper_id,
-                    r.notif_tx.clone(),
-                    Arc::clone(&r.consecutive_drops),
-                )
-            })
-        };
-        match route {
-            Some((snap_helper_id, tx, drops)) => {
-                use std::sync::atomic::Ordering;
-                // `try_send` rather than `send().await`: a slow helper
-                // pipe must not back-pressure this trait method, which
-                // is driven by the agent CLI's I/O loop and is shared
-                // across every helper. Blocking here would freeze
-                // notification delivery for everyone.
-                match tx.try_send(args) {
-                    Ok(()) => {
-                        // First successful send after one or more drops
-                        // is the recovery point — summarize and reset.
-                        let dropped = drops.swap(0, Ordering::SeqCst);
-                        if dropped > 0 {
-                            tracing::info!(
-                                target: "master",
-                                session_id = ?sid,
-                                kind = %kind,
-                                dropped = dropped,
-                                "helper notification channel drained — backpressure cleared"
-                            );
-                        }
-                        // Per-streamed-chunk; trace-only so default debug logs
-                        // stay readable. Turn-level flow is in `prompt_timing`.
-                        tracing::trace!(
-                            target: "master",
-                            step = "agent→helper",
-                            op = "session_notification",
-                            session_id = ?sid,
-                            kind = %kind,
-                            delivered = true,
-                            "routed agent CLI notification to helper"
-                        );
-                    }
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        // The helper isn't draining fast enough. Drop
-                        // this update rather than queue forever — the
-                        // user will see a chunk gap, which is the
-                        // least-bad option vs. unbounded memory growth
-                        // or master-wide stall. Warn ONCE per stall
-                        // (first drop); subsequent drops in the same
-                        // stall increment silently and are reported in
-                        // aggregate on recovery.
-                        let prior = drops.fetch_add(1, Ordering::SeqCst);
-                        if prior == 0 {
-                            tracing::warn!(
-                                target: "master",
-                                session_id = ?sid,
-                                kind = %kind,
-                                capacity = NOTIF_CHANNEL_CAPACITY,
-                                "helper notification channel full — dropping updates (subsequent drops in this stall will be silent until drain)"
-                            );
-                        }
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        // Helper went away between our lookup and our
-                        // send. Drop the routing entry so subsequent
-                        // notifications don't repeat the same warning
-                        // (and the map doesn't grow forever). The
-                        // `serve_helper` cleanup path also retains-out
-                        // these entries on graceful disconnect; this
-                        // path catches the race where send fails before
-                        // that runs.
-                        //
-                        // CRITICAL: only remove if the entry STILL
-                        // belongs to the helper we snapshotted. A
-                        // freshly-issued `load_session` can have
-                        // rebound the same SessionId to a different
-                        // helper between our snapshot and now —
-                        // clobbering that new entry would silently
-                        // break notification delivery for the new
-                        // helper. `helper_id` is unique per master
-                        // lifetime (monotonic counter), so equality is
-                        // a sufficient identity check.
-                        let mut map = self.state.session_to_helper.lock().await;
-                        match map.get(&sid) {
-                            Some(current) if current.helper_id == snap_helper_id => {
-                                map.remove(&sid);
-                                tracing::warn!(
-                                    target: "master",
-                                    session_id = ?sid,
-                                    kind = %kind,
-                                    helper_id = ?snap_helper_id,
-                                    "helper notification channel closed — helper likely disconnected; dropping update and routing entry"
-                                );
-                            }
-                            Some(current) => {
-                                tracing::info!(
-                                    target: "master",
-                                    session_id = ?sid,
-                                    kind = %kind,
-                                    stale_helper_id = ?snap_helper_id,
-                                    current_helper_id = ?current.helper_id,
-                                    "helper notification channel closed but SessionId has been rebound to a different helper — dropping update, leaving new route intact"
-                                );
-                            }
-                            None => {
-                                // Entry already gone (likely the
-                                // `serve_helper` cleanup raced ahead
-                                // of us). Nothing to do.
-                                tracing::debug!(
-                                    target: "master",
-                                    session_id = ?sid,
-                                    kind = %kind,
-                                    "helper notification channel closed and routing entry already cleaned up"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            None => {
-                tracing::warn!(
-                    target: "master",
-                    session_id = ?sid,
-                    kind = %kind,
-                    "agent CLI emitted session_notification for unknown SessionId — no helper to route to"
-                );
-            }
-        }
+        self.state.router.deliver_notification(args).await;
         Ok(())
     }
 
@@ -646,24 +396,6 @@ impl MasterClient {
     }
 }
 
-/// Short, log-friendly tag for a `SessionNotification`'s update
-/// variant. Just enough to grep — "this turn started chunking",
-/// "this turn called a tool", "this turn ended".
-fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static str {
-    use acp::schema::v1::SessionUpdate::*;
-    match &notif.update {
-        AgentMessageChunk { .. } => "agent_message_chunk",
-        AgentThoughtChunk { .. } => "agent_thought_chunk",
-        UserMessageChunk { .. } => "user_message_chunk",
-        ToolCall(_) => "tool_call",
-        ToolCallUpdate(_) => "tool_call_update",
-        Plan(_) => "plan",
-        CurrentModeUpdate { .. } => "current_mode_update",
-        AvailableCommandsUpdate { .. } => "available_commands_update",
-        _ => "other",
-    }
-}
-
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
 /// Each helper gets its own `HelperHandler` instance.
 #[derive(Clone)]
@@ -673,7 +405,7 @@ struct HelperHandler {
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
-    /// `state.session_to_helper` so future agent-CLI notifications
+    /// the `router` so future agent-CLI notifications
     /// land here. The helper's serve loop drains the matching
     /// receiver and writes notifications back over the
     /// `AgentSideConnection`.
@@ -862,9 +594,10 @@ impl HelperHandler {
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
-        let registry_size = {
-            let mut map = self.state.session_to_helper.lock().await;
-            map.insert(
+        let registry_size = self
+            .state
+            .router
+            .bind(
                 resp.session_id.clone(),
                 HelperRoute {
                     helper_id: self.helper_id,
@@ -872,12 +605,11 @@ impl HelperHandler {
                     forwarder: Some(forwarder),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
-            );
-            map.len()
-        };
+            )
+            .await;
         // Mirror the binding into the live-session registry. Lock
         // ordering matches the doc on `MasterStateInner::registry`:
-        // `session_to_helper` is no longer held here, so the upsert
+        // the router lock is no longer held here, so the upsert
         // can't deadlock against `drop_sessions_for_helper`.
         let mut info = crate::session_registry::SessionInfo::new(
             resp.session_id.clone(),
@@ -909,6 +641,9 @@ impl HelperHandler {
             let entry = meta.entry(self.helper_id).or_default();
             if wta_meta.owner_tab_id.is_some() {
                 entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+            }
+            if wta_meta.window_id.is_some() {
+                entry.window_id = wta_meta.window_id.clone();
             }
             entry.last_session_id = Some(resp.session_id.clone());
         }
@@ -986,9 +721,9 @@ impl HelperHandler {
         // atomically; on failure we just unregister routing without
         // any peer-visible flicker.
         let forwarder = self.forwarder_for_route("load_session")?;
-        {
-            let mut map = self.state.session_to_helper.lock().await;
-            map.insert(
+        self.state
+            .router
+            .bind(
                 session_id.clone(),
                 HelperRoute {
                     helper_id: self.helper_id,
@@ -996,8 +731,8 @@ impl HelperHandler {
                     forwarder: Some(forwarder),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
-            );
-        }
+            )
+            .await;
         match self.agent_conn.load_session(args).await {
             Ok(resp) => {
                 let mut info = crate::session_registry::SessionInfo::new(
@@ -1042,19 +777,18 @@ impl HelperHandler {
                     if wta_meta.owner_tab_id.is_some() {
                         entry.owner_tab_id = wta_meta.owner_tab_id.clone();
                     }
+                    if wta_meta.window_id.is_some() {
+                        entry.window_id = wta_meta.window_id.clone();
+                    }
                     entry.last_session_id = Some(session_id.clone());
                 }
                 Ok(resp)
             }
             Err(err) => {
-                // Roll back the pre-registration. Only `session_to_helper`
-                // needs touching — we never wrote to `registry` and we
-                // never broadcast `session_added`, so peers never saw
-                // this row.
-                {
-                    let mut map = self.state.session_to_helper.lock().await;
-                    map.remove(&session_id);
-                }
+                // Roll back the pre-registration. Only the router needs
+                // touching — we never wrote to `registry` and we never
+                // broadcast `session_added`, so peers never saw this row.
+                self.state.router.unbind(&session_id).await;
                 tracing::warn!(
                     target: "master",
                     helper_id = ?self.helper_id,
@@ -1112,7 +846,7 @@ impl HelperHandler {
         // (sub-µs hashmap snapshot, no awaits inside the critical
         // section). `drop_sessions_for_helper` mutates the registry
         // by calling `registry.remove(sid)` *after* releasing
-        // `session_to_helper`'s mutex (see lock-order comment on
+        // the router's mutex (see lock-order comment on
         // `MasterStateInner::registry`). Both operations are
         // serialized by the registry's own internal mutex, so any
         // ordering between a concurrent helper-drop and this
@@ -1559,7 +1293,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     );
 
     let inner = Arc::new(MasterStateInner {
-        session_to_helper: Mutex::new(HashMap::new()),
+        router: SessionRouter::new(),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
@@ -2036,7 +1770,11 @@ async fn serve_helper(
     };
     if let Some(recovery) = recovery {
         if let Some(tab_id) = recovery.owner_tab_id {
-            emit_restart_agent_pane(&tab_id, recovery.last_session_id.as_ref());
+            emit_restart_agent_pane(
+                &tab_id,
+                recovery.window_id.as_deref(),
+                recovery.last_session_id.as_ref(),
+            );
         }
     }
 
@@ -2047,11 +1785,16 @@ async fn serve_helper(
 /// helper for `tab_id`, resuming `session_id` (when known) via
 /// `--initial-load-session-id`. Routed per-tab by StableId, mirroring
 /// `close_agent_pane`. See `doc/specs/connection-resilience.md` §8.
-fn emit_restart_agent_pane(tab_id: &str, session_id: Option<&acp::schema::v1::SessionId>) {
-    let evt = build_restart_agent_pane_event(tab_id, session_id);
+fn emit_restart_agent_pane(
+    tab_id: &str,
+    window_id: Option<&str>,
+    session_id: Option<&acp::schema::v1::SessionId>,
+) {
+    let evt = build_restart_agent_pane_event(tab_id, window_id, session_id);
     tracing::info!(
         target: "master",
         tab_id = %tab_id,
+        window_id = ?window_id,
         session_id = ?session_id,
         "emitting restart_agent_pane (helper disconnected)"
     );
@@ -2063,6 +1806,7 @@ fn emit_restart_agent_pane(tab_id: &str, session_id: Option<&acp::schema::v1::Se
 /// unit-testable without the `wtcli publish` side effect.
 fn build_restart_agent_pane_event(
     tab_id: &str,
+    window_id: Option<&str>,
     session_id: Option<&acp::schema::v1::SessionId>,
 ) -> serde_json::Value {
     serde_json::json!({
@@ -2070,31 +1814,23 @@ fn build_restart_agent_pane_event(
         "method": "restart_agent_pane",
         "params": {
             "tab_id": tab_id,
+            "window_id": window_id,
             "session_id": session_id.map(|s| s.0.as_ref()),
             "reason": "helper_disconnect",
         }
     })
 }
 
-/// Remove every `session_to_helper` entry owned by `helper_id`.
+/// Remove every routing entry owned by `helper_id`.
 /// Returns the number of entries dropped. Factored out of
 /// `serve_helper` so the cleanup is unit-testable without a real
 /// named pipe.
 async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId) -> usize {
     // Collect the owned SessionIds first so we can drop them from the
-    // live registry too. Single pass through `session_to_helper` while
-    // we already hold its lock; the corresponding `registry.remove`
-    // calls happen after we release `session_to_helper` to keep with
+    // live registry too. The router removes them under its own lock and
+    // returns the victims; the `registry.remove` calls happen after, per
     // the lock ordering doc'd on `MasterStateInner::registry`.
-    let victims: Vec<acp::schema::v1::SessionId> = {
-        let mut map = state.session_to_helper.lock().await;
-        let victims = map
-            .iter()
-            .filter_map(|(sid, route)| (route.helper_id == helper_id).then(|| sid.clone()))
-            .collect::<Vec<_>>();
-        map.retain(|_, route| route.helper_id != helper_id);
-        victims
-    };
+    let victims: Vec<acp::schema::v1::SessionId> = state.router.drop_helper(helper_id).await;
     for sid in &victims {
         state.registry.remove(sid).await;
         // Broadcast removal so every still-attached helper drops the
@@ -2224,10 +1960,10 @@ async fn host_history_via_acp(
     // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
     // *after* session/new lands, so a just-created pane session can be returned by
     // session/list before its index line exists, leaking a phantom historical row.
-    // Master routes every session/new, so its live `session_to_helper` keys are the
+    // Master routes every session/new, so its live routing table keys are the
     // authoritative live-pane set — union them in to close that race.
     let mut idx = crate::agent_pane_origin::load_default_set();
-    for sid in state.session_to_helper.lock().await.keys() {
+    for sid in state.router.session_ids().await {
         idx.insert(sid.0.to_string());
     }
     Some(crate::session_history::classify_and_map(
@@ -3038,7 +2774,7 @@ mod tests {
 
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
-            session_to_helper: Mutex::new(HashMap::new()),
+            router: SessionRouter::new(),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
@@ -3291,7 +3027,7 @@ mod tests {
 
                 // Route the session so the agent's reentrant request_permission
                 // reaches the mock helper.
-                state.session_to_helper.lock().await.insert(
+                state.router.map_for_test().await.insert(
                     sid.clone(),
                     HelperRoute {
                         helper_id: HelperId(1),
@@ -3362,18 +3098,20 @@ mod tests {
     #[test]
     fn restart_agent_pane_event_shape_carries_tab_and_session() {
         let sid = SessionId::from("sess-abc");
-        let evt = build_restart_agent_pane_event("tab-42", Some(&sid));
+        let evt = build_restart_agent_pane_event("tab-42", Some("win-9"), Some(&sid));
         assert_eq!(evt["type"], "event");
         assert_eq!(evt["method"], "restart_agent_pane");
         assert_eq!(evt["params"]["tab_id"], "tab-42");
+        assert_eq!(evt["params"]["window_id"], "win-9");
         assert_eq!(evt["params"]["session_id"], "sess-abc");
         assert_eq!(evt["params"]["reason"], "helper_disconnect");
     }
 
     #[test]
     fn restart_agent_pane_event_null_session_when_none() {
-        let evt = build_restart_agent_pane_event("tab-7", None);
+        let evt = build_restart_agent_pane_event("tab-7", None, None);
         assert!(evt["params"]["session_id"].is_null());
+        assert!(evt["params"]["window_id"].is_null());
         assert_eq!(evt["params"]["tab_id"], "tab-7");
     }
 
@@ -3403,7 +3141,7 @@ mod tests {
         let sid2 = SessionId::new("sess-2");
 
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid1.clone(),
                 HelperRoute {
@@ -3441,7 +3179,7 @@ mod tests {
         let (tx, rx) = mpsc::channel::<SessionNotification>(NOTIF_CHANNEL_CAPACITY);
         let sid = SessionId::new("dead-session");
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid.clone(),
                 HelperRoute {
@@ -3456,7 +3194,7 @@ mod tests {
 
         route(&state, make_notif(&sid)).await;
 
-        let map = state.session_to_helper.lock().await;
+        let map = state.router.map_for_test().await;
         assert!(
             !map.contains_key(&sid),
             "send failure should have removed the routing entry"
@@ -3491,7 +3229,7 @@ mod tests {
         // sees the entry is B's; cleanup must NOT remove B.
         let (tx_a, rx_a) = mpsc::channel::<SessionNotification>(NOTIF_CHANNEL_CAPACITY);
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid.clone(),
                 HelperRoute {
@@ -3516,7 +3254,7 @@ mod tests {
         // landing between snapshot and try_send).
         let (tx_b, _rx_b) = mpsc::channel::<SessionNotification>(NOTIF_CHANNEL_CAPACITY);
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid.clone(),
                 HelperRoute {
@@ -3537,7 +3275,7 @@ mod tests {
             other => panic!("expected Closed, got {other:?}"),
         }
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             match map.get(&sid) {
                 Some(current) if current.helper_id == snap_helper_a => {
                     map.remove(&sid);
@@ -3546,7 +3284,7 @@ mod tests {
             }
         }
 
-        let map = state.session_to_helper.lock().await;
+        let map = state.router.map_for_test().await;
         let current = map.get(&sid).expect("helper B's route must survive");
         assert_eq!(
             current.helper_id,
@@ -3567,7 +3305,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel::<SessionNotification>(1);
         let sid = SessionId::new("slow-helper");
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid.clone(),
                 HelperRoute {
@@ -3584,7 +3322,7 @@ mod tests {
         // not a panic or an error.
         route(&state, make_notif(&sid)).await;
         // Routing entry survives Full (only Closed removes it).
-        let map = state.session_to_helper.lock().await;
+        let map = state.router.map_for_test().await;
         assert!(
             map.contains_key(&sid),
             "Full (not Closed) must NOT remove the routing entry"
@@ -3600,7 +3338,7 @@ mod tests {
         let sid = SessionId::new("never-registered");
         // Just ensure the call doesn't panic and returns Ok.
         route(&state, make_notif(&sid)).await;
-        let map = state.session_to_helper.lock().await;
+        let map = state.router.map_for_test().await;
         assert!(map.is_empty());
     }
 
@@ -3614,7 +3352,7 @@ mod tests {
         let (tx_b, _rx_b) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         let (tx_c, _rx_c) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 SessionId::new("a1"),
                 HelperRoute {
@@ -3656,7 +3394,7 @@ mod tests {
         let dropped = drop_sessions_for_helper(&state, HelperId(1)).await;
         assert_eq!(dropped, 2);
 
-        let map = state.session_to_helper.lock().await;
+        let map = state.router.map_for_test().await;
         assert!(!map.contains_key(&SessionId::new("a1")));
         assert!(!map.contains_key(&SessionId::new("a2")));
         assert!(map.contains_key(&SessionId::new("b1")));
@@ -3682,7 +3420,7 @@ mod tests {
         let sid_a = SessionId::new("alive-a");
         let sid_b = SessionId::new("alive-b");
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid_a.clone(),
                 HelperRoute {
@@ -3806,7 +3544,7 @@ mod tests {
         let sid_a = SessionId::new("removed-a");
         let sid_b = SessionId::new("removed-b");
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 sid_a.clone(),
                 HelperRoute {
@@ -3886,7 +3624,7 @@ mod tests {
         let state = make_state();
         let (tx, _rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(
                 SessionId::new("orphan"),
                 HelperRoute {
@@ -3961,7 +3699,7 @@ mod tests {
         let (ext_tx, mut ext_rx) = mpsc::unbounded_channel::<acp::schema::v1::ExtNotification>();
         let sid = SessionId::new("removed-a");
         {
-            let mut map = state.session_to_helper.lock().await;
+            let mut map = state.router.map_for_test().await;
             map.insert(sid.clone(), HelperRoute {
                 helper_id: HelperId(1),
                 notif_tx,
@@ -4145,7 +3883,7 @@ mod tests {
         wt: Arc<dyn crate::shell::wt_channel::WtChannel>,
     ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
-            session_to_helper: Mutex::new(HashMap::new()),
+            router: SessionRouter::new(),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),

@@ -214,6 +214,15 @@ struct Cli {
     #[arg(long, hide = true)]
     owner_tab_id: Option<String>,
 
+    /// WT window id of the window that owns this wta process's agent pane.
+    /// Passed by TerminalPage alongside `--owner-tab-id`. Seeded into
+    /// `_meta.wta.window_id` on every `session/new` / `session/load` so
+    /// master's `restart_agent_pane` crash-recovery event can name the origin
+    /// window. Best-effort (not updated on cross-window drag). Hidden —
+    /// nothing outside WT should set it.
+    #[arg(long, hide = true)]
+    window_id: Option<String>,
+
     /// Boot-time hint: instead of letting the helper create a fresh ACP
     /// session via `session/new`, immediately resume the given session id
     /// via `session/load`. Used by the "Enter on Historical/Ended row in
@@ -2973,6 +2982,9 @@ async fn run_acp_app(
             // Master needs it to address `restart_agent_pane` crash-recovery
             // events by the same StableId C++ routes per-tab events with.
             protocol::acp::client::set_helper_owner_tab_id(cli.owner_tab_id.as_deref());
+            // Same, for the origin WT window id — carried in `_meta.wta.window_id`
+            // so master's crash-recovery event can name the origin window.
+            protocol::acp::client::set_helper_window_id(cli.window_id.as_deref());
 
             let explicit_agent_id = cli
                 .agent_id
