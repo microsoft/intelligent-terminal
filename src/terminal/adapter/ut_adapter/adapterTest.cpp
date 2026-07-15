@@ -3560,6 +3560,107 @@ public:
         VERIFY_IS_TRUE(decdld(CellMatrix::Default, 0, FontSet::Size132x24, FontUsage::FullCell, bitmapOf6x18));
     }
 
+    TEST_METHOD(SoftFontBufferOverrun)
+    {
+        // Regression test for _endOfSixelLine bounds handling. During sixel
+        // loading every glyph is stored at the maximum stride (MAX_HEIGHT rows),
+        // and _endOfCharacter always flushes one final _endOfSixelLine. Before
+        // the fix, a glyph whose sixel bands filled the stride made that final
+        // flush trip an E_OUTOFMEMORY (the row counter had reached the cap),
+        // spuriously rejecting valid tall DRCS glyphs; an unbounded run of sixel
+        // line breaks could also overflow the signed row counter (UB). The fix
+        // clamps the cursor advance to the current glyph and saturates the row
+        // counter.
+        using FontSet = DispatchTypes::DrcsFontSet;
+        using FontUsage = DispatchTypes::DrcsFontUsage;
+
+        // Loads a full-cell font from DECDLD sixel data: '/' is a sixel line
+        // break, ';' separates character definitions.
+        const auto load = [](FontBuffer& fb, const VTInt cmw, const VTInt cmh, const std::wstring_view data) {
+            const auto cellMatrix = static_cast<DispatchTypes::DrcsCellMatrix>(cmw);
+            if (!fb.SetEraseControl(DispatchTypes::DrcsEraseControl::AllChars) ||
+                !fb.SetAttributes(cellMatrix, cmh, FontSet::Size80x24, FontUsage::FullCell) ||
+                !fb.SetStartChar(0, DispatchTypes::CharsetSize::Size94))
+            {
+                return false;
+            }
+            fb.AddSixelData(L'B'); // Charset identifier
+            for (const auto ch : data)
+            {
+                fb.AddSixelData(ch);
+            }
+            return fb.FinalizeSixelData();
+        };
+
+        // A band of '~' sets all six pixels of every column; a 16-wide full-cell
+        // row of them packs to 0xFFFF. '?' is a blank sixel (0x0000).
+        const std::wstring fullBand(16, L'~');
+        const std::wstring blankBand(16, L'?');
+        const auto buildBands = [](const std::wstring_view band, const int count) {
+            std::wstring out;
+            for (auto i = 0; i < count; ++i)
+            {
+                if (i)
+                {
+                    out.push_back(L'/');
+                }
+                out.append(band);
+            }
+            return out;
+        };
+
+        // Case 1 — a full-height (16x32) glyph whose bands more than fill the
+        // 32-row stride (8 bands = 48 rows). It must load without a spurious
+        // E_OUTOFMEMORY and retain all 32 rows of set pixels.
+        Log::Comment(L"Full-height glyph over-filled past its stride");
+        {
+            FontBuffer fb;
+            VERIFY_IS_TRUE(load(fb, 16, 32, buildBands(fullBand, 8)));
+            VERIFY_ARE_EQUAL(fb.GetCellSize().height, 32);
+            const auto bits = fb.GetBitPattern();
+            // GetBitPattern spans MAX_CHARS (96) glyphs of _fullHeight (32) rows.
+            VERIFY_ARE_EQUAL(bits.size(), gsl::narrow_cast<size_t>(96 * 32));
+            for (auto row = 0; row < 32; ++row)
+            {
+                VERIFY_ARE_EQUAL(bits[row], gsl::narrow_cast<uint16_t>(0xFFFF));
+            }
+        }
+
+        // Case 2 — an over-filled char 0 must not bleed into char 1's slot.
+        // Char 1 is left blank, so its 32 packed rows must all stay zero.
+        Log::Comment(L"Over-filled glyph must not corrupt the next glyph");
+        {
+            FontBuffer fb;
+            const auto data = buildBands(fullBand, 8) + L";" + blankBand;
+            VERIFY_IS_TRUE(load(fb, 16, 32, data));
+            const auto bits = fb.GetBitPattern();
+            for (auto row = 0; row < 32; ++row)
+            {
+                VERIFY_ARE_EQUAL(bits[32 + row], gsl::narrow_cast<uint16_t>(0x0000));
+            }
+        }
+
+        // Case 3 — a pathological payload of only sixel line breaks must not
+        // overflow the signed row counter and must still finalize in bounds.
+        Log::Comment(L"Payload of only sixel line breaks");
+        {
+            FontBuffer fb;
+            VERIFY_IS_TRUE(load(fb, 16, 32, std::wstring(4096, L'/')));
+            VERIFY_IS_LESS_THAN_OR_EQUAL(fb.GetCellSize().height, 32);
+        }
+
+        // Case 4 — a short declared glyph (8x8) fed far more bands than eight
+        // rows. Exercises the same over-fill path at a non-maximal declared
+        // height; must load in bounds.
+        Log::Comment(L"Short declared glyph over-filled");
+        {
+            FontBuffer fb;
+            VERIFY_IS_TRUE(load(fb, 8, 8, buildBands(fullBand, 12)));
+            VERIFY_IS_LESS_THAN_OR_EQUAL(fb.GetCellSize().height, 32);
+            VERIFY_IS_LESS_THAN_OR_EQUAL(fb.GetCellSize().width, 16);
+        }
+    }
+
     TEST_METHOD(TogglingC1ParserMode)
     {
         _stateMachine->SetParserMode(StateMachine::Mode::AcceptC1, false);
