@@ -73,8 +73,10 @@ function ConvertTo-RepoRelativePath {
     # embed it in committed text without leaking machine-specific drive
     # letters / user dirs.
     param([Parameter(Mandatory)] [string] $Path)
-    $root = ((Get-RepoRoot) -replace '\\','/').TrimEnd('/')
-    $abs  = $Path -replace '\\','/'
+    # GetFullPath collapses '.'/'..' segments so a path that is under the repo
+    # but written with relative segments still matches the root prefix.
+    $root = ([System.IO.Path]::GetFullPath((Get-RepoRoot)) -replace '\\','/').TrimEnd('/')
+    $abs  = [System.IO.Path]::GetFullPath($Path) -replace '\\','/'
     if ($abs.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "ConvertTo-RepoRelativePath: refusing to return empty (path == repo root): $Path"
     }
