@@ -18,16 +18,32 @@ Generate polished, user-facing release notes for Intelligent Terminal releases b
 
 ### Phase 1: Identify the Commit Range
 
-1. Determine the **last release point**. Ask the user or check:
-   - The latest git tag: `git tag --sort=-version:refname | head -5`
-     (PowerShell: `git tag --sort=-version:refname | Select-Object -First 5`)
-   - The last release notes file
-   - The user may specify a commit hash directly
-2. List all commits since that point:
+The base is the **previous release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.2`) and the head is **`main`**. Do **not** anchor on `stable` (it is a cherry-picked subset that lags the release tag), on the legacy four-part `v0.1.NNNN.0` tags, or on upstream Windows Terminal `v1.x` tags — none of those are this fork's release line, and a plain `git tag --sort=-version:refname | head` surfaces exactly those wrong anchors.
+
+1. Determine the **last release point** (in order of preference):
+   - **From the release-notes files (source of truth).** The newest `doc/release-notes/vX.Y.Z.md` names the last shipped version; use its `vX.Y.Z` tag as the base.
+     ```bash
+     ls doc/release-notes/v*.md | sort -V | tail -1   # e.g. v0.1.2.md → base tag v0.1.2
+     ```
+     ```powershell
+     Get-ChildItem doc/release-notes/v*.md | Sort-Object { [version]($_.BaseName -replace '^v','') } | Select-Object -Last 1
+     ```
+   - **From tags (confirm before trusting).** A *candidate* base is the newest 3-part tag merged into `main` (the filter below drops upstream `v1.x` and the stale `v0.1.NNNN.0` tags). **Verify it is really the last release** — the `v0.1.x` line has out-of-band tags (e.g. `v0.1.18`) that outrank the true last release under version sort, so this is a hint, not an authority:
+     ```bash
+     git tag --list 'v*' --merged main | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+     ```
+     ```powershell
+     git tag --list 'v*' --merged main | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1
+     ```
+   - The user may specify the base commit/tag directly.
+   - If still unsure, **ask the user** — never guess from `git tag | head` in this repo.
+2. List all commits from the base to `main`:
    ```bash
-   git log --oneline --reverse <last-release>..HEAD
+   git log --oneline --reverse <last-release-tag>..main
    ```
-3. Extract PR numbers from commit messages (pattern: `(#NNN)`)
+3. Extract PR numbers from commit messages (pattern: `(#NNN)`).
+
+> The `0.1.xxxx.0` build number is injected by CI at release time; the human-facing version is the `vX.Y.Z` sequence.
 
 ### Phase 2: Enrich with PR Metadata
 
@@ -85,7 +101,7 @@ Use these sections in order:
 
 ### Phase 4: Output
 
-1. Save the release notes to `Generated Files/release-notes-v<version>.md` (this folder is gitignored — generated output only)
+1. Save the final release notes to `doc/release-notes/vX.Y.Z.md` (committed alongside prior releases, e.g. `doc/release-notes/v0.1.2.md`). Draft in `Generated Files/` first if you want a gitignored scratch copy.
 2. Present the full notes to the user
 3. Also list the top 5 elevator-pitch points separately
 
