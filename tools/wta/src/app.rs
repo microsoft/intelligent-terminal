@@ -4485,7 +4485,7 @@ impl App {
         };
         tokio::task::spawn_local(async move {
             let tab_for_result = target_tab.clone();
-            let result = tokio::task::spawn_blocking(crate::win32::read_text_from_clipboard).await;
+            let result = tokio::task::spawn_blocking(crate::win32::read_paste_string_from_clipboard).await;
             let event = match result {
                 Ok(Ok(text)) => AppEvent::AgentPasteTextReady {
                     tab_id: tab_for_result,

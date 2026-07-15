@@ -88,14 +88,13 @@ pub(crate) fn copy_text_to_clipboard(_text: &str) -> std::io::Result<()> {
     ))
 }
 
-/// Read UTF-16 text from the Windows clipboard.
+/// Read text suitable for paste from the Windows clipboard.
 #[cfg(windows)]
-pub(crate) fn read_text_from_clipboard() -> io::Result<String> {
+pub(crate) fn read_paste_string_from_clipboard() -> io::Result<String> {
     use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
     use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 
     const CF_UNICODETEXT: u32 = 13;
-    const CF_HDROP: u32 = 15;
     const MAX_CLIPBOARD_TEXT_BYTES: usize = 4 * 1024 * 1024;
 
     let _guard = ClipboardGuard::open()?;
@@ -122,25 +121,8 @@ pub(crate) fn read_text_from_clipboard() -> io::Result<String> {
             return Ok(text);
         }
 
-        if IsClipboardFormatAvailable(CF_HDROP) != 0 {
-            use std::os::windows::ffi::OsStringExt;
-            use windows_sys::Win32::UI::Shell::DragQueryFileW;
-
-            let handle = GetClipboardData(CF_HDROP);
-            if handle.is_null() {
-                return Err(io::Error::last_os_error());
-            }
-            let needed = DragQueryFileW(handle as _, 0, std::ptr::null_mut(), 0);
-            if needed == 0 {
-                return Ok(String::new());
-            }
-            let mut buf = vec![0u16; needed as usize + 1];
-            let got = DragQueryFileW(handle as _, 0, buf.as_mut_ptr(), buf.len() as u32);
-            if got == 0 {
-                return Ok(String::new());
-            }
-            buf.truncate(got as usize);
-            return Ok(std::ffi::OsString::from_wide(&buf).to_string_lossy().into_owned());
+        if let Some(path) = clipboard_file_path_from_open_clipboard() {
+            return Ok(path.to_string_lossy().into_owned());
         }
 
         Ok(String::new())
@@ -148,11 +130,42 @@ pub(crate) fn read_text_from_clipboard() -> io::Result<String> {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn read_text_from_clipboard() -> std::io::Result<String> {
+pub(crate) fn read_paste_string_from_clipboard() -> std::io::Result<String> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         "clipboard is only supported on Windows",
     ))
+}
+
+/// First file path from a CF_HDROP clipboard payload.
+///
+/// Must be called while the clipboard is already open.
+#[cfg(windows)]
+pub(crate) unsafe fn clipboard_file_path_from_open_clipboard() -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+    use windows_sys::Win32::UI::Shell::DragQueryFileW;
+
+    const CF_HDROP: u32 = 15;
+
+    if IsClipboardFormatAvailable(CF_HDROP) == 0 {
+        return None;
+    }
+    let handle = GetClipboardData(CF_HDROP);
+    if handle.is_null() {
+        return None;
+    }
+    let needed = DragQueryFileW(handle as _, 0, std::ptr::null_mut(), 0);
+    if needed == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; needed as usize + 1];
+    let got = DragQueryFileW(handle as _, 0, buf.as_mut_ptr(), buf.len() as u32);
+    if got == 0 {
+        return None;
+    }
+    buf.truncate(got as usize);
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf)))
 }
 
 /// Open a URL with the user's default handler using ShellExecuteW instead of a
