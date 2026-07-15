@@ -30,6 +30,6 @@ A huge thank you to the external contributors who helped make this release:
 
 1. **Highlight 1** — one-line impact statement: #issue
 2. **Highlight 2** — one-line impact statement: #issue
-3. **Highlight 3** — one-line impact statement
-4. **Highlight 4** — one-line impact statement
-5. **Highlight 5** — one-line impact statement
+3. **Highlight 3** — one-line impact statement: #issue
+4. **Highlight 4** — one-line impact statement: #issue
+5. **Highlight 5** — one-line impact statement: #issue
