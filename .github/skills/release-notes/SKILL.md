@@ -62,7 +62,7 @@ Use the [release notes template](./templates/release-notes-template.md) and foll
 
 #### Formatting Rules
 
-1. **Use numbered lists** (`1.`, `2.`, `3.`) within every section — matches the house style of prior releases (e.g. `doc/release-notes/v0.1.2.md`), not bullet points.
+1. **Use numbered lists** (`1.`, `2.`, `3.`) within every section — matches the house style shown in [`references/example-release-notes.md`](./references/example-release-notes.md), not bullet points.
 
 2. **Every item uses "Verbed + Impact + Scenario"** — a human must understand what changed and why it matters to them
    - ✅ `**Press F5 to refresh the session list.** Re-scans history on demand so sessions that appeared after launch show up without restarting. #344`
