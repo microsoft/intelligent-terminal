@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Sveiki atvykę į Išmanusis Terminalas!"
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
-setup.title.switch_agent: "Pakeisti agentą"
 setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifika
 setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Pasirinkite numatytąjį agentą, kurį norite naudoti Išmanusis Terminalas. Galite"
-setup.description.fre_line2: "eiti į Settings, kad sukonfigūruotumėte ir nustatytumėte savo darbo sritį."
 
 setup.option.install: "Įdiegti %{agent}"
 setup.option.install_hint: "(Bus įdiegta automatiškai)"
 setup.option.signin: "Prisijungti prie %{agent}"
 setup.option.retry_detection: "Bandyti dar kartą"
 setup.option.retry_auth: "Prisijungiau — bandyti prisijungti dar kartą"
-setup.option.retry_connection: "Bandyti prisijungti dar kartą"
-setup.option.switch_to: "Perjungti į %{agent}"
 setup.status.installing: "Diegiama..."
 setup.status.install_failed: "Diegimas nepavyko: "
 setup.status.installing_winget: " Diegiama per winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Tikrinama autentifikacija..."
 auth.waiting_for_authorization: "  %{spinner} Laukiama autorizavimo..."
 auth.code_copied_hint: "  Kodas nukopijuotas į iškarpinę — įklijuokite jį naršyklėje."
-auth.sign_in_prompt: "Prisijunkite, kad galėtumėte naudoti savo agentą:"
+auth.device_code_prompt: "Apsilankykite %{url} ir įveskite kodą: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Prijunkite %{name}, kad įgalintumėte agento funkcijas"
-auth.button_sign_in_github: "[ Prisijungti su GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prisijungti su %{name} ]"
-auth.hint_footer: "  Paspauskite Enter, kad prisijungtumėte, Esc, kad grįžtumėte atgal"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter = prisijungti · E = GitHub Enterprise · Esc = grįžti"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domenas: "
+auth.enterprise_hint_footer: "  Enter = prisijungti · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Paspauskite Enter, kad bandytumėte dar kartą, arba Esc, kad naudotumėte github.com. Dažnos priežastys: neteisingai įvestas arba nepasiekiamas domenas, nebegaliojantis kodas arba nėra Copilot prieigos tame pagrindiniame kompiuteryje."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Paspauskite Enter, kad bandytumėte dar kartą, arba Esc, kad grįžtumėte."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mąsto..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ įvykdyta: %{title}"
 input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}
 input.placeholder.connecting: "jungiamasi..."
 input.placeholder.disconnected: "atjungta"
+input.image_attachments: "📎 Vaizdai: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N atsakyti · pakeiskite dydį pilnai kortelei]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Neįdiegta — pasirinkite, kad būtų įdiegta automatiškai"
 agent.status.not_found: "Nerasta"
-agent.status.detected: "Aptikta"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Įsitikinkite, kad %{name} yra įdiegtas ir yra jūsų 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Įkeliama..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti • F5 atnaujinti)"
 agents.status.active: "Aktyvus"
 agents.status.waiting_for_input: "Laukia įvesties"
 agents.status.error: "Klaida"
@@ -126,11 +121,13 @@ connection.lost: "Ryšys su agentu nutrūko. Įveskite /restart, kad prisijungtu
 system.cancelled: "Atšaukta."
 system.no_prompt_in_flight: "Nėra vykdomos užklausos."
 system.authentication_failed: "Autentifikavimas nepavyko"
-system.command_copied_retry: "Komanda nukopijuota — paleiskite ją kitame terminale, tada paspauskite Enter, kad bandytumėte iš naujo"  # {Locked="Enter"}
 system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvesties ribą."
 system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
 system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."
 system.agent_busy: "Agentas šiame skirtuke užimtas — palaukite, kol dabartinė užklausa bus baigta."
+system.image_clipboard_empty: "Iškarpinėje nėra vaizdo, kurį būtų galima įklijuoti."
+system.image_not_supported: "Šis agentas nepalaiko vaizdo įvesties."
+system.image_pasted: "Vaizdas pridėtas (%{label}). Paspauskite Enter, kad išsiųstumėte."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Tęsiamas seansas %{session_id}..."
 system.unknown_command: "Nežinoma komanda \"%{command}\" — išsiųsta kaip užklausa. Sąrašui įveskite /help."  # {Locked="/help"}
 system.busy_use_stop: "Palaukite, kol dabartinė užklausa bus baigta, arba pirmiausia naudokite /stop."  # {Locked="/stop"}

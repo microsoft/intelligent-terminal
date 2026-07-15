@@ -7,6 +7,8 @@ mod agent_pane_origin;
 mod agent_registry;
 mod agent_sessions;
 mod app;
+mod clipboard_image;
+mod command_recall;
 mod commands;
 mod coordinator;
 mod cwd_util;
@@ -18,12 +20,13 @@ mod logging;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
+mod mcp;
 mod osc52;
 mod pane_context;
-mod proc_bind;
 mod protocol;
 mod rtl;
 mod runtime_paths;
+mod session_history;
 mod session_mgmt;
 mod session_registry;
 mod session_watcher;
@@ -34,8 +37,10 @@ mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;
+mod win32;
+mod wsl;
+mod wsl_acp;
 
-use acp::Agent as _;
 use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -169,6 +174,13 @@ struct Cli {
     #[arg(long, hide = true, value_name = "IDS", value_delimiter = ',')]
     allowed_agent_ids: Vec<String>,
 
+    /// Boot-time hint from Windows Terminal: start directly on the auth screen
+    /// for the given agent instead of attempting the initial ACP session. Used
+    /// when FRE just installed Copilot, where the next expected action is
+    /// signing in. Hidden — only Windows Terminal should pass it.
+    #[arg(long, hide = true, value_name = "AGENT_ID")]
+    initial_auth_agent: Option<String>,
+
     /// Model override for the ACP agent. Sent via ACP setSessionModel after
     /// handshake. Used by adapter-style launches (claude, codex via npx)
     /// where the model can't be passed on the command line; native ACP
@@ -188,9 +200,8 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
-    /// Enter setup mode with the given reason. The agent pane shows a
-    /// Getting Started screen instead of connecting directly.
-    /// Values: first-run, agent-missing, agent-error, switch-agent
+    /// Enter diagnostic setup mode with the given reason instead of connecting directly.
+    /// Values: agent-missing, agent-error
     #[arg(long)]
     setup: Option<String>,
 
@@ -493,6 +504,42 @@ enum Command {
         #[arg(long)]
         agent: String,
     },
+
+    /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
+    /// `session/list` (`list_sessions`) and print what it returns.
+    /// Used to evaluate whether ACP session enumeration can replace
+    /// reading on-disk transcripts. Prints a pretty JSON object to
+    /// stdout; on error: non-zero exit, message on stderr.
+    ProbeSessions {
+        /// Full agent cmdline, same shape as `--agent` (e.g.
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
+        #[arg(long)]
+        agent: String,
+    },
+
+    /// Diagnostic: spawn an agent CLI, call ACP `session/list`, filter
+    /// agent-pane-origin rows, and print the host history rows WTA would
+    /// seed from the already-running master agent.
+    ProbeHostSessions {
+        /// Full agent cmdline, same shape as `--agent` (e.g.
+        /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
+        #[arg(long)]
+        agent: String,
+    },
+
+    /// Diagnostic: run the production WSL history scan
+    /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
+    /// currently-running distros and print the discovered sessions as
+    /// JSON. Exercises the real `wsl.exe` spawn + ACP `session/list` path
+    /// that seeds the `/sessions` view. Prints `[]` when no distro is
+    /// running or none answer.
+    ProbeWslSessions {
+        /// Restrict to one CLI (`copilot` | `claude` | `codex`). Omitted
+        /// scans the three ACP-capable built-ins (Gemini has no
+        /// `session/list`).
+        #[arg(long)]
+        cli: Option<String>,
+    },
 }
 
 
@@ -618,6 +665,18 @@ async fn main() -> Result<()> {
     // is held in a global and flushed via `logging::shutdown_flush()` on every
     // exit path (see the calls below and before each `process::exit`).
     logging::init(&process_label(&cli));
+    // Log + flush on console teardown signals (pane/tab/window close, logoff,
+    // shutdown) so a torn-down helper isn't a silent disappearance. Installed
+    // process-wide; see `install_ctrl_handler` for coverage limits — notably
+    // the master is job-killed (KILL_ON_JOB_CLOSE) and won't observe these, so
+    // *this handler* doesn't trace routine master teardown. That teardown is
+    // still logged, just by the C++ parent: `SharedWta` records both the
+    // deliberate job-close and an unexpected exit to terminal-agent-pane.log.
+    logging::install_ctrl_handler();
+    // Record panics to disk (+ a synchronous wta-panic.log backstop) so a
+    // panic isn't a silent death — stderr is invisible for a ConPTY helper /
+    // CREATE_NO_WINDOW master. Chains the default hook; semantics unchanged.
+    logging::install_panic_hook();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
 
     let locale = cli
@@ -627,10 +686,9 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| "en-US".to_string());
     rust_i18n::set_locale(&normalize_locale(&locale));
 
-    // Register the WTA ETW TraceLogging provider once per process.
-    // WTA registers under the SAME provider GUID as the C++ side
-    // (`Microsoft.Windows.Terminal.App` / `g_hTerminalAppProvider`) so
-    // listeners see a single merged event stream. See tools/wta/src/telemetry.rs.
+    // Register WTA's own ETW TraceLogging provider once per process. WTA uses
+    // its own provider (`Microsoft.Windows.Terminal.WTA`), separate from the
+    // C++ side. See tools/wta/src/telemetry.rs.
     telemetry::register();
 
     // Legacy flags first (backward compat)
@@ -889,6 +947,15 @@ async fn main() -> Result<()> {
         // ── ACP model list probe ──
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
 
+        // ── ACP session/list probe (diagnostic) ──
+        Some(Command::ProbeSessions { agent }) => run_probe_sessions(&agent).await,
+
+        // ── Filtered host ACP history probe (diagnostic) ──
+        Some(Command::ProbeHostSessions { agent }) => run_probe_host_sessions(&agent).await,
+
+        // ── WSL ACP history-scan probe (diagnostic) ──
+        Some(Command::ProbeWslSessions { cli }) => run_probe_wsl_sessions(cli.as_deref()).await,
+
         // ── No subcommand: a singleton-service mode, or an error. There
         //    is no standalone/default ACP TUI mode — the direct agent-spawn
         //    path was removed, so bare `wta` always runs as a WT-launched
@@ -948,6 +1015,9 @@ fn process_label(cli: &Cli) -> String {
         None => "main".to_string(),
         Some(Command::Delegate { .. }) => "delegate".to_string(),
         Some(Command::ProbeModels { .. }) => "probe".to_string(),
+        Some(Command::ProbeSessions { .. }) => "probe".to_string(),
+        Some(Command::ProbeHostSessions { .. }) => "probe".to_string(),
+        Some(Command::ProbeWslSessions { .. }) => "probe".to_string(),
         Some(Command::Hooks {
             action: HooksAction::Install { .. },
         }) => "install-hooks".to_string(),
@@ -998,6 +1068,179 @@ async fn run_probe_models(agent: &str) -> Result<()> {
     // when they notice their pipes are broken.
     let _ = std::io::Write::flush(&mut std::io::stdout());
     // Flush the file appender — process::exit skips the guard drop.
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Drive [`protocol::acp::probe::probe_sessions`] on a tokio `LocalSet`
+/// (the ACP client connection is `!Send`), print the result as pretty
+/// JSON to stdout, force-exit. Diagnostic-only: evaluates whether an
+/// agent CLI answers ACP `session/list` and what it returns.
+async fn run_probe_sessions(agent: &str) -> Result<()> {
+    tracing::info!("probe-sessions start: agent={}", agent);
+
+    let local = tokio::task::LocalSet::new();
+    let result = match local
+        .run_until(protocol::acp::probe::probe_sessions(agent))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("probe-sessions failed: {:#}", e);
+            eprintln!("probe-sessions failed: {:#}", e);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            logging::shutdown_flush();
+            std::process::exit(1);
+        }
+    };
+    tracing::info!(
+        "probe-sessions ok: list_ok={} sessions={} err={:?}",
+        result.list_sessions_ok,
+        result.sessions.len(),
+        result.list_sessions_error
+    );
+    let payload = serde_json::to_string_pretty(&result).context("serialize session probe")?;
+    println!("{payload}");
+
+    // Same force-exit rationale as run_probe_models (orphan npx/node
+    // grandchildren keep the tokio reactor blocked on drop).
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Diagnostic host-history smoke test: run one ACP CLI, fetch
+/// `session/list`, apply the production Class-A filter, and print the
+/// rows in the same compact shape used by the WSL probe.
+async fn run_probe_host_sessions(agent: &str) -> Result<()> {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use std::time::Duration;
+
+    tracing::info!("probe-host-sessions start: agent={}", agent);
+
+    // Resolve the CliSource from the agent command so the probe labels and
+    // classifies rows the way production seeding does (which uses the real
+    // `state.cli_source`), instead of assuming Copilot for every agent.
+    let cli_source =
+        CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(agent)));
+
+    let local = tokio::task::LocalSet::new();
+    let rows = match local
+        .run_until(async {
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
+            let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
+            let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
+            let result = crate::protocol::acp::session_list::fetch_session_list(
+                &mut spawned.child,
+                &label,
+                init_timeout,
+                Duration::from_secs(10),
+            )
+            .await;
+            let _ = spawned.child.start_kill();
+            let (_init, list_result) = result?;
+            // session/list unsupported (e.g. `Method not found`) is the production
+            // "empty history, no fallback" case — surface it as `[]` + exit 0, not a
+            // diagnostic failure. A genuine spawn/init error still propagates above.
+            let sessions = list_result.unwrap_or_else(|e| {
+                tracing::info!("probe-host-sessions: session/list unavailable ({e}); returning []");
+                Vec::new()
+            });
+            let idx = crate::agent_pane_origin::load_default_set();
+            Ok::<_, anyhow::Error>(crate::session_history::classify_and_map(
+                &sessions,
+                &idx,
+                SessionLocation::Host,
+                &cli_source,
+            ))
+        })
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // Same force-exit rationale as run_probe_sessions: orphan npx/node
+            // grandchildren keep the tokio reactor blocked ~35s on drop.
+            tracing::error!("probe-host-sessions failed: {:#}", e);
+            eprintln!("probe-host-sessions failed: {:#}", e);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            logging::shutdown_flush();
+            std::process::exit(1);
+        }
+    };
+
+    let json: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "key": r.key,
+                "cli": format!("{:?}", r.cli_source),
+                "title": r.title,
+                "cwd": r.cwd.to_string_lossy(),
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).context("serialize host session probe")?
+    );
+
+    tracing::info!("probe-host-sessions ok: {} row(s)", rows.len());
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    logging::shutdown_flush();
+    std::process::exit(0);
+}
+
+/// Drive the production WSL ACP history scan
+/// ([`wsl_acp::scan_running_distros_acp`]) on a tokio `LocalSet` (the ACP
+/// connection is `!Send`) and print the discovered sessions as JSON.
+/// Diagnostic-only: exercises the real `wsl.exe` spawn + `session/list`
+/// path that seeds the `/sessions` view.
+async fn run_probe_wsl_sessions(cli: Option<&str>) -> Result<()> {
+    use crate::agent_sessions::CliSource;
+    tracing::info!("probe-wsl-sessions start: cli={:?}", cli);
+
+    let filter: Option<CliSource> = match cli {
+        None => None,
+        Some("copilot") => Some(CliSource::Copilot),
+        Some("claude") => Some(CliSource::Claude),
+        Some("codex") => Some(CliSource::Codex),
+        Some("gemini") => Some(CliSource::Gemini),
+        Some(other) => {
+            // Reject unknown values rather than silently widening to "scan all"
+            // (Unknown → clis_to_scan → every built-in), which would make the
+            // diagnostic's output contradict the requested restriction.
+            anyhow::bail!(
+                "unknown --cli value {other:?}; expected one of: copilot, claude, codex, gemini"
+            );
+        }
+    };
+
+    let local = tokio::task::LocalSet::new();
+    let rows = local
+        .run_until(crate::wsl_acp::scan_running_distros_acp(filter.as_ref()))
+        .await;
+
+    let json: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "key": r.key,
+                "cli": format!("{:?}", r.cli_source),
+                "title": r.title,
+                "cwd": r.cwd.to_string_lossy(),
+                "distro": r.location.distro(),
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).context("serialize WSL session probe")?
+    );
+
+    tracing::info!("probe-wsl-sessions ok: {} row(s)", rows.len());
+    // Force-exit like the other probes: a distro CLI may leave orphan
+    // grandchildren that keep the tokio reactor blocked on drop.
+    let _ = std::io::Write::flush(&mut std::io::stdout());
     logging::shutdown_flush();
     std::process::exit(0);
 }
@@ -1220,22 +1463,6 @@ async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<Strin
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
 
-struct SessionsCliClient;
-
-#[async_trait::async_trait(?Send)]
-impl acp::Client for SessionsCliClient {
-    async fn request_permission(
-        &self,
-        _args: acp::RequestPermissionRequest,
-    ) -> acp::Result<acp::RequestPermissionResponse> {
-        Err(acp::Error::internal_error().data("sessions CLI cannot answer permission requests"))
-    }
-
-    async fn session_notification(&self, _args: acp::SessionNotification) -> acp::Result<()> {
-        Ok(())
-    }
-}
-
 async fn run_sessions_list(
     master_override: Option<String>,
     origin_filter: agent_sessions::OriginFilter,
@@ -1250,10 +1477,13 @@ async fn run_sessions_list(
     // view (default `--origin all`). `--origin shell` matches what
     // the MVP sessions picker shows; `--origin agent-pane` surfaces the
     // rows MVP sessions hides.
-    let filtered: Vec<session_registry::SessionInfo> = sessions
+    let mut filtered: Vec<session_registry::SessionInfo> = sessions
         .into_iter()
         .filter(|s| origin_filter.matches_opt(s.origin.as_ref()))
         .collect();
+    // Match the `/sessions` picker, which renders newest-activity-first.
+    // `None` (no timestamp) sorts last.
+    filtered.sort_by(|a, b| b.last_activity_at_ms.cmp(&a.last_activity_at_ms));
     if json_mode {
         print!("{}", format_sessions_json_lines(&filtered)?);
     } else {
@@ -1270,19 +1500,20 @@ async fn fetch_sessions_from_master(
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
-    let (conn, handle_io) = acp::ClientSideConnection::new(SessionsCliClient, outgoing, incoming, |fut| {
-        tokio::task::spawn_local(fut);
-    });
+    let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
+        acp::Client.builder().name("wta-sessions"),
+        crate::protocol::acp::conn::byte_streams(outgoing, incoming),
+    );
     tokio::task::spawn_local(async move {
         let _ = handle_io.await;
     });
 
     let init_started = std::time::Instant::now();
     let init_result = conn.initialize(
-        acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-            .client_capabilities(acp::ClientCapabilities::new())
+        acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+            .client_capabilities(acp::schema::v1::ClientCapabilities::new())
             .client_info(
-                acp::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
+                acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
                     .title("Windows Terminal Agent sessions CLI"),
             ),
     )
@@ -1300,7 +1531,7 @@ async fn fetch_sessions_from_master(
     );
     init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
-    let req = session_registry::build_sessions_list_request();
+    let req = session_registry::build_sessions_list_request(false);
     let resp = conn
         .ext_method(req)
         .await
@@ -1348,19 +1579,19 @@ async fn register_launched_session_with_master(
             let (read_half, write_half) = tokio::io::split(pipe);
             let outgoing = write_half.compat_write();
             let incoming = read_half.compat();
-            let (conn, handle_io) =
-                acp::ClientSideConnection::new(SessionsCliClient, outgoing, incoming, |fut| {
-                    tokio::task::spawn_local(fut);
-                });
+            let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
+                acp::Client.builder().name("wta-delegate"),
+                crate::protocol::acp::conn::byte_streams(outgoing, incoming),
+            );
             tokio::task::spawn_local(async move {
                 let _ = handle_io.await;
             });
 
             conn.initialize(
-                acp::InitializeRequest::new(acp::ProtocolVersion::V1)
-                    .client_capabilities(acp::ClientCapabilities::new())
+                acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+                    .client_capabilities(acp::schema::v1::ClientCapabilities::new())
                     .client_info(
-                        acp::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
+                        acp::schema::v1::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
                             .title("Windows Terminal Agent delegate"),
                     ),
             )
@@ -1435,20 +1666,22 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
         return out;
     }
     out.push_str(&format!(
-        "{:<24} {:<10} {:<10} {:<10} {:<20} {:<20} {}\n",
-        "SESSION", "STATUS", "CLI", "ORIGIN", "PANE", "UPDATED", "TITLE"
+        "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
+        "#", "SESSION", "STATUS", "CLI", "ORIGIN", "LOCATION", "PANE", "UPDATED", "TITLE"
     ));
-    for session in sessions {
+    for (i, session) in sessions.iter().enumerate() {
         let sid = session.session_id.to_string();
         let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
         out.push_str(&format!(
-            "{:<24} {:<10} {:<10} {:<10} {:<20} {:<20} {}\n",
+            "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
+            i + 1,
             short_sid,
             status_label(session.status.as_ref()),
             cli_source_label(session.cli_source.as_ref()),
             origin_label(session.origin.as_ref()),
+            location_label(&session.location),
             session.pane_session_id.as_deref().unwrap_or("-"),
-            session.updated_at.as_deref().unwrap_or("-"),
+            updated_label(session),
             session.title.as_deref().unwrap_or("-"),
         ));
     }
@@ -1481,6 +1714,50 @@ fn origin_label(origin: Option<&agent_sessions::SessionOrigin>) -> &'static str 
         Some(agent_sessions::SessionOrigin::Unknown)   => "Shell",
         None                                           => "-",
     }
+}
+
+/// Render a `SessionLocation` for the `wta sessions list` table: `host`
+/// for Windows-profile sessions, `wsl:<distro>` for sessions discovered
+/// inside a WSL distro.
+fn location_label(location: &agent_sessions::SessionLocation) -> String {
+    match location {
+        agent_sessions::SessionLocation::Host => "host".to_string(),
+        agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
+    }
+}
+
+/// Render the UPDATED column. Prefers the `updated_at` ISO string (set for
+/// live sessions); for history-scanned rows that only carry an epoch-ms
+/// `last_activity_at_ms`, formats that as a `YYYY-MM-DD HH:MM` UTC stamp so
+/// the column isn't blank. `-` when neither is available.
+fn updated_label(s: &session_registry::SessionInfo) -> String {
+    if let Some(u) = s.updated_at.as_deref() {
+        return u.to_string();
+    }
+    match s.last_activity_at_ms {
+        Some(ms) => format_epoch_ms_utc(ms),
+        None => "-".to_string(),
+    }
+}
+
+/// Format epoch milliseconds as `YYYY-MM-DD HH:MM` (UTC) without pulling in a
+/// date crate. Uses Howard Hinnant's `civil_from_days` algorithm.
+fn format_epoch_ms_utc(ms: u64) -> String {
+    let secs = (ms / 1000) as i64;
+    let days = secs.div_euclid(86_400);
+    let tod = secs.rem_euclid(86_400);
+    let (hour, min) = (tod / 3600, (tod % 3600) / 60);
+    // civil_from_days: days since 1970-01-01 -> (year, month, day).
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{min:02}")
 }
 
 // ─── Output helpers ─────────────────────────────────────────────────────────
@@ -1781,6 +2058,164 @@ async fn run_delegate(
     }
 }
 
+/// The WSL distro backing the delegate's active pane, if any — i.e. its shell,
+/// reported via `OSC 9001;ShellType`, is `wsl:<distro>` with a **non-empty**
+/// distro name (e.g. `wsl:Ubuntu`). The shipped Bash shell integration only
+/// emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set (otherwise it reports
+/// `bash`), so a bare `wsl:` never occurs in practice; rejecting it defensively
+/// keeps us from ever building a `wsl -d "" …` command. Returns `None` when the
+/// pane is missing, has no `shell` field, or the shell is anything else
+/// (PowerShell, cmd, …).
+fn active_pane_wsl_distro(active: Option<&serde_json::Value>) -> Option<&str> {
+    active
+        .and_then(|p| p.get("shell"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.strip_prefix("wsl:"))
+        .filter(|distro| !distro.is_empty())
+}
+
+/// The in-distro probe script used by [`wsl_delegate_agent_available`].
+///
+/// Prints the PATH resolution of `<exe>` (`command -v`, whose stdout the caller
+/// captures) or nothing when it is absent. The caller inspects the result:
+/// empty = absent; a path under `/mnt/` = a Windows CLI leaking in via WSL's
+/// `appendWindowsPath` interop (`/mnt/<drive>/…`), which is *not* a native
+/// install and fails when run under Linux (e.g. codex's "Missing optional
+/// dependency @openai/codex-linux-x64"); anything else = a native Linux install.
+///
+/// The resolution is emitted **directly to stdout — never wrapped in a `$(…)`
+/// command substitution.** On snap-provisioned distros `command -v <snap-app>`
+/// resolves the app (e.g. `/snap/bin/copilot`) on the shell's own stdout but
+/// yields an *empty* string inside `$(…)`, which would misreport a
+/// natively-installed CLI as absent and wrongly fall back to the host. Letting
+/// `command -v` write straight to the process stdout (captured by
+/// `Command::output`) sidesteps that. `sh_quote` guards against an agent
+/// identity with shell metacharacters.
+///
+/// Note: assumes the default DrvFs mount root `/mnt`; a distro configured to
+/// mount Windows drives under a different root would resolve them elsewhere.
+fn wsl_agent_probe_script(agent_exe: &str) -> String {
+    format!(
+        "command -v {} 2>/dev/null",
+        crate::coordinator::sh_quote(agent_exe)
+    )
+}
+
+/// Whether the delegate agent CLI is actually available inside `distro`.
+///
+/// PR375 routes a `?<prompt>` from a WSL pane into the distro
+/// (`wsl -d <distro> -- bash -lc "<agent> …"`), but the agent may be installed
+/// only on the Windows host — the Settings UI verifies the host CLI, never the
+/// distro. Probe the distro under a **login** shell (`bash -lc`): the shipped
+/// integration and the common CLI installs (npm-global, snap, `~/.local/bin`)
+/// only put the agent on the login PATH, so a non-login `bash -c` would miss it.
+/// The probe resolves the agent's PATH location and accepts it only when it is a
+/// native Linux install — a Windows CLI leaking in via `appendWindowsPath`
+/// (resolving under `/mnt/…`) is rejected, so it falls back to the host CLI that
+/// can actually run it (see [`wsl_agent_probe_script`]). Returns `false` on any
+/// spawn/exec error or timeout so the caller falls back to the known-good
+/// Windows host CLI instead of launching a doomed in-distro command that would
+/// silently drop the prompt.
+async fn wsl_delegate_agent_available(distro: &str, agent_exe: &str) -> bool {
+    if distro.is_empty() || agent_exe.is_empty() {
+        return false;
+    }
+    let mut cmd = tokio::process::Command::new("wsl.exe");
+    cmd.arg("-d")
+        .arg(distro)
+        .arg("--")
+        .arg("bash")
+        .arg("-lc")
+        .arg(wsl_agent_probe_script(agent_exe))
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let output = match tokio::time::timeout(std::time::Duration::from_secs(5), cmd.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(err)) => {
+            tracing::warn!(
+                target: "delegate",
+                distro,
+                agent = %agent_exe,
+                error = %err,
+                "WSL agent availability probe failed to spawn; falling back to host CLI",
+            );
+            return false;
+        }
+        Err(_elapsed) => {
+            tracing::warn!(
+                target: "delegate",
+                distro,
+                agent = %agent_exe,
+                "WSL agent availability probe timed out; falling back to host CLI",
+            );
+            return false;
+        }
+    };
+    let resolved = String::from_utf8_lossy(&output.stdout);
+    let resolved = resolved.trim();
+    // Accept only a native Linux install: a non-empty path that does not resolve
+    // under the `/mnt/<drive>` interop mount (a Windows binary whose Linux exec
+    // would fail).
+    let available = !resolved.is_empty() && !resolved.starts_with("/mnt/");
+    tracing::info!(
+        target: "delegate",
+        distro,
+        agent = %agent_exe,
+        resolved_path = %resolved,
+        available,
+        "WSL agent availability probe",
+    );
+    available
+}
+
+/// Whether the delegate agent should be treated as launchable for the active
+/// pane's *target* environment.
+///
+/// `host_launchable` comes from [`crate::coordinator::delegate_command_launchable`],
+/// which only inspects the Windows PATH. `wsl_agent_available` is true when the
+/// active pane is a WSL distro **and** the agent CLI is installed inside it (see
+/// [`wsl_delegate_agent_available`]). Either path makes the delegate
+/// launchable: the Windows host, or the in-distro CLI. Without the WSL term a
+/// Copilot/Claude installed only in the distro would be treated as
+/// non-launchable and silently drop its `?<prompt>` text; with it, a WSL pane
+/// whose distro lacks the CLI still falls through to the host term rather than
+/// being force-routed into a doomed in-distro launch. The prompt-enrichment and
+/// session-pin gates in `delegate_with_context` both key off this value.
+fn delegate_launchable_for_target(host_launchable: bool, wsl_agent_available: bool) -> bool {
+    host_launchable || wsl_agent_available
+}
+
+/// Max bytes of captured terminal context baked into a delegate prompt.
+///
+/// The enriched prompt rides the `wt_create_tab` commandline (base64-encoded).
+/// Windows caps a process commandline at ~32,767 chars, and base64 inflates by
+/// 4/3, so an unbounded 30-line capture from a very wide pane could overflow it
+/// and fail the launch with "filename or extension is too long". Capping the
+/// context keeps the encoded commandline comfortably under that limit; the user
+/// prompt itself is assumed small.
+const MAX_DELEGATE_CONTEXT_BYTES: usize = 12 * 1024;
+
+/// Trim captured terminal context to at most `max_bytes`, including the
+/// truncation marker, while keeping the **tail** (most recent output). Cuts on a
+/// UTF-8 char boundary. If the marker does not fit, returns only the valid tail.
+fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
+    if context.len() <= max_bytes {
+        return context.to_string();
+    }
+    const TRUNCATION_MARKER: &str = "…(truncated)\n";
+    let marker = if TRUNCATION_MARKER.len() <= max_bytes {
+        TRUNCATION_MARKER
+    } else {
+        ""
+    };
+    let tail_bytes = max_bytes - marker.len();
+    let mut start = context.len() - tail_bytes;
+    while start < context.len() && !context.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("{marker}{}", &context[start..])
+}
+
 /// Shared delegation logic: enrich the prompt with the active pane's recent
 /// output (when available), build the delegate-agent commandline, and create a
 /// new tab to launch it. WT's GetActivePane already resolves the agent pane to
@@ -1802,6 +2237,74 @@ async fn delegate_with_context(
         .first()
         .ok_or_else(|| anyhow::anyhow!("no delegate agent configured"))?;
 
+    // Pre-flight: can the configured delegate agent actually be launched? A
+    // misconfigured / nonexistent command still gets its own tab and stays
+    // there showing the real failure — cmd's "'<agent>' is not recognized …",
+    // then WT's "[process exited with code 1] … press Enter to restart" — just
+    // like mistyping a command in any shell. WT keeps a non-zero-exit pane open
+    // under closeOnExit=automatic, so there's nothing to "fix" for the common
+    // case; we do NOT open a second, canned-message tab.
+    //
+    // The flag is only used to keep a doomed launch OUT of the prompt-baking
+    // path below. Baking the active pane's output into `cmd /c <agent>
+    // -i "<context>"` is fragile: a stray `"`/`&` in that arbitrary text can
+    // unbalance cmd's quote tracking so cmd runs a trailing token and exits 0,
+    // which — under closeOnExit=automatic — closes the pane before the error is
+    // readable (the original "flash shut"). A bare `cmd /c <agent>` instead
+    // fails cleanly with a non-zero code and stays put.
+    let launchable = crate::coordinator::delegate_command_launchable(&runtime.commandline);
+
+    // A WSL pane runs the agent *inside the distro* (`wsl -d <distro> -- …`), so
+    // the Windows-host launchable check does not apply to it. Fetch the active
+    // pane up front so the gate below and the WSL branch further down can see
+    // it. See `delegate_launchable_for_target`.
+    let active = shell_mgr.wt_get_active_pane().await.ok();
+
+    // If the active pane is a WSL distro, prefer running the agent inside it —
+    // but only when the agent CLI is actually installed there. Otherwise, fall
+    // back to the Windows host CLI (which the Settings UI already verified is
+    // installed): an in-distro launch would just print "<agent>: command not
+    // found" and drop the prompt. Probe the distro once, up front, so the
+    // launchable gate, the WSL branch, and the host fallback all agree.
+    let wsl_distro: Option<String> = active_pane_wsl_distro(active.as_ref()).map(str::to_string);
+    let wsl_agent_available = match wsl_distro.as_deref() {
+        Some(distro) => {
+            let agent_exe =
+                crate::coordinator::split_windows_commandline(runtime.commandline.trim())
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+            let available = wsl_delegate_agent_available(distro, &agent_exe).await;
+            if !available {
+                tracing::info!(
+                    target: "delegate",
+                    distro,
+                    agent = %agent_exe,
+                    "delegate agent not available in WSL distro — falling back to Windows host CLI",
+                );
+            }
+            available
+        }
+        None => false,
+    };
+
+    let launchable_for_target = delegate_launchable_for_target(launchable, wsl_agent_available);
+
+    if !launchable_for_target {
+        // Log only the executable (first token), never the full commandline: a
+        // custom agent command can embed tokens/credentials that shouldn't land
+        // in the log. The full commandline stays trace-only (below).
+        let exe = crate::coordinator::split_windows_commandline(&runtime.commandline)
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+        tracing::warn!(
+            target: "delegate",
+            agent = %exe,
+            "delegate agent not launchable — opening its tab with the bare command so the real error stays visible",
+        );
+    }
+
     // Pin a session id we choose, so the launched CLI writes its session under a
     // known id and we can bind it to the pane without hooks. Only for agents that
     // advertise `--session-id` (Copilot/Claude/Gemini); `None` otherwise. We
@@ -1809,18 +2312,27 @@ async fn delegate_with_context(
     // `split_whitespace`) so quoted/space-containing paths and adapter launches
     // resolve correctly -- and so this decision matches the one the command
     // builder makes when it appends the flag, keeping the pinned id and the
-    // actual launch flag in agreement.
-    let pinned_session_id: Option<String> = crate::agent_registry::lookup_profile_by_id(
-        crate::agent_registry::resolve_agent_id_from_cmd(&runtime.commandline),
-    )
-    .new_session_id_flag
-    .map(|_| uuid::Uuid::new_v4().to_string());
+    // actual launch flag in agreement. A non-launchable command will never
+    // produce a session, so skip pinning (and the born-bound registration
+    // below). A WSL pane is launchable via the distro, so it pins like any
+    // other supported agent.
+    let pinned_session_id: Option<String> = if launchable_for_target {
+        crate::agent_registry::lookup_profile_by_id(
+            crate::agent_registry::resolve_agent_id_from_cmd(&runtime.commandline),
+        )
+        .new_session_id_flag
+        .map(|_| uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
 
-    let commandline = match prompt {
-        // Prompt present → enrich it with the active pane's recent output and
-        // bake it into the new tab's agent CLI (the `?<prompt>` path).
-        Some(prompt) if !prompt.trim().is_empty() => {
-            let active = shell_mgr.wt_get_active_pane().await.ok();
+    // ── Enriched prompt ──────────────────────────────────────────────────
+    // Bake the active pane's output into the prompt when the agent is
+    // launchable for the target environment — the Windows pre-flight, or a WSL
+    // pane that will run the agent inside the distro. A non-launchable agent
+    // stays in the bare-command path so its failure is clean and visible.
+    let enriched_prompt: Option<String> = match prompt {
+        Some(prompt) if !prompt.trim().is_empty() && launchable_for_target => {
             let active_pane_id = active
                 .as_ref()
                 .and_then(|v| v.get("session_id"))
@@ -1842,35 +2354,121 @@ async fn delegate_with_context(
                 None
             };
 
-            let full_prompt = match (pane_context, active_pane_id) {
+            // The `## Terminal Context (pane …)` heading is built from
+            // `TERMINAL_CONTEXT_TITLE_MARKER` (the single source of truth) so the
+            // master-side title filter (`host_titles_via_acp`) can recognise —
+            // and skip — this injected block if an agent CLI echoes the first
+            // user message back as a `session/list` title.
+            Some(match (pane_context, active_pane_id) {
                 (Some(context), Some(pane_id)) => format!(
-                    "{}\n\n## Terminal Context (pane {})\n```\n{}\n```",
-                    prompt, pane_id, context
+                    "{}\n\n{}{})\n```\n{}\n```",
+                    prompt,
+                    crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER,
+                    pane_id,
+                    cap_delegate_context(&context, MAX_DELEGATE_CONTEXT_BYTES)
                 ),
                 _ => prompt.to_string(),
-            };
-
-            crate::coordinator::build_delegate_launch_commandline_with_session(
-                runtime,
-                Some(&full_prompt),
-                pinned_session_id.as_deref(),
-            )?
+            })
         }
-        // No prompt → open the delegate agent interactively in the new tab.
-        _ => crate::coordinator::build_delegate_launch_commandline_with_session(
-            runtime,
-            None,
-            pinned_session_id.as_deref(),
-        )?,
+        _ => None,
     };
 
-    // The commandline bakes in the user prompt (`-i "<prompt>"`); keep it out
-    // of the debug log and only emit it at trace.
+    // ── Windows-native commandline (fallback for non-WSL) ────────────────
+    let commandline = crate::coordinator::build_delegate_launch_commandline_with_session(
+        runtime,
+        enriched_prompt.as_deref(),
+        pinned_session_id.as_deref(),
+    )?;
+
+    // ── WSL delegate path ───────────────────────────────────────────────────
+    // Taken only when the active pane is a WSL distro AND the agent CLI is
+    // installed inside it (`wsl_agent_available`). Build a WSL-native command
+    // that runs the agent CLI inside the distro (using the Linux toolchain and
+    // filesystem). When the distro lacks the CLI we fall through to the Windows
+    // host path below, which sanitizes the pane's POSIX cwd to the Windows home.
+    //
+    // Delivery (see `build_wsl_delegate_commandline`): the prompt rides as an
+    // inline base64 payload decoded in-distro — base64's alphabet has no shell
+    // syntax characters and no `%`, so it survives WT's `ExpandEnvironmentStringsW`
+    // and the `wsl.exe` interop's expansion pass. The bash command is escaped for
+    // that pass, then wrapped once for Windows `CommandLineToArgvW`:
+    //   1. build_wsl_delegate_commandline() → base64-inline bash command,
+    //      pre-escaped for the wsl.exe expansion pass (`\`, `$`, backtick)
+    //   2. quote_windows_commandline_arg() → Windows CommandLineToArgvW escaping
+    //      → embed in format!("bash -lc {}")
+    //   3. → wsl -d <distro> --cd "<cwd>" -- bash -lc <escaped>
+    //
+    // Composability works because the two layers have disjoint special
+    // characters: ' is special to bash, " is special to Windows.
+    if wsl_agent_available {
+        // `wsl_agent_available` implies both `wsl_distro` and `active` are set
+        // (it is derived from them above); the `if let` is a defensive guard
+        // that falls through to the host path in the impossible None case.
+        if let (Some(distro), Some(active_pane)) = (wsl_distro.as_deref(), active.as_ref()) {
+            let wsl_agent_cmd = crate::coordinator::build_wsl_delegate_commandline(
+                runtime,
+                enriched_prompt.as_deref(),
+                pinned_session_id.as_deref(),
+            )?;
+            let escaped = crate::coordinator::quote_windows_commandline_arg(&wsl_agent_cmd);
+            let login_invocation = format!("bash -lc {}", escaped);
+            let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
+            let wsl_cwd = active_pane
+                .get("cwd")
+                .and_then(|v| v.as_str())
+                .filter(|s| s.starts_with('/') && !s.contains('"'));
+            let wsl_commandline = match wsl_cwd {
+                Some(cwd) => {
+                    format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
+                }
+                None => format!("wsl -d {distro_arg} -- {login_invocation}"),
+            };
+
+            tracing::debug!("delegate_with_context: launching in WSL ({distro})");
+            tracing::trace!(
+                target: "delegate.content",
+                commandline = %wsl_commandline,
+                "wsl delegate commandline",
+            );
+
+            let create_resp = shell_mgr
+                .wt_create_tab(Some(&wsl_commandline), None, None, None)
+                .await?;
+            let pane_guid = create_resp
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            tracing::info!(
+                target: "delegate",
+                pane_guid = ?pane_guid,
+                pinned = ?pinned_session_id,
+                distro,
+                "delegate WSL tab created",
+            );
+
+            if let (Some(sid), Some(pane)) =
+                (pinned_session_id.as_deref(), pane_guid.as_deref())
+            {
+                register_launched_session_with_master(sid, pane, &runtime.id, wsl_cwd.or(cwd))
+                    .await;
+            }
+            return Ok(());
+        }
+    }
+
+    // ── Windows (existing) path ────────────────────────────────────────────
+    // The delegate always launches a Windows agent CLI (Copilot/Claude/Gemini).
+    // If the active pane is WSL, `cwd` is a POSIX path (e.g. "/home/user") that
+    // a Windows process can't use as a working directory — sanitize it to the
+    // Windows home so the CLI still launches.
     tracing::debug!("delegate_with_context: launching");
     tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
+    let windows_home = std::env::var("USERPROFILE").ok();
+    let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+
     let create_resp = shell_mgr
-        .wt_create_tab(Some(&commandline), cwd, None)
+        .wt_create_tab(Some(&commandline), sanitized_cwd.as_deref(), None, None)
         .await?;
     let pane_guid = create_resp
         .get("session_id")
@@ -1954,30 +2552,40 @@ pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Re
 async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, String, String)> {
     let our_pid = std::process::id();
 
+    // WT IDs may arrive as JSON strings or numbers (COM returns numeric) — accept both.
+    fn id_str(v: Option<&serde_json::Value>) -> Option<String> {
+        match v {
+            Some(serde_json::Value::String(s)) => Some(s.clone()),
+            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
     let windows = shell_mgr.wt_list_windows().await.ok()?;
     let windows_arr = windows.get("windows")?.as_array()?;
 
     for win in windows_arr {
-        let window_id = win.get("window_id")?.as_str()?;
-        let tabs = shell_mgr.wt_list_tabs(window_id).await.ok()?;
+        let window_id = match id_str(win.get("window_id")) {
+            Some(w) => w,
+            None => continue,
+        };
+        let tabs = shell_mgr.wt_list_tabs(&window_id).await.ok()?;
         let tabs_arr = tabs.get("tabs")?.as_array()?;
 
         for tab in tabs_arr {
-            let tab_id_str = match tab.get("tab_id") {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(serde_json::Value::Number(n)) => n.to_string(),
-                _ => continue,
+            let tab_id_str = match id_str(tab.get("tab_id")) {
+                Some(t) => t,
+                None => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str).await.ok()?;
+            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(&window_id)).await.ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {
                 if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64()) {
                     if pid == our_pid as u64 {
-                        let pane_id = match pane.get("session_id") {
-                            Some(serde_json::Value::String(s)) => s.clone(),
-                            Some(serde_json::Value::Number(n)) => n.to_string(),
-                            _ => continue,
+                        let pane_id = match id_str(pane.get("session_id")) {
+                            Some(p) => p,
+                            None => continue,
                         };
                         return Some((pane_id, tab_id_str.clone(), window_id.to_string()));
                     }
@@ -2199,6 +2807,28 @@ async fn run_info_mode() -> Result<()> {
     Ok(())
 }
 
+fn spawn_restart_agent_stack_forwarder(
+    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
+        protocol::acp::client::RestartRequest,
+    >,
+) {
+    tokio::task::spawn_local(async move {
+        while let Some(req) = restart_rx.recv().await {
+            tracing::info!(
+                target: "helper",
+                new_agent = ?req.agent_cmd,
+                "restart requested before ACP task is running; asking WT to force-restart the agent stack"
+            );
+            let evt = serde_json::json!({
+                "type": "event",
+                "method": "restart_agent_stack",
+                "params": {},
+            });
+            crate::app::send_wt_protocol_event(evt.to_string());
+        }
+    });
+}
+
 async fn run_acp_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     cli: Cli,
@@ -2359,12 +2989,95 @@ async fn run_acp_app(
             // events by the same StableId C++ routes per-tab events with.
             protocol::acp::client::set_helper_owner_tab_id(cli.owner_tab_id.as_deref());
 
+            let explicit_agent_id = cli
+                .agent_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let canonical_agent_id: String = explicit_agent_id
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_else(|| {
+                    agent_registry::resolve_agent_id_from_cmd(&agent_cmd).to_string()
+                });
+            let canonical_agent_source = if explicit_agent_id.is_some() {
+                "--agent-id"
+            } else {
+                "resolved-from-cmd"
+            };
+            let initial_load_requested = cli
+                .initial_load_session_id
+                .as_deref()
+                .map(str::trim)
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
+            let initial_auth_agent = match cli
+                .initial_auth_agent
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                Some(requested) if cli.assume_master_down => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --assume-master-down is active"
+                    );
+                    None
+                }
+                Some(requested) if cli.start_stashed => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --start-stashed is active"
+                    );
+                    None
+                }
+                Some(requested) if cli.setup.is_some() => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --setup is active"
+                    );
+                    None
+                }
+                Some(requested) if initial_load_requested => {
+                    tracing::warn!(
+                        target: "initial_auth",
+                        requested_agent = %requested,
+                        "--initial-auth-agent ignored because --initial-load-session-id is active"
+                    );
+                    None
+                }
+                Some(requested) => {
+                    let requested_agent = requested.to_ascii_lowercase();
+                    if requested_agent != canonical_agent_id {
+                        tracing::warn!(
+                            target: "initial_auth",
+                            requested_agent = %requested_agent,
+                            current_agent = %canonical_agent_id,
+                            "--initial-auth-agent ignored because it does not match the effective agent"
+                        );
+                        None
+                    } else if requested_agent != "copilot" {
+                        tracing::warn!(
+                            target: "initial_auth",
+                            requested_agent = %requested_agent,
+                            "--initial-auth-agent ignored for unsupported agent"
+                        );
+                        None
+                    } else {
+                        Some(requested_agent)
+                    }
+                }
+                None => None,
+            };
+            let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
+
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
-            // master owns the agent lifecycle, so we always spawn the
-            // pipe-attached variant immediately — there's no FRE flow to defer
-            // to. If the user is mid-FRE the initial handshake fails with
-            // `Authentication required` and `try_start_acp` re-spawns this task
-            // post-login.
+            // master owns the agent lifecycle, so normal panes spawn the
+            // pipe-attached variant immediately. FRE-installed Copilot is the
+            // exception: `--initial-auth-agent copilot` starts on Auth and lets
+            // `LoginComplete` spawn the first pipe client after sign-in.
             if cli.assume_master_down {
                 // Degraded open: master is known down, so don't even try the
                 // (dead) pipe — go straight to the disconnected view that an
@@ -2388,29 +3101,38 @@ async fn run_acp_app(
                 // The other receivers (prompt/new_session/…) genuinely have no
                 // master to reach, so they're dropped; they're re-created when
                 // /restart reopens this pane fresh.
-                {
-                    let mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
-                        protocol::acp::client::RestartRequest,
-                    > = restart_rx;
-                    tokio::task::spawn_local(async move {
-                        while let Some(req) = restart_rx.recv().await {
-                            tracing::info!(
-                                target: "helper",
-                                new_agent = ?req.agent_cmd,
-                                "restart requested while disconnected — asking WT to force-restart the agent stack"
-                            );
-                            let evt = serde_json::json!({
-                                "type": "event",
-                                "method": "restart_agent_stack",
-                                "params": {},
-                            });
-                            crate::app::send_wt_protocol_event(evt.to_string());
-                        }
-                    });
-                }
+                spawn_restart_agent_stack_forwarder(restart_rx);
                 // The remaining receivers have no master to forward to. They
                 // get re-created when /restart respawns the stack and reopens
                 // this pane fresh.
+                drop((
+                    prompt_rx,
+                    cancel_rx,
+                    new_session_rx,
+                    load_session_rx,
+                    drop_session_rx,
+                    rename_session_rx,
+                    session_hook_rx,
+                    master_ext_rx,
+                ));
+            } else if start_in_initial_auth {
+                tracing::info!(
+                    target: "initial_auth",
+                    agent_id = %canonical_agent_id,
+                    "starting helper on auth screen; initial ACP task skipped"
+                );
+                // The Auth screen's LoginComplete path uses
+                // `set_master_pipe_acp_params` below and `try_start_acp` to
+                // create fresh channels and reconnect through the master pipe
+                // after login. Dropping the boot channels here avoids an
+                // explicit initial ACP race and makes the startup ordering
+                // independent from tokio task polling.
+                //
+                // Keep the /restart path alive even though no ACP task is
+                // running yet. The boot App holds the sole restart sender; when
+                // LoginComplete calls `try_start_acp`, it replaces that sender
+                // with a fresh channel and this forwarder exits.
+                spawn_restart_agent_stack_forwarder(restart_rx);
                 drop((
                     prompt_rx,
                     cancel_rx,
@@ -2452,6 +3174,7 @@ async fn run_acp_app(
                         master_ext_rx,
                         shell_mgr_for_pipe,
                         wt_connected,
+                        false, // post_login_reconnect: first connection, no authenticate needed
                     )
                     .await
                     {
@@ -2541,43 +3264,36 @@ async fn run_acp_app(
                 wt_connected,
             );
 
+            if cli.setup.is_none() {
+                app_state.current_agent_id = canonical_agent_id.clone();
+                tracing::info!(
+                    target: "agents_view_filter",
+                    agent_id = %canonical_agent_id,
+                    agent_cmd = %agent_cmd,
+                    source = canonical_agent_source,
+                    "current_agent_id assigned",
+                );
+            }
+            if start_in_initial_auth {
+                app_state.show_copilot_auth_screen();
+            }
+
             // ── Preflight: check the agent CLI before connecting ──────────
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
-            if cli.setup.is_none() {
-                // Prefer the canonical id the host passed via `--agent-id`
-                // — that's the user's actual setting value (`acpAgent`).
-                // Fall back to reverse-parsing the `--agent` command line
-                // for manual runs / older hosts.
-                let canonical_id: String = cli
-                    .agent_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_ascii_lowercase)
-                    .unwrap_or_else(|| {
-                        agent_registry::resolve_agent_id_from_cmd(&agent_cmd).to_string()
-                    });
-                app_state.current_agent_id = canonical_id.clone();
-                tracing::info!(
-                    target: "agents_view_filter",
-                    agent_id = %canonical_id,
-                    agent_cmd = %agent_cmd,
-                    source = if cli.agent_id.is_some() { "--agent-id" } else { "resolved-from-cmd" },
-                    "current_agent_id assigned",
-                );
-                let agent_id = canonical_id.as_str();
+            if cli.setup.is_none() && !start_in_initial_auth {
+                let agent_id = canonical_agent_id.as_str();
                 let preflight_result = if agent_id.starts_with("custom:")
                     || !agent_registry::is_known_id(agent_id)
                 {
                     // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
                     // shell function, …); a PATH probe would lie. The real spawn produces
                     // the authoritative error via `ConnectionFailed`, so skip preflight.
-                    app::PreflightResult::passed_for_custom_agent(&canonical_id)
+                    app::PreflightResult::passed_for_custom_agent(&canonical_agent_id)
                 } else {
                     let status = agent_check::check_agent(agent_id);
                     app::PreflightResult {
-                        agent_id: canonical_id.clone(),
+                        agent_id: canonical_agent_id.clone(),
                         display_name: status.display_name.clone(),
                         cli_status: if status.cli_found {
                             app::CheckStatus::Passed
@@ -2585,13 +3301,9 @@ async fn run_acp_app(
                             app::CheckStatus::Failed("Not found on PATH".to_string())
                         },
                         cli_path: status.cli_path.clone(),
-                        auth_status: if !status.cli_found {
-                            app::CheckStatus::Skipped
-                        } else if status.has_credential {
-                            app::CheckStatus::Passed
-                        } else {
-                            app::CheckStatus::Skipped
-                        },
+                        // Authentication is checked by the ACP handshake rather
+                        // than by a local credential-store preflight.
+                        auth_status: app::CheckStatus::Skipped,
                         install_hint: status.install_hint.clone(),
                         install_url: String::new(),
                         auth_hint: status.auth_hint.clone(),
@@ -2770,9 +3482,12 @@ async fn run_acp_app(
             // the wta cmdline. `open_agents_view_for_tab` fires the
             // `session/list` refetch to master that populates the view.
             //
-            // Skip in setup mode: --setup takes the FRE path and the user
+            // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if cli.setup.is_none() && cli.initial_view == InitialView::Sessions {
+            if cli.setup.is_none()
+                && !start_in_initial_auth
+                && cli.initial_view == InitialView::Sessions
+            {
                 tracing::info!(target: "initial_view", "starting in agent session view");
                 let tab_id = app_state
                     .tab_id
@@ -2806,17 +3521,13 @@ async fn run_acp_app(
             // Enter setup mode if --setup <reason> was passed.
             tracing::info!("cli.setup = {:?}", cli.setup);
             if let Some(ref reason_str) = cli.setup {
-                tracing::info!("Entering FRE setup mode: reason={}", reason_str);
+                tracing::info!("Entering diagnostic setup mode: reason={}", reason_str);
                 let reason = app::SetupReason::from_str(reason_str);
 
                 app_state.mode = app::AppMode::Setup;
-                let all_agent_statuses = agent_check::check_all_agents();
-                let options = app::build_setup_options(&reason, None, &all_agent_statuses);
+                let options = app::build_setup_options(&reason, None);
                 let title = reason.title().to_string();
-                let subtitle = match reason {
-                    app::SetupReason::FirstRun => "Getting started".to_string(),
-                    _ => "Fix the issue to continue".to_string(),
-                };
+                let subtitle = "Fix the issue to continue".to_string();
                 app_state.setup = Some(app::SetupState {
                     reason,
                     selected_index: 0,
@@ -2932,3 +3643,43 @@ async fn run_acp_app(
 
 #[cfg(test)]
 mod cli_tests;
+
+#[cfg(test)]
+mod delegate_context_tests {
+    use super::cap_delegate_context;
+
+    #[test]
+    fn cap_returns_short_context_unchanged() {
+        let ctx = "small output";
+        assert_eq!(cap_delegate_context(ctx, 1024), ctx);
+    }
+
+    #[test]
+    fn cap_keeps_tail_and_marks_truncation() {
+        let ctx: String = (0..5000u32)
+            .map(|i| char::from(b'a' + (i % 26) as u8))
+            .collect();
+        let out = cap_delegate_context(&ctx, 1000);
+        assert!(out.starts_with("…(truncated)\n"));
+        // keeps the tail (most recent output)
+        assert!(out.ends_with(&ctx[ctx.len() - 100..]));
+        assert!(out.len() <= 1000);
+    }
+
+    #[test]
+    fn cap_is_char_boundary_safe() {
+        // Each '⭐' is 3 bytes; cutting must land on a char boundary (no panic).
+        let ctx: String = std::iter::repeat('⭐').take(500).collect();
+        let out = cap_delegate_context(&ctx, 100);
+        assert!(out.len() <= 100);
+        assert!(out.ends_with('⭐'));
+        assert!(out
+            .chars()
+            .all(|c| c == '⭐' || "…(truncated)\n".contains(c)));
+    }
+
+    #[test]
+    fn cap_omits_marker_when_limit_is_too_small() {
+        assert_eq!(cap_delegate_context("prefix-tail", 4), "tail");
+    }
+}

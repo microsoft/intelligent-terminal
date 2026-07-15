@@ -1,7 +1,10 @@
 pub mod client;
+pub mod conn;
 pub mod failure;
 pub mod model_select;
 pub mod probe;
 pub mod prompt;
+pub(crate) mod prompt_context;
+pub(crate) mod session_list;
 pub mod soft_stop;
 pub(crate) mod spawn;

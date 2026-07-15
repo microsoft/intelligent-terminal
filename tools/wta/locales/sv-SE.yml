@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Välkommen till Intelligent Terminal!"
 setup.title.agent_missing: "Agenten hittades inte"
 setup.title.agent_error: "Anslutningen till agenten misslyckades"
-setup.title.switch_agent: "Byt agent"
 setup.title.not_available: "Agenten är inte tillgänglig"
 setup.title.sign_in: "Inloggning krävs"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Din agent \"%{agent}\" kräver autentisering. Föl
 setup.subtitle.agent_auth: "Din agent \"%{agent}\" kräver autentisering. Logga in via agenten och välj sedan \"Jag har loggat in\" nedan. Om du vill byta agent, gå till Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Välj den standardagent du vill använda i Intelligent Terminal. Du kan"
-setup.description.fre_line2: "gå till Settings för att konfigurera och ställa in din arbetsyta."
 
 setup.option.install: "Installera %{agent}"
 setup.option.install_hint: "(Installeras automatiskt)"
 setup.option.signin: "Logga in på %{agent}"
 setup.option.retry_detection: "Försök igen"
 setup.option.retry_auth: "Jag har loggat in — försök ansluta igen"
-setup.option.retry_connection: "Försök ansluta igen"
-setup.option.switch_to: "Byt till %{agent}"
 setup.status.installing: "Installerar..."
 setup.status.install_failed: "Installationen misslyckades: "
 setup.status.installing_winget: " Installerar via winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Kontrollerar autentisering..."
 auth.waiting_for_authorization: "  %{spinner} Väntar på auktorisering..."
 auth.code_copied_hint: "  Koden har kopierats till urklipp — klistra in den i webbläsaren."
-auth.sign_in_prompt: "Logga in för att använda din agent:"
+auth.device_code_prompt: "Besök %{url} och ange koden: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Anslut %{name} för att aktivera agentfunktioner"
-auth.button_sign_in_github: "[ Logga in med GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Logga in med %{name} ]"
-auth.hint_footer: "  Tryck Enter för att logga in, Esc för att gå tillbaka"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter för att logga in · E för GitHub Enterprise · Esc för att gå tillbaka"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-domän: "
+auth.enterprise_hint_footer: "  Enter för att logga in · Esc för github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Tryck på Enter för att försöka igen, eller Esc för github.com. Vanliga orsaker: en felskriven eller oåtkomlig domän, en utgången kod eller ingen Copilot-åtkomst på den värden."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Tryck på Enter för att försöka igen, eller Esc för att gå tillbaka."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Tänker..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ utförd: %{title}"
 input.placeholder.connected: "Fråga vad som helst, / för kommandon.."  # {Locked="/"}
 input.placeholder.connecting: "ansluter..."
 input.placeholder.disconnected: "frånkopplad"
+input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N för att svara · ändra storlek för fullständigt kort]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Inte installerad — välj för att installera automatiskt"
 agent.status.not_found: "Hittades inte"
-agent.status.detected: "Identifierad"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Se till att %{name} är installerat och finns i din PAT
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laddar..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ för att navigera • Enter för att starta session • Esc för att avsluta)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ för att navigera • Enter för att starta session • Esc för att avsluta • F5 för att uppdatera)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Väntar på inmatning"
 agents.status.error: "Fel"
@@ -126,11 +121,13 @@ connection.lost: "Anslutningen till agenten bröts. Skriv /restart för att åte
 system.cancelled: "Avbröts."
 system.no_prompt_in_flight: "Ingen fråga pågår."
 system.authentication_failed: "Autentisering misslyckades"
-system.command_copied_retry: "Kommandot kopierat — kör det i en annan terminal och tryck sedan Enter för att försöka igen"  # {Locked="Enter"}
 system.stopped_max_tokens: "Svaret avbröts efter att modellens utdatagräns nåtts."
 system.stopped_max_turn_requests: "Agenten stoppade efter att ha nått sin begäransgräns för den här omgången."
 system.stopped_refusal: "Agenten avböjde att fortsätta med den här begäran."
 system.agent_busy: "Agenten är upptagen på den här fliken — vänta tills den aktuella prompten är klar."
+system.image_clipboard_empty: "Ingen bild i urklipp att klistra in."
+system.image_not_supported: "Den här agenten stöder inte bildinmatning."
+system.image_pasted: "Bild bifogad (%{label}). Tryck på Enter för att skicka."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Återupptar session %{session_id}..."
 system.unknown_command: "Okänt kommando \"%{command}\" — skickades som prompt. Skriv /help för listan."
 system.busy_use_stop: "Vänta tills den aktuella prompten är klar, eller använd /stop först."

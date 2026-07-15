@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Witamy w Inteligentny Terminal!"
 setup.title.agent_missing: "Nie znaleziono agenta"
 setup.title.agent_error: "Połączenie z agentem nie powiodło się"
-setup.title.switch_agent: "Zmień agenta"
 setup.title.not_available: "Agent niedostępny"
 setup.title.sign_in: "Wymagane logowanie"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Wykona
 setup.subtitle.agent_auth: "Agent \"%{agent}\" wymaga uwierzytelnienia. Zaloguj się za pomocą agenta, a następnie wybierz poniżej \"Zalogowałem się\". Aby zmienić agenta, przejdź do Inteligentny Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Wybierz domyślnego agenta, którego chcesz używać w Inteligentny Terminal. Możesz"
-setup.description.fre_line2: "przejść do Settings, aby skonfigurować obszar roboczy."
 
 setup.option.install: "Zainstaluj %{agent}"
 setup.option.install_hint: "(Zostanie zainstalowany automatycznie)"
 setup.option.signin: "Zaloguj się do %{agent}"
 setup.option.retry_detection: "Spróbuj ponownie"
 setup.option.retry_auth: "Zalogowałem się — spróbuj ponownie połączyć"
-setup.option.retry_connection: "Spróbuj ponownie połączyć"
-setup.option.switch_to: "Przełącz na %{agent}"
 setup.status.installing: "Instalowanie..."
 setup.status.install_failed: "Instalacja nie powiodła się: "
 setup.status.installing_winget: " Instalowanie za pomocą winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Sprawdzanie uwierzytelnienia..."
 auth.waiting_for_authorization: "  %{spinner} Oczekiwanie na autoryzację..."
 auth.code_copied_hint: "  Kod skopiowany do schowka — wklej go w przeglądarce."
-auth.sign_in_prompt: "Zaloguj się, aby użyć agenta:"
+auth.device_code_prompt: "Odwiedź %{url} i wprowadź kod: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Połącz %{name}, aby włączyć funkcje agenta"
-auth.button_sign_in_github: "[ Zaloguj się przez GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Zaloguj się przez %{name} ]"
-auth.hint_footer: "  Naciśnij Enter, aby się zalogować, Esc, aby wrócić"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter, aby się zalogować · E dla GitHub Enterprise · Esc, aby wrócić"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domena GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter, aby się zalogować · Esc dla github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Naciśnij Enter, aby spróbować ponownie, lub Esc dla github.com. Najczęstsze przyczyny: błędnie wpisana lub nieosiągalna domena, wygasły kod albo brak dostępu Copilot na tym hoście."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Naciśnij Enter, aby spróbować ponownie, lub Esc, aby wrócić."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Myślenie..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ wykonano: %{title}"
 input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked="/"}
 input.placeholder.connecting: "łączenie..."
 input.placeholder.disconnected: "rozłączono"
+input.image_attachments: "📎 Obrazy: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -101,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N aby odpowiedzieć · zmień rozmiar dla pełnej karty]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nie zainstalowano — wybierz, aby zainstalować automatycznie"
 agent.status.not_found: "Nie znaleziono"
-agent.status.detected: "Wykryto"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -114,8 +109,8 @@ agent.custom.auth_hint: "Upewnij się, że %{name} jest zainstalowany i znajduje
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ładowanie..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję • Esc aby wyjść)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ do nawigacji • Enter aby uruchomić sesję • Esc aby wyjść • F5 aby odświeżyć)"
 agents.status.active: "Aktywny"
 agents.status.waiting_for_input: "Oczekiwanie na dane"
 agents.status.error: "Błąd"
@@ -134,11 +129,13 @@ connection.lost: "Połączenie z agentem zostało utracone. Wpisz /restart, aby 
 system.cancelled: "Anulowano."
 system.no_prompt_in_flight: "Brak aktywnego zapytania."
 system.authentication_failed: "Uwierzytelnianie nie powiodło się"
-system.command_copied_retry: "Polecenie skopiowane — uruchom je w innym terminalu, a następnie naciśnij Enter, aby ponowić próbę"  # {Locked="Enter"}
 system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu danych wyjściowych modelu."
 system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
 system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
 system.agent_busy: "Agent jest zajęty na tej karcie — poczekaj, aż bieżący monit się zakończy."
+system.image_clipboard_empty: "Brak obrazu w schowku do wklejenia."
+system.image_not_supported: "Ten agent nie obsługuje wprowadzania obrazów."
+system.image_pasted: "Obraz załączony (%{label}). Naciśnij Enter, aby wysłać."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Wznawianie sesji %{session_id}..."
 system.unknown_command: "Nieznane polecenie \"%{command}\" — wysłano jako monit. Wpisz /help, aby wyświetlić listę."  # {Locked="/help"}
 system.busy_use_stop: "Poczekaj, aż bieżący monit się zakończy, albo najpierw użyj /stop."  # {Locked="/stop"}

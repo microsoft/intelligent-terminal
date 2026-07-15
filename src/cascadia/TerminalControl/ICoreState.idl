@@ -36,6 +36,12 @@ namespace Microsoft.Terminal.Control
 
         String WorkingDirectory { get; };
 
+        // Shell identity reported by shell integration via OSC 9001;ShellType.
+        // Empty when the shell has not reported (no shell integration, or a
+        // shell that does not emit the sequence).
+        String ShellName { get; };
+        String ShellVersion { get; };
+
         Windows.Foundation.IReference<Windows.UI.Color> TabColor { get; };
 
         Int32 ScrollOffset { get; };

@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Velkommen til Intelligent Terminal!"
 setup.title.agent_missing: "Agenten blev ikke fundet"
 setup.title.agent_error: "Forbindelsen til agenten mislykkedes"
-setup.title.switch_agent: "Skift agent"
 setup.title.not_available: "Agenten er ikke tilgængelig"
 setup.title.sign_in: "Log ind påkrævet"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Din agent \"%{agent}\" kræver godkendelse. Følg 
 setup.subtitle.agent_auth: "Din agent \"%{agent}\" kræver godkendelse. Log ind via agenten, og vælg derefter \"Jeg har logget ind\" nedenfor. For at skifte agent, gå til Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Vælg den standardagent, du vil bruge i Intelligent Terminal. Du kan"
-setup.description.fre_line2: "gå til Settings for at konfigurere og opsætte dit arbejdsområde."
 
 setup.option.install: "Installer %{agent}"
 setup.option.install_hint: "(Installeres automatisk)"
 setup.option.signin: "Log ind på %{agent}"
 setup.option.retry_detection: "Prøv igen"
 setup.option.retry_auth: "Jeg har logget ind — prøv at oprette forbindelse igen"
-setup.option.retry_connection: "Prøv at oprette forbindelse igen"
-setup.option.switch_to: "Skift til %{agent}"
 setup.status.installing: "Installerer..."
 setup.status.install_failed: "Installationen mislykkedes: "
 setup.status.installing_winget: " Installerer via winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Kontrollerer godkendelse..."
 auth.waiting_for_authorization: "  %{spinner} Venter på godkendelse..."
 auth.code_copied_hint: "  Koden er kopieret til udklipsholderen — indsæt den i din browser."
-auth.sign_in_prompt: "Log ind for at bruge din agent:"
+auth.device_code_prompt: "Gå til %{url}, og indtast koden: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Tilslut %{name} for at aktivere agentfunktioner"
-auth.button_sign_in_github: "[ Log ind med GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Log ind med %{name} ]"
-auth.hint_footer: "  Tryk Enter for at logge ind, Esc for at gå tilbage"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter for at logge på · E for GitHub Enterprise · Esc for at gå tilbage"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-domæne: "
+auth.enterprise_hint_footer: "  Enter for at logge på · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Tryk på Enter for at prøve igen, eller Esc for github.com. Almindelige årsager: et forkert indtastet eller utilgængeligt domæne, en udløbet kode eller ingen Copilot-adgang på den vært."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Tryk på Enter for at prøve igen, eller Esc for at gå tilbage."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Tænker..."
@@ -58,6 +54,8 @@ chat.turn_executed: "→ udført: %{title}"
 input.placeholder.connected: "Spørg om hvad som helst, / for kommandoer.."  # {Locked="/"}
 input.placeholder.connecting: "forbinder..."
 input.placeholder.disconnected: "afbrudt"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Billeder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +91,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N for at svare · tilpas størrelse for fuldt kort]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Ikke installeret — vælg for at installere automatisk"
 agent.status.not_found: "Ikke fundet"
-agent.status.detected: "Registreret"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +102,8 @@ agent.custom.auth_hint: "Sørg for at %{name} er installeret og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Indlæser..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for at navigere • Enter for at starte session • Esc for at afslutte)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for at navigere • Enter for at starte session • Esc for at afslutte • F5 for at opdatere)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Venter på input"
 agents.status.error: "Fejl"
@@ -126,11 +122,14 @@ connection.lost: "Forbindelsen til agenten gik tabt. Skriv /restart for at opret
 system.cancelled: "Annulleret."
 system.no_prompt_in_flight: "Ingen forespørgsel i gang."
 system.authentication_failed: "Godkendelse mislykkedes"
-system.command_copied_retry: "Kommando kopieret — kør den i en anden terminal, og tryk derefter Enter for at prøve igen"  # {Locked="Enter"}
 system.stopped_max_tokens: "Svaret blev afkortet, da modellens outputgrænse blev nået."
 system.stopped_max_turn_requests: "Agenten stoppede, da dens anmodningsgrænse for denne tur blev nået."
 system.stopped_refusal: "Agenten afviste at fortsætte med denne anmodning."
 system.agent_busy: "Agenten er optaget på denne fane — vent på, at den aktuelle prompt afsluttes."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Der er intet billede i udklipsholderen at indsætte."
+system.image_not_supported: "Denne agent understøtter ikke billedinput."
+system.image_pasted: "Billede vedhæftet (%{label}). Tryk på Enter for at sende."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Genoptager session %{session_id}..."
 system.unknown_command: "Ukendt kommando \"%{command}\" — sendt som prompt. Skriv /help for at se listen."
 system.busy_use_stop: "Vent på, at den aktuelle prompt afsluttes, eller brug /stop først."

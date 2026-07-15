@@ -1,8 +1,21 @@
 # WTA (Windows Terminal Agent) — Architecture Plan & Progress
 
+> **⚠️ Historical document.** This file is the original plan/progress log and
+> describes the *early* single-process design (standalone ACP TUI + `wta mcp`
+> server). The architecture has since moved to a **helper + master** model and
+> the MCP server mode was removed. For the current architecture see
+> [`OVERVIEW.md`](OVERVIEW.md) and [`AGENTS.md`](AGENTS.md). The sections below
+> are kept for history; treat their mode descriptions as outdated.
+
 ## Overview
 
-WTA is a Rust application that provides three modes of operation:
+WTA is a Rust application. **Current model (see OVERVIEW.md):** it runs as a
+`wta-master` singleton (owns the agent CLI) plus one `wta-helper` TUI per agent
+pane (ACP over a named pipe), with stateless **CLI helpers** (`wta list-panes`,
+`wta capture-pane`, …) for one-shot WT control. There is no standalone TUI and no
+MCP server.
+
+*The historical description below predates that change:*
 
 - **ACP mode** (default): TUI client that calls an agent subprocess via the Agent Client Protocol (ACP) over stdio
 - **MCP mode** (`wta mcp`): Headless MCP server exposing shell tools for an external agent to call

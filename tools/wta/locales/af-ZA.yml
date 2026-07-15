@@ -1,9 +1,7 @@
 # Opstellingskerm titels
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Welkom by Intelligente Terminaal!"
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
-setup.title.switch_agent: "Wissel agent"
 setup.title.not_available: "Agent is nie beskikbaar nie"
 setup.title.sign_in: "Aanmelding vereis"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die st
 setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Kies die verstek agent wat jy in Intelligente Terminaal wil gebruik. Jy kan"
-setup.description.fre_line2: "na Settings navigeer om jou werkspasie op te stel en te konfigureer."
 
 setup.option.install: "Installeer %{agent}"
 setup.option.install_hint: "(Sal outomaties geïnstalleer word)"
 setup.option.signin: "Meld aan by %{agent}"
 setup.option.retry_detection: "Probeer weer"
 setup.option.retry_auth: "Ek het aangemeld — probeer weer koppel"
-setup.option.retry_connection: "Probeer weer koppel"
-setup.option.switch_to: "Wissel na %{agent}"
 setup.status.installing: "Installeer tans..."
 setup.status.install_failed: "Installasie het misluk: "
 setup.status.installing_winget: " Installeer tans via winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Stawing word nagegaan..."
 auth.waiting_for_authorization: "  %{spinner} Wag vir magtiging..."
 auth.code_copied_hint: "  Kode na die knipbord gekopieer — plak dit in jou blaaier."
-auth.sign_in_prompt: "Meld aan om jou agent te gebruik:"
+auth.device_code_prompt: "Besoek %{url} en voer die kode in: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Koppel %{name} om agentkenmerke te aktiveer"
-auth.button_sign_in_github: "[ Meld aan met GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Meld aan met %{name} ]"
-auth.hint_footer: "  Druk Enter om aan te meld, Esc om terug te gaan"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter om aan te meld · E vir GitHub Enterprise · Esc om terug te gaan"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-domein: "
+auth.enterprise_hint_footer: "  Enter om aan te meld · Esc vir github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Druk Enter om weer te probeer, of Esc vir github.com. Algemene oorsake: 'n verkeerd getikte of onbereikbare domein, 'n vervalde kode, of geen Copilot-toegang op daardie gasheer nie."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Druk Enter om weer te probeer, of Esc om terug te gaan."  # {Locked="Enter","Esc"}
 
 # ── Kletsaansig (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Dink na…"
@@ -58,6 +54,8 @@ chat.turn_executed: "→ uitgevoer: %{title}"
 input.placeholder.connected: "Vra enigiets, / vir opdragte.."  # {Locked="/"}
 input.placeholder.connecting: "koppel tans..."
 input.placeholder.disconnected: "ontkoppel"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Beelde: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Opdrag-opspring (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - skuinsstreep-opdrag voorvoegsel, moet ASCII bly
@@ -93,9 +91,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N om te antwoord · verander grootte vir volle kaart]"  # {Locked="Y/N"}
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nie geïnstalleer nie — kies om outomaties te installeer"
 agent.status.not_found: "Nie gevind nie"
-agent.status.detected: "Opgespoor"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - gereedskapname en opdrag, moet soos dit is uitgevoer word
 agent.install.running_winget: "Voer uit: winget install GitHub.Copilot"
 agent.install.launch_failed: "Kon nie winget begin nie: %{error}"
@@ -106,8 +102,8 @@ agent.custom.auth_hint: "Maak seker %{name} is geïnstalleer en op jou PATH."  #
 
 # ── Agenteaansig (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Laai tans..."
-# {Locked="Enter","Esc","↑","↓"} - sleutelkombinasies, moenie vertaal nie
-agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie te begin • Esc om te verlaat)"
+# {Locked="Enter","Esc","F5","↑","↓"} - sleutelkombinasies, moenie vertaal nie
+agents.footer_hint: "(↑ ↓ om te navigeer • Enter om sessie te begin • Esc om te verlaat • F5 om te verfris)"
 agents.status.active: "Aktief"
 agents.status.waiting_for_input: "Wag vir invoer"
 agents.status.error: "Fout"
@@ -126,11 +122,14 @@ connection.lost: "Verbinding met die agent is verloor. Tik /restart om weer te k
 system.cancelled: "Gekanselleer."
 system.no_prompt_in_flight: "Geen opdrag onderweg nie."
 system.authentication_failed: "Stawing het misluk"
-system.command_copied_retry: "Opdrag gekopieer — voer dit in 'n ander terminaal uit, druk dan Enter om weer te probeer"  # {Locked="Enter"}
 system.stopped_max_tokens: "Die antwoord is afgekap nadat die model se afvoerlimiet bereik is."
 system.stopped_max_turn_requests: "Die agent het gestop nadat sy versoeklimiet vir hierdie beurt bereik is."
 system.stopped_refusal: "Die agent het geweier om met hierdie versoek voort te gaan."
 system.agent_busy: "Agent is besig op hierdie oortjie — wag totdat die huidige opdrag klaar is."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Geen beeld op die knipbord om te plak nie."
+system.image_not_supported: "Hierdie agent ondersteun nie beeldinvoer nie."
+system.image_pasted: "Beeld aangeheg (%{label}). Druk Enter om te stuur."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Hervat sessie %{session_id}..."
 system.unknown_command: "Onbekende opdrag \"%{command}\" — as opdrag gestuur. Tik /help vir die lys."
 system.busy_use_stop: "Wag totdat die huidige opdrag klaar is, of gebruik eers /stop."

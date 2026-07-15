@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Velkomin í Snjallútstöð!"
 setup.title.agent_missing: "Agent fannst ekki"
 setup.title.agent_error: "Tenging við agent mistókst"
-setup.title.switch_agent: "Skipta um agent"
 setup.title.not_available: "Agent er ekki tiltækur"
 setup.title.sign_in: "Innskráning nauðsynleg"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. 
 setup.subtitle.agent_auth: "Agentinn þinn \"%{agent}\" krefst auðkenningar. Skráðu þig inn í gegnum agentinn og veldu svo \"Ég hef skráð mig inn\" hér að neðan. Til að skipta um agent, farðu í Snjallútstöð Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Veldu sjálfgefna agentinn sem þú vilt nota í Snjallútstöð. Þú getur"
-setup.description.fre_line2: "farið í Settings til að stilla og setja upp vinnusvæðið þitt."
 
 setup.option.install: "Setja upp %{agent} aftur"
 setup.option.install_hint: "(Verður sett upp sjálfkrafa)"
 setup.option.signin: "Skrá inn á %{agent}"
 setup.option.retry_detection: "Reyndu aftur"
 setup.option.retry_auth: "Ég hef skráð mig inn — reyndu að tengjast aftur"
-setup.option.retry_connection: "Reyndu að tengjast aftur"
-setup.option.switch_to: "Skipta yfir í %{agent}"
 setup.status.installing: "Set upp..."
 setup.status.install_failed: "Uppsetning mistókst: "
 setup.status.installing_winget: " Set upp í gegnum winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Athuga auðkenningu..."
 auth.waiting_for_authorization: "  %{spinner} Bíð eftir heimild..."
 auth.code_copied_hint: "  Kóði afritaður á klippispjald — límdu hann í vafranum þínum."
-auth.sign_in_prompt: "Skráðu þig inn til að nota agentinn þinn:"
+auth.device_code_prompt: "Farðu á %{url} og sláðu inn kóðann: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Tengdu %{name} til að virkja agenteiginleika"
-auth.button_sign_in_github: "[ Skrá inn með GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Skrá inn með %{name} ]"
-auth.hint_footer: "  Ýttu á Enter til að skrá þig inn, Esc til að fara til baka"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter til að skrá þig inn · E fyrir GitHub Enterprise · Esc til að fara til baka"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-lén: "
+auth.enterprise_hint_footer: "  Enter til að skrá þig inn · Esc fyrir github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Ýttu á Enter til að reyna aftur eða Esc fyrir github.com. Algengar orsakir: rangt slegið inn eða óaðgengilegt lén, útrunninn kóði eða enginn Copilot-aðgangur á þeim hýsil."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Ýttu á Enter til að reyna aftur eða Esc til að fara til baka."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Hugsa..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ keyrt: %{title}"
 input.placeholder.connected: "Spurðu hvað sem er, / fyrir skipanir.."  # {Locked="/"}
 input.placeholder.connecting: "tengist..."
 input.placeholder.disconnected: "aftengt"
+input.image_attachments: "📎 Myndir: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N til að svara · breyttu stærð til að sjá fullt kort]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Ekki uppsett — veldu til að setja upp sjálfkrafa"
 agent.status.not_found: "Fannst ekki"
-agent.status.detected: "Greindist"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Gakktu úr skugga um að %{name} sé uppsett og á PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Hleð..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ til að fletta • Enter til að hefja lotu • Esc til að hætta)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ til að fletta • Enter til að hefja lotu • Esc til að hætta • F5 til að endurnýja)"
 agents.status.active: "Virk"
 agents.status.waiting_for_input: "Bíður eftir inntaki"
 agents.status.error: "Villa"
@@ -126,11 +121,13 @@ connection.lost: "Tengingin við agent rofnaði. Sláðu inn /restart til að te
 system.cancelled: "Hætt við."
 system.no_prompt_in_flight: "Engin fyrirspurn í gangi."
 system.authentication_failed: "Auðkenning mistókst"
-system.command_copied_retry: "Skipun afrituð — keyrðu hana í öðrum terminal og ýttu á Enter til að reyna aftur"  # {Locked="Enter"}
 system.stopped_max_tokens: "Svarið var skorið af eftir að úttaksmörkum líkansins var náð."
 system.stopped_max_turn_requests: "Umboðsmaðurinn stöðvaðist eftir að beiðnamörkum hans fyrir þessa umferð var náð."
 system.stopped_refusal: "Umboðsmaðurinn neitaði að halda áfram með þessa beiðni."
 system.agent_busy: "Agentinn er upptekinn á þessum flipa — bíddu þar til núverandi kvaðning lýkur."
+system.image_clipboard_empty: "Engin mynd er á klemmuspjaldinu til að líma inn."
+system.image_not_supported: "Þessi agent styður ekki myndinntak."
+system.image_pasted: "Mynd viðhengd (%{label}). Ýttu á Enter til að senda."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Held áfram með setu %{session_id}..."
 system.unknown_command: "Óþekkt skipun \"%{command}\" — send sem kvaðning. Sláðu inn /help til að sjá listann."
 system.busy_use_stop: "Bíddu þar til núverandi kvaðning lýkur, eða notaðu /stop fyrst."

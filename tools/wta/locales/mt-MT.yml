@@ -1,9 +1,7 @@
 # Titli tal-iskrin tas-setup
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Merħba fl-Terminal Intelliġenti!"
 setup.title.agent_missing: "L-aġent ma nstabx"
 setup.title.agent_error: "Il-konnessjoni mal-aġent falliet"
-setup.title.switch_agent: "Ibdel l-aġent"
 setup.title.not_available: "L-aġent mhuwiex disponibbli"
 setup.title.sign_in: "Hemm bżonn li tidħol"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentika
 setup.subtitle.agent_auth: "L-aġent tiegħek \"%{agent}\" jeħtieġ awtentikazzjoni. Idħol permezz tal-aġent, imbagħad agħżel \"Dħalt\" hawn taħt. Biex tibdel l-aġenti, mur għal Terminal Intelliġenti Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Agħżel l-aġent awtomatiku li tixtieq tuża fl-Terminal Intelliġenti. Tista'"
-setup.description.fre_line2: "tmur għal Settings biex tikkonfigura u twaqqaf l-ispazju tax-xogħol tiegħek."
 
 setup.option.install: "Installa %{agent}"
 setup.option.install_hint: "(Se jiġi installat awtomatikament)"
 setup.option.signin: "Idħol f'%{agent}"
 setup.option.retry_detection: "Erġa' pprova"
 setup.option.retry_auth: "Dħalt — erġa' pprova tikkonnettja"
-setup.option.retry_connection: "Erġa' pprova tikkonnettja"
-setup.option.switch_to: "Ibdel għal %{agent}"
 setup.status.installing: "Qed jiġi installat..."
 setup.status.install_failed: "L-installazzjoni falliet: "
 setup.status.installing_winget: " Qed jiġi installat permezz ta' winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "CLI tal-aġent %{name} — "
 auth.checking_authentication: "  %{spinner} Qed tiġi vverifikata l-awtentikazzjoni..."
 auth.waiting_for_authorization: "  %{spinner} Qed jistenna l-awtorizzazzjoni..."
 auth.code_copied_hint: "  Il-kodiċi ġie kkupjat fil-clipboard — waħħlu fil-browser tiegħek."
-auth.sign_in_prompt: "Idħol biex tuża l-aġent tiegħek:"
+auth.device_code_prompt: "Żur %{url} u daħħal il-kodiċi: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Qabbad %{name} biex tattiva l-karatteristiċi tal-aġent"
-auth.button_sign_in_github: "[ Idħol b'GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Idħol b'%{name} ]"
-auth.hint_footer: "  Agħfas Enter biex tidħol, Esc biex tmur lura"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter = idħol · E = GitHub Enterprise · Esc = mur lura"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Dominju Enterprise: "
+auth.enterprise_hint_footer: "  Enter = idħol · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Agħfas Enter biex terġa' tipprova, jew Esc għal github.com. Kawżi komuni: dominju miktub ħażin jew mhux aċċessibbli, kodiċi skadut, jew l-ebda aċċess Copilot fuq dak l-ospitant."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Agħfas Enter biex terġa' tipprova, jew Esc biex tmur lura."  # {Locked="Enter","Esc"}
 
 # ── Vista taċ-ċatt (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Qed jaħseb…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ ġie eżegwit: %{title}"
 input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}
 input.placeholder.connecting: "qed jikkonnettja..."
 input.placeholder.disconnected: "diskonnettjat"
+input.image_attachments: "📎 Stampi: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Popup tal-kmandati (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - prefiss tal-kmand slash, irid jibqa' ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N biex twieġeb · irridimensjona għal karta sħiħa]"  # {Locked="Y/N"}
 
 # ── Status tal-aġent (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "Mhux installat — agħżel biex tinstalla awtomatikament"
 agent.status.not_found: "Ma nstabx"
-agent.status.detected: "Misjub"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ismijiet tal-għodda u kmand, iridu jiġu eżegwiti kif inhuma
 agent.install.running_winget: "Qed iħaddem: winget install GitHub.Copilot"
 agent.install.launch_failed: "Ma setgħax jitnieda winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Kun żgur li %{name} huwa installat u fuq il-PATH tieg�
 
 # ── Vista tal-aġenti (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Qed jitgħabba..."
-# {Locked="Enter","Esc","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
-agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ)"
+# {Locked="Enter","Esc","F5","↑","↓"} - kombinazzjonijiet taċ-ċwievet, tittradux
+agents.footer_hint: "(↑ ↓ biex tinnaviga • Enter biex tniedi sessjoni • Esc biex toħroġ • F5 biex taġġorna)"
 agents.status.active: "Attiv"
 agents.status.waiting_for_input: "Qed jistenna input"
 agents.status.error: "Żball"
@@ -126,11 +121,13 @@ connection.lost: "Il-konnessjoni mal-aġent intilfet. Ittajpja /restart biex ter
 system.cancelled: "Ikkanċellat."
 system.no_prompt_in_flight: "L-ebda prompt fl-arja."
 system.authentication_failed: "L-awtentikazzjoni falliet"
-system.command_copied_retry: "Kmand ikkupjat — ħaddmu f'terminal ieħor, imbagħad agħfas Enter biex terġa' tipprova"  # {Locked="Enter"}
 system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal-output tal-mudell."
 system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
 system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
 system.agent_busy: "L-aġent huwa okkupat fuq din it-tab — stenna sakemm jintemm il-prompt kurrenti."
+system.image_clipboard_empty: "M'hemm l-ebda stampa fil-clipboard biex tippejstja."
+system.image_not_supported: "Dan l-aġent ma jappoġġjax input ta' stampi."
+system.image_pasted: "Stampa mehmuża (%{label}). Agħfas Enter biex tibgħat."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Qed tkompli s-sessjoni %{session_id}..."
 system.unknown_command: "Kmand mhux magħruf \"%{command}\" — intbagħat bħala prompt. Ittajpja /help għal-lista."
 system.busy_use_stop: "Stenna sakemm jintemm il-prompt kurrenti, jew uża /stop l-ewwel."

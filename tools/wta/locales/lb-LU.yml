@@ -1,9 +1,7 @@
 # Astellungs-Écran Titelen
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Wëllkomm am Intelligenten Terminal!"
 setup.title.agent_missing: "Agent net fonnt"
 setup.title.agent_error: "Verbindung mam Agent ass gescheitert"
-setup.title.switch_agent: "Agent wiesselen"
 setup.title.not_available: "Agent net disponibel"
 setup.title.sign_in: "Umeldung erfuerderlech"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéi
 setup.subtitle.agent_auth: "Ären Agent \"%{agent}\" brauch eng Authentifizéierung. Mellt Iech iwwer den Agent un a wielt dann \"Ech hu mech ugemellt\" hei ënnendrënner. Fir den Agent ze wiesselen, gitt op Intelligenten Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Wielt de Standard-Agent deen Dir am Intelligenten Terminal benotze wëllt. Dir kënnt"
-setup.description.fre_line2: "op Settings goen fir Ären Aarbechtsberäich ze konfiguréieren an anzeriichten."
 
 setup.option.install: "%{agent} installéieren"
 setup.option.install_hint: "(Gëtt automatesch installéiert)"
 setup.option.signin: "Bei %{agent} umellen"
 setup.option.retry_detection: "Nach eng Kéier probéieren"
 setup.option.retry_auth: "Ech hu mech ugemellt — probéiert nach eng Kéier ze verbannen"
-setup.option.retry_connection: "Probéiert nach eng Kéier ze verbannen"
-setup.option.switch_to: "Op %{agent} wiesselen"
 setup.status.installing: "Gëtt installéiert..."
 setup.status.install_failed: "Installatioun gescheitert: "
 setup.status.installing_winget: " Gëtt iwwer winget installéiert..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Authentifizéierung gëtt iwwerpréift..."
 auth.waiting_for_authorization: "  %{spinner} Waart op Autorisatioun..."
 auth.code_copied_hint: "  Code an d'Tëschoflag kopéiert — setzt en an Ärem Browser an."
-auth.sign_in_prompt: "Mellt Iech un fir Ären Agent ze benotzen:"
+auth.device_code_prompt: "Gitt op %{url} a gitt de Code an: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Verbinnt %{name} fir Agent-Funktiounen z'aktivéieren"
-auth.button_sign_in_github: "[ Mat GitHub umellen ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Mat %{name} umellen ]"
-auth.hint_footer: "  Dréckt Enter fir Iech unzemellen, Esc fir zréckzegoen"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter fir Iech unzemellen · E fir GitHub Enterprise · Esc fir zréckzegoen"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-Domän: "
+auth.enterprise_hint_footer: "  Enter fir Iech unzemellen · Esc fir github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Dréckt Enter fir nach eng Kéier ze probéieren, oder Esc fir github.com. Heefeg Ursaachen: eng falsch aginn oder net erreechbar Domän, en ofgelafene Code oder kee Copilot-Zougang op deem Host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Dréckt Enter fir nach eng Kéier ze probéieren, oder Esc fir zréckzegoen."  # {Locked="Enter","Esc"}
 
 # ── Chat-Vue (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Denkt no…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ ausgeféiert: %{title}"
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}
 input.placeholder.connecting: "verbënnt..."
 input.placeholder.disconnected: "ofgeschalt"
+input.image_attachments: "📎 Biller: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Kommando-Popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstréch-Kommando-Prefix, muss ASCII bleiwen
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N fir z'äntwerten · Gréisst änneren fir voll Kaart]"  # {Locked="Y/N"}
 
 # ── Agent-Status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Net installéiert — wielt fir automatesch z'installéieren"
 agent.status.not_found: "Net fonnt"
-agent.status.detected: "Erkannt"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - Tool-Nimm a Kommando, mussen wéi se sinn ausgefouert ginn
 agent.install.running_winget: "Leeft: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget konnt net gestart ginn: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Suergt dofir datt %{name} installéiert ass an op Ärem
 
 # ── Agenten-Vue (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Gëtt gelueden..."
-# {Locked="Enter","Esc","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
-agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus)"
+# {Locked="Enter","Esc","F5","↑","↓"} - Tast-Kombinatiounen, net iwwersetzen
+agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus • F5 fir z'aktualiséieren)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Waart op Input"
 agents.status.error: "Feeler"
@@ -126,11 +121,13 @@ connection.lost: "D'Verbindung mam Agent ass verluer gaangen. Tippt /restart fir
 system.cancelled: "Ofgebrach."
 system.no_prompt_in_flight: "Keen Prompt ënnerwee."
 system.authentication_failed: "Authentifizéierung gescheitert"
-system.command_copied_retry: "Kommando kopéiert — féiert et an engem aneren Terminal aus, da dréckt Enter fir nach eng Kéier ze probéieren"  # {Locked="Enter"}
 system.stopped_max_tokens: "D'Äntwert gouf ofgeschnidden nodeems d'Ausgab-Limit vum Modell erreecht gouf."
 system.stopped_max_turn_requests: "Den Agent huet gestoppt nodeems seng Ufro-Limit fir dës Ronn erreecht gouf."
 system.stopped_refusal: "Den Agent huet refuséiert mat dëser Ufro weiderzemaachen."
 system.agent_busy: "Den Agent ass op dësem Tab beschäftegt — waart bis den aktuelle Prompt fäerdeg ass."
+system.image_clipboard_empty: "Kee Bild am Tëschespäicher fir anzefügen."
+system.image_not_supported: "Dësen Agent ënnerstëtzt keng Bildinput."
+system.image_pasted: "Bild ugehängt (%{label}). Dréckt Enter fir ze schécken."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sessioun %{session_id} gëtt weidergefouert..."
 system.unknown_command: "Onbekannte Commande \"%{command}\" — als Prompt geschéckt. Tippt /help fir d’Lëscht."
 system.busy_use_stop: "Waart bis den aktuelle Prompt fäerdeg ass, oder benotzt fir d’éischt /stop."

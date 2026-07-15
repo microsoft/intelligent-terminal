@@ -5,8 +5,26 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "adler2",
+          "version": "2.0.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "agent-client-protocol",
-          "version": "0.10.0"
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "agent-client-protocol-derive",
+          "version": "1.0.0"
         }
       }
     },
@@ -15,7 +33,7 @@
         "type": "cargo",
         "cargo": {
           "name": "agent-client-protocol-schema",
-          "version": "0.11.0"
+          "version": "1.1.0"
         }
       }
     },
@@ -104,8 +122,35 @@
       "component": {
         "type": "cargo",
         "cargo": {
-          "name": "async-broadcast",
-          "version": "0.7.2"
+          "name": "async-channel",
+          "version": "2.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "async-io",
+          "version": "2.6.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "async-process",
+          "version": "2.5.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "async-task",
+          "version": "4.7.1"
         }
       }
     },
@@ -124,6 +169,15 @@
         "cargo": {
           "name": "atomic",
           "version": "0.6.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "atomic-waker",
+          "version": "1.1.2"
         }
       }
     },
@@ -194,6 +248,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "blocking",
+          "version": "1.6.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "bs58",
+          "version": "0.5.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "bstr",
           "version": "1.12.1"
         }
@@ -205,6 +277,15 @@
         "cargo": {
           "name": "bytemuck",
           "version": "1.25.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "byteorder-lite",
+          "version": "0.1.0"
         }
       }
     },
@@ -232,6 +313,15 @@
         "cargo": {
           "name": "cfg-if",
           "version": "1.0.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "chrono",
+          "version": "0.4.45"
         }
       }
     },
@@ -313,6 +403,15 @@
         "cargo": {
           "name": "cpufeatures",
           "version": "0.2.17"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "crc32fast",
+          "version": "1.5.0"
         }
       }
     },
@@ -509,6 +608,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "errno",
+          "version": "0.3.14"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "euclid",
           "version": "0.22.13"
         }
@@ -538,6 +646,24 @@
         "cargo": {
           "name": "fancy-regex",
           "version": "0.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fastrand",
+          "version": "2.4.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fdeflate",
+          "version": "0.3.7"
         }
       }
     },
@@ -581,6 +707,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "fixedbitset",
+          "version": "0.5.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "flate2",
+          "version": "1.1.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "fnv",
           "version": "1.0.7"
         }
@@ -617,6 +761,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "futures-concurrency",
+          "version": "7.7.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "futures-core",
           "version": "0.3.32"
         }
@@ -637,6 +790,15 @@
         "cargo": {
           "name": "futures-io",
           "version": "0.3.32"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "futures-lite",
+          "version": "2.6.1"
         }
       }
     },
@@ -735,6 +897,15 @@
         "type": "cargo",
         "cargo": {
           "name": "hashbrown",
+          "version": "0.12.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hashbrown",
           "version": "0.16.1"
         }
       }
@@ -772,6 +943,24 @@
         "cargo": {
           "name": "ignore",
           "version": "0.4.25"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "image",
+          "version": "0.25.10"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "indexmap",
+          "version": "1.9.3"
         }
       }
     },
@@ -968,8 +1157,26 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "miniz_oxide",
+          "version": "0.8.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "mio",
           "version": "1.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "moxcms",
+          "version": "0.8.1"
         }
       }
     },
@@ -1166,8 +1373,53 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "pin-project",
+          "version": "1.1.13"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pin-project-internal",
+          "version": "1.1.13"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "pin-project-lite",
           "version": "0.2.17"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "piper",
+          "version": "0.2.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "png",
+          "version": "0.18.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "polling",
+          "version": "3.11.0"
         }
       }
     },
@@ -1195,6 +1447,24 @@
         "cargo": {
           "name": "proc-macro2",
           "version": "1.0.106"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pulldown-cmark",
+          "version": "0.10.3"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "pxfm",
+          "version": "0.1.29"
         }
       }
     },
@@ -1355,6 +1625,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "rustc-hash",
+          "version": "2.1.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rustix",
+          "version": "1.1.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "rustversion",
           "version": "1.0.22"
         }
@@ -1375,6 +1663,15 @@
         "cargo": {
           "name": "same-file",
           "version": "1.0.6"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "schemars",
+          "version": "0.9.0"
         }
       }
     },
@@ -1463,6 +1760,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "serde_with",
+          "version": "3.21.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "serde_with_macros",
+          "version": "3.21.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "serde_yaml",
           "version": "0.9.34+deprecated"
         }
@@ -1483,6 +1798,24 @@
         "cargo": {
           "name": "sharded-slab",
           "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "shell-words",
+          "version": "1.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "simd-adler32",
+          "version": "0.3.9"
         }
       }
     },
@@ -1733,6 +2066,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "tinyvec",
+          "version": "1.11.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tinyvec_macros",
+          "version": "0.1.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "tokio",
           "version": "1.50.0"
         }
@@ -1888,6 +2239,15 @@
         "cargo": {
           "name": "ucd-trie",
           "version": "0.1.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "unicase",
+          "version": "2.9.0"
         }
       }
     },

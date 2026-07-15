@@ -144,6 +144,42 @@ pub enum SessionOrigin {
     AgentPane,
 }
 
+/// Where this session's on-disk artefacts live. `Host` = the Windows
+/// user profile (`%USERPROFILE%`); `Wsl` = inside a WSL distro's ext4
+/// `$HOME`. Used for the `/sessions` row prefix and to route resume
+/// back into the distro. Defaults to `Host`; only the WSL history
+/// scanner stamps `Wsl`.
+///
+/// Serde-serializable so `SessionInfo` can carry it across the
+/// master→helper `sessions/list` wire boundary (the `/sessions` view
+/// renders from master's `SessionInfo` snapshot, not the helper's
+/// `AgentSession` registry).  `#[serde(default)]` on the `SessionInfo`
+/// field ensures that older peers without the field deserialize as `Host`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SessionLocation {
+    #[default]
+    Host,
+    Wsl { distro: String },
+}
+
+impl SessionLocation {
+    /// True for in-distro sessions.
+    pub fn is_wsl(&self) -> bool {
+        matches!(self, SessionLocation::Wsl { .. })
+    }
+
+    /// The distro name for `Wsl`, else `None`.
+    ///
+    /// Public accessor; currently exercised only by tests.
+    #[allow(dead_code)]
+    pub fn distro(&self) -> Option<&str> {
+        match self {
+            SessionLocation::Wsl { distro } => Some(distro.as_str()),
+            SessionLocation::Host => None,
+        }
+    }
+}
+
 /// View-layer filter for `SessionOrigin`. Used by the `/sessions`
 /// picker so an MVP build can restrict the list to shell-pane sessions
 /// (user typed `copilot` in a normal shell) and hide WTA-spawned
@@ -218,6 +254,8 @@ pub struct AgentSession {
     /// Provenance for this session — populated for historical rows from
     /// the agent-pane origin index. See [`SessionOrigin`].
     pub origin:            SessionOrigin,
+    /// Where this session's artefacts live (host vs a WSL distro).
+    pub location:          SessionLocation,
 }
 
 impl AgentSession {
@@ -419,6 +457,7 @@ impl AgentSessionRegistry {
                     attention_reason:  None,
                     log_path:          None,
                     origin:            SessionOrigin::default(),
+                    location:          SessionLocation::Host,
                 });
                 // If we're rebinding to a different pane, drop the old pane's mapping first.
                 if let Some(old_pane) = entry.pane_session_id.take() {
@@ -1103,7 +1142,9 @@ impl AgentSessionRegistry {
                         self.known_alive_panes.insert(pane_lc);
                     }
                     self.dirty = true;
-                    tracing::info!(
+                    // Per-row, fires on every alive-snapshot upgrade — debug,
+                    // not info (this was by far the highest-volume info line).
+                    tracing::debug!(
                         target: "agent_session_registry",
                         key = %sid,
                         pane = ?pane_opt,
@@ -1156,34 +1197,6 @@ impl AgentSessionRegistry {
     /// loaded from disk by `merge_historical`) is left untouched, so
     /// repeated refreshes are idempotent and never clobber a real summary.
     /// Returns `true` iff the title was actually changed.
-    pub fn upgrade_title_if_synthetic(&mut self, key: &str, candidate: &str) -> bool {
-        if candidate.is_empty() { return false; }
-        let Some(entry) = self.sessions.get_mut(key) else { return false; };
-        let cwd_leaf = entry.cwd.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        let is_synthetic = entry.title.is_empty() || entry.title == cwd_leaf;
-        if !is_synthetic { return false; }
-        if entry.title == candidate { return false; }
-        entry.title = candidate.to_string();
-        self.dirty = true;
-        true
-    }
-
-    /// Read-only access to the cli_source for a key. Used by callers that
-    /// need to dispatch on CLI without taking ownership of the entry.
-    pub fn cli_source_for(&self, key: &str) -> Option<CliSource> {
-        self.sessions.get(key).map(|s| s.cli_source.clone())
-    }
-
-    /// Returns true iff the session's current title is "synthetic" — empty
-    /// or equal to the cwd's leaf folder. Used to short-circuit expensive
-    /// disk lookups when the title is already a real one (e.g. loaded from
-    /// `workspace.yaml summary:` at startup).
-    pub fn title_is_synthetic(&self, key: &str) -> bool {
-        let Some(entry) = self.sessions.get(key) else { return false; };
-        let cwd_leaf = entry.cwd.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        entry.title.is_empty() || entry.title == cwd_leaf
-    }
-
     /// Populate the registry with synthetic data covering all 6 statuses.
     /// Triggered by the `WTA_DEMO_AGENTS=1` env var on App startup so the
     /// agent session view can be exercised without running any real CLI.
@@ -1298,8 +1311,8 @@ impl AgentSessionRegistry {
             attention_reason:  None,
             log_path:          Some(PathBuf::from("~/.gemini/logs/2026-05-03-1530.log")),
             origin:            SessionOrigin::default(),
+            location:          SessionLocation::Host,
         });
-
         // Stagger last_activity_at so the order in the UI matches the
         // narrative (working newest, historical oldest).
         let stagger = |secs: u64| now - Duration::from_secs(secs);
@@ -1888,6 +1901,7 @@ mod tests {
             attention_reason:  None,
             log_path:          None,
             origin:            SessionOrigin::default(),
+            location:          SessionLocation::Host,
         }]);
         reg.apply(SessionEvent::ResumeDispatched { key: k("g") });
         assert_eq!(reg.sessions.get(&k("g")).unwrap().status, AgentStatus::Idle,
@@ -2101,6 +2115,7 @@ mod tests {
             attention_reason:  None,
             log_path:          None,
             origin:            SessionOrigin::default(),
+            location:          SessionLocation::Host,
         };
 
         // Loaded set tries to overwrite live-1 + add hist-1.
@@ -2118,18 +2133,6 @@ mod tests {
         // hist-1 must be added as Historical.
         let hist = reg.sessions.get("hist-1").unwrap();
         assert_eq!(hist.status, AgentStatus::Historical);
-    }
-
-    #[test]
-    fn upgrade_title_ignores_empty_candidate_and_unknown_key() {
-        let mut reg = AgentSessionRegistry::new();
-        reg.apply(SessionEvent::SessionStarted {
-            key: "s1".into(), cli_source: CliSource::Copilot,
-            pane_session_id: "p".into(), cwd: PathBuf::from("/x"),
-            title: "x".into(),
-        });
-        assert!(!reg.upgrade_title_if_synthetic("s1", ""));
-        assert!(!reg.upgrade_title_if_synthetic("missing", "title"));
     }
 
     #[test]
@@ -2425,6 +2428,7 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::Unknown,
+            location: SessionLocation::Host,
         };
 
         let cases = [
@@ -2609,6 +2613,7 @@ mod tests {
             attention_reason: None,
             log_path: None,
             origin: SessionOrigin::AgentPane,
+            location: SessionLocation::Host,
         }
     }
 
@@ -3002,5 +3007,16 @@ mod tests {
             None,
             "Historical rows must also be ineligible — no live target ⇒ no fallback",
         );
+    }
+
+    #[test]
+    fn session_location_defaults_to_host_and_reports_wsl() {
+        use super::SessionLocation;
+        assert_eq!(SessionLocation::default(), SessionLocation::Host);
+        assert!(!SessionLocation::Host.is_wsl());
+        let w = SessionLocation::Wsl { distro: "Ubuntu".to_string() };
+        assert!(w.is_wsl());
+        assert_eq!(w.distro(), Some("Ubuntu"));
+        assert_eq!(SessionLocation::Host.distro(), None);
     }
 }

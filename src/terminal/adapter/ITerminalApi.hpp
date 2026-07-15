@@ -82,6 +82,7 @@ namespace Microsoft::Console::VirtualTerminal
         virtual void CopyToClipboard(const wil::zwstring_view content) = 0;
         virtual void SetTaskbarProgress(const DispatchTypes::TaskbarState state, const size_t progress) = 0;
         virtual void SetWorkingDirectory(const std::wstring_view uri) = 0;
+        virtual void SetShellType(const std::wstring_view shellName, const std::wstring_view shellVersion) = 0;
         virtual void PlayMidiNote(const int noteNumber, const int velocity, const std::chrono::microseconds duration) = 0;
 
         virtual bool ResizeWindow(const til::CoordType width, const til::CoordType height) = 0;
@@ -94,5 +95,6 @@ namespace Microsoft::Console::VirtualTerminal
         virtual void SearchMissingCommand(const std::wstring_view command) = 0;
 
         virtual void NotifyVtSequence(const std::wstring_view sequence) = 0;
+        virtual void ShowNotification(const std::wstring_view title, const std::wstring_view body) = 0;
     };
 }

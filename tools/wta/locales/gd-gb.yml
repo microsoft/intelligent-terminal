@@ -1,9 +1,7 @@
 # Tiotalan sgrìn stèidheachaidh
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Fàilte gu Tèirmineal Glic!"
 setup.title.agent_missing: "Cha deach an àidseant a lorg"
 setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
-setup.title.switch_agent: "Atharraich àidseant"
 setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
 setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh.
 setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron àidseant, an uair sin tagh \"Chlàraich mi a-steach\" gu h-ìosal. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Tagh an àidseant bunaiteach a bu mhath leat a chleachdadh ann an Tèirmineal Glic. 'S urrainn dhut"
-setup.description.fre_line2: "a dhol gu Settings gus an raon-obrach agad a rèiteachadh."
 
 setup.option.install: "Stàlaich %{agent}"
 setup.option.install_hint: "(Thèid a stàladh gu fèin-obrachail)"
 setup.option.signin: "Clàraich a-steach gu %{agent}"
 setup.option.retry_detection: "Feuch a-rithist"
 setup.option.retry_auth: "Chlàraich mi a-steach — feuch ceangal a-rithist"
-setup.option.retry_connection: "Feuch ceangal a-rithist"
-setup.option.switch_to: "Atharraich gu %{agent}"
 setup.status.installing: "Ga stàladh..."
 setup.status.install_failed: "Dh'fhàillig an stàladh: "
 setup.status.installing_winget: " Ga stàladh tro winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "CLI àidseant %{name} — "
 auth.checking_authentication: "  %{spinner} A' sgrùdadh dearbhaidh..."
 auth.waiting_for_authorization: "  %{spinner} A' feitheamh ri ùghdarrachadh..."
 auth.code_copied_hint: "  Chaidh an còd a chopaigeadh dhan stòr-bhùird — cuir ann ad bhrobhsair e."
-auth.sign_in_prompt: "Clàraich a-steach gus an àidseant agad a chleachdadh:"
+auth.device_code_prompt: "Tadhail air %{url} agus cuir a-steach an còd: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Ceangail %{name} gus gleusan àidseant a chur an comas"
-auth.button_sign_in_github: "[ Clàraich a-steach le GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Clàraich a-steach le %{name} ]"
-auth.hint_footer: "  Brùth Enter gus clàradh a-steach, Esc gus tilleadh"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter = clàraich a-steach · E = GitHub Enterprise · Esc = air ais"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Àrainn Enterprise: "
+auth.enterprise_hint_footer: "  Enter = clàraich a-steach · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Brùth Enter airson feuchainn ris a-rithist, no Esc airson github.com. Adhbharan cumanta: àrainn air a sgrìobhadh ceàrr no nach gabh ruigsinn, còd a dh'fhalbh, no gun inntrigeadh Copilot air an òstair sin."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Brùth Enter airson feuchainn ris a-rithist, no Esc airson a dhol air ais."  # {Locked="Enter","Esc"}
 
 # ── Sealladh còmhraidh (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "A' smaoineachadh…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ air a chur an gnìomh: %{title}"
 input.placeholder.connected: "Faighnich rud sam bith, / airson òrdughan.."  # {Locked="/"}
 input.placeholder.connecting: "a' ceangal..."
 input.placeholder.disconnected: "air a dhì-cheangal"
+input.image_attachments: "📎 Dealbhan: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Priob-uinneag òrdughan (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ro-leasachan àithne sgian-dubh, feumaidh e fuireach ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N gus freagairt · atharraich meud airson cairt iomlan]"  # {Locked="Y/N"}
 
 # ── Inbhe àidseant (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "Gun stàladh — tagh gus stàladh gu fèin-obrachail"
 agent.status.not_found: "Cha deach a lorg"
-agent.status.detected: "Chaidh a lorg"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ainmean innealan agus àithne, feumaidh iad ruith mar a tha
 agent.install.running_winget: "A' ruith: winget install GitHub.Copilot"
 agent.install.launch_failed: "Dh'fhàillig winget a chur air bhog: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus ai
 
 # ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Ga luchdadh..."
-# {Locked="Enter","Esc","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
-agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail)"
+# {Locked="Enter","Esc","F5","↑","↓"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
+agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail • F5 gus ùrachadh)"
 agents.status.active: "Gnìomhach"
 agents.status.waiting_for_input: "A' feitheamh ri ion-chur"
 agents.status.error: "Mearachd"
@@ -126,11 +121,13 @@ connection.lost: "Chaidh an ceangal ris an àidseant a chall. Sgrìobh /restart 
 system.cancelled: "Air a sgur dheth."
 system.no_prompt_in_flight: "Chan eil brodadh air an t-slighe."
 system.authentication_failed: "Dh'fhàillig an dearbhadh"
-system.command_copied_retry: "Àithne air a chopaigeadh — ruith e ann an teirmineal eile, an uair sin brùth Enter gus feuchainn a-rithist"  # {Locked="Enter"}
 system.stopped_max_tokens: "Chaidh am freagairt a ghearradh às dèidh crìoch toraidh a' mhodail a ruighinn."
 system.stopped_max_turn_requests: "Stad an riochdaire às dèidh a chrìoch iarrtais airson a' chuairt seo a ruighinn."
 system.stopped_refusal: "Dhiùlt an riochdaire leantainn air adhart leis an iarrtas seo."
 system.agent_busy: "Tha an t-àidseant trang air an taba seo — fuirich gus an crìochnaich am brosnachadh làithreach."
+system.image_clipboard_empty: "Chan eil dealbh air an stòr-bhùird ri chur ann."
+system.image_not_supported: "Chan eil an t-àidseant seo a' cur taic ri ion-chur dhealbhan."
+system.image_pasted: "Dealbh ceangailte (%{label}). Brùth Enter gus a chur."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Ag ath-thòiseachadh seisean %{session_id}..."
 system.unknown_command: "Àithne neo-aithnichte \"%{command}\" — air a cur mar bhrosnachadh. Taidhp /help airson an liosta."
 system.busy_use_stop: "Fuirich gus an crìochnaich am brosnachadh làithreach, no cleachd /stop an toiseach."

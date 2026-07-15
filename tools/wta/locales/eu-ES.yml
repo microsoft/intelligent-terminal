@@ -1,9 +1,7 @@
 # Konfigurazio-pantailaren tituluak
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Ongi etorri Terminal Adimenduna-era!"
 setup.title.agent_missing: "Agentea ez da aurkitu"
 setup.title.agent_error: "Agentearekin konektatzeak huts egin du"
-setup.title.switch_agent: "Aldatu agentea"
 setup.title.not_available: "Agentea ez dago erabilgarri"
 setup.title.sign_in: "Saioa hastea beharrezkoa da"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar d
 setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen bidez, eta hautatu \"Saioa hasi dut\" behean. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
-setup.description.fre_line1: "Aukeratu Terminal Adimenduna-en erabili nahi duzun agente CLI lehenetsia. Hau egin dezakezu:"
-setup.description.fre_line2: "joan Settings atalera zure lan-eremua konfiguratu eta ezartzeko."
 
 setup.option.install: "Instalatu %{agent}"
 setup.option.install_hint: "(Automatikoki instalatuko da)"
 setup.option.signin: "Hasi saioa %{agent}(e)n"
 setup.option.retry_detection: "Saiatu berriro"
 setup.option.retry_auth: "Saioa hasi dut — saiatu konektatzen berriro"
-setup.option.retry_connection: "Saiatu konektatzen berriro"
-setup.option.switch_to: "Aldatu %{agent}(e)ra"
 setup.status.installing: "Instalatzen..."
 setup.status.install_failed: "Instalazioak huts egin du: "
 setup.status.installing_winget: " winget bidez instalatzen..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agente %{name} — "
 auth.checking_authentication: "  %{spinner} Autentifikazioa egiaztatzen..."
 auth.waiting_for_authorization: "  %{spinner} Baimenaren zain..."
 auth.code_copied_hint: "  Kodea arbelean kopiatu da — itsatsi zure arakatzailean."
-auth.sign_in_prompt: "Hasi saioa zure agentea erabiltzeko:"
+auth.device_code_prompt: "Bisitatu %{url} eta idatzi kodea: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Konektatu %{name} agentearen eginbideak gaitzeko"
-auth.button_sign_in_github: "[ Hasi saioa GitHub-ekin ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Hasi saioa %{name}(e)kin ]"
-auth.hint_footer: "  Sakatu Enter saioa hasteko, Esc atzera joateko"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter saioa hasteko · E GitHub Enterprise erabiltzeko · Esc atzera egiteko"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domeinua: "
+auth.enterprise_hint_footer: "  Enter saioa hasteko · Esc github.com erabiltzeko"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Sakatu Enter berriro saiatzeko, edo Esc github.com erabiltzeko. Ohiko arrazoiak: domeinua gaizki idatzita edo eskuraezin egotea, kodea iraungita egotea, edo host horretan Copilot sarbiderik ez izatea."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Sakatu Enter berriro saiatzeko, edo Esc atzera egiteko."  # {Locked="Enter","Esc"}
 
 # ── Txat-ikuspegia (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Pentsatzen…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ exekutatuta: %{title}"
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}
 input.placeholder.connecting: "konektatzen..."
 input.placeholder.disconnected: "deskonektatuta"
+input.image_attachments: "📎 Irudiak: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Komandoen popup-a (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - barra-komando aurrizkia, ASCII izan behar du
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N erantzuteko · aldatu tamaina txartel osoa ikusteko]"  # {Locked="Y/N"}
 
 # ── Agentearen egoera (src/agent_check.rs) ───────────────────────────────────
-agent.status.not_installed_auto: "Instalatu gabe — hautatu automatikoki instalatzeko"
 agent.status.not_found: "Ez da aurkitu"
-agent.status.detected: "Detektatuta"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tresna-izenak eta komandoa, hitzez hitz exekutatu behar dira
 agent.install.running_winget: "Exekutatzen: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget abiarazi ezin izan da: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Ziurtatu %{name} instalatuta dagoela eta zure PATH-ean 
 
 # ── Agenteen ikuspegia (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Kargatzen..."
-# {Locked="Enter","Esc","↑","↓"} - tekla-konbinazioak, ez itzuli
-agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa abiarazteko • Esc irteteko)"
+# {Locked="Enter","Esc","F5","↑","↓"} - tekla-konbinazioak, ez itzuli
+agents.footer_hint: "(↑ ↓ nabigatzeko • Enter saioa abiarazteko • Esc irteteko • F5 freskatzeko)"
 agents.status.active: "Aktiboa"
 agents.status.waiting_for_input: "Sarreraren zain"
 agents.status.error: "Errorea"
@@ -126,11 +121,13 @@ connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konek
 system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"
-system.command_copied_retry: "Komandoa kopiatu da — exekutatu beste terminal batean, eta sakatu Enter berriro saiatzeko"  # {Locked="Enter"}
 system.stopped_max_tokens: "Erantzuna eten egin da modeloaren irteera-muga gainditu ondoren."
 system.stopped_max_turn_requests: "Agentea gelditu egin da txanda honetako eskaera-muga gainditu ondoren."
 system.stopped_refusal: "Agenteak eskaera honekin jarraitzeari uko egin dio."
 system.agent_busy: "Agentea lanpetuta dago fitxa honetan — itxaron uneko gonbita amaitu arte."
+system.image_clipboard_empty: "Ez dago irudirik arbelean itsasteko."
+system.image_not_supported: "Agente honek ez du irudi-sarrerarik onartzen."
+system.image_pasted: "Irudia erantsi da (%{label}). Sakatu Enter bidaltzeko."  # {Locked="%{label}","Enter"}
 system.resuming_session: "%{session_id} saioa berrekiten..."
 system.unknown_command: "Komando ezezaguna \"%{command}\" — gonbita gisa bidali da. Idatzi /help zerrenda ikusteko."
 system.busy_use_stop: "Itxaron uneko gonbita amaitu arte, edo erabili /stop lehenik."

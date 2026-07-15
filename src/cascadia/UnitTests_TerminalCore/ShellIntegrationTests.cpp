@@ -60,6 +60,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Install_IdempotentWhenAlreadyInstalled);
     TEST_METHOD(Install_ReinstallsWhenScriptMissingButBlockMatches);
     TEST_METHOD(Install_RewritesLegacyDotSourceLineInPlace);
+    TEST_METHOD(Install_UpgradesWhenBlockReferencesOlderScriptVersion);
     TEST_METHOD(Install_OverwritesOrphanOpenMarker);
     TEST_METHOD(Install_CreatesBackupForNonEmptyProfile);
     TEST_METHOD(Install_DoesNotCreateBackupForEmptyProfile);
@@ -119,6 +120,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Bash_Install_IsLfOnly);
     TEST_METHOD(Bash_Install_IdempotentWhenAlreadyInstalled);
     TEST_METHOD(Bash_Install_ReinstallsWhenScriptMissingButBlockMatches);
+    TEST_METHOD(Bash_Install_UpgradesWhenBlockReferencesOlderScriptVersion);
     TEST_METHOD(Bash_Install_OverwritesOrphanOpenMarker);
     TEST_METHOD(Bash_Install_CreatesBackupForNonEmptyProfile);
     TEST_METHOD(Bash_Install_DoesNotCreateBackupForEmptyProfile);
@@ -546,6 +548,43 @@ void ShellIntegrationTests::Install_RewritesLegacyDotSourceLineInPlace()
     VERIFY_IS_TRUE(blockPos < tailPos, L"In-place rewrite — block stays where legacy line was");
 }
 
+void ShellIntegrationTests::Install_UpgradesWhenBlockReferencesOlderScriptVersion()
+{
+    // Regression: bumping the script version (e.g. v1 -> v2 when OSC
+    // 9001;ShellType emission was added) must actually reach existing
+    // users. Their $PROFILE already has a well-formed managed block, but it
+    // references the OLDER versioned script filename and the stale old
+    // script sits on disk. The block-match early-out must NOT fire (the
+    // block no longer equals the desired, current-version block), so the
+    // current script is written and the block is rewritten to point at it.
+    const auto profile = _ProfilePath();
+    const auto currentName = til::u16u8(ShellIntegrationScriptFileName());
+
+    // Simulate a prior install: take the current block and point it at an
+    // older script version. v0 is always older than any shipped vN, so this
+    // stays valid across future bumps.
+    const std::string oldName = "shell-integration_v0.ps1";
+    auto oldBlock = BuildShellIntegrationBlock(L"PowerShell", "\n");
+    const auto namePos = oldBlock.find(currentName);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, namePos, L"Block must embed the current script filename");
+    oldBlock.replace(namePos, currentName.size(), oldName);
+    _WriteFile(profile, oldBlock + "\n");
+    // Stale old script on disk, without the ShellType emission.
+    _WriteFile(profile.parent_path() / L"shell-integration_v0.ps1", "# stale old script, no ShellType\n");
+
+    const auto r = Install(profile.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled, L"Block referenced an older script version → must upgrade, not no-op");
+
+    const auto contents = _ReadFile(profile);
+    VERIFY_IS_TRUE(_Contains(contents, currentName), L"Block must be rewritten to the current script version");
+    VERIFY_IS_FALSE(_Contains(contents, oldName), L"Old version reference must be replaced");
+
+    const auto scriptPath = profile.parent_path() / ShellIntegrationScriptFileName();
+    VERIFY_IS_TRUE(std::filesystem::exists(scriptPath), L"Current-version script must be written on upgrade");
+    VERIFY_IS_TRUE(_Contains(_ReadFile(scriptPath), "9001"), L"Upgraded script must emit OSC 9001;ShellType");
+}
+
 void ShellIntegrationTests::Install_OverwritesOrphanOpenMarker()
 {
     const auto profile = _ProfilePath();
@@ -852,7 +891,7 @@ void ShellIntegrationTests::QueryExecutionPolicy_ParsesStdoutAndLowercases()
     // Smoke test against real powershell.exe (always present on Windows).
     // We don't care WHICH policy the runner returns — we care that the
     // QueryExecutionPolicy contract holds:
-    //   * the call completes within the 5s timeout (no hang on the pipe),
+    //   * the call completes within the 20s timeout (no hang on the pipe),
     //   * stdout is captured (non-empty), and
     //   * the result is lowercase ASCII letters only — the parser strips
     //     newlines / spaces / tabs, lowercases A-Z, but a stray BOM byte or
@@ -1096,7 +1135,11 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     VERIFY_IS_TRUE(_Contains(script, "${BASH_VERSION:-}"));
     VERIFY_IS_TRUE(_Contains(script, "${-:-}"));
     VERIFY_IS_TRUE(_Contains(script, "${__IT_SHELLINTEG_INSTALLED:-}"));
-    VERIFY_IS_TRUE(_Contains(script, "${PROMPT_COMMAND:-}"));
+    // PROMPT_COMMAND can be an array (bash 5.1+) so scalar ${VAR:-}
+    // defaulting is wrong for it — it would only see element [0]. The
+    // set -u-safe form for the array read is the ${ARR[@]+...}
+    // alternate-value guard, which collapses to nothing when unset.
+    VERIFY_IS_TRUE(_Contains(script, "${PROMPT_COMMAND[@]+\"${PROMPT_COMMAND[@]}\"}"));
     VERIFY_IS_TRUE(_Contains(script, "${PS1:-}"));
     // PWD too — printf reads it for the OSC 9;9 CWD report.
     VERIFY_IS_TRUE(_Contains(script, "${PWD:-}"));
@@ -1204,6 +1247,38 @@ void ShellIntegrationTests::Bash_Install_ReinstallsWhenScriptMissingButBlockMatc
     VERIFY_IS_TRUE(r.success);
     VERIFY_IS_FALSE(r.alreadyInstalled, L"Script file went missing → must re-install, not no-op");
     VERIFY_IS_TRUE(std::filesystem::exists(scriptPath));
+}
+
+void ShellIntegrationTests::Bash_Install_UpgradesWhenBlockReferencesOlderScriptVersion()
+{
+    // Bash/WSL counterpart of the PowerShell upgrade regression: an existing
+    // ~/.bashrc managed block that references an OLDER versioned script must
+    // be rewritten to the current version (so the OSC 9001;ShellType emission
+    // added in v2 actually reaches users who already had v1 installed).
+    const auto profile = _BashProfilePath();
+    const auto scriptDir = _BashScriptDir();
+    const auto currentName = til::u16u8(ShellIntegrationBashScriptFileName());
+
+    const std::string oldName = "shell-integration_v0.sh";
+    auto oldBlock = BuildShellIntegrationBashBlock();
+    const auto namePos = oldBlock.find(currentName);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, namePos, L"Block must embed the current script filename");
+    oldBlock.replace(namePos, currentName.size(), oldName);
+    _WriteFile(profile, oldBlock + "\n");
+    // Stale old script on disk, without the ShellType emission.
+    _WriteFile(scriptDir / L"shell-integration_v0.sh", "# stale old script, no ShellType\n");
+
+    const auto r = InstallBash(profile.wstring(), scriptDir.wstring());
+    VERIFY_IS_TRUE(r.success);
+    VERIFY_IS_FALSE(r.alreadyInstalled, L"Block referenced an older script version → must upgrade, not no-op");
+
+    const auto contents = _ReadFile(profile);
+    VERIFY_IS_TRUE(_Contains(contents, currentName), L"Block must be rewritten to the current script version");
+    VERIFY_IS_FALSE(_Contains(contents, oldName), L"Old version reference must be replaced");
+
+    const auto scriptPath = scriptDir / ShellIntegrationBashScriptFileName();
+    VERIFY_IS_TRUE(std::filesystem::exists(scriptPath), L"Current-version script must be written on upgrade");
+    VERIFY_IS_TRUE(_Contains(_ReadFile(scriptPath), "9001"), L"Upgraded script must emit OSC 9001;ShellType");
 }
 
 void ShellIntegrationTests::Bash_Install_OverwritesOrphanOpenMarker()

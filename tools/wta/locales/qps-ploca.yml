@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "[!!_Welcome to Intelligent Terminal!_!!]"
 setup.title.agent_missing: "[!!_Agent not found_!!]"
 setup.title.agent_error: "[!!_Agent connection failed_!!]"
-setup.title.switch_agent: "[!!_Switch agent_!!]"
 setup.title.not_available: "[!!_Agent not available_!!]"
 setup.title.sign_in: "[!!_Sign in required_!!]"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "[!!_Your agent \"%{agent}\" requires authenticatio
 setup.subtitle.agent_auth: "[!!_Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent._!!]"
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
-setup.description.fre_line1: "[!!_Choose the default agent you would like to use in Intelligent Terminal. You can_!!]"
-setup.description.fre_line2: "[!!_navigate to Settings to configure and set up your workspace._!!]"
 
 setup.option.install: "[!!_Install %{agent}_!!]"
 setup.option.install_hint: "[!!_(Will be installed automatically)_!!]"
 setup.option.signin: "[!!_Sign in to %{agent}_!!]"
 setup.option.retry_detection: "[!!_Try again_!!]"
 setup.option.retry_auth: "[!!_I've signed in — try connecting again_!!]"
-setup.option.retry_connection: "[!!_Try connecting again_!!]"
-setup.option.switch_to: "[!!_Switch to %{agent}_!!]"
 setup.status.installing: "[!!_Installing..._!!]"
 setup.status.install_failed: "[!!_Install failed: _!!]"
 setup.status.installing_winget: "[!!_ Installing via winget..._!!]"
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "[!!_Agent %{name} — _!!]"
 auth.checking_authentication: "[!!_  %{spinner} Checking authentication..._!!]"
 auth.waiting_for_authorization: "[!!_  %{spinner} Waiting for authorization..._!!]"
 auth.code_copied_hint: "[!!_  Code copied to clipboard — paste it in your browser._!!]"
-auth.sign_in_prompt: "[!!_Sign in to use your agent:_!!]"
+auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "[!!_  Connect %{name} to enable agent features_!!]"
-auth.button_sign_in_github: "[!!_[ Sign in with GitHub ]_!!]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[!!_[ Sign in with %{name} ]_!!]"
-auth.hint_footer: "[!!_  Press Enter to sign in, Esc to go back_!!]"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domain: "
+auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Press Enter to retry, or Esc for github.com. Common causes: a mistyped or unreachable domain, an expired code, or no Copilot access on that host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "[!!_Thinking..._!!]"
@@ -58,6 +54,7 @@ chat.turn_executed: "[!!_→ executed: %{title}_!!]"
 input.placeholder.connected: "[!!_Ask anything, / for commands.._!!]"  # {Locked="/"}
 input.placeholder.connecting: "[!!_connecting..._!!]"
 input.placeholder.disconnected: "[!!_disconnected_!!]"
+input.image_attachments: "[!!_📎 Images: %{items}_!!]"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[!!_[Y/N to answer · resize for full card]_!!]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "[!!_Not installed — select to install automatically_!!]"
 agent.status.not_found: "[!!_Not found_!!]"
-agent.status.detected: "[!!_Detected_!!]"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "[!!_Running: winget install GitHub.Copilot_!!]"
 agent.install.launch_failed: "[!!_Failed to launch winget: %{error}_!!]"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "[!!_Make sure %{name} is installed and on your PATH._!!
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "[!!_Loading..._!!]"
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "[!!_(↑ ↓ to navigate • Enter to launch session • Esc to exit)_!!]"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "[!!_(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh)_!!]"
 agents.status.active: "[!!_Active_!!]"
 agents.status.waiting_for_input: "[!!_Waiting for input_!!]"
 agents.status.error: "[!!_Error_!!]"
@@ -126,11 +121,13 @@ connection.lost: "[!!_Connection to the agent was lost. Type /restart to reconne
 system.cancelled: "[!!_Cancelled._!!]"
 system.no_prompt_in_flight: "[!!_No prompt in flight._!!]"
 system.authentication_failed: "[!!_Authentication failed_!!]"
-system.command_copied_retry: "[!!_Command copied — run it in another terminal, then press Enter to retry_!!]"  # {Locked="Enter"}
 system.stopped_max_tokens: "[!!_The response was cut off after reaching the model's output limit._!!]"
 system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
 system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"
 system.agent_busy: "[!!_Agent is busy on this tab — wait for the current prompt to finish._!!]"
+system.image_clipboard_empty: "[!!_No image on the clipboard to paste._!!]"
+system.image_not_supported: "[!!_This agent doesn't support image input._!!]"
+system.image_pasted: "[!!_Image attached (%{label}). Press Enter to send._!!]"  # {Locked="%{label}","Enter"}
 system.resuming_session: "[!!_Resuming session %{session_id}..._!!]"
 system.unknown_command: "[!!_Unknown command \"%{command}\" — sent as prompt. Type /help for the list._!!]"  # {Locked="/help"}
 system.busy_use_stop: "[!!_Wait for the current prompt to finish, or /stop first._!!]"  # {Locked="/stop"}

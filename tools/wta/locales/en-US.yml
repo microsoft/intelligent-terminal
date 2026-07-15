@@ -3,11 +3,8 @@
 # "Agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human representative or proxy
 
 # Setup screen titles
-setup.title.first_run: "Welcome to Intelligent Terminal!"
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
-# Button label — verb command to change which AI agent is active
-setup.title.switch_agent: "Switch agent"
 # Title when the configured AI agent is not available
 setup.title.not_available: "Agent not available"
 # Title when authentication is required
@@ -19,9 +16,6 @@ setup.subtitle.agent_missing: "Your agent \"%{agent}\" is not installed. Please 
 setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
-setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
-setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
-
 # Button label on setup screen — install the selected agent via winget
 setup.option.install: "Install %{agent}"
 setup.option.install_hint: "(Will be installed automatically)"
@@ -29,9 +23,6 @@ setup.option.signin: "Sign in to %{agent}"
 # Button label on setup screen — retry agent detection after manual install
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
-setup.option.retry_connection: "Try connecting again"
-# Button label — switch active AI agent to a different one
-setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
@@ -42,11 +33,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Checking authentication..."
 auth.waiting_for_authorization: "  %{spinner} Waiting for authorization..."
 auth.code_copied_hint: "  Code copied to clipboard — paste it in your browser."
-auth.sign_in_prompt: "Sign in to use your agent:"
+auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Connect %{name} to enable agent features"
-auth.button_sign_in_github: "[ Sign in with GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Sign in with %{name} ]"
-auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domain: "
+auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Press Enter to retry, or Esc for github.com. Common causes: a mistyped or unreachable domain, an expired code, or no Copilot access on that host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
@@ -72,6 +65,10 @@ input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "disconnected"
+# Title shown on the input box border when one or more clipboard images are
+# queued to send with the next prompt (Alt+V). %{items} is a comma-separated
+# list like "[1] screenshot, [2] photo.png".
+input.image_attachments: "📎 Images: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -138,11 +135,8 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Not installed — select to install automatically"
 # Status badge when agent CLI binary is not on PATH
 agent.status.not_found: "Not found"
-# Status badge when agent CLI binary is found on PATH
-agent.status.detected: "Detected"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -153,8 +147,8 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh)"
 # Status badge when agent session is actively processing
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
@@ -184,13 +178,19 @@ connection.lost: "Connection to the agent was lost. Type /restart to reconnect."
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
-system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
 # Soft stops: the prompt turn succeeded at the protocol level but ended for a
 # reason worth telling the user about. Shown as a system line after the reply.
 system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
 system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."  # Shown when the user presses Enter to submit a new prompt while the agent is still processing the previous one on the same tab.
+# Shown when the user presses Alt+V but the clipboard holds no image.
+system.image_clipboard_empty: "No image on the clipboard to paste."
+# Shown when the user presses Alt+V but the connected agent doesn't accept image input.
+system.image_not_supported: "This agent doesn't support image input."
+# Shown after Alt+V successfully queues a clipboard image. %{label} is a short
+# source label (a file name, or "screenshot"/"image"). Press Enter to send.
+system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly while ACP `loadSession` rehydrates a previous conversation. %{session_id} is an opaque id (e.g. UUID); not translated.
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.

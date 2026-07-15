@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Bun venit la Terminal Inteligent!"
 setup.title.agent_missing: "Agentul nu a fost găsit"
 setup.title.agent_error: "Conectarea la agent a eșuat"
-setup.title.switch_agent: "Schimbă agentul"
 setup.title.not_available: "Agentul nu este disponibil"
 setup.title.sign_in: "Autentificare necesară"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Agentul \"%{agent}\" necesită autentificare. Urma
 setup.subtitle.agent_auth: "Agentul \"%{agent}\" necesită autentificare. Conectați-vă prin agent, apoi selectați \"M-am conectat\" mai jos. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Alegeți agentul implicit pe care doriți să îl utilizați în Terminal Inteligent. Puteți"
-setup.description.fre_line2: "naviga la Settings pentru a configura spațiul de lucru."
 
 setup.option.install: "Instalare %{agent}"
 setup.option.install_hint: "(Va fi instalat automat)"
 setup.option.signin: "Conectare la %{agent}"
 setup.option.retry_detection: "Reîncercați"
 setup.option.retry_auth: "M-am conectat — reîncercați conectarea"
-setup.option.retry_connection: "Reîncercați conectarea"
-setup.option.switch_to: "Comută la %{agent}"
 setup.status.installing: "Se instalează..."
 setup.status.install_failed: "Instalarea a eșuat: "
 setup.status.installing_winget: " Se instalează prin winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "CLI agent %{name} — "
 auth.checking_authentication: "  %{spinner} Se verifică autentificarea..."
 auth.waiting_for_authorization: "  %{spinner} Se așteaptă autorizarea..."
 auth.code_copied_hint: "  Codul a fost copiat în clipboard — inserați-l în browser."
-auth.sign_in_prompt: "Conectați-vă pentru a utiliza agentul:"
+auth.device_code_prompt: "Accesați %{url} și introduceți codul: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Conectați %{name} pentru a activa funcțiile agentului"
-auth.button_sign_in_github: "[ Conectare cu GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Conectare cu %{name} ]"
-auth.hint_footer: "  Apăsați Enter pentru conectare, Esc pentru a reveni"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter pentru conectare · E pentru GitHub Enterprise · Esc pentru a reveni"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domeniu Enterprise: "
+auth.enterprise_hint_footer: "  Enter pentru conectare · Esc pentru github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Apăsați Enter pentru a încerca din nou, sau Esc pentru github.com. Cauze comune: un domeniu tastat greșit sau inaccesibil, un cod expirat sau lipsa accesului la Copilot pe acea gazdă."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Apăsați Enter pentru a încerca din nou, sau Esc pentru a reveni."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Se gândește..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ executat: %{title}"
 input.placeholder.connected: "Întrebați orice, / pentru comenzi.."  # {Locked="/"}
 input.placeholder.connecting: "se conectează..."
 input.placeholder.disconnected: "deconectat"
+input.image_attachments: "📎 Imagini: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N pentru a răspunde · redimensionați pentru cardul complet]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Neinstalat — selectați pentru instalare automată"
 agent.status.not_found: "Negăsit"
-agent.status.detected: "Detectat"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Asigurați-vă că %{name} este instalat și în PATH."
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Se încarcă..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ pentru navigare • Enter pentru a lansa sesiunea • Esc pentru a ieși)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ pentru navigare • Enter pentru a lansa sesiunea • Esc pentru a ieși • F5 pentru a reîmprospăta)"
 agents.status.active: "Activ"
 agents.status.waiting_for_input: "Așteaptă introducere"
 agents.status.error: "Eroare"
@@ -126,11 +121,13 @@ connection.lost: "Conexiunea la agent s-a pierdut. Tastați /restart pentru reco
 system.cancelled: "Anulat."
 system.no_prompt_in_flight: "Nicio solicitare în curs."
 system.authentication_failed: "Autentificarea a eșuat"
-system.command_copied_retry: "Comandă copiată — rulați-o într-un alt terminal, apoi apăsați Enter pentru a reîncerca"  # {Locked="Enter"}
 system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei de ieșire a modelului."
 system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
 system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."
 system.agent_busy: "Agentul este ocupat în această filă — așteptați finalizarea solicitării curente."
+system.image_clipboard_empty: "Nu există nicio imagine în clipboard de lipit."
+system.image_not_supported: "Acest agent nu acceptă introducerea imaginilor."
+system.image_pasted: "Imagine atașată (%{label}). Apăsați Enter pentru a trimite."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Se reia sesiunea %{session_id}..."
 system.unknown_command: "Comandă necunoscută \"%{command}\" — trimisă ca solicitare. Tastați /help pentru listă."  # {Locked="/help"}
 system.busy_use_stop: "Așteptați finalizarea solicitării curente sau folosiți mai întâi /stop."  # {Locked="/stop"}

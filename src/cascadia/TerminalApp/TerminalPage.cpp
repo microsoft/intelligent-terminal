@@ -962,7 +962,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& /*sender*/,
-                                       const winrt::Windows::Foundation::IInspectable& /*args*/)
+                                       const winrt::Windows::Foundation::IInspectable& args)
     {
         // Hide the FRE overlay
         if (auto overlay = FreOverlayElement())
@@ -1017,7 +1017,8 @@ namespace winrt::TerminalApp::implementation
         // Now create the agent pane on the freshly-created tab.
         if (const auto tab = _GetFocusedTabImpl())
         {
-            _OpenOrReuseAgentPane(false, L"FirstRunExperience");
+            const auto initialAuthAgent = winrt::unbox_value_or<winrt::hstring>(args, L"");
+            _OpenOrReuseAgentPane(false, L"FirstRunExperience", std::wstring_view{ initialAuthAgent });
             // Focus is set in the Initialized callback once the pane is ready.
         }
     }
@@ -1828,7 +1829,8 @@ namespace winrt::TerminalApp::implementation
                                                         bool intoSessionsView,
                                                         bool autoStash,
                                                         std::string_view initialLoadSessionId,
-                                                        std::string_view initialLoadCwd)
+                                                        std::string_view initialLoadCwd,
+                                                        std::wstring_view initialAuthAgent)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -2011,6 +2013,18 @@ namespace winrt::TerminalApp::implementation
             // opened the pane" assumption), C++ receives the echo on a
             // stashed pane and restores it — defeating pre-warm.
             helperCmd.append(L" --start-stashed");
+        }
+        if (!initialAuthAgent.empty())
+        {
+            if (autoStash)
+            {
+                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: ignoring initial auth hint for stashed helper");
+            }
+            else
+            {
+                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: helper starts in auth mode for agent=" + winrt::to_string(winrt::hstring{ initialAuthAgent }));
+                appendHelperFlagValue(L"--initial-auth-agent", initialAuthAgent);
+            }
         }
 
         // Plan-C: bundle the resume request with helper spawn. Caller
@@ -2312,8 +2326,33 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                // Visible in chat view — switch into sessions view.
+                // Visible in chat view — switch into sessions view, and move
+                // keyboard focus onto the agent pane so Esc / arrows / Enter
+                // reach the wta TUI immediately. Without this the bottom-bar
+                // button keeps focus and the first Esc is swallowed until the
+                // user clicks the pane once. Deferred to a low-priority tick:
+                // a synchronous Programmatic focus set during a button click
+                // is undone when the pointer-up restores focus to the button
+                // (same race RestoreStashedAgentPane works around). The
+                // stashed branch above doesn't need this — its echo runs
+                // through OnAgentStateChanged → RestoreStashedAgentPane, which
+                // already re-focuses after the pane is re-attached.
                 _RequestAgentStateForTab(activeTab, "sessions", /*pane_open*/ true);
+                if (const auto termControl = agentContent.GetTermControl())
+                {
+                    if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+                    {
+                        auto weakControl = winrt::make_weak(termControl);
+                        dispatcher.TryEnqueue(
+                            winrt::Windows::System::DispatcherQueuePriority::Low,
+                            [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
+                                }
+                            });
+                    }
+                }
             }
             _UpdateBottomBarState();
             return;
@@ -2831,7 +2870,7 @@ namespace winrt::TerminalApp::implementation
         _RebuildAgentStack();
     }
 
-    void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource)
+    void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource, std::wstring_view initialAuthAgent)
     {
         _agentPaneLog(std::string{ "_OpenOrReuseAgentPane called, intoSessionsView=" } + (intoSessionsView ? "true" : "false"));
 
@@ -2957,7 +2996,7 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("no agent pane on focused tab, creating new one");
 
-        if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView))
+        if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView, /*autoStash*/ false, std::string_view{}, std::string_view{}, initialAuthAgent))
         {
             _agentPaneLog("_OpenOrReuseAgentPane: _AutoCreateHiddenAgentPaneShared failed");
             return;

@@ -9,6 +9,7 @@
 
 #include "../WinRTUtils/inc/WtExeUtils.h"
 #include "../inc/WtaProcess.h"
+#include "AgentPaneLog.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -143,17 +144,21 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
-        // Dedup the multi-window fan-out. `/restart` arrives via
-        // `_dispatchRestartAgentStackToPage`, which calls
+        // Dedup the multi-window fan-out. `/restart` (and auth-recovery)
+        // arrives via `_dispatchRestartAgentStackToPage`, which calls
         // `OnRestartAgentStackRequested` (and thus `Restart()`) on EVERY
         // window's UI thread. Without this guard, window B's Restart kills
         // window A's just-spawned master, breaking the freshly-reopened
-        // helper in window A. 500 ms is comfortably larger than the typical
-        // UI-thread RunAsync hop (the 07:32 log showed a 240 ms gap between
-        // windows) and tiny compared to any human-driven legitimate "two
-        // restarts in a row".
-        if (_lastRespawn &&
-            std::chrono::steady_clock::now() - *_lastRespawn < std::chrono::milliseconds(500))
+        // helper in window A. Key off the last *restart request*, NOT
+        // `_lastRespawn`: the initial master spawn also stamps `_lastRespawn`,
+        // so keying on it would wrongly suppress a legitimate restart that
+        // fires shortly after the master first comes up (e.g. an auth-recovery
+        // restart against a freshly poisoned master). 500 ms is comfortably
+        // larger than the typical UI-thread RunAsync hop (the 07:32 log showed
+        // a 240 ms gap between windows) and tiny compared to any human- or
+        // recovery-driven legitimate "two restarts in a row".
+        if (_lastRestartRequest &&
+            std::chrono::steady_clock::now() - *_lastRestartRequest < std::chrono::milliseconds(500))
         {
             return true;
         }
@@ -176,7 +181,14 @@ namespace winrt::TerminalApp::implementation
         // holding refs for the panes it's about to close-and-reopen, and
         // the matching ReleasePane / AcquirePane pair will balance out.
         _CleanupLocked();
-        return _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs);
+        const bool spawned = _SpawnLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs);
+        if (spawned)
+        {
+            // Stamp the restart (not just the spawn) so the fan-out dedup above
+            // suppresses only follow-up duplicate restarts, never the first.
+            _lastRestartRequest = std::chrono::steady_clock::now();
+        }
+        return spawned;
     }
 
     bool SharedWta::Restart(const std::wstring_view wtaPath,
@@ -408,6 +420,9 @@ namespace winrt::TerminalApp::implementation
         // Order matters: drop the job FIRST so KILL_ON_JOB_CLOSE
         // terminates wta + descendants while we still hold a process
         // handle that lets us observe the termination if needed.
+        // Deliberate teardown: the master is reaped silently (job close, no
+        // console event), so it can't log its own death — record it here.
+        _agentPaneLog("releasing wta-master pid=" + std::to_string(_pid) + " (deliberate teardown via KILL_ON_JOB_CLOSE)");
         _job.reset();
         _process.reset();
         if (_waitHandle)
@@ -459,6 +474,13 @@ namespace winrt::TerminalApp::implementation
             // ran. Nothing to do.
             return;
         }
+        // The master exited on its own — crash, OOM, or an external kill
+        // (taskkill /F, Task Manager). It can't log its own hard death from
+        // inside, but this wait callback (the parent observing it) can. This
+        // is the external observer that makes otherwise-silent master deaths
+        // diagnosable; deliberate teardowns never reach here (they reset
+        // _process first, so the validity check above bails).
+        _agentPaneLog("wta-master exited unexpectedly pid=" + std::to_string(observedPid) + " (crash/OOM/external kill — observed by wait callback)");
         _job.reset();
         _process.reset();
         if (_waitHandle)

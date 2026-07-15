@@ -99,6 +99,8 @@ public:
     void SetOptionalFeatures(winrt::Microsoft::Terminal::Core::ICoreSettings settings);
     bool IsXtermBracketedPasteModeEnabled() const noexcept;
     std::wstring_view GetWorkingDirectory() noexcept;
+    std::wstring_view GetShellName() const noexcept;
+    std::wstring_view GetShellVersion() const noexcept;
 
     til::point GetViewportRelativeCursorPosition() const noexcept;
 
@@ -152,6 +154,7 @@ public:
     void CopyToClipboard(wil::zwstring_view content) override;
     void SetTaskbarProgress(const ::Microsoft::Console::VirtualTerminal::DispatchTypes::TaskbarState state, const size_t progress) override;
     void SetWorkingDirectory(std::wstring_view uri) override;
+    void SetShellType(std::wstring_view shellName, std::wstring_view shellVersion) override;
     void PlayMidiNote(const int noteNumber, const int velocity, const std::chrono::microseconds duration) override;
     void ShowWindow(bool showOrHide) override;
     void UseAlternateScreenBuffer(const TextAttribute& attrs) override;
@@ -166,6 +169,7 @@ public:
     void SearchMissingCommand(const std::wstring_view command) override;
 
     void NotifyVtSequence(const std::wstring_view sequence) override;
+    void ShowNotification(const std::wstring_view title, const std::wstring_view body) override;
 
 #pragma endregion
 
@@ -236,6 +240,7 @@ public:
     void CompletionsChangedCallback(std::function<void(std::wstring_view, unsigned int)> pfn) noexcept;
     void SetSearchMissingCommandCallback(std::function<void(std::wstring_view, const til::CoordType)> pfn) noexcept;
     void SetVtSequenceCallback(std::function<void(std::wstring_view)> pfn) noexcept;
+    void SetShowNotificationCallback(std::function<void(std::wstring_view, std::wstring_view)> pfn) noexcept;
     void SetClearQuickFixCallback(std::function<void()> pfn) noexcept;
     void SetWindowSizeChangedCallback(std::function<void(int32_t, int32_t)> pfn) noexcept;
     void SetSearchHighlights(const std::vector<til::point_span>& highlights) noexcept;
@@ -345,6 +350,7 @@ private:
     std::function<void(std::wstring_view, unsigned int)> _pfnCompletionsChanged;
     std::function<void(std::wstring_view, const til::CoordType)> _pfnSearchMissingCommand;
     std::function<void(std::wstring_view)> _pfnVtSequence;
+    std::function<void(std::wstring_view, std::wstring_view)> _pfnShowNotification;
     std::function<void()> _pfnClearQuickFix;
     std::function<void(int32_t, int32_t)> _pfnWindowSizeChanged;
 
@@ -382,6 +388,8 @@ private:
 
     std::wstring _answerbackMessage;
     std::wstring _workingDirectory;
+    std::wstring _shellName;
+    std::wstring _shellVersion;
     bool _highContrastMode = false;
 
     // This default fake font value is only used to check if the font is a raster font.

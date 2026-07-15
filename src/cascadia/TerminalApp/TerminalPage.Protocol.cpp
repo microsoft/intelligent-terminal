@@ -153,6 +153,8 @@ namespace winrt::TerminalApp::implementation
         if (const auto termControl = effectivePane->GetTerminalControl())
         {
             result.Cwd = termControl.WorkingDirectory();
+            result.Shell = termControl.ShellName();
+            result.ShellVersion = termControl.ShellVersion();
         }
 
         result.Pid = _getPidFromPane(effectivePane);
@@ -256,6 +258,8 @@ namespace winrt::TerminalApp::implementation
                         info.Rows = termControl.ViewHeight();
                         info.Columns = 0;
                         info.Cwd = termControl.WorkingDirectory();
+                        info.Shell = termControl.ShellName();
+                        info.ShellVersion = termControl.ShellVersion();
                     }
                 }
 
@@ -562,6 +566,43 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::TabCreationResult result{};
 
+        // A protocol create_tab that carries a commandline but no profile would
+        // otherwise resolve (via CascadiaSettings::GetProfileForArgs) to the
+        // "Defaults" profile, whose panes are auto-closed on *any* process exit
+        // — even a non-zero one. So a command that runs and exits (e.g. a
+        // misconfigured delegate agent that prints "'x' is not recognized" and
+        // exits with code 1) flashes the tab shut before the user can read the
+        // error. Pin a real profile instead so its closeOnExit (automatic/
+        // graceful) keeps a non-zero exit visible, exactly like a normally-
+        // opened tab.
+        //
+        // Prefer the profile of the pane the user is currently working in, so a
+        // delegate/agent tab opened from e.g. a WSL/Ubuntu session matches that
+        // session (same intent as PR #366); fall back to the user's global
+        // default profile when there is no focused terminal. Either way this is
+        // never left empty — that's what re-introduces the auto-closing
+        // "Defaults" profile.
+        //
+        // Scope this narrowly to the case that actually hits the bug: a
+        // commandline with no explicit profile selection. A caller that omits
+        // the commandline already lands on the user's real default profile (not
+        // the auto-closing "Defaults"), and one that asked for a profile by name
+        // or index must keep it — so those are left untouched. If the resolved
+        // GUID somehow can't be matched, GetProfileForArgs falls back to the
+        // same "Defaults" profile as before (no regression).
+        if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
+        {
+            auto profileGuid = _settings.GlobalSettings().DefaultProfile();
+            if (const auto focusedTab = _GetFocusedTabImpl())
+            {
+                if (const auto focusedProfile = focusedTab->GetFocusedProfile())
+                {
+                    profileGuid = focusedProfile.Guid();
+                }
+            }
+            args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
+        }
+
         auto pane = _MakePane(args, nullptr);
         if (!pane)
             co_return result;
@@ -727,6 +768,21 @@ namespace winrt::TerminalApp::implementation
             const auto paneId = foundPane->Id();
             if (!paneId)
                 co_return false;
+
+            // Bring this window to the foreground. `focus_pane` can target a
+            // pane that lives in a *different* window than the one driving the
+            // request (e.g. Enter on a session in window B whose pane lives in
+            // window A). The `_SetFocusedTab` / `FocusPane` calls below only
+            // move XAML focus *within* this window — they don't activate the OS
+            // window, and when the target pane is already the focused pane here
+            // they no-op entirely. Without an explicit summon the window would
+            // then stay in the background whenever it happened to already have
+            // the target pane focused, while working only when focus actually
+            // transitioned (an accidental side effect). Raising
+            // `SummonWindowRequested` mirrors the desktop-notification
+            // activation path (TabManagement.cpp) and makes `focus_pane`
+            // reliably surface the window regardless of its prior focus state.
+            SummonWindowRequested.raise(nullptr, nullptr);
 
             _SetFocusedTab(tab);
 

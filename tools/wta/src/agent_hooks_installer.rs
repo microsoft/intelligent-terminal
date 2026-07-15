@@ -694,7 +694,7 @@ fn install_for_claude(home: &Path) {
 /// Trust step: after install, the user must run `/hooks` inside Codex
 /// to trust the plugin before any events fire. That's documented in
 /// the slice-C README; this function returns success on registration.
-fn install_for_codex(home: &Path) {
+fn install_for_codex(_home: &Path) {
     if !cli_binary_on_path(CliKind::Codex) {
         tracing::debug!(
             target: "agent_hooks",
@@ -887,7 +887,7 @@ fn install_for_copilot(home: &Path) {
 }
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
-fn install_for_gemini(home: &Path) {
+fn install_for_gemini(_home: &Path) {
     if !cli_binary_on_path(CliKind::Gemini) {
         tracing::debug!(
             target: "gemini_hooks",
@@ -2372,8 +2372,7 @@ fn matches_idempotency_substring(stdout: &str, stderr: &str, needles: &[&str]) -
         .any(|n| combined.contains(&n.to_ascii_lowercase()))
 }
 
-/// Return the discovered home directory. Mirrors `history_loader::home_dir`
-/// so behavior is consistent between the two modules.
+/// Return the discovered home directory from `USERPROFILE`/`HOME`.
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))

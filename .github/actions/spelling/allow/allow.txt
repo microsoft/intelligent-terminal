@@ -42,8 +42,10 @@ copyable
 crossterm
 Crossterm
 CWDs
+damerau
 dcs
 Dedented
+dedups
 demotable
 deselection
 desync
@@ -126,6 +128,7 @@ mojibake
 mpsc
 mru
 mrx
+msc
 mtimes
 muxer
 myproj
@@ -145,6 +148,7 @@ nsummary
 NTMTo
 ntwo
 ntx
+nullglob
 Nushell
 obra
 Oids
@@ -211,6 +215,7 @@ screenshots
 serde
 servicebus
 sessionless
+shopt
 shrx
 shtx
 sidechain
@@ -219,11 +224,13 @@ sids
 SIGKILLs
 signtool
 slnt
+spams
 splitn
 splitw
 ssh
 SSZ
 stakeholders
+strsim
 submittable
 subpage
 subpages
@@ -271,3 +278,6 @@ yeelam
 ymdhms
 ZDOTDIR
 zzzzz
+axum
+dispatchable
+slowloris

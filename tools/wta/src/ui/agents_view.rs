@@ -40,16 +40,12 @@ pub fn render(
     // up with the cursor / Enter dispatch model. Caller threads the
     // stored `app.sessions_origin_filter`.
     origin_filter: OriginFilter,
-    // True iff the session management view is waiting on its first `session/list`
-    // snapshot from master (snapshot is currently empty AND a refetch
-    // request is in flight). Without this signal we have no way to
-    // distinguish "view just opened, master hasn't responded yet" from
-    // "view loaded, there really are zero sessions" — `open_agents_view`
-    // primes `snapshot = Some(Vec::new())` so the historical
-    // `!snapshot.is_some()` heuristic for the loading shimmer is always
-    // false after PR #73. Caller (ui::layout) computes this from
-    // `tab.agents_view.refetch_in_flight && snapshot.is_empty()`.
-    awaiting_first_snapshot: bool,
+    // True while the loading shimmer should replace the list: either waiting on
+    // the first `session/list` snapshot from master (empty placeholder + a
+    // refetch in flight) OR an F5 rescan is in flight, so a refresh is visible
+    // even when the list already has rows. Caller (ui::layout) computes it from
+    // `refetch_in_flight && (snapshot.is_empty() || rescan_in_flight)`.
+    show_loading: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -175,16 +171,13 @@ pub fn render(
         "rendering agents view"
     );
 
-    // While the view is waiting on its first `session/list` snapshot from
-    // master, replace the whole list with a single shimmer-styled loading
-    // row. Showing live rows alongside a dim "loading…" hint led users to
-    // think the list was complete and dismiss the view before the snapshot
-    // arrived. The session view was just opened, master hasn't yet replied
-    // to our `session/list` refetch, and the placeholder snapshot is still
-    // the empty Vec primed by `open_agents_view_for_tab`; without this the
-    // user sees a blank list and can't tell loading from "really empty".
-    let snapshot_loading = awaiting_first_snapshot && sorted.is_empty();
-    if snapshot_loading {
+    // While loading — the first `session/list` snapshot, or an F5 rescan —
+    // replace the whole list with a single shimmer-styled loading row. Showing
+    // live rows alongside a dim "loading…" hint led users to think the list was
+    // complete and dismiss the view before the snapshot arrived; replacing the
+    // list also gives F5 an unmistakable "refreshing now" signal even when rows
+    // are already present.
+    if show_loading {
         render_left_bar(f, area.x, list_area, None);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
@@ -484,6 +477,12 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
 /// is live, and historical rows benefit because their badge area is
 /// empty.
 fn origin_prefix_for(s: &AgentSession) -> Option<String> {
+    // WSL rows get a bracketed `WSL-<distro>` tag (e.g. "[WSL-Ubuntu] ") so
+    // the user can tell in-distro sessions from host ones. WSL rows are never
+    // AgentPane, so this branch is exclusive with the one below.
+    if let crate::agent_sessions::SessionLocation::Wsl { distro } = &s.location {
+        return Some(format!("[WSL-{distro}] "));
+    }
     if s.origin == SessionOrigin::AgentPane {
         // Take the first 8 chars of the ACP/CLI session id. For real
         // sessions this is the leading group of the UUID
@@ -874,8 +873,78 @@ mod tests {
             attention_reason: None,
             log_path:         None,
             origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
         };
         assert_eq!(cli_suffix_for(&s, true),  "· codex");
         assert_eq!(cli_suffix_for(&s, false), String::new());
+    }
+
+    #[test]
+    fn origin_prefix_shows_distro_for_wsl_rows() {
+        let s = AgentSession {
+            key:              "abc".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "hi".to_string(),
+            cwd:              std::path::PathBuf::from("/home/u"),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status:           AgentStatus::Historical,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::Unknown,
+            location:         crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        };
+        assert_eq!(origin_prefix_for(&s).as_deref(), Some("[WSL-Ubuntu] "));
+    }
+
+    /// Release checklist §4 "Session states": the inline activity badge shown next to a session
+    /// row must reflect the session's status. This is the deterministic, render-layer counterpart
+    /// to the manual/live verification (a live shell copilot session that finished its turn renders
+    /// the "Idle" badge) — the picker's live-badge path can't be driven reliably end-to-end because
+    /// it needs a live shell session whose pane contends with the finicky SessionToggleButton, so
+    /// the badge TEXT is locked down here instead.
+    ///
+    /// Contract (status_badge):
+    ///   Working  -> "Active"            (running/working state)
+    ///   Attention-> "Waiting for input" (waiting-for-input state)
+    ///   Idle     -> "Idle"              (live, ready-for-next-prompt state)
+    ///   Error    -> "Error"
+    ///   Ended / Historical -> ""        (terminal/on-disk rows carry NO badge, so an Ended row is
+    ///                                     visually distinct from any live/idle row — this is why an
+    ///                                     Ended row cannot be "falsely live").
+    #[test]
+    fn status_badge_renders_expected_text_per_state() {
+        let _g = crate::test_support::lock_locale();
+        set_test_locale();
+        let mk = |status: AgentStatus| AgentSession {
+            key:              "k".to_string(),
+            cli_source:       CliSource::Copilot,
+            pane_session_id:  None,
+            window_id:        None,
+            tab_id:           None,
+            title:            "t".to_string(),
+            cwd:              std::path::PathBuf::from("."),
+            started_at:       std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status,
+            last_error:       None,
+            current_tool:     None,
+            attention_reason: None,
+            log_path:         None,
+            origin:           SessionOrigin::default(),
+            location:         crate::agent_sessions::SessionLocation::Host,
+        };
+        assert_eq!(status_badge(&mk(AgentStatus::Working)), "Active");
+        assert_eq!(status_badge(&mk(AgentStatus::Attention)), "Waiting for input");
+        assert_eq!(status_badge(&mk(AgentStatus::Idle)), "Idle");
+        assert_eq!(status_badge(&mk(AgentStatus::Error)), "Error");
+        // Terminal / on-disk rows render an empty badge — no live activity to show.
+        assert_eq!(status_badge(&mk(AgentStatus::Ended)), "");
+        assert_eq!(status_badge(&mk(AgentStatus::Historical)), "");
     }
 }

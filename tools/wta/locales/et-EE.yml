@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Tere tulemast Nutikas Terminali!"
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
-setup.title.switch_agent: "Vaheta agenti"
 setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgi
 setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Valige vaikeagent, mida soovite kasutada Nutikas Terminalis. Saate"
-setup.description.fre_line2: "avada Settings, et oma tööruumi seadistada ja konfigureerida."
 
 setup.option.install: "Installi %{agent}"
 setup.option.install_hint: "(Installitakse automaatselt)"
 setup.option.signin: "Logi sisse teenusesse %{agent}"
 setup.option.retry_detection: "Proovi uuesti"
 setup.option.retry_auth: "Olen sisse loginud — proovi uuesti ühendust luua"
-setup.option.retry_connection: "Proovi uuesti ühendust luua"
-setup.option.switch_to: "Lülitu üle: %{agent}"
 setup.status.installing: "Installimine..."
 setup.status.install_failed: "Installimine nurjus: "
 setup.status.installing_winget: " Installimine winget kaudu..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Autentimise kontrollimine..."
 auth.waiting_for_authorization: "  %{spinner} Autoriseerimise ootel..."
 auth.code_copied_hint: "  Kood kopeeritud lõikelauale — kleepige see oma brauserisse."
-auth.sign_in_prompt: "Logige sisse, et kasutada oma agenti:"
+auth.device_code_prompt: "Külastage aadressi %{url} ja sisestage kood: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Ühendage %{name}, et lubada agendi funktsioone"
-auth.button_sign_in_github: "[ Logi sisse GitHub kontoga ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Logi sisse teenusega %{name} ]"
-auth.hint_footer: "  Vajutage Enter sisselogimiseks, Esc tagasi minemiseks"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter = logi sisse · E = GitHub Enterprise · Esc = tagasi"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise'i domeen: "
+auth.enterprise_hint_footer: "  Enter = logi sisse · Esc = github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Vajutage Enter uuesti proovimiseks või Esc github.com jaoks. Levinud põhjused: valesti sisestatud või kättesaamatu domeen, aegunud kood või puudub Copilot juurdepääs sellel hostil."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Vajutage Enter uuesti proovimiseks või Esc tagasi minemiseks."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Mõtleb..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ käivitatud: %{title}"
 input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked="/"}
 input.placeholder.connecting: "ühendamine..."
 input.placeholder.disconnected: "ühendus katkestatud"
+input.image_attachments: "📎 Pildid: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N vastamiseks · muutke suurust täiskaardi jaoks]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Pole installitud — valige automaatseks installimiseks"
 agent.status.not_found: "Ei leitud"
-agent.status.detected: "Tuvastatud"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Veenduge, et %{name} on installitud ja teie PATH-is."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laadimine..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks • Esc väljumiseks)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigeerimiseks • Enter seansi käivitamiseks • Esc väljumiseks • F5 värskendamiseks)"
 agents.status.active: "Aktiivne"
 agents.status.waiting_for_input: "Ootab sisendit"
 agents.status.error: "Viga"
@@ -126,11 +121,13 @@ connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restar
 system.cancelled: "Tühistatud."
 system.no_prompt_in_flight: "Aktiivset päringut pole."
 system.authentication_failed: "Autentimine nurjus"
-system.command_copied_retry: "Käsk kopeeritud — käivitage see teises terminalis ja vajutage seejärel Enter uuesti proovimiseks"  # {Locked="Enter"}
 system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavutamist."
 system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
 system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
 system.agent_busy: "Agent on sellel vahekaardil hõivatud — oodake, kuni praegune viip lõpeb."
+system.image_clipboard_empty: "Lõikelaual pole kleepimiseks pilti."
+system.image_not_supported: "See agent ei toeta pildisisendit."
+system.image_pasted: "Pilt lisatud (%{label}). Vajutage Enter saatmiseks."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Seansi %{session_id} jätkamine..."
 system.unknown_command: "Tundmatu käsk \"%{command}\" — saadeti viibana. Loendi jaoks tippige /help."  # {Locked="/help"}
 system.busy_use_stop: "Oodake, kuni praegune viip lõpeb, või kasutage esmalt /stop."  # {Locked="/stop"}

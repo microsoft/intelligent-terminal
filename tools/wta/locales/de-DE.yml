@@ -1,9 +1,7 @@
 # Setup-Bildschirmtitel
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Willkommen bei Intelligentes Terminal!"
 setup.title.agent_missing: "Agent nicht gefunden"
 setup.title.agent_error: "Verbindung zum Agenten fehlgeschlagen"
-setup.title.switch_agent: "Agent wechseln"
 setup.title.not_available: "Agent nicht verfügbar"
 setup.title.sign_in: "Anmeldung erforderlich"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizi
 setup.subtitle.agent_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizierung. Bitte melden Sie sich über den Agent an und wählen Sie dann unten \"Ich habe mich angemeldet\" aus. Um den Agenten zu wechseln, gehen Sie zu Intelligentes Terminal-Einstellungen > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Wählen Sie die Standard-Agent-CLI aus, die Sie in Intelligentes Terminal verwenden möchten. Sie können"
-setup.description.fre_line2: "zu den Einstellungen navigieren, um Ihren Arbeitsbereich zu konfigurieren und einzurichten."
 
 setup.option.install: "%{agent} installieren"
 setup.option.install_hint: "(Wird automatisch installiert)"
 setup.option.signin: "Bei %{agent} anmelden"
 setup.option.retry_detection: "Erneut versuchen"
 setup.option.retry_auth: "Ich habe mich angemeldet — erneut verbinden"
-setup.option.retry_connection: "Erneut verbinden"
-setup.option.switch_to: "Wechseln zu %{agent}"
 setup.status.installing: "Installation läuft..."
 setup.status.install_failed: "Installation fehlgeschlagen: "
 setup.status.installing_winget: " Installation über winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent-%{name} — "
 auth.checking_authentication: "  %{spinner} Authentifizierung wird überprüft..."
 auth.waiting_for_authorization: "  %{spinner} Warten auf Autorisierung..."
 auth.code_copied_hint: "  Code in die Zwischenablage kopiert — fügen Sie ihn in Ihren Browser ein."
-auth.sign_in_prompt: "Melden Sie sich an, um Ihren Agenten zu verwenden:"
+auth.device_code_prompt: "Besuchen Sie %{url} und geben Sie den Code ein: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  %{name} verbinden, um Agentfunktionen zu aktivieren"
-auth.button_sign_in_github: "[ Mit GitHub anmelden ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Mit %{name} anmelden ]"
-auth.hint_footer: "  Drücken Sie Enter zum Anmelden, Esc zum Zurückkehren"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter zum Anmelden · E für GitHub Enterprise · Esc zum Zurückgehen"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-Domäne: "
+auth.enterprise_hint_footer: "  Enter zum Anmelden · Esc für github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Drücken Sie Enter, um es erneut zu versuchen, oder Esc für github.com. Häufige Ursachen: eine falsch eingegebene oder nicht erreichbare Domäne, ein abgelaufener Code oder kein Copilot-Zugriff auf diesem Host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Drücken Sie Enter, um es erneut zu versuchen, oder Esc zum Zurückgehen."  # {Locked="Enter","Esc"}
 
 # ── Chatansicht (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Denke nach…"
@@ -58,6 +54,8 @@ chat.turn_executed: "→ ausgeführt: %{title}"
 input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}
 input.placeholder.connecting: "Verbindung wird hergestellt..."
 input.placeholder.disconnected: "Getrennt"
+# Summary of attached images; keep 📎 and %{items} verbatim.
+input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Befehlspopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstrich-Befehlspräfix, muss ASCII bleiben
@@ -93,9 +91,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N zum Antworten · Größe ändern für vollständige Karte]"  # {Locked="Y/N"}
 
 # ── Agentstatus (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nicht installiert — auswählen, um automatisch zu installieren"
 agent.status.not_found: "Nicht gefunden"
-agent.status.detected: "Erkannt"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - Toolnamen und Befehl, unverändert beibehalten
 agent.install.running_winget: "Wird ausgeführt: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget konnte nicht gestartet werden: %{error}"
@@ -106,8 +102,8 @@ agent.custom.auth_hint: "Stellen Sie sicher, dass %{name} installiert und im PAT
 
 # ── Agentenansicht (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laden..."
-# {Locked="Enter","Esc","↑","↓"} - Tastenkombinationen, nicht übersetzen
-agents.footer_hint: "(↑ ↓ navigieren • Enter Sitzung starten • Esc beenden)"
+# {Locked="Enter","Esc","F5","↑","↓"} - Tastenkombinationen, nicht übersetzen
+agents.footer_hint: "(↑ ↓ navigieren • Enter Sitzung starten • Esc beenden • F5 aktualisieren)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Wartet auf Eingabe"
 agents.status.error: "Fehler"
@@ -126,11 +122,14 @@ connection.lost: "Die Verbindung mit dem Agenten wurde getrennt. Geben Sie /rest
 system.cancelled: "Abgebrochen."
 system.no_prompt_in_flight: "Kein Prompt aktiv."
 system.authentication_failed: "Authentifizierung fehlgeschlagen"
-system.command_copied_retry: "Befehl kopiert — führen Sie ihn in einem anderen Terminal aus und drücken Sie Enter zum Wiederholen"  # {Locked="Enter"}
 system.stopped_max_tokens: "Die Antwort wurde abgeschnitten, nachdem das Ausgabelimit des Modells erreicht wurde."
 system.stopped_max_turn_requests: "Der Agent hat angehalten, nachdem sein Anfragelimit für diesen Zug erreicht wurde."
 system.stopped_refusal: "Der Agent hat es abgelehnt, mit dieser Anfrage fortzufahren."
 system.agent_busy: "Der Agent ist auf dieser Registerkarte beschäftigt — warten Sie, bis der aktuelle Prompt abgeschlossen ist."
+# Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
+system.image_clipboard_empty: "Kein Bild in der Zwischenablage zum Einfügen."
+system.image_not_supported: "Dieser Agent unterstützt keine Bildeingabe."
+system.image_pasted: "Bild angehängt (%{label}). Drücken Sie Enter zum Senden."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Sitzung %{session_id} wird fortgesetzt..."
 system.unknown_command: "Unbekannter Befehl \"%{command}\" — als Prompt gesendet. Geben Sie /help ein, um die Liste anzuzeigen."
 system.busy_use_stop: "Warten Sie, bis der aktuelle Prompt abgeschlossen ist, oder verwenden Sie zuerst /stop."

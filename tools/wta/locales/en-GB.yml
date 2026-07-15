@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Welcome to Intelligent Terminal!"
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
-setup.title.switch_agent: "Switch agent"
 setup.title.not_available: "Agent not available"
 setup.title.sign_in: "Sign in required"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Your agent \"%{agent}\" requires authentication. F
 setup.subtitle.agent_auth: "Your agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Choose the default agent you would like to use in Intelligent Terminal. You can"
-setup.description.fre_line2: "navigate to Settings to configure and set up your workspace."
 
 setup.option.install: "Install %{agent}"
 setup.option.install_hint: "(Will be installed automatically)"
 setup.option.signin: "Sign in to %{agent}"
 setup.option.retry_detection: "Try again"
 setup.option.retry_auth: "I've signed in — try connecting again"
-setup.option.retry_connection: "Try connecting again"
-setup.option.switch_to: "Switch to %{agent}"
 setup.status.installing: "Installing..."
 setup.status.install_failed: "Install failed: "
 setup.status.installing_winget: " Installing via winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Checking authentication..."
 auth.waiting_for_authorization: "  %{spinner} Waiting for authorisation..."
 auth.code_copied_hint: "  Code copied to clipboard — paste it in your browser."
-auth.sign_in_prompt: "Sign in to use your agent:"
+auth.device_code_prompt: "Visit %{url} and enter code: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Connect %{name} to enable agent features"
-auth.button_sign_in_github: "[ Sign in with GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Sign in with %{name} ]"
-auth.hint_footer: "  Press Enter to sign in, Esc to go back"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter to sign in · E for GitHub Enterprise · Esc to go back"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise domain: "
+auth.enterprise_hint_footer: "  Enter to sign in · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Press Enter to retry, or Esc for github.com. Common causes: a mistyped or unreachable domain, an expired code, or no Copilot access on that host."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ executed: %{title}"
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 input.placeholder.disconnected: "disconnected"
+input.image_attachments: "📎 Images: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N to answer · resize for full card]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Not installed — select to install automatically"
 agent.status.not_found: "Not found"
-agent.status.detected: "Detected"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh)"
 agents.status.active: "Active"
 agents.status.waiting_for_input: "Waiting for input"
 agents.status.error: "Error"
@@ -126,11 +121,13 @@ connection.lost: "Connection to the agent was lost. Type /restart to reconnect."
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"
-system.command_copied_retry: "Command copied — run it in another terminal, then press Enter to retry"  # {Locked="Enter"}
 system.stopped_max_tokens: "The response was cut off after reaching the model's output limit."
 system.stopped_max_turn_requests: "The agent stopped after reaching its request limit for this turn."
 system.stopped_refusal: "The agent declined to continue with this request."
 system.agent_busy: "Agent is busy on this tab — wait for the current prompt to finish."
+system.image_clipboard_empty: "No image on the clipboard to paste."
+system.image_not_supported: "This agent doesn't support image input."
+system.image_pasted: "Image attached (%{label}). Press Enter to send."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Resuming session %{session_id}..."
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."

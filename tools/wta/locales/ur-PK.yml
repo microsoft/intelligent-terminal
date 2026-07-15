@@ -1,9 +1,7 @@
 # سیٹ اپ اسکرین عنوانات
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "ذہین ٹرمینل میں خوش آمدید!"
 setup.title.agent_missing: "ایجنٹ نہیں ملا"
 setup.title.agent_error: "ایجنٹ کنیکشن ناکام"
-setup.title.switch_agent: "ایجنٹ تبدیل کریں"
 setup.title.not_available: "ایجنٹ دستیاب نہیں ہے"
 setup.title.sign_in: "سائن ان ضروری ہے"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "آپ کے ایجنٹ \"%{agent}\" کو تصدیق 
 setup.subtitle.agent_auth: "آپ کے ایجنٹ \"%{agent}\" کو تصدیق کی ضرورت ہے۔ براہ کرم ایجنٹ کے ذریعے سائن ان کریں، پھر نیچے \"میں نے سائن ان کر لیا\" منتخب کریں۔ ایجنٹ تبدیل کرنے کے لیے ذہین ٹرمینل Settings > Agent پر جائیں۔"
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "ذہین ٹرمینل میں استعمال کرنے کے لیے ڈیفالٹ ایجنٹ منتخب کریں۔ آپ"
-setup.description.fre_line2: "اپنی ورک اسپیس کو ترتیب دینے اور سیٹ اپ کرنے کے لیے Settings پر جا سکتے ہیں۔"
 
 setup.option.install: "%{agent} انسٹال کریں"
 setup.option.install_hint: "(خودکار طور پر انسٹال ہو جائے گا)"
 setup.option.signin: "%{agent} میں سائن ان کریں"
 setup.option.retry_detection: "دوبارہ کوشش کریں"
 setup.option.retry_auth: "میں نے سائن ان کر لیا — دوبارہ جوڑنے کی کوشش کریں"
-setup.option.retry_connection: "دوبارہ جوڑنے کی کوشش کریں"
-setup.option.switch_to: "%{agent} پر سوئچ کریں"
 setup.status.installing: "انسٹال ہو رہا ہے..."
 setup.status.install_failed: "انسٹال ناکام: "
 setup.status.installing_winget: " winget کے ذریعے انسٹال ہو رہا ہے..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "ایجنٹ %{name} — "
 auth.checking_authentication: "  %{spinner} تصدیق کی جانچ ہو رہی ہے..."
 auth.waiting_for_authorization: "  %{spinner} اجازت کا انتظار ہے..."
 auth.code_copied_hint: "  کوڈ کلپ بورڈ پر کاپی ہو گیا — اسے اپنے براؤزر میں پیسٹ کریں۔"
-auth.sign_in_prompt: "اپنا ایجنٹ استعمال کرنے کے لیے سائن ان کریں:"
+auth.device_code_prompt: "%{url} پر جائیں اور کوڈ درج کریں: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  ایجنٹ کی خصوصیات فعال کرنے کے لیے %{name} کو جوڑیں"
-auth.button_sign_in_github: "[ GitHub سے سائن ان کریں ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ %{name} سے سائن ان کریں ]"
-auth.hint_footer: "  سائن ان کے لیے Enter دبائیں، واپس جانے کے لیے Esc دبائیں"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  سائن ان کرنے کے لیے Enter · GitHub Enterprise کے لیے E · واپس جانے کے لیے Esc"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  انٹرپرائز ڈومین: "
+auth.enterprise_hint_footer: "  سائن ان کرنے کے لیے Enter · github.com کے لیے Esc"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  دوبارہ کوشش کرنے کے لیے Enter دبائیں، یا github.com کے لیے Esc۔ عام وجوہات: غلط ٹائپ شدہ یا ناقابل رسائی ڈومین، میعاد ختم شدہ کوڈ، یا اس ہوسٹ پر Copilot تک رسائی نہ ہونا۔"  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  دوبارہ کوشش کرنے کے لیے Enter دبائیں، یا واپس جانے کے لیے Esc۔"  # {Locked="Enter","Esc"}
 
 # ── چیٹ منظر (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "سوچ رہا ہے…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ پر عمل کر دیا گیا: %{title}"
 input.placeholder.connected: "کچھ بھی پوچھیں، / کمانڈز کے لیے.."  # {Locked="/"}
 input.placeholder.connecting: "جڑ رہا ہے..."
 input.placeholder.disconnected: "منقطع"
+input.image_attachments: "📎 تصاویر: %{items}"  # {Locked="📎","%{items}"}
 
 # ── کمانڈ پاپ اپ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - سلیش-کمانڈ پریفکس، ASCII ہونا ضروری ہے
@@ -105,9 +102,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N جواب دیں · مکمل کارڈ کے لیے سائز تبدیل کریں]"  # {Locked="Y/N"}
 
 # ── ایجنٹ حالت (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "انسٹال نہیں ہے — خودکار انسٹال کے لیے منتخب کریں"
 agent.status.not_found: "نہیں ملا"
-agent.status.detected: "شناخت ہو گئی"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - ٹول کے نام اور کمانڈ، بالکل ویسے ہی چلائیں
 agent.install.running_winget: "چل رہا ہے: winget install GitHub.Copilot"
 agent.install.launch_failed: "winget شروع کرنے میں ناکامی: %{error}"
@@ -118,8 +113,8 @@ agent.custom.auth_hint: "یقینی بنائیں کہ %{name} انسٹال ہے 
 
 # ── ایجنٹ منظر (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "لوڈ ہو رہا ہے..."
-# {Locked="Enter","Esc","↑","↓"} - کلید کے مجموعے، ترجمہ نہ کریں
-agents.footer_hint: "(↑ ↓ نیویگیشن • Enter سیشن شروع کریں • Esc باہر نکلیں)"
+# {Locked="Enter","Esc","F5","↑","↓"} - کلید کے مجموعے، ترجمہ نہ کریں
+agents.footer_hint: "(↑ ↓ نیویگیشن • Enter سیشن شروع کریں • Esc باہر نکلیں • F5 ریفریش کریں)"
 agents.status.active: "فعال"
 agents.status.waiting_for_input: "ان پٹ کا انتظار"
 agents.status.error: "خرابی"
@@ -138,11 +133,13 @@ connection.lost: "ایجنٹ سے کنیکشن ختم ہو گیا۔ دوبارہ
 system.cancelled: "منسوخ کیا گیا۔"
 system.no_prompt_in_flight: "کوئی پرامپٹ زیر عمل نہیں ہے۔"
 system.authentication_failed: "تصدیق ناکام"
-system.command_copied_retry: "کمانڈ کاپی ہو گئی — اسے دوسرے ٹرمینل میں چلائیں، پھر دوبارہ کوشش کے لیے Enter دبائیں"  # {Locked="Enter"}
 system.stopped_max_tokens: "ماڈل کی آؤٹ پٹ حد تک پہنچنے کے بعد جواب کاٹ دیا گیا۔"
 system.stopped_max_turn_requests: "اس باری کے لیے اپنی درخواست کی حد تک پہنچنے کے بعد ایجنٹ رک گیا۔"
 system.stopped_refusal: "ایجنٹ نے اس درخواست کو جاری رکھنے سے انکار کر دیا۔"
 system.agent_busy: "اس ٹیب پر Agent مصروف ہے — موجودہ پرامپٹ ختم ہونے تک انتظار کریں۔"
+system.image_clipboard_empty: "پیسٹ کرنے کے لیے کلپ بورڈ پر کوئی تصویر نہیں ہے۔"
+system.image_not_supported: "یہ ایجنٹ تصویری ان پٹ کی معاونت نہیں کرتا۔"
+system.image_pasted: "تصویر منسلک ہو گئی (%{label})۔ بھیجنے کے لیے Enter دبائیں۔"  # {Locked="%{label}","Enter"}
 system.resuming_session: "سیشن %{session_id} دوبارہ شروع کیا جا رہا ہے..."
 system.unknown_command: "نامعلوم کمانڈ \"%{command}\" — پرامپٹ کے طور پر بھیجی گئی۔ فہرست کے لیے /help ٹائپ کریں۔"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "موجودہ پرامپٹ ختم ہونے تک انتظار کریں، یا پہلے /stop کریں۔"  # {Locked="/stop"} — slash-command name.

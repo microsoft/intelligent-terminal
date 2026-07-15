@@ -139,6 +139,14 @@ impl ShellManager {
         // Create in background so it doesn't steal focus from wta's TUI
         params.insert("background".into(), true.into());
 
+        if let Ok(active) = self.wt_get_active_pane().await {
+            if let Some(profile) =
+                crate::coordinator::resolve_agent_profile(None, Some(&active))
+            {
+                params.insert("profile".into(), profile.into());
+            }
+        }
+
         let result = wt
             .request("create_tab", serde_json::Value::Object(params))
             .await?;
@@ -457,10 +465,16 @@ impl ShellManager {
     }
 
     /// List panes in a tab.
-    pub async fn wt_list_panes(&self, tab_id: &str) -> anyhow::Result<serde_json::Value> {
-        self.wt()?
-            .request("list_panes", serde_json::json!({ "tab_id": tab_id }))
-            .await
+    pub async fn wt_list_panes(
+        &self,
+        tab_id: &str,
+        window_id: Option<&str>,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut params = serde_json::json!({ "tab_id": tab_id });
+        if let Some(w) = window_id {
+            params["window_id"] = serde_json::Value::String(w.to_string());
+        }
+        self.wt()?.request("list_panes", params).await
     }
 
     /// Create a new tab in WT. Returns the raw response JSON.
@@ -469,6 +483,7 @@ impl ShellManager {
         commandline: Option<&str>,
         cwd: Option<&str>,
         title: Option<&str>,
+        profile: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
         if let Some(cmd) = commandline {
@@ -479,6 +494,9 @@ impl ShellManager {
         }
         if let Some(t) = title {
             params.insert("title".into(), t.into());
+        }
+        if let Some(p) = profile {
+            params.insert("profile".into(), p.into());
         }
         self.wt()?
             .request("create_tab", serde_json::Value::Object(params))
@@ -493,6 +511,7 @@ impl ShellManager {
         cwd: Option<&str>,
         direction: Option<&str>,
         size: Option<f64>,
+        profile: Option<&str>,
     ) -> anyhow::Result<serde_json::Value> {
         let mut params = serde_json::Map::new();
         params.insert("session_id".into(), pane_id.into());
@@ -507,6 +526,9 @@ impl ShellManager {
         }
         if let Some(s) = size {
             params.insert("size".into(), s.into());
+        }
+        if let Some(p) = profile {
+            params.insert("profile".into(), p.into());
         }
         self.wt()?
             .request("split_pane", serde_json::Value::Object(params))

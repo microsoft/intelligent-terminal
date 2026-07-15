@@ -56,21 +56,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     // Blank line
     lines.push(Line::from(""));
 
-    // Description for FRE
-    if setup.reason == crate::app::SetupReason::FirstRun
-        || setup.reason == crate::app::SetupReason::SwitchAgent
-    {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", t!("setup.description.fre_line1")),
-            DIM_TEXT,
-        )));
-        lines.push(Line::from(Span::styled(
-            format!("  {}", t!("setup.description.fre_line2")),
-            DIM_TEXT,
-        )));
-        lines.push(Line::from(""));
-    }
-
     // Info messages (e.g. "Copied to clipboard") — shown before options
     if !setup.install_in_progress && setup.install_error.is_none() && !setup.install_log.is_empty() {
         for (i, log_line) in setup.install_log.iter().enumerate() {
@@ -91,17 +76,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         let is_selected = i == setup.selected_index;
 
         let (label, status_text) = match opt {
-            SetupOption::SelectAgent { agent } => {
-                let is_installing = setup.install_in_progress
-                    && agent.can_auto_install()
-                    && !agent.cli_found;
-                let status = if is_installing {
-                    format!("  {} {}", spinner_char, t!("setup.status.installing"))
-                } else {
-                    format!("  ({})", agent.status_label())
-                };
-                (agent.display_name.clone(), status)
-            }
             SetupOption::Install { display_name, .. } => {
                 let status = if setup.install_in_progress {
                     format!("  {} {}", spinner_char, t!("setup.status.installing"))
@@ -113,24 +87,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             SetupOption::SignIn { display_name, .. } => {
                 (t!("setup.option.signin", agent = display_name.as_str()).into_owned(), String::new())
             }
-            SetupOption::SwitchAgent { agent } => (
-                t!("setup.option.switch_to", agent = agent.display_name.as_str()).into_owned(),
-                format!("  ({})", agent.status_label()),
-            ),
             SetupOption::Retry => {
                 let label = match setup.reason {
                     crate::app::SetupReason::AgentMissing => t!("setup.option.retry_detection").into_owned(),
                     crate::app::SetupReason::AgentError => t!("setup.option.retry_auth").into_owned(),
-                    _ => t!("setup.option.retry_connection").into_owned(),
                 };
                 (label, String::new())
             }
         };
 
-        let is_installing_select = matches!(opt, SetupOption::SelectAgent { ref agent } if
-            setup.install_in_progress && agent.can_auto_install() && !agent.cli_found);
-        let is_installing_opt = is_installing_select
-            || (matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress);
+        let is_installing_opt = matches!(opt, SetupOption::Install { .. }) && setup.install_in_progress;
         let status_style = if is_installing_opt {
             Style::new().fg(Color::Yellow)
         } else if is_selected {

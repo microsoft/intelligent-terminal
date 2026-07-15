@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Dobrodošli v Inteligentni Terminal!"
 setup.title.agent_missing: "Agenta ni mogoče najti"
 setup.title.agent_error: "Povezava z agentom ni uspela"
-setup.title.switch_agent: "Spremeni agenta"
 setup.title.not_available: "Agent ni na voljo"
 setup.title.sign_in: "Zahtevana je prijava"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristn
 setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek agenta in nato spodaj izberite \"Prijavil/a sem se\". Za zamenjavo agenta pojdite v Inteligentni Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Izberite privzetega agenta, ki ga želite uporabljati v Inteligentni Terminal. Lahko"
-setup.description.fre_line2: "odprete Settings za konfiguracijo delovnega prostora."
 
 setup.option.install: "Ponovna namestitev %{agent}"
 setup.option.install_hint: "(Nameščen bo samodejno)"
 setup.option.signin: "Prijava v %{agent}"
 setup.option.retry_detection: "Poskusite znova"
 setup.option.retry_auth: "Prijavil/a sem se — poskusite se znova povezati"
-setup.option.retry_connection: "Poskusite se znova povezati"
-setup.option.switch_to: "Preklopi na %{agent}"
 setup.status.installing: "Nameščanje..."
 setup.status.install_failed: "Namestitev ni uspela: "
 setup.status.installing_winget: " Nameščanje prek winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "CLI agenta %{name} — "
 auth.checking_authentication: "  %{spinner} Preverjanje pristnosti..."
 auth.waiting_for_authorization: "  %{spinner} Čakanje na avtorizacijo..."
 auth.code_copied_hint: "  Koda kopirana v odložišče — prilepite jo v brskalnik."
-auth.sign_in_prompt: "Prijavite se za uporabo agenta:"
+auth.device_code_prompt: "Obiščite %{url} in vnesite kodo: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Povežite %{name} za omogočanje funkcij agenta"
-auth.button_sign_in_github: "[ Prijava z GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prijava z %{name} ]"
-auth.hint_footer: "  Pritisnite Enter za prijavo, Esc za vrnitev"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter za prijavo · E za GitHub Enterprise · Esc za nazaj"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domena GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter za prijavo · Esc za github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pritisnite Enter za ponovni poskus ali Esc za github.com. Pogosti vzroki: napačno vnesena ali nedosegljiva domena, potekla koda ali brez dostopa Copilot na tem gostitelju."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pritisnite Enter za ponovni poskus ali Esc za nazaj."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ izvedeno: %{title}"
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}
 input.placeholder.connecting: "povezovanje..."
 input.placeholder.disconnected: "prekinjeno"
+input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -101,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N za odgovor · spremenite velikost za celotno kartico]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Ni nameščen — izberite za samodejno namestitev"
 agent.status.not_found: "Ni najden"
-agent.status.detected: "Zaznan"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -114,8 +109,8 @@ agent.custom.auth_hint: "Prepričajte se, da je %{name} nameščen in v PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Nalaganje..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje • Esc za izhod)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje • Esc za izhod • F5 za osvežitev)"
 agents.status.active: "Aktivno"
 agents.status.waiting_for_input: "Čaka na vnos"
 agents.status.error: "Napaka"
@@ -134,11 +129,13 @@ connection.lost: "Povezava z agentom je bila izgubljena. Vnesite /restart za pon
 system.cancelled: "Preklicano."
 system.no_prompt_in_flight: "Nobena zahteva ni v teku."
 system.authentication_failed: "Preverjanje pristnosti ni uspelo"
-system.command_copied_retry: "Ukaz kopiran — zaženite ga v drugem terminalu, nato pritisnite Enter za ponovni poskus"  # {Locked="Enter"}
 system.stopped_max_tokens: "Odgovor je bil odrezan po dosegu izhodne omejitve modela."
 system.stopped_max_turn_requests: "Agent se je ustavil po dosegu omejitve zahtev za to potezo."
 system.stopped_refusal: "Agent je zavrnil nadaljevanje te zahteve."
 system.agent_busy: "Agent je zaposlen na tem zavihku — počakajte, da se trenutni poziv dokonča."
+system.image_clipboard_empty: "V odložišču ni slike za lepljenje."
+system.image_not_supported: "Ta agent ne podpira vnosa slik."
+system.image_pasted: "Slika priložena (%{label}). Pritisnite Enter za pošiljanje."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Nadaljevanje seje %{session_id}..."
 system.unknown_command: "Neznan ukaz \"%{command}\" — poslan kot poziv. Za seznam vnesite /help."  # {Locked="/help"}
 system.busy_use_stop: "Počakajte, da se trenutni poziv dokonča, ali najprej uporabite /stop."  # {Locked="/stop"}

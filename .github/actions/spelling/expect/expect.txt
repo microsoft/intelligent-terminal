@@ -11,6 +11,7 @@ ACL'd
 acp
 actctx
 ACTCTXW
+activedir
 ADDALIAS
 ADDREF
 ADDSTRING
@@ -181,6 +182,7 @@ clsids
 cmatrix
 cmder
 CMDEXT
+cmdrecall
 cmh
 CMOUSEBUTTONS
 Cmts
@@ -437,6 +439,8 @@ defterm
 DELAYLOAD
 DELETEONRELEASE
 depersist
+depl
+deploit
 deprioritized
 devicecode
 Dext
@@ -591,6 +595,8 @@ FORCEONFEEDBACK
 FRAMECHANGED
 fre
 Free'd
+frob
+frobnicate
 frontends
 fsanitize
 FSINFOCLASS
@@ -606,6 +612,7 @@ fwdecl
 fwe
 fzf
 gci
+gco
 gcx
 gdi
 gdip
@@ -680,6 +687,7 @@ Greyscale
 gridline
 gset
 gsl
+gti
 guc
 GUIDATOM
 GValue
@@ -689,6 +697,7 @@ gwsz
 HABCDEF
 Hackathon
 HALTCOND
+handrolled
 HANGEUL
 hardlinks
 hashalg
@@ -1322,6 +1331,7 @@ propsys
 PROPTITLE
 propvar
 propvariant
+proxyable
 psa
 PSECURITY
 pseudoconsole
@@ -1559,6 +1569,7 @@ sln
 slnf
 slnx
 slpit
+SLU
 SManifest
 SMARTQUOTE
 SMTO
@@ -1760,6 +1771,7 @@ UPKEY
 upss
 uregex
 URegular
+urxvt
 usebackq
 USECALLBACK
 USECOLOR
@@ -1858,6 +1870,7 @@ Widthx
 Wiggum
 wil
 WINAPI
+winapp
 winbasep
 wincon
 winconp
@@ -1939,6 +1952,8 @@ wsz
 wta
 wtai
 wtd
+wtdeployit
+wtdeployt
 WTEXT
 WTo
 wtof
@@ -1968,6 +1983,7 @@ XFG
 XFORM
 XIn
 xorg
+xqzwvbnmlkjh
 xstyler
 XTPOPSGR
 XTPUSHSGR
@@ -2040,3 +2056,12 @@ Hinnant
 LONGDATE
 MRT
 Uninstalls
+agentclientprotocol
+AHP
+boxfnonce
+INJ
+jsonrpcmsg
+reorderable
+sacp
+Takeaways
+workstream

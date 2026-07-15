@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked="Intelligent Terminal"} - product name, do not translate
-setup.title.first_run: "Velkommen til Intelligent Terminal!"
 setup.title.agent_missing: "Agenten ble ikke funnet"
 setup.title.agent_error: "Tilkoblingen til agenten mislyktes"
-setup.title.switch_agent: "Bytt agent"
 setup.title.not_available: "Agenten er ikke tilgjengelig"
 setup.title.sign_in: "Pålogging kreves"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krever autentisering. Fø
 setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krever autentisering. Logg inn via agenten, og velg deretter \"Jeg har logget inn\" nedenfor. For å bytte agent, gå til Intelligent Terminal Settings > Agent."
 
 # {Locked="Intelligent Terminal"}
-setup.description.fre_line1: "Velg standardagenten du vil bruke i Intelligent Terminal. Du kan"
-setup.description.fre_line2: "gå til Settings for å konfigurere og sette opp arbeidsområdet ditt."
 
 setup.option.install: "Installer %{agent}"
 setup.option.install_hint: "(Installeres automatisk)"
 setup.option.signin: "Logg inn på %{agent}"
 setup.option.retry_detection: "Prøv igjen"
 setup.option.retry_auth: "Jeg har logget inn — prøv å koble til igjen"
-setup.option.retry_connection: "Prøv å koble til igjen"
-setup.option.switch_to: "Bytt til %{agent}"
 setup.status.installing: "Installerer..."
 setup.status.install_failed: "Installasjonen mislyktes: "
 setup.status.installing_winget: " Installerer via winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "Agent %{name} — "
 auth.checking_authentication: "  %{spinner} Kontrollerer autentisering..."
 auth.waiting_for_authorization: "  %{spinner} Venter på autorisasjon..."
 auth.code_copied_hint: "  Koden er kopiert til utklippstavlen — lim den inn i nettleseren din."
-auth.sign_in_prompt: "Logg inn for å bruke agenten din:"
+auth.device_code_prompt: "Gå til %{url} og skriv inn koden: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Koble til %{name} for å aktivere agentfunksjoner"
-auth.button_sign_in_github: "[ Logg inn med GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Logg inn med %{name} ]"
-auth.hint_footer: "  Trykk Enter for å logge inn, Esc for å gå tilbake"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter for å logge på · E for GitHub Enterprise · Esc for å gå tilbake"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Enterprise-domene: "
+auth.enterprise_hint_footer: "  Enter for å logge på · Esc for github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Trykk Enter for å prøve på nytt, eller Esc for github.com. Vanlige årsaker: et feilskrevet eller utilgjengelig domene, en utløpt kode eller ingen Copilot-tilgang på den verten."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Trykk Enter for å prøve på nytt, eller Esc for å gå tilbake."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Tenker..."
@@ -58,6 +54,7 @@ chat.turn_executed: "→ utført: %{title}"
 input.placeholder.connected: "Spør om hva som helst, / for kommandoer.."  # {Locked="/"}
 input.placeholder.connecting: "kobler til..."
 input.placeholder.disconnected: "frakoblet"
+input.image_attachments: "📎 Bilder: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -93,9 +90,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N for å svare · endre størrelse for fullstendig kort]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Ikke installert — velg for å installere automatisk"
 agent.status.not_found: "Ikke funnet"
-agent.status.detected: "Oppdaget"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Running: winget install GitHub.Copilot"
 agent.install.launch_failed: "Failed to launch winget: %{error}"
@@ -106,8 +101,8 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laster..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte • F5 for å oppdatere)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Venter på inndata"
 agents.status.error: "Feil"
@@ -126,11 +121,13 @@ connection.lost: "Tilkoblingen til agenten gikk tapt. Skriv /restart for å kobl
 system.cancelled: "Avbrutt."
 system.no_prompt_in_flight: "Ingen forespørsel pågår."
 system.authentication_failed: "Autentisering mislyktes"
-system.command_copied_retry: "Kommando kopiert — kjør den i en annen terminal og trykk Enter for å prøve igjen"  # {Locked="Enter"}
 system.stopped_max_tokens: "Svaret ble avkortet etter at modellens utdatagrense ble nådd."
 system.stopped_max_turn_requests: "Agenten stoppet etter at forespørselsgrensen for denne runden ble nådd."
 system.stopped_refusal: "Agenten avslo å fortsette med denne forespørselen."
 system.agent_busy: "Agenten er opptatt i denne fanen — vent til gjeldende ledetekst er ferdig."
+system.image_clipboard_empty: "Det finnes ikke noe bilde på utklippstavlen å lime inn."
+system.image_not_supported: "Denne agenten støtter ikke bildeinndata."
+system.image_pasted: "Bilde vedlagt (%{label}). Trykk Enter for å sende."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Fortsetter økten %{session_id}..."
 system.unknown_command: "Ukjent kommando \"%{command}\" — sendt som ledetekst. Skriv /help for listen."
 system.busy_use_stop: "Vent til gjeldende ledetekst er ferdig, eller bruk /stop først."

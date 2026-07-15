@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Добродошли у Интелигентни Терминал!"
 setup.title.agent_missing: "Агент није пронађен"
 setup.title.agent_error: "Повезивање са агентом није успело"
-setup.title.switch_agent: "Промени агента"
 setup.title.not_available: "Агент није доступан"
 setup.title.sign_in: "Потребна је пријава"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" захтева ау
 setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" захтева аутентификацију. Пријавите се преко агента, па изаберите \"Пријавио/ла сам се\" испод. За промену агента идите у Интелигентни Терминал Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Изаберите подразумеваног агента који желите да користите у Интелигентни Терминал. Можете"
-setup.description.fre_line2: "отићи у Settings да конфигуришете и подесите свој радни простор."
 
 setup.option.install: "Инсталирај %{agent}"
 setup.option.install_hint: "(Биће инсталирано аутоматски)"
 setup.option.signin: "Пријави се у %{agent}"
 setup.option.retry_detection: "Покушај поново"
 setup.option.retry_auth: "Пријавио/ла сам се — покушај поново да се повежеш"
-setup.option.retry_connection: "Покушај поново да се повежеш"
-setup.option.switch_to: "Пребаци на %{agent}"
 setup.status.installing: "Инсталирање..."
 setup.status.install_failed: "Инсталација није успела: "
 setup.status.installing_winget: " Инсталирање преко winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "CLI агент %{name} — "
 auth.checking_authentication: "  %{spinner} Провера аутентификације..."
 auth.waiting_for_authorization: "  %{spinner} Чекање на ауторизацију..."
 auth.code_copied_hint: "  Код је копиран у међуспремник — налепите га у прегледач."
-auth.sign_in_prompt: "Пријавите се да бисте користили свог агента:"
+auth.device_code_prompt: "Посетите %{url} и унесите код: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Повежите %{name} да бисте омогућили функције агента"
-auth.button_sign_in_github: "[ Пријави се преко GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Пријави се преко %{name} ]"
-auth.hint_footer: "  Притисните Enter за пријаву, Esc за повратак"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter за пријављивање · E за GitHub Enterprise · Esc за повратак"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Домен GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter за пријављивање · Esc за github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Притисните Enter да бисте покушали поново или Esc за github.com. Уобичајени узроци: погрешно унет или недоступан домен, истекао код или нема приступа Copilot на том хосту."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Притисните Enter да бисте покушали поново или Esc за повратак."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Размишљам…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ извршено: %{title}"
 input.placeholder.connected: "Питајте било шта, / за команде.."  # {Locked="/"}
 input.placeholder.connecting: "повезивање..."
 input.placeholder.disconnected: "прекинута веза"
+input.image_attachments: "📎 Слике: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -101,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N за одговор · промените величину за пуну картицу]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Није инсталиран — изаберите за аутоматску инсталацију"
 agent.status.not_found: "Није пронађен"
-agent.status.detected: "Откривен"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Покреће се: winget install GitHub.Copilot"
 agent.install.launch_failed: "Покретање winget није успело: %{error}"
@@ -114,8 +109,8 @@ agent.custom.auth_hint: "Проверите да је %{name} инсталира
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Учитавање..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз • F5 за освежавање)"
 agents.status.active: "Активан"
 agents.status.waiting_for_input: "Чека на унос"
 agents.status.error: "Грешка"
@@ -134,11 +129,13 @@ connection.lost: "Веза са агентом је изгубљена. Унес
 system.cancelled: "Отказано."
 system.no_prompt_in_flight: "Нема активног захтева."
 system.authentication_failed: "Аутентификација није успела"
-system.command_copied_retry: "Команда је копирана — покрените је у другом терминалу, затим притисните Enter за поновни покушај"  # {Locked="Enter"}
 system.stopped_max_tokens: "Одговор је одсечен након достизања излазног ограничења модела."
 system.stopped_max_turn_requests: "Агент се зауставио након достизања ограничења захтева за овај потез."
 system.stopped_refusal: "Агент је одбио да настави са овим захтевом."
 system.agent_busy: "Агент је заузет на овој картици — сачекајте да се тренутни упит заврши."
+system.image_clipboard_empty: "Нема слике у међуспремнику за лепљење."
+system.image_not_supported: "Овај агент не подржава унос слика."
+system.image_pasted: "Слика је приложена (%{label}). Притисните Enter за слање."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Наставља се сесија %{session_id}..."
 system.unknown_command: "Непозната команда \"%{command}\" — послата као упит. Унесите /help за списак."  # {Locked="/help"}
 system.busy_use_stop: "Сачекајте да се тренутни упит заврши или прво употребите /stop."  # {Locked="/stop"}

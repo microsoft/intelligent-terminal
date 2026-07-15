@@ -698,7 +698,22 @@ namespace winrt::TerminalApp::implementation
         // wta demote agent-session rows bound to the tab's panes to
         // Ended on tab close (the `_HandleClosePaneRequested`
         // counterpart covers single-pane Ctrl+Shift+W).
-        _NotifyPanesClosing(rootPaneForClose);
+        //
+        // Skipped for `movingAway` — a cross-window tab drag is NOT a
+        // close: the tab's panes are reattached in the target window via
+        // ContentId, keeping the same connection `SessionId`. Emitting
+        // `connection_state:closed` here would send wta a `PaneClosed`
+        // for those (still-live) panes, flipping any agent session bound
+        // to them (e.g. a `copilot` CLI a user ran in a shell pane) to
+        // Ended/Historical even though the session is alive in the new
+        // window. The registry is shared master-side across every window
+        // in this WT process, so the moved session stays Live for both
+        // the old and new window when we don't fire this. Mirrors the
+        // `movingAway` guard on `_NotifyAgentTabClosed` below.
+        if (!movingAway)
+        {
+            _NotifyPanesClosing(rootPaneForClose);
+        }
 
         // Removing the tab from the collection should destroy its control and disconnect its connection,
         // but it doesn't always do so. The UI tree may still be holding the control and preventing its destruction.
@@ -1660,7 +1675,11 @@ namespace winrt::TerminalApp::implementation
         // Use the Tab object's identity hash as a stable toast tag.
         // This survives tab reordering and cross-window moves.
         const auto tabHash = std::hash<winrt::Windows::Foundation::IUnknown>{}(*tab);
+#ifdef _WIN64
         const hstring tabTag{ fmt::format(FMT_COMPILE(L"wt-tab-{:016x}"), tabHash) };
+#else
+        const hstring tabTag{ fmt::format(FMT_COMPILE(L"wt-tab-{:08x}"), tabHash) };
+#endif
 
         const implementation::DesktopNotificationArgs args{
             .Title = notificationTitle,

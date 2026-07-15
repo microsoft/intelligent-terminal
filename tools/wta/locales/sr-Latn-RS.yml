@@ -1,9 +1,7 @@
 # Setup screen titles
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.title.first_run: "Dobrodošli u Inteligentni Terminal!"
 setup.title.agent_missing: "Agent nije pronađen"
 setup.title.agent_error: "Povezivanje sa agentom nije uspelo"
-setup.title.switch_agent: "Promeni agenta"
 setup.title.not_available: "Agent nije dostupan"
 setup.title.sign_in: "Potrebna je prijava"
 
@@ -14,16 +12,12 @@ setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. P
 setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva autentifikaciju. Prijavite se preko agenta, pa izaberite \"Prijavio/la sam se\" ispod. Za promenu agenta idite u Inteligentni Terminal Settings > Agent."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
-setup.description.fre_line1: "Izaberite podrazumevanog agenta koji želite da koristite u Inteligentni Terminal. Možete"
-setup.description.fre_line2: "otići u Settings da konfigurišete i podesite svoj radni prostor."
 
 setup.option.install: "Instaliraj %{agent}"
 setup.option.install_hint: "(Biće instalirano automatski)"
 setup.option.signin: "Prijavi se u %{agent}"
 setup.option.retry_detection: "Pokušaj ponovo"
 setup.option.retry_auth: "Prijavio/la sam se — pokušaj ponovo da se povežeš"
-setup.option.retry_connection: "Pokušaj ponovo da se povežeš"
-setup.option.switch_to: "Prebaci na %{agent}"
 setup.status.installing: "Instaliranje..."
 setup.status.install_failed: "Instalacija nije uspela: "
 setup.status.installing_winget: " Instaliranje preko winget..."
@@ -35,11 +29,13 @@ auth.agent_selected_with_status: "CLI agent %{name} — "
 auth.checking_authentication: "  %{spinner} Provera autentifikacije..."
 auth.waiting_for_authorization: "  %{spinner} Čekanje na autorizaciju..."
 auth.code_copied_hint: "  Kod je kopiran u međuspremnik — nalepite ga u pregledač."
-auth.sign_in_prompt: "Prijavite se da biste koristili svog agenta:"
+auth.device_code_prompt: "Posetite %{url} i unesite kod: %{code}"  # Copilot device-flow sign-in progress; %{url} is the verification URL, %{code} is the device code
 auth.card_connect: "  Povežite %{name} da biste omogućili funkcije agenta"
-auth.button_sign_in_github: "[ Prijavi se preko GitHub ]"  # {Locked="GitHub"}
-auth.button_sign_in_with: "[ Prijavi se preko %{name} ]"
-auth.hint_footer: "  Pritisnite Enter za prijavu, Esc za povratak"  # {Locked="Enter","Esc"}
+auth.enterprise_prompt: "  Enter za prijavljivanje · E za GitHub Enterprise · Esc za povratak"  # {Locked="Enter","E","Esc"}
+auth.enterprise_domain_label: "  Domen GitHub Enterprise: "
+auth.enterprise_hint_footer: "  Enter za prijavljivanje · Esc za github.com"  # {Locked="Enter","Esc","github.com"}
+auth.login_failed_help_enterprise: "  Pritisnite Enter da biste pokušali ponovo ili Esc za github.com. Uobičajeni uzroci: pogrešno unet ili nedostupan domen, istekao kôd ili nema pristupa Copilot na tom hostu."  # {Locked="Enter","Esc","github.com","Copilot"}
+auth.login_failed_help_default: "  Pritisnite Enter da biste pokušali ponovo ili Esc za povratak."  # {Locked="Enter","Esc"}
 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Razmišljam…"
@@ -58,6 +54,7 @@ chat.turn_executed: "→ izvršeno: %{title}"
 input.placeholder.connected: "Pitajte bilo šta, / za komande.."  # {Locked="/"}
 input.placeholder.connecting: "povezivanje..."
 input.placeholder.disconnected: "prekinuta veza"
+input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
@@ -101,9 +98,7 @@ permission.compact.prefix: "[!] "  # {Locked}
 permission.compact.hint: "[Y/N za odgovor · promenite veličinu za punu karticu]"  # {Locked="Y/N"}
 
 # ── Agent status (src/agent_check.rs) ───────────────────────────────────────
-agent.status.not_installed_auto: "Nije instaliran — izaberite za automatsku instalaciju"
 agent.status.not_found: "Nije pronađen"
-agent.status.detected: "Otkriven"
 # {Locked="winget","GitHub.Copilot","GitHub","Copilot"} - tool names and command, must run verbatim
 agent.install.running_winget: "Pokreće se: winget install GitHub.Copilot"
 agent.install.launch_failed: "Pokretanje winget nije uspelo: %{error}"
@@ -114,8 +109,8 @@ agent.custom.auth_hint: "Proverite da je %{name} instaliran i da se nalazi u PAT
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Učitavanje..."
-# {Locked="Enter","Esc","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ za navigaciju • Enter za otvaranje sesije • Esc za izlaz)"
+# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ za navigaciju • Enter za otvaranje sesije • Esc za izlaz • F5 za osvežavanje)"
 agents.status.active: "Aktivan"
 agents.status.waiting_for_input: "Čeka na unos"
 agents.status.error: "Greška"
@@ -134,11 +129,13 @@ connection.lost: "Veza sa agentom je izgubljena. Unesite /restart da biste se po
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog zahteva."
 system.authentication_failed: "Autentifikacija nije uspela"
-system.command_copied_retry: "Komanda je kopirana — pokrenite je u drugom terminalu, zatim pritisnite Enter za ponovni pokušaj"  # {Locked="Enter"}
 system.stopped_max_tokens: "Odgovor je odsečen nakon dostizanja izlaznog ograničenja modela."
 system.stopped_max_turn_requests: "Agent se zaustavio nakon dostizanja ograničenja zahteva za ovaj potez."
 system.stopped_refusal: "Agent je odbio da nastavi sa ovim zahtevom."
 system.agent_busy: "Agent je zauzet na ovoj kartici — sačekajte da se trenutni upit završi."
+system.image_clipboard_empty: "Nema slike u međuspremniku za lepljenje."
+system.image_not_supported: "Ovaj agent ne podržava unos slika."
+system.image_pasted: "Slika je priložena (%{label}). Pritisnite Enter za slanje."  # {Locked="%{label}","Enter"}
 system.resuming_session: "Nastavlja se sesija %{session_id}..."
 system.unknown_command: "Nepoznata komanda \"%{command}\" — poslata kao upit. Unesite /help za spisak."  # {Locked="/help"}
 system.busy_use_stop: "Sačekajte da se trenutni upit završi ili prvo upotrebite /stop."  # {Locked="/stop"}

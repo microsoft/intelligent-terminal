@@ -20,9 +20,9 @@ use super::{
     PromptSubmission, RenameSessionRequest, TemplateMemo,
 };
 use crate::app::AppEvent;
+use crate::protocol::acp::conn;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
-use agent_client_protocol::{Agent as _, Client as _};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -55,11 +55,15 @@ enum MockBehavior {
 /// moved into `AgentSideConnection::new`, so it gets its own connection handle
 /// via a `OnceCell` populated immediately afterwards). `prompt` uses it to
 /// stream replies / request permission, exactly like a real agent does.
+#[derive(Clone)]
 struct MockAgent {
-    conn: Arc<OnceCell<Arc<acp::AgentSideConnection>>>,
+    conn: Arc<OnceCell<conn::AgentLink>>,
     behavior: MockBehavior,
     /// Side-channel: every prompt's user text.
     seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: every image content block (mime, base64 data) that reached
+    /// the agent on the wire — used by the Alt+V image-paste integration test.
+    seen_images: Arc<Mutex<Vec<(String, String)>>>,
     /// Side-channel: the permission option id the client selected (or
     /// "cancelled"), for `AskPermission` runs.
     permission_outcome: Arc<Mutex<Option<String>>>,
@@ -75,46 +79,54 @@ struct MockAgent {
     slow_load: Arc<AtomicBool>,
 }
 
-fn first_text(blocks: &[acp::ContentBlock]) -> String {
+fn first_text(blocks: &[acp::schema::v1::ContentBlock]) -> String {
     blocks
         .iter()
         .find_map(|b| match b {
-            acp::ContentBlock::Text(t) => Some(t.text.clone()),
+            acp::schema::v1::ContentBlock::Text(t) => Some(t.text.clone()),
             _ => None,
         })
         .unwrap_or_default()
 }
 
-#[async_trait::async_trait(?Send)]
-impl acp::Agent for MockAgent {
+impl MockAgent {
     async fn initialize(
         &self,
-        args: acp::InitializeRequest,
-    ) -> acp::Result<acp::InitializeResponse> {
-        Ok(acp::InitializeResponse::new(args.protocol_version)
-            .agent_info(acp::Implementation::new("mock-acp-agent", "0.0.0").title("Mock ACP Agent")))
+        args: acp::schema::v1::InitializeRequest,
+    ) -> acp::Result<acp::schema::v1::InitializeResponse> {
+        Ok(acp::schema::v1::InitializeResponse::new(args.protocol_version)
+            .agent_info(acp::schema::v1::Implementation::new("mock-acp-agent", "0.0.0").title("Mock ACP Agent")))
     }
 
     async fn new_session(
         &self,
-        _args: acp::NewSessionRequest,
-    ) -> acp::Result<acp::NewSessionResponse> {
+        _args: acp::schema::v1::NewSessionRequest,
+    ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
         if self.fail_new_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock new_session failure".to_string()));
         }
-        Ok(acp::NewSessionResponse::new(acp::SessionId::new("mock-session-1")))
+        Ok(acp::schema::v1::NewSessionResponse::new(acp::schema::v1::SessionId::new("mock-session-1")))
     }
 
     async fn authenticate(
         &self,
-        _args: acp::AuthenticateRequest,
-    ) -> acp::Result<acp::AuthenticateResponse> {
-        Ok(acp::AuthenticateResponse::default())
+        _args: acp::schema::v1::AuthenticateRequest,
+    ) -> acp::Result<acp::schema::v1::AuthenticateResponse> {
+        Ok(acp::schema::v1::AuthenticateResponse::default())
     }
 
-    async fn prompt(&self, args: acp::PromptRequest) -> acp::Result<acp::PromptResponse> {
+    async fn prompt(&self, args: acp::schema::v1::PromptRequest) -> acp::Result<acp::schema::v1::PromptResponse> {
         let text = first_text(&args.prompt);
         self.seen_prompts.lock().unwrap().push(text.clone());
+        let images: Vec<(String, String)> = args
+            .prompt
+            .iter()
+            .filter_map(|b| match b {
+                acp::schema::v1::ContentBlock::Image(img) => Some((img.mime_type.clone(), img.data.clone())),
+                _ => None,
+            })
+            .collect();
+        self.seen_images.lock().unwrap().extend(images);
         let sid = args.session_id.clone();
 
         // Spawn the turn's work on the LocalSet so the prompt response returns
@@ -128,9 +140,9 @@ impl acp::Agent for MockAgent {
                     let reply = format!("MOCK_OK:{text}");
                     tokio::task::spawn_local(async move {
                         let _ = conn
-                            .session_notification(acp::SessionNotification::new(
+                            .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                                acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
                                     reply.as_str().into(),
                                 )),
                             ))
@@ -140,33 +152,33 @@ impl acp::Agent for MockAgent {
                 MockBehavior::AskPermission => {
                     let outcome_slot = self.permission_outcome.clone();
                     tokio::task::spawn_local(async move {
-                        let req = acp::RequestPermissionRequest::new(
+                        let req = acp::schema::v1::RequestPermissionRequest::new(
                             sid,
-                            acp::ToolCallUpdate::new(
-                                acp::ToolCallId::new("mock-tool-1"),
-                                acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+                            acp::schema::v1::ToolCallUpdate::new(
+                                acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
                             ),
                             // Allow first so a default-selected (index 0) Enter
                             // means "allow"; reject is index 1.
                             vec![
-                                acp::PermissionOption::new(
-                                    acp::PermissionOptionId::new("allow-once"),
+                                acp::schema::v1::PermissionOption::new(
+                                    acp::schema::v1::PermissionOptionId::new("allow-once"),
                                     "Allow once",
-                                    acp::PermissionOptionKind::AllowOnce,
+                                    acp::schema::v1::PermissionOptionKind::AllowOnce,
                                 ),
-                                acp::PermissionOption::new(
-                                    acp::PermissionOptionId::new("reject-once"),
+                                acp::schema::v1::PermissionOption::new(
+                                    acp::schema::v1::PermissionOptionId::new("reject-once"),
                                     "Reject",
-                                    acp::PermissionOptionKind::RejectOnce,
+                                    acp::schema::v1::PermissionOptionKind::RejectOnce,
                                 ),
                             ],
                         );
                         if let Ok(resp) = conn.request_permission(req).await {
                             let chosen = match resp.outcome {
-                                acp::RequestPermissionOutcome::Selected(sel) => {
+                                acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
                                     sel.option_id.to_string()
                                 }
-                                acp::RequestPermissionOutcome::Cancelled => "cancelled".to_string(),
+                                acp::schema::v1::RequestPermissionOutcome::Cancelled => "cancelled".to_string(),
                                 _ => "unknown".to_string(),
                             };
                             *outcome_slot.lock().unwrap() = Some(chosen);
@@ -176,10 +188,10 @@ impl acp::Agent for MockAgent {
                 MockBehavior::ProposeToolCall => {
                     tokio::task::spawn_local(async move {
                         let _ = conn
-                            .session_notification(acp::SessionNotification::new(
+                            .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::SessionUpdate::ToolCall(acp::ToolCall::new(
-                                    acp::ToolCallId::new("mock-tool-1"),
+                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     "Run: echo hi",
                                 )),
                             ))
@@ -189,21 +201,21 @@ impl acp::Agent for MockAgent {
                 MockBehavior::ToolThenComplete => {
                     tokio::task::spawn_local(async move {
                         let _ = conn
-                            .session_notification(acp::SessionNotification::new(
+                            .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid.clone(),
-                                acp::SessionUpdate::ToolCall(acp::ToolCall::new(
-                                    acp::ToolCallId::new("mock-tool-1"),
+                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
                                     "Run: echo hi",
                                 )),
                             ))
                             .await;
                         let _ = conn
-                            .session_notification(acp::SessionNotification::new(
+                            .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                                    acp::ToolCallId::new("mock-tool-1"),
-                                    acp::ToolCallUpdateFields::new()
-                                        .status(acp::ToolCallStatus::Completed),
+                                acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                    acp::schema::v1::ToolCallUpdateFields::new()
+                                        .status(acp::schema::v1::ToolCallStatus::Completed),
                                 )),
                             ))
                             .await;
@@ -212,18 +224,18 @@ impl acp::Agent for MockAgent {
                 MockBehavior::ProposePlan => {
                     tokio::task::spawn_local(async move {
                         let _ = conn
-                            .session_notification(acp::SessionNotification::new(
+                            .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::SessionUpdate::Plan(acp::Plan::new(vec![
-                                    acp::PlanEntry::new(
+                                acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(vec![
+                                    acp::schema::v1::PlanEntry::new(
                                         "Step one",
-                                        acp::PlanEntryPriority::Medium,
-                                        acp::PlanEntryStatus::InProgress,
+                                        acp::schema::v1::PlanEntryPriority::Medium,
+                                        acp::schema::v1::PlanEntryStatus::InProgress,
                                     ),
-                                    acp::PlanEntry::new(
+                                    acp::schema::v1::PlanEntry::new(
                                         "Step two",
-                                        acp::PlanEntryPriority::Low,
-                                        acp::PlanEntryStatus::Pending,
+                                        acp::schema::v1::PlanEntryPriority::Low,
+                                        acp::schema::v1::PlanEntryStatus::Pending,
                                     ),
                                 ])),
                             ))
@@ -234,9 +246,9 @@ impl acp::Agent for MockAgent {
                     tokio::task::spawn_local(async move {
                         for part in ["MOCK_", "OK"] {
                             let _ = conn
-                                .session_notification(acp::SessionNotification::new(
+                                .session_notification(acp::schema::v1::SessionNotification::new(
                                     sid.clone(),
-                                    acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
+                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
                                         part.into(),
                                     )),
                                 ))
@@ -247,17 +259,17 @@ impl acp::Agent for MockAgent {
             }
         }
 
-        Ok(acp::PromptResponse::new(acp::StopReason::EndTurn))
+        Ok(acp::schema::v1::PromptResponse::new(acp::schema::v1::StopReason::EndTurn))
     }
 
-    async fn cancel(&self, _args: acp::CancelNotification) -> acp::Result<()> {
+    async fn cancel(&self, _args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
         Ok(())
     }
 
     async fn load_session(
         &self,
-        _args: acp::LoadSessionRequest,
-    ) -> acp::Result<acp::LoadSessionResponse> {
+        _args: acp::schema::v1::LoadSessionRequest,
+    ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
         if self.slow_load.load(Ordering::SeqCst) {
             // Outlast any short injected dispatch timeout so the
             // dispatcher takes its `Err(_)` (timeout) branch, but stay
@@ -267,7 +279,7 @@ impl acp::Agent for MockAgent {
         if self.fail_load_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock load_session failure".to_string()));
         }
-        Ok(acp::LoadSessionResponse::new())
+        Ok(acp::schema::v1::LoadSessionResponse::new())
     }
 }
 
@@ -280,7 +292,7 @@ impl acp::Agent for MockAgent {
 fn connect_with(
     behavior: MockBehavior,
 ) -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Vec<String>>>,
     Arc<Mutex<Option<String>>>,
@@ -295,63 +307,94 @@ fn connect_with(
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
-    let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
+    let conn_cell: Arc<OnceCell<conn::AgentLink>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
         fail_new_session: Arc::new(AtomicBool::new(false)),
         fail_load_session: Arc::new(AtomicBool::new(false)),
         slow_load: Arc::new(AtomicBool::new(false)),
     };
 
-    // Bidirectional in-memory pipe. Each half is split into read/write and
-    // adapted from tokio to futures I/O (same shape as the production pipe path
-    // in `run_acp_client_over_pipe`).
+    let client_conn = spawn_mock_pair(wta, mock, &conn_cell);
+    (client_conn, event_rx, seen_prompts, permission_outcome)
+}
+
+/// Wire a `WtaClient` (client) to a `MockAgent` (agent) over an in-memory duplex
+/// using the 1.0 builder model, spawn both I/O loops, hand the mock its
+/// `AgentLink`, and return the client `ClientLink`. Must run inside a `LocalSet`.
+fn spawn_mock_pair(
+    wta: WtaClient,
+    mock: MockAgent,
+    conn_cell: &Arc<OnceCell<conn::AgentLink>>,
+) -> conn::ClientLink {
     let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
     let (wta_r, wta_w) = tokio::io::split(wta_io);
     let (mock_r, mock_w) = tokio::io::split(mock_io);
 
-    let (client_conn, client_io) = acp::ClientSideConnection::new(
-        wta,
-        wta_w.compat_write(),
-        wta_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
+    let client_builder = acp::Client
+        .builder()
+        .name("mock-wta")
+        .on_receive_request({ let c = wta.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
+            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+            match req {
+                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
+                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
+                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
+                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
+                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
+                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let c = wta.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
+            if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif { let _ = c.session_notification(n).await; }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+    let (client_conn, client_io) =
+        conn::spawn_client(client_builder, conn::byte_streams(wta_w.compat_write(), wta_r.compat()));
 
-    let (agent_conn, agent_io) = acp::AgentSideConnection::new(
-        mock,
-        mock_w.compat_write(),
-        mock_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
+    let agent_builder = acp::Agent
+        .builder()
+        .name("mock-agent")
+        .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
+            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
+            match req {
+                Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
+                Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
+                Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
+                Q::LoadSessionRequest(a) => conn::respond_enum(responder, m.load_session(a).await.map(R::LoadSessionResponse)),
+                Q::PromptRequest(a) => conn::respond_enum(responder, m.prompt(a).await.map(R::PromptResponse)),
+                Q::ExtMethodRequest(_) => conn::respond_enum(
+                    responder,
+                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
+                        serde_json::value::to_raw_value(&serde_json::Value::Null).unwrap().into(),
+                    ))),
+                ),
+                _ => responder.respond_with_error(acp::Error::method_not_found()),
+            }
+        } } }, acp::on_receive_request!())
+        .on_receive_notification({ let m = mock.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let m = m.clone(); async move {
+            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = m.cancel(n).await; }
+            Ok(())
+        } } }, acp::on_receive_notification!());
+    let (agent_conn, agent_io) =
+        conn::spawn_agent(agent_builder, conn::byte_streams(mock_w.compat_write(), mock_r.compat()));
 
-    // Hand the mock its own connection so `prompt` can stream / request permission.
-    assert!(
-        conn_cell.set(Arc::new(agent_conn)).is_ok(),
-        "mock agent connection cell must be set exactly once"
-    );
-
-    tokio::task::spawn_local(async move {
-        let _ = client_io.await;
-    });
-    tokio::task::spawn_local(async move {
-        let _ = agent_io.await;
-    });
-
-    (client_conn, event_rx, seen_prompts, permission_outcome)
+    assert!(conn_cell.set(agent_conn).is_ok(), "mock agent connection cell must be set exactly once");
+    tokio::task::spawn_local(async move { let _ = client_io.await; });
+    tokio::task::spawn_local(async move { let _ = agent_io.await; });
+    client_conn
 }
 
 /// Happy-path harness: the mock streams a deterministic reply on each prompt.
 /// Returns the client connection, the `AppEvent` receiver, and the seen-prompts
 /// side-channel.
 pub(crate) fn connect_mock_agent() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Vec<String>>>,
 ) {
@@ -363,7 +406,7 @@ pub(crate) fn connect_mock_agent() -> (
 /// on each prompt and records the selected outcome. Returns the client
 /// connection, the `AppEvent` receiver, and the permission-outcome side-channel.
 pub(crate) fn connect_mock_agent_asking_permission() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
     Arc<Mutex<Option<String>>>,
 ) {
@@ -374,7 +417,7 @@ pub(crate) fn connect_mock_agent_asking_permission() -> (
 /// Tool-call harness: the mock streams a `ToolCall` (a proposed command) on each
 /// prompt. Returns the client connection and the `AppEvent` receiver.
 pub(crate) fn connect_mock_agent_proposing_tool() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposeToolCall);
@@ -384,7 +427,7 @@ pub(crate) fn connect_mock_agent_proposing_tool() -> (
 /// Tool-call lifecycle harness: streams a `ToolCall` then a
 /// `ToolCallUpdate(Completed)`.
 pub(crate) fn connect_mock_agent_completing_tool() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ToolThenComplete);
@@ -393,7 +436,7 @@ pub(crate) fn connect_mock_agent_completing_tool() -> (
 
 /// Plan harness: the mock streams a `Plan` with two entries.
 pub(crate) fn connect_mock_agent_proposing_plan() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposePlan);
@@ -402,7 +445,7 @@ pub(crate) fn connect_mock_agent_proposing_plan() -> (
 
 /// Streaming harness: the mock streams the reply in two chunks.
 pub(crate) fn connect_mock_agent_streaming_two_chunks() -> (
-    acp::ClientSideConnection,
+    conn::ClientLink,
     mpsc::UnboundedReceiver<AppEvent>,
 ) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::StreamTwoChunks);
@@ -433,15 +476,15 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
             let (client_conn, mut event_rx, seen_prompts) = connect_mock_agent();
 
             client_conn
-                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
             let session = client_conn
-                .new_session(acp::NewSessionRequest::new("/test"))
+                .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
                 .expect("new_session failed");
             client_conn
-                .prompt(acp::PromptRequest::new(
+                .prompt(acp::schema::v1::PromptRequest::new(
                     session.session_id.clone(),
                     vec!["hello".into()],
                 ))
@@ -480,12 +523,15 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
 /// the dispatcher threads into prompt assembly. `seen_prompts` is the
 /// agent-side record of every assembled prompt that reached the wire.
 pub(crate) struct DispatchHarness {
-    pub conn: Arc<acp::ClientSideConnection>,
+    pub conn: conn::ClientLink,
     pub event_tx: mpsc::UnboundedSender<AppEvent>,
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Agent-side record of every image content block (mime, base64) assembled
+    /// onto the wire — the Alt+V image-paste assertion target.
+    pub seen_images: Arc<Mutex<Vec<(String, String)>>>,
     /// Flip to `true` before dispatching to make the mock's `new_session`
     /// fail, exercising the dispatcher's session-establishment error path.
     pub fail_new_session: Arc<AtomicBool>,
@@ -512,59 +558,33 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let wta = WtaClient { state };
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
+    let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
     let slow_load = Arc::new(AtomicBool::new(false));
-    let conn_cell: Arc<OnceCell<Arc<acp::AgentSideConnection>>> = Arc::new(OnceCell::new());
+    let conn_cell: Arc<OnceCell<conn::AgentLink>> = Arc::new(OnceCell::new());
     let mock = MockAgent {
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_images: seen_images.clone(),
         permission_outcome,
         fail_new_session: fail_new_session.clone(),
         fail_load_session: fail_load_session.clone(),
         slow_load: slow_load.clone(),
     };
 
-    let (wta_io, mock_io) = tokio::io::duplex(64 * 1024);
-    let (wta_r, wta_w) = tokio::io::split(wta_io);
-    let (mock_r, mock_w) = tokio::io::split(mock_io);
-
-    let (client_conn, client_io) = acp::ClientSideConnection::new(
-        wta,
-        wta_w.compat_write(),
-        wta_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
-    let (agent_conn, agent_io) = acp::AgentSideConnection::new(
-        mock,
-        mock_w.compat_write(),
-        mock_r.compat(),
-        |fut| {
-            tokio::task::spawn_local(fut);
-        },
-    );
-    assert!(
-        conn_cell.set(Arc::new(agent_conn)).is_ok(),
-        "mock agent connection cell must be set exactly once"
-    );
-    tokio::task::spawn_local(async move {
-        let _ = client_io.await;
-    });
-    tokio::task::spawn_local(async move {
-        let _ = agent_io.await;
-    });
+    let client_conn = spawn_mock_pair(wta, mock, &conn_cell);
 
     DispatchHarness {
-        conn: Arc::new(client_conn),
+        conn: client_conn,
         event_tx,
         event_rx,
         shell_mgr,
         prompt_timing,
         seen_prompts,
+        seen_images,
         fail_new_session,
         fail_load_session,
         slow_load,
@@ -575,7 +595,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
 /// cancel registry, template memo) for one `dispatch_prompt` invocation.
 #[allow(clippy::type_complexity)]
 fn fresh_dispatch_state() -> (
-    Arc<tokio::sync::Mutex<HashMap<String, acp::SessionId>>>,
+    Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     Arc<std::sync::Mutex<HashSet<String>>>,
     Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<()>>>>,
     TemplateMemo,
@@ -595,6 +615,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         pane_context: None,
         submitted_at_unix_s: 0.0,
         is_autofix,
+        images: Vec::new(),
     }
 }
 
@@ -654,7 +675,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             // Handshake so the lazy `new_session` inside the dispatcher succeeds.
             h.conn
-                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
 
@@ -728,9 +749,96 @@ async fn dispatch_prompt_round_trips_through_agent() {
         .await;
 }
 
-/// Error path: if the lazy `new_session` fails (agent/transport dropped during
-/// session establishment), the dispatcher must surface `AgentError`, release
-/// the single-flight slot, and never reach the prompt — not hang the turn.
+/// Full **Alt+V image paste** integration: a screenshot-shaped DIB on the live
+/// OS clipboard is captured via `read_clipboard_image` (the paste), attached to
+/// a `PromptSubmission`, and dispatched through the real `dispatch_prompt` →
+/// real ACP serialization → mock agent. Proves the captured image survives,
+/// byte-for-byte, as a `ContentBlock::Image` on the wire alongside the user's
+/// text. Skips where the session has no clipboard.
+#[cfg(windows)]
+#[tokio::test]
+async fn dispatch_prompt_sends_clipboard_image_to_agent() {
+    use crate::clipboard_image::{
+        read_clipboard_image, sample_screenshot_dib, set_clipboard_dib, CLIPBOARD_TEST_LOCK,
+    };
+
+    // Capture the screenshot off the live clipboard up front (all sync). The
+    // clipboard lock is held only for set+read, never across an `.await`.
+    let pasted = {
+        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let dib = sample_screenshot_dib();
+        if !unsafe { set_clipboard_dib(&dib) } {
+            eprintln!(
+                "skipping dispatch_prompt_sends_clipboard_image_to_agent: clipboard unavailable"
+            );
+            return;
+        }
+        read_clipboard_image().expect("Alt+V must capture the DIB on the clipboard")
+    };
+    assert_eq!(pasted.mime_type, "image/png");
+
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+
+            // The user typed text *and* pasted an image, then pressed Enter.
+            let mut submission = test_prompt(1, "what is in this screenshot?", false);
+            submission.images = vec![pasted.clone()];
+
+            dispatch_prompt(
+                submission,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                false, // wt_connected
+                true,  // is_agent_pane
+            );
+
+            // Pump until the turn ends so the prompt has fully reached the agent.
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match event_rx.recv().await {
+                        Some(AppEvent::AgentMessageEnd { .. }) => break,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before turn end"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for turn end");
+
+            // The agent received exactly the captured image as a ContentBlock::Image.
+            let images = h.seen_images.lock().unwrap().clone();
+            assert_eq!(images.len(), 1, "exactly one image must reach the agent");
+            assert_eq!(images[0].0, "image/png", "mime type must survive the wire");
+            assert_eq!(
+                images[0].1, pasted.data_base64,
+                "the exact captured image bytes must reach the agent unmodified"
+            );
+
+            // ...and the user's text rode along in the same prompt.
+            let seen = h.seen_prompts.lock().unwrap().clone();
+            assert_eq!(seen.len(), 1);
+            assert!(
+                seen[0].contains("what is in this screenshot?"),
+                "the user's text must accompany the image"
+            );
+        })
+        .await;
+}
 #[tokio::test]
 async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
     let local = tokio::task::LocalSet::new();
@@ -738,7 +846,7 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
             // Make the mock reject session establishment.
@@ -793,7 +901,7 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::InitializeRequest::new(acp::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
                 .await
                 .expect("initialize failed");
 
@@ -842,7 +950,7 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
     local
         .run_until(async {
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let sid = acp::SessionId::new("sess-rekey");
+            let sid = acp::schema::v1::SessionId::new("sess-rekey");
             tab_to_session
                 .lock()
                 .await
@@ -953,7 +1061,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 Arc::new(Mutex::new(HashMap::new()));
             let memo = TemplateMemo::default();
 
-            let sid = acp::SessionId::new("sess-drop");
+            let sid = acp::schema::v1::SessionId::new("sess-drop");
             tab_to_session
                 .lock()
                 .await
@@ -1116,7 +1224,7 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
             let memo = TemplateMemo::default();
             let mut event_rx = h.event_rx;
 
-            let old = acp::SessionId::new("old-sess");
+            let old = acp::schema::v1::SessionId::new("old-sess");
             tab_to_session
                 .lock()
                 .await
@@ -1283,7 +1391,7 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 Arc::new(Mutex::new(HashMap::new()));
             let mut event_rx = h.event_rx;
 
-            let old = acp::SessionId::new("old-sess");
+            let old = acp::schema::v1::SessionId::new("old-sess");
             tab_to_session
                 .lock()
                 .await
@@ -1385,7 +1493,7 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
             let mut event_rx = h.event_rx;
 
             dispatch_master_ext_request(
-                MasterExtRequest::SessionsList { request_id: 7 },
+                MasterExtRequest::SessionsList { request_id: 7, rescan: false },
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,
@@ -1421,7 +1529,7 @@ async fn dispatch_master_ext_session_focus_completes() {
             dispatch_master_ext_request(
                 MasterExtRequest::SessionFocus {
                     request_id: 9,
-                    sid: acp::SessionId::new("sess-focus"),
+                    sid: acp::schema::v1::SessionId::new("sess-focus"),
                 },
                 &h.conn,
                 &h.event_tx,
@@ -1455,8 +1563,8 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
     (WtaClient { state }, event_rx)
 }
 
-fn notif(sid: &str, update: acp::SessionUpdate) -> acp::SessionNotification {
-    acp::SessionNotification::new(acp::SessionId::new(sid), update)
+fn notif(sid: &str, update: acp::schema::v1::SessionUpdate) -> acp::schema::v1::SessionNotification {
+    acp::schema::v1::SessionNotification::new(acp::schema::v1::SessionId::new(sid), update)
 }
 
 /// An `AgentThoughtChunk` update becomes an `AgentThoughtChunk` event carrying
@@ -1467,7 +1575,7 @@ async fn session_notification_routes_agent_thought_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new("thinking".into())),
+            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::schema::v1::ContentChunk::new("thinking".into())),
         ))
         .await
         .unwrap();
@@ -1488,7 +1596,7 @@ async fn session_notification_routes_user_message_replay_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::UserMessageChunk(acp::ContentChunk::new("prior prompt".into())),
+            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new("prior prompt".into())),
         ))
         .await
         .unwrap();
@@ -1508,8 +1616,8 @@ async fn session_notification_routes_tool_call() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::ToolCall(acp::ToolCall::new(
-                acp::ToolCallId::new("tc-1"),
+            acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
                 "Run: echo hi",
             )),
         ))
@@ -1539,9 +1647,9 @@ async fn session_notification_routes_tool_call_update_status_only() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                acp::ToolCallId::new("tc-1"),
-                acp::ToolCallUpdateFields::new().status(acp::ToolCallStatus::Completed),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new().status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await
@@ -1569,10 +1677,10 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                acp::ToolCallId::new("tc-1"),
-                acp::ToolCallUpdateFields::new()
-                    .status(acp::ToolCallStatus::Failed)
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Failed)
                     .raw_output(serde_json::json!({
                         "message": "The user rejected this tool call."
                     })),
@@ -1599,9 +1707,9 @@ async fn session_notification_tool_call_update_without_status_is_dropped() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
-                acp::ToolCallId::new("tc-1"),
-                acp::ToolCallUpdateFields::new(),
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new(),
             )),
         ))
         .await
@@ -1620,21 +1728,21 @@ async fn session_notification_routes_plan_with_status_mapping() {
     client
         .session_notification(notif(
             "s1",
-            acp::SessionUpdate::Plan(acp::Plan::new(vec![
-                acp::PlanEntry::new(
+            acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(vec![
+                acp::schema::v1::PlanEntry::new(
                     "Step one",
-                    acp::PlanEntryPriority::Medium,
-                    acp::PlanEntryStatus::InProgress,
+                    acp::schema::v1::PlanEntryPriority::Medium,
+                    acp::schema::v1::PlanEntryStatus::InProgress,
                 ),
-                acp::PlanEntry::new(
+                acp::schema::v1::PlanEntry::new(
                     "Step two",
-                    acp::PlanEntryPriority::Low,
-                    acp::PlanEntryStatus::Completed,
+                    acp::schema::v1::PlanEntryPriority::Low,
+                    acp::schema::v1::PlanEntryStatus::Completed,
                 ),
-                acp::PlanEntry::new(
+                acp::schema::v1::PlanEntry::new(
                     "Step three",
-                    acp::PlanEntryPriority::Low,
-                    acp::PlanEntryStatus::Pending,
+                    acp::schema::v1::PlanEntryPriority::Low,
+                    acp::schema::v1::PlanEntryStatus::Pending,
                 ),
             ])),
         ))
@@ -1665,17 +1773,17 @@ async fn session_notification_routes_plan_with_status_mapping() {
     }
 }
 
-fn permission_request(sid: &str) -> acp::RequestPermissionRequest {
-    acp::RequestPermissionRequest::new(
-        acp::SessionId::new(sid),
-        acp::ToolCallUpdate::new(
-            acp::ToolCallId::new("mock-tool-1"),
-            acp::ToolCallUpdateFields::new().title("Run: echo hi"),
+fn permission_request(sid: &str) -> acp::schema::v1::RequestPermissionRequest {
+    acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new(sid),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("mock-tool-1"),
+            acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
         ),
-        vec![acp::PermissionOption::new(
-            acp::PermissionOptionId::new("allow-once"),
+        vec![acp::schema::v1::PermissionOption::new(
+            acp::schema::v1::PermissionOptionId::new("allow-once"),
             "Allow once",
-            acp::PermissionOptionKind::AllowOnce,
+            acp::schema::v1::PermissionOptionKind::AllowOnce,
         )],
     )
 }
@@ -1711,7 +1819,7 @@ async fn request_permission_returns_selected_option() {
 
             let resp = handle.await.unwrap().unwrap();
             match resp.outcome {
-                acp::RequestPermissionOutcome::Selected(sel) => {
+                acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
                     assert_eq!(sel.option_id.to_string(), "allow-once");
                 }
                 _ => panic!("expected Selected outcome"),
@@ -1741,7 +1849,7 @@ async fn request_permission_cancelled_when_responder_dropped() {
             let resp = handle.await.unwrap().unwrap();
             assert!(matches!(
                 resp.outcome,
-                acp::RequestPermissionOutcome::Cancelled
+                acp::schema::v1::RequestPermissionOutcome::Cancelled
             ));
         })
         .await;
