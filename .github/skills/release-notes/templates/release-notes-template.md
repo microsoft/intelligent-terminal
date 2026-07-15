@@ -1,11 +1,11 @@
 # Intelligent Terminal vX.Y.Z
 
-> Base = **vX.Y.Z** release tag (`<base-commit>`, build `0.1.xxxx.0`) → **latest `main`** (`<head-commit>`).
+> Base = **`<previous-release-tag>`** release tag (`<base-commit>`, build `0.1.xxxx.0`) → **latest `main`** (`<head-commit>`).
 > N new PRs. The exact build number (`0.1.xxxx.0`) is injected by CI at release time.
 >
 > Note on the `stable` branch: `stable` is a cherry-picked subset of what already shipped in the
 > previous release, so it is *behind* the release tag. The clean "since last release" base is the
-> **vX.Y.Z tag**, not `stable`.
+> **`<previous-release-tag>`** tag, not `stable`.
 
 _One-paragraph intro: what this release focuses on, in plain language — the headline theme(s) plus
 a nod to the batch of smaller fixes._
