@@ -196,7 +196,7 @@ commands.fix.summary: "Diagnostica il terminale attivo e suggerisci una correzio
 commands.restart.summary: "Riavvia agente"
 commands.stop.summary: "Annulla la richiesta in corso"
 commands.sessions.summary: "Apri il selettore delle sessioni storiche (Ctrl+Shift+/)"
-commands.agent.summary: "Scegli il agente per questa scheda (/agent <id> per cambiare direttamente)"  # {Locked="/agent","<id>"}
+commands.agent.summary: "Scegli l'agente per questa scheda (/agent <id> per cambiare direttamente)"  # {Locked="/agent","<id>"}
 
 # ── Esecuzione della raccomandazione (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Scelta %{choice} non riuscita: %{error}"

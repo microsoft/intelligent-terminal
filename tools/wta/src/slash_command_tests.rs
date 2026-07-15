@@ -254,6 +254,25 @@ fn slash_model_bare_opens_picker_when_models_present() {
 }
 
 #[test]
+fn agent_and_model_pickers_are_mutually_exclusive() {
+    let mut app = test_app();
+    app.available_models =
+        vec![AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None }];
+
+    app.open_model_picker();
+    assert!(app.current_tab().model_picker_open);
+    assert!(!app.current_tab().agent_picker_open);
+
+    app.open_agent_picker(0);
+    assert!(app.current_tab().agent_picker_open);
+    assert!(!app.current_tab().model_picker_open);
+
+    app.open_model_picker();
+    assert!(app.current_tab().model_picker_open);
+    assert!(!app.current_tab().agent_picker_open);
+}
+
+#[test]
 fn slash_model_direct_switch_sets_override() {
     let mut app = test_app();
     app.available_models = vec![

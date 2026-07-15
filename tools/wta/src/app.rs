@@ -2726,9 +2726,7 @@ impl App {
                 .iter()
                 .position(|agent| agent.id == self.current_agent_id)
                 .unwrap_or(0);
-            let tab = self.current_tab_mut();
-            tab.agent_picker_open = true;
-            tab.agent_picker_selected = selected;
+            self.open_agent_picker(selected);
             return;
         }
 
@@ -2754,6 +2752,13 @@ impl App {
 
     fn close_agent_picker(&mut self) {
         self.current_tab_mut().agent_picker_open = false;
+    }
+
+    fn open_agent_picker(&mut self, selected: usize) {
+        let tab = self.current_tab_mut();
+        tab.model_picker_open = false;
+        tab.agent_picker_open = true;
+        tab.agent_picker_selected = selected;
     }
 
     fn agent_picker_up(&mut self) {
@@ -2867,6 +2872,7 @@ impl App {
             .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
             .unwrap_or(0);
         let tab = self.current_tab_mut();
+        tab.agent_picker_open = false;
         tab.model_picker_open = true;
         tab.model_picker_selected = selected;
     }
