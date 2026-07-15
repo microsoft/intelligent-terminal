@@ -274,6 +274,23 @@ fn slash_model_direct_switch_sets_override() {
     );
 }
 
+#[test]
+fn explicit_empty_agent_allowlist_is_fail_closed() {
+    let mut app = test_app();
+    app.set_allowed_agent_ids(vec![String::new()]);
+    assert!(app.available_agents.is_empty());
+}
+
+#[test]
+fn switch_agent_event_is_scoped_to_window_and_tab() {
+    let payload = build_switch_agent_event("42", "{tab-guid}", "claude");
+    let event: serde_json::Value = serde_json::from_str(&payload).expect("valid event json");
+    assert_eq!(event["method"], "switch_agent");
+    assert_eq!(event["params"]["window_id"], "42");
+    assert_eq!(event["params"]["tab_id"], "{tab-guid}");
+    assert_eq!(event["params"]["agent_id"], "claude");
+}
+
 // ---- Degraded (transport-lost) gating: only /restart runs ----
 
 #[test]

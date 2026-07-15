@@ -483,7 +483,7 @@ discipline. The model the code now follows:
 | Field | Source | Updated by |
 |---|---|---|
 | `self.owner_tab_id` | `--owner-tab-id` cmdline (= dest tab StableId) | `tab_renamed` rekey |
-| `self.window_id` | `discover_pane_identity()` at startup | `tab_renamed` rekey (cross-window drag) |
+| `self.window_id` | `--owner-window-id` cmdline; PID discovery fallback | `tab_renamed` rekey (cross-window drag) |
 | `self.tab_id` | mirror of `owner_tab_id` while owner is set | `tab_renamed` rekey; `tab_changed` no-op for non-owner |
 
 The `--owner-tab-id` seed runs **before** the `--initial-view` block in
@@ -493,6 +493,11 @@ Without that ordering the seed defaults to `DEFAULT_TAB_ID` and the
 echo arrives at C++ with a tab_id no `TerminalPage` recognizes —
 `_FindTabByStableId` drops it and the just-spawned pane shows the
 wrong view.
+
+`--owner-window-id` is supplied by the same C++ spawn path. PID-based pane
+discovery remains useful for legacy/manual launches, but it can miss a newly
+spawned ConPTY helper; the explicit seed makes per-window events such as
+`switch_agent` routable immediately.
 
 **Inbound events carry the routing keys.** Every WT-side event that
 mutates per-tab or per-window state includes the relevant ids in its

@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ఏజెంట్‌ను పునఃప్రారంభించండి"
 commands.stop.summary: "నడుస్తున్న ప్రాంప్ట్‌ను రద్దు చేయి"
 commands.sessions.summary: "చారిత్రక సెషన్‌ల ఎంపికను తెరవండి (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "ఈ ట్యాబ్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── సిఫార్సుల ప్యానెల్ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - కీ పేర్లు మరియు Return-కీ గ్లిఫ్, అనువదించవద్దు
@@ -200,6 +201,16 @@ time.days_other: "%{count} రోజుల క్రితం"
 
 # ── సిఫార్సు అమలు (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ఎంపిక %{choice} విఫలమైంది: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "మోడల్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "ఈ మెషీన్‌లో అందుబాటులో ఉన్న ఏజెంట్ CLI కనుగొనబడలేదు."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "తెలియని మోడల్ %{agent} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /agent టైప్ చేయండి."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Windows Terminal ట్యాబ్ వెలుపల ఏజెంట్ మార్పిడి అందుబాటులో లేదు."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ఈ పేన్ కోసం మోడల్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /model <id>)"  # {Locked="/model","<id>"}

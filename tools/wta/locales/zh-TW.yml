@@ -191,9 +191,20 @@ commands.fix.summary: "診斷作用中的終端機並建議修正方式（/fix <
 commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"
+commands.agent.summary: "為此分頁選擇智能體（使用 /agent <id> 可直接切換）"  # {Locked="/agent","<id>"}
 
 # ── 建議執行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "選項 %{choice} 執行失敗：%{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "選擇智能體（↑ ↓ • Enter • Esc）"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "在此電腦上找不到可用的智能體 CLI。"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "未知或無法使用的智能體 %{agent} — 輸入 /agent 查看可用清單。"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "在 Windows Terminal 分頁之外，無法切換智能體。"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}

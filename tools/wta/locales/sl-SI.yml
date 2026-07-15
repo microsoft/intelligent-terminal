@@ -72,6 +72,7 @@ commands.fix.summary: "Diagnosticiraj aktivni terminal in predlagaj popravek (/f
 commands.restart.summary: "Ponovno zaženi agenta"
 commands.stop.summary: "Prekliči poziv v teku"
 commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Izberite agent za ta zavihek (/agent <id> za neposreden preklop)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje gumbov • Enter za izbiro • Esc za preklic)"
@@ -199,6 +200,16 @@ time.days_other: "pred %{count} dnevi"
 
 # ── Izvajanje priporočila (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "Izbira %{choice} ni uspela: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Izberi agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "V tej napravi ni mogoče najti nobenega razpoložljivega vmesnika CLI agenta."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Neznan ali nedostopen agent %{agent} — vnesite /agent za prikaz razpoložljivega seznama."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Preklapljanje agentov ni na voljo zunaj zavihka programa Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izberite model za to podokno (/model <id> za neposreden preklop)"  # {Locked="/model","<id>"}

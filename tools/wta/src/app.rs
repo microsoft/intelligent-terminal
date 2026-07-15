@@ -37,6 +37,12 @@ struct DeferredAcpParams {
     owner_tab_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailableAgent {
+    pub id: String,
+    pub display_name: String,
+}
+
 mod turn_state;
 mod autofix;
 use autofix::*;
@@ -1510,6 +1516,10 @@ pub struct TabSession {
     /// Highlighted row in the open model picker — an index into the agent's
     /// advertised `App::available_models`. Clamped on open.
     pub model_picker_selected: usize,
+    /// True while the `/agent` picker is open for this tab.
+    pub agent_picker_open: bool,
+    /// Highlighted row in `App::available_agents`.
+    pub agent_picker_selected: usize,
 
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
@@ -1923,6 +1933,12 @@ pub struct App {
     pub state: ConnectionState,
     /// The agent ID we're trying to connect to (set at preflight/FRE time).
     pub current_agent_id: String,
+    /// Agent ids supplied by Windows Terminal after GPO filtering.
+    allowed_agent_ids: Vec<String>,
+    /// Distinguishes a manual/legacy launch from an explicitly empty policy.
+    host_agent_allowlist_present: bool,
+    /// Installed subset of the host-allowed agents, refreshed by `/agent`.
+    pub available_agents: Vec<AvailableAgent>,
     /// True when preflight detected an issue and is showing Setup screen.
     /// Prevents AgentError from overriding the preflight Setup.
     preflight_setup_active: bool,
@@ -2230,6 +2246,9 @@ impl App {
             deferred_acp: None,
             state: ConnectionState::Connecting(t!("connection.starting").into_owned()),
             current_agent_id: String::new(),
+            allowed_agent_ids: Vec::new(),
+            host_agent_allowlist_present: false,
+            available_agents: Vec::new(),
             preflight_setup_active: false,
             agent_name: String::new(),
             agent_model: None,
@@ -2654,6 +2673,132 @@ impl App {
         }
         self.send_acp_model_update();
         self.publish_agent_status();
+    }
+
+    // ── /agent picker ───────────────────────────────────────────────────
+
+    /// Seed the helper-side policy snapshot. An absent flag permits all known
+    /// agents for manual/legacy launches; a present-but-empty flag permits none.
+    pub fn set_allowed_agent_ids(&mut self, raw_ids: Vec<String>) {
+        self.host_agent_allowlist_present = !raw_ids.is_empty();
+        self.allowed_agent_ids = raw_ids
+            .into_iter()
+            .map(|id| id.trim().to_ascii_lowercase())
+            .filter(|id| !id.is_empty() && crate::agent_registry::is_known_id(id))
+            .collect();
+        self.allowed_agent_ids.sort();
+        self.allowed_agent_ids.dedup();
+        self.refresh_available_agents();
+    }
+
+    fn refresh_available_agents(&mut self) {
+        self.available_agents = crate::agent_registry::KNOWN_AGENTS
+            .iter()
+            .filter(|profile| {
+                (!self.host_agent_allowlist_present
+                    || self.allowed_agent_ids.iter().any(|id| id == profile.id))
+                    && crate::agent_check::find_exe(profile.id).is_some()
+            })
+            .map(|profile| AvailableAgent {
+                id: profile.id.to_string(),
+                display_name: profile.display_name.to_string(),
+            })
+            .collect();
+    }
+
+    fn agent_picker_visible(&self) -> bool {
+        self.current_tab().agent_picker_open
+    }
+
+    fn cmd_agent(&mut self, arg: String) {
+        self.refresh_available_agents();
+        let arg = arg.trim();
+        if self.available_agents.is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::System(t!("system.no_agents").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+        if arg.is_empty() {
+            let selected = self
+                .available_agents
+                .iter()
+                .position(|agent| agent.id == self.current_agent_id)
+                .unwrap_or(0);
+            let tab = self.current_tab_mut();
+            tab.agent_picker_open = true;
+            tab.agent_picker_selected = selected;
+            return;
+        }
+
+        let selected = self
+            .available_agents
+            .iter()
+            .find(|agent| {
+                agent.id.eq_ignore_ascii_case(arg)
+                    || agent.display_name.eq_ignore_ascii_case(arg)
+            })
+            .cloned();
+        match selected {
+            Some(agent) => self.apply_agent_pick(agent.id),
+            None => {
+                let tab = self.current_tab_mut();
+                tab.messages.push(ChatMessage::System(
+                    t!("system.agent_unknown", agent = arg).into_owned(),
+                ));
+                tab.scroll_to_bottom();
+            }
+        }
+    }
+
+    fn close_agent_picker(&mut self) {
+        self.current_tab_mut().agent_picker_open = false;
+    }
+
+    fn agent_picker_up(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.agent_picker_selected = tab.agent_picker_selected.saturating_sub(1);
+    }
+
+    fn agent_picker_down(&mut self) {
+        let last = self.available_agents.len().saturating_sub(1);
+        let tab = self.current_tab_mut();
+        if tab.agent_picker_selected < last {
+            tab.agent_picker_selected += 1;
+        }
+    }
+
+    fn commit_agent_pick(&mut self) {
+        let selected = self.current_tab().agent_picker_selected;
+        let agent_id = self.available_agents.get(selected).map(|agent| agent.id.clone());
+        self.close_agent_picker();
+        if let Some(agent_id) = agent_id {
+            self.apply_agent_pick(agent_id);
+        }
+    }
+
+    fn apply_agent_pick(&mut self, agent_id: String) {
+        if agent_id == self.current_agent_id {
+            return;
+        }
+        let Some(tab_id) = self.owner_tab_id.as_deref() else {
+            self.push_agent_switch_unavailable();
+            return;
+        };
+        let Some(window_id) = self.window_id.as_deref() else {
+            self.push_agent_switch_unavailable();
+            return;
+        };
+        send_wt_protocol_event(build_switch_agent_event(window_id, tab_id, &agent_id));
+    }
+
+    fn push_agent_switch_unavailable(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.messages.push(ChatMessage::System(
+            t!("system.agent_switch_unavailable").into_owned(),
+        ));
+        tab.scroll_to_bottom();
     }
 
     // ── /model picker ───────────────────────────────────────────────────
@@ -6701,6 +6846,17 @@ impl App {
             return;
         }
 
+        if self.agent_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.agent_picker_up(),
+                KeyCode::Down => self.agent_picker_down(),
+                KeyCode::Enter => self.commit_agent_pick(),
+                KeyCode::Esc => self.close_agent_picker(),
+                _ => {}
+            }
+            return;
+        }
+
         match key.code {
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
             {
@@ -7344,6 +7500,18 @@ impl App {
         })
     }
 
+    pub fn agent_popup_state(&self) -> Option<crate::ui::AgentPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.agent_picker_open || self.available_agents.is_empty() {
+            return None;
+        }
+        Some(crate::ui::AgentPopupState {
+            agents: &self.available_agents,
+            selected: tab.agent_picker_selected,
+            current_id: &self.current_agent_id,
+        })
+    }
+
     /// Handle Enter for the slash-command system. Centralizes all three
     /// intents in one place so the giant `handle_key` match has a single
     /// guard instead of an inline block plus a separate popup arm:
@@ -7466,6 +7634,7 @@ impl App {
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
+            CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
         }
     }
@@ -9385,6 +9554,19 @@ impl App {
 pub fn send_wt_protocol_event(json_payload: String) {
     let tx = publisher_sender();
     let _ = tx.send(json_payload);
+}
+
+fn build_switch_agent_event(window_id: &str, tab_id: &str, agent_id: &str) -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "switch_agent",
+        "params": {
+            "window_id": window_id,
+            "tab_id": tab_id,
+            "agent_id": agent_id,
+        }
+    })
+    .to_string()
 }
 
 
@@ -14466,6 +14648,30 @@ mod tests {
         assert!(
             text.contains("PickModelXYZ"),
             "the model picker must list the advertised models; rendered:\n{text}"
+        );
+    }
+
+    #[test]
+    fn render_agent_picker_lists_available_agents() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.current_agent_id = "copilot".into();
+        app.available_agents = vec![
+            AvailableAgent {
+                id: "copilot".into(),
+                display_name: "GitHub Copilot".into(),
+            },
+            AvailableAgent {
+                id: "claude".into(),
+                display_name: "Claude Test Agent".into(),
+            },
+        ];
+        app.current_tab_mut().agent_picker_open = true;
+
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains("Claude Test Agent"),
+            "the agent picker must list available agents; rendered:\n{text}"
         );
     }
 

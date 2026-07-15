@@ -195,9 +195,20 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Kay k'itipaq agente akllay (/agent <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/agent","<id>"}
 
 # ── Recomendación ruwariy (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Akllay %{choice} pantarun: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Agente akllay (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Manam ima agente CLI kaqpas tarikunchu kay computadorapi."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Mana riqsisqa modelo %{agent} — akllana lista rikunaykipaq /agent qillqay."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Terminal pestaña hawapi."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}

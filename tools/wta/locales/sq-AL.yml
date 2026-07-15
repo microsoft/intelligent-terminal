@@ -195,9 +195,20 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Zgjidhni agjentin për këtë skedë (/agjent <id> për të kaluar drejtpërdrejt)"  # {Locked="/agent","<id>"}
 
 # ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
 system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Zgjidhni agjentin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Nuk u gjet asnjë CLI agjenti i disponueshëm në këtë makinë."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Agjent i panjohur ose i padisponueshëm %{agent} — shkruani /agent për të parë listën e disponueshme."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponueshëm jashtë një skede të Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}

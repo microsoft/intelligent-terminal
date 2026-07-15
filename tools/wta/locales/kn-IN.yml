@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ಏಜೆಂಟ್ ಮರುಪ್ರಾರಂಭಿಸಿ"
 commands.stop.summary: "ಚಾಲನೆಯಲ್ಲಿರುವ ಪ್ರಾಂಪ್ಟ್ ಅನ್ನು ರದ್ದುಮಾಡಿ"
 commands.sessions.summary: "ಹಿಂದಿನ ಸೆಷನ್‌ಗಳ ಪಿಕರ್ ತೆರೆಯಿರಿ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "ಈ ಟ್ಯಾಬ್‌ಗಾಗಿ ಏಜೆಂಟ್ಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ಶಿಫಾರಸುಗಳ ಪ್ಯಾನೆಲ್ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ಕೀ ಹೆಸರುಗಳು ಮತ್ತು Return-ಕೀ ಗ್ಲಿಫ್, ಅನುವಾದಿಸಬೇಡಿ
@@ -200,6 +201,16 @@ time.days_other: "%{count} ದಿನಗಳ ಹಿಂದೆ"
 
 # ── ಶಿಫಾರಸು ಕಾರ್ಯಗತಗೊಳಿಸುವಿಕೆ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ಆಯ್ಕೆ %{choice} ವಿಫಲವಾಗಿದೆ: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "ಏಜೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "ಈ ಯಂತ್ರದಲ್ಲಿ ಯಾವುದೇ ಲಭ್ಯವಿರುವ ಏಜೆಂಟ್ CLI ಕಂಡುಬಂದಿಲ್ಲ."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "ಅಪರಿಚಿತ ಅಥವಾ ಲಭ್ಯವಿಲ್ಲದ ಏಜೆಂಟ್ %{agent} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /agent ಟೈಪ್ ಮಾಡಿ."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "ವಿಂಡೋಸ್ ಟರ್ಮಿನಲ್ ಟ್ಯಾಬ್‌ನ ಹೊರಗೆ ಏಜೆಂಟ್ ಬದಲಾಯಿಸುವುದು ಲಭ್ಯವಿಲ್ಲ."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}

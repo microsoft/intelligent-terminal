@@ -81,6 +81,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Վերագործարկել ագենտը"
 commands.stop.summary: "Չեղարկել ընթացիկ հարցումը"
 commands.sessions.summary: "Բացել պատմական նիստերի ընտրիչը (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Ընտրեք գործակալն այս ներդիրի համար (/agent <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -215,6 +216,16 @@ time.days_other: "%{count} օր առաջ"
 
 # ── Խորհրդատվության կատարում (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Ընտրությունը %{choice} ձախողվեց. %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Ընտրեք գործակալը (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Այս սարքում հասանելի գործակալի CLI չի գտնվել:"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Անհայտ կամ անհասանելի գործակալ %{agent} — մուտքագրեք /agent՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Գործակալի փոխարկումը հասանելի չէ Windows Terminal-ի ներդիրից դուրս:"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}

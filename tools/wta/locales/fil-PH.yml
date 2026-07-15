@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Piliin ang agent para sa tab na ito (/agent <id> para magpalit nang diretso)"  # {Locked="/agent","<id>"}
 
 # ── Pagpapatupad ng rekomendasyon (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Nabigo ang pagpipiliang %{choice}: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Pumili ng agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Walang nahanap na available na CLI ng agent sa machine na ito."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Hindi kilala o hindi available na agent %{agent} — i-type ang /agent para makita ang available na listahan."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas ng tab ng Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}

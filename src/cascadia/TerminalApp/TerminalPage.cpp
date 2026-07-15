@@ -881,27 +881,6 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
-    // Find the tab whose AgentPaneContent leaf == `content`. Used when an
-    // AgentPaneContent click event fires; the sender doesn't know its tab.
-    winrt::com_ptr<Tab> TerminalPage::_FindTabHostingAgentPaneContent(const winrt::TerminalApp::AgentPaneContent& content) const
-    {
-        if (!content)
-        {
-            return {};
-        }
-        for (const auto& tab : _tabs)
-        {
-            if (auto tabImpl = _GetTabImpl(tab))
-            {
-                if (tabImpl->FindAgentPaneContent() == content)
-                {
-                    return tabImpl;
-                }
-            }
-        }
-        return {};
-    }
-
     SplitDirection TerminalPage::_AgentPanePositionToSplitDirection(const winrt::hstring& position)
     {
         if (position == L"bottom")
@@ -1526,7 +1505,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Rebuild a SINGLE tab's agent pane after its per-tab agent override
-    // changed (via the agent-bar chip flyout). Scoped, unlike
+    // changed (via `/agent`). Scoped, unlike
     // `_RebuildAgentStack`: it touches only this tab and does NOT restart
     // the shared master. The multi-agent master stays up; the freshly
     // spawned helper declares this tab's new agent in its `initialize`
@@ -1549,8 +1528,8 @@ namespace winrt::TerminalApp::implementation
         const auto focusedTab = _GetFocusedTabImpl();
         if (focusedTab && focusedTab == tab)
         {
-            // The chip flyout lives in this tab's visible agent pane, so
-            // the tab is focused — reopen a visible pane immediately.
+            // `/agent` was entered in this tab's visible agent pane, so reopen
+            // a visible pane immediately.
             _OpenOrReuseAgentPane(false, L"AgentSwitch");
         }
         else if (hadPane)
@@ -1955,6 +1934,7 @@ namespace winrt::TerminalApp::implementation
         helperCmd.push_back(L'"');
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
+        helperCmd.append(L" --owner-window-id \"").append(std::to_wstring(_WindowProperties.WindowId())).append(L"\"");
 
         // If master is degraded (died unexpectedly, not yet recovered via
         // /restart), AcquirePane opened this pane without respawning master.
@@ -1988,6 +1968,30 @@ namespace winrt::TerminalApp::implementation
         // master spawns/reuses the right agent CLI for THIS tab.
         appendHelperFlagValue(L"--agent", agentCliPath);
         appendHelperFlagValue(L"--agent-id", effectiveAgentId);
+        {
+            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            std::wstring allowedIds;
+            for (const auto& agent : Reg::FilteredAcpAgents())
+            {
+                if (agent.id.empty())
+                {
+                    continue;
+                }
+                if (!allowedIds.empty())
+                {
+                    allowedIds.push_back(L',');
+                }
+                allowedIds.append(agent.id);
+            }
+            if (allowedIds.empty())
+            {
+                helperCmd.append(L" --allowed-agent-ids=");
+            }
+            else
+            {
+                appendHelperFlagValue(L"--allowed-agent-ids", allowedIds);
+            }
+        }
         appendHelperFlagValue(L"--acp-model", effectiveModel);
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
@@ -2234,38 +2238,6 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
-        // User picked an agent from the chip flyout → record a per-tab
-        // override and rebuild just that tab's pane. The multi-agent
-        // master spawns/reuses the chosen agent's CLI; sibling tabs (and
-        // other agents) are untouched.
-        content.AgentSwitchRequested([weakSelf](const winrt::TerminalApp::AgentPaneContent& sender,
-                                                const winrt::hstring& agentId) {
-            const auto self = weakSelf.get();
-            if (!self || agentId.empty())
-            {
-                return;
-            }
-            const auto tab = self->_FindTabHostingAgentPaneContent(sender);
-            if (!tab)
-            {
-                return;
-            }
-            // No-op if the tab is already on this agent (its override, or
-            // — absent an override — the global default).
-            const auto currentId = tab->HasAgentOverride() ?
-                                       tab->AgentIdOverride() :
-                                       self->_settings.GlobalSettings().EffectiveAcpAgent();
-            if (currentId == agentId)
-            {
-                return;
-            }
-            // Switch this tab to the chosen agent. Model resets to the
-            // agent's default; built-in agents need no custom command.
-            // (The Tab carries model/custom-command override fields for a
-            // future per-tab model picker.)
-            tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{});
-            self->_RebuildAgentPaneForTab(tab);
-        });
     }
 
     // Window-level bottom-bar "agent toggle" click. Targets the active tab:
@@ -4684,6 +4656,67 @@ namespace winrt::TerminalApp::implementation
         // here so the chip can't get pinned by a dead helper.
         ownerTab->SetAgentChipOverride(std::nullopt);
         _TeardownAgentPane(ownerTab);
+    }
+
+    // Inbound `/agent` selection from WTA. SendEvent fans out to every page;
+    // window_id plus the stable tab id ensure only the owning page applies it.
+    void TerminalPage::OnAgentSwitchRequested(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject() ||
+            !params.isMember("window_id") || !params["window_id"].isString() ||
+            !params.isMember("tab_id") || !params["tab_id"].isString() ||
+            !params.isMember("agent_id") || !params["agent_id"].isString())
+        {
+            _agentPaneLog("OnAgentSwitchRequested: malformed payload");
+            return;
+        }
+        if (params["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
+        {
+            return;
+        }
+
+        const auto tab = _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString()));
+        const auto agentId = winrt::to_hstring(params["agent_id"].asString());
+        if (!tab || agentId.empty())
+        {
+            return;
+        }
+
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        bool allowed = false;
+        for (const auto& agent : Reg::FilteredAcpAgents())
+        {
+            if (agent.id == std::wstring_view{ agentId })
+            {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed)
+        {
+            _agentPaneLog("OnAgentSwitchRequested: unknown or policy-blocked agent");
+            return;
+        }
+
+        const auto currentId = tab->HasAgentOverride() ?
+                                   tab->AgentIdOverride() :
+                                   _settings.GlobalSettings().EffectiveAcpAgent();
+        if (currentId == agentId)
+        {
+            return;
+        }
+
+        tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{});
+        _RebuildAgentPaneForTab(tab);
     }
 
     // `/restart` from any agent pane's TUI lands here via the

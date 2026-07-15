@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ایجنٹ کو دوبارہ شروع کریں"
 commands.stop.summary: "جاری پرامپٹ منسوخ کریں"
 commands.sessions.summary: "تاریخی سیشنز کا انتخاب کار کھولیں (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "اس ٹیب کے لیے ایجنٹ منتخب کریں (براہ راست تبدیل کرنے کے لیے /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── سفارشات پینل (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - کلید کے نام اور Return-کلید گلف، ترجمہ نہ کریں
@@ -200,6 +201,16 @@ time.days_other: "%{count} دن پہلے"
 
 # ── سفارش پر عمل درآمد (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "انتخاب %{choice} ناکام ہو گیا: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "ایجنٹ منتخب کریں (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "اس مشین پر کوئی ایجنٹ CLI دستیاب نہیں ملا۔"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "نامعلوم یا غیر دستیاب ایجنٹ %{agent} — دستیاب فہرست دیکھنے کے لیے /agent ٹائپ کریں۔"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "ونڈوز ٹرمینل ٹیب سے باہر ایجنٹ کی تبدیلی دستیاب نہیں ہے۔"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اس پین کے لیے ماڈل منتخب کریں (براہ راست تبدیل کرنے کے لیے /model <id>)"  # {Locked="/model","<id>"}

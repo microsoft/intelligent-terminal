@@ -76,6 +76,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "এজেণ্ট পুনৰাৰম্ভ কৰক"
 commands.stop.summary: "চলি থকা প্ৰম্প্ট বাতিল কৰক"
 commands.sessions.summary: "ঐতিহাসিক ছেশ্যন পিকাৰ খোলক (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── পৰামৰ্শ পেনেল (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - কী নাম আৰু Return-কী গ্লিফ, অনুবাদ নকৰিব
@@ -202,6 +203,16 @@ time.days_other: "%{count} দিন আগতে"
 
 # ── পৰামৰ্শ কাৰ্যকৰকৰণ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "পছন্দ %{choice} ব্যৰ্থ হ'ল: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "এই মেচিনত কোনো উপলব্ধ এজেণ্ট CLI পোৱা নগ’ল।"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "অজ্ঞাত মডেল %{agent} — উপলব্ধ তালিকা চাবলৈ /agent টাইপ কৰক।"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনেল টেবৰ বাহিৰত এজেণ্ট সলনি কৰা উপলব্ধ নহয়।"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}

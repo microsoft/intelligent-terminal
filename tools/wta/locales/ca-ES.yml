@@ -198,9 +198,20 @@ commands.fix.summary: "Diagnostica el terminal actiu i suggereix una correcció 
 commands.restart.summary: "Reinicia l'agent"
 commands.stop.summary: "Cancel·la la sol·licitud en curs"
 commands.sessions.summary: "Obre el selector de sessions històriques (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Trieu el agent per a aquest tauler (/agent <id> per canviar directament)"  # {Locked="/agent","<id>"}
 
 # ── Execució de recomanacions (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "L’opció %{choice} ha fallat: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Seleccioneu el agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "No s'ha trobat cap CLI d'agent disponible en aquesta màquina."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Model desconegut o no disponible o no disponible %{agent} — escriviu /agent per veure la llista disponible."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "La commutació d'agent no està disponible fora d'una pestanya de Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Trieu el model per a aquest tauler (/model <id> per canviar directament)"  # {Locked="/model","<id>"}

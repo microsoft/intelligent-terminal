@@ -194,9 +194,20 @@ commands.fix.summary: "[!! Dia_gnose the active terminal and suggest a fix (/fix
 commands.restart.summary: "[!! Restart agent !!]"
 commands.stop.summary: "[!! Cancel the in-flight prompt !!]"
 commands.sessions.summary: "[!! Open the historical sessions picker (Ctrl+Shift+/) !!]"
+commands.agent.summary: "[!! Pic_k the agent for this tab (/agent <id> to switch directly) !!]"  # {Locked="/agent","<id>"}
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "[!! Cho_ice %{choice} failed: %{error} !!]"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "[!! Sel_ect agent (↑ ↓ • Enter • Esc) !!]"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "[!! No_ available agent CLI was found on this machine. !!]"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "[!! Unknown or unavailable agent %{agent} — type /agent to see the available list. !!]"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "[!! Ag_ent switching is unavailable outside a Windows Terminal tab. !!]"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}

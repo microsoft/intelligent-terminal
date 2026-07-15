@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Pasirinkite šios srities modelį (/agent <id> norėdami perjungti tiesiogiai)"  # {Locked="/agent","<id>"}
 
 # ── Rekomendacijos vykdymas (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Pasirinkimas %{choice} nepavyko: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Šiame kompiuteryje nerasta pasiekiama agento CLI."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Nežinomas arba nepasiekiamas agentas %{agent} — įveskite /agent, kad pamatytumėte galimų sąrašą."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Windows Terminal“ skirtuko ribų."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}

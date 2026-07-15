@@ -198,9 +198,20 @@ commands.fix.summary: "Das aktive Terminal diagnostizieren und eine Korrektur vo
 commands.restart.summary: "Agent neu starten"
 commands.stop.summary: "Laufende Eingabe abbrechen"
 commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/)"
+commands.agent.summary: "Agent für diese Registerkarte auswählen (/agent <id> zum direkten Wechseln)"  # {Locked="/agent","<id>"}
 
 # ── Empfehlungsausführung (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Auswahl %{choice} fehlgeschlagen: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Agent auswählen (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Auf diesem Computer wurde keine verfügbare Agenten-CLI gefunden."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Unbekannter oder nicht verfügbarer Agent %{agent} — geben Sie /agent ein, um die verfügbare Liste anzuzeigen."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Das Umschalten des Agenten ist außerhalb einer Windows-Terminal-Registerkarte nicht verfügbar."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}

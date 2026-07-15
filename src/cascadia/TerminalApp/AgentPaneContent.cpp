@@ -8,13 +8,8 @@
 #include <algorithm>
 #include <cwctype>
 #include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.UI.Xaml.Automation.h>
-#include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
-#include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
-
-#include "AgentRegistry.h"
 
 using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
@@ -22,7 +17,6 @@ using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
-namespace MUXC = winrt::Microsoft::UI::Xaml::Controls;
 
 namespace winrt::TerminalApp::implementation
 {
@@ -59,115 +53,9 @@ namespace winrt::TerminalApp::implementation
 
         _wireInnerEvents();
 
-        // The agent-bar chip is a Button so it opens the per-tab agent
-        // picker on both click and keyboard (Enter/Space) activation, and
-        // is reachable via Tab. `Click` covers all of those uniformly.
-        AgentBarButton().Click({ get_weak(), &AgentPaneContent::_onAgentBarClicked });
-        Automation::AutomationProperties::SetName(AgentBarButton(), RS_(L"AgentPane_SwitchAgentAutomationName"));
-
         // Default label + logo until wta sends an agent_status event.
         _refreshLabel();
         _refreshLogo();
-    }
-
-    // Agent-bar Button activation (pointer or keyboard) → open the picker.
-    void AgentPaneContent::_onAgentBarClicked(const winrt::Windows::Foundation::IInspectable& /*sender*/,
-                                              const winrt::Windows::UI::Xaml::RoutedEventArgs& /*e*/)
-    {
-        _showAgentPicker();
-    }
-
-    // Build + show a flyout of GPO-allowed agents anchored on the chip.
-    // Picking one raises `AgentSwitchRequested` with that agent's id; the
-    // page turns it into a per-tab override and rebuilds this tab's pane.
-    // The currently-running agent is identified by id (stable) via a
-    // case-insensitive reverse-lookup of `_agentName` in the registry.
-    void AgentPaneContent::_showAgentPicker()
-    {
-        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-
-        // Materialize the GPO-filtered list once: FilteredAcpAgents() returns
-        // a freshly-built std::vector (policy evaluation + allocation) on every
-        // call, so reusing one snapshot avoids the duplicated work and the
-        // risk of the current-id lookup and the flyout disagreeing if the
-        // underlying set changed between two calls.
-        const auto agents = Reg::FilteredAcpAgents();
-
-        // Nothing to switch between — e.g. GPO's AllowedAgents filtered every
-        // built-in ACP agent out (custom agents may still be allowed globally
-        // but aren't offered here). Don't pop an empty flyout; the agent-bar
-        // button is simply inert in that configuration.
-        if (agents.empty())
-        {
-            return;
-        }
-
-        // Resolve the current agent's stable id from the last-reported name.
-        // The status `name` is the agent's self-reported product name, which
-        // often carries a suffix the registry brand name doesn't — e.g.
-        // "Claude Code"/"Gemini CLI" vs the registry's "Claude"/"Gemini". An
-        // exact full-length compare would miss every suffixed name and leave
-        // no item checked, so match on a case-insensitive word-boundary prefix
-        // in either direction (handles both a longer status name and a longer
-        // display name). The display names don't prefix one another, so this
-        // can't mark the wrong agent.
-        const auto eqCI = [](std::wstring_view a, std::wstring_view b) {
-            return a.size() == b.size() &&
-                   std::equal(a.begin(), a.end(), b.begin(), [](wchar_t x, wchar_t y) {
-                       return std::towlower(x) == std::towlower(y);
-                   });
-        };
-        const auto startsWithWord = [&eqCI](std::wstring_view whole, std::wstring_view prefix) {
-            return !prefix.empty() && prefix.size() <= whole.size() &&
-                   eqCI(whole.substr(0, prefix.size()), prefix) &&
-                   (whole.size() == prefix.size() || std::iswspace(whole[prefix.size()]));
-        };
-        winrt::hstring currentAgentId{};
-        if (!_agentName.empty())
-        {
-            const std::wstring_view name{ _agentName };
-            for (const auto& a : agents)
-            {
-                const std::wstring_view dn{ a.displayName };
-                if (startsWithWord(name, dn) || startsWithWord(dn, name))
-                {
-                    currentAgentId = winrt::hstring{ a.id };
-                    break;
-                }
-            }
-        }
-
-        MenuFlyout flyout{};
-        for (const auto& agent : agents)
-        {
-            const winrt::hstring agentId{ agent.id };
-            const winrt::hstring displayName{ agent.displayName };
-            // Skip entries with no usable id: picking one would raise
-            // AgentSwitchRequested with an empty id, which TerminalPage's
-            // per-tab override handler ignores — i.e. a dead menu item.
-            // Mirrors the empty-id filter TerminalPage uses when enumerating
-            // agents for the master allowlist / detection.
-            if (agentId.empty())
-            {
-                continue;
-            }
-            // RadioMenuFlyoutItem conveys the selected state via UIA
-            // IsChecked semantics (accessible to screen readers), unlike a
-            // plain MenuFlyoutItem whose Accept icon is purely visual.
-            MUXC::RadioMenuFlyoutItem item{};
-            item.GroupName(L"agents");
-            item.Text(displayName);
-            item.IsChecked(!currentAgentId.empty() && currentAgentId == agentId);
-            item.Click([weak = get_weak(), agentId](const winrt::Windows::Foundation::IInspectable& /*s*/,
-                                                    const winrt::Windows::UI::Xaml::RoutedEventArgs& /*a*/) {
-                if (const auto self = weak.get())
-                {
-                    self->AgentSwitchRequested.raise(*self, agentId);
-                }
-            });
-            flyout.Items().Append(item.as<MenuFlyoutItemBase>());
-        }
-        flyout.ShowAt(AgentBarButton());
     }
 
     winrt::TerminalApp::TerminalPaneContent AgentPaneContent::GetTerminalContent()

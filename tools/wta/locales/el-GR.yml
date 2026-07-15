@@ -197,9 +197,20 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Επιλέξτε το πράκτορα για αυτό το πλαίσιο (/agent <id> για άμεση εναλλαγή)"  # {Locked="/agent","<id>"}
 
 # ── Εκτέλεση σύστασης (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Η επιλογή %{choice} απέτυχε: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Επιλέξτε πράκτορα (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Δεν βρέθηκε διαθέσιμο CLI πράκτορα σε αυτό το μηχάνημα."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Άγνωστος ή μη διαθέσιμος πράκτορας %{agent} — πληκτρολογήστε /agent για να δείτε τη διαθέσιμη λίστα."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Η εναλλαγή πρακτόρων δεν είναι διαθέσιμη εκτός καρτέλας του Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}

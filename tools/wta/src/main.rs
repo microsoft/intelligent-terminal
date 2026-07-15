@@ -170,7 +170,8 @@ struct Cli {
     /// accepts any *known* agent id. A *present* flag is honored fail-closed —
     /// even when it filters down to nothing, every helper-selected id is then
     /// blocked (all panes fall back to the default) rather than widening back
-    /// to accept-any. Hidden; helper ignores it.
+    /// to accept-any. Helpers use the same list only to filter `/agent`;
+    /// the master remains the authoritative enforcement point.
     #[arg(long, hide = true, value_name = "IDS", value_delimiter = ',')]
     allowed_agent_ids: Vec<String>,
 
@@ -228,6 +229,12 @@ struct Cli {
     /// placeholder. Hidden because nothing outside WT should be setting it.
     #[arg(long, hide = true)]
     owner_tab_id: Option<String>,
+
+    /// Window ID of the WT window that owns this helper. Passed alongside
+    /// `--owner-tab-id` because PID-based pane discovery is best-effort and
+    /// may not find a newly spawned ConPTY helper before `/agent` is used.
+    #[arg(long, hide = true)]
+    owner_window_id: Option<String>,
 
     /// Boot-time hint: instead of letting the helper create a fresh ACP
     /// session via `session/new`, immediately resume the given session id
@@ -3229,6 +3236,7 @@ async fn run_acp_app(
 
             let autofix_enabled = !cli.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            app_state.set_allowed_agent_ids(cli.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
             // re-derive the delegate commandline when only the delegate
@@ -3564,6 +3572,23 @@ async fn run_acp_app(
                 // is passed by WT via --owner-tab-id (see below) and seeded
                 // directly into app_state.tab_id.
                 app_state.window_id = Some(window_id);
+            }
+
+            // WT knows the owning window authoritatively when it creates the
+            // helper. Prefer that seed over best-effort PID discovery so
+            // outbound per-window events work from the first render.
+            if let Some(owner_window_id) = cli
+                .owner_window_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+            {
+                tracing::info!(
+                    target: "tab_session",
+                    window_id = %owner_window_id,
+                    "seeded app_state.window_id from --owner-window-id"
+                );
+                app_state.window_id = Some(owner_window_id.to_string());
             }
 
             // Seed tab_id from --owner-tab-id (passed by TerminalPage when

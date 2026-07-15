@@ -78,6 +78,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "AI ئاگېنتىنى قايتا قوزغات"
 commands.stop.summary: "ئىجرا قىلىنىۋاتقان سوراقنى بىكار قىلىش"
 commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچىنى ئېچىش (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "بۇ بەت ئۈچۈن ۋاكالەتچى تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ─────────────────────────────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -208,6 +209,16 @@ time.days_other: "%{count} كۈن بۇرۇن"
 
 # ── تەۋسىيەنى ئىجرا قىلىش (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "تاللاش %{choice} مەغلۇپ بولدى: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "ۋاكالەتچى تاللاڭ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "بۇ ماشىنىدىن ھېچقانداق ۋاكالەتچى CLI تېپىلمىدى."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "نامەلۇم ياكى ئىشلەتكىلى بولمايدىغان ۋاكالەتچى %{agent} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /agent نى كىرگۈزۈڭ."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "ۋاكالەتچى ئالماشتۇرۇشنى Windows Terminal بېتىنىڭ سىرتىدا ئىشلەتكىلى بولمايدۇ."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "بۇ تاختا ئۈچۈن مودېل تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /model <id>)"  # {Locked="/model","<id>"}

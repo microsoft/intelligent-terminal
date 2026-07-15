@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Agentni qayta ishga tushiring"
 commands.stop.summary: "Bajarilayotgan soʻrovni bekor qilish"
 commands.sessions.summary: "Tarixiy seanslar tanlagichini ochish (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Bu panel uchun agentni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -199,6 +200,16 @@ time.days_other: "%{count} kun oldin"
 
 # ── Tavsiyani bajarish (src/coordinator.rs) ─────────────────────────────────
 system.choice_execution_failed: "%{choice} tanlovi bajarilmadi: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Agentni tanlang (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Ushbu kompyuterda biron-bir mavjud agent CLI topilmadi."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Nomaʼlum yoki mavjud boʻlmagan agent %{agent} — mavjud roʻyxatni koʻrish uchun /agent yozing."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Agentni almashtirish Windows Terminal ilovasidan tashqarida mavjud emas."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel uchun modelni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /model <id>)"  # {Locked="/model","<id>"}

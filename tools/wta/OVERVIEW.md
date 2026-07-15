@@ -61,7 +61,7 @@ Implementation: `src/master/mod.rs`.
 ### 2. `wta-helper` — the per-pane TUI
 
 ```
-wta --connect-master \\.\pipe\wta-master-<GUID> [--owner-tab-id <GUID>] [--start-stashed] …
+wta --connect-master \\.\pipe\wta-master-<GUID> [--owner-tab-id <GUID>] [--owner-window-id <ID>] [--start-stashed] …
 ```
 
 Spawned **once per agent pane** by Windows Terminal (`TerminalPage`). It drives

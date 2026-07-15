@@ -197,9 +197,20 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "ለዚህ ትር ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── የምክር አፈጻጸም (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ምርጫ %{choice} አልተሳካም፦ %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "ኤጅንት ይምረጡ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "ምንም የሚገኝ የኤጅንት CLI በዚህ ማሽን ላይ አልተገኘም።"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "ያልታወቀ ወይም የማይገኝ ኤጅንት %{agent} — የሚገኘውን ዝርዝር ለማየት /agent ይተይቡ።"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "የኤጅንት መቀያየር ከWindows Terminal ትር ውጭ አይገኝም።"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ለዚህ ፓነል ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /model <id>)"  # {Locked="/model","<id>"}
