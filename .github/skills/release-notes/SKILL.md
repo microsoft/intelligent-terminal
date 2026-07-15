@@ -18,7 +18,7 @@ Generate polished, user-facing release notes for Intelligent Terminal releases b
 
 ### Phase 1: Identify the Commit Range
 
-The base is the **previous release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.2`) and the head is **`main`**. Do **not** anchor on `stable` (it is a cherry-picked subset that lags the release tag), on the legacy four-part `v0.1.NNNN.0` tags, or on upstream Windows Terminal `v1.x` tags — none of those are this fork's release line, and a plain `git tag --sort=-version:refname | head` surfaces exactly those wrong anchors.
+The base is the **previous release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.2`) and the head is **`main`**. Do **not** anchor on `stable` (it is a cherry-picked subset that lags the release tag), on the legacy four-part `v0.1.NNNN.0` tags, or on upstream Windows Terminal `v1.x` tags — none of those are this fork's release line, and blindly taking the newest tag by version sort surfaces exactly those wrong anchors.
 
 1. Determine the **last release point** (in order of preference):
    - **From the release-notes files (source of truth).** The newest `doc/release-notes/vX.Y.Z.md` names the last shipped version; use its `vX.Y.Z` tag as the base.
@@ -36,7 +36,7 @@ The base is the **previous release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.2`) 
      git tag --list 'v*' --merged main | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1
      ```
    - The user may specify the base commit/tag directly.
-   - If still unsure, **ask the user** — never guess from `git tag | head` in this repo.
+   - If still unsure, **ask the user** — never guess from a blind newest-tag sort in this repo.
 2. List all commits from the base to `main`:
    ```bash
    git log --oneline --reverse <last-release-tag>..main
