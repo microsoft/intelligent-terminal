@@ -3560,6 +3560,74 @@ public:
         VERIFY_IS_TRUE(decdld(CellMatrix::Default, 0, FontSet::Size132x24, FontUsage::FullCell, bitmapOf6x18));
     }
 
+    TEST_METHOD(SoftFontBufferOverrun)
+    {
+        // Regression test for _endOfSixelLine bounds handling. Glyphs are packed
+        // into the font buffer at _fullHeight rows each, so a glyph whose sixel
+        // data supplies more bands than its stride must not let the write cursor
+        // advance into the next glyph's slot (previously it clamped only against
+        // the whole-buffer end / MAX_HEIGHT), and an unbounded number of sixel
+        // line breaks must not overflow the signed row counter.
+        using FontSet = DispatchTypes::DrcsFontSet;
+        using FontUsage = DispatchTypes::DrcsFontUsage;
+
+        FontBuffer fontBuffer;
+
+        const auto loadGlyph = [&](const auto cmw, const auto cmh, const std::wstring_view data) {
+            const auto cellMatrix = static_cast<DispatchTypes::DrcsCellMatrix>(cmw);
+            if (!fontBuffer.SetEraseControl(DispatchTypes::DrcsEraseControl::AllChars))
+            {
+                return false;
+            }
+            if (!fontBuffer.SetAttributes(cellMatrix, cmh, FontSet::Size80x24, FontUsage::FullCell))
+            {
+                return false;
+            }
+            if (!fontBuffer.SetStartChar(0, DispatchTypes::CharsetSize::Size94))
+            {
+                return false;
+            }
+            fontBuffer.AddSixelData(L'B'); // Charset identifier
+            for (const auto ch : data)
+            {
+                fontBuffer.AddSixelData(ch);
+            }
+            return fontBuffer.FinalizeSixelData();
+        };
+
+        // A short (8x8) glyph fed far more sixel bands than its eight-row stride.
+        // Each '/' is a line break that flushes a band; supplying 12 of them
+        // drives the cursor well past the glyph. This must be handled without
+        // running the write cursor past the current glyph or off the buffer,
+        // and the resulting cell size must stay within the hard storage max.
+        Log::Comment(L"Short glyph with many trailing sixel bands");
+        const std::wstring shortGlyphOverrun{ L"????????" + std::wstring(12, L'/') };
+        loadGlyph(8, 8, shortGlyphOverrun);
+        VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().width, 16);
+        VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().height, 32);
+
+        // A pathological payload consisting only of sixel line breaks. The
+        // cursor advance is clamped and the row counter is saturated, so this
+        // must complete without signed-overflow UB and stay in bounds.
+        Log::Comment(L"Payload of only sixel line breaks");
+        const std::wstring onlyLineBreaks(4096, L'/');
+        loadGlyph(8, 8, onlyLineBreaks);
+        VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().height, 32);
+
+        // A tall (16x32) glyph that exactly fills its stride, followed by extra
+        // bands. The exactly-full case must still finalize successfully rather
+        // than reporting a spurious E_OUTOFMEMORY.
+        Log::Comment(L"Full-height glyph that exactly fills its stride");
+        std::wstring fullHeightGlyph;
+        for (auto row = 0; row < 32 / 6 + 2; ++row)
+        {
+            fullHeightGlyph.append(L"????????????????");
+            fullHeightGlyph.push_back(L'/');
+        }
+        VERIFY_IS_TRUE(loadGlyph(16, 32, fullHeightGlyph));
+        VERIFY_IS_LESS_THAN_OR_EQUAL(fontBuffer.GetCellSize().height, 32);
+    }
+
     TEST_METHOD(TogglingC1ParserMode)
     {
         _stateMachine->SetParserMode(StateMachine::Mode::AcceptC1, false);
