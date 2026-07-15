@@ -85,7 +85,7 @@ Describe 'Feature §2 master death is a consistent degraded state (#329)' -Tag '
         $menu = Get-AgentPaneText -App $script:app -MaxLines 40
         $menu | Should -Match '/restart' -Because 'the degraded popup must still offer /restart (the one recovery command)'
         # No other slash command may be offered while degraded — each would hit the dead pipe.
-        foreach ($blocked in '/help', '/clear', '/new', '/sessions', '/model', '/fix', '/stop') {
+        foreach ($blocked in '/help', '/clear', '/new', '/sessions', '/agent', '/model', '/fix', '/stop') {
             $menu | Should -Not -Match ([regex]::Escape($blocked)) -Because "while degraded the popup must hide $blocked (only /restart runs)"
         }
 
