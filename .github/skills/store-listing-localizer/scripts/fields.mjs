@@ -46,7 +46,9 @@ export function classifyField(field) {
 export function parseAppNames(md) {
   const out = {};
   for (const line of md.split(/\r?\n/)) {
-    const m = line.match(/^\s*\|\s*([A-Za-z]{2}(?:-[A-Za-z0-9]+)*)\s*\|\s*(.+?)\s*\|\s*$/);
+    // Primary language subtag is 2–8 letters per BCP-47 (not just 2) — covers
+    // fil, kok, quz, and the qps-* pseudo-locales, not only 2-letter codes.
+    const m = line.match(/^\s*\|\s*([A-Za-z]{2,8}(?:-[A-Za-z0-9]+)*)\s*\|\s*(.+?)\s*\|\s*$/);
     if (!m) continue;
     const locale = m[1].trim();
     const name = m[2].trim();
