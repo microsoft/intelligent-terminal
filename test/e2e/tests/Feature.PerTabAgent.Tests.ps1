@@ -1,6 +1,8 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #296: `/agent` selects a runtime-only agent override for one tab while the
 # shared master keeps sibling tabs and their conversations alive.
+# Release checklist: C225-C226 cover the slash-command UX; C227-C228 cover
+# per-tab isolation and global-default/override behavior.
 
 BeforeDiscovery {
     $script:Ready = [bool](
