@@ -39,6 +39,27 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
         finally { Stop-WtEventListener -Listener $listener }
     }
 
+    It 'PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5.1' {
+        # Windows PowerShell 5.1 stamps HistoryId = -1 on .NET-exception-class errors. Open the
+        # in-box host explicitly so this regression cannot accidentally run against pwsh 7.
+        $tab = New-WtTab -App $script:app -Command 'powershell.exe' -Title 'winps51-regex'
+        $sid = $tab.session_id
+        $listener = $null
+        try {
+            # Seed $LASTEXITCODE with 0, then raise a PowerShell-level error that does not update it.
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command 'cmd /c "exit 0"' -SettleSec 10 | Out-Null
+            $listener = Start-WtEventListener -App $script:app
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command "'x' -match '['" | Out-Null
+
+            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
+            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
+        }
+        finally {
+            if ($listener) { Stop-WtEventListener -Listener $listener }
+            Close-WtPane -App $script:app -SessionId $sid
+        }
+    }
+
     It 'PowerShell shell integration emits a zero-exit mark on success (OSC 133;D;0)' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $listener = Start-WtEventListener -App $script:app
