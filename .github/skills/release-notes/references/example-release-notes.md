@@ -1,6 +1,6 @@
 # Intelligent Terminal v0.1.1
 
-> Base = **v0.1.0** release tag (`cfef0fa81`, build `0.1.1502.0`) → **latest `main`** (`008c4f645`).
+> Base = **v0.1.0** release tag (`<base-commit>`, build `0.1.1502.0`) → **latest `main`** (`<head-commit>`).
 > ~30 new PRs. The exact build number (`0.1.xxxx.0`) is injected by CI at release time.
 >
 > Note on the `stable` branch: `stable` is a cherry-picked subset of what already shipped in the
