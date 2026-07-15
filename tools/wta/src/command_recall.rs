@@ -243,14 +243,17 @@ pub struct CommandResolution {
     pub target: String,
 }
 
-/// Static, injection-safe resolver script. The token is passed via the
+/// Injection-safe resolver script **template**. The token is passed via the
 /// `WTA_RESOLVE_TOKEN` environment variable (never string-interpolated into the
-/// command), so a hostile token can't inject PowerShell. Prints the sentinel
-/// first (so profile stdout noise is separable), then one tab-separated
-/// `type<TAB>name<TAB>target` line per `Get-Command -All` result. `target` is
-/// whitespace-collapsed so a multi-line function body can't break line parsing.
-const RESOLVE_SCRIPT: &str = r#"$ErrorActionPreference='SilentlyContinue'
-Write-Output '__WTA_CMD_ENUM__'
+/// command), so a hostile token can't inject PowerShell. `{sentinel}` is
+/// substituted with [`ENUM_SENTINEL`] by [`resolve_script`] so the printed
+/// marker can never drift from the one [`parse_resolve_output`] keys off. The
+/// script prints the sentinel first (so profile stdout noise is separable),
+/// then one tab-separated `type<TAB>name<TAB>target` line per `Get-Command
+/// -All` result. `target` is whitespace-collapsed so a multi-line function body
+/// can't break line parsing.
+const RESOLVE_SCRIPT_TEMPLATE: &str = r#"$ErrorActionPreference='SilentlyContinue'
+Write-Output '{sentinel}'
 Get-Command -Name $env:WTA_RESOLVE_TOKEN -All | ForEach-Object {
   $c = $_
   $d = switch ($c.CommandType) {
@@ -262,6 +265,27 @@ Get-Command -Name $env:WTA_RESOLVE_TOKEN -All | ForEach-Object {
   ($c.CommandType, $c.Name, ($d -replace '\s+',' ')) -join [char]9
 }"#;
 
+/// [`RESOLVE_SCRIPT_TEMPLATE`] with the live [`ENUM_SENTINEL`] substituted, so
+/// the emitted marker and the parser stay in sync automatically.
+fn resolve_script() -> String {
+    RESOLVE_SCRIPT_TEMPLATE.replace("{sentinel}", ENUM_SENTINEL)
+}
+
+/// Outcome of [`powershell_resolve`]. Distinguishes a clean "the shell ran and
+/// the token resolves to nothing" ([`ResolveOutcome::NotFound`]) from "we
+/// couldn't determine it" ([`ResolveOutcome::Indeterminate`], e.g. the profile
+/// probe timed out or failed to spawn) — so callers never report a false "does
+/// not exist" just because a slow/hanging profile blew the timeout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolveOutcome {
+    /// The token resolves to one or more commands (guaranteed non-empty).
+    Resolved(Vec<CommandResolution>),
+    /// The probe ran cleanly and the token resolves to nothing.
+    NotFound,
+    /// Existence couldn't be determined (timeout / spawn / IO error).
+    Indeterminate,
+}
+
 /// Resolve what `token` actually is on the user's machine (profile-aware).
 ///
 /// Unlike [`powershell_near_matches`] (typo "did you mean" for a *not-found*
@@ -271,10 +295,11 @@ Get-Command -Name $env:WTA_RESOLVE_TOKEN -All | ForEach-Object {
 /// `-NoProfile`), so profile aliases/functions resolve; a bare `-NoProfile`
 /// probe — which the agent tends to run itself — would miss them.
 ///
-/// Returns `Some(non-empty)` when the token resolves to one or more commands;
-/// `None` when it doesn't exist, on error, or if the profile load times out
-/// ([`PROFILE_ENUMERATE_TIMEOUT`]). PowerShell-only (v1).
-pub async fn powershell_resolve(shell_exe: &str, token: &str) -> Option<Vec<CommandResolution>> {
+/// The profile load is bounded by [`PROFILE_ENUMERATE_TIMEOUT`]. On timeout or
+/// spawn/IO failure the result is [`ResolveOutcome::Indeterminate`] (**not**
+/// `NotFound`), so a hanging profile can't be mistaken for a missing command.
+/// PowerShell-only (v1).
+pub async fn powershell_resolve(shell_exe: &str, token: &str) -> ResolveOutcome {
     let exe = if shell_exe.trim().is_empty() {
         "powershell.exe"
     } else {
@@ -282,7 +307,7 @@ pub async fn powershell_resolve(shell_exe: &str, token: &str) -> Option<Vec<Comm
     };
 
     let mut cmd = tokio::process::Command::new(exe);
-    cmd.args(["-NonInteractive", "-Command", RESOLVE_SCRIPT])
+    cmd.args(["-NonInteractive", "-Command", &resolve_script()])
         .env("WTA_RESOLVE_TOKEN", token)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -292,16 +317,22 @@ pub async fn powershell_resolve(shell_exe: &str, token: &str) -> Option<Vec<Comm
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     // Bound the profile load; on timeout the child is reaped via kill_on_drop.
-    let output = tokio::time::timeout(PROFILE_ENUMERATE_TIMEOUT, cmd.output())
-        .await
-        .ok()?
-        .ok()?;
-    parse_resolve_output(&String::from_utf8_lossy(&output.stdout))
+    // A timeout or spawn/IO error is Indeterminate — the shell may never have
+    // reached `Get-Command`, so we cannot conclude the token is absent.
+    let output = match tokio::time::timeout(PROFILE_ENUMERATE_TIMEOUT, cmd.output()).await {
+        Ok(Ok(output)) => output,
+        _ => return ResolveOutcome::Indeterminate,
+    };
+    match parse_resolve_output(&String::from_utf8_lossy(&output.stdout)) {
+        Some(resolutions) => ResolveOutcome::Resolved(resolutions),
+        None => ResolveOutcome::NotFound,
+    }
 }
 
-/// Parse [`RESOLVE_SCRIPT`] stdout into resolutions, discarding profile noise
-/// before [`ENUM_SENTINEL`]. Pure, so parsing is unit-testable without a shell.
-/// Returns `None` when nothing resolves (no data lines after the sentinel).
+/// Parse [`RESOLVE_SCRIPT_TEMPLATE`] stdout into resolutions, discarding profile
+/// noise before [`ENUM_SENTINEL`]. Pure, so parsing is unit-testable without a
+/// shell. Returns `None` when nothing resolves (no data lines after the
+/// sentinel).
 fn parse_resolve_output(stdout: &str) -> Option<Vec<CommandResolution>> {
     let lines: Vec<&str> = stdout
         .lines()
@@ -643,9 +674,16 @@ mod tests {
     fn parse_output_strips_profile_noise_before_sentinel() {
         // A profile that writes to the success stream (`Write-Output`) prints
         // before the sentinel; those lines must not be mistaken for commands.
-        let raw = format!(
-            "Loading my profile...\noh-my-posh init noise\n{ENUM_SENTINEL}\nwhich\nGet-ChildItem\ngit"
-        );
+        // Built with join() so the source has no `\n`-glued tokens.
+        let raw = [
+            "Loading my profile...",
+            "oh-my-posh init noise",
+            ENUM_SENTINEL,
+            "which",
+            "Get-ChildItem",
+            "git",
+        ]
+        .join("\n");
         let got = parse_enumerate_output(&raw).expect("names after the sentinel");
         assert_eq!(got, names(&["which", "Get-ChildItem", "git"]));
     }
@@ -653,7 +691,8 @@ mod tests {
     #[test]
     fn parse_output_keeps_all_lines_when_sentinel_absent() {
         // Defensive: a missing sentinel must not drop the whole command list.
-        let got = parse_enumerate_output("git\nGet-ChildItem\n").expect("all lines kept");
+        let raw = ["git", "Get-ChildItem"].join("\n");
+        let got = parse_enumerate_output(&raw).expect("all lines kept");
         assert_eq!(got, names(&["git", "Get-ChildItem"]));
     }
 
@@ -665,9 +704,15 @@ mod tests {
 
     #[test]
     fn parse_resolve_output_parses_tab_rows_after_sentinel() {
-        let raw = format!(
-            "profile noise line\n{ENUM_SENTINEL}\nAlias\twhich\twhere.exe\nApplication\twhere.exe\tC:\\Windows\\system32\\where.exe"
-        );
+        // Rows built with join("\t") so the source has no `\t`-glued tokens.
+        let alias_row = ["Alias", "which", "where.exe"].join("\t");
+        let app_row = [
+            "Application",
+            "where.exe",
+            "C:\\Windows\\system32\\where.exe",
+        ]
+        .join("\t");
+        let raw = ["profile noise line", ENUM_SENTINEL, &alias_row, &app_row].join("\n");
         let got = parse_resolve_output(&raw).expect("resolutions after sentinel");
         assert_eq!(got.len(), 2);
         assert_eq!(got[0], CommandResolution {
@@ -688,7 +733,7 @@ mod tests {
     #[test]
     fn parse_resolve_output_tolerates_missing_target_column() {
         // Cmdlets/functions have no target column; a two-field row is still valid.
-        let raw = format!("{ENUM_SENTINEL}\nCmdlet\tGet-ChildItem");
+        let raw = [ENUM_SENTINEL, &["Cmdlet", "Get-ChildItem"].join("\t")].join("\n");
         let got = parse_resolve_output(&raw).expect("one resolution");
         assert_eq!(got[0].command_type, "Cmdlet");
         assert_eq!(got[0].name, "Get-ChildItem");
@@ -788,9 +833,9 @@ mod integration_tests {
         };
         // `gci` → Alias for Get-ChildItem. Profile-loaded resolve must report it
         // as an Alias with a non-empty target (the #286 "what is X" answer).
-        let got = powershell_resolve(&shell, "gci")
-            .await
-            .expect("gci should resolve");
+        let ResolveOutcome::Resolved(got) = powershell_resolve(&shell, "gci").await else {
+            panic!("gci should resolve");
+        };
         assert!(
             got.iter().any(|r| r.command_type.eq_ignore_ascii_case("Alias")
                 && r.name.eq_ignore_ascii_case("gci")
@@ -800,13 +845,17 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn resolve_none_for_unknown_token() {
+    async fn resolve_not_found_for_unknown_token() {
         let Some(shell) = powershell_host() else {
             eprintln!("no PowerShell host installed; skipping");
             return;
         };
-        let got = powershell_resolve(&shell, "wtdefinitelynotacmd").await;
-        assert!(got.is_none(), "expected None for a nonexistent command, got {got:?}");
+        let got = powershell_resolve(&shell, "no-such-command").await;
+        assert_eq!(
+            got,
+            ResolveOutcome::NotFound,
+            "expected NotFound for a nonexistent command, got {got:?}"
+        );
     }
 
     #[tokio::test]
