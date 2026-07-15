@@ -1,4 +1,4 @@
-# Intelligent Terminal — Release Notes (vX.X.X)
+# Intelligent Terminal — Release Notes (vX.Y.Z)
 
 _One-line summary of what this release brings._
 
