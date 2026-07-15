@@ -196,7 +196,7 @@ commands.fix.summary: "Diagnosis terminal aktif dan cadangkan pembetulan (/fix <
 commands.restart.summary: "Mulakan semula ejen"
 commands.stop.summary: "Batalkan gesaan yang sedang berjalan"
 commands.sessions.summary: "Buka pemilih sesi sejarah (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.agent.summary: "Pilih ejen untuk tab ini (/ejen <id> untuk menukar terus)"  # {Locked="/agent","<id>"}
+commands.agent.summary: "Pilih ejen untuk tab ini (/agent <id> untuk menukar terus)"  # {Locked="/agent","<id>"}
 
 # ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"

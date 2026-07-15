@@ -195,7 +195,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.agent.summary: "Zgjidhni agjentin për këtë skedë (/agjent <id> për të kaluar drejtpërdrejt)"  # {Locked="/agent","<id>"}
+commands.agent.summary: "Zgjidhni agjentin për këtë skedë (/agent <id> për të kaluar drejtpërdrejt)"  # {Locked="/agent","<id>"}
 
 # ── Ekzekutimi i rekomandimit (src/coordinator.rs) ──────────────────────────
 system.choice_execution_failed: "Zgjedhja %{choice} dështoi: %{error}"

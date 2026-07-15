@@ -75,7 +75,7 @@ commands.fix.summary: "Etkin terminali tanıla ve bir düzeltme öner (/fix <hin
 commands.restart.summary: "Aracıyı yeniden başlat"
 commands.stop.summary: "Devam eden istemi iptal et"
 commands.sessions.summary: "Geçmiş oturum seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.agent.summary: "Bu sekme için aracıi seçin (doğrudan geçmek için /aracı <id>)"  # {Locked="/agent","<id>"}
+commands.agent.summary: "Bu sekme için aracıyı seçin (doğrudan geçmek için /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate

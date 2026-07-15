@@ -197,7 +197,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
-commands.agent.summary: "Dewiswch y asiant ar gyfer y paen hwn (/asiant <id> i newid yn uniongyrchol)"  # {Locked="/agent","<id>"}
+commands.agent.summary: "Dewiswch y asiant ar gyfer y paen hwn (/agent <id> i newid yn uniongyrchol)"  # {Locked="/agent","<id>"}
 
 # ── Gweithredu argymhelliad (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Methodd dewis %{choice}: %{error}"
