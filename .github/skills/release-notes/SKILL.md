@@ -22,7 +22,7 @@ The base is the **latest release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.18`) a
 
 1. Find the **latest release tag** — the newest 3-part `vX.Y.Z` tag that is merged into `main`. The filter is what keeps this reliable: it excludes upstream Windows Terminal `v1.x` tags (not on this fork's history) and the legacy four-part `v0.1.NNNN.0` tags (stale, some point at ancient upstream commits). Do **not** anchor on `stable` — it is a cherry-picked subset that lags the release tag.
    ```bash
-   git tag --list 'v*' --merged main | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+   git tag --list 'v*' --merged main --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1
    ```
    ```powershell
    git tag --list 'v*' --merged main | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1
