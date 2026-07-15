@@ -21,7 +21,7 @@ Generate polished, user-facing release notes for Intelligent Terminal releases b
 The base is the **previous release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.2`) and the head is **`main`**. Do **not** anchor on `stable` (it is a cherry-picked subset that lags the release tag), on the legacy four-part `v0.1.NNNN.0` tags, or on upstream Windows Terminal `v1.x` tags — none of those are this fork's release line, and blindly taking the newest tag by version sort surfaces exactly those wrong anchors.
 
 1. Determine the **last release point** (in order of preference):
-   - **From the release-notes files (source of truth).** The newest `doc/release-notes/vX.Y.Z.md` names the last shipped version; use its `vX.Y.Z` tag as the base.
+   - **From the release-notes files (source of truth).** If `doc/release-notes/` exists, the newest `doc/release-notes/vX.Y.Z.md` names the last shipped version; use its `vX.Y.Z` tag as the base. (This directory is a new convention — if it doesn't exist yet, skip to the tag method below.)
      ```bash
      ls doc/release-notes/v*.md | sort -V | tail -1   # e.g. v0.1.2.md → base tag v0.1.2
      ```
@@ -101,7 +101,7 @@ Use these sections in order:
 
 ### Phase 4: Output
 
-1. Save the final release notes to `doc/release-notes/vX.Y.Z.md` (committed alongside prior releases, e.g. `doc/release-notes/v0.1.2.md`). Draft in `Generated Files/` first if you want a gitignored scratch copy.
+1. Save the final release notes to `doc/release-notes/vX.Y.Z.md` (committed alongside prior releases, e.g. `doc/release-notes/v0.1.2.md`; create the `doc/release-notes/` folder if it doesn't exist yet). Draft in `Generated Files/` first if you want a gitignored scratch copy.
 2. Present the full notes to the user
 3. Also list the top 5 elevator-pitch points separately
 

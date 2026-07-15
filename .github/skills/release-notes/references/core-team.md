@@ -4,11 +4,11 @@ These are the core Intelligent Terminal team members. Do NOT thank them as commu
 
 | GitHub Username | Display Name | Role |
 |-----------------|-------------|------|
-| yeelam-gordon | Gordon Lam | Lead |
-| vanzue | Kai Tao | Developer |
 | DDKinger | DDKinger | Developer |
+| hamza-usmani | Hamza Usmani | PM |
 | haonanttt | Nathan Tang | Developer |
-| hamza-usmani | Hamza Usmani | Developer |
 | pabhojwa | Pankaj Bhojwani | Developer |
+| vanzue | Kai Tao | Developer |
+| yeelam-gordon | Gordon Lam | Lead |
 
 Anyone not on this list who authored a PR is a **community contributor** and should be thanked in the 💜 Community section.
