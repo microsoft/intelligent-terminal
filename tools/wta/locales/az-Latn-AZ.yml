@@ -76,6 +76,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Agenti yenidən başlat"
 commands.stop.summary: "İcra olunan sorğunu ləğv et"
 commands.sessions.summary: "Tarixi sessiyalar seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Bu panel üçün agenti seçin (birbaşa keçmək üçün /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -201,6 +202,16 @@ time.days_other: "%{count} gün əvvəl"
 
 # ── Tövsiyənin icrası (src/coordinator.rs) ──────────────────────────────────
 system.choice_execution_failed: "Seçim %{choice} uğursuz oldu: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Agent seçin (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Bu maşında heç bir mövcud agent CLI tapılmadı."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Naməlum və ya əlçatmaz agent %{agent} — əlçatan siyahını görmək üçün /agent yazın."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kənarda mövcud deyil."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}

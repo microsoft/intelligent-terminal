@@ -334,9 +334,30 @@ void FontBuffer::_addSixelValue(const VTInt value) noexcept
 
 void FontBuffer::_endOfSixelLine()
 {
-    // Move down six rows to the get to the next sixel position.
-    std::advance(_currentCharBuffer, 6);
-    _sixelRow += 6;
+    // Move down six rows to get to the next sixel position. The buffer is
+    // packed at _fullHeight rows per glyph, so clamp the advance to the
+    // current glyph's remaining rows. This keeps the cursor from spilling
+    // into the next glyph on a partial final band, while still allowing a
+    // glyph that fills _fullHeight exactly (and any trailing empty band that
+    // _endOfCharacter appends) without falsely reporting E_OUTOFMEMORY.
+    if (_currentChar >= MAX_CHARS) [[unlikely]]
+    {
+        THROW_HR(E_OUTOFMEMORY);
+    }
+
+    const auto currentCharEnd = std::next(_buffer.begin(), gsl::narrow_cast<size_t>((_currentChar + 1) * _fullHeight));
+    const auto rowsRemaining = gsl::narrow_cast<VTInt>(std::distance(_currentCharBuffer, currentCharEnd));
+    std::advance(_currentCharBuffer, std::clamp<VTInt>(rowsRemaining, 0, 6));
+
+    // Advance the row counter, but saturate it so a hostile DECDLD payload
+    // with an unbounded number of sixel line breaks can't overflow the signed
+    // counter (signed overflow is UB). Glyphs are at most MAX_HEIGHT rows and
+    // bands are six rows tall, so a legitimate glyph never needs more than
+    // MAX_HEIGHT rounded up to the next band; capping there leaves all valid
+    // rendering (and the _usedHeight it feeds) unchanged. The cursor advance
+    // above is already clamped to the current glyph.
+    static constexpr auto maxSixelRow = (MAX_HEIGHT + 5) / 6 * 6;
+    _sixelRow = std::min(_sixelRow + 6, maxSixelRow);
 
     // Keep track of the maximum width and height covered by the sixel data.
     _usedWidth = std::max(_usedWidth, _sixelColumn);

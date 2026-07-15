@@ -191,9 +191,20 @@ commands.fix.summary: "활성 터미널을 진단하고 수정 방법 제안 (/f
 commands.restart.summary: "에이전트 다시 시작"
 commands.stop.summary: "진행 중인 프롬프트 취소"
 commands.sessions.summary: "기록된 세션 선택기 열기(Ctrl+Shift+/)"
+commands.agent.summary: "이 탭의 에이전트 선택 (/agent <id>로 바로 전환)"  # {Locked="/agent","<id>"}
 
 # ── 추천 실행 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "선택 %{choice} 실패: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "에이전트 선택 (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "이 컴퓨터에서 사용할 수 있는 에이전트 CLI를 찾을 수 없습니다."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "알 수 없거나 사용할 수 없는 에이전트 %{agent} — 사용 가능한 목록을 보려면 /agent을 입력하세요."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전트 전환을 사용할 수 없습니다."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}

@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnose uitvoeren op de actieve terminal en een oplossin
 commands.restart.summary: "Agent opnieuw starten"
 commands.stop.summary: "De actieve prompt annuleren"
 commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"
+commands.agent.summary: "Het agent voor dit tabblad kiezen (/agent <id> om direct te wisselen)"  # {Locked="/agent","<id>"}
 
 # ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Keuze %{choice} is mislukt: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Agent selecteren (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Er is geen beschikbare agent-CLI gevonden op deze machine."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Onbekende of niet-beschikbare agent %{agent} — typ /agent om de beschikbare lijst te zien."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Schakelen tussen agents is niet beschikbaar buiten een Windows Terminal-tabblad."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Het model voor dit deelvenster kiezen (/model <id> om direct te wisselen)"  # {Locked="/model","<id>"}

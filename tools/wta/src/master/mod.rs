@@ -179,15 +179,53 @@ struct MasterStateInner {
     /// a structured `acp::Error` so the helper can fall back to its
     /// legacy resume path.
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
-    /// The agent CLI's response to the master's startup initialize.
-    /// Replayed verbatim to every helper that calls `initialize` over
-    /// its pipe — re-forwarding to the agent CLI returns a stale or
-    /// empty `agent_info`, which clears the XAML agent bar
-    /// (`AgentLabelText` goes blank, logo hides) because the helper
-    /// publishes the empty name out via `agent_status`. Caching here
-    /// is also a small perf win — initialize is otherwise a no-op
-    /// round trip on every pane open.
+    /// The pool of agent CLI subprocesses master is multiplexing,
+    /// keyed by the agent command line (`AgentCmdKey`). Lazily
+    /// populated: a helper declares its agent *id* in the `initialize`
+    /// handshake (`_meta.wta.agent_id`), the master reconstructs the
+    /// command from that id (`agent_registry::build_acp_command`), and
+    /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
+    /// every later helper that resolves to the same command line. The key
+    /// is always a master-derived command, never a string off the pipe.
+    /// This is what lets one tab run Gemini while another runs Claude in
+    /// the same window.
     ///
+    /// Each value is an `Arc<OnceCell<…>>` so two helpers racing the
+    /// *same* new agent serialize on that key's init (one spawns, the
+    /// other awaits the same `AgentCli`), while helpers for *different*
+    /// agents spawn in parallel — we hold the outer `Mutex` only long
+    /// enough to get/insert the `OnceCell`, never across the spawn.
+    ///
+    /// **Pool eviction policy:** agents are kept warm for the lifetime of
+    /// the master process (no idle-timeout eviction). The expected pool
+    /// cardinality is small — one entry per distinct agent-id selected by
+    /// any tab in the window — so the memory/process overhead is bounded
+    /// by the number of GPO-allowed agents (typically 1–3). An agent that
+    /// crashes is reaped and removed by `reap_agent`; its slot is refilled
+    /// lazily on the next helper request. Idle-timeout eviction would save
+    /// a background process at the cost of cold-start latency for the next
+    /// tab switch; that trade-off favors warm agents for a terminal app.
+    pub(crate) agents:
+        Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    /// Fallback agent command line + id for helpers that don't declare
+    /// their own in `_meta.wta` (older helper builds, or the rare
+    /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
+    /// which the C++ side still passes as the global default. This command
+    /// is **trusted** (it came from the master's own argv, not the pipe),
+    /// so a rejected/unknown helper request safely falls back to it.
+    pub(crate) default_agent_cmd: String,
+    pub(crate) default_agent_id: Option<String>,
+    /// Allowlist of agent ids a helper may select over the pipe, from the
+    /// host's GPO-filtered set (`--allowed-agent-ids`). `None` = the flag was
+    /// absent (manual runs / older hosts): any *known* agent id is accepted.
+    /// `Some(set)` = the flag was supplied, honored fail-closed: only ids in
+    /// `set` are honored; any other id (and *every* id when `set` is empty)
+    /// falls back to the trusted default. Either way the master reconstructs
+    /// the command from the id and never spawns a string taken off the pipe.
+    pub(crate) allowed_agent_ids: Option<std::collections::HashSet<String>>,
+    /// Compatibility slots for the current session-history implementation.
+    /// They are populated from the first lazily spawned agent until history
+    /// aggregation is made fully per-agent.
     /// `OnceLock` so we can construct the shared state *before* the
     /// initialize round trip (the `MasterClient` inside
     /// `ClientSideConnection` needs an `Arc<MasterStateInner>` first),
@@ -255,6 +293,43 @@ struct MasterStateInner {
     /// reconcile and the synthetic-title refresh derive from this one fetch.
     host_list_cache:
         Mutex<Option<(std::time::Instant, Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>)>>,
+    /// Last time a poll-triggered WSL title seed was dispatched. Throttles the
+    /// expensive per-distro `wsl.exe` ACP scan so the 5 s `sessions/list` poll
+    /// can't turn it into a scan storm while a synthetic WSL delegate row waits
+    /// for its in-distro title. `None` until the first poll-triggered seed; the
+    /// explicit F5 rescan + startup discovery seeds don't touch it.
+    wsl_titles_seed_at: Mutex<Option<std::time::Instant>>,
+    /// Set while a WSL ACP scan ([`spawn_wsl_seed`]) is running, so the
+    /// startup / F5 / poll seeds never overlap. A scan can outlive the poll
+    /// throttle (a cold snap distro pays a 40 s ACP init), so a time throttle
+    /// alone can't prevent concurrent `wsl.exe` processes — this guard does.
+    wsl_seed_in_flight: std::sync::atomic::AtomicBool,
+}
+
+/// Canonical key for the agent-CLI pool: the full agent command line
+/// (e.g. `"copilot --acp --stdio"` or
+/// `"npx -y @agentclientprotocol/claude-agent-acp"`). Two tabs with the same
+/// command line share one CLI; different command lines get their own.
+/// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
+type AgentCmdKey = String;
+
+/// One spawned agent CLI subprocess and everything a helper needs to
+/// talk to it. Shared (`Arc`) across every helper currently bound to
+/// this agent.
+struct AgentCli {
+    /// Master is the ACP *client* of this CLI. Every helper request for
+    /// a session owned by this agent forwards onto this connection.
+    conn: conn::ClientLink,
+    /// This CLI's `initialize` response, replayed verbatim to every
+    /// helper that binds to it (re-forwarding `initialize` to the CLI
+    /// returns empty `agent_info` on most backends, which blanks the
+    /// XAML agent bar). Per-agent so each tab's bar shows ITS agent.
+    cached_init_resp: acp::schema::v1::InitializeResponse,
+    /// The CLI provider, resolved from this agent's id/command line.
+    /// Stamped on every SessionInfo this agent's sessions upsert so the
+    /// F2 view labels each row with its real CLI (Gemini vs Claude),
+    /// not one process-wide value.
+    cli_source: Option<crate::agent_sessions::CliSource>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -669,7 +744,17 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
 #[derive(Clone)]
 struct HelperHandler {
     helper_id: HelperId,
-    agent_conn: conn::ClientLink,
+    /// The agent CLI this helper is bound to. Resolved lazily during
+    /// `initialize` from the helper's declared `_meta.wta.agent_id`
+    /// (+ `model`): the master reconstructs the command from that id and
+    /// never executes a command string off the pipe (falling back to the
+    /// master default when no / unknown id is declared). Reused by every
+    /// later request on this connection. `OnceLock` because the binding
+    /// can't be known
+    /// until the helper's `initialize` arrives, but the ACP protocol
+    /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
+    /// `resolved_agent()` always finds it populated for those.
+    agent: Arc<OnceLock<Arc<AgentCli>>>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -727,6 +812,27 @@ impl HelperHandler {
         Ok(link.clone())
     }
 
+    /// The agent CLI this helper bound to during `initialize`. Returns
+    /// `internal_error` if called before `initialize` resolved the
+    /// binding — a protocol violation by the helper, never expected in
+    /// the normal handshake order.
+    fn resolved_agent(&self, op: &'static str) -> acp::Result<Arc<AgentCli>> {
+        self.agent.get().cloned().ok_or_else(|| {
+            tracing::error!(
+                target: "master",
+                op = op,
+                helper_id = ?self.helper_id,
+                "helper request arrived before initialize bound an agent — protocol violation"
+            );
+            acp::Error::internal_error()
+                .data(serde_json::json!("no agent bound; initialize must come first"))
+        })
+    }
+
+    /// Forward `session/new` to this helper's bound agent CLI with a
+    /// timeout (moved to the master per #268) plus ACP telemetry. The
+    /// timeout breaks an ACP cancellation-safety deadlock so a hung
+    /// agent surfaces as an error instead of wedging the helper.
     async fn forward_new_session_to_agent(
         &self,
         args: acp::schema::v1::NewSessionRequest,
@@ -734,7 +840,8 @@ impl HelperHandler {
     ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
         let timeout_secs = timeout.as_secs();
         let started = std::time::Instant::now();
-        let result = tokio::time::timeout(timeout, self.agent_conn.new_session(args)).await;
+        let agent = self.resolved_agent("new_session")?;
+        let result = tokio::time::timeout(timeout, agent.conn.new_session(args)).await;
         let session_id = result
             .as_ref()
             .ok()
@@ -773,46 +880,61 @@ impl HelperHandler {
 impl HelperHandler {
     async fn initialize(
         &self,
-        args: acp::schema::v1::InitializeRequest,
+        mut args: acp::schema::v1::InitializeRequest,
     ) -> acp::Result<acp::schema::v1::InitializeResponse> {
+        // The helper declares which agent this tab wants in `_meta.wta`
+        // by *identity* (id + model). Strip the namespace so it can never
+        // reach an agent CLI, then resolve the command the master will
+        // actually spawn. Crucially we NEVER execute a command string off
+        // the pipe: `resolve_agent_selection` reconstructs the command
+        // from the declared id (only for known, GPO-allowed ids) and
+        // otherwise falls back to the trusted `--agent` default. See
+        // `resolve_agent_selection` for the full policy.
+        let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        let (agent_cmd, agent_id) = resolve_agent_selection(
+            &self.state.default_agent_cmd,
+            self.state.default_agent_id.as_deref(),
+            self.state.allowed_agent_ids.as_ref(),
+            wta_meta.agent_id.as_deref(),
+            wta_meta.model.as_deref(),
+            self.helper_id,
+        );
         tracing::info!(
             target: "master",
             step = "helper→agent",
             op = "initialize",
             helper_id = ?self.helper_id,
             protocol_version = ?args.protocol_version,
-            "replaying cached agent initialize to helper"
+            requested_agent_id = ?wta_meta.agent_id,
+            resolved_agent_cmd = %agent_cmd,
+            resolved_agent_id = ?agent_id,
+            "resolving agent CLI for helper"
         );
-        // Replay the master-startup initialize response. Re-forwarding
-        // to the agent CLI produced empty `agent_info` on most agent
-        // backends (they only fill name/version on the FIRST initialize),
-        // which propagated as an empty `agent_status` to C++ and blanked
-        // the XAML agent label/logo. The cached response is the one
-        // ground truth — every helper sees the same agent_info the
-        // master saw at boot.
-        match self.state.cached_init_resp.get() {
-            Some(resp) => Ok(resp.clone()),
-            None => {
-                // Shouldn't happen — `run_master_loop` always sets the
-                // cache before opening the pipe — but degrade gracefully
-                // rather than blanking the bar again.
+
+        // Lazily spawn (or reuse) the agent CLI for THIS tab's agent,
+        // then bind it to this helper for the rest of the connection.
+        let agent = get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref())
+            .await
+            .map_err(|e| {
                 tracing::error!(
                     target: "master",
+                    op = "initialize",
                     helper_id = ?self.helper_id,
-                    "cached_init_resp missing; falling back to live agent initialize"
+                    agent_cmd = %agent_cmd,
+                    error = %e,
+                    "failed to spawn/resolve agent CLI for helper"
                 );
-                let started = std::time::Instant::now();
-                let result = self.agent_conn.initialize(args).await;
-                crate::telemetry::log_acp_initialize_complete(
-                    started.elapsed().as_secs_f64() * 1000.0,
-                    result.is_ok(),
-                    "MasterFallback",
-                    if result.is_ok() { "" } else { "AcpError" },
-                    result.as_ref().err().map(|e| e.code.into()).unwrap_or(0),
-                );
-                result
-            }
-        }
+                acp::Error::internal_error()
+                    .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
+            })?;
+        // `set` is idempotent-by-error; a helper that (incorrectly) sent
+        // initialize twice keeps its first binding, which is fine.
+        let _ = self.agent.set(Arc::clone(&agent));
+
+        // Replay the CLI's own initialize response (re-forwarding returns
+        // empty `agent_info` on most backends, blanking the agent bar).
+        // Per-agent cache means each tab's bar shows ITS agent's identity.
+        Ok(agent.cached_init_resp.clone())
     }
 
     async fn authenticate(
@@ -826,7 +948,7 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding authenticate"
         );
-        self.agent_conn.authenticate(args).await
+        self.resolved_agent("authenticate")?.conn.authenticate(args).await
     }
 
     async fn new_session(
@@ -859,6 +981,9 @@ impl HelperHandler {
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
             )
             .await?;
+        // Resolve the bound agent for `cli_source` stamping below (cheap
+        // Arc clone; the forward above already used it for the RPC).
+        let agent = self.resolved_agent("new_session")?;
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -893,7 +1018,7 @@ impl HelperHandler {
         // (those fire for shell-pane agents through PowerShell hooks
         // only), so master is the only one that can fill these fields.
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
-        info.cli_source = self.state.cli_source.clone();
+        info.cli_source = agent.cli_source.clone();
         info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
         info.last_activity_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -985,6 +1110,7 @@ impl HelperHandler {
         // fail on. On success we upsert + broadcast `session_added`
         // atomically; on failure we just unregister routing without
         // any peer-visible flicker.
+        let agent = self.resolved_agent("load_session")?;
         let forwarder = self.forwarder_for_route("load_session")?;
         {
             let mut map = self.state.session_to_helper.lock().await;
@@ -998,7 +1124,7 @@ impl HelperHandler {
                 },
             );
         }
-        match self.agent_conn.load_session(args).await {
+        match agent.conn.load_session(args).await {
             Ok(resp) => {
                 let mut info = crate::session_registry::SessionInfo::new(
                     session_id.clone(),
@@ -1008,7 +1134,7 @@ impl HelperHandler {
                 // See new_session above for rationale — load_session is the
                 // resume path and the resumed row must also be Live + tagged.
                 info.status = Some(crate::agent_sessions::AgentStatus::Idle);
-                info.cli_source = self.state.cli_source.clone();
+                info.cli_source = agent.cli_source.clone();
                 info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
                 info.last_activity_at_ms = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1071,7 +1197,7 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::SetSessionModeRequest,
     ) -> acp::Result<acp::schema::v1::SetSessionModeResponse> {
-        self.agent_conn.set_session_mode(args).await
+        self.resolved_agent("set_session_mode")?.conn.set_session_mode(args).await
     }
 
     // Forward config-option changes (incl. model selection) — the
@@ -1091,7 +1217,7 @@ impl HelperHandler {
             session_id = ?args.session_id,
             "forwarding set_session_config_option"
         );
-        self.agent_conn.set_session_config_option(args).await
+        self.resolved_agent("set_session_config_option")?.conn.set_session_config_option(args).await
     }
 
     /// Answer `session/list` from our own registry (NOT by proxying the
@@ -1164,7 +1290,8 @@ impl HelperHandler {
         // wedges the shared agent CLI. Register a continuation instead so the
         // loop stays free; the response is delivered to `responder` when the
         // agent replies. See ClientLink::prompt_forwarding.
-        self.agent_conn
+        self.resolved_agent("prompt")?
+            .conn
             .prompt_forwarding(args, move |resp| async move {
                 let elapsed_ms = started.elapsed().as_millis() as u64;
                 match &resp {
@@ -1204,7 +1331,7 @@ impl HelperHandler {
             session_id = ?args.session_id,
             "forwarding cancel"
         );
-        self.agent_conn.cancel(args).await
+        self.resolved_agent("cancel")?.conn.cancel(args).await
     }
 
     /// Master answers our own `_intellterm.wta/*` ext methods locally
@@ -1228,10 +1355,12 @@ impl HelperHandler {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
             Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
-            Req::SessionBornBound(ev) => handle_session_hook(&self.state, ev, true).await,
+            Req::SessionBornBound(ev, wsl_distro) => {
+                handle_session_born_bound(&self.state, ev, wsl_distro).await
+            }
             Req::SessionResumeDispatched(p) => handle_session_resume_dispatched(&self.state, &p).await,
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
-            Req::ForwardToAgent(raw) => self.agent_conn.ext_method(raw).await,
+            Req::ForwardToAgent(raw) => self.resolved_agent("ext_method")?.conn.ext_method(raw).await,
             Req::Malformed { method, error } => {
                 tracing::warn!(
                     target: "master",
@@ -1386,143 +1515,184 @@ impl Drop for MasterPipeDiscoveryGuard {
     }
 }
 
+/// Owns a self-relative security descriptor (built from an SDDL string)
+/// and the `SECURITY_ATTRIBUTES` that points at it, so the named pipe can
+/// be created with a tightened ACL. Frees the descriptor on drop.
+///
+/// Must outlive every `create_*` call that consumes its `sa_ptr()` — in
+/// practice it lives for the whole accept loop (each follow-up pipe
+/// instance is created with the same attributes). Do not move it after
+/// taking `sa_ptr()`.
+struct PipeSecurity {
+    sa: windows_sys::Win32::Security::SECURITY_ATTRIBUTES,
+    /// The descriptor `sa.lpSecurityDescriptor` aliases. Kept so `Drop`
+    /// can `LocalFree` exactly the allocation Windows handed us.
+    psd: *mut std::ffi::c_void,
+}
+
+impl PipeSecurity {
+    fn sa_ptr(&self) -> *mut std::ffi::c_void {
+        &self.sa as *const _ as *mut std::ffi::c_void
+    }
+}
+
+impl Drop for PipeSecurity {
+    fn drop(&mut self) {
+        if !self.psd.is_null() {
+            // LocalFree takes/returns HLOCAL (= *mut c_void); ignore the
+            // (null on success) return.
+            unsafe {
+                windows_sys::Win32::Foundation::LocalFree(self.psd);
+            }
+        }
+    }
+}
+
+/// Resolve the current process user's SID as an SDDL string (e.g.
+/// `"S-1-5-21-…"`). Returns `None` on any failure so the caller can fall
+/// back to the default pipe ACL rather than refuse to start.
+fn current_user_sid_string() -> Option<String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, HANDLE};
+    use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows_sys::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return None;
+        }
+        // Size probe (fails with ERROR_INSUFFICIENT_BUFFER, fills `len`).
+        let mut len: u32 = 0;
+        GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut len);
+        if len == 0 {
+            CloseHandle(token);
+            return None;
+        }
+        let mut buf = vec![0u8; len as usize];
+        let ok = GetTokenInformation(
+            token,
+            TokenUser,
+            buf.as_mut_ptr() as *mut std::ffi::c_void,
+            len,
+            &mut len,
+        );
+        CloseHandle(token);
+        if ok == 0 {
+            return None;
+        }
+        // `buf` is a `Vec<u8>` (alignment 1), but `TOKEN_USER` contains a
+        // pointer and so needs pointer alignment — forming
+        // `&*(buf.as_ptr() as *const TOKEN_USER)` would create a reference to
+        // a potentially-misaligned address, which is UB in Rust. Copy the
+        // header out with an unaligned read into a properly-aligned local
+        // instead. `token_user.User.Sid` still points *into* `buf` (kept
+        // alive until after the conversion below), which is what
+        // `ConvertSidToStringSidW` dereferences.
+        let token_user = std::ptr::read_unaligned(buf.as_ptr() as *const TOKEN_USER);
+        let mut sid_str: *mut u16 = std::ptr::null_mut();
+        if ConvertSidToStringSidW(token_user.User.Sid, &mut sid_str) == 0 || sid_str.is_null() {
+            return None;
+        }
+        // Copy out the wide string, then free Windows' allocation.
+        let mut n = 0usize;
+        while *sid_str.add(n) != 0 {
+            n += 1;
+        }
+        let slice = std::slice::from_raw_parts(sid_str, n);
+        let s = String::from_utf16_lossy(slice);
+        LocalFree(sid_str as *mut std::ffi::c_void);
+        Some(s)
+    }
+}
+
+/// Build a `PipeSecurity` granting full control only to SYSTEM and the
+/// current user (protected DACL → denies other users and, with
+/// `reject_remote_clients`, remote connectors), plus a medium-integrity
+/// no-write-up mandatory label (blocks lower-integrity / AppContainer
+/// same-user code). This is **defense in depth**: it does not separate a
+/// same-user, medium-integrity, full-trust process — which is exactly why
+/// the master never executes a command string off the pipe
+/// (`resolve_agent_selection`) and that, not this ACL, is the real fix.
+///
+/// Returns `None` (caller falls back to the default ACL) on any failure;
+/// hardening should never be the reason the master can't start.
+fn build_pipe_security_attributes() -> Option<PipeSecurity> {
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+
+    let user_sid = current_user_sid_string()?;
+    // D:P → protected DACL (no inheritance). GA = GENERIC_ALL.
+    //   (A;;GA;;;SY)        SYSTEM
+    //   (A;;GA;;;<user>)    the current user
+    // S:(ML;;NW;;;ME)       mandatory label: Medium IL, no-write-up.
+    let sddl = format!("D:P(A;;GA;;;SY)(A;;GA;;;{user_sid})S:(ML;;NW;;;ME)");
+    let sddl_w: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
+
+    let mut psd: *mut std::ffi::c_void = std::ptr::null_mut();
+    let ok = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl_w.as_ptr(),
+            SDDL_REVISION_1 as u32,
+            &mut psd,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 || psd.is_null() {
+        tracing::warn!(
+            target: "master",
+            "failed to build pipe security descriptor from SDDL; using default ACL"
+        );
+        return None;
+    }
+
+    let sa = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: psd,
+        bInheritHandle: 0,
+    };
+    Some(PipeSecurity { sa, psd })
+}
+
+/// Create one named-pipe server instance, applying `security` when
+/// available. Always rejects remote clients. Shared by the first-instance
+/// and the follow-up-instance create sites so neither can silently regress
+/// to the default ACL.
+fn create_master_pipe_instance(
+    pipe_name: &str,
+    first_instance: bool,
+    security: Option<&PipeSecurity>,
+) -> std::io::Result<NamedPipeServer> {
+    let mut opts = ServerOptions::new();
+    opts.first_pipe_instance(first_instance);
+    opts.reject_remote_clients(true);
+    match security {
+        // SAFETY: `sa_ptr()` points at a `SECURITY_ATTRIBUTES` whose
+        // descriptor stays valid for the lifetime of `security` (the
+        // caller holds it across the whole accept loop).
+        Some(sec) => unsafe { opts.create_with_security_attributes_raw(pipe_name, sec.sa_ptr()) },
+        None => opts.create(pipe_name),
+    }
+}
+
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
-    // 0. Start the shared localhost MCP tool server (resolve_command, …) and
-    //    publish its URL for helpers to inject into session/new. Best-effort —
-    //    if it can't bind, agents simply don't get MCP tools.
+    // Publish the shared MCP endpoint before any lazily spawned agent creates
+    // a session. Failure is non-fatal; helpers simply omit MCP tools.
     match crate::mcp::start_and_publish().await {
         Some(ep) => tracing::info!(target: "master", mcp_url = %ep.url, "MCP server started"),
         None => tracing::warn!(target: "master", "MCP server not started (bind failed)"),
     }
 
-    // 1. Spawn the agent CLI subprocess. cwd=None: master inherits
-    //    Terminal's cwd, which is fine because per-session cwd is
-    //    supplied by helpers via `new_session` params.
-    let mut spawn_result = spawn_agent_process(&cli.agent, None)
-        .with_context(|| format!("failed to spawn agent CLI: {}", cli.agent))?;
-    tracing::info!(
-        target: "master",
-        program = %spawn_result.resolved_program,
-        "agent CLI spawned"
-    );
-
-    let stdin = spawn_result
-        .child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
-    let stdout = spawn_result
-        .child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
-    let is_npx = spawn_result.is_npx;
-
-    // Drain agent stderr to logs so failures are diagnosable. At debug, not
-    // warn: most lines are routine adapter chatter (and can echo prompt/file
-    // content), so they shouldn't pollute shipping logs or fire as warnings.
-    // The agent's actual exit/crash is logged separately at error.
-    if let Some(stderr) = spawn_result.child.stderr.take() {
-        tokio::task::spawn_local(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(target: "agent_stderr", "{line}");
-            }
-        });
-    }
-
-    // Shutdown channel — when either the agent CLI subprocess exits or
-    // the ACP I/O loop ends, the responsible reaper task posts a reason
-    // string here, the accept loop wakes from `recv()`, and
-    // `run_master_loop` returns `Err`. Returning (rather than
-    // `process::exit`) is critical:
-    //
-    //   * The `tokio::process::Child` (`spawn_agent_process` configures
-    //     `kill_on_drop(true)`) is owned by the child reaper task. When
-    //     `LocalSet::run_until` returns, the LocalSet drops, cancels
-    //     remaining tasks, and the child handle drops — `kill_on_drop`
-    //     then reaps surviving descendants. `process::exit` would skip
-    //     that path and could orphan agent grandchildren.
-    //   * The `WorkerGuard` from `crate::logging::init` is held by
-    //     `main()` for the whole process; it only flushes the
-    //     non-blocking tracing appender on Drop. `process::exit` skips
-    //     that Drop and the final error lines silently vanish. The
-    //     graceful path here lets `main()` return so the guard drops in
-    //     normal stack unwinding and the "agent CLI exited" diagnostic
-    //     actually lands on disk.
-    //
-    // Capacity 2: at most one child-exit reason + one I/O-loop reason
-    // will ever be sent, and both `try_send`s are non-blocking.
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<&'static str>(2);
-
-    // Reap the child so it doesn't zombie if it dies, and signal
-    // shutdown when it does. Without this, helpers would stay
-    // connected to a master whose backing agent CLI is gone — every
-    // prompt would hang waiting on a dead ACP peer, and SharedWta on
-    // the C++ side wouldn't respawn the master (its process handle is
-    // still alive). Signalling here lets `run_master_loop` return
-    // cleanly so SharedWta can spawn a fresh master + agent CLI pair
-    // on the next `AcquirePane`.
-    let mut child = spawn_result.child;
-    let shutdown_tx_child = shutdown_tx.clone();
-    tokio::task::spawn_local(async move {
-        let reason = match child.wait().await {
-            Ok(status) => {
-                tracing::error!(
-                    target: "master",
-                    ?status,
-                    "agent CLI exited — initiating master shutdown"
-                );
-                "agent CLI exited"
-            }
-            Err(err) => {
-                tracing::error!(
-                    target: "master",
-                    error = %err,
-                    "agent CLI wait failed — initiating master shutdown"
-                );
-                "agent CLI wait failed"
-            }
-        };
-        let _ = shutdown_tx_child.try_send(reason);
-        // `child` drops as this task body ends, firing kill_on_drop on
-        // any descendants that survived.
-    });
-
-    let outgoing = stdin.compat_write();
-    let incoming = stdout.compat();
-
-    // 2. Build the shared state + ClientSideConnection. `cached_init_resp`
-    //    starts empty and is filled below once the initialize round
-    //    trip with the agent CLI completes; helpers can only connect
-    //    after that, so they always see the populated cache.
-    //
-    //    `wt` is best-effort: master usually runs inside a WT pane
-    //    (so `WT_COM_CLSID` is set and `CliChannel::connect` succeeds),
-    //    but on the rare boot path where it isn't we degrade to
-    //    `None` and `handle_focus_session` returns a structured
-    //    "focus channel unavailable" error instead of crashing the
-    //    helper's ext_method call.
-    //
-    //    We also take this opportunity to subscribe to WT events so
-    //    master can demote rows to Ended on pane-close even when no
-    //    wta-helper publishes a `PaneClosed` session_hook. Two
-    //    real-world cases this protects against:
-    //
-    //      * Gemini shell-pane sessions on Ctrl+Shift+W / close-tab:
-    //        Gemini's `SessionEnd` hook does not run reliably on hard
-    //        kill (confirmed via `hook-trace.log`), and the helper in
-    //        the closing pane (if any) dies before its connection_state
-    //        handler runs. Without master subscribing directly, the F2
-    //        row stays stuck at Idle indefinitely.
-    //      * Helper crash / kill: any path that prevents the helper
-    //        from observing-then-publishing the event.
-    //
-    //    Copilot / Claude work today because their Stop / SessionEnd
-    //    hooks fire fast enough during the CTRL_CLOSE grace window;
-    //    Gemini does not. Subscribing here makes the demotion path
-    //    agnostic to hook behavior across all three CLIs.
+    // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
+    // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
+    // to Ended on pane-close even when no helper publishes a `PaneClosed`
+    // hook (notably Gemini's hard-close, whose SessionEnd hook doesn't run
+    // reliably). Event subscription needs the concrete `CliChannel` (the
+    // `WtChannel` trait surface doesn't expose it), so bind `wt_cli` first,
+    // subscribe, then wrap as `dyn WtChannel`. On the rare boot path with
+    // no WT (`WT_COM_CLSID` unset) we degrade to `None`.
     let wt_cli: Option<Arc<crate::shell::wt_channel::CliChannel>> =
         match crate::shell::wt_channel::CliChannel::connect().await {
             Ok(ch) => Some(Arc::new(ch)),
@@ -1536,26 +1706,33 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
                 None
             }
         };
-    // Subscribe + start_reader BEFORE wrapping as `dyn WtChannel` (the
-    // trait surface doesn't expose event subscription). Single-consumer
-    // model — focus_session uses the same channel via `run_wtcli`
-    // request/response, which doesn't touch the event sender, so there
-    // is no contention.
+    // Subscribe to WT events + start the reader BEFORE wrapping as
+    // `dyn WtChannel` (the trait surface doesn't expose subscription).
+    // Single-consumer: focus_session uses the same channel via request/
+    // response, which doesn't touch the event sender.
     let wt_event_rx = wt_cli.as_ref().map(|c| c.subscribe_events());
-    if let Some(ref cli) = wt_cli {
-        cli.start_reader().await;
+    if let Some(ref c) = wt_cli {
+        c.start_reader().await;
     }
     let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> = wt_cli
         .clone()
         .map(|c| c as Arc<dyn crate::shell::wt_channel::WtChannel>);
-    let resolved_agent_id = crate::agent_registry::resolve_agent_id_from_cmd(&cli.agent);
-    let cli_source = crate::agent_sessions::CliSource::from_agent_id(resolved_agent_id);
+
+    // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
+    // a helper declares an agent in its `initialize` handshake — the master
+    // no longer owns a single eager agent CLI. `cli.agent` / `cli.agent_id`
+    // become the fallback default for helpers that don't declare one.
+    // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
+    // select. An *absent* flag means "no allowlist; accept any known id"
+    // (`None`); a *present* flag is honored fail-closed even when it filters
+    // down to nothing (`Some(empty_set)` ⇒ block all) — see
+    // `normalize_allowed_agent_ids` for the absent-vs-present-empty split.
+    let allowed_agent_ids = normalize_allowed_agent_ids(&cli.allowed_agent_ids);
     tracing::info!(
         target: "master",
-        agent_cmd = %cli.agent,
-        resolved_agent_id = %resolved_agent_id,
-        cli_source = ?cli_source,
-        "master cli_source resolved for session-row stamping"
+        allowed_agent_ids = ?allowed_agent_ids,
+        default_agent_id = ?cli.agent_id,
+        "agent allowlist resolved"
     );
 
     let inner = Arc::new(MasterStateInner {
@@ -1563,13 +1740,23 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
+        agents: Mutex::new(HashMap::new()),
+        default_agent_cmd: cli.agent.clone(),
+        default_agent_id: cli.agent_id.clone(),
+        allowed_agent_ids,
         cached_init_resp: OnceLock::new(),
         agent_conn: OnceLock::new(),
-        cli_source,
+        cli_source: crate::agent_sessions::CliSource::from_agent_id(
+            cli.agent_id
+                .as_deref()
+                .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(&cli.agent)),
+        ),
         helper_meta: Mutex::new(HashMap::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         host_list_cache: Mutex::new(None),
+        wsl_titles_seed_at: Mutex::new(None),
+        wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
     });
 
     // ── Hookless Class-B session watcher ──────────────────────────────
@@ -1641,152 +1828,31 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         });
     }
 
-    let client = MasterClient {
-        state: Arc::clone(&inner),
-    };
-    let builder = acp::Client
-        .builder()
-        .name("wta-master")
-        .on_receive_request({ let c = client.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
-                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
-                Q::WriteTextFileRequest(a) => conn::respond_enum(responder, c.write_text_file(a).await.map(R::WriteTextFileResponse)),
-                Q::ReadTextFileRequest(a) => conn::respond_enum(responder, c.read_text_file(a).await.map(R::ReadTextFileResponse)),
-                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
-                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
-                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
-                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
-                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let c = client.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
-            if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif { let _ = c.session_notification(n).await; }
-            Ok(())
-        } } }, acp::on_receive_notification!());
-    let (conn, handle_io) =
-        conn::spawn_client(builder, conn::byte_streams(outgoing, incoming));
-    let agent_conn = conn;
-
-    // The ACP I/O loop ending (clean or error) means the master can no
-    // longer talk to the agent CLI — same liveness problem as a child
-    // exit. Signal shutdown through the same channel so the accept
-    // loop can return cleanly and SharedWta can rebuild a fresh
-    // master on the next AcquirePane.
-    let shutdown_tx_io = shutdown_tx.clone();
-    tokio::task::spawn_local(async move {
-        let reason = match handle_io.await {
-            Ok(()) => {
-                tracing::error!(
-                    target: "master",
-                    "agent CLI I/O loop ended cleanly — initiating master shutdown"
-                );
-                "ACP I/O loop ended cleanly"
-            }
-            Err(err) => {
-                tracing::error!(
-                    target: "master",
-                    error = %err,
-                    "agent CLI I/O loop ended with error — initiating master shutdown"
-                );
-                "ACP I/O loop ended with error"
-            }
-        };
-        let _ = shutdown_tx_io.try_send(reason);
-    });
-    // Drop our original sender so the channel closes naturally when
-    // both reaper tasks exit. The receiver in the accept loop will
-    // still observe sends from `shutdown_tx_{child,io}`.
-    drop(shutdown_tx);
-
-    // 3. Initialize the agent CLI once at master startup.
-    let init_timeout_secs = if is_npx { 60 } else { 15 };
-    let init_started = std::time::Instant::now();
-    let init_result = tokio::time::timeout(
-        std::time::Duration::from_secs(init_timeout_secs),
-        agent_conn.initialize(
-            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
-                .client_info(
-                    acp::schema::v1::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
-                        .title("Windows Terminal Agent (master)"),
-                ),
-        ),
-    )
-    .await;
-    crate::telemetry::log_acp_initialize_complete(
-        init_started.elapsed().as_secs_f64() * 1000.0,
-        matches!(init_result, Ok(Ok(_))),
-        "MasterStartup",
-        match &init_result {
-            Ok(Ok(_)) => "",
-            Ok(Err(_)) => "AcpError",
-            Err(_) => "Timeout",
-        },
-        match &init_result {
-            Ok(Err(e)) => e.code.into(),
-            _ => 0,
-        },
-    );
-    let init_resp = init_result
-        .map_err(|_| {
-            tracing::error!(
-                target: "master",
-                timeout_secs = init_timeout_secs,
-                "ACP initialize timed out — agent CLI did not respond"
-            );
-            anyhow!(
-                "ACP initialize timed out after {}s — agent CLI did not respond",
-                init_timeout_secs
-            )
-        })?
-        .map_err(|e| {
-            tracing::error!(target: "master", error = %e, "ACP initialize failed");
-            anyhow!("ACP initialize failed: {e}")
-        })?;
-    tracing::info!(
-        target: "master",
-        ?init_resp,
-        "agent CLI initialize OK"
-    );
-
-    // Lock in the cached response BEFORE opening the pipe so the
-    // first helper's `initialize` request always sees a populated
-    // cache. (Subsequent helpers can race the OnceLock, but `set`
-    // is idempotent on already-populated cells — we ignore the
-    // returned Err.)
-    let _ = inner.cached_init_resp.set(init_resp.clone());
-    let _ = inner.agent_conn.set(agent_conn.clone());
-
-    // Seed the registry with historical sessions sourced from ACP
-    // `session/list`. Host (the already-running agent) is fast — seed +
-    // broadcast it immediately. WSL (per-distro spawn) can be slow / wedged, so
-    // it runs decoupled on the LocalSet and broadcasts when it lands. No on-disk
-    // CLI parsing. Runs after init so the capability + connection are ready.
-    {
-        let inner_for_history = std::sync::Arc::clone(&inner);
-        tokio::task::spawn_local(async move {
-            let scan_started = std::time::Instant::now();
-            let count = seed_host_and_broadcast(&inner_for_history).await;
-            tracing::info!(
-                target: "master_history",
-                count,
-                elapsed_ms = scan_started.elapsed().as_millis() as u64,
-                "master ACP host history seed complete"
-            );
-            spawn_wsl_seed(&inner_for_history);
-        });
+    // Open the named pipe and accept helper connections. Agent CLIs are
+    // spawned lazily per-helper (see `get_or_spawn_agent`), and an
+    // individual agent CLI dying is handled per-CLI by its reaper
+    // (`spawn_one_agent`) — it removes that agent from the pool but the
+    // master stays alive so sibling tabs on OTHER agents keep working.
+    // Only a fatal pipe error returns from this loop. SharedWta on the
+    // C++ side still owns the master's process lifetime (job object +
+    // pane refcount).
+    // Tighten the pipe ACL (defense in depth — see
+    // `build_pipe_security_attributes`). Held for the whole accept loop so
+    // every follow-up instance inherits the same attributes; `None` means
+    // we couldn't build it and fall back to the default ACL.
+    let pipe_security = build_pipe_security_attributes();
+    if pipe_security.is_none() {
+        tracing::warn!(
+            target: "master",
+            "named pipe uses default ACL (hardened SD unavailable)"
+        );
     }
-
-    // 4. Open the named pipe and accept helper connections.
-    let mut server = ServerOptions::new()
-        .first_pipe_instance(true)
-        .create(&pipe_name)
+    let mut server = create_master_pipe_instance(&pipe_name, true, pipe_security.as_ref())
         .with_context(|| format!("failed to create named pipe '{pipe_name}'"))?;
     tracing::info!(
         target: "master",
         pipe_name = %pipe_name,
+        secured = pipe_security.is_some(),
         "named pipe listening; awaiting helper connections"
     );
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
@@ -1797,27 +1863,10 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // "live_helpers=" reconstructs the timeline.
     let live_helpers = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     loop {
-        // Race the next helper connect against the shutdown channel:
-        // when either reaper task posts a reason, we return early so
-        // the LocalSet unwinds and drops the Child (kill_on_drop) +
-        // WorkerGuard (flush).
-        tokio::select! {
-            connect_result = server.connect() => {
-                connect_result
-                    .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
-            }
-            shutdown_reason = shutdown_rx.recv() => {
-                let reason = shutdown_reason.unwrap_or("shutdown channel closed");
-                tracing::error!(
-                    target: "master",
-                    reason,
-                    "master accept loop exiting"
-                );
-                return Err(anyhow!(
-                    "wta-master shutting down: {reason} — SharedWta will respawn a fresh master on the next AcquirePane"
-                ));
-            }
-        }
+        server
+            .connect()
+            .await
+            .with_context(|| format!("named pipe connect on '{pipe_name}'"))?;
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
@@ -1833,16 +1882,15 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         // helper can connect concurrently.
         let connected = std::mem::replace(
             &mut server,
-            ServerOptions::new().create(&pipe_name).with_context(|| {
-                format!("failed to create follow-up pipe instance for '{pipe_name}'")
-            })?,
+            create_master_pipe_instance(&pipe_name, false, pipe_security.as_ref()).with_context(
+                || format!("failed to create follow-up pipe instance for '{pipe_name}'"),
+            )?,
         );
 
-        let agent_conn = agent_conn.clone();
         let inner = Arc::clone(&inner);
         let live_helpers = Arc::clone(&live_helpers);
         tokio::task::spawn_local(async move {
-            let result = serve_helper(helper_id, connected, agent_conn, inner).await;
+            let result = serve_helper(helper_id, connected, inner).await;
             let live = live_helpers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) - 1;
             match result {
                 Err(err) => tracing::warn!(
@@ -1863,13 +1911,451 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     }
 }
 
+/// Normalize the host-supplied `--allowed-agent-ids` argv into the
+/// allowlist [`resolve_agent_selection`] consumes, keying the result on
+/// whether the host supplied the flag **at all**:
+///
+/// * **Flag absent** (clap produced an empty argv) ⇒ `None`: "no host
+///   policy" — manual runs / older hosts. [`resolve_agent_selection`]
+///   then accepts any *known* agent id.
+/// * **Flag present** (any argv, even `--allowed-agent-ids ""`) ⇒
+///   `Some(set)`: the host expressed a policy, so honor it **fail-closed**.
+///   Each entry is trimmed + lowercased; blanks and unknown/custom ids are
+///   dropped (the allowlist is "known ids only" — [`resolve_agent_selection`]
+///   additionally requires [`agent_registry::is_known_id`], so keeping inert
+///   entries would just mislead policy debugging). The surviving set may be
+///   **empty**, which blocks every helper-selected id (all tabs fall back to
+///   the trusted default) — *not* a silent widening back to "accept any
+///   known id".
+///
+/// Distinguishing absence from a present-but-empty value matters because the
+/// safe default for a policy boundary is fail-closed: a host that supplies an
+/// empty/all-filtered list (e.g. GPO filtered every built-in agent out) should
+/// block, not implicitly allow. This is reached in real launches: when an
+/// `AllowedAgents` policy filters the built-in ACP set to empty, Terminal
+/// (`TerminalPage::_BuildSharedWtaExtraArgs`) intentionally emits the combined
+/// token `--allowed-agent-ids=` (clap parses it to `[""]`) so the master stays
+/// fail-closed instead of reading an absent flag as "no policy". It is also
+/// reachable from an explicit manual invocation. (Terminal sends the value
+/// attached via `=` rather than as its own argv token because the command-line
+/// builder drops empty args.)
+fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashSet<String>> {
+    // Flag entirely absent ⇒ no host policy. (clap's `Vec<String>` is empty
+    // when `--allowed-agent-ids` was not passed; `--allowed-agent-ids ""`
+    // instead yields `[""]`, a non-empty argv, which is treated as "present".)
+    if raw.is_empty() {
+        return None;
+    }
+    let set: std::collections::HashSet<String> = raw
+        .iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .filter(|s| crate::agent_registry::is_known_id(s))
+        .collect();
+    // The flag WAS supplied — return `Some` even when the set is empty, so the
+    // policy is honored fail-closed (block all) rather than collapsing back to
+    // the no-policy `None`.
+    Some(set)
+}
+
+/// Decide which agent command the master will spawn for a helper, given
+/// what the helper declared in `_meta.wta` and the master's trusted
+/// defaults / GPO allowlist.
+///
+/// **Security invariant:** the returned command is always master-derived
+/// — either reconstructed from a *known, allowed* agent id via
+/// [`agent_registry::build_acp_command`], or the trusted `--agent`
+/// default. A command string arriving over the pipe (`wta_meta.agent_cmd`)
+/// is never returned and never executed; any same-user process that
+/// connects to the pipe therefore cannot drive arbitrary process
+/// creation by choosing the command line — only by selecting among the
+/// host-approved agent ids.
+///
+/// Returns `(command_line, agent_id_for_cli_source)`. The id is passed
+/// on to `spawn_one_agent` so the per-session `cli_source` is stamped
+/// correctly; `None` lets it be inferred from the command line.
+///
+/// Fallback to the default happens when the helper declared no id, an
+/// *unknown* id (not in [`agent_registry::KNOWN_AGENTS`] — e.g. a
+/// `custom:` agent, which the global default already covers), or an id
+/// the host's GPO allowlist excludes.
+fn resolve_agent_selection(
+    default_cmd: &str,
+    default_id: Option<&str>,
+    allowed_ids: Option<&std::collections::HashSet<String>>,
+    requested_id: Option<&str>,
+    requested_model: Option<&str>,
+    helper_id: HelperId,
+) -> (String, Option<String>) {
+    let requested = requested_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase);
+
+    if let Some(id) = requested.as_deref() {
+        // Membership test against KNOWN_AGENTS — NOT a comparison against
+        // DEFAULT_PROFILE.id, which would treat the default agent as
+        // "unknown" (and drop model folding) the day the default profile's
+        // id becomes a real, selectable agent id.
+        let known = crate::agent_registry::is_known_id(id);
+        // `None` allowlist = no host policy supplied (manual run / older
+        // host) → trust any known id. `Some(set)` = honor only listed ids.
+        let allowed = allowed_ids.map_or(true, |set| set.contains(id));
+
+        if known && allowed {
+            let model = requested_model
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let cmd = crate::agent_registry::build_acp_command(id, model);
+            return (cmd, Some(id.to_string()));
+        }
+
+        // A real selection we refused — surface why, then fall back.
+        tracing::warn!(
+            target: "master",
+            helper_id = ?helper_id,
+            requested_agent_id = %id,
+            known,
+            allowed,
+            "helper requested an unknown or GPO-blocked agent id; \
+             falling back to the trusted default agent"
+        );
+    }
+
+    (default_cmd.to_string(), default_id.map(str::to_string))
+}
+
+/// Get the agent CLI for `agent_cmd`, spawning + initializing it on
+/// first use and reusing it thereafter. Two helpers racing the same
+/// new agent serialize on the per-key `OnceCell`; helpers for different
+/// agents spawn in parallel because the outer map lock is held only
+/// long enough to get/insert the cell, never across the spawn.
+async fn get_or_spawn_agent(
+    state: &Arc<MasterStateInner>,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+) -> Result<Arc<AgentCli>> {
+    let key: AgentCmdKey = agent_cmd.to_string();
+    let cell = {
+        let mut agents = state.agents.lock().await;
+        Arc::clone(
+            agents
+                .entry(key.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
+        )
+    };
+    // On spawn/init failure the `OnceCell` stays uninitialized and
+    // `spawn_one_agent` kills its child, whose closing stdio ends the I/O
+    // task that then `reap_agent`s this key out of the map — so a later
+    // helper requesting the same agent gets a fresh cell and retries
+    // cleanly (no lingering dead slot, no leaked subprocess).
+    let agent = cell
+        .get_or_try_init(|| async { spawn_one_agent(state, &key, agent_cmd, agent_id).await })
+        .await?;
+    Ok(Arc::clone(agent))
+}
+
+/// Spawn one agent CLI subprocess, wire master as its ACP client, run
+/// the startup `initialize` round trip, and install per-CLI reapers.
+/// Unlike the old single-agent master, an agent CLI death here only
+/// removes that agent from the pool — the master process survives so
+/// other tabs' agents keep running.
+async fn spawn_one_agent(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+) -> Result<Arc<AgentCli>> {
+    let mut spawn_result = spawn_agent_process(agent_cmd, None)
+        .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
+    tracing::info!(
+        target: "master",
+        program = %spawn_result.resolved_program,
+        agent_cmd = %agent_cmd,
+        "agent CLI spawned"
+    );
+
+    let stdin = spawn_result
+        .child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("agent CLI child has no stdin"))?;
+    let stdout = spawn_result
+        .child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
+    let is_npx = spawn_result.is_npx;
+
+    // Drain agent stderr to logs so failures are diagnosable. Logged at
+    // `debug`, NOT `warn`: agent stderr routinely carries prompt / file
+    // content and routine adapter chatter, so emitting it at `warn` would
+    // be noisy and an information-leak in release builds. The `agent` tag
+    // keeps multi-agent logs attributable.
+    if let Some(stderr) = spawn_result.child.stderr.take() {
+        let key_for_log = key.clone();
+        tokio::task::spawn_local(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::debug!(target: "agent_stderr", agent = %key_for_log, "{line}");
+            }
+        });
+    }
+
+    let client = MasterClient {
+        state: Arc::clone(state),
+    };
+    let builder = acp::Client
+        .builder()
+        .name("wta-master")
+        .on_receive_request(
+            {
+                let client = client.clone();
+                move |req: acp::schema::v1::AgentRequest, responder, _cx| {
+                    let client = client.clone();
+                    async move {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
+                            Q::RequestPermissionRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .request_permission(args)
+                                    .await
+                                    .map(R::RequestPermissionResponse),
+                            ),
+                            Q::WriteTextFileRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .write_text_file(args)
+                                    .await
+                                    .map(R::WriteTextFileResponse),
+                            ),
+                            Q::ReadTextFileRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .read_text_file(args)
+                                    .await
+                                    .map(R::ReadTextFileResponse),
+                            ),
+                            Q::CreateTerminalRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .create_terminal(args)
+                                    .await
+                                    .map(R::CreateTerminalResponse),
+                            ),
+                            Q::TerminalOutputRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .terminal_output(args)
+                                    .await
+                                    .map(R::TerminalOutputResponse),
+                            ),
+                            Q::ReleaseTerminalRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .release_terminal(args)
+                                    .await
+                                    .map(R::ReleaseTerminalResponse),
+                            ),
+                            Q::WaitForTerminalExitRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .wait_for_terminal_exit(args)
+                                    .await
+                                    .map(R::WaitForTerminalExitResponse),
+                            ),
+                            Q::KillTerminalRequest(args) => conn::respond_enum(
+                                responder,
+                                client
+                                    .kill_terminal(args)
+                                    .await
+                                    .map(R::KillTerminalResponse),
+                            ),
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let client = client.clone();
+                move |notif: acp::schema::v1::AgentNotification, _cx| {
+                    let client = client.clone();
+                    async move {
+                        if let acp::schema::v1::AgentNotification::SessionNotification(notif) =
+                            notif
+                        {
+                            let _ = client.session_notification(notif).await;
+                        }
+                        Ok(())
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
+    let (conn, handle_io) = conn::spawn_client(
+        builder,
+        conn::byte_streams(stdin.compat_write(), stdout.compat()),
+    );
+
+    // I/O-loop driver + reaper. This task drives the ACP connection's
+    // I/O, so it MUST run before `initialize` (below) — initialize can't
+    // make progress otherwise. When the loop ends (clean shutdown, pipe
+    // error, or because we killed the child on an init failure) master can
+    // no longer talk to this CLI, so the agent is dropped from the pool.
+    // On the init-failure path that removes the empty `OnceCell` entry so
+    // the next helper retries cleanly instead of reusing a dead slot.
+    {
+        let state = Arc::clone(state);
+        let key = key.clone();
+        tokio::task::spawn_local(async move {
+            match handle_io.await {
+                Ok(()) => tracing::info!(
+                    target: "master",
+                    agent = %key,
+                    "agent CLI ACP I/O loop ended cleanly — removing from pool"
+                ),
+                Err(e) => tracing::error!(
+                    target: "master",
+                    agent = %key,
+                    error = %e,
+                    "agent CLI ACP I/O loop ended with error — removing from pool"
+                ),
+            }
+            reap_agent(&state, &key).await;
+        });
+    }
+
+    // Keep the child locally-owned ACROSS `initialize`. The child reaper
+    // (which moves `child`) is installed only AFTER init succeeds. If init
+    // fails/times out we kill the child here and return `Err` without a
+    // detached task left holding a live subprocess — previously the reaper
+    // was spawned first, so a failed init leaked the agent process, its
+    // I/O task, and (via the empty `OnceCell`) triggered repeated respawns.
+    let mut child = spawn_result.child;
+
+    // Initialize this CLI. npx adapter cold starts can be slow, so keep
+    // the same generous timeout the single-agent master used.
+    let init_timeout_secs = if is_npx { 60 } else { 15 };
+    let init_outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(init_timeout_secs),
+        conn.initialize(
+            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+                .client_capabilities(
+                    acp::schema::v1::ClientCapabilities::new().terminal(true),
+                )
+                .client_info(
+                    acp::schema::v1::Implementation::new(
+                        "wta-master",
+                        env!("CARGO_PKG_VERSION"),
+                    )
+                        .title("Windows Terminal Agent (master)"),
+                ),
+        ),
+    )
+    .await;
+
+    let init_resp = match init_outcome {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(e)) => {
+            // Kill the child so its stdio closes → the I/O task above ends
+            // → `reap_agent` clears the pool slot. `kill_on_drop` is a
+            // backstop when `child` drops at return.
+            let _ = child.start_kill();
+            return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
+        }
+        Err(_) => {
+            let _ = child.start_kill();
+            return Err(anyhow!(
+                "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
+            ));
+        }
+    };
+
+    // Init succeeded — install the child reaper now (takes ownership of
+    // `child`). A later CLI exit drops just this agent from the pool so
+    // the next helper respawns it; the master stays up for other agents.
+    {
+        let state = Arc::clone(state);
+        let key = key.clone();
+        tokio::task::spawn_local(async move {
+            let status = child.wait().await;
+            tracing::error!(
+                target: "master",
+                agent = %key,
+                ?status,
+                "agent CLI exited — removing from pool (master stays up for other agents)"
+            );
+            reap_agent(&state, &key).await;
+        });
+    }
+
+    // Prefer the host-supplied agent id (authoritative); fall back to
+    // parsing the command line. Stamps each session's `cli_source`.
+    let resolved_agent_id = match agent_id {
+        Some(id) if !id.trim().is_empty() => id.to_string(),
+        _ => crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string(),
+    };
+    let cli_source = crate::agent_sessions::CliSource::from_agent_id(&resolved_agent_id);
+    tracing::info!(
+        target: "master",
+        agent_cmd = %agent_cmd,
+        resolved_agent_id = %resolved_agent_id,
+        cli_source = ?cli_source,
+        "agent CLI initialize OK; cli_source resolved"
+    );
+
+    // Keep the current single-agent history bridge functional while the
+    // registry aggregates lazily spawned agents. The first initialized agent
+    // is the startup/default source; per-agent session rows are still stamped
+    // from the bound AgentCli below.
+    let _ = state.cached_init_resp.set(init_resp.clone());
+    if state.agent_conn.set(conn.clone()).is_ok() {
+        let state_for_history = Arc::clone(state);
+        tokio::task::spawn_local(async move {
+            let count = seed_host_and_broadcast(&state_for_history).await;
+            tracing::info!(
+                target: "master_history",
+                count,
+                "initial lazy agent ACP history seed complete"
+            );
+            spawn_wsl_seed(&state_for_history);
+        });
+    }
+
+    Ok(Arc::new(AgentCli {
+        conn,
+        cached_init_resp: init_resp,
+        cli_source,
+    }))
+}
+
+/// Remove a dead agent CLI from the pool. Helpers still holding an
+/// `Arc<AgentCli>` for it will error on their next request (and the
+/// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
+/// re-runs `spawn_one_agent`. Sessions owned by the dead agent are left
+/// for the owning helper's disconnect cleanup (`drop_sessions_for_helper`).
+async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
+    let removed = { state.agents.lock().await.remove(key).is_some() };
+    if removed {
+        tracing::info!(
+            target: "master",
+            agent = %key,
+            "dead agent removed from pool; next pane for this agent will respawn it"
+        );
+    }
+}
+
 /// Per-helper-connection task. Wraps the named pipe in an
 /// `AgentSideConnection`, runs both its I/O loop and a notification
 /// forwarder until the helper disconnects.
 async fn serve_helper(
     helper_id: HelperId,
     pipe: NamedPipeServer,
-    agent_conn: conn::ClientLink,
     state: Arc<MasterStateInner>,
 ) -> Result<()> {
     tracing::info!(target: "master", helper_id = ?helper_id, "helper connected");
@@ -1903,7 +2389,9 @@ async fn serve_helper(
 
     let handler = HelperHandler {
         helper_id,
-        agent_conn,
+        // Resolved lazily during this helper's `initialize` (see
+        // HelperHandler::initialize → get_or_spawn_agent).
+        agent: Arc::new(OnceLock::new()),
         state: Arc::clone(&state),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
@@ -2368,11 +2856,31 @@ async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> us
 }
 
 /// Fire-and-forget the WSL history scan on the master's LocalSet so a 40s distro
-/// timeout can't stall host rows. Upserts + broadcasts when it lands. No-op when
-/// WSL sessions are disabled.
-fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
+/// timeout can't stall host rows. Discovers new rows + upgrades synthetic titles
+/// (e.g. a born-bound `?<prompt>` WSL delegate row that registered with an empty
+/// title before the in-distro CLI generated its summary), broadcasting when
+/// either lands. No-op when WSL sessions are disabled — the whole WSL surface,
+/// born-bound rows included, is gated on `wsl_sessions_enabled()`.
+///
+/// **Non-overlapping.** A single `wsl_seed_in_flight` guard serializes every WSL
+/// scan (startup / F5 / poll): a scan can outlive the poll throttle (a cold snap
+/// distro pays a 40 s ACP init), so without this a later poll could spawn a
+/// second scan while the first is still running and double the `wsl.exe` ACP
+/// processes. When one is already running, this is a no-op.
+///
+/// Returns `true` iff a scan was actually dispatched (the slot was free), so a
+/// caller can avoid side effects — e.g. arming a throttle — when the scan was
+/// skipped because another is already running.
+fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) -> bool {
     if !crate::history_loader::wsl_sessions_enabled() {
-        return;
+        return false;
+    }
+    // Claim the single scan slot; skip if a scan is already running.
+    if state
+        .wsl_seed_in_flight
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return false;
     }
     let inner = std::sync::Arc::clone(state);
     tokio::task::spawn_local(async move {
@@ -2383,20 +2891,139 @@ fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
             let info = crate::session_registry::agent_session_to_session_info(s);
             inner.registry.upsert_if_absent(info).await;
         }
+        // Upgrade synthetic titles from the scan. A born-bound WSL delegate row
+        // registers with an empty title before the in-distro CLI generates its
+        // summary; `upsert_if_absent` above can't update the already-present row,
+        // and the host `session/list` never lists an in-distro session, so this
+        // is the only path that gives such a row a real title.
+        let titles = wsl_titles_from_scan(&wsl);
+        let titles_changed = refresh_synthetic_titles_from(&*inner.registry, &titles).await;
         tracing::info!(
             target: "master_history",
             count,
+            titles = titles.len(),
+            titles_changed,
             elapsed_ms = started.elapsed().as_millis() as u64,
             "WSL ACP history seed complete"
         );
-        if count > 0 {
+        if count > 0 || titles_changed {
             broadcast_ext_to_helpers(
                 &inner,
                 crate::session_registry::build_sessions_changed_notification(),
             )
             .await;
         }
+        // Release the scan slot for the next startup / F5 / poll seed.
+        inner
+            .wsl_seed_in_flight
+            .store(false, std::sync::atomic::Ordering::Release);
     });
+    true
+}
+
+/// Build a `session_id → title` map from a WSL ACP scan, applying the same
+/// filters as [`host_titles_via_acp`]: drop empty titles and the delegate's
+/// injected first-message echo (the `## Terminal Context (pane …)` block a CLI
+/// can briefly surface as a session's title before generating its real summary).
+fn wsl_titles_from_scan(
+    scanned: &[crate::agent_sessions::AgentSession],
+) -> std::collections::HashMap<String, String> {
+    scanned
+        .iter()
+        .filter(|s| {
+            !s.title.is_empty()
+                && !crate::session_registry::title_is_injected_context_echo(&s.title)
+        })
+        .map(|s| (s.key.clone(), s.title.clone()))
+        .collect()
+}
+
+/// Whether a poll-triggered WSL title seed is warranted: a **live, pane-bound,
+/// WSL-located** row whose title is still synthetic and whose id the host
+/// `session/list` doesn't know about. That is the signature of a born-bound WSL
+/// delegate row waiting for its in-distro title — a host session (even one whose
+/// title hasn't been generated yet) appears in `host_ids`, and historical /
+/// ended rows are excluded so an untitled old row can't trigger perpetual scans.
+/// The explicit `SessionLocation::Wsl` gate matters when the host `session/list`
+/// is temporarily unavailable (empty `host_ids`): without it, any live
+/// pane-bound synthetic *host* row would satisfy the predicate and needlessly
+/// spawn a `wsl.exe` scan. Pure for unit testing.
+fn wsl_title_seed_warranted(
+    sessions: &[crate::session_registry::SessionInfo],
+    host_ids: &std::collections::HashSet<String>,
+) -> bool {
+    use crate::agent_sessions::AgentStatus;
+    sessions.iter().any(|s| {
+        s.location.is_wsl()
+            && crate::session_registry::title_is_synthetic(s)
+            && s.pane_session_id.is_some()
+            && matches!(
+                s.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            )
+            && !host_ids.contains(s.session_id.0.as_ref())
+    })
+}
+
+/// Host `session/list` id set (includes untitled rows). Used by
+/// [`wsl_title_seed_warranted`] to tell a synthetic row the host CLI knows about
+/// apart from an in-distro (WSL) one it can never title. Empty when the host
+/// agent can't list / isn't connected.
+async fn host_session_id_set(
+    state: &MasterStateInner,
+) -> std::collections::HashSet<String> {
+    host_session_list_raw(state)
+        .await
+        .map(|rows| rows.iter().map(|r| r.session_id.to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// Poll-path counterpart to the host synthetic-title refresh: fire a throttled,
+/// fire-and-forget WSL seed when a born-bound WSL delegate row is waiting for
+/// its in-distro title (see [`wsl_title_seed_warranted`]). Strictly gated on
+/// `wsl_sessions_enabled()` — when WSL sessions are disabled there is no WSL row
+/// to title (the delegate skips its born-bound registration entirely) and we
+/// never touch a distro. Throttled because each seed spawns a `wsl.exe` ACP
+/// process per running distro (tens of seconds of init), so the 5 s poll must
+/// not turn it into a scan storm.
+async fn maybe_spawn_wsl_title_seed(
+    state: &std::sync::Arc<MasterStateInner>,
+    sessions: &[crate::session_registry::SessionInfo],
+) {
+    if !crate::history_loader::wsl_sessions_enabled() {
+        return;
+    }
+    let host_ids = host_session_id_set(state).await;
+    if !wsl_title_seed_warranted(sessions, &host_ids) {
+        return;
+    }
+    const WSL_TITLE_SEED_THROTTLE: std::time::Duration = std::time::Duration::from_secs(30);
+    {
+        // Read-only throttle check — don't arm it yet. Arming before dispatch
+        // would extend the throttle window even when `spawn_wsl_seed` no-ops
+        // (a scan already in flight), needlessly delaying a later needed scan.
+        let last = state.wsl_titles_seed_at.lock().await;
+        if let Some(at) = *last {
+            if at.elapsed() < WSL_TITLE_SEED_THROTTLE {
+                return;
+            }
+        }
+    }
+    tracing::debug!(
+        target: "master_history",
+        "poll: born-bound WSL row awaiting title — dispatching throttled WSL title seed"
+    );
+    // Only arm the throttle when a scan was actually dispatched. If one was
+    // already in flight (`spawn_wsl_seed` returns false), leave the timestamp
+    // untouched so the next poll can dispatch as soon as that scan finishes.
+    if spawn_wsl_seed(state) {
+        *state.wsl_titles_seed_at.lock().await = Some(std::time::Instant::now());
+    }
 }
 
 /// Before returning the snapshot, opportunistically upgrade any row whose title
@@ -2443,6 +3070,13 @@ async fn handle_sessions_list(
         if refresh_synthetic_titles_from(&*state.registry, &titles).await {
             sessions = state.registry.snapshot().await;
         }
+        // Host `session/list` can't title an in-distro (WSL) session, so a
+        // synthetic row it doesn't list is likely a born-bound WSL delegate row
+        // (`?<prompt>` in a WSL pane) still waiting for its in-distro title.
+        // Fire a throttled, fire-and-forget WSL scan to fetch it; it broadcasts
+        // `sessions/changed` when a title lands, which re-lists. The current
+        // response returns immediately so a slow distro can't stall the view.
+        maybe_spawn_wsl_title_seed(state, &sessions).await;
     }
 
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
@@ -2552,6 +3186,40 @@ async fn handle_session_hook(
     }
 
     Ok(crate::session_registry::build_session_hook_response(applied))
+}
+
+/// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
+///
+/// Applies the event exactly like [`handle_session_hook`] (binding-only), then —
+/// for a WSL delegate — stamps the freshly-created row `SessionLocation::Wsl {
+/// distro }`. The `SessionStarted` reducer defaults every row to `Host`, so
+/// without this a born-bound WSL delegate row would render without the
+/// `[WSL-<distro>]` prefix the session view already shows for in-distro rows.
+/// Re-broadcasts `sessions/changed` only when the location actually changed, so
+/// the host path (no distro) adds no extra push.
+async fn handle_session_born_bound(
+    state: &MasterStateInner,
+    event: crate::agent_sessions::SessionEvent,
+    wsl_distro: Option<String>,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    // Capture the key before `event` is moved into the reducer.
+    let key = session_event_key(&event).map(str::to_owned);
+    let response = handle_session_hook(state, event, true).await?;
+    if let (Some(distro), Some(key)) = (wsl_distro, key) {
+        let sid = acp::schema::v1::SessionId::new(key);
+        let changed = state
+            .registry
+            .set_location(&sid, crate::agent_sessions::SessionLocation::Wsl { distro })
+            .await;
+        if changed {
+            broadcast_ext_to_helpers(
+                state,
+                crate::session_registry::build_sessions_changed_notification(),
+            )
+            .await;
+        }
+    }
+    Ok(response)
 }
 
 /// Apply one watcher-emitted session event to master's registry and, if it
@@ -3036,12 +3704,259 @@ mod tests {
         }
     }
 
+    // ── Agent selection / security policy ───────────────────────────
+    //
+    // `resolve_agent_selection` is the single choke point that decides
+    // what the master will spawn for a helper. Extracting it as a pure
+    // function lets us exercise the full policy — id reconstruction,
+    // GPO allowlist, fallback, and the "never trust a command off the
+    // pipe" invariant — without launching a single subprocess (cleaner
+    // than injecting a fake spawner, which only the I/O plumbing needs).
+
+    const DEFAULT_CMD: &str = "copilot --acp --stdio";
+
+    fn allow_set(ids: &[&str]) -> std::collections::HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Run the resolver the way `HelperHandler::initialize` does.
+    fn resolve(
+        allowed: Option<&std::collections::HashSet<String>>,
+        requested_id: Option<&str>,
+        model: Option<&str>,
+    ) -> (String, Option<String>) {
+        resolve_agent_selection(
+            DEFAULT_CMD,
+            Some("copilot"),
+            allowed,
+            requested_id,
+            model,
+            HelperId(1),
+        )
+    }
+
+    #[test]
+    fn known_id_with_no_allowlist_is_reconstructed_not_taken_from_pipe() {
+        // No host allowlist (manual run / older host) ⇒ any known id is
+        // honored, and the command is REBUILT from the id.
+        let (cmd, id) = resolve(None, Some("gemini"), None);
+        assert_eq!(cmd, "gemini --experimental-acp");
+        assert_eq!(id.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn model_is_folded_in_for_native_agents_and_ignored_for_adapters() {
+        // Native agent (gemini) takes --model on the command line.
+        let (cmd, _) = resolve(None, Some("gemini"), Some("gemini-2.5-pro"));
+        assert_eq!(cmd, "gemini --experimental-acp --model gemini-2.5-pro");
+
+        // Adapter agent (claude via npx) ignores the model here — it's
+        // applied later via setSessionModel — so the command is stable.
+        let (cmd, id) = resolve(None, Some("claude"), Some("opus-4"));
+        assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp");
+        assert_eq!(id.as_deref(), Some("claude"));
+    }
+
+    #[test]
+    fn id_is_case_insensitive() {
+        let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
+        assert_eq!(cmd, "gemini --experimental-acp");
+        assert_eq!(id.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn empty_or_missing_id_falls_back_to_default() {
+        for requested in [None, Some(""), Some("   ")] {
+            let (cmd, id) = resolve(None, requested, None);
+            assert_eq!(cmd, DEFAULT_CMD, "requested={requested:?}");
+            assert_eq!(id.as_deref(), Some("copilot"));
+        }
+    }
+
+    #[test]
+    fn every_known_agent_id_is_honored_not_conflated_with_default_fallback() {
+        // Regression guard for the conflation flagged in review: the `known`
+        // check must test KNOWN_AGENTS membership directly, NOT
+        // `lookup_profile_by_id(id).id != DEFAULT_PROFILE.id`. The latter
+        // silently treats a real agent as "unknown" — forcing the default and
+        // dropping requested-model folding — the day DEFAULT_PROFILE.id is set
+        // to a genuine, selectable agent id. Every known agent must resolve to
+        // its own rebuilt command and stamp its own id.
+        for profile in crate::agent_registry::KNOWN_AGENTS {
+            let (cmd, id) = resolve(None, Some(profile.id), None);
+            let expected = crate::agent_registry::build_acp_command(profile.id, None);
+            assert_eq!(cmd, expected, "agent {} must be honored, not fall back", profile.id);
+            assert_eq!(id.as_deref(), Some(profile.id), "id stamp for {}", profile.id);
+        }
+    }
+
+    #[test]
+    fn unknown_or_custom_id_falls_back_to_trusted_default() {
+        // `custom:` and bogus ids aren't in KNOWN_AGENTS ⇒ the master
+        // runs the trusted global default (which is what carries the
+        // global custom command), never a string from the pipe.
+        for requested in ["custom", "custom:calc.exe", "totally-bogus"] {
+            let (cmd, id) = resolve(None, Some(requested), None);
+            assert_eq!(cmd, DEFAULT_CMD, "requested={requested}");
+            assert_eq!(id.as_deref(), Some("copilot"));
+        }
+    }
+
+    #[test]
+    fn allowed_ids_absent_is_no_policy_present_but_empty_is_block_all() {
+        // The flag being *absent* (clap yields `[]`) is the only "no host
+        // policy" case → `None` → accept any known id.
+        assert_eq!(normalize_allowed_agent_ids(&[]), None, "no argv ⇒ no policy");
+
+        // The flag being *present* but filtering down to nothing is honored
+        // fail-closed → `Some({})` → block every helper-selected id (all tabs
+        // fall back to the trusted default). clap `value_delimiter = ','`
+        // turns `--allowed-agent-ids ""` into `[""]`: a present argv with zero
+        // real ids. It must NOT widen back to `None`.
+        assert_eq!(
+            normalize_allowed_agent_ids(&[String::new()]),
+            Some(std::collections::HashSet::new()),
+            "present-but-empty ⇒ block all, not no-policy"
+        );
+        assert_eq!(
+            normalize_allowed_agent_ids(&["   ".to_string(), "\t".to_string()]),
+            Some(std::collections::HashSet::new()),
+            "present all-whitespace ⇒ block all"
+        );
+        // Unknown/custom ids can never be honored by resolve_agent_selection
+        // (which requires is_known_id), so they're dropped — but the flag was
+        // still supplied, so an all-unknown list blocks rather than widening.
+        assert_eq!(
+            normalize_allowed_agent_ids(&["custom:myapp".to_string(), "unknown".to_string()]),
+            Some(std::collections::HashSet::new()),
+            "present all-unknown ⇒ block all, not no-policy"
+        );
+
+        // Real known ids survive — trimmed + lowercased, blanks dropped.
+        let set = normalize_allowed_agent_ids(&[
+            "  Gemini ".to_string(),
+            String::new(),
+            "COPILOT".to_string(),
+        ])
+        .expect("non-empty allowlist");
+        assert_eq!(set, allow_set(&["gemini", "copilot"]));
+        // Unknown ids mixed with a real id: only the real id survives.
+        let mixed = normalize_allowed_agent_ids(&[
+            "custom:myapp".to_string(),
+            "claude".to_string(),
+        ])
+        .expect("one real id survives");
+        assert_eq!(mixed, allow_set(&["claude"]));
+
+        // End-to-end through resolve_agent_selection:
+        //  - absent (None) ⇒ a known id is honored (reconstructed);
+        //  - a surviving allowlist blocks a known-but-unlisted id;
+        //  - present-but-empty blocks EVERY id (fail-closed).
+        let (cmd, _) = resolve(None, Some("copilot"), None);
+        assert_eq!(
+            cmd,
+            crate::agent_registry::build_acp_command("copilot", None),
+            "no allowlist ⇒ known id honored (reconstructed)"
+        );
+        let listed = normalize_allowed_agent_ids(&["gemini".to_string()]);
+        let (cmd, id) = resolve(listed.as_ref(), Some("copilot"), None);
+        assert_eq!(cmd, DEFAULT_CMD, "unlisted id is refused");
+        assert_eq!(id.as_deref(), Some("copilot"));
+        let blocked = normalize_allowed_agent_ids(&[String::new()]);
+        let (cmd, id) = resolve(blocked.as_ref(), Some("gemini"), None);
+        assert_eq!(cmd, DEFAULT_CMD, "present-but-empty blocks even a known id");
+        assert_eq!(id.as_deref(), Some("copilot"));
+    }
+
+    #[test]
+    fn host_empty_allowlist_flag_round_trips_as_block_all() {
+        // The host (TerminalPage) must signal "AllowedAgents policy active but
+        // it blocks every built-in ACP agent" so the master stays fail-closed.
+        // It can't send an empty value as its own argv token — the command-line
+        // builder drops empty args — so it emits the combined `--allowed-agent-ids=`
+        // token. Verify clap turns that into a PRESENT-but-empty list (`[""]`),
+        // which normalizes to block-all, and NOT into an absent flag (which
+        // would mean "no policy / accept any known id" — the bypass we're closing).
+        use clap::Parser;
+        let cli = crate::Cli::try_parse_from(["wta", "--allowed-agent-ids="])
+            .expect("--allowed-agent-ids= parses");
+        assert_eq!(
+            cli.allowed_agent_ids,
+            vec![String::new()],
+            "combined empty value is present-but-empty, not absent"
+        );
+        assert_eq!(
+            normalize_allowed_agent_ids(&cli.allowed_agent_ids),
+            Some(std::collections::HashSet::new()),
+            "present-but-empty ⇒ block all (fail-closed)"
+        );
+        // And the flag entirely absent stays "no host policy".
+        let cli_absent = crate::Cli::try_parse_from(["wta"]).expect("parses");
+        assert_eq!(
+            normalize_allowed_agent_ids(&cli_absent.allowed_agent_ids),
+            None,
+            "absent flag ⇒ no policy"
+        );
+    }
+
+    #[test]
+    fn gpo_allowlist_blocks_known_but_unlisted_ids() {
+        let allowed = allow_set(&["gemini"]);
+        // gemini is listed ⇒ honored.
+        let (cmd, _) = resolve(Some(&allowed), Some("gemini"), None);
+        assert_eq!(cmd, "gemini --experimental-acp");
+        // copilot is a *known* agent but NOT in the GPO-filtered set ⇒
+        // refused, fall back to default. (Defends against a peer helper
+        // selecting a policy-blocked agent.)
+        let (cmd, id) = resolve(Some(&allowed), Some("copilot"), None);
+        assert_eq!(cmd, DEFAULT_CMD);
+        assert_eq!(id.as_deref(), Some("copilot"));
+    }
+
+    #[test]
+    fn agent_cmd_from_the_pipe_is_never_executed() {
+        // Mirror the initialize path: a malicious helper sets a dangerous
+        // `agent_cmd` alongside a benign `agent_id`. The resolver doesn't
+        // even take `agent_cmd`, and the resolved command is rebuilt from
+        // the id — so the pipe-supplied string can never be spawned.
+        let mut meta: Option<acp::schema::v1::Meta> = None;
+        crate::session_registry::inject_wta_meta(
+            &mut meta,
+            &crate::session_registry::WtaMeta {
+                agent_cmd: Some("calc.exe".to_string()),
+                agent_id: Some("gemini".to_string()),
+                ..Default::default()
+            },
+        );
+        let wta = crate::session_registry::extract_wta_meta(&mut meta);
+        let (cmd, _) = resolve(None, wta.agent_id.as_deref(), wta.model.as_deref());
+        assert_eq!(cmd, "gemini --experimental-acp");
+        assert!(!cmd.contains("calc.exe"), "pipe command must never appear");
+    }
+
+    #[test]
+    fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
+        // `get_or_spawn_agent` keys its CLI pool on the resolved command.
+        // Same id+model ⇒ identical key ⇒ one shared CLI; different ids ⇒
+        // different keys ⇒ separate CLIs (Gemini in one tab, Claude in
+        // another). Assert the keying that drives that dedup.
+        let (a, _) = resolve(None, Some("gemini"), Some("flash"));
+        let (b, _) = resolve(None, Some("gemini"), Some("flash"));
+        let (c, _) = resolve(None, Some("claude"), None);
+        assert_eq!(a, b, "same selection must yield one pool key");
+        assert_ne!(a, c, "different agents must get different pool keys");
+    }
+
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
+            agents: Mutex::new(HashMap::new()),
+            default_agent_cmd: "copilot --acp --stdio".to_string(),
+            default_agent_id: Some("copilot".to_string()),
+            allowed_agent_ids: None,
             cached_init_resp: OnceLock::new(),
             agent_conn: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -3049,6 +3964,8 @@ mod tests {
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
             host_list_cache: Mutex::new(None),
+            wsl_titles_seed_at: Mutex::new(None),
+            wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -3088,9 +4005,22 @@ mod tests {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                // The multi-agent HelperHandler binds its agent during
+                // `initialize`; pre-bind one wrapping the pending
+                // (hangs-on-session/new) connection so
+                // `forward_new_session_to_agent` resolves it and exercises
+                // the timeout path.
+                let agent = Arc::new(OnceLock::new());
+                let _ = agent.set(Arc::new(AgentCli {
+                    conn: client_connection_to_pending_new_session_agent(),
+                    cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ),
+                    cli_source: None,
+                }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
-                    agent_conn: client_connection_to_pending_new_session_agent(),
+                    agent,
                     state: make_state(),
                     notif_tx,
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -3111,6 +4041,24 @@ mod tests {
                 );
             })
             .await;
+    }
+
+    #[test]
+    fn cloned_helper_handlers_share_the_lazy_agent_binding() {
+        let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let handler = HelperHandler {
+            helper_id: HelperId(1),
+            agent: Arc::new(OnceLock::new()),
+            state: make_state(),
+            notif_tx,
+            agent_side_slot: Arc::new(OnceLock::new()),
+        };
+        let request_handler = handler.clone();
+
+        assert!(
+            Arc::ptr_eq(&handler.agent, &request_handler.agent),
+            "all request handler clones must share initialize's binding slot"
+        );
     }
 
     /// Regression for the reentrant-permission deadlock: a `prompt` in flight
@@ -3247,9 +4195,17 @@ mod tests {
 
                 // ---- hop 2: master (helper-side agent) <-> mock helper client ----
                 let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                let agent = Arc::new(OnceLock::new());
+                let _ = agent.set(Arc::new(AgentCli {
+                    conn: agent_conn,
+                    cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ),
+                    cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
-                    agent_conn,
+                    agent,
                     state: Arc::clone(&state),
                     notif_tx: notif_tx.clone(),
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -3914,7 +4870,6 @@ mod tests {
     /// thinking the master doesn't support terminals at all).
     #[tokio::test]
     async fn master_client_create_terminal_unknown_session_returns_internal_error() {
-        
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
@@ -4149,6 +5104,10 @@ mod tests {
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),
+            agents: Mutex::new(HashMap::new()),
+            default_agent_cmd: "copilot --acp --stdio".to_string(),
+            default_agent_id: Some("copilot".to_string()),
+            allowed_agent_ids: None,
             cached_init_resp: OnceLock::new(),
             agent_conn: OnceLock::new(),
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4156,6 +5115,8 @@ mod tests {
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
             host_list_cache: Mutex::new(None),
+            wsl_titles_seed_at: Mutex::new(None),
+            wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -4403,6 +5364,147 @@ mod tests {
                 .title
                 .as_deref(),
             Some("project")
+        );
+    }
+
+    // ── WSL delegate title refresh (born-bound "-" rows) ─────────────
+
+    fn wsl_scan_row(id: &str, title: &str) -> crate::agent_sessions::AgentSession {
+        use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
+        crate::agent_sessions::AgentSession {
+            key: id.into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: Some("pane-guid".into()),
+            window_id: None,
+            tab_id: None,
+            title: title.to_string(),
+            cwd: std::path::PathBuf::from("/home/user/proj"),
+            started_at: std::time::SystemTime::UNIX_EPOCH,
+            last_activity_at: std::time::SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Idle,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+            location: SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn wsl_titles_from_scan_filters_empty_and_injected_echo() {
+        // A CLI can briefly echo the delegate's baked first message (which
+        // embeds the `## Terminal Context (pane …)` marker) as a session title
+        // before generating a real summary; that echo must be dropped so the
+        // born-bound row keeps waiting rather than adopting a leaky title.
+        let echo = format!(
+            "hi test\n\n{}ABCDEF01-2345-6789-ABCD-EF0123456789)\n```\nPowerShell 7\n```",
+            crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER
+        );
+        let scanned = vec![
+            wsl_scan_row("s-real", "Fix the failing build"),
+            wsl_scan_row("s-empty", ""),
+            wsl_scan_row("s-echo", &echo),
+        ];
+        let map = wsl_titles_from_scan(&scanned);
+        assert_eq!(map.len(), 1, "only the real title survives the filters");
+        assert_eq!(
+            map.get("s-real").map(String::as_str),
+            Some("Fix the failing build")
+        );
+        assert!(!map.contains_key("s-empty"), "empty titles dropped");
+        assert!(!map.contains_key("s-echo"), "injected-context echo dropped");
+    }
+
+    fn live_synthetic_pane_row(id: &str) -> crate::session_registry::SessionInfo {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new(id.to_string()),
+            std::path::PathBuf::from("/home/user/proj"),
+        );
+        // Synthetic (None title), live, pane-bound, WSL-located — the born-bound
+        // WSL-delegate shape.
+        row.pane_session_id = Some("pane-guid".to_string());
+        row.status = Some(AgentStatus::Idle);
+        row.location = SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+        row
+    }
+
+    #[test]
+    fn wsl_title_seed_warranted_only_for_live_pane_bound_non_host_synthetic() {
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
+        use std::collections::HashSet;
+
+        // A born-bound WSL delegate row: synthetic, live, pane-bound, WSL-located,
+        // and its id is NOT in the host session/list → warrants a WSL scan.
+        let wsl_row = live_synthetic_pane_row("wsl-sid");
+        let no_host: HashSet<String> = HashSet::new();
+        assert!(wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &no_host));
+
+        // Same row, but the host CLI lists it (a host delegate not yet titled) →
+        // the host title refresh owns it, no WSL scan.
+        let host_ids: HashSet<String> = ["wsl-sid".to_string()].into_iter().collect();
+        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &host_ids));
+
+        // A Host-located row with the same live/synthetic/pane-bound shape must
+        // NOT warrant a scan, even when the host list is empty (temporarily
+        // unavailable) — only in-distro rows can be titled by a WSL scan.
+        let mut host_row = live_synthetic_pane_row("host-sid");
+        host_row.location = SessionLocation::Host;
+        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&host_row), &no_host));
+
+        // A non-synthetic row never warrants a scan.
+        let mut titled = live_synthetic_pane_row("titled-sid");
+        titled.title = Some("Real Title".to_string());
+        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&titled), &no_host));
+
+        // Historical / ended synthetic rows are excluded so an untitled old row
+        // can't drive perpetual scans.
+        let mut ended = live_synthetic_pane_row("ended-sid");
+        ended.status = Some(AgentStatus::Ended);
+        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&ended), &no_host));
+
+        // A synthetic live row with no pane binding (not born-bound) is excluded.
+        let mut unbound = live_synthetic_pane_row("unbound-sid");
+        unbound.pane_session_id = None;
+        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&unbound), &no_host));
+    }
+
+    #[tokio::test]
+    async fn wsl_scan_upgrades_born_bound_wsl_title() {
+        // End-to-end of the fix at the registry level: a born-bound WSL row
+        // (registered Host-located with an empty title, as `register_launched_
+        // session_with_master` does) gets its title from the scanned WSL session
+        // that shares its id, via `spawn_wsl_seed`'s synthetic-title refresh.
+        let state = make_state();
+        let mut born = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("wsl-delegate-sid".to_string()),
+            std::path::PathBuf::from("/home/user/proj"),
+        );
+        born.title = Some(String::new());
+        born.pane_session_id = Some("pane-guid".to_string());
+        born.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        state.registry.upsert(born).await;
+
+        // Directly drive the title refresh the worker performs from a scan.
+        let scanned = vec![wsl_scan_row("wsl-delegate-sid", "Investigate flaky test")];
+        let titles = wsl_titles_from_scan(&scanned);
+        assert!(refresh_synthetic_titles_from(&*state.registry, &titles).await);
+        assert_eq!(
+            state
+                .registry
+                .lookup(&acp::schema::v1::SessionId::new(
+                    "wsl-delegate-sid".to_string()
+                ))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Investigate flaky test")
         );
     }
 
@@ -4666,6 +5768,56 @@ mod tests {
         assert!(
             !state.hook_owned.lock().await.contains(&sid),
             "born-bound is binding-only — must NOT be hook-owned"
+        );
+    }
+
+    #[tokio::test]
+    async fn born_bound_wsl_stamps_wsl_location() {
+        // A WSL `?<prompt>` delegate registers with a distro; the master must
+        // stamp the row `Wsl { distro }` (the reducer defaults to Host) so the
+        // session view renders the [WSL-<distro>] prefix.
+        let state = make_state();
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bb-wsl-loc".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane-wsl".to_string(),
+            cwd: std::path::PathBuf::from("/mnt/c/Users/dev"),
+            title: String::new(),
+        };
+        handle_session_born_bound(&state, event, Some("Ubuntu".to_string()))
+            .await
+            .expect("wsl born-bound accepted");
+
+        let sid = acp::schema::v1::SessionId::new("bb-wsl-loc".to_string());
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().location,
+            crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+            "WSL born-bound row must be stamped Wsl {{ distro }}"
+        );
+        // Still binding-only, like any born-bound row.
+        assert!(state.born_bound.lock().await.contains(&sid));
+    }
+
+    #[tokio::test]
+    async fn born_bound_host_stays_host_location() {
+        // A host `?<prompt>` delegate carries no distro; the row stays Host.
+        let state = make_state();
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bb-host-loc".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane-host".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        };
+        handle_session_born_bound(&state, event, None)
+            .await
+            .expect("host born-bound accepted");
+
+        let sid = acp::schema::v1::SessionId::new("bb-host-loc".to_string());
+        assert_eq!(
+            state.registry.lookup(&sid).await.unwrap().location,
+            crate::agent_sessions::SessionLocation::Host,
+            "host born-bound row must stay Host"
         );
     }
 

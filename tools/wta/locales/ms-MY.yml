@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnosis terminal aktif dan cadangkan pembetulan (/fix <
 commands.restart.summary: "Mulakan semula ejen"
 commands.stop.summary: "Batalkan gesaan yang sedang berjalan"
 commands.sessions.summary: "Buka pemilih sesi sejarah (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Pilih ejen untuk tab ini (/agent <id> untuk menukar terus)"  # {Locked="/agent","<id>"}
 
 # ── Pelaksanaan cadangan (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Pilih ejen (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Tiada CLI ejen yang tersedia ditemui pada mesin ini."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Ejen tidak diketahui atau tidak tersedia %{agent} — taip /agent untuk melihat senarai yang tersedia."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Peralihan ejen tidak tersedia di luar tab Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}

@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "முகவரை மறுதொடக்கம் செய்"
 commands.stop.summary: "செயலில் உள்ள prompt-ஐ ரத்துசெய்"
 commands.sessions.summary: "வரலாற்று அமர்வுகள் தேர்வியைத் திற (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "இந்தப் பலகத்திற்கான ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── பரிந்துரைகள் பலகம் (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - விசைப் பெயர்கள் மற்றும் Return-விசை குறியீடு, மொழிபெயர்க்க வேண்டாம்
@@ -200,6 +201,16 @@ time.days_other: "%{count} நாட்கள் முன்பு"
 
 # ── பரிந்துரை செயலாக்கம் (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "தேர்வு %{choice} தோல்வியடைந்தது: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "இந்தக் கணினியில் ஏஜென்ட் CLI எதுவும் கிடைக்கவில்லை."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "அறியப்படாத அல்லது கிடைக்காத ஏஜென்ட் %{agent} — கிடைக்கும் பட்டியலைக் காண /agent எனத் தட்டச்சு செய்யவும்."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "விண்டோஸ் டெர்மினல் தாவலுக்கு வெளியே ஏஜென்ட் மாறுதல் கிடைக்காது."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}

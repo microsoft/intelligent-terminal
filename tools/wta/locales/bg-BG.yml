@@ -73,6 +73,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Рестартирай агента"
 commands.stop.summary: "Отмяна на текущата подкана"
 commands.sessions.summary: "Отваряне на избора на предишни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Изберете агента за този раздел (/agent <id> за директно превключване)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ за навигация • ← → за превключване на бутони • Enter за избор • Esc за отказ)"
@@ -201,6 +202,16 @@ time.days_other: "преди %{count} дни"
 
 # ── Изпълнение на препоръка (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Избор %{choice} е неуспешен: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Изберете агент (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "На тази машина не е открит наличен CLI за агент."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Неизвестен или недостъпен агент %{agent} — въведете /agent, за да видите наличния списък."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Превключването на агенти не е налично извън раздел на Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Изберете модела за този панел (/model <id> за директно превключване)"  # {Locked="/model","<id>"}

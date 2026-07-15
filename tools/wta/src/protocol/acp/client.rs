@@ -1928,6 +1928,7 @@ fn inject_wta_pane_meta(meta: &mut Option<acp::schema::v1::Meta>) {
         &crate::session_registry::WtaMeta {
             pane_session_id,
             owner_tab_id,
+            ..Default::default()
         },
     );
 }
@@ -2099,6 +2100,12 @@ async fn handle_load_failure(
 pub async fn run_acp_client_over_pipe(
     pipe_name: String,
     acp_model_override: Option<String>,
+    // Per-tab agent identity. Forwarded to the multi-agent master in the
+    // `initialize` handshake's `_meta.wta.agent_id` so master selects and
+    // reconstructs the matching agent CLI for THIS tab from the id alone
+    // (it never executes a command string sent over the pipe). `None` →
+    // master uses its `--agent` default (the legacy single-agent behavior).
+    agent_id: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
@@ -2290,14 +2297,44 @@ pub async fn run_acp_client_over_pipe(
     let _ = event_tx.send(AppEvent::ConnectionStage("Initializing ACP...".to_string()));
     startup_probe.log("Initializing ACP (over pipe)");
     let init_started = std::time::Instant::now();
-    let init_future = conn.initialize(
-        acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+    let init_request = {
+        let mut req =
+            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
             .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
             .client_info(
                 acp::schema::v1::Implementation::new("wta-helper", env!("CARGO_PKG_VERSION"))
                     .title("Windows Terminal Agent (helper)"),
-            ),
-    );
+            );
+        // Declare which agent this tab wants by *identity* — id + model.
+        // The master selects + reconstructs the agent command from these
+        // (it deliberately does NOT execute a command string sent over
+        // the pipe — that would be an arbitrary-spawn surface for any
+        // same-user process). Two tabs with different ids land on
+        // different CLIs; same-id tabs share one. No command string is
+        // ever put on the wire.
+        crate::session_registry::inject_wta_meta(
+            &mut req.meta,
+            &crate::session_registry::WtaMeta {
+                // Canonicalize + filter the same way the master does (trim,
+                // ASCII-lowercase) and forward only *known* selectable ids.
+                // The master reconstructs the command from the id and rejects
+                // unknown / `custom:*` ids — forwarding those would trip an
+                // "unknown selection" warn on every connect and then fall back
+                // to the default anyway. Sending `None` makes that fallback
+                // silent (master applies its own `--agent` default).
+                agent_id: agent_id.and_then(|s| {
+                    let id = s.trim().to_ascii_lowercase();
+                    crate::agent_registry::is_known_id(&id).then_some(id)
+                }),
+                model: acp_model_override
+                    .clone()
+                    .filter(|s| !s.trim().is_empty()),
+                ..Default::default()
+            },
+        );
+        req
+    };
+    let init_future = conn.initialize(init_request);
     let init_result =
         tokio::time::timeout(std::time::Duration::from_secs(60), init_future).await;
     log_acp_initialize_timeout_result("HelperPipe", init_started, &init_result);

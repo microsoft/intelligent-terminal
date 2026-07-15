@@ -352,8 +352,16 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // already references the v1 script byte-for-byte — get the new script
     // rewritten in; without the bump the orchestrator's block-match early-
     // out would leave the stale v1 script (no ShellType) in place.
+    //
+    // v3: fixed __ShellInteg_GetLastExitCode so PowerShell-level errors
+    // (invalid -match regex, [int]::Parse, 1/0, ...) report a non-zero
+    // OSC 133;D exit code on Windows PowerShell 5.1. 5.1 stamps
+    // InvocationInfo.HistoryId = -1 on these .NET-exception-class errors, so
+    // the old HistoryId-match check missed them and emitted the stale 0 from
+    // the prior command, causing autofix to treat the failure as success.
+    // Bumped so existing users get the corrected script rewritten in.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 2;
+    inline constexpr int kVersion = 3;
 
     inline std::wstring ScriptFileName()
     {
@@ -414,10 +422,18 @@ if (-not $Global:__ShellInteg_Installed) {
         # $? still reflects the *user's* last command here because this
         # is the very first call inside the prompt function.
         if ($? -eq $True) { return 0 }
-        $entry = Get-History -Count 1
-        if ($entry -and $Error[0].InvocationInfo.HistoryId -eq $entry.Id) {
-            return -1          # PowerShell-level error
-        }
+        # $? is False -> the last command failed. A failed *native* command
+        # always sets $LastExitCode to a non-zero value, whereas a
+        # PowerShell-level error (e.g. an invalid -match regex, [int]::Parse,
+        # or a division by zero) never touches $LastExitCode. So if we get
+        # here with $LastExitCode still 0, the failure can only be a
+        # PowerShell-level error -> report a non-zero sentinel instead of the
+        # stale 0 left by a prior successful command. This is what makes
+        # Windows PowerShell 5.1 behave like PowerShell 7: 5.1 stamps
+        # $Error[0].InvocationInfo.HistoryId = -1 on .NET-exception-class
+        # errors, so a HistoryId-match check (as used previously) would miss
+        # them and fall through to the stale 0.
+        if ($LastExitCode -eq 0) { return -1 }
         return $LastExitCode   # native command exit code
     }
 

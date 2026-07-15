@@ -1069,6 +1069,9 @@ try
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::AgentSwitch:
+        _dispatchAgentSwitchToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
         // thread; the page-side handler resolves the tab via `tab_id`
@@ -1161,6 +1164,7 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
     {
         return;
     }
+
     // Same fan-out shape as autofix: every window gets the event so its
     // AgentPaneContent (if any) can update. Per-window owns its own agent leaf.
     for (const auto& host : s_emperor->GetWindows())
@@ -1185,6 +1189,39 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchAgentSwitchToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnAgentSwitchRequested(eventJson);
+                }
+                catch (...)
+                {
+                    // Page may have been torn down during dispatch.
                 }
             });
     }

@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnosis terminal aktif dan sarankan perbaikan (/fix <hi
 commands.restart.summary: "Mulai ulang agen"
 commands.stop.summary: "Batalkan prompt yang sedang berjalan"
 commands.sessions.summary: "Buka pemilih sesi historis (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Pilih agent untuk tab ini (/agent <id> untuk beralih langsung)"  # {Locked="/agent","<id>"}
 
 # ── Eksekusi rekomendasi (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Pilihan %{choice} gagal: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Pilih agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Tidak ada CLI agen yang tersedia ditemukan di mesin ini."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Agent tidak dikenal atau tidak tersedia %{agent} — ketik /agent untuk melihat daftar yang tersedia."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Peralihan agen tidak tersedia di luar tab Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}

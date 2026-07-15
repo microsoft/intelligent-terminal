@@ -51,7 +51,7 @@
     'Stashed agent pane autofix works'  = 'Stashed agent pane autofix works'
 
     # §3 shell integration
-    'PowerShell shell integration installed' = 'PowerShell shell integration emits'
+    'PowerShell shell integration installed' = 'PowerShell shell integration emits|PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5\.1'
 
     # §4 session view / focus
     # NOTE: 'Shift+Enter behavior works' is NOT E2E-mapped — its contract (Live row Shift+Enter ->

@@ -171,6 +171,7 @@ namespace winrt::TerminalApp::implementation
 
         void _refreshLabel();
         void _refreshLogo();
+
     };
 }
 

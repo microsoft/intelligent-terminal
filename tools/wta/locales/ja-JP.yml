@@ -191,9 +191,20 @@ commands.fix.summary: "アクティブなターミナルを診断して修正案
 commands.restart.summary: "エージェントを再起動"
 commands.stop.summary: "実行中のプロンプトをキャンセル"
 commands.sessions.summary: "過去のセッション ピッカーを開く（Ctrl+Shift+/）"
+commands.agent.summary: "このタブのエージェントを選択（直接切り替えるには /agent <id>）"  # {Locked="/agent","<id>"}
 
 # ── 推奨事項の実行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "選択肢 %{choice} が失敗しました: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "エージェントを選択 (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "このマシンに利用可能なエージェント CLI が見つかりませんでした。"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "不明または利用不可能なエージェント %{agent} — 利用可能な一覧を表示するには /agent と入力してください。"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Windows Terminal タブの外ではエージェントの切り替えは利用できません।"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}

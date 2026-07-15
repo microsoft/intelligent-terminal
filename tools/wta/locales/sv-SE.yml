@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnostisera den aktiva terminalen och föreslå en korr
 commands.restart.summary: "Starta om agenten"
 commands.stop.summary: "Avbryt den pågående prompten"
 commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Välj agenten för den här panelen (/agent <id> för att växla direkt)"  # {Locked="/agent","<id>"}
 
 # ── Körning av rekommendation (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Val %{choice} misslyckades: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Välj agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Det gick inte att hitta något tillgängligt agent-CLI på den här datorn."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Okänd eller otillgänglig agent %{agent} — skriv /agent för att se den tillgängliga listan."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en Windows Terminal-flik."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}

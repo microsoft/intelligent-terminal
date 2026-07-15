@@ -195,9 +195,20 @@ commands.fix.summary: "Diagnosticați terminalul activ și sugerați o remediere
 commands.restart.summary: "Reporniți agentul"
 commands.stop.summary: "Anulați promptul în curs"
 commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Alegeți agentul pentru această filă (/agent <id> pentru a comuta direct)"  # {Locked="/agent","<id>"}
 
 # ── Executarea recomandării (src/coordinator.rs) ────────────────────────────
 system.choice_execution_failed: "Alegerea %{choice} a eșuat: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Selectați agentul (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Nu s-a găsit niciun CLI de agent disponibil pe acest computer."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Agent necunoscut sau indisponibil %{agent} — tastați /agent pentru a vedea lista disponibilă."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Comutarea agentului nu este disponibilă în afara unei file Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Alegeți modelul pentru acest panou (/model <id> pentru a comuta direct)"  # {Locked="/model","<id>"}

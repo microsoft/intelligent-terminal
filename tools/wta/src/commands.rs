@@ -37,6 +37,14 @@ pub enum CommandKind {
     ///   restart Windows Terminal.
     Restart,
     Sessions,
+    /// Pick the ACP agent for this Windows Terminal tab.
+    ///
+    /// Bare `/agent` opens an interactive picker containing only agents that
+    /// are both host-policy-allowed and installed on this machine;
+    /// `/agent <id>` switches directly. The helper asks Windows Terminal to
+    /// rebuild only its owning tab, so the choice remains a runtime per-tab
+    /// override and never changes the global `acpAgent` setting.
+    Agent,
     /// Pick the ACP model for *this* agent pane.
     ///
     /// Bare `/model` opens an interactive picker listing the models the
@@ -116,6 +124,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
         takes_args: false,
+    },
+    CommandSpec {
+        name: "agent",
+        summary_key: "commands.agent.summary",
+        kind: CommandKind::Agent,
+        takes_args: true,
     },
     CommandSpec {
         name: "model",
@@ -283,6 +297,18 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn agent_parses_with_optional_id() {
+        let bare = parse("/agent").unwrap();
+        assert_eq!(bare.kind, CommandKind::Agent);
+        assert_eq!(bare.rest, "");
+
+        let direct = parse("/agent claude").unwrap();
+        assert_eq!(direct.kind, CommandKind::Agent);
+        assert_eq!(direct.rest, "claude");
+        assert!(lookup("agent").unwrap().takes_args);
     }
 
     #[test]

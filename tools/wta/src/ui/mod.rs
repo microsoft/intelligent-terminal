@@ -1,3 +1,5 @@
+mod agent_popup;
+pub mod agents_view;
 mod auth;
 pub(crate) mod card;
 pub(crate) mod chat;
@@ -10,11 +12,11 @@ mod model_popup;
 mod permission;
 mod popup;
 mod recommendations;
-pub mod agents_view;
 pub mod setup;
 pub mod shimmer;
 
-pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;
+pub use agent_popup::AgentPopupState;
 pub use command_popup::PopupState;
 pub use layout::render;
 pub use model_popup::ModelPopupState;
+pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;

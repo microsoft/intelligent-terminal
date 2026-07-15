@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "გადატვირთეთ აგენტი"
 commands.stop.summary: "მიმდინარე მოთხოვნის გაუქმება"
 commands.sessions.summary: "ისტორიული სესიების ამრჩევის გახსნა (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "აირჩიეთ აგენტი ამ ჩანართისთვის (/agent <id> პირდაპირ გადასართავად)"  # {Locked="/agent","<id>"}
 
 # ── რეკომენდაციების პანელი (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ღილაკების სახელები და Return ღილაკის გლიფი, არ ითარგმნება
@@ -199,6 +200,16 @@ time.days_other: "%{count} დღის წინ"
 
 # ── რეკომენდაციის შესრულება (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "არჩევანი %{choice} ვერ შესრულდა: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "აირჩიეთ აგენტი (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "ამ კომპიუტერზე ხელმისაწვდომი აგენტის CLI ვერ მოიძებნა."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "უცნობი ან მიუწვდომელი აგენტი %{agent} — აკრიფეთ /agent ხელმისაწვდომი სიის სანახავად."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "აგენტის გადართვა მიუწვდომელია Windows Terminal-ის ჩანართის გარეთ."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}

@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "Агентті қайта іске қосу"
 commands.stop.summary: "Орындалып жатқан сұраудан бас тарту"
 commands.sessions.summary: "Тарихи сеанстар таңдағышын ашу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Осы панель үшін агентді таңдаңыз (тікелей ауыстыру үшін /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
@@ -199,6 +200,16 @@ time.days_other: "%{count} күн бұрын"
 
 # ── Ұсынымды орындау (src/coordinator.rs) ───────────────────────────────────
 system.choice_execution_failed: "%{choice} таңдауы сәтсіз аяқталды: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Агентді таңдаңыз (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Бұл компьютерде қолжетімді агент CLI табылмады."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Белгісіз немесе қолжетімсіз агент %{agent} — қолжетімді тізімді көру үшін /agent теріңіз."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Агентті ауыстыру Windows Terminal қойындысынан тыс жерде қолжетімді емес."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Осы панель үшін модельді таңдаңыз (тікелей ауыстыру үшін /model <id>)"  # {Locked="/model","<id>"}
