@@ -203,6 +203,7 @@ rmcp
 rnrx
 rntx
 RPCs
+rposition
 rrx
 rtx
 rubyw
