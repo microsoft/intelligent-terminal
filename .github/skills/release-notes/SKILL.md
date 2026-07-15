@@ -28,9 +28,9 @@ The base is the **latest release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.18`) a
    git tag --list 'v*' --merged main | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } | Sort-Object { [version]($_ -replace '^v','') } | Select-Object -Last 1
    ```
    (The user may override with a specific base commit/tag; if the plain `git tag` list looks nothing like the above — e.g. only `v1.x` shows up — the `--merged main` filter is being skipped.)
-2. List all commits from the base tag to `main`:
+2. List all commits from the base tag to `main` (replace `$BASE_TAG` with the tag from step 1):
    ```bash
-   git log --oneline --reverse <latest-release-tag>..main
+   git log --oneline --reverse "$BASE_TAG"..main
    ```
 3. Extract PR numbers from commit messages (pattern: `(#NNN)`).
 
@@ -38,13 +38,13 @@ The base is the **latest release tag** (the `vX.Y.Z` sequence, e.g. `v0.1.18`) a
 
 ### Phase 2: Enrich with PR Metadata
 
-For each PR number, look up linked issues and author info:
+For each PR number, look up linked issues and author info (replace `PR_NUMBER` and `OWNER/REPO`):
 
 ```bash
-gh pr view <number> --repo <owner>/<repo> --json number,title,body,author,closingIssuesReferences
+gh pr view PR_NUMBER --repo OWNER/REPO --json number,title,body,author,closingIssuesReferences
 ```
 
-> Use `microsoft/intelligent-terminal` for this repo's own PRs — they live on the canonical repo even when you're working from a fork/clone — or `microsoft/terminal` for upstream `#20xxx` PRs.
+> Use `OWNER/REPO` = `microsoft/intelligent-terminal` for this repo's own PRs — they live on the canonical repo even when you're working from a fork/clone — or `microsoft/terminal` for upstream `#20xxx` PRs.
 
 To batch this lookup across many PRs at once, run [`scripts/Get-PrMetadata.ps1`](./scripts/Get-PrMetadata.ps1) with a list of PR numbers — it reports linked issues and flags community contributors (authors not in `references/core-team.md`).
 
