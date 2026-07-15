@@ -50,7 +50,7 @@ Describe 'Feature per-tab agent selection through /agent' -Tag 'Feature' -Skip:(
         Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '/agent no-such-agent-e2e' | Out-Null
         # The prose is localized and contains a substituted %{agent} placeholder. Match the
         # locked command/id tokens instead of treating the untranslated template as literal text.
-        Assert-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -Pattern 'no-such-agent-e2e.*\/agent' -TimeoutSec 15
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -Pattern '(?s)no-such-agent-e2e.*\/agent' -TimeoutSec 15
         (Get-AgentPaneSession -App $script:app -PaneSessionId $script:defaultPane) |
             Should -Not -BeNullOrEmpty -Because 'an invalid agent id must leave the current pane running'
         Assert-Setting -App $script:app -Key 'acpAgent' -Value 'copilot'

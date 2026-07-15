@@ -334,7 +334,7 @@ function Get-AgentPaneSessions {
         $jsonl = Join-Path $App.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
         if (-not (Test-Path $jsonl)) { return }
         $preIds = if ($App.PSObject.Properties.Name -contains 'PreExistingAgentPaneIds') { $App.PreExistingAgentPaneIds } else { $null }
-        $records = @(Get-Content -LiteralPath $jsonl | Where-Object { $_.Trim() } |
+        $records = @(Get-Content -LiteralPath $jsonl -Tail 256 | Where-Object { $_.Trim() } |
                 ForEach-Object { $_ | ConvertFrom-JsonSafe } | Where-Object { $_ -and $_.pane_session_id })
         if ($preIds) {
             $records = @($records | Where-Object { -not $preIds.Contains([string]$_.pane_session_id) })
