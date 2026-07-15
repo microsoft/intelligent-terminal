@@ -28,10 +28,16 @@
 //! gate. So the subprocess runs for any token that *looks* not-found to PATH,
 //! not only a genuine not-found.
 //!
-//! Known blind spot (accepted for v1): the enumerate subprocess runs with
-//! `-NoProfile`, so it sees PATH executables and external scripts (the
-//! issue's concern) but not functions/aliases defined only in the user's
-//! interactive profile.
+//! Profile-defined aliases/functions (issue #286): the enumerate loads the
+//! user's interactive profile first, so an alias set only in `$PROFILE` (e.g.
+//! `which` → `where.exe`) is enumerated and recognized. Because a profile runs
+//! arbitrary user code that can be slow or block, the profile enumerate is
+//! bounded by [`PROFILE_ENUMERATE_TIMEOUT`] and falls back to a fast
+//! `-NoProfile` enumerate on timeout/failure (see
+//! [`enumerate_powershell_commands`]). Still-uncovered: aliases/functions
+//! defined *ad hoc* in the running interactive session (never persisted to a
+//! profile) — those live only in that session's memory, which a separate
+//! subprocess can't observe.
 
 #[cfg(windows)]
 /// `CREATE_NO_WINDOW` — keep the enumerate subprocess from flashing a console
@@ -46,6 +52,19 @@ const EXE_EXTS: [&str; 6] = [".exe", ".cmd", ".bat", ".com", ".ps1", ".msc"];
 
 /// Max number of near-matches to surface.
 const MAX_NEAR_MATCHES: usize = 5;
+
+/// Max time to wait for the profile-loading enumerate before falling back to a
+/// `-NoProfile` enumerate. A user's interactive profile (oh-my-posh, module
+/// imports, PSReadLine, network calls) can be slow or, worst case, block; the
+/// bound keeps near-match recall responsive. The timed-out child is reaped, not
+/// leaked, via `kill_on_drop` in [`run_enumerate`].
+const PROFILE_ENUMERATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Marker printed as the first line of the enumerate `-Command`, so any stdout a
+/// profile emits (a `Write-Output` on the success stream) during profile load —
+/// which happens *before* `-Command` runs — is discarded rather than mistaken
+/// for a command name. Unlikely to collide with any real command name.
+const ENUM_SENTINEL: &str = "__WTA_CMD_ENUM__";
 
 /// True when `shell` names a PowerShell host. v1 only recalls for PowerShell
 /// panes.
@@ -214,11 +233,13 @@ pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec
 }
 
 /// Process-lifetime cache of the enumerated command list, keyed by shell exe +
-/// current `PATH`. Enumerating the shell costs a `pwsh -NoProfile` subprocess
-/// (~hundreds of ms cold-start); the command set is effectively static for the
-/// helper's lifetime, so cache it. By design we do NOT detect mid-session
-/// installs — a newly added command shows up only after the tab/helper restarts.
-/// Keying on `PATH` keeps tests isolated (each sets its own `PATH` → fresh key).
+/// current `PATH`. Enumerating the shell costs a profile-loading `pwsh`
+/// subprocess (the profile can take up to [`PROFILE_ENUMERATE_TIMEOUT`]); the
+/// command set is effectively static for the helper's lifetime, so cache it —
+/// the profile cost is paid once per pane, not per query. By design we do NOT
+/// detect mid-session installs — a newly added command shows up only after the
+/// tab/helper restarts. Keying on `PATH` keeps tests isolated (each sets its
+/// own `PATH` → fresh key).
 static COMMAND_CACHE: std::sync::OnceLock<
     std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>>,
 > = std::sync::OnceLock::new();
@@ -242,7 +263,15 @@ async fn cached_powershell_commands(shell_exe: &str) -> Option<std::sync::Arc<Ve
 }
 
 /// Enumerate the shell's command names (cmdlets, applications, external
-/// scripts, functions, aliases) in one `-NoProfile` subprocess. Cmdlets are
+/// scripts, functions, aliases).
+///
+/// Runs the user's interactive profile first so profile-defined aliases and
+/// functions are visible (issue #286 — e.g. a `which` → `where.exe` alias set
+/// in `$PROFILE`). Because loading a profile runs arbitrary user code that can
+/// be slow or block, the profile enumerate is bounded by
+/// [`PROFILE_ENUMERATE_TIMEOUT`]; on timeout / failure / empty output it falls
+/// back to a `-NoProfile` enumerate (PATH programs, external scripts, cmdlets,
+/// and the shell's built-in aliases/functions — issue #287). Cmdlets are
 /// included so the existence gate doesn't misclassify a failing cmdlet
 /// invocation (e.g. `Get-Item` with a missing path) as a not-found command.
 async fn enumerate_powershell_commands(shell_exe: &str) -> Option<Vec<String>> {
@@ -252,29 +281,67 @@ async fn enumerate_powershell_commands(shell_exe: &str) -> Option<Vec<String>> {
         shell_exe
     };
 
+    // Profile-loading enumerate, time-bounded. On success it already contains
+    // the built-in commands too, so it fully supersedes the fallback.
+    if let Ok(Some(names)) =
+        tokio::time::timeout(PROFILE_ENUMERATE_TIMEOUT, run_enumerate(exe, true)).await
+    {
+        return Some(names);
+    }
+
+    // Fallback (timeout / spawn failure / empty): no profile — always fast and
+    // runs no user code. This is the pre-#286 behavior.
+    run_enumerate(exe, false).await
+}
+
+/// Spawn a single PowerShell enumerate subprocess. With `load_profile == false`
+/// it adds `-NoProfile` (fast, no user code); with it `true` the user's profile
+/// runs so profile-defined aliases/functions are enumerated. `kill_on_drop`
+/// guarantees a profile that hangs past the caller's timeout is reaped when the
+/// timed-out future is dropped, never left as an orphaned host.
+async fn run_enumerate(exe: &str, load_profile: bool) -> Option<Vec<String>> {
     let mut cmd = tokio::process::Command::new(exe);
+    if !load_profile {
+        cmd.arg("-NoProfile");
+    }
     cmd.args([
-        "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "Get-Command -CommandType Cmdlet,Application,ExternalScript,Function,Alias | \
-         Select-Object -ExpandProperty Name",
+        // Print the sentinel first so any profile stdout (emitted during
+        // profile load, before this runs) is separated from the command list.
+        &format!(
+            "Write-Output '{ENUM_SENTINEL}'; \
+             Get-Command -CommandType Cmdlet,Application,ExternalScript,Function,Alias | \
+             Select-Object -ExpandProperty Name"
+        ),
     ])
     .stdin(std::process::Stdio::null())
     .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::null());
+    .stderr(std::process::Stdio::null())
+    .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     let output = cmd.output().await.ok()?;
+    parse_enumerate_output(&String::from_utf8_lossy(&output.stdout))
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let names: Vec<String> = stdout
+/// Parse the enumerate subprocess stdout into the command-name list, discarding
+/// any profile noise printed before [`ENUM_SENTINEL`]. Pure so the noise
+/// handling is unit-testable without spawning a shell. Everything up to and
+/// including the sentinel is dropped; if the sentinel is somehow absent, every
+/// non-empty line is kept rather than dropping the whole result.
+fn parse_enumerate_output(stdout: &str) -> Option<Vec<String>> {
+    let lines: Vec<&str> = stdout
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
-        .map(String::from)
         .collect();
+    let start = lines
+        .iter()
+        .position(|l| *l == ENUM_SENTINEL)
+        .map_or(0, |i| i + 1);
+    let names: Vec<String> = lines[start..].iter().map(|s| s.to_string()).collect();
 
     if names.is_empty() {
         None
@@ -466,6 +533,30 @@ mod tests {
         let mut sorted = got.clone();
         sorted.dedup();
         assert_eq!(sorted.len(), got.len(), "must not contain duplicates: {got:?}");
+    }
+
+    #[test]
+    fn parse_output_strips_profile_noise_before_sentinel() {
+        // A profile that writes to the success stream (`Write-Output`) prints
+        // before the sentinel; those lines must not be mistaken for commands.
+        let raw = format!(
+            "Loading my profile...\noh-my-posh init noise\n{ENUM_SENTINEL}\nwhich\nGet-ChildItem\ngit"
+        );
+        let got = parse_enumerate_output(&raw).expect("names after the sentinel");
+        assert_eq!(got, names(&["which", "Get-ChildItem", "git"]));
+    }
+
+    #[test]
+    fn parse_output_keeps_all_lines_when_sentinel_absent() {
+        // Defensive: a missing sentinel must not drop the whole command list.
+        let got = parse_enumerate_output("git\nGet-ChildItem\n").expect("all lines kept");
+        assert_eq!(got, names(&["git", "Get-ChildItem"]));
+    }
+
+    #[test]
+    fn parse_output_none_when_only_sentinel() {
+        // Sentinel present but no commands after it → nothing to offer.
+        assert!(parse_enumerate_output(ENUM_SENTINEL).is_none());
     }
 }
 
