@@ -133,15 +133,20 @@ const stats = { appname: 0, translate: 0, verbatim: 0, enusOverridden: 0, cellsW
 // touched. Disable with --no-localize-product-name.
 const localizeProductName = !process.argv.includes('--no-localize-product-name');
 const enUsProductName = (records[fieldRows['Title']] ? records[fieldRows['Title']][enCol] : '') || '';
+// Precompute the matcher once (it depends only on the constant en-US product
+// name): matches the standalone spaced/capitalized "Intelligent Terminal", not
+// the hyphenated URL form. null when there's no product name to localize.
+const productNameRe = enUsProductName
+  ? new RegExp(`(^|[^/\\w])${enUsProductName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`, 'g')
+  : null;
 
 function applyProductName(text, loc) {
-  if (!localizeProductName || !enUsProductName) return text;
+  if (!localizeProductName || !productNameRe) return text;
   const localized = appNameFor(appNames, loc);
   if (!localized || localized === enUsProductName) return text;
-  // Replace standalone product-name occurrences only (word boundaries around
-  // the spaced/capitalized form); the hyphenated URL form is unaffected.
-  const esc = enUsProductName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return text.replace(new RegExp(`(^|[^/\\w])${esc}(?![\\w-])`, 'g'), `$1${localized}`);
+  // Use a replace callback so any `$` in a localized name is inserted literally
+  // rather than interpreted as a special replacement pattern ($1, $&, …).
+  return text.replace(productNameRe, (_m, pre) => pre + localized);
 }
 
 for (const [field, row] of Object.entries(fieldRows)) {
