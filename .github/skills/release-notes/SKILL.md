@@ -92,9 +92,10 @@ Use these sections in order:
 
 ### Phase 4: Output
 
-1. Save the final release notes to `doc/release-notes/vX.Y.Z.md` (committed alongside prior releases, e.g. `doc/release-notes/v0.1.2.md`; create the `doc/release-notes/` folder if it doesn't exist yet). Draft in `Generated Files/` first if you want a gitignored scratch copy.
-2. Present the full notes to the user
-3. Also list the top 5 elevator-pitch points separately
+1. **Draft** into `Generated Files/release-notes-vX.Y.Z.md` — this folder is gitignored, so the working draft stays untracked while you iterate and get user sign-off.
+2. Present the full notes to the user for review.
+3. Also list the top 5 elevator-pitch points separately.
+4. **Publish (only once approved).** Copy the finalized notes to `doc/release-notes/vX.Y.Z.md` and commit them alongside prior releases (e.g. `doc/release-notes/v0.1.2.md`; create the folder if it doesn't exist yet). This committed file is the source of truth for the version — do **not** commit the `Generated Files/` draft.
 
 ## Gotchas
 
