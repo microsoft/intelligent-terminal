@@ -248,13 +248,17 @@ pub struct CommandResolution {
 /// command), so a hostile token can't inject PowerShell. `{sentinel}` is
 /// substituted with [`ENUM_SENTINEL`] by [`resolve_script`] so the printed
 /// marker can never drift from the one [`parse_resolve_output`] keys off. The
-/// script prints the sentinel first (so profile stdout noise is separable),
-/// then one tab-separated `type<TAB>name<TAB>target` line per `Get-Command
-/// -All` result. `target` is whitespace-collapsed so a multi-line function body
-/// can't break line parsing.
+/// token is `WildcardPattern::Escape`d before `Get-Command -Name`, so wildcard
+/// metacharacters (`* ? [ ]`) are matched literally rather than expanding to a
+/// large command set (which would falsely report `exists` and dump huge
+/// output). The script prints the sentinel first (so profile stdout noise is
+/// separable), then one tab-separated `type<TAB>name<TAB>target` line per
+/// `Get-Command -All` result. `target` is whitespace-collapsed so a multi-line
+/// function body can't break line parsing.
 const RESOLVE_SCRIPT_TEMPLATE: &str = r#"$ErrorActionPreference='SilentlyContinue'
 Write-Output '{sentinel}'
-Get-Command -Name $env:WTA_RESOLVE_TOKEN -All | ForEach-Object {
+$n = [System.Management.Automation.WildcardPattern]::Escape($env:WTA_RESOLVE_TOKEN)
+Get-Command -Name $n -All | ForEach-Object {
   $c = $_
   $d = switch ($c.CommandType) {
     'Alias' { $c.Definition }
@@ -371,6 +375,7 @@ fn parse_resolve_output(stdout: &str) -> Option<Vec<CommandResolution>> {
         Some(resolutions)
     }
 }
+/// Process-lifetime cache of the enumerated command list, keyed by shell exe +
 /// current `PATH`. Enumerating the shell costs a profile-loading `pwsh`
 /// subprocess (the profile can take up to [`PROFILE_ENUMERATE_TIMEOUT`]); the
 /// command set is effectively static for the helper's lifetime, so cache it —
@@ -892,6 +897,23 @@ mod integration_tests {
             got,
             ResolveOutcome::NotFound,
             "expected NotFound for a nonexistent command, got {got:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_treats_wildcards_literally() {
+        let Some(shell) = powershell_host() else {
+            eprintln!("no PowerShell host installed; skipping");
+            return;
+        };
+        // `gc*` would match many real commands if `-Name` did wildcard
+        // expansion. Escaped, it's a literal name that doesn't exist → NotFound,
+        // so a wildcard token can't falsely report `exists` / dump a huge set.
+        let got = powershell_resolve(&shell, "gc*").await;
+        assert_eq!(
+            got,
+            ResolveOutcome::NotFound,
+            "wildcard token must be matched literally, got {got:?}"
         );
     }
 
