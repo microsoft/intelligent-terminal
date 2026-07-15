@@ -88,6 +88,50 @@ pub(crate) fn copy_text_to_clipboard(_text: &str) -> std::io::Result<()> {
     ))
 }
 
+/// Read UTF-16 text from the Windows clipboard.
+#[cfg(windows)]
+pub(crate) fn read_text_from_clipboard() -> io::Result<String> {
+    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    const CF_UNICODETEXT: u32 = 13;
+    const MAX_CLIPBOARD_TEXT_BYTES: usize = 4 * 1024 * 1024;
+
+    let _guard = ClipboardGuard::open()?;
+    unsafe {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT) == 0 {
+            return Ok(String::new());
+        }
+        let handle = GetClipboardData(CF_UNICODETEXT);
+        if handle.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let ptr = GlobalLock(handle);
+        if ptr.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let size = GlobalSize(handle);
+        if size == 0 || size > MAX_CLIPBOARD_TEXT_BYTES {
+            GlobalUnlock(handle);
+            return Ok(String::new());
+        }
+
+        let units = std::slice::from_raw_parts(ptr as *const u16, size / std::mem::size_of::<u16>());
+        let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
+        let text = String::from_utf16_lossy(&units[..end]);
+        GlobalUnlock(handle);
+        Ok(text)
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn read_text_from_clipboard() -> std::io::Result<String> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "clipboard is only supported on Windows",
+    ))
+}
+
 /// Open a URL with the user's default handler using ShellExecuteW instead of a
 /// shell wrapper.
 #[cfg(windows)]

@@ -970,12 +970,12 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" => {
-            // handle_event consumes set_agent_state at the top of WtEvent
+        "set_agent_state" | "agent_paste_text" => {
+            // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that
             // drops the early return doesn't surface a stray
-            // "Pane: set_agent_state" banner via the default catch-all.
+            // "Pane: <method>" banner via the default catch-all.
             WtNotification {
                 severity: WtEventSeverity::Informational,
                 pane_id: pane_id.to_string(),
@@ -1770,6 +1770,16 @@ impl TabSession {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert(self.cursor_pos, ch);
         self.cursor_pos += ch.len_utf8();
+        self.refresh_command_popup();
+    }
+
+    pub fn insert_input_str(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
+        self.input.insert_str(self.cursor_pos, text);
+        self.cursor_pos += text.len();
         self.refresh_command_popup();
     }
 
@@ -4411,6 +4421,96 @@ impl App {
         tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
+    fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
+        let Some(target_tab) = self.agent_paste_target_tab(params) else {
+            return;
+        };
+
+        if self.mode != AppMode::Chat {
+            tracing::debug!(
+                target: "agent_paste",
+                mode = ?self.mode,
+                tab_id = target_tab,
+                "dropping paste because app is not in chat mode"
+            );
+            return;
+        }
+
+        let text = match crate::win32::read_text_from_clipboard() {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::warn!(
+                    target: "agent_paste",
+                    tab_id = target_tab,
+                    error = %e,
+                    "failed to read text from clipboard"
+                );
+                return;
+            }
+        };
+        let target_tab = target_tab.to_string();
+        self.insert_agent_paste_text(&target_tab, &text);
+    }
+
+    fn agent_paste_target_tab<'a>(&self, params: &'a serde_json::Value) -> Option<&'a str> {
+        let target_window = params.get("window_id").and_then(|v| v.as_str()).unwrap_or("");
+        let target_tab = params.get("tab_id").and_then(|v| v.as_str()).unwrap_or("");
+        let our_window = self.window_id.as_deref().unwrap_or("");
+        let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
+
+        if target_window.is_empty()
+            || target_tab.is_empty()
+            || owner_tab.is_empty()
+            || target_tab != owner_tab
+            || (!our_window.is_empty() && target_window != our_window)
+        {
+            tracing::debug!(
+                target: "agent_paste",
+                target_window,
+                our_window,
+                target_tab,
+                owner_tab,
+                "ignoring paste event not targeted at this helper"
+            );
+            return None;
+        }
+
+        Some(target_tab)
+    }
+
+    fn insert_agent_paste_text(&mut self, target_tab: &str, text: &str) {
+        let text = normalize_agent_paste_text(text);
+        if text.is_empty() {
+            tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
+            return;
+        }
+
+        let byte_len = text.len();
+        let line_count = text.split('\n').count();
+        let tab = self.tab_mut(target_tab);
+        if tab.current_view != View::Chat || !tab.input_has_nav_focus() {
+            tracing::debug!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                view = ?tab.current_view,
+                input_live = tab.input_has_nav_focus(),
+                byte_len,
+                line_count,
+                "dropping paste because chat input is not live"
+            );
+            return;
+        }
+
+        tab.insert_input_str(&text);
+        tracing::info!(
+            target: "agent_paste",
+            tab_id = target_tab,
+            byte_len,
+            line_count,
+            "inserted pasted text into agent input"
+        );
+    }
+
     fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
@@ -5287,6 +5387,11 @@ impl App {
                     if !prompt.is_empty() {
                         self.delegate_to_tab_agent(prompt);
                     }
+                    return;
+                }
+
+                if method == "agent_paste_text" {
+                    self.handle_agent_paste_text(&params);
                     return;
                 }
 
@@ -9561,6 +9666,27 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
+fn normalize_agent_paste_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if matches!(chars.peek(), Some('\n')) {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\n' | '\u{0085}' | '\u{2028}' | '\u{2029}' => out.push('\n'),
+            '\t' => out.push('\t'),
+            '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' => {}
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn now_unix_s() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -9742,6 +9868,155 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {
+        json!({
+            "window_id": window_id,
+            "tab_id": tab_id,
+        })
+    }
+
+    #[test]
+    fn agent_paste_text_normalizes_and_filters_control_chars() {
+        assert_eq!(
+            normalize_agent_paste_text("a\r\nb\rc\n\u{0085}d\u{2028}e\u{2029}f"),
+            "a\nb\nc\n\nd\ne\nf"
+        );
+        assert_eq!(
+            normalize_agent_paste_text("ok\u{0000}\u{001b}\u{0007}\tΩ\u{202E}x"),
+            "ok\tΩx",
+            "paste sanitizer must preserve tabs/text but strip controls and bidi overrides"
+        );
+    }
+
+    #[test]
+    fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+
+        app.insert_agent_paste_text("tab-a", "line1\r\nline2");
+
+        let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
+        assert_eq!(tab.input, "line1\nline2");
+        assert_eq!(tab.cursor_pos, "line1\nline2".len());
+        assert!(tab.messages.iter().all(|m| !matches!(m, ChatMessage::User(_))));
+    }
+
+    #[test]
+    fn agent_paste_text_inserts_at_cursor() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        {
+            let tab = app.tab_mut("tab-a");
+            tab.input = "ab".into();
+            tab.cursor_pos = 1;
+        }
+
+        app.insert_agent_paste_text("tab-a", "X\nY");
+
+        let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
+        assert_eq!(tab.input, "aX\nYb");
+        assert_eq!(tab.cursor_pos, "aX\nY".len());
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_wrong_window_and_non_owner_helpers() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.tab_mut("tab-a");
+
+        assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w2", "tab-a")), None);
+        assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w1", "tab-b")), None);
+
+        assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+        assert!(
+            app.tab_sessions
+                .get("tab-b")
+                .map(|t| t.input.is_empty())
+                .unwrap_or(true),
+            "non-owner helper must not create a phantom draft for another tab"
+        );
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_missing_owner_or_window() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = None;
+        assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")), None);
+        assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+
+        app.owner_tab_id = Some("tab-a".into());
+        let missing_window = json!({ "tab_id": "tab-a" });
+        assert_eq!(app.agent_paste_target_tab(&missing_window), None);
+    }
+
+    #[test]
+    fn agent_paste_text_allows_unknown_helper_window_when_owner_matches() {
+        let mut app = test_app();
+        app.owner_tab_id = Some("tab-a".into());
+        app.window_id = None;
+        assert_eq!(
+            app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")),
+            Some("tab-a")
+        );
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_non_chat_or_non_live_input() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.tab_mut("tab-a").current_view = View::Agents;
+
+        app.insert_agent_paste_text("tab-a", "hidden");
+        assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+
+        app.tab_mut("tab-a").current_view = View::Chat;
+        app.tab_mut("tab-a").completed_turns.push(CompletedTurn {
+            prompt: "old".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
+
+        app.insert_agent_paste_text("tab-a", "locked");
+        assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+
+        app.mode = AppMode::Auth;
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_paste_text".into(),
+            pane_id: String::new(),
+            tab_id: Some("tab-a".into()),
+            params: agent_paste_params("w1", "tab-a"),
+        });
+        assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+
+        app.mode = AppMode::Setup;
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_paste_text".into(),
+            pane_id: String::new(),
+            tab_id: Some("tab-a".into()),
+            params: agent_paste_params("w1", "tab-a"),
+        });
+        assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
     }
 
     #[test]

@@ -6441,6 +6441,44 @@ namespace winrt::TerminalApp::implementation
         const auto globalSettings = _settings.GlobalSettings();
         const auto bracketedPaste = eventArgs.BracketedPasteEnabled();
         const auto sourceId = sender.try_as<ControlInteractivity>().Id();
+        winrt::hstring agentPasteTabId;
+        const auto agentPasteWindowId = std::to_string(_WindowProperties.WindowId());
+        bool pasteTargetsAgentPane = false;
+
+        if (const auto tab{ _GetFocusedTabImpl() })
+        {
+            if (const auto root{ tab->GetRootPane() })
+            {
+                const auto sourcePane = root->WalkTree([&](const std::shared_ptr<Pane>& pane) -> std::shared_ptr<Pane> {
+                    if (const auto control{ pane->GetTerminalControl() })
+                    {
+                        if (control.ContentId() == sourceId)
+                        {
+                            return pane;
+                        }
+                    }
+                    return nullptr;
+                });
+                if (sourcePane)
+                {
+                    pasteTargetsAgentPane = sourcePane->IsAgentPane();
+                    if (pasteTargetsAgentPane)
+                    {
+                        agentPasteTabId = tab->StableId();
+                    }
+                }
+            }
+        }
+
+        if (pasteTargetsAgentPane)
+        {
+            Json::Value params{ Json::objectValue };
+            params["window_id"] = agentPasteWindowId;
+            params["tab_id"] = winrt::to_string(agentPasteTabId);
+            _agentPaneLog("agent pane text paste: forwarding structured paste request");
+            _RaiseProtocolEvent("agent_paste_text", params);
+            co_return;
+        }
 
         // GetClipboardData might block for up to 30s for delay-rendered contents.
         co_await winrt::resume_background();
