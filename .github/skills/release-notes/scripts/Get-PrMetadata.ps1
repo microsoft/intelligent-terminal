@@ -87,9 +87,9 @@ foreach ($pr in $PRNumbers) {
             $results.NoIssues += $pr
         }
 
-        # Check for community contributors
+        # Check for community contributors (exclude core team and bot accounts)
         $author = $data.author.login
-        if ($author -and $author -notin $CoreTeam) {
+        if ($author -and $author -notin $CoreTeam -and $author -notmatch '\[bot\]$') {
             $results.CommunityAuthors += [PSCustomObject]@{
                 PR          = $pr
                 Username    = $author
