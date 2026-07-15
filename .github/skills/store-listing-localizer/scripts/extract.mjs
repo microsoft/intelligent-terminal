@@ -32,7 +32,8 @@ function arg(name, def) {
 
 if (process.argv.includes('--help') || !arg('--csv')) {
   console.log('Usage: node extract.mjs --csv <export.csv> [--enus <overrides.json>] [--changed-fields <Field1,Field2>] [--out <work-order.json>]');
-  process.exit(arg('--csv') ? 0 : 1);
+  // --help is a successful request; only a genuinely missing --csv is an error.
+  process.exit(process.argv.includes('--help') ? 0 : 1);
 }
 
 const csvPath = arg('--csv');
