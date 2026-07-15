@@ -537,9 +537,9 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::WindowProperties _WindowProperties{ nullptr };
         PaneResources _paneResources;
 
-        // Cached agent-bar theme brushes (#348). Computed in
-        // _updateThemeColors from the tab-row/titlebar color; reused to theme
-        // agent panes created mid-session at construction time.
+        // Cached agent-bar theme brushes (#348). Computed from the active
+        // tab's agent-pane background, with the tab-row color as a fallback;
+        // reused to theme agent panes created mid-session.
         winrt::Windows::UI::Xaml::Media::Brush _agentBarBackgroundBrush{ nullptr };
         winrt::Windows::UI::Xaml::Media::Brush _agentBarForegroundBrush{ nullptr };
 

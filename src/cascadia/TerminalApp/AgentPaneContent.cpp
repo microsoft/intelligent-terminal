@@ -173,10 +173,9 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
-    // Follow the window's tab theme colors so the agent-pane top bar matches
-    // the agent pane it belongs to instead of a hard-coded black (#348). The
-    // agent logo is a monochrome BitmapIcon, so it takes the foreground tint
-    // too; the label text takes the same foreground. The 1px bottom hairline
+    // Apply the supplied colors to the agent-pane top bar (#348). The agent
+    // logo is a monochrome BitmapIcon, so it takes the foreground tint too;
+    // the label text takes the same foreground. The 1px bottom hairline
     // uses the foreground color at ~15% alpha, so it reads as a soft separator
     // (like the original #26FFFFFF) — consistent with the text but not a hard
     // full-white/black line.

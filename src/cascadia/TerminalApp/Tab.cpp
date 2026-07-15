@@ -2750,30 +2750,6 @@ namespace winrt::TerminalApp::implementation
         _RecalculateAndApplyTabColor();
     }
 
-    // Resolve the effective background color of this tab's TabViewItem,
-    // mirroring the priority in _RecalculateAndApplyTabColor:
-    //   1. runtime / content (profile or VT) tab color
-    //   2. theme.tab.background, evaluated against the terminal brush
-    //   3. nullopt — TabView default (no explicit color)
-    std::optional<til::color> Tab::GetEffectiveTabColor()
-    {
-        ASSERT_UI_THREAD();
-
-        if (const auto currentColor = GetTabColor())
-        {
-            return til::color{ currentColor.value() };
-        }
-        if (_themeColor != nullptr)
-        {
-            const Media::Brush terminalBrush{ _BackgroundBrush() };
-            if (const auto themeBrush{ _themeColor.Evaluate(Application::Current().Resources(), terminalBrush, false) })
-            {
-                return til::color{ ThemeColor::ColorFromBrush(themeBrush) };
-            }
-        }
-        return std::nullopt;
-    }
-
     // Method Description:
     // - This function dispatches a function to the UI thread to recalculate
     //   what this tab's current background color should be. If a color is set,
@@ -2785,11 +2761,32 @@ namespace winrt::TerminalApp::implementation
     // - <none>
     void Tab::_RecalculateAndApplyTabColor()
     {
-        // GetEffectiveTabColor mirrors the color-picker / profile / theme
-        // resolution; nullopt means "fall back to the TabView defaults".
-        if (const auto currentColor = GetEffectiveTabColor())
+        // GetTabColor will return the color set by the color picker, or the
+        // color specified in the profile. If neither of those were set,
+        // then look to _themeColor to see if there's a value there.
+        // Otherwise, clear our color, falling back to the TabView defaults.
+        const auto currentColor = GetTabColor();
+        if (currentColor.has_value())
         {
-            _ApplyTabColorOnUIThread(static_cast<winrt::Windows::UI::Color>(currentColor.value()));
+            _ApplyTabColorOnUIThread(currentColor.value());
+        }
+        else if (_themeColor != nullptr)
+        {
+            // Safely get the active control's brush.
+            const Media::Brush terminalBrush{ _BackgroundBrush() };
+
+            if (const auto themeBrush{ _themeColor.Evaluate(Application::Current().Resources(), terminalBrush, false) })
+            {
+                // ThemeColor.Evaluate will get us a Brush (because the
+                // TermControl could have an acrylic BG, for example). Take
+                // that brush, and get the color out of it. We don't really
+                // want to have the tab items themselves be acrylic.
+                _ApplyTabColorOnUIThread(til::color{ ThemeColor::ColorFromBrush(themeBrush) });
+            }
+            else
+            {
+                _ClearTabBackgroundColor();
+            }
         }
         else
         {

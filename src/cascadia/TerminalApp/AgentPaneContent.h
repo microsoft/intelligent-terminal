@@ -79,10 +79,8 @@ namespace winrt::TerminalApp::implementation
             return v;
         }
 
-        // Apply the active theme's tab-row/titlebar colors to the agent-pane
-        // top bar so it reads as window chrome instead of a hard-coded black
-        // (#348). Internal-only (not on IDL) — driven by
-        // TerminalPage::_updateThemeColors, which computes the shared brush.
+        // Apply the provided background and foreground brushes to the
+        // agent-pane top bar (#348). Internal-only (not on IDL).
         void ApplyThemeColors(const winrt::Windows::UI::Xaml::Media::Brush& background,
                               const winrt::Windows::UI::Xaml::Media::Brush& foreground);
 
