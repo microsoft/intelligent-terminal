@@ -1562,6 +1562,7 @@ impl TabSession {
         self.selected_completed_turn_idx.is_none()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
+            && !self.model_picker_open
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -10028,6 +10029,10 @@ mod tests {
             trailing_marker: None,
         });
         app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").selected_completed_turn_idx = None;
+        app.tab_mut("tab-a").model_picker_open = true;
         assert!(!app.agent_paste_input_is_live("tab-a"));
     }
 
