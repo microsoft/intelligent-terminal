@@ -74,7 +74,7 @@ Use the [release notes template](./templates/release-notes-template.md) and foll
    - In the 💜 Community section you may add the linked issue too, e.g. `(#366, closes #351)`.
    - Group related items that share user impact into one entry with multiple numbers (e.g. `#305, #365`).
 
-4. **Open with a metadata blockquote header**, mirroring `v0.1.2.md`: the base release tag + commit + build, the head `main` commit, the new-PR count, the CI-injects-build-number note, and the "base is the tag, not `stable`" note.
+4. **Open with a metadata blockquote header**, as shown in [`references/example-release-notes.md`](./references/example-release-notes.md): the base release tag + commit + build, the head `main` commit, the new-PR count, the CI-injects-build-number note, and the "base is the tag, not `stable`" note.
 
 5. **Frame the notes** with a one-paragraph plain-language intro (the release's headline theme) after the header, and a closing call-to-action inviting users to file issues.
 
@@ -103,7 +103,7 @@ Close with the call-to-action paragraph.
 1. **Draft** into `Generated Files/release-notes-vX.Y.Z.md` — this folder is gitignored, so the working draft stays untracked while you iterate and get user sign-off.
 2. Present the full notes to the user for review.
 3. Also list the top 5 elevator-pitch points separately.
-4. **Publish (only once approved).** Copy the finalized notes to `doc/release-notes/vX.Y.Z.md` and commit them alongside prior releases (e.g. `doc/release-notes/v0.1.2.md`; create the folder if it doesn't exist yet). This committed file is the source of truth for the version — do **not** commit the `Generated Files/` draft.
+4. **Publish (only once approved).** Copy the finalized notes to `doc/release-notes/vX.Y.Z.md` and commit them (create the `doc/release-notes/` folder if it doesn't exist yet — this is the intended home for published release notes). Follow the format in [`references/example-release-notes.md`](./references/example-release-notes.md). This committed file is the source of truth for the version — do **not** commit the `Generated Files/` draft.
 
 ## Gotchas
 

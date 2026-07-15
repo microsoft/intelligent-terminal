@@ -46,7 +46,7 @@ and a batch of important stability fixes.
 
 A huge thank you to the external contributors who helped make this release:
 
-1. [@arkthur](https://github.com/arkthur) (Ítalo Masserano) — added the Execution Policy setting command note for both PowerShell hosts. #213
+1. [@arkthur](https://github.com/arkthur) (Ítalo Masserano) — added the Execution Policy setting command note for both PowerShell hosts. (#213)
 2. [@ltrzesniewski](https://github.com/ltrzesniewski) (Lucas Trzesniewski) — added the `safeUriSchemes` setting. (#20207, closes #20191)
 
 ---
