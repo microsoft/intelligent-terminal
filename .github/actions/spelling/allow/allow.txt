@@ -84,7 +84,6 @@ greenfield
 greppable
 haikus
 handover
-hashtable
 historicals
 hstrings
 https
