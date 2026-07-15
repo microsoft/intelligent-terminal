@@ -95,32 +95,55 @@ pub(crate) fn read_text_from_clipboard() -> io::Result<String> {
     use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
 
     const CF_UNICODETEXT: u32 = 13;
+    const CF_HDROP: u32 = 15;
     const MAX_CLIPBOARD_TEXT_BYTES: usize = 4 * 1024 * 1024;
 
     let _guard = ClipboardGuard::open()?;
     unsafe {
-        if IsClipboardFormatAvailable(CF_UNICODETEXT) == 0 {
-            return Ok(String::new());
-        }
-        let handle = GetClipboardData(CF_UNICODETEXT);
-        if handle.is_null() {
-            return Err(io::Error::last_os_error());
-        }
-        let ptr = GlobalLock(handle);
-        if ptr.is_null() {
-            return Err(io::Error::last_os_error());
-        }
-        let size = GlobalSize(handle);
-        if size == 0 || size > MAX_CLIPBOARD_TEXT_BYTES {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 {
+            let handle = GetClipboardData(CF_UNICODETEXT);
+            if handle.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let ptr = GlobalLock(handle);
+            if ptr.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let size = GlobalSize(handle);
+            if size == 0 || size > MAX_CLIPBOARD_TEXT_BYTES {
+                GlobalUnlock(handle);
+                return Ok(String::new());
+            }
+
+            let units = std::slice::from_raw_parts(ptr as *const u16, size / std::mem::size_of::<u16>());
+            let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
+            let text = String::from_utf16_lossy(&units[..end]);
             GlobalUnlock(handle);
-            return Ok(String::new());
+            return Ok(text);
         }
 
-        let units = std::slice::from_raw_parts(ptr as *const u16, size / std::mem::size_of::<u16>());
-        let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
-        let text = String::from_utf16_lossy(&units[..end]);
-        GlobalUnlock(handle);
-        Ok(text)
+        if IsClipboardFormatAvailable(CF_HDROP) != 0 {
+            use std::os::windows::ffi::OsStringExt;
+            use windows_sys::Win32::UI::Shell::DragQueryFileW;
+
+            let handle = GetClipboardData(CF_HDROP);
+            if handle.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let needed = DragQueryFileW(handle as _, 0, std::ptr::null_mut(), 0);
+            if needed == 0 {
+                return Ok(String::new());
+            }
+            let mut buf = vec![0u16; needed as usize + 1];
+            let got = DragQueryFileW(handle as _, 0, buf.as_mut_ptr(), buf.len() as u32);
+            if got == 0 {
+                return Ok(String::new());
+            }
+            buf.truncate(got as usize);
+            return Ok(std::ffi::OsString::from_wide(&buf).to_string_lossy().into_owned());
+        }
+
+        Ok(String::new())
     }
 }
 

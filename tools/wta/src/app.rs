@@ -4436,6 +4436,15 @@ impl App {
             return;
         }
 
+        if !self.agent_paste_input_is_live(target_tab) {
+            tracing::debug!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                "dropping paste because chat input is not live"
+            );
+            return;
+        }
+
         let text = match crate::win32::read_text_from_clipboard() {
             Ok(text) => text,
             Err(e) => {
@@ -4476,6 +4485,13 @@ impl App {
         }
 
         Some(target_tab)
+    }
+
+    fn agent_paste_input_is_live(&self, target_tab: &str) -> bool {
+        self.tab_sessions
+            .get(target_tab)
+            .map(|tab| tab.current_view == View::Chat && tab.input_has_nav_focus())
+            .unwrap_or(false)
     }
 
     fn insert_agent_paste_text(&mut self, target_tab: &str, text: &str) {
@@ -9991,6 +10007,28 @@ mod tests {
 
         app.insert_agent_paste_text("tab-a", "locked");
         assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+    }
+
+    #[test]
+    fn agent_paste_input_live_requires_existing_chat_input_focus() {
+        let mut app = test_app();
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a");
+        assert!(app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").current_view = View::Agents;
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").current_view = View::Chat;
+        app.tab_mut("tab-a").completed_turns.push(CompletedTurn {
+            prompt: "old".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
+        assert!(!app.agent_paste_input_is_live("tab-a"));
     }
 
     #[test]
