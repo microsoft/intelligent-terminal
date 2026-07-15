@@ -84,6 +84,15 @@ if (!enUsKey) throw new Error('export has no en-us column');
 const enCol = localeCols[enUsKey];
 const targetLocales = Object.keys(localeCols).filter(k => k.toLowerCase() !== 'en-us');
 
+// A valid listingData export always has a `Title` row (it drives both the
+// localized Title and product-name substitution in body text). Its absence
+// means the input isn't a real export — fail fast like the other structural
+// checks (missing `default`/`en-us`, column-count mismatch) instead of silently
+// skipping product-name localization and producing a quietly-wrong CSV.
+if (fieldRows['Title'] == null) {
+  throw new Error('export has no "Title" field row — not a valid listingData export?');
+}
+
 // Case-insensitive lookup into translations.json by locale. Validates that a
 // found value is a string: null/undefined are treated as "missing" (returns
 // undefined so the caller falls back), while any other non-string type

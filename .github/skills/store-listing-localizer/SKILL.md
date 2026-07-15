@@ -48,18 +48,25 @@ Track progress with a TODO list; each step links to its reference.
 1. **Export** the listing CSV from Partner Center —
    [partner-center-mcp-workflow.md#export](./references/partner-center-mcp-workflow.md).
    Copy the downloaded `listingData-9NMQC2SSJX24-*.csv` into a clean working dir.
-2. **Build the work order**: `node scripts/extract.mjs --csv <export.csv>
-   [--enus <overrides.json>] --out work-order.json`. Lists every translatable
-   field with its en-US source and which locales are stale.
+2. **Build the work order** — lists every translatable field with its en-US
+   source and which locales are stale:
+
+   ```bash
+   node scripts/extract.mjs --csv <export.csv> [--enus <overrides.json>] --out work-order.json
+   ```
 3. **Translate** each changed field into every target locale, following
    [localization-rules.md](./references/localization-rules.md) (locked tokens,
    `.resw` terminology alignment, RTL handling). Use per-language sub-agents for
    breadth + a reviewer pass. Emit `translations.json` keyed
    `{ "<locale>": { "<Field>": "<text>" } }`.
-4. **Merge**: `node scripts/apply.mjs --csv <export.csv>
-   [--appnames <translations.md>] --translations translations.json
-   [--enus overrides.json] [--changed-fields ReleaseNotes] --out <stem>-localized.csv`.
-   (`--appnames` defaults to the bundled `references/intelligent-terminal-translations.md`.)
+4. **Merge** (`--appnames` defaults to the bundled
+   `references/intelligent-terminal-translations.md`):
+
+   ```bash
+   node scripts/apply.mjs --csv <export.csv> [--appnames <translations.md>] \
+     --translations translations.json [--enus overrides.json] \
+     [--changed-fields ReleaseNotes] --out <stem>-localized.csv
+   ```
 5. **Verify** the output (cols/rows unchanged, spot-check locales), then
    **import** `<stem>-localized.csv` —
    [partner-center-mcp-workflow.md#import](./references/partner-center-mcp-workflow.md).
