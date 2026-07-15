@@ -774,8 +774,11 @@ pub fn build_born_bound_request_wsl(
 }
 
 /// Serialize the born-bound body: the shared `SessionHookParams` object with an
-/// optional `wsl_distro` key merged in (omitted when `None`, so the host body
-/// stays byte-compatible with `session_hook`).
+/// optional `wsl_distro` key merged in (omitted when `None`). Routing this
+/// through `serde_json::Value` may reorder keys relative to a direct
+/// `SessionHookParams` serialization, so the host body is not byte-identical to
+/// a `session_hook` body — but it is structurally the same object, which is all
+/// `parse_session_hook_params` (field-based, order-independent) relies on.
 fn build_born_bound_request_inner(
     event: &crate::agent_sessions::SessionEvent,
     wsl_distro: Option<String>,
@@ -3063,7 +3066,7 @@ mod tests {
             key: "bb-wsl".to_string(),
             cli_source: CliSource::Copilot,
             pane_session_id: "pane-wsl".to_string(),
-            cwd: PathBuf::from("/mnt/c/Users/yuazha"),
+            cwd: PathBuf::from("/mnt/c/Users/dev"),
             title: String::new(),
         };
 

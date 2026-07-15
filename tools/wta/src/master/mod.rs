@@ -2394,16 +2394,20 @@ async fn seed_host_and_broadcast(state: &std::sync::Arc<MasterStateInner>) -> us
 /// distro pays a 40 s ACP init), so without this a later poll could spawn a
 /// second scan while the first is still running and double the `wsl.exe` ACP
 /// processes. When one is already running, this is a no-op.
-fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
+///
+/// Returns `true` iff a scan was actually dispatched (the slot was free), so a
+/// caller can avoid side effects — e.g. arming a throttle — when the scan was
+/// skipped because another is already running.
+fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) -> bool {
     if !crate::history_loader::wsl_sessions_enabled() {
-        return;
+        return false;
     }
     // Claim the single scan slot; skip if a scan is already running.
     if state
         .wsl_seed_in_flight
-        .swap(true, std::sync::atomic::Ordering::AcqRel)
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
-        return;
+        return false;
     }
     let inner = std::sync::Arc::clone(state);
     tokio::task::spawn_local(async move {
@@ -2441,6 +2445,7 @@ fn spawn_wsl_seed(state: &std::sync::Arc<MasterStateInner>) {
             .wsl_seed_in_flight
             .store(false, std::sync::atomic::Ordering::Release);
     });
+    true
 }
 
 /// Build a `session_id → title` map from a WSL ACP scan, applying the same
@@ -2460,20 +2465,24 @@ fn wsl_titles_from_scan(
         .collect()
 }
 
-/// Whether a poll-triggered WSL title seed is warranted: a **live, pane-bound**
-/// row whose title is still synthetic and whose id the host `session/list`
-/// doesn't know about. That is the signature of a born-bound WSL delegate row
-/// waiting for its in-distro title — a host session (even one whose title hasn't
-/// been generated yet) appears in `host_ids`, and historical / ended rows are
-/// excluded so an untitled old row can't trigger perpetual scans. Pure for unit
-/// testing.
+/// Whether a poll-triggered WSL title seed is warranted: a **live, pane-bound,
+/// WSL-located** row whose title is still synthetic and whose id the host
+/// `session/list` doesn't know about. That is the signature of a born-bound WSL
+/// delegate row waiting for its in-distro title — a host session (even one whose
+/// title hasn't been generated yet) appears in `host_ids`, and historical /
+/// ended rows are excluded so an untitled old row can't trigger perpetual scans.
+/// The explicit `SessionLocation::Wsl` gate matters when the host `session/list`
+/// is temporarily unavailable (empty `host_ids`): without it, any live
+/// pane-bound synthetic *host* row would satisfy the predicate and needlessly
+/// spawn a `wsl.exe` scan. Pure for unit testing.
 fn wsl_title_seed_warranted(
     sessions: &[crate::session_registry::SessionInfo],
     host_ids: &std::collections::HashSet<String>,
 ) -> bool {
     use crate::agent_sessions::AgentStatus;
     sessions.iter().any(|s| {
-        crate::session_registry::title_is_synthetic(s)
+        s.location.is_wsl()
+            && crate::session_registry::title_is_synthetic(s)
             && s.pane_session_id.is_some()
             && matches!(
                 s.status,
@@ -2522,21 +2531,26 @@ async fn maybe_spawn_wsl_title_seed(
     }
     const WSL_TITLE_SEED_THROTTLE: std::time::Duration = std::time::Duration::from_secs(30);
     {
-        let mut last = state.wsl_titles_seed_at.lock().await;
+        // Read-only throttle check — don't arm it yet. Arming before dispatch
+        // would extend the throttle window even when `spawn_wsl_seed` no-ops
+        // (a scan already in flight), needlessly delaying a later needed scan.
+        let last = state.wsl_titles_seed_at.lock().await;
         if let Some(at) = *last {
             if at.elapsed() < WSL_TITLE_SEED_THROTTLE {
                 return;
             }
         }
-        // Stamp before spawning (under the lock) so two near-simultaneous polls
-        // can't both pass the throttle and double-dispatch the scan.
-        *last = Some(std::time::Instant::now());
     }
     tracing::debug!(
         target: "master_history",
         "poll: born-bound WSL row awaiting title — dispatching throttled WSL title seed"
     );
-    spawn_wsl_seed(state);
+    // Only arm the throttle when a scan was actually dispatched. If one was
+    // already in flight (`spawn_wsl_seed` returns false), leave the timestamp
+    // untouched so the next poll can dispatch as soon as that scan finishes.
+    if spawn_wsl_seed(state) {
+        *state.wsl_titles_seed_at.lock().await = Some(std::time::Instant::now());
+    }
 }
 
 /// Before returning the snapshot, opportunistically upgrade any row whose title
@@ -4643,25 +4657,28 @@ mod tests {
     }
 
     fn live_synthetic_pane_row(id: &str) -> crate::session_registry::SessionInfo {
-        use crate::agent_sessions::AgentStatus;
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
         let mut row = crate::session_registry::SessionInfo::new(
             acp::schema::v1::SessionId::new(id.to_string()),
             std::path::PathBuf::from("/home/user/proj"),
         );
-        // Synthetic (None title), live, and pane-bound — the born-bound
+        // Synthetic (None title), live, pane-bound, WSL-located — the born-bound
         // WSL-delegate shape.
         row.pane_session_id = Some("pane-guid".to_string());
         row.status = Some(AgentStatus::Idle);
+        row.location = SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
         row
     }
 
     #[test]
     fn wsl_title_seed_warranted_only_for_live_pane_bound_non_host_synthetic() {
-        use crate::agent_sessions::AgentStatus;
+        use crate::agent_sessions::{AgentStatus, SessionLocation};
         use std::collections::HashSet;
 
-        // A born-bound WSL delegate row: synthetic, live, pane-bound, and its id
-        // is NOT in the host session/list → warrants a WSL scan.
+        // A born-bound WSL delegate row: synthetic, live, pane-bound, WSL-located,
+        // and its id is NOT in the host session/list → warrants a WSL scan.
         let wsl_row = live_synthetic_pane_row("wsl-sid");
         let no_host: HashSet<String> = HashSet::new();
         assert!(wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &no_host));
@@ -4670,6 +4687,13 @@ mod tests {
         // the host title refresh owns it, no WSL scan.
         let host_ids: HashSet<String> = ["wsl-sid".to_string()].into_iter().collect();
         assert!(!wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &host_ids));
+
+        // A Host-located row with the same live/synthetic/pane-bound shape must
+        // NOT warrant a scan, even when the host list is empty (temporarily
+        // unavailable) — only in-distro rows can be titled by a WSL scan.
+        let mut host_row = live_synthetic_pane_row("host-sid");
+        host_row.location = SessionLocation::Host;
+        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&host_row), &no_host));
 
         // A non-synthetic row never warrants a scan.
         let mut titled = live_synthetic_pane_row("titled-sid");
