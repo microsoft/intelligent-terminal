@@ -21,6 +21,10 @@ param(
     [Parameter(Mandatory)]
     [int[]]$PRNumbers,
 
+    # Intelligent Terminal PRs live on the canonical repo, not on personal
+    # forks/clones, so this defaults to microsoft/intelligent-terminal on
+    # purpose (a fork wouldn't have the PRs). Override -Repo to microsoft/terminal
+    # for upstream #20xxx PRs, or to another repo if needed.
     [string]$Repo = 'microsoft/intelligent-terminal'
 )
 

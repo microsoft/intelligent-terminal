@@ -44,7 +44,7 @@ For each PR number, look up linked issues and author info:
 gh pr view <number> --repo <owner>/<repo> --json number,title,body,author,closingIssuesReferences
 ```
 
-> `<owner>/<repo>` is `microsoft/intelligent-terminal` for this repo's own PRs, or `microsoft/terminal` for upstream `#20xxx` PRs.
+> Use `microsoft/intelligent-terminal` for this repo's own PRs — they live on the canonical repo even when you're working from a fork/clone — or `microsoft/terminal` for upstream `#20xxx` PRs.
 
 To batch this lookup across many PRs at once, run [`scripts/Get-PrMetadata.ps1`](./scripts/Get-PrMetadata.ps1) with a list of PR numbers — it reports linked issues and flags community contributors (authors not in `references/core-team.md`).
 
