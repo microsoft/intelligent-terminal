@@ -120,7 +120,8 @@ else {
 }
 
 Write-Host "`n## PRs with no linked issues" -ForegroundColor Cyan
-Write-Host "  $($results.NoIssues -join ', ')"
+if ($results.NoIssues.Count -eq 0) { Write-Host "  (none)" }
+else { Write-Host "  $($results.NoIssues -join ', ')" }
 
 # Return structured data for programmatic use
 $results
