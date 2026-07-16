@@ -273,6 +273,7 @@ wezterm
 workarounds
 WSLs
 XBox
+Xbox
 YBox
 yeelam
 ymdhms
