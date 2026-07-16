@@ -278,16 +278,23 @@ struct MasterStateInner {
     /// and re-adding is idempotent, so no eviction is needed. Independent lock —
     /// touched only on the session_hook ingest path and the watcher apply path.
     hook_owned: Mutex<HashSet<acp::schema::v1::SessionId>>,
-    /// Sessions that were loaded on the shared agent CLI but whose owning
-    /// helper has disconnected (their tab/pane was closed) — the CLI keeps
-    /// them loaded as "orphans". When a helper later resumes such a session
-    /// (`--initial-load-session-id` re-warm or `/restart`), `load_session`
-    /// re-binds routing to the new helper *directly* instead of forwarding a
-    /// fresh `session/load`: the CLI already has it (a re-load would be
-    /// rejected "already loaded", or — if the orphan turn is still running —
-    /// would wedge behind it, hanging the pane on "Resuming…"). Cleared
-    /// wholesale by `reap_agent` when the CLI dies (its sessions die with it).
-    orphaned_sessions: Mutex<HashSet<acp::schema::v1::SessionId>>,
+    /// Sessions loaded on a shared agent CLI whose owning helper has
+    /// disconnected (its tab/pane closed) — the CLI keeps them loaded as
+    /// "orphans". Keyed by `AgentCmdKey` so orphans belong to a specific
+    /// agent CLI, never a global pool: a window can run Copilot in one tab
+    /// and Gemini in another, and reaping one must not affect the other.
+    ///
+    /// When a helper resumes such a session (`--initial-load-session-id`
+    /// re-warm or `/restart`), `load_session` re-binds routing to the new
+    /// helper *directly* — no fresh `session/load` — because the CLI already
+    /// has it (a re-load would be rejected "already loaded", or, if the
+    /// orphan turn is still running, wedge behind it and hang the pane on
+    /// "Resuming…"). Only recorded while the owning CLI *instance* is still
+    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
+    /// drops just that agent's set on CLI death, so a crashed-and-respawned
+    /// CLI under the same command line never re-binds to a session it never
+    /// had — such a resume falls back to a real `session/load` from disk.
+    orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
     /// still supply STATUS for these when no real hook is installed
@@ -340,6 +347,13 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
+    /// The pool key (agent command line) this CLI was spawned under —
+    /// the same `AgentCmdKey` used in [`MasterStateInner::agents`]. Lets
+    /// helper-disconnect cleanup and `load_session` scope orphan tracking
+    /// to THIS agent (and this exact instance, via `Arc::ptr_eq`), so a
+    /// crashed-and-respawned CLI under the same command line never inherits
+    /// another instance's stale orphan sessions.
+    cmd_key: AgentCmdKey,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -1172,13 +1186,20 @@ impl HelperHandler {
         }
         // Orphan re-bind fast path: this session's previous helper
         // disconnected but the shared CLI still has it loaded (tracked in
-        // `orphaned_sessions`). Re-attach onto the routing pre-registered
-        // above WITHOUT a `session/load` round-trip — the CLI already has the
-        // session, and forwarding a load would be rejected "already loaded",
-        // or (if the orphan turn is still running) wedge behind it and hang
-        // the pane on "Resuming…". Any in-flight turn now streams its
-        // `session/update`s to this new helper.
-        let is_orphan_rebind = self.state.orphaned_sessions.lock().await.remove(&session_id);
+        // `orphaned_sessions` under this agent's key). Re-attach onto the
+        // routing pre-registered above WITHOUT a `session/load` round-trip —
+        // the CLI already has the session, and forwarding a load would be
+        // rejected "already loaded", or (if the orphan turn is still running)
+        // wedge behind it and hang the pane on "Resuming…". Any in-flight
+        // turn now streams its `session/update`s to this new helper. Scoped
+        // to `agent.cmd_key` so we only re-bind sessions this exact CLI still
+        // holds (a crashed+respawned CLI's set was dropped by `reap_agent`).
+        let is_orphan_rebind = {
+            let mut orphans = self.state.orphaned_sessions.lock().await;
+            orphans
+                .get_mut(&agent.cmd_key)
+                .is_some_and(|set| set.remove(&session_id))
+        };
 
         // Both a re-bind and a real `session/load` resume the session; only a
         // genuine load failure rolls back. Resolve the response, then register
@@ -1846,7 +1867,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         helper_meta: Mutex::new(HashMap::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
-        orphaned_sessions: Mutex::new(HashSet::new()),
+        orphaned_sessions: Mutex::new(HashMap::new()),
         host_list_cache: Mutex::new(None),
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
@@ -2424,6 +2445,7 @@ async fn spawn_one_agent(
         conn,
         cached_init_resp: init_resp,
         cli_source,
+        cmd_key: key.clone(),
     }))
 }
 
@@ -2435,11 +2457,11 @@ async fn spawn_one_agent(
 async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
     let removed = { state.agents.lock().await.remove(key).is_some() };
     if removed {
-        // Every session the CLI held died with it, so no orphan is
-        // resumable-by-re-bind anymore — clear the set so a post-respawn
-        // resume forwards a real `session/load` (which reloads from disk)
-        // instead of re-binding to a session the new CLI never had.
-        state.orphaned_sessions.lock().await.clear();
+        // Every session THIS CLI held died with it, so drop only this
+        // agent's orphan set — a post-respawn resume then forwards a real
+        // `session/load` (reloading from disk) instead of re-binding to a
+        // session the new CLI never had. Other agents' orphans are untouched.
+        state.orphaned_sessions.lock().await.remove(key);
         tracing::info!(
             target: "master",
             agent = %key,
@@ -2603,14 +2625,32 @@ async fn serve_helper(
     // routes nowhere and the CLI keeps serving every surviving tab.
     let victims = drop_sessions_for_helper(&state, helper_id).await;
 
-    // The dropped sessions are still loaded on the (surviving) shared CLI —
-    // they're now orphans. Record them so a later resume re-binds directly
-    // instead of forwarding a `session/load` that the CLI rejects "already
-    // loaded" (or, mid-turn, wedges behind the running turn).
+    // The dropped sessions are still loaded on the shared CLI — they're now
+    // orphans. Record them under the owning agent's key so a later resume
+    // re-binds directly instead of forwarding a `session/load` that the CLI
+    // rejects "already loaded" (or, mid-turn, wedges behind the running
+    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
+    // is STILL the live pool instance for its key. If that CLI already died
+    // (reaped, possibly respawned under the same command line), these
+    // sessions are gone — recording them would make a later resume skip the
+    // `session/load` the new CLI needs, binding to a session it never had.
     if !victims.is_empty() {
-        let mut orphans = state.orphaned_sessions.lock().await;
-        for sid in &victims {
-            orphans.insert(sid.clone());
+        if let Some(agent) = handler.agent.get() {
+            let key = agent.cmd_key.clone();
+            let still_live = {
+                let agents = state.agents.lock().await;
+                agents
+                    .get(&key)
+                    .and_then(|cell| cell.get())
+                    .is_some_and(|current| Arc::ptr_eq(current, agent))
+            };
+            if still_live {
+                let mut orphans = state.orphaned_sessions.lock().await;
+                let set = orphans.entry(key).or_default();
+                for sid in &victims {
+                    set.insert(sid.clone());
+                }
+            }
         }
     }
 
@@ -4077,7 +4117,7 @@ mod tests {
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
-            orphaned_sessions: Mutex::new(HashSet::new()),
+            orphaned_sessions: Mutex::new(HashMap::new()),
             host_list_cache: Mutex::new(None),
             wsl_titles_seed_at: Mutex::new(None),
             wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
@@ -4132,6 +4172,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ),
                     cli_source: None,
+                    cmd_key: "copilot --acp --stdio".to_string(),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
@@ -4225,6 +4266,43 @@ mod tests {
         assert!(is_already_loaded_error(&in_data));
         let unrelated = acp::Error::new(-32603, "no helper bound to session_id");
         assert!(!is_already_loaded_error(&unrelated));
+    }
+
+    /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
+    /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
+    #[tokio::test]
+    async fn reap_agent_drops_only_its_own_orphans() {
+        let state = make_state();
+        let key_a = "copilot --acp --stdio".to_string();
+        let key_b = "gemini --acp".to_string();
+        {
+            let mut orphans = state.orphaned_sessions.lock().await;
+            orphans
+                .entry(key_a.clone())
+                .or_default()
+                .insert(SessionId::new("a-sess"));
+            orphans
+                .entry(key_b.clone())
+                .or_default()
+                .insert(SessionId::new("b-sess"));
+        }
+        // reap only acts when the key is a live pool entry.
+        {
+            let mut agents = state.agents.lock().await;
+            agents.insert(key_a.clone(), Arc::new(tokio::sync::OnceCell::new()));
+        }
+        reap_agent(&state, &key_a).await;
+        let orphans = state.orphaned_sessions.lock().await;
+        assert!(
+            !orphans.contains_key(&key_a),
+            "reaped agent's orphan set must be dropped"
+        );
+        assert!(
+            orphans
+                .get(&key_b)
+                .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
+            "a co-resident agent's orphans must be untouched"
+        );
     }
 
     /// Regression for the reentrant-permission deadlock: a `prompt` in flight
@@ -4368,6 +4446,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    cmd_key: "copilot --acp --stdio".to_string(),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
@@ -5282,7 +5361,7 @@ mod tests {
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
-            orphaned_sessions: Mutex::new(HashSet::new()),
+            orphaned_sessions: Mutex::new(HashMap::new()),
             host_list_cache: Mutex::new(None),
             wsl_titles_seed_at: Mutex::new(None),
             wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
