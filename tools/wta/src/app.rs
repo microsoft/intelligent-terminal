@@ -5367,7 +5367,7 @@ impl App {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
             }
-            AppEvent::WtEvent {
+                        AppEvent::WtEvent {
                 method,
                 pane_id,
                 tab_id,
@@ -14211,6 +14211,66 @@ mod tests {
         };
         assert_eq!(perm.allow_index(), Some(0));
         assert_eq!(perm.reject_index(), Some(1));
+    }
+
+    /// Regression (issue #189): while the agent has queued a permission request
+    /// but `AgentMessageEnd` has not yet arrived (turn is
+    /// `Surfaced{end_pending:true}`), the thinking/activity indicator must
+    /// remain visible. Previously `spinner_label()` returned `None` for any
+    /// `Surfaced` variant, making the pane look frozen between the eager surface
+    /// and the permission card appearing.
+    #[test]
+    fn thinking_indicator_visible_while_permission_pending_and_end_pending() {
+        let mut app = test_app();
+
+        // Put the tab in `Surfaced{end_pending:true}` — the state that exists
+        // between an eager surface (recommendation / chat turn visible) and the
+        // `AgentMessageEnd` event that releases the UI gate. A permission
+        // request can arrive in this window.
+        let prompt = SubmittedPrompt {
+            id: 1,
+            text: "test".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: None,
+        };
+        app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::Empty,
+            end_pending: true,
+        };
+
+        // The spinner must be active while end_pending=true.
+        assert!(
+            app.current_tab().turn.spinner_label().is_some(),
+            "spinner_label must be Some while Surfaced{{end_pending:true}} (issue #189)"
+        );
+        assert!(
+            app.has_activity_indicator(),
+            "has_activity_indicator must be true while Surfaced{{end_pending:true}} (issue #189)"
+        );
+
+        // Simulate the PermissionRequest arriving in this window.
+        app.tab_mut(DEFAULT_TAB_ID)
+            .permission
+            .push_back(PermissionState {
+                description: "Allow tool X?".into(),
+                options: vec![
+                    PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
+                    PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
+                ],
+                selected: 0,
+                responder: None,
+            });
+
+        // With a queued permission AND end_pending=true the spinner must still be on.
+        assert!(
+            app.current_tab().turn.spinner_label().is_some(),
+            "spinner_label must remain Some after PermissionRequest queued while end_pending=true"
+        );
+        assert!(
+            app.has_activity_indicator(),
+            "has_activity_indicator must remain true after PermissionRequest queued"
+        );
     }
 
     /// Tool-call card: when the mock proposes a command (a `ToolCall`
