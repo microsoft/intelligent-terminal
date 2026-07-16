@@ -2759,6 +2759,15 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        // Custom commands are trusted only when supplied on the master's own
+        // argv. Helpers intentionally cannot ask the master to execute an
+        // arbitrary command from pipe metadata, so entering/leaving a custom
+        // selection or editing its command requires fresh trusted master args.
+        const bool customMasterArgsChanged =
+            (til::starts_with(_lastAgentSettings.acpAgent, L"custom:") || til::starts_with(current.acpAgent, L"custom:")) &&
+            (_lastAgentSettings.acpAgent != current.acpAgent ||
+             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
+
         // Reentrancy guard.
         if (_agentRebuilding)
         {
@@ -2787,18 +2796,17 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
 
-        // Tear down each affected tab's agent pane. The user must reopen
-        // each (per-tab toggle) — there's no longer a "shared pane" to
-        // reposition. Tabs with a per-tab agent override are SKIPPED: a
-        // change to the global default must not stomp a tab the user
-        // explicitly pinned to a different agent.
+        // Built-in global changes leave per-tab overrides untouched. A custom
+        // command change must restart the shared master, so every local helper
+        // is collected and reconnected even when its tab has an override.
         bool hadAny = false;
         std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
             {
-                if (tabImpl->FindAgentPane() && !tabImpl->HasAgentOverride())
+                if (tabImpl->FindAgentPane() &&
+                    (customMasterArgsChanged || !tabImpl->HasAgentOverride()))
                 {
                     hadAny = true;
                     tabsThatHadAgentPane.push_back(tabImpl);
@@ -2816,7 +2824,7 @@ namespace winrt::TerminalApp::implementation
             _TeardownAgentPane(tabImpl);
         }
 
-        // NOTE: no `SharedWta::Restart` here anymore. The master is now a
+        // Built-in agent changes do not restart the master. It is now a
         // multi-agent broker — it spawns/reuses one agent CLI per distinct
         // agent command line, driven by each helper's `initialize`
         // handshake (which carries the tab's agent). The master's own
@@ -2826,7 +2834,21 @@ namespace winrt::TerminalApp::implementation
         // affected (non-override) tabs' helpers is enough: each fresh
         // helper declares the new global agent and the master lazily
         // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
-        // (and other windows) untouched.
+        // (and other windows) untouched. A custom command is the exception:
+        // the master cannot trust a command received from a helper, so refresh
+        // its own trusted argv after the affected helpers have been torn down.
+        if (customMasterArgsChanged)
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            if (wtaPath.empty() ||
+                !winrt::TerminalApp::implementation::SharedWta::Instance().Restart(
+                    std::wstring_view{ wtaPath },
+                    extraArgs))
+            {
+                _agentPaneLog("_RebuildAgentStack: custom-command SharedWta::Restart failed");
+            }
+        }
 
         if (!hadAny)
         {
@@ -2835,12 +2857,28 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Recreate on the active terminal tab so the user sees something
-        // immediately — but only if the active tab is one we tore down
-        // (i.e. it follows the global default). If the active tab has its
-        // own override, its pane was deliberately left intact above.
+        // A custom-command restart invalidates every helper, so reconnect all
+        // tabs that had panes: active remains visible and background tabs are
+        // pre-warmed stashed. Built-in changes retain the existing active-tab
+        // behavior and leave overrides untouched.
         if (const auto activeTab = _GetFocusedTabImpl();
-            activeTab && !activeTab->HasAgentOverride())
+            customMasterArgsChanged && activeTab)
+        {
+            for (const auto& tabImpl : tabsThatHadAgentPane)
+            {
+                if (tabImpl == activeTab)
+                {
+                    _OpenOrReuseAgentPane(false, L"SettingsReload");
+                }
+                else
+                {
+                    _AutoCreateHiddenAgentPaneShared(tabImpl,
+                                                     /*intoSessionsView*/ false,
+                                                     /*autoStash*/ true);
+                }
+            }
+        }
+        else if (activeTab && !activeTab->HasAgentOverride())
         {
             _OpenOrReuseAgentPane(false, L"SettingsReload");
         }
