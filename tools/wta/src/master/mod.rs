@@ -2501,12 +2501,37 @@ async fn serve_helper(
     // unboundedly across the master's lifetime, and so the agent
     // CLI's notifications for already-detached sessions don't keep
     // lighting up "unknown SessionId" warnings.
-    let dropped = drop_sessions_for_helper(&state, helper_id).await;
+    let victims = drop_sessions_for_helper(&state, helper_id).await;
+
+    // The agent CLI is shared across every pane in this window. If this helper
+    // disconnected mid-turn (e.g. the user closed the tab while the agent was
+    // still working), the agent would otherwise keep running an *orphaned*
+    // turn whose notifications have nowhere to route — and that orphaned state
+    // has been observed to make the shared CLI exit, taking down every OTHER
+    // tab's backend too. Send a best-effort `session/cancel` for each dropped
+    // session so the agent cleanly ends the turn instead of being orphaned.
+    if let Some(agent) = handler.agent.get() {
+        for sid in &victims {
+            if let Err(err) = agent
+                .conn
+                .cancel(acp::schema::v1::CancelNotification::new(sid.clone()))
+                .await
+            {
+                tracing::debug!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    session_id = ?sid,
+                    error = %err,
+                    "best-effort cancel of orphaned session on helper disconnect failed"
+                );
+            }
+        }
+    }
 
     tracing::info!(
         target: "master",
         helper_id = ?helper_id,
-        sessions_dropped = dropped,
+        sessions_dropped = victims.len(),
         "helper disconnected"
     );
 
@@ -2568,7 +2593,10 @@ fn build_restart_agent_pane_event(
 /// Returns the number of entries dropped. Factored out of
 /// `serve_helper` so the cleanup is unit-testable without a real
 /// named pipe.
-async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId) -> usize {
+async fn drop_sessions_for_helper(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+) -> Vec<acp::schema::v1::SessionId> {
     // Collect the owned SessionIds first so we can drop them from the
     // live registry too. Single pass through `session_to_helper` while
     // we already hold its lock; the corresponding `registry.remove`
@@ -2602,7 +2630,7 @@ async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId)
         )
         .await;
     }
-    victims.len()
+    victims
 }
 
 /// Fan an ACP `ExtNotification` out to every currently-attached helper.
@@ -4610,7 +4638,9 @@ mod tests {
         }
 
         let dropped = drop_sessions_for_helper(&state, HelperId(1)).await;
-        assert_eq!(dropped, 2);
+        assert_eq!(dropped.len(), 2);
+        assert!(dropped.contains(&SessionId::new("a1")));
+        assert!(dropped.contains(&SessionId::new("a2")));
 
         let map = state.session_to_helper.lock().await;
         assert!(!map.contains_key(&SessionId::new("a1")));
