@@ -283,7 +283,7 @@ dispatchable
 slowloris
 appnames
 csvlib
-enu
+enus
 Intelligentes
 kok
 msstore
