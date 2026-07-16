@@ -371,7 +371,7 @@ enum Command {
         target: Option<String>,
 
         /// Split horizontally (panes side by side)
-        #[arg(short = 'h', long)]
+        #[arg(long)]
         horizontal: bool,
 
         /// Split vertically (panes stacked)
