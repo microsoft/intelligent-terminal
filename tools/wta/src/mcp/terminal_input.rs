@@ -9,9 +9,9 @@ use super::{RouteRegistry, Tool, ToolContext};
 pub const INTELLTERM_METHOD_PROPOSE_TERMINAL_INPUT: &str =
     "_intellterm.wta/propose_terminal_input";
 
-const MAX_INPUT_CHARS: usize = 16 * 1024;
-const MAX_TITLE_CHARS: usize = 160;
-const MAX_RATIONALE_CHARS: usize = 2 * 1024;
+pub(super) const MAX_INPUT_CHARS: usize = 16 * 1024;
+pub(super) const MAX_TITLE_CHARS: usize = 160;
+pub(super) const MAX_RATIONALE_CHARS: usize = 2 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,7 +44,12 @@ impl TerminalInputProposal {
     }
 }
 
-fn validate_text(name: &str, text: &str, max_chars: usize, allow_blank: bool) -> Result<(), String> {
+pub(super) fn validate_text(
+    name: &str,
+    text: &str,
+    max_chars: usize,
+    allow_blank: bool,
+) -> Result<(), String> {
     if text.contains('\0') {
         return Err(format!("{name} must not contain NUL characters"));
     }

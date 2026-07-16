@@ -14,9 +14,16 @@
 
 mod resolve_command;
 mod server;
+pub(crate) mod terminal_actions;
 mod terminal_input;
 
 use server::serve;
+pub use terminal_actions::{
+    build_terminal_actions_proposal_response, parse_terminal_actions_proposal_params,
+    PlannerProposalDisposition, ProposedDestination, ProposedOpenTarget,
+    ProposedTerminalAction, TerminalActionsProposal, TerminalActionsProposalResponse,
+    INTELLTERM_METHOD_PROPOSE_TERMINAL_ACTIONS,
+};
 pub use terminal_input::{
     build_terminal_input_proposal_response, parse_terminal_input_proposal_params,
     PreferredTerminalInputAction, ProposalDisposition, TerminalInputProposal,
@@ -58,6 +65,7 @@ pub trait Tool: Send + Sync {
 pub fn default_registry(routes: RouteRegistry) -> Vec<Arc<dyn Tool>> {
     vec![
         Arc::new(resolve_command::ResolveCommand),
+        Arc::new(terminal_actions::ProposeTerminalActions::new(routes.clone())),
         Arc::new(terminal_input::ProposeTerminalInput::new(routes)),
     ]
 }
@@ -70,7 +78,7 @@ struct ProposalRoute {
 }
 
 /// Transport-only correlation from an opaque MCP URL route to the existing
-/// helper connection. Autofix state remains helper-owned.
+/// helper connection. Turn state remains helper-owned.
 #[derive(Clone, Default)]
 pub struct RouteRegistry {
     routes: Arc<Mutex<HashMap<String, ProposalRoute>>>,
@@ -207,7 +215,7 @@ impl McpHost {
 }
 
 /// Start the MCP server. Failure is non-fatal; callers omit MCP servers from
-/// ACP session creation and Autofix degrades to Markdown.
+/// ACP session creation and typed proposal flows degrade to Markdown.
 pub async fn start() -> Option<McpHost> {
     let routes = RouteRegistry::default();
     let ep = serve(default_registry(routes.clone())).await?;

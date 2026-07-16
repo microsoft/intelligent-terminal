@@ -115,6 +115,9 @@ by the helper. The agent reaches Windows Terminal by shelling out to the `wta` /
 `wtcli` CLI helpers (which call WT's COM `IProtocolServer`). `wta-master` also
 hosts a localhost MCP tool server and injects a session-bound URL during ACP
 `session/new` and `session/load`; mutating tools route back to the owning helper.
+Autofix and Terminal Agent cards come only from typed MCP proposal tools; the
+helper injects trusted pane/delegate routing and execution still requires user
+confirmation. Assistant-text JSON is never an action protocol.
 
 ### Claude and Codex
 
@@ -530,4 +533,3 @@ was already serialized.
 ready, flip `MVP_SESSIONS_ORIGIN_FILTER` to `OriginFilter::All` and
 delete `WTA_SESSIONS_SHOW_AGENT_PANE` handling in
 `resolve_sessions_origin_filter`. No other call site needs to change.
-

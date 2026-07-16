@@ -1,7 +1,7 @@
 //! Pluggable prompt-context injection for ACP planner / autofix prompts.
 //!
 //! Prompts shipped to the agent CLI carry a set of `### …` runtime context
-//! sections (delegate agents, terminal layout, shell info, the failing
+//! sections (terminal layout, shell info, the failing
 //! command's output, did-you-mean near-matches, …). These used to be
 //! assembled by inline `runtime_sections.push(format!("### X\n…"))` calls
 //! scattered across two mutually-exclusive branches of `build_prompt_text`;
@@ -21,9 +21,7 @@
 
 use async_trait::async_trait;
 
-use super::client::{build_terminal_context_json, user_locale_tag};
-use crate::coordinator::default_supported_delegate_agents;
-use crate::shell::ShellManager;
+use super::client::user_locale_tag;
 
 /// Read-only inputs a [`ContextProvider`] may consult when deciding whether it
 /// applies and what section to emit.
@@ -36,11 +34,9 @@ use crate::shell::ShellManager;
 pub(crate) struct ContextRequest<'a> {
     /// True for an auto-fix / `/fix` turn; false for a planner turn.
     pub is_autofix: bool,
-    /// Whether the WT protocol channel is live (pane queries are meaningful).
-    pub wt_connected: bool,
-    /// Shell manager for providers that query WT directly (planner terminal
-    /// context).
-    pub shell_mgr: &'a ShellManager,
+    /// Planner only: terminal context resolved once by `build_prompt_text`.
+    /// Contains availability/shell/cwd/buffer metadata but no pane identifier.
+    pub planner_context_json: Option<&'a str>,
     /// Autofix only: the JSON of the pane whose shell/cwd describe the failing
     /// command (the source pane — for error-triggered autofix this can be a
     /// pane in a non-focused tab, not the active pane). `None` when WT is not
@@ -99,7 +95,6 @@ pub(crate) trait ContextProvider: Send + Sync {
 pub(crate) fn default_providers() -> &'static [&'static dyn ContextProvider] {
     &[
         // Planner turns.
-        &DelegateAgentsProvider,
         &TerminalContextProvider,
         // Autofix turns.
         &ShellContextProvider,
@@ -108,30 +103,7 @@ pub(crate) fn default_providers() -> &'static [&'static dyn ContextProvider] {
     ]
 }
 
-/// Planner: the agents this build can delegate to (`?<prompt>` etc.).
-struct DelegateAgentsProvider;
-
-#[async_trait]
-impl ContextProvider for DelegateAgentsProvider {
-    fn id(&self) -> &'static str {
-        "delegate_agents"
-    }
-
-    fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        !req.is_autofix
-    }
-
-    async fn provide(&self, _req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let json = serde_json::to_string(&default_supported_delegate_agents())
-            .unwrap_or_else(|_| "[]".to_string());
-        Some(ContextSection {
-            heading: "Supported Delegate Agents",
-            body: format!("```json\n{}\n```", json),
-        })
-    }
-}
-
-/// Planner: the full terminal layout / active-target context JSON.
+/// Planner: terminal metadata without a model-addressable pane identifier.
 struct TerminalContextProvider;
 
 #[async_trait]
@@ -141,11 +113,11 @@ impl ContextProvider for TerminalContextProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        !req.is_autofix && req.wt_connected
+        !req.is_autofix && req.planner_context_json.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let json = build_terminal_context_json(req.shell_mgr).await?;
+        let json = req.planner_context_json?;
         Some(ContextSection {
             heading: "Terminal Context JSON",
             body: format!("```json\n{}\n```", json),
@@ -265,13 +237,11 @@ fn near_match_list(matches: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shell::ShellManager;
 
-    fn req_planner(mgr: &ShellManager, wt_connected: bool) -> ContextRequest<'_> {
+    fn req_planner(context_json: Option<&str>) -> ContextRequest<'_> {
         ContextRequest {
             is_autofix: false,
-            wt_connected,
-            shell_mgr: mgr,
+            planner_context_json: context_json,
             context_pane: None,
             shell_exe: None,
             terminal_output: None,
@@ -297,49 +267,40 @@ mod tests {
     }
 
     #[test]
-    fn delegate_agents_applies_only_to_planner() {
-        let mgr = ShellManager::new();
-        assert!(DelegateAgentsProvider.applies(&req_planner(&mgr, true)));
+    fn terminal_context_requires_planner_context() {
+        assert!(TerminalContextProvider.applies(&req_planner(Some("{}"))));
+        assert!(!TerminalContextProvider.applies(&req_planner(None)));
         let autofix = ContextRequest {
             is_autofix: true,
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
-        assert!(!DelegateAgentsProvider.applies(&autofix));
-    }
-
-    #[test]
-    fn terminal_context_requires_planner_and_wt_connection() {
-        let mgr = ShellManager::new();
-        assert!(TerminalContextProvider.applies(&req_planner(&mgr, true)));
-        assert!(!TerminalContextProvider.applies(&req_planner(&mgr, false)));
+        assert!(!TerminalContextProvider.applies(&autofix));
     }
 
     #[test]
     fn shell_context_requires_autofix_with_context_pane() {
-        let mgr = ShellManager::new();
         let pane = serde_json::json!({ "cwd": "C:\\proj" });
         let with_pane = ContextRequest {
             is_autofix: true,
             context_pane: Some(&pane),
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
         assert!(ShellContextProvider.applies(&with_pane));
         // Planner turn never ships the autofix shell header.
         let planner = ContextRequest {
             context_pane: Some(&pane),
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
         assert!(!ShellContextProvider.applies(&planner));
     }
 
     #[test]
     fn command_not_found_gates_on_powershell_and_output() {
-        let mgr = ShellManager::new();
         let base = ContextRequest {
             is_autofix: true,
             shell_exe: Some("pwsh.exe"),
             terminal_output: Some("gti status\n..."),
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
         assert!(CommandNotFoundProvider.applies(&base));
 
@@ -348,7 +309,7 @@ mod tests {
             is_autofix: true,
             shell_exe: Some("bash"),
             terminal_output: Some("gti status"),
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
         assert!(!CommandNotFoundProvider.applies(&bash));
 
@@ -357,7 +318,7 @@ mod tests {
             is_autofix: true,
             shell_exe: Some("pwsh.exe"),
             terminal_output: None,
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
         assert!(!CommandNotFoundProvider.applies(&no_output));
 
@@ -365,7 +326,7 @@ mod tests {
         let planner = ContextRequest {
             shell_exe: Some("pwsh.exe"),
             terminal_output: Some("gti status"),
-            ..req_planner(&mgr, true)
+            ..req_planner(Some("{}"))
         };
         assert!(!CommandNotFoundProvider.applies(&planner));
     }

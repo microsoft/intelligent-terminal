@@ -91,8 +91,7 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
 
 use crate::commands::{self, CommandKind, CommandSpec, ParseOutcome, ParsedCommand};
 use crate::coordinator::{
-    parse_recommendation_set, recommended_choice_index,
-    validate_recommendation_set_for_coordinator_target, RecommendationChoice, RecommendationSet,
+    recommended_choice_index, RecommendationChoice, RecommendationSet,
 };
 use crate::pane_context::PaneContext;
 
@@ -848,6 +847,7 @@ where
                 crate::agent_sessions::SessionOrigin::AgentPane,
             );
         }
+
     }
 
     let dirty = reg.take_dirty();
@@ -1146,6 +1146,15 @@ pub enum AppEvent {
         prompt_id: u64,
         pane_id: String,
     },
+    /// Trusted active working pane resolved while assembling a normal planner
+    /// prompt. `None` means resolution completed but no safe pane was available.
+    /// Session and prompt ids prevent a late result from binding to a replacement
+    /// session, newer turn, or pre-drag tab key.
+    PlannerTargetResolved {
+        session_id: String,
+        prompt_id: u64,
+        pane_id: Option<String>,
+    },
     /// Errors raised before a session exists carry None for `session_id`
     /// and route to the active tab; in-flight failures route to the
     /// session's tab. `failure` is the typed classification that drives
@@ -1219,6 +1228,13 @@ pub enum AppEvent {
         session_id: String,
         proposal: crate::mcp::TerminalInputProposal,
         responder: tokio::sync::oneshot::Sender<crate::mcp::ProposalDisposition>,
+    },
+    /// Typed planner proposal emitted by the session-bound MCP tool. The helper
+    /// injects trusted pane/delegate routing before surfacing confirmation cards.
+    TerminalActionsProposal {
+        session_id: String,
+        proposal: crate::mcp::TerminalActionsProposal,
+        responder: tokio::sync::oneshot::Sender<crate::mcp::PlannerProposalDisposition>,
     },
     TimingMetric {
         session_id: String,
@@ -1411,6 +1427,13 @@ impl Scroll {
 /// the currently focused entry. Renderers read via `app.current_tab()`;
 /// event handlers route updates to the relevant `TabSession` rather than
 /// mutating shared `App` fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannerTargetContext {
+    pub prompt_id: u64,
+    pub pane_id: Option<String>,
+    pub proposal_accepted: bool,
+}
+
 #[derive(Default)]
 pub struct TabSession {
     /// Per-tab autofix state machine (see `TabAutofixState`).
@@ -1453,6 +1476,9 @@ pub struct TabSession {
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
+    /// Trusted planner routing resolved for the current prompt. This is kept
+    /// outside model-authored tool arguments and reset on every submission.
+    pub planner_target: Option<PlannerTargetContext>,
 
     // Agent-supplied progress message (e.g. "Reading file foo.rs"). Falls
     // back to the spinner label derived from `turn` when None.
@@ -4503,6 +4529,7 @@ impl App {
             AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
+            AppEvent::PlannerTargetResolved { .. } => "planner_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
@@ -4513,6 +4540,7 @@ impl App {
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
             AppEvent::TerminalInputProposal { .. } => "terminal_input_proposal",
+            AppEvent::TerminalActionsProposal { .. } => "terminal_actions_proposal",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
@@ -4929,6 +4957,15 @@ impl App {
                 available_models,
                 current_model_id,
             } => {
+                if let Some(previous_session) = self
+                    .tab_sessions
+                    .get(&tab_id)
+                    .and_then(|tab| tab.session_id.as_deref())
+                    .filter(|previous| *previous != session_id)
+                    .map(str::to_string)
+                {
+                    self.session_to_tab.remove(&previous_session);
+                }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
                 let tab = self.tab_mut(&tab_id);
@@ -5010,6 +5047,13 @@ impl App {
                 pane_id,
             } => {
                 self.apply_autofix_target_resolved(tab_id, prompt_id, pane_id);
+            }
+            AppEvent::PlannerTargetResolved {
+                session_id,
+                prompt_id,
+                pane_id,
+            } => {
+                self.apply_planner_target_resolved(&session_id, prompt_id, pane_id);
             }
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
@@ -5295,14 +5339,7 @@ impl App {
                 // Append to the streaming buffer. The state machine drops
                 // late chunks and handles the stale-autofix generation check
                 // before returning whether the buffer actually grew.
-                let advanced = self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
-
-                // Surface the card the moment the streamed JSON parses,
-                // instead of waiting for AgentMessageEnd (gated behind
-                // Copilot's Stop/SessionEnd hooks, ~8s on Windows).
-                if advanced {
-                    self.turn_try_eager_surface(&session_id);
-                }
+                self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
                 // Replayed historical user prompt from a `session/load`
@@ -5333,6 +5370,14 @@ impl App {
                 responder,
             } => {
                 let disposition = self.accept_terminal_input_proposal(&session_id, proposal);
+                let _ = responder.send(disposition);
+            }
+            AppEvent::TerminalActionsProposal {
+                session_id,
+                proposal,
+                responder,
+            } => {
+                let disposition = self.accept_terminal_actions_proposal(&session_id, proposal);
                 let _ = responder.send(disposition);
             }
             AppEvent::TimingMetric { session_id, note } => {
@@ -7940,7 +7985,17 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self
             .new_session_tx
-            .send(NewSessionForTab { tab_id, cwd: None });
+            .send(NewSessionForTab {
+                tab_id: tab_id.clone(),
+                cwd: None,
+            });
+        if let Some(previous_session) = self
+            .tab_sessions
+            .get(&tab_id)
+            .and_then(|tab| tab.session_id.clone())
+        {
+            self.session_to_tab.remove(&previous_session);
+        }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.completed_turns.clear();
@@ -8067,6 +8122,34 @@ impl App {
             pane = %pane_id,
             "bound /fix target pane",
         );
+    }
+
+    fn apply_planner_target_resolved(
+        &mut self,
+        session_id: &str,
+        prompt_id: u64,
+        pane_id: Option<String>,
+    ) {
+        let Some(key) = self.session_to_tab.get(session_id).cloned() else {
+            return;
+        };
+        let Some(tab) = self.tab_sessions.get_mut(&key) else {
+            return;
+        };
+        if tab.session_id.as_deref() != Some(session_id) {
+            return;
+        }
+        let Some(prompt) = tab.turn.prompt() else {
+            return;
+        };
+        if prompt.id != prompt_id || prompt.autofix.is_some() {
+            return;
+        }
+        tab.planner_target = Some(PlannerTargetContext {
+            prompt_id,
+            pane_id,
+            proposal_accepted: false,
+        });
     }
 
     /// `/sessions` — open the Agents picker for the active tab.
@@ -8765,6 +8848,7 @@ impl App {
         tab.progress_status = None;
         tab.activity_frame = 0;
         tab.timing_note = None;
+        tab.planner_target = None;
         tab.turn = TurnState::Submitted(prompt);
 
         // Submitting a new prompt dismisses any prior leftover card (the
@@ -8848,41 +8932,13 @@ impl App {
         }
     }
 
-    /// Attempt to parse a planner recommendation without waiting for
-    /// `AgentMessageEnd`. Autofix actions arrive only through the typed MCP
-    /// proposal path and are never inferred from assistant text.
-    pub fn turn_try_eager_surface(&mut self, session_id: &str) {
-        let tab = self.session_tab(session_id);
-        let TurnState::Streaming { buf, .. } = &tab.turn else {
-            return;
-        };
-        if tab.turn.is_autofix() {
-            return;
-        }
-        if !buf.contains("```") {
-            return;
-        }
-        let buf = buf.clone();
-        let parsed = parse_recommendation_set(&buf).and_then(|r| {
-            validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-        });
-        if let Ok(recommendations) = parsed {
-            self.turn_surface_recommendation(
-                session_id,
-                recommendations,
-                "selection_ready_eager",
-            );
-        }
-    }
-
     /// Close the in-flight turn on `AgentMessageEnd`. Dispatches across
     /// four termination paths:
     ///
     /// 1. Stale-autofix discard (newer trigger or Esc cancelled this turn).
-    /// 2. Eager surface already fired — just release the UI gate.
+    /// 2. A typed proposal already surfaced — just release the UI gate.
     /// 3. `Submitted` with no chunks — model returned nothing.
-    /// 4. `Streaming` with a buffer — final parse via the autofix or
-    ///    planner finalize helper.
+    /// 4. `Streaming` with a buffer — commit Autofix or planner Markdown.
     pub fn turn_close(&mut self, session_id: &str) {
         // (1) Stale-autofix discard.
         let current_gen = self.session_tab(session_id).autofix.generation;
@@ -8900,12 +8956,12 @@ impl App {
             }
         }
 
-        // (2) Eager surface already fired.
+        // (2) A typed proposal already surfaced.
         if let TurnState::Surfaced {
             end_pending: true, ..
         } = &self.session_tab(session_id).turn
         {
-            self.turn_release_end_pending_logged(session_id, "via=eager+end");
+            self.turn_release_end_pending_logged(session_id, "via=proposal+end");
             self.turn_clear_agent_progress(session_id);
             return;
         }
@@ -8922,11 +8978,11 @@ impl App {
             _ => return,
         };
 
-        // (4) Final parse on the streaming buffer.
+        // (4) Commit the streaming buffer as Markdown.
         if is_autofix {
             self.turn_close_finalize_autofix(session_id, &buf);
         } else {
-            self.turn_close_finalize_planner(session_id, buf);
+            self.turn_close_finalize_planner_markdown(session_id, buf);
         }
         self.turn_clear_agent_progress(session_id);
     }
@@ -9027,54 +9083,226 @@ impl App {
         ProposalDisposition::Accepted
     }
 
-    /// Path (4b): non-autofix Streaming buffer. Try `RecommendationSet`
-    /// parse first; on failure, commit as a chat turn (chat-mode answer).
-    fn turn_close_finalize_planner(&mut self, session_id: &str, buf: String) {
-        let parsed = parse_recommendation_set(&buf).and_then(|r| {
-            validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-        });
-        match parsed {
-            Ok(recommendations) => {
-                self.turn_surface_recommendation(session_id, recommendations, "selection_ready");
-                self.turn_release_end_pending(session_id);
-            }
-            Err(err) => {
-                let chars = buf.chars().count();
-                let error_text = format!("{:#}", err).replace('\n', " | ");
-                self.log_selection_phase_for(
-                    session_id,
-                    "selection_parse_failed",
-                    &format!("response_chars={} error={:?}", chars, error_text),
-                );
-                let tab = self.session_tab_mut(session_id);
-                let prompt = tab.turn.prompt().cloned().expect("prompt set");
-                let mut details = tab.current_turn_details();
-                details.push(ChatMessage::Agent(buf));
-                tab.completed_turns.push(CompletedTurn {
-                    prompt: prompt.text.clone(),
-                    details,
-                    expanded: true,
-                    trailing_marker: None,
-                });
-                tab.messages.clear();
-                tab.tool_calls.clear();
-                tab.scroll_to_bottom();
-                // Route through `turn_release_end_pending` so
-                // `prompt_complete` fires on this terminal path too.
-                tab.turn = TurnState::Surfaced {
-                    prompt,
-                    outcome: TurnOutcome::ChatTurn,
-                    end_pending: true,
-                };
-                self.turn_release_end_pending(session_id);
-            }
+    fn accept_terminal_actions_proposal(
+        &mut self,
+        session_id: &str,
+        proposal: crate::mcp::TerminalActionsProposal,
+    ) -> crate::mcp::PlannerProposalDisposition {
+        use crate::coordinator::{OpenTarget, RecommendedAction};
+        use crate::mcp::{
+            PlannerProposalDisposition, ProposedDestination, ProposedOpenTarget,
+            ProposedTerminalAction,
+        };
+
+        if proposal.validate().is_err() {
+            return PlannerProposalDisposition::Invalid;
         }
+        let Some(tab_id) = self.session_to_tab.get(session_id).cloned() else {
+            return PlannerProposalDisposition::Stale;
+        };
+        let (prompt_id, planner_target) = {
+            let Some(tab) = self.tab_sessions.get(&tab_id) else {
+                return PlannerProposalDisposition::Stale;
+            };
+            if tab.session_id.as_deref() != Some(session_id) {
+                return PlannerProposalDisposition::Stale;
+            }
+            let Some(prompt) = tab.turn.prompt() else {
+                return PlannerProposalDisposition::Stale;
+            };
+            if prompt.autofix.is_some() {
+                return PlannerProposalDisposition::NotPlanner;
+            }
+            if matches!(
+                tab.turn,
+                TurnState::Surfaced {
+                    outcome: TurnOutcome::Recommendation(_),
+                    ..
+                }
+            ) {
+                return PlannerProposalDisposition::Duplicate;
+            }
+            if !tab.turn.is_in_flight() {
+                return PlannerProposalDisposition::Stale;
+            }
+            (prompt.id, tab.planner_target.clone())
+        };
+        let Some(planner_target) =
+            planner_target.filter(|context| context.prompt_id == prompt_id)
+        else {
+            return PlannerProposalDisposition::ContextUnavailable;
+        };
+        if planner_target.proposal_accepted {
+            return PlannerProposalDisposition::Duplicate;
+        }
+        let target_pane_id = planner_target.pane_id.filter(|pane_id| {
+            !pane_id.is_empty() && self.pane_id.as_deref() != Some(pane_id.as_str())
+        });
+        if target_pane_id.is_none()
+            && proposal
+                .choices
+                .iter()
+                .any(|choice| choice.action.requires_active_pane())
+        {
+            return PlannerProposalDisposition::TargetUnavailable;
+        }
+
+        let needs_delegate = proposal.choices.iter().any(|choice| {
+            matches!(
+                choice.action,
+                ProposedTerminalAction::OpenAndSend {
+                    destination: ProposedDestination::Delegate,
+                    ..
+                }
+            )
+        });
+        let delegate_agent_id = if needs_delegate {
+            let Some(delegate_agents) = self.delegate_agents.as_ref() else {
+                return PlannerProposalDisposition::DelegateUnavailable;
+            };
+            let agents = match delegate_agents.lock() {
+                Ok(agents) => agents,
+                Err(poisoned) => {
+                    tracing::warn!(
+                        target: "planner",
+                        "delegate agent configuration lock was poisoned"
+                    );
+                    poisoned.into_inner()
+                }
+            };
+            let Some(agent) = agents.first() else {
+                return PlannerProposalDisposition::DelegateUnavailable;
+            };
+            Some(agent.id.clone())
+        } else {
+            None
+        };
+
+        let recommended_choice = proposal.recommended_choice;
+        let choices = proposal
+            .choices
+            .into_iter()
+            .enumerate()
+            .map(|(index, choice)| {
+                let action = match choice.action {
+                    ProposedTerminalAction::SendInput { input } => RecommendedAction::Send {
+                        parent: target_pane_id
+                            .as_ref()
+                            .expect("active-pane requirement was validated")
+                            .clone(),
+                        input,
+                    },
+                    ProposedTerminalAction::Open {
+                        target,
+                        cwd,
+                        title,
+                        direction,
+                        profile,
+                    } => {
+                        let parent = (target == ProposedOpenTarget::Panel)
+                            .then(|| {
+                                target_pane_id
+                                    .as_ref()
+                                    .expect("panel target requirement was validated")
+                                    .clone()
+                            });
+                        RecommendedAction::Open {
+                            target: match target {
+                                ProposedOpenTarget::Tab => OpenTarget::Tab,
+                                ProposedOpenTarget::Panel => OpenTarget::Panel,
+                            },
+                            parent,
+                            cwd,
+                            title,
+                            direction: direction.map(|value| value.as_str().to_string()),
+                            profile,
+                        }
+                    }
+                    ProposedTerminalAction::OpenAndSend {
+                        target,
+                        destination,
+                        input,
+                        cwd,
+                        title,
+                        direction,
+                        profile,
+                    } => {
+                        let parent = (target == ProposedOpenTarget::Panel)
+                            .then(|| {
+                                target_pane_id
+                                    .as_ref()
+                                    .expect("panel target requirement was validated")
+                                    .clone()
+                            });
+                        let agent = match destination {
+                            ProposedDestination::Shell => None,
+                            ProposedDestination::Delegate => delegate_agent_id.clone(),
+                        };
+                        RecommendedAction::OpenAndSend {
+                            target: match target {
+                                ProposedOpenTarget::Tab => OpenTarget::Tab,
+                                ProposedOpenTarget::Panel => OpenTarget::Panel,
+                            },
+                            parent,
+                            input,
+                            agent,
+                            cwd,
+                            title,
+                            direction: direction.map(|value| value.as_str().to_string()),
+                            profile,
+                        }
+                    }
+                };
+                RecommendationChoice {
+                    choice: index + 1,
+                    title: choice.title,
+                    rationale: choice.rationale,
+                    actions: vec![action],
+                }
+            })
+            .collect();
+        self.tab_sessions
+            .get_mut(&tab_id)
+            .and_then(|tab| tab.planner_target.as_mut())
+            .expect("planner target was validated above")
+            .proposal_accepted = true;
+        self.turn_surface_recommendation(
+            session_id,
+            RecommendationSet {
+                recommended_choice,
+                choices,
+            },
+            "planner_mcp_proposal",
+        );
+        PlannerProposalDisposition::Accepted
     }
 
-    /// Variant of `turn_release_end_pending` with a custom `via=` log tag
-    /// for the eager-surface path. `turn_release_end_pending` uses
-    /// `via=end_only`; `via=eager+end` lets `prompt_timing` consumers
-    /// distinguish.
+    /// Path (4b): non-Autofix assistant text is always Markdown. Only the typed
+    /// MCP proposal path can create a recommendation card.
+    fn turn_close_finalize_planner_markdown(&mut self, session_id: &str, buf: String) {
+        let tab = self.session_tab_mut(session_id);
+        let prompt = tab.turn.prompt().cloned().expect("prompt set");
+        let mut details = tab.current_turn_details();
+        details.push(ChatMessage::Agent(buf));
+        tab.completed_turns.push(CompletedTurn {
+            prompt: prompt.text.clone(),
+            details,
+            expanded: true,
+            trailing_marker: None,
+        });
+        tab.messages.clear();
+        tab.tool_calls.clear();
+        tab.scroll_to_bottom();
+        tab.turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: true,
+        };
+        self.turn_release_end_pending(session_id);
+    }
+
+    /// Variant of `turn_release_end_pending` with a custom `via=` log tag for a
+    /// proposal that surfaced before `AgentMessageEnd`.
     fn turn_release_end_pending_logged(&mut self, session_id: &str, via: &str) {
         let tab = self.session_tab_mut(session_id);
         if let TurnState::Surfaced {
@@ -16079,6 +16307,210 @@ mod tests {
         );
     }
 
+    fn planner_proposal(
+        action: crate::mcp::ProposedTerminalAction,
+    ) -> crate::mcp::TerminalActionsProposal {
+        crate::mcp::TerminalActionsProposal {
+            recommended_choice: Some(1),
+            choices: vec![crate::mcp::terminal_actions::ProposedTerminalChoice {
+                title: "Do it".to_string(),
+                rationale: "Complete the requested terminal action.".to_string(),
+                action,
+            }],
+        }
+    }
+
+    #[test]
+    fn typed_planner_proposal_injects_trusted_pane_routing() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
+        submit_test_prompt(&mut app, "run tests");
+        app.apply_planner_target_resolved("session-a", 42, Some("trusted-pane".to_string()));
+
+        let disposition = app.accept_terminal_actions_proposal(
+            "session-a",
+            planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
+                input: "cargo test".to_string(),
+            }),
+        );
+
+        assert_eq!(
+            disposition,
+            crate::mcp::PlannerProposalDisposition::Accepted
+        );
+        let recommendations = app.current_tab().turn.recommendations().unwrap();
+        assert_eq!(recommendations.choices[0].choice, 1);
+        assert!(matches!(
+            &recommendations.choices[0].actions[0],
+            crate::coordinator::RecommendedAction::Send { parent, input }
+                if parent == "trusted-pane" && input == "cargo test"
+        ));
+    }
+
+    #[test]
+    fn typed_planner_proposal_injects_panel_parent_and_delegate_agent() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
+        app.delegate_agents = Some(Arc::new(std::sync::Mutex::new(
+            crate::coordinator::default_delegate_agent_runtimes(
+                Some("claude"),
+                Some("copilot"),
+                None,
+            ),
+        )));
+        submit_test_prompt(&mut app, "delegate in a split");
+        app.apply_planner_target_resolved("session-a", 42, Some("trusted-pane".to_string()));
+
+        let disposition = app.accept_terminal_actions_proposal(
+            "session-a",
+            planner_proposal(crate::mcp::ProposedTerminalAction::OpenAndSend {
+                target: crate::mcp::ProposedOpenTarget::Panel,
+                destination: crate::mcp::ProposedDestination::Delegate,
+                input: "Inspect the failure".to_string(),
+                cwd: Some("C:\\repo".to_string()),
+                title: None,
+                direction: Some(crate::mcp::terminal_actions::ProposedSplitDirection::Right),
+                profile: None,
+            }),
+        );
+
+        assert_eq!(
+            disposition,
+            crate::mcp::PlannerProposalDisposition::Accepted
+        );
+        let action = &app.current_tab().turn.recommendations().unwrap().choices[0].actions[0];
+        assert!(matches!(
+            action,
+            crate::coordinator::RecommendedAction::OpenAndSend {
+                target: crate::coordinator::OpenTarget::Panel,
+                parent: Some(parent),
+                agent: Some(agent),
+                ..
+            } if parent == "trusted-pane" && agent == "claude"
+        ));
+    }
+
+    #[test]
+    fn typed_planner_proposal_rejects_replaced_session_and_post_execute_duplicate() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-old");
+        submit_test_prompt(&mut app, "run tests");
+        app.apply_planner_target_resolved(
+            "session-old",
+            42,
+            Some("trusted-pane".to_string()),
+        );
+
+        app.tab_mut(DEFAULT_TAB_ID).session_id = Some("session-new".to_string());
+        app.session_to_tab.insert(
+            "session-new".to_string(),
+            DEFAULT_TAB_ID.to_string(),
+        );
+        assert_eq!(
+            app.accept_terminal_actions_proposal(
+                "session-old",
+                planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
+                    input: "cargo test".to_string(),
+                }),
+            ),
+            crate::mcp::PlannerProposalDisposition::Stale
+        );
+
+        app.session_to_tab.remove("session-old");
+        bind_test_session(&mut app, "session-new");
+        app.apply_planner_target_resolved(
+            "session-new",
+            42,
+            Some("trusted-pane".to_string()),
+        );
+        let proposal = planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
+            input: "cargo test".to_string(),
+        });
+        assert_eq!(
+            app.accept_terminal_actions_proposal("session-new", proposal.clone()),
+            crate::mcp::PlannerProposalDisposition::Accepted
+        );
+        app.turn_execute_card("session-new");
+        assert_eq!(
+            app.accept_terminal_actions_proposal("session-new", proposal),
+            crate::mcp::PlannerProposalDisposition::Duplicate
+        );
+    }
+
+    #[test]
+    fn planner_target_resolution_follows_session_across_tab_rename() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
+        submit_test_prompt(&mut app, "run tests");
+
+        app.rename_tab_session(DEFAULT_TAB_ID, "renamed-tab", None);
+        app.apply_planner_target_resolved("session-a", 42, Some("trusted-pane".to_string()));
+
+        let context = app
+            .tab_sessions
+            .get("renamed-tab")
+            .and_then(|tab| tab.planner_target.as_ref())
+            .expect("planner context follows the session mapping");
+        assert_eq!(context.pane_id.as_deref(), Some("trusted-pane"));
+    }
+
+    #[test]
+    fn typed_planner_proposal_enforces_turn_and_target_context() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
+        submit_autofix_prompt(&mut app, "trusted-pane");
+        assert_eq!(
+            app.accept_terminal_actions_proposal(
+                "session-a",
+                planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
+                    input: "cargo test".to_string(),
+                }),
+            ),
+            crate::mcp::PlannerProposalDisposition::NotPlanner
+        );
+
+        app.turn_cancel("session-a");
+        submit_test_prompt(&mut app, "run tests");
+        let send = planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
+            input: "cargo test".to_string(),
+        });
+        assert_eq!(
+            app.accept_terminal_actions_proposal("session-a", send.clone()),
+            crate::mcp::PlannerProposalDisposition::ContextUnavailable
+        );
+        app.apply_planner_target_resolved("session-a", 42, None);
+        assert_eq!(
+            app.accept_terminal_actions_proposal("session-a", send),
+            crate::mcp::PlannerProposalDisposition::TargetUnavailable
+        );
+
+        let open_tab =
+            planner_proposal(crate::mcp::ProposedTerminalAction::Open {
+                target: crate::mcp::ProposedOpenTarget::Tab,
+                cwd: Some("C:\\repo".to_string()),
+                title: None,
+                direction: None,
+                profile: None,
+            });
+        assert_eq!(
+            app.accept_terminal_actions_proposal("session-a", open_tab.clone()),
+            crate::mcp::PlannerProposalDisposition::Accepted
+        );
+        assert_eq!(
+            app.accept_terminal_actions_proposal("session-a", open_tab),
+            crate::mcp::PlannerProposalDisposition::Duplicate
+        );
+        assert_eq!(
+            app.accept_terminal_actions_proposal(
+                "unknown",
+                planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
+                    input: "cargo test".to_string(),
+                }),
+            ),
+            crate::mcp::PlannerProposalDisposition::Stale
+        );
+    }
+
     #[test]
     fn autofix_assistant_json_is_visible_text_not_an_action_protocol() {
         let mut app = test_app();
@@ -16372,12 +16804,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
-        // A buffer that's pure JSON (no `explanation` field, no prose
-        // prefix) renders as nothing during streaming. We must NOT commit
-        // raw JSON as agent prose, but we still record a completed_turn
-        // with the canceled marker so the user knows the prompt was sent
-        // and cancelled.
+    fn cancel_mid_stream_keeps_legacy_json_visible_as_text() {
         let mut app = test_app();
         submit_test_prompt(&mut app, "kill pid 1234");
         app.turn_observe_chunk(
@@ -16392,11 +16819,11 @@ mod tests {
         let committed = &tab.completed_turns[0];
         assert_eq!(committed.prompt, "kill pid 1234");
         assert!(
-            !committed
+            committed
                 .details
                 .iter()
-                .any(|m| matches!(m, ChatMessage::Agent(_))),
-            "JSON-only buffer must not be committed as agent prose"
+                .any(|m| matches!(m, ChatMessage::Agent(text) if text.contains("recommended_choice"))),
+            "legacy JSON is ordinary visible assistant text"
         );
         assert!(
             committed
@@ -16412,17 +16839,33 @@ mod tests {
 
     #[test]
     fn end_pending_blocks_new_prompts_until_message_end() {
-        // Eager-surface path: user submits → JSON streams → recommendation
-        // surfaces before AgentMessageEnd. While end_pending=true the UI
-        // gate must hold. AgentMessageEnd then releases it.
+        // Typed proposal path: the card surfaces before AgentMessageEnd. While
+        // end_pending=true the UI gate holds; AgentMessageEnd releases it.
         let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
         submit_test_prompt(&mut app, "first");
-        // RecommendationSet shape that survives `validate_recommendation_set`.
-        let json = r#"```json
-{"recommended_choice":1,"choices":[{"choice":1,"title":"do it","rationale":"r","actions":[{"type":"send","parent":"pane-X","input":"ls"}]}]}
-```"#;
-        app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
-        app.turn_try_eager_surface(DEFAULT_TAB_ID);
+        app.current_tab_mut().planner_target = Some(PlannerTargetContext {
+            prompt_id: 42,
+            pane_id: Some("pane-X".into()),
+            proposal_accepted: false,
+        });
+        let disposition = app.accept_terminal_actions_proposal(
+            "session-a",
+            crate::mcp::TerminalActionsProposal {
+                recommended_choice: Some(1),
+                choices: vec![crate::mcp::terminal_actions::ProposedTerminalChoice {
+                    title: "do it".into(),
+                    rationale: "r".into(),
+                    action: crate::mcp::ProposedTerminalAction::SendInput {
+                        input: "ls".into(),
+                    },
+                }],
+            },
+        );
+        assert_eq!(
+            disposition,
+            crate::mcp::PlannerProposalDisposition::Accepted
+        );
         let tab = app.current_tab();
         assert!(
             matches!(
@@ -16433,7 +16876,7 @@ mod tests {
                     ..
                 }
             ),
-            "expected eager surface, got {:?}",
+            "expected proposal surface, got {:?}",
             tab.turn
         );
         assert!(
