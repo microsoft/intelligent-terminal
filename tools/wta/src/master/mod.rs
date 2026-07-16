@@ -2590,9 +2590,10 @@ fn build_restart_agent_pane_event(
 }
 
 /// Remove every `session_to_helper` entry owned by `helper_id`.
-/// Returns the number of entries dropped. Factored out of
-/// `serve_helper` so the cleanup is unit-testable without a real
-/// named pipe.
+/// Returns the `SessionId`s that were dropped so the caller can send a
+/// best-effort `session/cancel` to the shared agent CLI for each one.
+/// Factored out of `serve_helper` so the cleanup is unit-testable
+/// without a real named pipe.
 async fn drop_sessions_for_helper(
     state: &MasterStateInner,
     helper_id: HelperId,
