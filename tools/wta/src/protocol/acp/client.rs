@@ -1527,6 +1527,38 @@ fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str 
 }
 
 impl WtaClient {
+    async fn ext_method(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
+        if !crate::session_registry::ext_method_matches(
+            &args.method,
+            crate::mcp::INTELLTERM_METHOD_PROPOSE_TERMINAL_INPUT,
+        ) {
+            return Err(acp::Error::method_not_found());
+        }
+        let params = crate::mcp::parse_terminal_input_proposal_params(&args.params)
+            .map_err(|err| acp::Error::invalid_params().data(err.to_string()))?;
+        let session_id = params.session_id.0.to_string();
+        let (responder, response) = tokio::sync::oneshot::channel();
+        self.state
+            .event_tx
+            .send(AppEvent::TerminalInputProposal {
+                session_id,
+                proposal: params.proposal,
+                responder,
+            })
+            .map_err(|_| {
+                acp::Error::internal_error().data("terminal proposal UI channel is closed")
+            })?;
+        let disposition = response.await.map_err(|_| {
+            acp::Error::internal_error().data("terminal proposal response channel is closed")
+        })?;
+        Ok(crate::mcp::build_terminal_input_proposal_response(
+            &crate::mcp::TerminalInputProposalResponse { disposition },
+        ))
+    }
+
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
@@ -1937,21 +1969,6 @@ fn elapsed_ms_since(start: std::time::Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
-/// Inject WTA's shared MCP server (resolve_command, …) into a `session/new`
-/// request so the agent can pull tools. Only when the agent advertises HTTP MCP
-/// support and master published an endpoint; otherwise the agent gets no MCP
-/// server and autofix's in-process path is unaffected.
-fn inject_wta_mcp_servers(req: &mut acp::schema::v1::NewSessionRequest, http_supported: bool) {
-    if !http_supported {
-        return;
-    }
-    if let Some(url) = crate::mcp::published_url() {
-        req.mcp_servers
-            .push(acp::schema::v1::McpServer::Http(acp::schema::v1::McpServerHttp::new("wta", url)));
-        tracing::info!(target: "acp", "injected wta MCP http server into session/new");
-    }
-}
-
 fn acp_result_failure_fields<T>(result: &acp::Result<T>) -> (&'static str, i32) {
     match result {
         Ok(_) => ("", 0),
@@ -2239,6 +2256,7 @@ pub async fn run_acp_client_over_pipe(
                 Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
                 Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
                 Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
+                Q::ExtMethodRequest(a) => conn::respond_enum(responder, c.ext_method(a).await.map(R::ExtMethodResponse)),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
         } } }, acp::on_receive_request!())
@@ -2542,10 +2560,6 @@ pub async fn run_acp_client_over_pipe(
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta);
-            inject_wta_mcp_servers(
-                &mut new_session_req,
-                init_resp.agent_capabilities.mcp_capabilities.http,
-            );
             let new_session_started = std::time::Instant::now();
             let new_session_result = conn.new_session(new_session_req).await;
             log_acp_new_session_result(

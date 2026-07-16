@@ -18,7 +18,7 @@
 
 use async_trait::async_trait;
 
-use super::Tool;
+use super::{Tool, ToolContext};
 
 pub struct ResolveCommand;
 
@@ -52,7 +52,7 @@ impl Tool for ResolveCommand {
         })
     }
 
-    async fn call(&self, args: &serde_json::Value) -> Result<String, String> {
+    async fn call(&self, _context: &ToolContext<'_>, args: &serde_json::Value) -> Result<String, String> {
         use crate::command_recall::ResolveOutcome;
 
         let token = args
@@ -127,13 +127,21 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_missing_token() {
-        assert!(ResolveCommand.call(&serde_json::json!({})).await.is_err());
+        assert!(
+            ResolveCommand
+                .call(&ToolContext { route_id: None }, &serde_json::json!({}))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn non_powershell_returns_unsupported() {
         let out = ResolveCommand
-            .call(&serde_json::json!({ "token": "gti", "shell": "bash" }))
+            .call(
+                &ToolContext { route_id: None },
+                &serde_json::json!({ "token": "gti", "shell": "bash" }),
+            )
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -158,7 +166,10 @@ mod tests {
 
         // `Get-ChildItem` is present in every PowerShell host, profile or not.
         let out = ResolveCommand
-            .call(&serde_json::json!({ "token": "Get-ChildItem", "shell": shell }))
+            .call(
+                &ToolContext { route_id: None },
+                &serde_json::json!({ "token": "Get-ChildItem", "shell": shell }),
+            )
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -177,7 +188,10 @@ mod tests {
 
         // A token that resolves to nothing → status:"not_found".
         let out = ResolveCommand
-            .call(&serde_json::json!({ "token": "no-such-command", "shell": shell }))
+            .call(
+                &ToolContext { route_id: None },
+                &serde_json::json!({ "token": "no-such-command", "shell": shell }),
+            )
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();

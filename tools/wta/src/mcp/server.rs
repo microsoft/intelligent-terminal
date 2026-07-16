@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use super::Tool;
+use super::{Tool, ToolContext};
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 
@@ -90,7 +90,14 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
             .split_whitespace();
         let method = request_line.next().unwrap_or("");
         let path = request_line.next().unwrap_or("");
-        if !method.eq_ignore_ascii_case("POST") || path != "/mcp" {
+        let route_id = match mcp_route_id(path) {
+            Some(route_id) => route_id.map(str::to_string),
+            None => {
+                write_json(&mut stream, 405, "").await?;
+                return Ok(());
+            }
+        };
+        if !method.eq_ignore_ascii_case("POST") {
             write_json(&mut stream, 405, "").await?;
             return Ok(());
         }
@@ -110,7 +117,7 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
         buf.drain(..body_start + content_len);
 
         let resp = match serde_json::from_slice::<serde_json::Value>(&body) {
-            Ok(req) => dispatch(&tools, &req).await,
+            Ok(req) => dispatch(&tools, route_id.as_deref(), &req).await,
             Err(_) => Some(error_obj(serde_json::Value::Null, -32700, "parse error")),
         };
         match resp {
@@ -134,17 +141,26 @@ fn cancels(
     CANCELS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
+fn cancellation_key(route_id: Option<&str>, request_id: &serde_json::Value) -> String {
+    format!("{}:{}", route_id.unwrap_or_default(), request_id)
+}
+
 /// Dispatch a JSON-RPC request. `None` for notifications (no `id`).
-async fn dispatch(tools: &[Arc<dyn Tool>], req: &serde_json::Value) -> Option<serde_json::Value> {
+async fn dispatch(
+    tools: &[Arc<dyn Tool>],
+    route_id: Option<&str>,
+    req: &serde_json::Value,
+) -> Option<serde_json::Value> {
     let id = req.get("id").cloned();
     let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
     // Cancellation is a notification — abort the in-flight tool call, ack only.
     if method == "notifications/cancelled" {
         if let Some(rid) = req.get("params").and_then(|p| p.get("requestId")) {
+            let key = cancellation_key(route_id, rid);
             if let Some(h) = cancels()
                 .lock()
                 .ok()
-                .and_then(|m| m.get(&rid.to_string()).cloned())
+                .and_then(|m| m.get(&key).cloned())
             {
                 h.abort();
             }
@@ -193,9 +209,18 @@ async fn dispatch(tools: &[Arc<dyn Tool>], req: &serde_json::Value) -> Option<se
                 None => return Some(error_obj(id, -32602, &format!("unknown tool: {name}"))),
                 Some(tool) => {
                     // Run abortable so notifications/cancelled can stop it.
-                    let key = id.to_string();
+                    let key = cancellation_key(route_id, &id);
                     let tool = tool.clone();
-                    let jh = tokio::spawn(async move { tool.call(&args).await });
+                    let route_id = route_id.map(str::to_string);
+                    let jh = tokio::spawn(async move {
+                        tool.call(
+                            &ToolContext {
+                                route_id: route_id.as_deref(),
+                            },
+                            &args,
+                        )
+                        .await
+                    });
                     cancels()
                         .lock()
                         .unwrap()
@@ -217,6 +242,20 @@ async fn dispatch(tools: &[Arc<dyn Tool>], req: &serde_json::Value) -> Option<se
         other => return Some(error_obj(id, -32601, &format!("method not found: {other}"))),
     };
     Some(serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+}
+
+fn mcp_route_id(path: &str) -> Option<Option<&str>> {
+    if path == "/mcp" {
+        return Some(None);
+    }
+    let route = path.strip_prefix("/mcp/")?;
+    if route.is_empty()
+        || route.len() > 64
+        || !route.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return None;
+    }
+    Some(Some(route))
 }
 
 fn error_obj(id: serde_json::Value, code: i32, msg: &str) -> serde_json::Value {
@@ -258,23 +297,25 @@ async fn write_json(stream: &mut TcpStream, status: u16, body: &str) -> std::io:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::default_registry;
+    use crate::mcp::{default_registry, RouteRegistry};
 
     #[tokio::test]
     async fn initialize_and_tools_list_and_call() {
-        let tools = default_registry();
+        let tools = default_registry(RouteRegistry::default());
         let init = dispatch(
             &tools,
+            None,
             &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize"}),
         )
         .await
         .unwrap();
         assert_eq!(init["result"]["protocolVersion"], PROTOCOL_VERSION);
         // Echoes the client's requested version (negotiation).
-        let echo = dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2024-11-05"}})).await.unwrap();
+        let echo = dispatch(&tools, None, &serde_json::json!({"jsonrpc":"2.0","id":9,"method":"initialize","params":{"protocolVersion":"2024-11-05"}})).await.unwrap();
         assert_eq!(echo["result"]["protocolVersion"], "2024-11-05");
         let list = dispatch(
             &tools,
+            None,
             &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
         )
         .await
@@ -292,12 +333,13 @@ mod tests {
         // Notification → no response.
         assert!(dispatch(
             &tools,
+            None,
             &serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
         )
         .await
         .is_none());
         // Unknown tool → error result.
-        let bad = dispatch(&tools, &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"nope","arguments":{}}})).await.unwrap();
+        let bad = dispatch(&tools, None, &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"nope","arguments":{}}})).await.unwrap();
         assert_eq!(bad["error"]["code"], -32602);
     }
 
@@ -319,9 +361,10 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_method_is_32601() {
-        let tools = default_registry();
+        let tools = default_registry(RouteRegistry::default());
         let r = dispatch(
             &tools,
+            None,
             &serde_json::json!({"jsonrpc":"2.0","id":7,"method":"frobnicate"}),
         )
         .await
@@ -343,7 +386,7 @@ mod tests {
         fn input_schema(&self) -> serde_json::Value {
             serde_json::json!({"type":"object"})
         }
-        async fn call(&self, _a: &serde_json::Value) -> Result<String, String> {
+        async fn call(&self, _context: &ToolContext<'_>, _a: &serde_json::Value) -> Result<String, String> {
             tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
             Ok("never".into())
         }
@@ -355,10 +398,10 @@ mod tests {
         let call = serde_json::json!({"jsonrpc":"2.0","id":"X","method":"tools/call","params":{"name":"sleep","arguments":{}}});
         let cancel = serde_json::json!({"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"X"}});
         let t2 = tools.clone();
-        let caller = tokio::spawn(async move { dispatch(&tools, &call).await });
+        let caller = tokio::spawn(async move { dispatch(&tools, None, &call).await });
         // Let the call register, then cancel by id.
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        assert!(dispatch(&t2, &cancel).await.is_none());
+        assert!(dispatch(&t2, None, &cancel).await.is_none());
         let res = tokio::time::timeout(std::time::Duration::from_secs(2), caller)
             .await
             .expect("call must end after cancel")
@@ -368,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn serve_handles_post_and_rejects_non_post() {
-        let ep = serve(default_registry()).await.unwrap();
+        let ep = serve(default_registry(RouteRegistry::default())).await.unwrap();
         let post = |body: &str| {
             format!(
                 "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n{}",
@@ -397,5 +440,23 @@ mod tests {
             .unwrap();
         let n2 = s2.read(&mut buf).await.unwrap();
         assert!(String::from_utf8_lossy(&buf[..n2]).starts_with("HTTP/1.1 405"));
+    }
+
+    #[test]
+    fn route_path_accepts_base_and_opaque_route_only() {
+        assert_eq!(mcp_route_id("/mcp"), Some(None));
+        assert_eq!(mcp_route_id("/mcp/abc_123-X"), Some(Some("abc_123-X")));
+        assert_eq!(mcp_route_id("/mcp/"), None);
+        assert_eq!(mcp_route_id("/other"), None);
+        assert_eq!(mcp_route_id("/mcp/a/b"), None);
+    }
+
+    #[test]
+    fn cancellation_keys_are_route_scoped() {
+        let request_id = serde_json::json!(1);
+        assert_ne!(
+            cancellation_key(Some("route-a"), &request_id),
+            cancellation_key(Some("route-b"), &request_id)
+        );
     }
 }

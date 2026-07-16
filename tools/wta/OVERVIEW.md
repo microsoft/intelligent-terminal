@@ -30,10 +30,10 @@ the agent CLI, and one **`wta-helper`** per agent pane that renders the TUI and
 talks ACP to master over a named pipe. A third, stateless role is the **CLI
 helpers** (`wta list-panes`, `wta capture-pane`, …) used for one-shot WT control.
 
-> There is **no standalone agent / TUI mode and no MCP server** anymore. Bare
-> `wta` with neither `--master` nor `--connect-master` exits with an error
-> (`main.rs`). The earlier single-process "ACP TUI" and "`wta mcp`" modes were
-> removed.
+> There is **no standalone agent / TUI mode** anymore. Bare `wta` with neither
+> `--master` nor `--connect-master` exits with an error (`main.rs`). The earlier
+> single-process "ACP TUI" and "`wta mcp`" command modes were removed;
+> `wta-master` now hosts an internal localhost MCP server for agent tools.
 
 ---
 
@@ -88,8 +88,9 @@ wta hooks install                         # install the agent-hook bridge
 
 Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
 to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit. Used by humans
-debugging WTA and by agents that can shell out. (The agent CLI reaches WT this
-way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
+debugging WTA and by agents that can shell out. General WT control still uses
+`wta` / `wtcli`; master also injects session-bound MCP tools for narrow typed
+operations such as Autofix terminal-input proposals.
 
 ---
 
@@ -274,4 +275,5 @@ Fallback: if WT pane creation fails, WTA downgrades to the local-child path.
 - Helper+master architecture: ✅ current primary (and only) runtime model
 - COM/CLI control plane: ✅ done; sole WT transport
 - Autofix, delegate (`?<prompt>`), session-management view, hooks auto-upgrade: ✅ shipped
-- MCP server mode, standalone single-process TUI: ❌ removed
+- Standalone MCP command mode and single-process TUI: ❌ removed
+- Master-owned session-bound MCP tools: ✅ current

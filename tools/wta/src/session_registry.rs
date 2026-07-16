@@ -401,7 +401,7 @@ pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNot
 /// via a `build_*` helper (still `_`-prefixed).
 #[inline]
 #[must_use]
-fn ext_method_matches(inbound: &str, const_with_underscore: &str) -> bool {
+pub(crate) fn ext_method_matches(inbound: &str, const_with_underscore: &str) -> bool {
     inbound == const_with_underscore
         || Some(inbound) == const_with_underscore.strip_prefix('_')
 }

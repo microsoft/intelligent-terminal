@@ -5,9 +5,8 @@
 WTA (Windows Terminal Agent) is a Rust binary that bridges AI agent CLIs with
 Windows Terminal. It is built around a **helper + master** architecture (see
 `doc/specs/Multi-window-agent-pane.md`) and runs in one of three roles, selected
-at startup by flags / subcommands — **there is no standalone agent / TUI mode and
-no MCP server**; bare `wta` with neither `--master` nor `--connect-master` exits
-with an error.
+at startup by flags / subcommands — there is no standalone agent / TUI mode;
+bare `wta` with neither `--master` nor `--connect-master` exits with an error.
 
 - **`wta-master`** (`--master <pipe>`, spawned once by the C++ `SharedWta`
   singleton) -- the ACP **multiplexer**. Owns the *single* `ACP/stdio`
@@ -113,8 +112,9 @@ wta --agent "copilot --acp --stdio"
 
 Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`, not
 by the helper. The agent reaches Windows Terminal by shelling out to the `wta` /
-`wtcli` CLI helpers (which call WT's COM `IProtocolServer`); WTA no longer
-generates an MCP config or runs an MCP server for the agent.
+`wtcli` CLI helpers (which call WT's COM `IProtocolServer`). `wta-master` also
+hosts a localhost MCP tool server and injects a session-bound URL during ACP
+`session/new` and `session/load`; mutating tools route back to the owning helper.
 
 ### Claude and Codex
 

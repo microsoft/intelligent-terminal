@@ -91,9 +91,8 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
 
 use crate::commands::{self, CommandKind, CommandSpec, ParseOutcome, ParsedCommand};
 use crate::coordinator::{
-    parse_autofix_response, parse_recommendation_set, recommended_choice_index,
-    validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
-    RecommendationSet,
+    parse_recommendation_set, recommended_choice_index,
+    validate_recommendation_set_for_coordinator_target, RecommendationChoice, RecommendationSet,
 };
 use crate::pane_context::PaneContext;
 
@@ -1212,6 +1211,14 @@ pub enum AppEvent {
     },
     AgentMessageEnd {
         session_id: String,
+    },
+    /// Typed proposal emitted by WTA's session-bound MCP tool. The synchronous
+    /// responder lets the tool report whether the current Autofix turn accepted
+    /// the proposal; it never performs terminal input itself.
+    TerminalInputProposal {
+        session_id: String,
+        proposal: crate::mcp::TerminalInputProposal,
+        responder: tokio::sync::oneshot::Sender<crate::mcp::ProposalDisposition>,
     },
     TimingMetric {
         session_id: String,
@@ -4505,6 +4512,7 @@ impl App {
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
+            AppEvent::TerminalInputProposal { .. } => "terminal_input_proposal",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
@@ -5318,6 +5326,14 @@ impl App {
                 }
                 self.turn_close(&session_id);
                 self.session_tab_mut(&session_id).scroll_to_bottom();
+            }
+            AppEvent::TerminalInputProposal {
+                session_id,
+                proposal,
+                responder,
+            } => {
+                let disposition = self.accept_terminal_input_proposal(&session_id, proposal);
+                let _ = responder.send(disposition);
             }
             AppEvent::TimingMetric { session_id, note } => {
                 self.session_tab_mut(&session_id).timing_note = Some(note);
@@ -8832,46 +8848,30 @@ impl App {
         }
     }
 
-    /// Attempt to parse the streaming buffer and surface a card / chat turn
-    /// without waiting for `AgentMessageEnd`. No-op if state isn't
-    /// `Streaming`, buffer hasn't opened a fence yet, or parsing fails.
+    /// Attempt to parse a planner recommendation without waiting for
+    /// `AgentMessageEnd`. Autofix actions arrive only through the typed MCP
+    /// proposal path and are never inferred from assistant text.
     pub fn turn_try_eager_surface(&mut self, session_id: &str) {
         let tab = self.session_tab(session_id);
         let TurnState::Streaming { buf, .. } = &tab.turn else {
             return;
         };
+        if tab.turn.is_autofix() {
+            return;
+        }
         if !buf.contains("```") {
             return;
         }
         let buf = buf.clone();
-        let is_autofix = tab.turn.is_autofix();
-
-        if is_autofix {
-            match parse_autofix_response(&buf) {
-                AutofixDecision::Fix(recommendations) => {
-                    self.turn_surface_fix(session_id, recommendations, "autofix_fix_eager");
-                }
-                AutofixDecision::Explain { title, explanation } => {
-                    self.turn_surface_explain(
-                        session_id,
-                        title,
-                        explanation,
-                        "autofix_explain_eager",
-                    );
-                }
-                AutofixDecision::Ignore => {}
-            }
-        } else {
-            let parsed = parse_recommendation_set(&buf).and_then(|r| {
-                validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-            });
-            if let Ok(recommendations) = parsed {
-                self.turn_surface_recommendation(
-                    session_id,
-                    recommendations,
-                    "selection_ready_eager",
-                );
-            }
+        let parsed = parse_recommendation_set(&buf).and_then(|r| {
+            validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
+        });
+        if let Ok(recommendations) = parsed {
+            self.turn_surface_recommendation(
+                session_id,
+                recommendations,
+                "selection_ready_eager",
+            );
         }
     }
 
@@ -8960,65 +8960,71 @@ impl App {
         self.turn_clear_agent_progress(session_id);
     }
 
-    /// Path (4a): autofix Streaming buffer reached `AgentMessageEnd` with
-    /// no eager surface. Parse and route to Fix / Explain / Ignore.
+    /// Path (4a): an Autofix turn completed without a typed proposal. The
+    /// assistant text is Markdown explanation, never an action protocol.
     fn turn_close_finalize_autofix(&mut self, session_id: &str, buf: &str) {
-        match parse_autofix_response(buf) {
-            AutofixDecision::Fix(recommendations) => {
-                self.turn_surface_fix(session_id, recommendations, "autofix_fix");
-                self.turn_release_end_pending(session_id);
-            }
-            AutofixDecision::Explain { title, explanation } => {
-                self.turn_surface_explain(session_id, title, explanation, "autofix_explain");
-                self.turn_release_end_pending(session_id);
-            }
-            AutofixDecision::Ignore => {
-                let target_tab = self.tab_for_session(session_id);
-                let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
-                self.log_selection_phase_for(
-                    session_id,
-                    "autofix_ignore",
-                    &format!("pane={:?}", pane_id),
-                );
-                if pane_id.is_some() {
-                    self.emit_autofix_state_cleared(&target_tab);
-                }
-                let autofix = &mut self.session_tab_mut(session_id).autofix;
-                autofix.pane_id = None;
-                autofix.armed_at = None;
-                let tab = self.session_tab_mut(session_id);
-                let prompt = tab.turn.prompt().cloned().expect("prompt set");
-                // Preserve only what the user actually saw streaming (prose
-                // or extracted `explanation`) — not the raw JSON wrapper.
-                // Any tool calls / plans that streamed during the turn are
-                // included regardless; an empty-buf+prose ignore still
-                // records them so they don't get stranded on screen.
-                let visible = ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned());
-                let mut details = tab.current_turn_details();
-                if let Some(visible) = visible {
-                    details.push(ChatMessage::Agent(visible));
-                }
-                if !details.is_empty() {
-                    tab.completed_turns.push(CompletedTurn {
-                        prompt: t!("chat.autofix_prompt_label").into_owned(),
-                        details,
-                        expanded: true,
-                        trailing_marker: None,
-                    });
-                }
-                // Always clear in-flight UI state on Ignore — even if there
-                // was nothing to commit, lingering tool-call rows would look
-                // like an active turn.
-                tab.messages.clear();
-                tab.tool_calls.clear();
-                tab.scroll_to_bottom();
-                tab.turn = TurnState::Surfaced {
-                    prompt,
-                    outcome: TurnOutcome::Empty,
-                    end_pending: false,
-                };
-            }
+        if buf.trim().is_empty() {
+            self.turn_close_no_chunks(session_id);
+            return;
         }
+        self.turn_surface_explain(
+            session_id,
+            "Suggestion".to_string(),
+            buf.to_string(),
+            "autofix_markdown",
+        );
+        self.turn_release_end_pending(session_id);
+    }
+
+    fn accept_terminal_input_proposal(
+        &mut self,
+        session_id: &str,
+        proposal: crate::mcp::TerminalInputProposal,
+    ) -> crate::mcp::ProposalDisposition {
+        use crate::mcp::{PreferredTerminalInputAction, ProposalDisposition};
+
+        let Some(tab_id) = self.session_to_tab.get(session_id).cloned() else {
+            return ProposalDisposition::Stale;
+        };
+        let Some(tab) = self.tab_sessions.get(&tab_id) else {
+            return ProposalDisposition::Stale;
+        };
+        let Some(autofix) = tab.turn.prompt().and_then(|prompt| prompt.autofix.as_ref()) else {
+            return ProposalDisposition::NotAutofix;
+        };
+        if !tab.turn.is_in_flight() || autofix.generation != tab.autofix.generation {
+            return ProposalDisposition::Stale;
+        }
+        if matches!(
+            tab.turn,
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(_),
+                ..
+            }
+        ) {
+            return ProposalDisposition::Duplicate;
+        }
+        if autofix.target_pane_id.trim().is_empty() {
+            return ProposalDisposition::TargetUnavailable;
+        }
+
+        let preferred_action = proposal.preferred_action;
+        let recommendations = RecommendationSet {
+            recommended_choice: Some(1),
+            choices: vec![RecommendationChoice {
+                choice: 1,
+                title: proposal.title.unwrap_or_else(|| "Suggested fix".to_string()),
+                rationale: proposal.rationale.unwrap_or_default(),
+                actions: vec![crate::coordinator::RecommendedAction::Send {
+                    parent: String::new(),
+                    input: proposal.input,
+                }],
+            }],
+        };
+        self.turn_surface_fix(session_id, recommendations, "autofix_mcp_proposal");
+        self.session_tab_mut(session_id).selected_button =
+            usize::from(preferred_action == PreferredTerminalInputAction::Insert);
+        ProposalDisposition::Accepted
     }
 
     /// Path (4b): non-autofix Streaming buffer. Try `RecommendationSet`
@@ -15971,6 +15977,161 @@ mod tests {
             }),
         };
         app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
+    }
+
+    fn bind_test_session(app: &mut App, session_id: &str) {
+        app.session_to_tab
+            .insert(session_id.to_string(), DEFAULT_TAB_ID.to_string());
+        app.tab_mut(DEFAULT_TAB_ID).session_id = Some(session_id.to_string());
+    }
+
+    fn terminal_input_proposal(
+        action: crate::mcp::PreferredTerminalInputAction,
+    ) -> crate::mcp::TerminalInputProposal {
+        crate::mcp::TerminalInputProposal {
+            input: "dotnet test".to_string(),
+            preferred_action: action,
+            title: Some("Retry tests".to_string()),
+            rationale: Some("The previous command had a typo.".to_string()),
+        }
+    }
+
+    #[test]
+    fn typed_autofix_proposal_surfaces_local_card_with_preferred_button() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
+        submit_autofix_prompt(&mut app, "trusted-pane");
+
+        let disposition = app.accept_terminal_input_proposal(
+            "session-a",
+            terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Insert),
+        );
+
+        assert_eq!(disposition, crate::mcp::ProposalDisposition::Accepted);
+        let tab = app.current_tab();
+        assert_eq!(tab.selected_button, 1, "Insert is initially focused");
+        let recommendations = tab.turn.recommendations().expect("proposal card");
+        let action = &recommendations.choices[0].actions[0];
+        assert!(matches!(
+            action,
+            crate::coordinator::RecommendedAction::Send { parent, input }
+                if parent.is_empty() && input == "dotnet test"
+        ));
+        assert!(
+            !format!("{recommendations:?}").contains("trusted-pane"),
+            "trusted target stays in AutofixContext, not model proposal data"
+        );
+    }
+
+    #[test]
+    fn typed_autofix_proposal_rejects_duplicate_stale_and_unresolved_calls() {
+        let mut app = test_app();
+        bind_test_session(&mut app, "session-a");
+        submit_autofix_prompt(&mut app, "trusted-pane");
+        assert_eq!(
+            app.accept_terminal_input_proposal(
+                "session-a",
+                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+            ),
+            crate::mcp::ProposalDisposition::Accepted
+        );
+        assert_eq!(
+            app.accept_terminal_input_proposal(
+                "session-a",
+                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+            ),
+            crate::mcp::ProposalDisposition::Duplicate
+        );
+
+        app.turn_cancel("session-a");
+        assert_eq!(
+            app.accept_terminal_input_proposal(
+                "session-a",
+                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+            ),
+            crate::mcp::ProposalDisposition::NotAutofix
+        );
+
+        submit_fix_prompt(&mut app, 100);
+        assert_eq!(
+            app.accept_terminal_input_proposal(
+                "session-a",
+                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+            ),
+            crate::mcp::ProposalDisposition::TargetUnavailable
+        );
+
+        let generation = app.current_tab().autofix.generation;
+        app.current_tab_mut().autofix.generation = generation.wrapping_add(1);
+        assert_eq!(
+            app.accept_terminal_input_proposal(
+                "session-a",
+                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+            ),
+            crate::mcp::ProposalDisposition::Stale
+        );
+        assert_eq!(
+            app.accept_terminal_input_proposal(
+                "unknown-session",
+                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+            ),
+            crate::mcp::ProposalDisposition::Stale
+        );
+    }
+
+    #[test]
+    fn autofix_assistant_json_is_visible_text_not_an_action_protocol() {
+        let mut app = test_app();
+        submit_autofix_prompt(&mut app, "trusted-pane");
+        let legacy = r#"```json
+{"action":"fix","command":"Remove-Item -Recurse *"}
+```"#;
+        app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, legacy);
+
+        app.turn_close(DEFAULT_TAB_ID);
+
+        assert!(matches!(
+            app.current_tab().turn,
+            TurnState::Surfaced {
+                outcome: TurnOutcome::ChatTurn,
+                end_pending: false,
+                ..
+            }
+        ));
+        assert!(
+            app.current_tab()
+                .completed_turns
+                .iter()
+                .flat_map(|turn| &turn.details)
+                .any(|detail| matches!(
+                    detail,
+                    ChatMessage::Agent(text) if text.contains(r#""action":"fix""#)
+                )),
+            "legacy JSON must remain visible Markdown instead of becoming a card"
+        );
+        assert!(app.current_tab().turn.recommendations().is_none());
+    }
+
+    #[test]
+    fn thought_only_autofix_clears_without_empty_suggestion() {
+        let mut app = test_app();
+        submit_autofix_prompt(&mut app, "trusted-pane");
+        app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "checking");
+
+        app.turn_close(DEFAULT_TAB_ID);
+
+        assert!(matches!(
+            app.current_tab().turn,
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Empty,
+                end_pending: false,
+                ..
+            }
+        ));
+        assert!(
+            app.current_tab().completed_turns.is_empty(),
+            "thought-only output must not create a blank Suggestion turn"
+        );
     }
 
     /// Submit a manual-`/fix`-style autofix turn: an autofix context whose

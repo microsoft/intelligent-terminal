@@ -171,103 +171,6 @@ pub fn parse_recommendation_set(text: &str) -> Result<RecommendationSet> {
     Ok(parsed)
 }
 
-/// The result of parsing an autofix response.
-#[derive(Debug, Clone)]
-pub enum AutofixDecision {
-    /// AI found a single-command fix.
-    Fix(RecommendationSet),
-    /// AI cannot auto-fix but has a useful explanation/suggestion. The caller
-    /// should surface `explanation` in the agent pane chat history and tell
-    /// the bottom bar to show a "Suggestion ready — open agent pane" indicator.
-    Explain { title: String, explanation: String },
-    /// AI decided no fix is appropriate; caller should silently clear state.
-    /// The `explain` action makes this rare — Ignore is now a fail-safe for
-    /// malformed responses or empty explanations.
-    Ignore,
-}
-
-/// Parse a response from the minimal autofix prompt.
-///
-/// Expected formats:
-///   {"action": "fix",     "title": "...", "command": "...",     "rationale": "..."}
-///   {"action": "explain", "title": "...", "explanation": "..."}
-///   {"action": "ignore"}                            // legacy fallback
-///
-/// Returns `AutofixDecision::Ignore` for unrecognised JSON or missing required
-/// fields (fail-safe: never leave a stale Pending bar).
-pub fn parse_autofix_response(text: &str) -> AutofixDecision {
-    let json = match extract_json_code_block(text).or_else(|| extract_first_json_object(text)) {
-        Some(j) => j,
-        None => {
-            tracing::warn!(target: "autofix", "no JSON in autofix response, ignoring");
-            return AutofixDecision::Ignore;
-        }
-    };
-
-    let value: serde_json::Value = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(target: "autofix", "failed to parse autofix JSON: {e}, ignoring");
-            return AutofixDecision::Ignore;
-        }
-    };
-
-    match value.get("action").and_then(|v| v.as_str()) {
-        Some("fix") => {
-            let command = match value.get("command").and_then(|v| v.as_str()) {
-                Some(c) if !c.trim().is_empty() => c.to_string(),
-                _ => {
-                    tracing::warn!(target: "autofix", "fix response missing 'command', ignoring");
-                    return AutofixDecision::Ignore;
-                }
-            };
-            let title = value
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Fix")
-                .to_string();
-            let rationale = value
-                .get("rationale")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            AutofixDecision::Fix(RecommendationSet {
-                recommended_choice: Some(1),
-                choices: vec![RecommendationChoice {
-                    choice: 1,
-                    title,
-                    rationale,
-                    actions: vec![RecommendedAction::Send {
-                        parent: String::new(),
-                        input: command,
-                    }],
-                }],
-            })
-        }
-        Some("explain") => {
-            let explanation = match value.get("explanation").and_then(|v| v.as_str()) {
-                Some(e) if !e.trim().is_empty() => e.to_string(),
-                _ => {
-                    tracing::warn!(target: "autofix", "explain response missing 'explanation', ignoring");
-                    return AutofixDecision::Ignore;
-                }
-            };
-            let title = value
-                .get("title")
-                .and_then(|v| v.as_str())
-                .filter(|t| !t.trim().is_empty())
-                .unwrap_or("Suggestion")
-                .to_string();
-            AutofixDecision::Explain { title, explanation }
-        }
-        Some("ignore") | None => AutofixDecision::Ignore,
-        Some(other) => {
-            tracing::warn!(target: "autofix", "unknown autofix action {other:?}, ignoring");
-            AutofixDecision::Ignore
-        }
-    }
-}
-
 /// Filter out choices that target the coordinator's own pane.
 /// Returns the filtered set. If all choices are removed, returns an error.
 pub fn validate_recommendation_set_for_coordinator_target(
@@ -1587,9 +1490,9 @@ mod tests {
         build_pwsh_base64_launch, build_shell_multiline_delegate_launch,
         build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
         default_delegate_agent_runtimes, escape_for_intermediate_shell,
-        is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
+        is_direct_known_agent_command, parse_recommendation_set,
         pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
-        validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
+        validate_recommendation_set_for_coordinator_target, DelegateAgentRuntime,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
     use serde_json::json;
@@ -2552,54 +2455,6 @@ mod tests {
             .expect_err("missing pane_id should fail");
 
         assert!(format!("{err:#}").contains("create_tab response missing pane_id"));
-    }
-
-    #[test]
-    fn parse_autofix_explain_with_title_and_explanation() {
-        let text = r#"```json
-{"action": "explain", "title": "claude is not installed",
- "explanation": "The `claude` command isn't on PATH.\n\nInstall with `npm install -g @anthropic-ai/claude-code`."}
-```"#;
-        match parse_autofix_response(text) {
-            AutofixDecision::Explain { title, explanation } => {
-                assert_eq!(title, "claude is not installed");
-                assert!(explanation.contains("npm install"));
-            }
-            other => panic!("expected Explain, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_autofix_explain_falls_back_to_ignore_when_explanation_empty() {
-        let text = r#"```json
-{"action": "explain", "title": "Something", "explanation": "   "}
-```"#;
-        assert!(matches!(
-            parse_autofix_response(text),
-            AutofixDecision::Ignore
-        ));
-    }
-
-    #[test]
-    fn parse_autofix_explain_uses_default_title_when_missing() {
-        let text = r#"```json
-{"action": "explain", "explanation": "Some useful suggestion goes here."}
-```"#;
-        match parse_autofix_response(text) {
-            AutofixDecision::Explain { title, .. } => assert_eq!(title, "Suggestion"),
-            other => panic!("expected Explain with default title, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_autofix_legacy_ignore_still_supported() {
-        let text = r#"```json
-{"action": "ignore"}
-```"#;
-        assert!(matches!(
-            parse_autofix_response(text),
-            AutofixDecision::Ignore
-        ));
     }
 
     // ── #404: WSL delegate inline base64 ─────────────────────────────────

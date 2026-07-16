@@ -231,7 +231,7 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 mod tests {
     use super::{
         load_planner_prompt_template_from_root, merge_runtime_sections, DEFAULT_PROMPT_FILE_NAME,
-        RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
+        EMBEDDED_AUTOFIX_PROMPT, RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -262,6 +262,13 @@ mod tests {
             merge_runtime_sections("before", &[String::from("first"), String::from("second")]);
 
         assert_eq!(merged, "before\n\nfirst\n\nsecond");
+    }
+
+    #[test]
+    fn embedded_autofix_prompt_requires_tool_or_markdown_not_json() {
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("propose_terminal_input"));
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Never return JSON"));
+        assert!(!EMBEDDED_AUTOFIX_PROMPT.contains("\"action\": \"fix\""));
     }
 
     #[test]

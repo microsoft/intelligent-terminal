@@ -67,6 +67,13 @@ use crate::Cli;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct HelperId(u64);
 
+#[cfg(test)]
+impl HelperId {
+    pub(crate) fn for_test(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 /// Per-session routing entry. Owned by `session_to_helper` and
 /// keyed by `acp::schema::v1::SessionId`.
 ///
@@ -115,6 +122,9 @@ struct HelperRoute {
 /// notifications from the agent CLI) and each helper's `acp::Agent`
 /// impl (receives requests from one helper).
 struct MasterStateInner {
+    /// Master-owned MCP server plus opaque per-ACP-session transport routes.
+    /// `None` only when localhost binding failed or in unit tests.
+    mcp: Option<crate::mcp::McpHost>,
     /// Routes inbound traffic from the agent CLI back to the helper
     /// that owns the session. Inserted by the helper's `new_session`
     /// / `load_session` handlers atomically (before responding to
@@ -1026,6 +1036,24 @@ impl HelperHandler {
         let mut args = args;
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let cwd_for_registry = args.cwd.clone();
+        let agent = self.resolved_agent("new_session")?;
+        let forwarder = self.forwarder_for_route("new_session")?;
+        let mcp_route = if agent.cached_init_resp.agent_capabilities.mcp_capabilities.http {
+            if let Some(host) = &self.state.mcp {
+                let route_id = host
+                    .routes
+                    .register(self.helper_id, forwarder.clone())
+                    .await;
+                args.mcp_servers.push(acp::schema::v1::McpServer::Http(
+                    acp::schema::v1::McpServerHttp::new("wta", host.route_url(&route_id)),
+                ));
+                Some(route_id)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1035,16 +1063,24 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let resp = self
+        let resp = match self
             .forward_new_session_to_agent(
                 args,
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
             )
-            .await?;
-        // Resolve the bound agent for `cli_source` stamping below (cheap
-        // Arc clone; the forward above already used it for the RPC).
-        let agent = self.resolved_agent("new_session")?;
-        let forwarder = self.forwarder_for_route("new_session")?;
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                if let (Some(host), Some(route_id)) = (&self.state.mcp, &mcp_route) {
+                    host.routes.remove(route_id).await;
+                }
+                return Err(err);
+            }
+        };
+        if let (Some(host), Some(route_id)) = (&self.state.mcp, &mcp_route) {
+            host.routes.bind_session(route_id, resp.session_id.clone()).await;
+        }
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
         let registry_size = {
@@ -1144,6 +1180,55 @@ impl HelperHandler {
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
         let session_id = args.session_id.clone();
         let cwd_for_registry = args.cwd.clone();
+        let agent = self.resolved_agent("load_session")?;
+        let forwarder = self.forwarder_for_route("load_session")?;
+        let is_orphan_rebind = {
+            let mut orphans = self.state.orphaned_sessions.lock().await;
+            orphans
+                .get_mut(&agent.cmd_key)
+                .is_some_and(|set| set.remove(&session_id))
+        };
+        let mut new_mcp_route = None;
+        let mut rebound_mcp_route = None;
+        if agent.cached_init_resp.agent_capabilities.mcp_capabilities.http {
+            if let Some(host) = &self.state.mcp {
+                match host
+                    .routes
+                    .bind_load_session(
+                        &session_id,
+                        self.helper_id,
+                        forwarder.clone(),
+                        !is_orphan_rebind,
+                    )
+                    .await
+                {
+                    crate::mcp::LoadSessionRoute::Rebound(route_id) => {
+                        rebound_mcp_route = Some(route_id);
+                    }
+                    crate::mcp::LoadSessionRoute::Registered(route_id) => {
+                        args.mcp_servers.push(acp::schema::v1::McpServer::Http(
+                            acp::schema::v1::McpServerHttp::new(
+                                "wta",
+                                host.route_url(&route_id),
+                            ),
+                        ));
+                        new_mcp_route = Some(route_id);
+                    }
+                    crate::mcp::LoadSessionRoute::Active => {
+                        return Err(acp::Error::invalid_params()
+                            .data("session is already bound to another helper"));
+                    }
+                    crate::mcp::LoadSessionRoute::Missing => {
+                        tracing::warn!(
+                            target: "master",
+                            helper_id = ?self.helper_id,
+                            session_id = ?session_id,
+                            "orphan session has no inactive MCP route to rebind"
+                        );
+                    }
+                }
+            }
+        }
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -1170,8 +1255,6 @@ impl HelperHandler {
         // fail on. On success we upsert + broadcast `session_added`
         // atomically; on failure we just unregister routing without
         // any peer-visible flicker.
-        let agent = self.resolved_agent("load_session")?;
-        let forwarder = self.forwarder_for_route("load_session")?;
         {
             let mut map = self.state.session_to_helper.lock().await;
             map.insert(
@@ -1194,13 +1277,6 @@ impl HelperHandler {
         // turn now streams its `session/update`s to this new helper. Scoped
         // to `agent.cmd_key` so we only re-bind sessions this exact CLI still
         // holds (a crashed+respawned CLI's set was dropped by `reap_agent`).
-        let is_orphan_rebind = {
-            let mut orphans = self.state.orphaned_sessions.lock().await;
-            orphans
-                .get_mut(&agent.cmd_key)
-                .is_some_and(|set| set.remove(&session_id))
-        };
-
         // Both a re-bind and a real `session/load` resume the session; only a
         // genuine load failure rolls back. Resolve the response, then register
         // the resumed row once for either success path.
@@ -1221,6 +1297,9 @@ impl HelperHandler {
                 // this master): the CLI reports "already loaded", so re-bind
                 // onto the pre-registered routing just like the fast path.
                 Err(err) if is_already_loaded_error(&err) => {
+                    if let (Some(host), Some(route_id)) = (&self.state.mcp, new_mcp_route.take()) {
+                        host.routes.remove(&route_id).await;
+                    }
                     tracing::info!(
                         target: "master",
                         step = "helper→agent",
@@ -1239,6 +1318,12 @@ impl HelperHandler {
                     {
                         let mut map = self.state.session_to_helper.lock().await;
                         map.remove(&session_id);
+                    }
+                    if let (Some(host), Some(route_id)) = (&self.state.mcp, &new_mcp_route) {
+                        host.routes.remove(route_id).await;
+                    }
+                    if let (Some(host), Some(route_id)) = (&self.state.mcp, &rebound_mcp_route) {
+                        host.routes.deactivate(route_id).await;
                     }
                     tracing::warn!(
                         target: "master",
@@ -1791,11 +1876,9 @@ fn create_master_pipe_instance(
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
-    // Publish the shared MCP endpoint before any lazily spawned agent creates
-    // a session. Failure is non-fatal; helpers simply omit MCP tools.
-    match crate::mcp::start_and_publish().await {
-        Some(ep) => tracing::info!(target: "master", mcp_url = %ep.url, "MCP server started"),
-        None => tracing::warn!(target: "master", "MCP server not started (bind failed)"),
+    let mcp = crate::mcp::start().await;
+    if mcp.is_none() {
+        tracing::warn!(target: "master", "MCP server not started (bind failed)");
     }
 
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
@@ -1849,6 +1932,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     );
 
     let inner = Arc::new(MasterStateInner {
+        mcp,
         session_to_helper: Mutex::new(HashMap::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
@@ -2461,7 +2545,16 @@ async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
         // agent's orphan set — a post-respawn resume then forwards a real
         // `session/load` (reloading from disk) instead of re-binding to a
         // session the new CLI never had. Other agents' orphans are untouched.
-        state.orphaned_sessions.lock().await.remove(key);
+        let reaped_orphans = state
+            .orphaned_sessions
+            .lock()
+            .await
+            .remove(key)
+            .unwrap_or_default();
+        if let Some(host) = &state.mcp {
+            let session_ids = reaped_orphans.into_iter().collect::<Vec<_>>();
+            host.routes.remove_sessions(&session_ids).await;
+        }
         tracing::info!(
             target: "master",
             agent = %key,
@@ -2623,6 +2716,9 @@ async fn serve_helper(
     // lighting up "unknown SessionId" warnings. Master intentionally
     // sends nothing to the shared CLI here: a closed tab's orphan turn
     // routes nowhere and the CLI keeps serving every surviving tab.
+    if let Some(host) = &state.mcp {
+        host.routes.deactivate_helper(helper_id).await;
+    }
     let victims = drop_sessions_for_helper(&state, helper_id).await;
 
     // The dropped sessions are still loaded on the shared CLI — they're now
@@ -2634,6 +2730,7 @@ async fn serve_helper(
     // (reaped, possibly respawned under the same command line), these
     // sessions are gone — recording them would make a later resume skip the
     // `session/load` the new CLI needs, binding to a session it never had.
+    let mut retained_for_rebind = false;
     if !victims.is_empty() {
         if let Some(agent) = handler.agent.get() {
             let key = agent.cmd_key.clone();
@@ -2645,11 +2742,17 @@ async fn serve_helper(
                     .is_some_and(|current| Arc::ptr_eq(current, agent))
             };
             if still_live {
+                retained_for_rebind = true;
                 let mut orphans = state.orphaned_sessions.lock().await;
                 let set = orphans.entry(key).or_default();
                 for sid in &victims {
                     set.insert(sid.clone());
                 }
+            }
+        }
+        if !retained_for_rebind {
+            if let Some(host) = &state.mcp {
+                host.routes.remove_sessions(&victims).await;
             }
         }
     }
@@ -4103,6 +4206,7 @@ mod tests {
 
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
+            mcp: None,
             session_to_helper: Mutex::new(HashMap::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
@@ -5347,6 +5451,7 @@ mod tests {
         wt: Arc<dyn crate::shell::wt_channel::WtChannel>,
     ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
+            mcp: None,
             session_to_helper: Mutex::new(HashMap::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
