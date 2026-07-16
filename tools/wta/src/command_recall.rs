@@ -327,7 +327,17 @@ pub async fn powershell_resolve(shell_exe: &str, token: &str) -> ResolveOutcome 
         Ok(Ok(output)) => output,
         _ => return ResolveOutcome::Indeterminate,
     };
-    match parse_resolve_output(&String::from_utf8_lossy(&output.stdout)) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Distinguish "the probe ran and found nothing" from "the probe never ran"
+    // using the SENTINEL, not the exit code: `-Command` prints the sentinel only
+    // AFTER the profile loads, so its absence means the profile aborted / the
+    // host died before `Get-Command` — Indeterminate, not a false NotFound. The
+    // exit code can't tell these apart, because a genuinely not-found token
+    // *also* makes pwsh exit non-zero.
+    if !stdout.lines().any(|l| l.trim() == ENUM_SENTINEL) {
+        return ResolveOutcome::Indeterminate;
+    }
+    match parse_resolve_output(&stdout) {
         Some(resolutions) => ResolveOutcome::Resolved(resolutions),
         None => ResolveOutcome::NotFound,
     }
@@ -471,23 +481,25 @@ async fn run_enumerate(exe: &str, load_profile: bool) -> Option<Vec<String>> {
 
 /// Parse the enumerate subprocess stdout into the command-name list, discarding
 /// any profile noise printed before [`ENUM_SENTINEL`]. Pure so the noise
-/// handling is unit-testable without spawning a shell. Everything up to and
-/// including the sentinel is dropped; if the sentinel is somehow absent, every
-/// non-empty line is kept rather than dropping the whole result.
+/// handling is unit-testable without spawning a shell.
+///
+/// The enumerate command always prints the sentinel first, so its **absence**
+/// means the subprocess never completed the enumerate (e.g. the profile aborted
+/// before `-Command` ran) — treated as a failed enumerate (`None`) so the
+/// caller falls back (e.g. to a `-NoProfile` enumerate) instead of parsing
+/// profile error text as bogus command names. When the sentinel is present, the
+/// **last** occurrence wins (any earlier one is profile stdout noise).
 fn parse_enumerate_output(stdout: &str) -> Option<Vec<String>> {
     let lines: Vec<&str> = stdout
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
-    // Use the LAST sentinel, not the first: the real marker is printed by
-    // `-Command` *after* the profile has finished loading, so any earlier
-    // sentinel-looking line is profile stdout noise and must be skipped past.
-    let start = lines
+    let sentinel_idx = lines.iter().rposition(|l| *l == ENUM_SENTINEL)?;
+    let names: Vec<String> = lines[sentinel_idx + 1..]
         .iter()
-        .rposition(|l| *l == ENUM_SENTINEL)
-        .map_or(0, |i| i + 1);
-    let names: Vec<String> = lines[start..].iter().map(|s| s.to_string()).collect();
+        .map(|s| s.to_string())
+        .collect();
 
     if names.is_empty() {
         None
@@ -700,11 +712,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_output_keeps_all_lines_when_sentinel_absent() {
-        // Defensive: a missing sentinel must not drop the whole command list.
+    fn parse_output_none_when_sentinel_absent() {
+        // The enumerate always prints the sentinel; its absence means the probe
+        // never completed, so return None (caller falls back) rather than
+        // parsing profile error text as bogus command names.
         let raw = ["git", "Get-ChildItem"].join("\n");
-        let got = parse_enumerate_output(&raw).expect("all lines kept");
-        assert_eq!(got, names(&["git", "Get-ChildItem"]));
+        assert!(parse_enumerate_output(&raw).is_none());
     }
 
     #[test]
@@ -855,34 +868,70 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn near_matches_none_for_a_real_builtin_alias() {
+    async fn near_matches_none_for_an_existing_cmdlet() {
         let Some(shell) = powershell_host() else {
             eprintln!("no PowerShell host installed; skipping");
             return;
         };
-        // `gci` is a built-in alias for Get-ChildItem. `which` can't see it
-        // (it's not a PATH file), so the in-process pre-gate passes — but the
-        // full enumerate gate must still recognize it and suppress injection.
-        let got = powershell_near_matches(&shell, "gci").await;
-        assert!(got.is_none(), "expected None for the real alias `gci`, got {got:?}");
+        // `Get-ChildItem` is a core cmdlet — always present regardless of the
+        // contributor's profile, and not a PATH file (so the in-process `which`
+        // pre-gate passes). The full enumerate gate must still recognize it and
+        // suppress near-match injection.
+        let got = powershell_near_matches(&shell, "Get-ChildItem").await;
+        assert!(got.is_none(), "expected None for the existing cmdlet, got {got:?}");
     }
 
     #[tokio::test]
-    async fn resolve_reports_a_real_builtin_alias() {
+    async fn resolve_reports_a_local_script_on_path() {
         let Some(shell) = powershell_host() else {
             eprintln!("no PowerShell host installed; skipping");
             return;
         };
-        // `gci` → Alias for Get-ChildItem. Profile-loaded resolve must report it
-        // as an Alias with a non-empty target (the #286 "what is X" answer).
-        let ResolveOutcome::Resolved(got) = powershell_resolve(&shell, "gci").await else {
-            panic!("gci should resolve");
+
+        // Self-made, deterministic fixture: drop a uniquely-named script into a
+        // fresh dir on PATH, so resolve doesn't depend on whatever aliases the
+        // contributor's profile happens to define (a built-in alias like `gci`
+        // can be removed/redefined). The resolve subprocess inherits this PATH
+        // and reports the file as an ExternalScript with its full path. The
+        // Alias `type`/`target` shape is covered separately by the pure
+        // `parse_resolve_output_*` tests.
+        let _guard = PATH_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("resolve_fixture_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp script dir");
+        std::fs::write(dir.join("resolve-fixture.ps1"), "Write-Host hi").expect("write script");
+
+        let original_path = std::env::var_os("PATH");
+        let mut prepended = std::ffi::OsString::from(&dir);
+        if let Some(existing) = &original_path {
+            prepended.push(";");
+            prepended.push(existing);
+        }
+        std::env::set_var("PATH", &prepended);
+
+        // External scripts need the extension for an exact `Get-Command -Name`.
+        let result = powershell_resolve(&shell, "resolve-fixture.ps1").await;
+
+        // Always restore PATH and remove the temp dir *before* asserting.
+        match original_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let ResolveOutcome::Resolved(got) = result else {
+            panic!("the local script should resolve, got {result:?}");
         };
+        let hit = got
+            .iter()
+            .find(|r| r.name.eq_ignore_ascii_case("resolve-fixture.ps1"))
+            .unwrap_or_else(|| panic!("expected a resolution for the fixture script, got {got:?}"));
         assert!(
-            got.iter().any(|r| r.command_type.eq_ignore_ascii_case("Alias")
-                && r.name.eq_ignore_ascii_case("gci")
-                && !r.target.is_empty()),
-            "expected gci as an Alias with a target, got {got:?}"
+            hit.command_type.eq_ignore_ascii_case("ExternalScript"),
+            "expected ExternalScript, got {hit:?}"
+        );
+        assert!(
+            hit.target.to_ascii_lowercase().ends_with("resolve-fixture.ps1"),
+            "target should be the script's path, got {hit:?}"
         );
     }
 

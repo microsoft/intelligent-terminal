@@ -140,12 +140,14 @@ mod tests {
         assert_eq!(v["status"], "unsupported", "got {v}");
     }
 
-    /// Windows-only end-to-end: a real built-in alias resolves to
+    /// Windows-only end-to-end: an always-present core cmdlet resolves to
     /// `status:"exists"` with its type, and a nonsense token resolves to
-    /// `status:"not_found"`. Skips (no-op) when no PowerShell host is installed.
+    /// `status:"not_found"`. Uses `Get-ChildItem` (a core cmdlet that a profile
+    /// can't remove) rather than a built-in alias like `gci`, so it doesn't
+    /// depend on the contributor's environment. Skips when no PowerShell host.
     #[cfg(windows)]
     #[tokio::test]
-    async fn resolves_existing_alias_and_flags_unknown() {
+    async fn resolves_existing_cmdlet_and_flags_unknown() {
         let host = ["pwsh.exe", "powershell.exe"]
             .into_iter()
             .find(|exe| which::which(exe).is_ok());
@@ -154,17 +156,17 @@ mod tests {
             return;
         };
 
-        // `gci` is a built-in alias for Get-ChildItem in every PowerShell host.
+        // `Get-ChildItem` is present in every PowerShell host, profile or not.
         let out = ResolveCommand
-            .call(&serde_json::json!({ "token": "gci", "shell": shell }))
+            .call(&serde_json::json!({ "token": "Get-ChildItem", "shell": shell }))
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["status"], "exists", "got {v}");
         let res = v["resolutions"].as_array().expect("resolutions array");
         assert!(
-            res.iter().any(|r| r["type"] == "Alias" && r["name"] == "gci"),
-            "expected gci as an Alias, got {v}"
+            res.iter().any(|r| r["type"] == "Cmdlet" && r["name"] == "Get-ChildItem"),
+            "expected Get-ChildItem as a Cmdlet, got {v}"
         );
 
         // A token that resolves to nothing → status:"not_found".
