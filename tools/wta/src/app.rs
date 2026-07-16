@@ -5927,14 +5927,10 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        tab.messages.push(ChatMessage::System(
-                            t!(
-                                "system.resuming_session",
-                                session_id = session_id
-                            )
-                            .into_owned(),
-                        ));
-                        tab.scroll_to_bottom();
+                        // Resume is intentionally silent — no "Resuming…"
+                        // marker — so a resumed pane presents exactly like a
+                        // normal connection. `loading_session` still opens the
+                        // replay window; any past content just streams in above.
                     }
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
@@ -11646,13 +11642,14 @@ mod tests {
         for turn in &tab.completed_turns {
             assert!(!turn.expanded, "replayed turns default collapsed");
         }
-        // The leading System("Resuming session ...") marker stays in
-        // messages — it's not anchored to a User so packing leaves it
-        // alone.
-        assert!(tab
-            .messages
-            .iter()
-            .all(|m| matches!(m, ChatMessage::System(_))));
+        // Resume is silent now — no "Resuming…" marker is posted, so after
+        // packing the replayed User/Agent rows into turns nothing is left in
+        // `messages`.
+        assert!(
+            tab.messages.is_empty(),
+            "resume must not leave any loose chat messages, got {:?}",
+            tab.messages
+        );
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────

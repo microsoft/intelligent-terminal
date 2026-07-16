@@ -1272,10 +1272,10 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
 }
 
 /// `dispatch_load_session` happy path: resuming a historical session binds it
-/// to the tab and emits `SessionAttached` followed by a `TabSystemMessage`
-/// confirmation note.
+/// to the tab and emits `SessionAttached`. Resume is silent — no
+/// confirmation note — so a resumed pane looks like a normal connection.
 #[tokio::test]
-async fn dispatch_load_session_binds_and_emits_attached_then_note() {
+async fn dispatch_load_session_binds_and_emits_attached() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -1308,16 +1308,6 @@ async fn dispatch_load_session_binds_and_emits_attached_then_note() {
                     assert_eq!(session_id, "hist-sess-7");
                 }
                 _ => panic!("expected SessionAttached"),
-            }
-            match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
-                Ok(Some(AppEvent::TabSystemMessage { tab_id, message })) => {
-                    assert_eq!(tab_id, "t1");
-                    assert!(
-                        message.contains("Session loaded"),
-                        "unexpected system message: {message}"
-                    );
-                }
-                _ => panic!("expected TabSystemMessage"),
             }
             assert_eq!(
                 tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
