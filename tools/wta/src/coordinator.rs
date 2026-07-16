@@ -448,8 +448,23 @@ async fn execute_choice(
                     Some(name) => format!("Opening {} for {}.", target_label, name),
                     None => format!("Opening {}.", target_label),
                 }));
+                // Pin a caller-chosen session id (Copilot/Claude/Gemini) so the
+                // launched CLI writes its session under a known id we can bind to
+                // the pane below — hook-independent tracking, like `?<prompt>`.
+                // `None` for Codex/unknown or the no-agent send-into-tab case.
+                let pinned_session_id = runtime.and_then(pinned_session_id_for_runtime);
+                coordinator_log(&format!(
+                    "open_and_send pin decision agent={:?} pinned_session_id={:?}",
+                    agent, pinned_session_id
+                ));
                 let commandline = runtime
-                    .map(|runtime| build_delegate_launch_commandline(runtime, Some(input), None))
+                    .map(|runtime| {
+                        build_delegate_launch_commandline(
+                            runtime,
+                            Some(input),
+                            pinned_session_id.as_deref(),
+                        )
+                    })
                     .transpose()?;
                 let pane_id = match target {
                     OpenTarget::Tab => {
@@ -499,6 +514,51 @@ async fn execute_choice(
                     "Opened {} pane {}.",
                     target_label, pane_id
                 )));
+                // Born-bound: when we pinned a session id, register the launched
+                // CLI session with master bound to the pane we just created, so
+                // the session view tracks it without hooks. Best-effort — the
+                // tab/panel still works if master is unreachable. Both Tab and
+                // Panel reach here (shared `pane_id`); only agent launches that
+                // advertise `--session-id` pinned an id, so Codex/unknown and the
+                // no-agent case skip this. WSL isn't a target here (the card runs
+                // the CLI as a Windows process), so the distro is `None`.
+                if let (Some(sid), Some(runtime)) = (pinned_session_id.as_deref(), runtime) {
+                    // `register_launched_session_with_master` drives a `!Send`
+                    // ACP transport (LocalSet + `spawn_local`) internally. This
+                    // executor future must stay `Send` (it's `tokio::spawn`ed),
+                    // so the non-`Send` work must not cross this await point.
+                    // Run it on a blocking thread with its own current-thread
+                    // runtime; awaiting the `Send` JoinHandle keeps us `Send`.
+                    // Best-effort: the tab/panel already opened regardless.
+                    let sid = sid.to_string();
+                    let cli_id = runtime.id.clone();
+                    let cwd_owned = cwd.clone();
+                    let pane_id_owned = pane_id.clone();
+                    coordinator_log(&format!(
+                        "open_and_send born-bound registering session_id={} pane={} cli={}",
+                        sid, pane_id_owned, cli_id
+                    ));
+                    let _ = tokio::task::spawn_blocking(move || {
+                        match tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                        {
+                            Ok(rt) => rt.block_on(crate::register_launched_session_with_master(
+                                &sid,
+                                &pane_id_owned,
+                                &cli_id,
+                                cwd_owned.as_deref(),
+                                None,
+                            )),
+                            Err(err) => tracing::warn!(
+                                target: "coordinator",
+                                error = %err,
+                                "born-bound registration runtime build failed",
+                            ),
+                        }
+                    })
+                    .await;
+                }
                 if matches!(delivery_mode, DelegatePromptDelivery::LaunchThenSend) {
                     send_input_to_new_pane(shell_mgr, &pane_id, input, event_tx).await?;
                 } else {
@@ -678,6 +738,24 @@ fn lookup_delegate_agent<'a>(
         .find(|agent| agent.id == id)
         .or_else(|| delegate_agents.first())
         .ok_or_else(|| anyhow!("no delegate agent configured"))
+}
+
+/// Generate a caller-pinned session id for a delegate runtime, but only when the
+/// resolved agent advertises `new_session_id_flag` (`--session-id`, i.e.
+/// Copilot/Claude/Gemini). Returns `None` for agents that can't pin an id
+/// (Codex/unknown) so those launches keep the CLI-generated id and skip the
+/// born-bound registration — mirroring the decision the `?<prompt>` delegate
+/// path makes in `main.rs`.
+///
+/// Resolving the profile from `runtime.commandline` (not a naive whitespace
+/// split) keeps this decision in agreement with the flag `build_delegate_launch_commandline`
+/// actually appends, so the pinned id and the launch flag never disagree.
+fn pinned_session_id_for_runtime(runtime: &DelegateAgentRuntime) -> Option<String> {
+    agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
+        &runtime.commandline,
+    ))
+    .new_session_id_flag
+    .map(|_| uuid::Uuid::new_v4().to_string())
 }
 
 /// Build the delegate launch command line, optionally pinning a session id.
@@ -1588,7 +1666,8 @@ mod tests {
         build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
         default_delegate_agent_runtimes, escape_for_intermediate_shell,
         is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
-        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
+        pinned_session_id_for_runtime, pwsh_available, resolve_agent_profile,
+        resolve_created_pane_id, sanitize_windows_agent_cwd,
         validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
         DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
@@ -1845,6 +1924,56 @@ mod tests {
             build_delegate_launch_commandline_with_session(&runtime, Some("hi"), None).unwrap();
 
         assert!(!commandline.contains("--session-id"));
+    }
+
+    #[test]
+    fn pinned_session_id_for_runtime_some_for_copilot() {
+        // Copilot advertises --session-id, so the OpenAndSend card pins a fresh
+        // id (which we then born-bound register).
+        let runtime = DelegateAgentRuntime {
+            id: "copilot".to_string(),
+            name: "Copilot".to_string(),
+            description: String::new(),
+            commandline: "copilot".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        let sid = pinned_session_id_for_runtime(&runtime);
+        assert!(sid.is_some(), "copilot should pin a session id");
+        assert!(!sid.unwrap().is_empty());
+    }
+
+    #[test]
+    fn pinned_session_id_for_runtime_none_for_codex() {
+        // Codex has no --session-id flag; we must not pin (and thus must not
+        // born-bound register a phantom id the CLI never wrote its session under).
+        let runtime = DelegateAgentRuntime {
+            id: "codex".to_string(),
+            name: "Codex".to_string(),
+            description: String::new(),
+            commandline: "codex".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        assert!(pinned_session_id_for_runtime(&runtime).is_none());
+    }
+
+    #[test]
+    fn pinned_session_id_for_runtime_resolves_adapter_launch() {
+        // An adapter-style claude launch must still resolve to the claude
+        // profile (which advertises --session-id), not DEFAULT_PROFILE.
+        let runtime = DelegateAgentRuntime {
+            id: "claude".to_string(),
+            name: "Claude".to_string(),
+            description: String::new(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        assert!(pinned_session_id_for_runtime(&runtime).is_some());
     }
 
     #[test]

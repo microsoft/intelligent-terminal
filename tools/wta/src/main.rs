@@ -1557,7 +1557,11 @@ async fn fetch_sessions_from_master(
 /// installed). Best-effort: if master is unreachable there is no registry to
 /// populate, so the registration is dropped (logged at `warn`) and the tab
 /// still opens normally.
-async fn register_launched_session_with_master(
+///
+/// `pub(crate)` so the recommendation executor (`coordinator.rs`) can reuse the
+/// exact same born-bound registration when an `OpenAndSend` card launches an
+/// agent CLI in a new tab/panel — mirroring the `?<prompt>` delegate path.
+pub(crate) async fn register_launched_session_with_master(
     session_id: &str,
     pane_session_id: &str,
     cli_id: &str,
