@@ -23,7 +23,14 @@ export function parseCsv(text) {
         field += c;
       }
     } else {
-      if (c === '"') inQuotes = true;
+      if (c === '"') {
+        // A quote may only OPEN a field at its start. A quote mid-field (when
+        // content is already accumulated) is malformed per RFC-4180 and would
+        // otherwise silently swallow following commas/newlines as field text.
+        if (field === '') inQuotes = true;
+        else throw new Error('Malformed CSV: unexpected quote in the middle of an ' +
+                             'unquoted field. The source export is corrupt.');
+      }
       else if (c === ',') { record.push(field); field = ''; }
       else if (c === '\r') { /* swallow, handled by \n */ }
       else if (c === '\n') { record.push(field); records.push(record); record = []; field = ''; }
