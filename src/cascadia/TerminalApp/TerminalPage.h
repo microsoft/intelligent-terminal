@@ -687,6 +687,7 @@ namespace winrt::TerminalApp::implementation
         void _PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl);
         void _WriteShellSessionsIndexEntry(const winrt::hstring& name, const winrt::hstring& cwd, const winrt::hstring& agentPaneSessionId);
         safe_void_coroutine _RestoreShellSessionCoro(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions, std::string agentSessionId, std::string agentCwd);
+        void _PersistWorkspaceBuffers();
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
