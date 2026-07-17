@@ -53,15 +53,21 @@ Describe 'Feature §5 delegate agent engine (wta delegate)' -Tag 'Feature' -Skip
     }
 
     It 'Delegate provider is correct (a Copilot delegate tab launches)' {
-        $d = & $script:RunDelegate -Prompt 'What is 2 plus 2? Reply with only the number.' -DelegateAgent 'copilot' -Cwd $script:repo
+        $providerToken = "ITE2E_PROVIDER_$(Get-Random)"
+        $d = & $script:RunDelegate -Prompt "Reply with only OK. Tracking token: $providerToken" -DelegateAgent 'copilot' -Cwd $script:repo
         $d.Tab | Should -Not -BeNullOrEmpty
-        # The configured delegate agent (copilot) is what launches: the tab is titled for Copilot
-        # and/or the pane renders the Copilot CLI UI. Match either signal, locale-tolerantly.
-        $sid = $d.Panes[0].session_id
-        $paneText = Test-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
-            (Get-WtCapture -App $script:app -SessionId $sid -MaxLines 40) -match '(?i)copilot'
+        # WT does not assign a provider-specific tab title, and the CLI is not required to render
+        # branding in its buffer. Verify the launched process instead: the unique prompt token
+        # scopes this to this delegate, while "copilot" proves which configured provider received it.
+        $providerLaunched = Test-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
+            @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        $_.Name -notlike 'wta*.exe' -and
+                        $_.CommandLine -match '(?i)copilot' -and
+                        $_.CommandLine -match ([regex]::Escape($providerToken))
+                    }).Count -gt 0
         }
-        ("$($d.Tab.title)" -match '(?i)copilot') -or $paneText | Should -BeTrue -Because 'the configured delegate agent (Copilot) must be the one launched'
+        $providerLaunched | Should -BeTrue -Because 'the configured Copilot delegate process must receive this launch prompt'
     }
 
     It 'Delegate with Copilot works (a delegate task starts and answers)' {

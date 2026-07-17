@@ -39,8 +39,6 @@ pub struct PastedImage {
 const CF_DIB: u32 = 8;
 #[cfg(windows)]
 const CF_DIBV5: u32 = 17;
-#[cfg(windows)]
-const CF_HDROP: u32 = 15;
 
 // BITMAPINFOHEADER biCompression values (wingdi.h).
 const BI_BITFIELDS: u32 = 3;
@@ -171,7 +169,7 @@ unsafe fn read_clipboard_image_win() -> Option<PastedImage> {
     let _guard = ClipboardGuard::open()?;
 
     // 1. A copied image *file* (CF_HDROP).
-    if let Some(path) = clipboard_file_path() {
+    if let Some(path) = crate::win32::clipboard_file_path_from_open_clipboard() {
         if let Some(img) = image_from_path(&path) {
             return Some(img);
         }
@@ -271,32 +269,7 @@ unsafe fn clipboard_bytes(format: u32) -> Option<Vec<u8>> {
     }
 }
 
-/// First file path from a `CF_HDROP` clipboard payload, if any.
-#[cfg(windows)]
-unsafe fn clipboard_file_path() -> Option<std::path::PathBuf> {
-    use std::os::windows::ffi::OsStringExt;
-    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
-    use windows_sys::Win32::UI::Shell::DragQueryFileW;
 
-    if IsClipboardFormatAvailable(CF_HDROP) == 0 {
-        return None;
-    }
-    let handle = GetClipboardData(CF_HDROP);
-    if handle.is_null() {
-        return None;
-    }
-    let needed = DragQueryFileW(handle as _, 0, std::ptr::null_mut(), 0);
-    if needed == 0 {
-        return None;
-    }
-    let mut buf = vec![0u16; needed as usize + 1];
-    let got = DragQueryFileW(handle as _, 0, buf.as_mut_ptr(), buf.len() as u32);
-    if got == 0 {
-        return None;
-    }
-    buf.truncate(got as usize);
-    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf)))
-}
 
 #[cfg(windows)]
 unsafe fn register_format(name: &str) -> u32 {

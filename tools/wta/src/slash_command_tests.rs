@@ -254,6 +254,25 @@ fn slash_model_bare_opens_picker_when_models_present() {
 }
 
 #[test]
+fn agent_and_model_pickers_are_mutually_exclusive() {
+    let mut app = test_app();
+    app.available_models =
+        vec![AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None }];
+
+    app.open_model_picker();
+    assert!(app.current_tab().model_picker_open);
+    assert!(!app.current_tab().agent_picker_open);
+
+    app.open_agent_picker(0);
+    assert!(app.current_tab().agent_picker_open);
+    assert!(!app.current_tab().model_picker_open);
+
+    app.open_model_picker();
+    assert!(app.current_tab().model_picker_open);
+    assert!(!app.current_tab().agent_picker_open);
+}
+
+#[test]
 fn slash_model_direct_switch_sets_override() {
     let mut app = test_app();
     app.available_models = vec![
@@ -272,6 +291,23 @@ fn slash_model_direct_switch_sets_override() {
         !app.current_tab().model_picker_open,
         "a direct /model <id> switch must not leave the picker open"
     );
+}
+
+#[test]
+fn explicit_empty_agent_allowlist_is_fail_closed() {
+    let mut app = test_app();
+    app.set_allowed_agent_ids(vec![String::new()]);
+    assert!(app.available_agents.is_empty());
+}
+
+#[test]
+fn switch_agent_event_is_scoped_to_window_and_tab() {
+    let payload = build_switch_agent_event("42", "{tab-guid}", "claude");
+    let event: serde_json::Value = serde_json::from_str(&payload).expect("valid event json");
+    assert_eq!(event["method"], "switch_agent");
+    assert_eq!(event["params"]["window_id"], "42");
+    assert_eq!(event["params"]["tab_id"], "{tab-guid}");
+    assert_eq!(event["params"]["agent_id"], "claude");
 }
 
 // ---- Degraded (transport-lost) gating: only /restart runs ----

@@ -37,6 +37,27 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
     pub pane_session_id: Option<String>,
+    /// Legacy/advisory full command line. **The master no longer spawns
+    /// this** — it is a security hazard to execute an arbitrary string
+    /// arriving over the pipe (any same-user process could connect and
+    /// drive process creation). The master selects the agent from
+    /// `agent_id` and reconstructs the command itself. Kept on the wire
+    /// only for diagnostics / back-compat; helpers no longer set it.
+    pub agent_cmd: Option<String>,
+    /// Canonical agent id (`copilot` / `claude` / `gemini` / …) the
+    /// helper's tab wants. **This is the authoritative selector**: the
+    /// master reconstructs the agent command internally from this id
+    /// (`agent_registry::build_acp_command`) and never executes a string
+    /// supplied over the pipe. Also stamps the per-session `cli_source`
+    /// so the F2 view labels each row with its real CLI. `None` on older
+    /// helpers — master then falls back to its own `--agent` default.
+    pub agent_id: Option<String>,
+    /// Model override the tab wants (e.g. `gpt-5`). Folded into the
+    /// reconstructed command by `build_acp_command` for agents that
+    /// take a `--model` flag (adapter agents ignore it and receive the
+    /// model later via `setSessionModel`). Carried as its own field
+    /// because the master no longer trusts `agent_cmd` to carry it.
+    pub model: Option<String>,
     /// The WT tab StableId (`--owner-tab-id`) of the agent pane that
     /// owns this session. Carried so master can address per-tab events
     /// (notably `restart_agent_pane` on helper crash recovery) by the
@@ -46,8 +67,23 @@ pub struct WtaMeta {
 }
 
 impl WtaMeta {
+    /// `true` when no field carries a meaningful value. A field counts as
+    /// empty when it is `None` **or** holds a whitespace-only string — the
+    /// same trim-based notion of emptiness that `extract_wta_meta` /
+    /// `inject_wta_meta` use when dropping fields on the wire. Without the
+    /// trim check a `Some("   ")` would make `is_empty()` return `false`
+    /// while `inject_wta_meta` still serialized nothing, leaving the two
+    /// views of "empty" inconsistent (and `inject_wta_meta`'s early-out
+    /// keyed off a value the wire never reflects).
     pub fn is_empty(&self) -> bool {
-        self.pane_session_id.is_none() && self.owner_tab_id.is_none()
+        fn blank(field: &Option<String>) -> bool {
+            field.as_deref().map_or(true, |s| s.trim().is_empty())
+        }
+        blank(&self.pane_session_id)
+            && blank(&self.agent_cmd)
+            && blank(&self.agent_id)
+            && blank(&self.model)
+            && blank(&self.owner_tab_id)
     }
 }
 
@@ -63,7 +99,7 @@ impl WtaMeta {
 /// records the binding in `SessionRegistry`, and forwards the
 /// request to the agent CLI with `_meta.wta` removed so third-party
 /// agents never see our private namespace.
-pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
+pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
     let Some(map) = meta.as_mut() else {
         return WtaMeta::default();
     };
@@ -74,16 +110,24 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
     let Some(serde_json::Value::Object(obj)) = wta_val else {
         return WtaMeta::default();
     };
+    // Treat empty / whitespace-only values as absent (`None`) rather than
+    // `Some("")`: an empty string on the wire would otherwise make
+    // `WtaMeta::is_empty()` return false and keep `_meta.wta` alive for a
+    // semantically-empty field. Mirrors the helper's injection-side filter
+    // (`.filter(|s| !s.trim().is_empty())`) so values round-trip the same
+    // way in both directions.
+    let str_field = |key: &str| {
+        obj.get(key)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .map(String::from)
+    };
     WtaMeta {
-        pane_session_id: obj
-            .get("pane_session_id")
-            .and_then(|v| v.as_str())
-            .map(String::from),
-        owner_tab_id: obj
-            .get("owner_tab_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(String::from),
+        pane_session_id: str_field("pane_session_id"),
+        agent_cmd: str_field("agent_cmd"),
+        agent_id: str_field("agent_id"),
+        model: str_field("model"),
+        owner_tab_id: str_field("owner_tab_id"),
     }
 }
 
@@ -96,24 +140,35 @@ pub fn extract_wta_meta(meta: &mut Option<acp::Meta>) -> WtaMeta {
 /// requests carrying `pane_session_id`) and master (when answering
 /// `session/list` with rows whose `pane_session_id` came from the
 /// registry).
-pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
+pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) {
     if wta.is_empty() {
         return;
     }
-    let map = meta.get_or_insert_with(serde_json::Map::new);
+    // Mirror `extract_wta_meta`'s filter: only serialize fields whose value
+    // is non-empty after trimming. A whitespace-only `Some(" ")` (which any
+    // caller could construct) would otherwise be written as a real field —
+    // reintroducing the "semantically empty but present `_meta.wta`" problem
+    // that `extract_wta_meta` exists to avoid, and flipping
+    // `WtaMeta::is_empty()` off on the wire. Values then round-trip the same
+    // way in both directions.
     let mut wta_obj = serde_json::Map::new();
-    if let Some(pid) = &wta.pane_session_id {
-        wta_obj.insert(
-            "pane_session_id".to_string(),
-            serde_json::Value::String(pid.clone()),
-        );
+    let mut put = |key: &str, val: &Option<String>| {
+        if let Some(s) = val.as_ref().filter(|s| !s.trim().is_empty()) {
+            wta_obj.insert(key.to_string(), serde_json::Value::String(s.clone()));
+        }
+    };
+    put("pane_session_id", &wta.pane_session_id);
+    put("agent_cmd", &wta.agent_cmd);
+    put("agent_id", &wta.agent_id);
+    put("model", &wta.model);
+    put("owner_tab_id", &wta.owner_tab_id);
+    // Every field was absent/whitespace-only after filtering — nothing
+    // meaningful to attach, so don't litter the wire with an empty
+    // `_meta.wta` object (a strict downstream implementer might reject it).
+    if wta_obj.is_empty() {
+        return;
     }
-    if let Some(tab) = &wta.owner_tab_id {
-        wta_obj.insert(
-            "owner_tab_id".to_string(),
-            serde_json::Value::String(tab.clone()),
-        );
-    }
+    let map = meta.get_or_insert_with(serde_json::Map::new);
     map.insert(
         WTA_META_NAMESPACE.to_string(),
         serde_json::Value::Object(wta_obj),
@@ -127,8 +182,8 @@ pub fn inject_wta_meta(meta: &mut Option<acp::Meta>, wta: &WtaMeta) {
 /// Kept in this module (rather than in `master/mod.rs`) so the
 /// `_meta.wta` shape lives in exactly one place — symmetric with
 /// [`extract_wta_meta`] / [`inject_wta_meta`].
-pub fn to_acp_session_info(info: &SessionInfo) -> acp::SessionInfo {
-    let mut out = acp::SessionInfo::new(info.session_id.clone(), info.cwd.clone());
+pub fn to_acp_session_info(info: &SessionInfo) -> acp::schema::v1::SessionInfo {
+    let mut out = acp::schema::v1::SessionInfo::new(info.session_id.clone(), info.cwd.clone());
     out.title = info.title.clone();
     out.updated_at = info.updated_at.clone();
     inject_wta_meta(
@@ -152,26 +207,26 @@ pub fn to_acp_session_info(info: &SessionInfo) -> acp::SessionInfo {
 // — we pass the bare method here).
 //
 // The param payload is `to_acp_session_info(info)` serialized — the
-// helper just deserializes it back into an `acp::SessionInfo`, lifts
+// helper just deserializes it back into an `acp::schema::v1::SessionInfo`, lifts
 // the `_meta.wta.pane_session_id` out via `extract_wta_meta`, and
-// upserts into its mirror. Using `acp::SessionInfo` (not our own
+// upserts into its mirror. Using `acp::schema::v1::SessionInfo` (not our own
 // `SessionInfo`) gives the helper a free `cwd`/`title`/`updated_at`
 // schema in exchange for the round-trip through wire types.
 
 /// ExtNotification method for "a new session was just bound to a
 /// helper inside this master".
-pub const INTELLTERM_METHOD_SESSION_ADDED: &str = "intellterm.wta/session_added";
+pub const INTELLTERM_METHOD_SESSION_ADDED: &str = "_intellterm.wta/session_added";
 
 /// ExtNotification method for "a session previously announced via
 /// `session_added` is gone" (helper disconnect, load_session rollback,
 /// future explicit close).
-pub const INTELLTERM_METHOD_SESSION_REMOVED: &str = "intellterm.wta/session_removed";
+pub const INTELLTERM_METHOD_SESSION_REMOVED: &str = "_intellterm.wta/session_removed";
 
 /// ExtNotification method for "master's session registry changed; refetch if interested".
-pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "intellterm.wta/sessions/changed";
+pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/changed";
 
 /// ExtRequest method for fetching the master's full session registry snapshot.
-pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "intellterm.wta/sessions/list";
+pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
 
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
@@ -179,7 +234,7 @@ pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "intellterm.wta/sessions/list"
 /// retrieve cwd / pane_session_id before dropping it.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionRemovedParams {
-    pub session_id: acp::SessionId,
+    pub session_id: acp::schema::v1::SessionId,
 }
 
 
@@ -204,19 +259,19 @@ pub struct SessionsListResponse {
 
 /// Build a `session_added` ExtNotification from a registry row.
 ///
-/// Panics only if the serializer fails on `acp::SessionInfo`, which
+/// Panics only if the serializer fails on `acp::schema::v1::SessionInfo`, which
 /// would itself be a bug in the schema crate.
-pub fn build_session_added_notification(info: &SessionInfo) -> acp::ExtNotification {
+pub fn build_session_added_notification(info: &SessionInfo) -> acp::schema::v1::ExtNotification {
     let wire = to_acp_session_info(info);
     let json = serde_json::to_string(&wire)
-        .expect("acp::SessionInfo serialization is infallible for owned data");
+        .expect("acp::schema::v1::SessionInfo serialization is infallible for owned data");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtNotification::new(INTELLTERM_METHOD_SESSION_ADDED, Arc::from(raw))
+    acp::schema::v1::ExtNotification::new(INTELLTERM_METHOD_SESSION_ADDED, Arc::from(raw))
 }
 
 /// Build a `session_removed` ExtNotification.
-pub fn build_session_removed_notification(sid: &acp::SessionId) -> acp::ExtNotification {
+pub fn build_session_removed_notification(sid: &acp::schema::v1::SessionId) -> acp::schema::v1::ExtNotification {
     let params = SessionRemovedParams {
         session_id: sid.clone(),
     };
@@ -224,26 +279,26 @@ pub fn build_session_removed_notification(sid: &acp::SessionId) -> acp::ExtNotif
         serde_json::to_string(&params).expect("SessionRemovedParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtNotification::new(INTELLTERM_METHOD_SESSION_REMOVED, Arc::from(raw))
+    acp::schema::v1::ExtNotification::new(INTELLTERM_METHOD_SESSION_REMOVED, Arc::from(raw))
 }
 
 /// Build a `sessions/changed` ExtNotification with an intentionally empty payload.
-pub fn build_sessions_changed_notification() -> acp::ExtNotification {
+pub fn build_sessions_changed_notification() -> acp::schema::v1::ExtNotification {
     let json = serde_json::to_string(&SessionsChangedParams::default())
         .expect("SessionsChangedParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
+    acp::schema::v1::ExtNotification::new(INTELLTERM_METHOD_SESSIONS_CHANGED, Arc::from(raw))
 }
 
 /// Build an `ExtRequest` for `intellterm.wta/sessions/list`. `rescan` asks
 /// master to re-load the on-disk historical session logs before answering.
-pub fn build_sessions_list_request(rescan: bool) -> acp::ExtRequest {
+pub fn build_sessions_list_request(rescan: bool) -> acp::schema::v1::ExtRequest {
     let json = serde_json::to_string(&SessionsListParams { rescan })
         .expect("SessionsListParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSIONS_LIST, Arc::from(raw))
 }
 
 pub fn parse_sessions_list_params(
@@ -275,7 +330,7 @@ pub fn parse_sessions_list_response(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WtaExtNotification {
     SessionAdded(SessionInfo),
-    SessionRemoved(acp::SessionId),
+    SessionRemoved(acp::schema::v1::SessionId),
     SessionsChanged,
     /// Not one of ours. Caller should silently ignore.
     Unknown,
@@ -291,11 +346,16 @@ pub enum WtaExtNotification {
 
 /// Identify whether an `ExtNotification` is one of ours and, if so,
 /// extract the typed payload.
-pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
+pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNotification {
     let method: &str = &n.method;
     let raw: &serde_json::value::RawValue = &n.params;
-    match method {
-        INTELLTERM_METHOD_SESSION_ADDED => match serde_json::from_str::<acp::SessionInfo>(raw.get()) {
+    // ACP 1.0 strips the leading `_` from extension method names on receive,
+    // so compare through `ext_method_matches` rather than matching the
+    // `_`-prefixed constants literally — otherwise every over-the-wire
+    // notification would fall through to `Unknown` and the alive-mirror would
+    // never update.
+    if ext_method_matches(method, INTELLTERM_METHOD_SESSION_ADDED) {
+        match serde_json::from_str::<acp::schema::v1::SessionInfo>(raw.get()) {
             Ok(mut wire) => {
                 let wta = extract_wta_meta(&mut wire.meta);
                 let mut info = SessionInfo::new(wire.session_id, wire.cwd);
@@ -309,36 +369,130 @@ pub fn parse_ext_notification(n: &acp::ExtNotification) -> WtaExtNotification {
                 error: err.to_string(),
             },
         }
-        INTELLTERM_METHOD_SESSION_REMOVED => {
-            match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
-                Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
-                Err(err) => WtaExtNotification::MalformedParams {
-                    method: method.to_string(),
+    } else if ext_method_matches(method, INTELLTERM_METHOD_SESSION_REMOVED) {
+        match serde_json::from_str::<SessionRemovedParams>(raw.get()) {
+            Ok(p) => WtaExtNotification::SessionRemoved(p.session_id),
+            Err(err) => WtaExtNotification::MalformedParams {
+                method: method.to_string(),
+                error: err.to_string(),
+            },
+        }
+    } else if ext_method_matches(method, INTELLTERM_METHOD_SESSIONS_CHANGED) {
+        match serde_json::from_str::<SessionsChangedParams>(raw.get()) {
+            Ok(_) => WtaExtNotification::SessionsChanged,
+            Err(err) => WtaExtNotification::MalformedParams {
+                method: method.to_string(),
+                error: err.to_string(),
+            },
+        }
+    } else {
+        WtaExtNotification::Unknown
+    }
+}
+
+/// Compare an inbound extension method name against one of our `_`-prefixed
+/// `INTELLTERM_METHOD_*` constants.
+///
+/// ACP 1.0's receive path (`agent-client-protocol` schema `parse_message`)
+/// strips the single leading `_` from unrecognized method names before it
+/// hands us the `ExtRequest` / `ExtNotification`, while the send side and our
+/// constants keep it. Match both forms so a value works whether it arrived
+/// over the wire (stripped) or was constructed locally — e.g. in a unit test
+/// via a `build_*` helper (still `_`-prefixed).
+#[inline]
+#[must_use]
+fn ext_method_matches(inbound: &str, const_with_underscore: &str) -> bool {
+    inbound == const_with_underscore
+        || Some(inbound) == const_with_underscore.strip_prefix('_')
+}
+
+/// A typed, inbound helper→master `ExtRequest` that the master answers
+/// locally, or a passthrough for anything else. Request-side analogue of
+/// [`WtaExtNotification`]: [`parse_ext_request`] collapses the six method-name
+/// comparisons, the ACP-1.0 leading-`_` normalization, and per-method param
+/// decoding into one place, so `MasterAgent::ext_method` can `match` on a type
+/// (with typed params already in hand) instead of chaining `if method == …`
+/// string compares — which silently fell through to the agent CLI once ACP 1.0
+/// began stripping the `_`.
+#[derive(Debug)]
+pub enum WtaExtRequest {
+    /// `_intellterm.wta/focus_session` — focus the WT pane hosting a session.
+    FocusSession(FocusSessionParams),
+    /// `_intellterm.wta/sessions/list` — full registry snapshot.
+    SessionsList(SessionsListParams),
+    /// `_intellterm.wta/session_hook` — a real per-session hook event.
+    SessionHook(crate::agent_sessions::SessionEvent),
+    /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
+    /// (same body as `SessionHook` plus an optional `wsl_distro` → binding-only
+    /// semantics). The second field is the WSL distro when the born-bound
+    /// session runs inside a distro (delegate `?<prompt>` from a WSL pane), so
+    /// the master can stamp the row `Wsl { distro }` for the `[WSL-…]` prefix.
+    SessionBornBound(crate::agent_sessions::SessionEvent, Option<String>),
+    /// `_intellterm.wta/session_resume_dispatched` — optimistic resume flip.
+    SessionResumeDispatched(SessionResumeDispatchedParams),
+    /// `_intellterm.wta/session_focus` — focus + typed focus result.
+    SessionFocus(SessionFocusParams),
+    /// Not one of ours (or a future agent-native extension); forward it
+    /// verbatim to the agent CLI so unknown extension methods still work.
+    ForwardToAgent(acp::schema::v1::ExtRequest),
+    /// Method matched one of ours but the params failed to decode. The master
+    /// answers `invalid_params` rather than acting on a half-parsed payload.
+    Malformed { method: String, error: String },
+}
+
+/// Classify and decode an inbound helper→master `ExtRequest`.
+///
+/// Normalizes the ACP-1.0 leading-`_` strip in exactly one place (via
+/// `ext_method_matches`) and decodes the params for recognized methods, so
+/// every caller downstream matches exhaustively on [`WtaExtRequest`]. None of
+/// the six method names is a prefix of another, so equality-after-strip cannot
+/// collide. Consumes `req` so an unrecognized method can be forwarded verbatim.
+#[must_use]
+pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
+    // Decode `req.params` with `$parser` into the `$variant` payload, mapping a
+    // decode failure to `Malformed` (never a silent forward-to-agent).
+    macro_rules! decode {
+        ($variant:ident, $parser:path) => {
+            match $parser(&req.params) {
+                Ok(v) => WtaExtRequest::$variant(v),
+                Err(err) => WtaExtRequest::Malformed {
+                    method: req.method.to_string(),
                     error: err.to_string(),
                 },
             }
+        };
+    }
+    if ext_method_matches(&req.method, INTELLTERM_METHOD_FOCUS_SESSION) {
+        decode!(FocusSession, parse_focus_session_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
+        decode!(SessionsList, parse_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
+        decode!(SessionHook, parse_session_hook_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
+        match parse_born_bound_params(&req.params) {
+            Ok((ev, wsl_distro)) => WtaExtRequest::SessionBornBound(ev, wsl_distro),
+            Err(err) => WtaExtRequest::Malformed {
+                method: req.method.to_string(),
+                error: err.to_string(),
+            },
         }
-        INTELLTERM_METHOD_SESSIONS_CHANGED => {
-            match serde_json::from_str::<SessionsChangedParams>(raw.get()) {
-                Ok(_) => WtaExtNotification::SessionsChanged,
-                Err(err) => WtaExtNotification::MalformedParams {
-                    method: method.to_string(),
-                    error: err.to_string(),
-                },
-            }
-        }
-        _ => WtaExtNotification::Unknown,
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED) {
+        decode!(SessionResumeDispatched, parse_session_resume_dispatched_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_FOCUS) {
+        decode!(SessionFocus, parse_session_focus_params)
+    } else {
+        WtaExtRequest::ForwardToAgent(req)
     }
 }
 
 // ─── intellterm.wta/session_resume_dispatched ────────────────────────────────
 
 pub const INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED: &str =
-    "intellterm.wta/session_resume_dispatched";
+    "_intellterm.wta/session_resume_dispatched";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionResumeDispatchedParams {
-    pub sid: acp::SessionId,
+    pub sid: acp::schema::v1::SessionId,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -347,13 +501,13 @@ pub struct SessionResumeDispatchedResponse {
     pub current_status: String,
 }
 
-pub fn build_session_resume_dispatched_request(sid: &acp::SessionId) -> acp::ExtRequest {
+pub fn build_session_resume_dispatched_request(sid: &acp::schema::v1::SessionId) -> acp::schema::v1::ExtRequest {
     let params = SessionResumeDispatchedParams { sid: sid.clone() };
     let json = serde_json::to_string(&params)
         .expect("SessionResumeDispatchedParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED, Arc::from(raw))
 }
 
 pub fn parse_session_resume_dispatched_params(
@@ -370,11 +524,11 @@ pub fn parse_session_resume_dispatched_response(
 
 // ─── intellterm.wta/session_focus ────────────────────────────────────────────
 
-pub const INTELLTERM_METHOD_SESSION_FOCUS: &str = "intellterm.wta/session_focus";
+pub const INTELLTERM_METHOD_SESSION_FOCUS: &str = "_intellterm.wta/session_focus";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionFocusParams {
-    pub sid: acp::SessionId,
+    pub sid: acp::schema::v1::SessionId,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -388,13 +542,13 @@ pub struct SessionFocusResponse {
     pub detail: Option<String>,
 }
 
-pub fn build_session_focus_request(sid: &acp::SessionId) -> acp::ExtRequest {
+pub fn build_session_focus_request(sid: &acp::schema::v1::SessionId) -> acp::schema::v1::ExtRequest {
     let params = SessionFocusParams { sid: sid.clone() };
     let json =
         serde_json::to_string(&params).expect("SessionFocusParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_FOCUS, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_FOCUS, Arc::from(raw))
 }
 
 pub fn parse_session_focus_params(
@@ -420,16 +574,16 @@ pub fn parse_session_focus_response(
 /// focus operations directly — all focus traffic funnels through
 /// master so a single in-memory map (the master's registry) is the
 /// authority on "which pane owns which sid".
-pub const INTELLTERM_METHOD_FOCUS_SESSION: &str = "intellterm.wta/focus_session";
+pub const INTELLTERM_METHOD_FOCUS_SESSION: &str = "_intellterm.wta/focus_session";
 
 /// Wire payload for [`INTELLTERM_METHOD_FOCUS_SESSION`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct FocusSessionParams {
-    pub session_id: acp::SessionId,
+    pub session_id: acp::schema::v1::SessionId,
 }
 
 /// Build an `ExtRequest` for focus_session. Helper side.
-pub fn build_focus_session_request(sid: &acp::SessionId) -> acp::ExtRequest {
+pub fn build_focus_session_request(sid: &acp::schema::v1::SessionId) -> acp::schema::v1::ExtRequest {
     let params = FocusSessionParams {
         session_id: sid.clone(),
     };
@@ -437,7 +591,7 @@ pub fn build_focus_session_request(sid: &acp::SessionId) -> acp::ExtRequest {
         serde_json::to_string(&params).expect("FocusSessionParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtRequest::new(INTELLTERM_METHOD_FOCUS_SESSION, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_FOCUS_SESSION, Arc::from(raw))
 }
 
 /// Parse `FocusSessionParams` from an inbound `ExtRequest.params`. Master side.
@@ -450,7 +604,7 @@ pub fn parse_focus_session_params(
 // ─── intellterm.wta/session_hook ─────────────────────────────────────────────
 
 /// ExtRequest method for "helper observed a SessionEvent; master should apply it".
-pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "intellterm.wta/session_hook";
+pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "_intellterm.wta/session_hook";
 
 /// ExtRequest method for a #266 *born-bound* registration — a WTA-launched CLI
 /// session (delegate `?<prompt>` / resume) that IT bound to its pane at launch.
@@ -458,7 +612,7 @@ pub const INTELLTERM_METHOD_SESSION_HOOK: &str = "intellterm.wta/session_hook";
 /// *binding-only* (`born_bound`) rather than hook-owned: with no real hook
 /// installed the file watcher may still supply activity/status for it (never
 /// re-binding). A later real `session_hook` event moves it to hook-owned.
-pub const INTELLTERM_METHOD_SESSION_BORN_BOUND: &str = "intellterm.wta/session_born_bound";
+pub const INTELLTERM_METHOD_SESSION_BORN_BOUND: &str = "_intellterm.wta/session_born_bound";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
@@ -646,24 +800,54 @@ pub struct SessionHookResponse {
 }
 
 /// Build a fire-and-forget helper → master `session_hook` ExtRequest.
-pub fn build_session_hook_request(event: &crate::agent_sessions::SessionEvent) -> acp::ExtRequest {
+pub fn build_session_hook_request(event: &crate::agent_sessions::SessionEvent) -> acp::schema::v1::ExtRequest {
     let params = SessionHookParams::from(event);
     let json = serde_json::to_string(&params).expect("SessionHookParams serialization is infallible");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_HOOK, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_HOOK, Arc::from(raw))
 }
 
 /// Build a #266 *born-bound* registration ExtRequest. Identical body to
 /// [`build_session_hook_request`] but a distinct method
 /// ([`INTELLTERM_METHOD_SESSION_BORN_BOUND`]) so the master treats it as
 /// binding-only (watcher may still supply status), not hook-owned.
-pub fn build_born_bound_request(event: &crate::agent_sessions::SessionEvent) -> acp::ExtRequest {
+pub fn build_born_bound_request(event: &crate::agent_sessions::SessionEvent) -> acp::schema::v1::ExtRequest {
+    build_born_bound_request_inner(event, None)
+}
+
+/// Like [`build_born_bound_request`] but tags the session as running inside a
+/// WSL distro. The master stamps the created row `SessionLocation::Wsl {
+/// distro }` (the reducer defaults `SessionStarted` to `Host`) so the session
+/// view renders the `[WSL-<distro>]` prefix — used by the `?<prompt>` delegate
+/// path when the active pane is a WSL pane.
+pub fn build_born_bound_request_wsl(
+    event: &crate::agent_sessions::SessionEvent,
+    distro: &str,
+) -> acp::schema::v1::ExtRequest {
+    build_born_bound_request_inner(event, Some(distro.to_string()))
+}
+
+/// Serialize the born-bound body: the shared `SessionHookParams` object with an
+/// optional `wsl_distro` key merged in (omitted when `None`). Routing this
+/// through `serde_json::Value` may reorder keys relative to a direct
+/// `SessionHookParams` serialization, so the host body is not byte-identical to
+/// a `session_hook` body — but it is structurally the same object, which is all
+/// `parse_session_hook_params` (field-based, order-independent) relies on.
+fn build_born_bound_request_inner(
+    event: &crate::agent_sessions::SessionEvent,
+    wsl_distro: Option<String>,
+) -> acp::schema::v1::ExtRequest {
     let params = SessionHookParams::from(event);
-    let json = serde_json::to_string(&params).expect("SessionHookParams serialization is infallible");
+    let mut value =
+        serde_json::to_value(&params).expect("SessionHookParams serialization is infallible");
+    if let (Some(obj), Some(distro)) = (value.as_object_mut(), wsl_distro) {
+        obj.insert("wsl_distro".to_string(), serde_json::Value::String(distro));
+    }
+    let json = serde_json::to_string(&value).expect("serde_json::Value serialization is infallible");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
-    acp::ExtRequest::new(INTELLTERM_METHOD_SESSION_BORN_BOUND, Arc::from(raw))
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_BORN_BOUND, Arc::from(raw))
 }
 
 /// Parse a master-bound `session_hook` body into the canonical reducer event.
@@ -673,12 +857,33 @@ pub fn parse_session_hook_params(
     serde_json::from_str::<SessionHookParams>(raw.get()).map(Into::into)
 }
 
+/// Parse a born-bound body into `(event, wsl_distro)`. Reuses
+/// [`parse_session_hook_params`] for the event (it ignores the extra
+/// `wsl_distro` key) and separately extracts the optional distro.
+pub fn parse_born_bound_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<(crate::agent_sessions::SessionEvent, Option<String>), serde_json::Error> {
+    #[derive(serde::Deserialize)]
+    struct WslDistroField {
+        #[serde(default)]
+        wsl_distro: Option<String>,
+    }
+    let event = parse_session_hook_params(raw)?;
+    // Propagate a malformed `wsl_distro` (present but the wrong JSON type) as a
+    // parse error so the master answers `invalid_params`, rather than silently
+    // dropping the distro and mislabelling the row as a host session. A missing
+    // field deserializes to `None` via `#[serde(default)]`, so the plain host
+    // body (no `wsl_distro`) still parses cleanly.
+    let distro = serde_json::from_str::<WslDistroField>(raw.get())?.wsl_distro;
+    Ok((event, distro))
+}
+
 /// Build a master response for `session_hook`.
-pub fn build_session_hook_response(applied: bool) -> acp::ExtResponse {
+pub fn build_session_hook_response(applied: bool) -> acp::schema::v1::ExtResponse {
     let response = SessionHookResponse { applied };
     let raw = serde_json::value::to_raw_value(&response)
         .expect("SessionHookResponse serialization is infallible");
-    acp::ExtResponse::new(raw.into())
+    acp::schema::v1::ExtResponse::new(raw.into())
 }
 
 /// One row in the registry. Mirrors the fields the session management view needs:
@@ -697,11 +902,11 @@ pub fn build_session_hook_response(applied: bool) -> acp::ExtResponse {
 ///                  ACP session. Some sessions have no pane attached
 ///                  (e.g. legacy entries replayed from history before the
 ///                  field was introduced) so this is `Option`. Serialized
-///                  into `acp::SessionInfo._meta.wta.pane_session_id` on
+///                  into `acp::schema::v1::SessionInfo._meta.wta.pane_session_id` on
 ///                  the wire so we don't pollute the standard ACP schema.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionInfo {
-    pub session_id: acp::SessionId,
+    pub session_id: acp::schema::v1::SessionId,
     pub cwd: PathBuf,
     #[serde(default)]
     pub title: Option<String>,
@@ -746,7 +951,7 @@ pub struct SessionInfo {
 impl SessionInfo {
     /// Convenience constructor for tests and call sites that only have the
     /// mandatory fields. Optional fields default to `None`.
-    pub fn new(session_id: acp::SessionId, cwd: PathBuf) -> Self {
+    pub fn new(session_id: acp::schema::v1::SessionId, cwd: PathBuf) -> Self {
         Self {
             session_id,
             cwd,
@@ -788,7 +993,7 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         .ok()
         .map(|d| d.as_millis() as u64);
     SessionInfo {
-        session_id: acp::SessionId::new(s.key.clone()),
+        session_id: acp::schema::v1::SessionId::new(s.key.clone()),
         cwd: s.cwd.clone(),
         title: if s.title.is_empty() { None } else { Some(s.title.clone()) },
         updated_at: None,
@@ -833,7 +1038,7 @@ pub trait SessionRegistry: Send + Sync {
     /// Remove the row for `sid`. Returns the prior value if any (the master
     /// uses this both for routing teardown and to know what to broadcast
     /// in `session_removed` ext-notifications).
-    async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo>;
+    async fn remove(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo>;
 
     /// Atomically remove the row for `sid` **only if** the current entry still
     /// satisfies `predicate`. The check + remove happen under one lock, so a
@@ -842,13 +1047,13 @@ pub trait SessionRegistry: Send + Sync {
     /// Returns the removed row, or `None` if absent or rejected by `predicate`.
     async fn remove_if(
         &self,
-        sid: &acp::SessionId,
+        sid: &acp::schema::v1::SessionId,
         predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
     ) -> Option<SessionInfo>;
 
     /// Fetch a clone of the current entry for `sid`. Returns `None` if the
     /// session isn't alive (or hasn't been mirrored yet on the helper side).
-    async fn lookup(&self, sid: &acp::SessionId) -> Option<SessionInfo>;
+    async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo>;
 
     /// Snapshot the full set. Order is unspecified — callers that need a
     /// stable order should sort by `session_id` themselves. The clone is
@@ -859,12 +1064,23 @@ pub trait SessionRegistry: Send + Sync {
     async fn apply_event(&self, ev: SessionEvent) -> bool;
 
     /// Update origin metadata on an existing row.
-    async fn set_origin(&self, sid: &acp::SessionId, origin: SessionOrigin) -> bool;
+    async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool;
+
+    /// Update the `location` (Host / WSL distro) of an existing row. Returns
+    /// `true` iff the value actually changed. Used to stamp a born-bound WSL
+    /// delegate row as `Wsl { distro }` after the reducer creates it (the
+    /// reducer defaults every `SessionStarted` to `Host`), so the session view
+    /// renders the `[WSL-<distro>]` prefix.
+    async fn set_location(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        location: crate::agent_sessions::SessionLocation,
+    ) -> bool;
 
     /// Atomically flip a Historical row to Idle for resume dispatch (Task C).
     /// Returns Some((flipped, current_status_label)) where `flipped` is true
     /// only when the row was Historical and was transitioned this call.
-    async fn mark_resume_dispatched(&self, sid: &acp::SessionId) -> Option<(bool, String)>;
+    async fn mark_resume_dispatched(&self, sid: &acp::schema::v1::SessionId) -> Option<(bool, String)>;
 
     /// Atomically replace `title` for `sid` only if the current title is
     /// "synthetic" (`None`, empty, or equal to the cwd basename). Returns
@@ -883,7 +1099,7 @@ pub trait SessionRegistry: Send + Sync {
     /// `lookup → mutate clone → upsert` flow would produce.
     async fn upgrade_title_if_synthetic(
         &self,
-        sid: &acp::SessionId,
+        sid: &acp::schema::v1::SessionId,
         candidate: &str,
     ) -> bool;
 }
@@ -893,8 +1109,8 @@ pub trait SessionRegistry: Send + Sync {
 /// so a future sync-lock conversion is a mechanical swap.
 #[derive(Default)]
 struct RegistryState {
-    sessions: HashMap<acp::SessionId, SessionInfo>,
-    active_by_pane: HashMap<String, acp::SessionId>,
+    sessions: HashMap<acp::schema::v1::SessionId, SessionInfo>,
+    active_by_pane: HashMap<String, acp::schema::v1::SessionId>,
 }
 
 #[derive(Default)]
@@ -927,6 +1143,30 @@ pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
     }
 }
 
+/// The literal heading the delegate `?<prompt>` flow injects into the prompt it
+/// bakes into a freshly launched agent CLI: `"<prompt>\n\n## Terminal Context
+/// (pane <id>)\n```…```"` (built in `main.rs`, which references this same
+/// constant so the two can't drift).
+///
+/// Agent CLIs (e.g. Copilot) briefly surface a session's *first user message* as
+/// its `session/list` title before they generate their real chat summary. For a
+/// delegate session that first message is the baked prompt above, so the echoed
+/// title contains this marker; a genuine CLI-generated summary never does. That
+/// lets [`title_is_injected_context_echo`] tell the two apart.
+pub(crate) const TERMINAL_CONTEXT_TITLE_MARKER: &str = "## Terminal Context (pane ";
+
+/// Whether `title` is the delegate's injected first-message echo (contains
+/// [`TERMINAL_CONTEXT_TITLE_MARKER`]) rather than a real CLI-generated summary.
+///
+/// Such a title must not be adopted as a session's display title: it leaks the
+/// injected terminal context (pane GUID included), and adopting it would lock
+/// the row out of the later upgrade to the CLI's real summary name (an echoed
+/// title is non-synthetic, so `refresh_synthetic_titles_from` would skip it
+/// forever). Callers drop it so the row stays synthetic and keeps upgrading.
+pub(crate) fn title_is_injected_context_echo(title: &str) -> bool {
+    title.contains(TERMINAL_CONTEXT_TITLE_MARKER)
+}
+
 #[async_trait::async_trait]
 impl SessionRegistry for InMemoryRegistry {
     async fn upsert(&self, info: SessionInfo) {
@@ -941,14 +1181,14 @@ impl SessionRegistry for InMemoryRegistry {
         }
     }
 
-    async fn remove(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
+    async fn remove(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
         remove_locked(&mut guard, sid)
     }
 
     async fn remove_if(
         &self,
-        sid: &acp::SessionId,
+        sid: &acp::schema::v1::SessionId,
         predicate: &(dyn for<'a> Fn(&'a SessionInfo) -> bool + Sync),
     ) -> Option<SessionInfo> {
         let mut guard = self.inner.lock().await;
@@ -964,7 +1204,7 @@ impl SessionRegistry for InMemoryRegistry {
         }
     }
 
-    async fn lookup(&self, sid: &acp::SessionId) -> Option<SessionInfo> {
+    async fn lookup(&self, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
         let guard = self.inner.lock().await;
         guard.sessions.get(sid).cloned()
     }
@@ -979,7 +1219,7 @@ impl SessionRegistry for InMemoryRegistry {
         apply_event_locked(&mut guard, ev)
     }
 
-    async fn set_origin(&self, sid: &acp::SessionId, origin: SessionOrigin) -> bool {
+    async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool {
         let mut guard = self.inner.lock().await;
         let Some(entry) = guard.sessions.get_mut(sid) else {
             return false;
@@ -991,7 +1231,23 @@ impl SessionRegistry for InMemoryRegistry {
         true
     }
 
-    async fn mark_resume_dispatched(&self, sid: &acp::SessionId) -> Option<(bool, String)> {
+    async fn set_location(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        location: crate::agent_sessions::SessionLocation,
+    ) -> bool {
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(sid) else {
+            return false;
+        };
+        if entry.location == location {
+            return false;
+        }
+        entry.location = location;
+        true
+    }
+
+    async fn mark_resume_dispatched(&self, sid: &acp::schema::v1::SessionId) -> Option<(bool, String)> {
         let mut guard = self.inner.lock().await;
         let row = guard.sessions.get_mut(sid)?;
         let current_label = match &row.status {
@@ -1009,7 +1265,7 @@ impl SessionRegistry for InMemoryRegistry {
 
     async fn upgrade_title_if_synthetic(
         &self,
-        sid: &acp::SessionId,
+        sid: &acp::schema::v1::SessionId,
         candidate: &str,
     ) -> bool {
         if candidate.is_empty() {
@@ -1056,7 +1312,7 @@ fn upsert_locked(state: &mut RegistryState, info: SessionInfo) {
     state.sessions.insert(info.session_id.clone(), info);
 }
 
-fn remove_locked(state: &mut RegistryState, sid: &acp::SessionId) -> Option<SessionInfo> {
+fn remove_locked(state: &mut RegistryState, sid: &acp::schema::v1::SessionId) -> Option<SessionInfo> {
     let removed = state.sessions.remove(sid);
     if let Some(info) = &removed {
         if let Some(pane) = info.pane_session_id.as_deref() {
@@ -1067,7 +1323,7 @@ fn remove_locked(state: &mut RegistryState, sid: &acp::SessionId) -> Option<Sess
 }
 
 #[allow(dead_code)] // Used through apply_event once Task B forwards hook events.
-fn end_entry(state: &mut RegistryState, sid: &acp::SessionId, now: u64) -> bool {
+fn end_entry(state: &mut RegistryState, sid: &acp::schema::v1::SessionId, now: u64) -> bool {
     let Some(entry) = state.sessions.get_mut(sid) else {
         return false;
     };
@@ -1120,7 +1376,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
 
     match ev {
         SessionEvent::SessionStarted { key, cli_source, pane_session_id, cwd, title } => {
-            let sid = acp::SessionId::new(key.clone());
+            let sid = acp::schema::v1::SessionId::new(key.clone());
             let pane_known = !pane_session_id.is_empty();
 
             // GUARD: PowerShell shell-integration hooks fire from wherever
@@ -1222,7 +1478,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             true
         }
         SessionEvent::ToolStarting { key, tool_name } => {
-            let sid = acp::SessionId::new(key);
+            let sid = acp::schema::v1::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
             // Refuse to resurrect terminal-state rows. If a prior
             // SessionStarted at the same pane ended this row (master's
@@ -1243,7 +1499,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             true
         }
         SessionEvent::ToolCompleted { key } => {
-            let sid = acp::SessionId::new(key);
+            let sid = acp::schema::v1::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
             // Same resurrection guard as ToolStarting — a stale
             // ToolCompleted on an Ended row would either be a no-op or
@@ -1261,7 +1517,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             true
         }
         SessionEvent::Notification { key, message } => {
-            let sid = acp::SessionId::new(key);
+            let sid = acp::schema::v1::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
             // Same resurrection guard — a stale Notification on an
             // Ended row would flip it to Attention and surface a
@@ -1276,7 +1532,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             true
         }
         SessionEvent::SessionStopped { key, reason } => {
-            let sid = acp::SessionId::new(key);
+            let sid = acp::schema::v1::SessionId::new(key);
             let reason_keeps_session_alive = reason == "complete";
             let pane_still_live = state.sessions.get(&sid)
                 .and_then(|s| s.pane_session_id.as_deref())
@@ -1318,7 +1574,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             true
         }
         SessionEvent::ResumeDispatched { key } => {
-            let sid = acp::SessionId::new(key);
+            let sid = acp::schema::v1::SessionId::new(key);
             let Some(entry) = state.sessions.get_mut(&sid) else { return false; };
             if matches!(entry.status, Some(AgentStatus::Historical | AgentStatus::Ended)) {
                 entry.status = Some(AgentStatus::Idle);
@@ -1328,7 +1584,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             false
         }
         SessionEvent::ResumePaneAssigned { key, pane_session_id } => {
-            let sid = acp::SessionId::new(key);
+            let sid = acp::schema::v1::SessionId::new(key);
             if let Some(prev_sid) = state.active_by_pane.get(&pane_session_id).cloned() {
                 if prev_sid != sid {
                     let _ = end_entry(state, &prev_sid, now);
@@ -1405,7 +1661,7 @@ pub async fn apply_snapshot(
 /// is returned.
 pub async fn apply_ext_notification(
     reg: &dyn SessionRegistry,
-    n: &acp::ExtNotification,
+    n: &acp::schema::v1::ExtNotification,
 ) -> WtaExtNotification {
     let parsed = parse_ext_notification(n);
     match &parsed {
@@ -1420,8 +1676,7 @@ pub async fn apply_ext_notification(
         // and never mutate the registry. A future master may broadcast
         // notifications we don't recognise — silently ignoring them
         // keeps the helper forward-compatible.
-        WtaExtNotification::SessionsChanged
-        | WtaExtNotification::Unknown
+        WtaExtNotification::Unknown
         | WtaExtNotification::MalformedParams { .. } => {}
     }
     parsed
@@ -1432,7 +1687,7 @@ mod tests {
     use super::*;
 
     fn info(id: &str, pane: Option<&str>) -> SessionInfo {
-        let mut s = SessionInfo::new(acp::SessionId::new(id.to_string()), PathBuf::from("/tmp"));
+        let mut s = SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from("/tmp"));
         if let Some(p) = pane {
             s = s.with_pane_session_id(p.to_string());
         }
@@ -1445,7 +1700,7 @@ mod tests {
         let original = info("sess-1", Some("pane-A"));
         reg.upsert(original.clone()).await;
         let found = reg
-            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new("sess-1".to_string()))
             .await
             .expect("session present");
         assert_eq!(found, original);
@@ -1455,7 +1710,7 @@ mod tests {
     async fn lookup_miss_returns_none() {
         let reg = InMemoryRegistry::new();
         assert!(reg
-            .lookup(&acp::SessionId::new("missing".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new("missing".to_string()))
             .await
             .is_none());
     }
@@ -1466,7 +1721,7 @@ mod tests {
         reg.upsert(info("sess-1", Some("pane-A"))).await;
         reg.upsert(info("sess-1", Some("pane-B"))).await;
         let found = reg
-            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new("sess-1".to_string()))
             .await
             .unwrap();
         assert_eq!(found.pane_session_id.as_deref(), Some("pane-B"));
@@ -1489,7 +1744,7 @@ mod tests {
         reg.upsert_if_absent(historical).await;
 
         let got = reg
-            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new("sess-1".to_string()))
             .await
             .expect("row present");
         assert_eq!(
@@ -1506,7 +1761,7 @@ mod tests {
         // A genuinely new session (absent from the registry) IS added.
         reg.upsert_if_absent(info("sess-2", None)).await;
         assert!(
-            reg.lookup(&acp::SessionId::new("sess-2".to_string()))
+            reg.lookup(&acp::schema::v1::SessionId::new("sess-2".to_string()))
                 .await
                 .is_some(),
             "a new disk session is surfaced"
@@ -1518,12 +1773,12 @@ mod tests {
         let reg = InMemoryRegistry::new();
         reg.upsert(info("sess-1", Some("pane-A"))).await;
         let removed = reg
-            .remove(&acp::SessionId::new("sess-1".to_string()))
+            .remove(&acp::schema::v1::SessionId::new("sess-1".to_string()))
             .await
             .expect("entry removed");
         assert_eq!(removed.pane_session_id.as_deref(), Some("pane-A"));
         assert!(reg
-            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new("sess-1".to_string()))
             .await
             .is_none());
     }
@@ -1532,7 +1787,7 @@ mod tests {
     async fn remove_miss_returns_none() {
         let reg = InMemoryRegistry::new();
         assert!(reg
-            .remove(&acp::SessionId::new("nope".to_string()))
+            .remove(&acp::schema::v1::SessionId::new("nope".to_string()))
             .await
             .is_none());
     }
@@ -1545,11 +1800,11 @@ mod tests {
 
         // Predicate rejects -> row stays, returns None.
         let kept = reg
-            .remove_if(&acp::SessionId::new("keep".to_string()), &|_| false)
+            .remove_if(&acp::schema::v1::SessionId::new("keep".to_string()), &|_| false)
             .await;
         assert!(kept.is_none(), "remove_if must not remove when predicate is false");
         assert!(
-            reg.lookup(&acp::SessionId::new("keep".to_string()))
+            reg.lookup(&acp::schema::v1::SessionId::new("keep".to_string()))
                 .await
                 .is_some(),
             "rejected row must still be present"
@@ -1557,11 +1812,11 @@ mod tests {
 
         // Predicate accepts -> row removed, returns the prior value.
         let dropped = reg
-            .remove_if(&acp::SessionId::new("drop".to_string()), &|_| true)
+            .remove_if(&acp::schema::v1::SessionId::new("drop".to_string()), &|_| true)
             .await;
         assert!(dropped.is_some(), "remove_if must remove when predicate is true");
         assert!(
-            reg.lookup(&acp::SessionId::new("drop".to_string()))
+            reg.lookup(&acp::schema::v1::SessionId::new("drop".to_string()))
                 .await
                 .is_none(),
             "accepted row must be gone"
@@ -1569,7 +1824,7 @@ mod tests {
 
         // Missing id -> None even with an always-true predicate.
         assert!(
-            reg.remove_if(&acp::SessionId::new("missing".to_string()), &|_| true)
+            reg.remove_if(&acp::schema::v1::SessionId::new("missing".to_string()), &|_| true)
                 .await
                 .is_none(),
             "remove_if on an absent id returns None"
@@ -1634,7 +1889,7 @@ mod tests {
         reg.upsert(info("sess-1", Some("old-pane"))).await;
         apply_snapshot(&reg, &loaded, vec![info("sess-1", Some("new-pane"))]).await;
         let found = reg
-            .lookup(&acp::SessionId::new("sess-1".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new("sess-1".to_string()))
             .await
             .unwrap();
         assert_eq!(found.pane_session_id.as_deref(), Some("new-pane"));
@@ -1668,7 +1923,7 @@ mod tests {
     // ── upgrade_title_if_synthetic ──────────────────────────────────
 
     fn info_with(id: &str, cwd: &str, title: Option<&str>) -> SessionInfo {
-        let mut s = SessionInfo::new(acp::SessionId::new(id.to_string()), PathBuf::from(cwd));
+        let mut s = SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd));
         s.title = title.map(str::to_owned);
         s
     }
@@ -1681,11 +1936,31 @@ mod tests {
         assert!(!title_is_synthetic(&info_with("s-real", "/repo/proj", Some("Real Title"))));
     }
 
+    #[test]
+    fn title_is_injected_context_echo_detects_delegate_marker_only() {
+        // Mirrors the `?<prompt>` prompt built in `main.rs` from
+        // `TERMINAL_CONTEXT_TITLE_MARKER`: an agent CLI can echo this whole first
+        // user message back as a `session/list` title before it generates a real
+        // summary. Such an echo must be dropped (see `host_titles_via_acp`) so the
+        // born-bound row stays synthetic and keeps upgrading — the counterpart
+        // behaviour is covered by `refresh_synthetic_titles_from_skips_when_id_absent`.
+        let echo = format!(
+            "hi test\n\n{}8A9B4ABA-BEB4-4F94-B0D3-55569420B902)\n```\nPowerShell 7.6.3\n```",
+            TERMINAL_CONTEXT_TITLE_MARKER
+        );
+        assert!(title_is_injected_context_echo(&echo));
+        // A real CLI-generated summary, the bare user prompt, and empty never
+        // contain the injected marker.
+        assert!(!title_is_injected_context_echo("PowerShell Terminal Session"));
+        assert!(!title_is_injected_context_echo("hi test"));
+        assert!(!title_is_injected_context_echo(""));
+    }
+
     #[tokio::test]
     async fn upgrade_title_replaces_none_title() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info_with("s1", "/repo/proj", None)).await;
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         assert!(reg.upgrade_title_if_synthetic(&sid, "Real Title").await);
         assert_eq!(
             reg.lookup(&sid).await.unwrap().title.as_deref(),
@@ -1697,7 +1972,7 @@ mod tests {
     async fn upgrade_title_replaces_empty_title() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info_with("s1", "/repo/proj", Some(""))).await;
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         assert!(reg.upgrade_title_if_synthetic(&sid, "Real Title").await);
         assert_eq!(
             reg.lookup(&sid).await.unwrap().title.as_deref(),
@@ -1715,7 +1990,7 @@ mod tests {
         let reg = InMemoryRegistry::new();
         reg.upsert(info_with("s1", "C:\\Users\\alice", Some("alice")))
             .await;
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         assert!(
             reg.upgrade_title_if_synthetic(&sid, "No Coding Task Identified")
                 .await
@@ -1731,7 +2006,7 @@ mod tests {
         let reg = InMemoryRegistry::new();
         reg.upsert(info_with("s1", "/repo/proj", Some("Real Existing Title")))
             .await;
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         // "proj" (cwd basename) ≠ "Real Existing Title", so the row is
         // NOT synthetic — even an attempted upgrade must not clobber it.
         assert!(
@@ -1747,7 +2022,7 @@ mod tests {
     async fn upgrade_title_rejects_empty_candidate() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info_with("s1", "/repo/proj", None)).await;
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         assert!(!reg.upgrade_title_if_synthetic(&sid, "").await);
         assert!(reg.lookup(&sid).await.unwrap().title.is_none());
     }
@@ -1756,7 +2031,7 @@ mod tests {
     async fn upgrade_title_idempotent_when_candidate_matches_existing() {
         let reg = InMemoryRegistry::new();
         reg.upsert(info_with("s1", "/repo/proj", Some("Same"))).await;
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         // Same != "proj" basename, so the row isn't synthetic — and
         // even if it were, returning false on no-op keeps the
         // broadcast budget low.
@@ -1766,7 +2041,7 @@ mod tests {
     #[tokio::test]
     async fn upgrade_title_returns_false_for_missing_session() {
         let reg = InMemoryRegistry::new();
-        let sid = acp::SessionId::new("nope".to_string());
+        let sid = acp::schema::v1::SessionId::new("nope".to_string());
         assert!(!reg.upgrade_title_if_synthetic(&sid, "Real Title").await);
     }
 
@@ -1787,7 +2062,7 @@ mod tests {
         row.origin = Some(SessionOrigin::Unknown);
         reg.upsert(row.clone()).await;
 
-        let sid = acp::SessionId::new("s1".to_string());
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
         assert!(reg.upgrade_title_if_synthetic(&sid, "Real Title").await);
 
         let found = reg.lookup(&sid).await.unwrap();
@@ -1804,7 +2079,7 @@ mod tests {
 
     // ── _meta.wta extract / inject ──────────────────────────────────
 
-    fn meta_with(json: serde_json::Value) -> Option<acp::Meta> {
+    fn meta_with(json: serde_json::Value) -> Option<acp::schema::v1::Meta> {
         match json {
             serde_json::Value::Object(map) => Some(map),
             _ => panic!("test bug: meta_with expects a JSON object"),
@@ -1813,7 +2088,7 @@ mod tests {
 
     #[test]
     fn extract_returns_default_when_meta_is_none() {
-        let mut meta: Option<acp::Meta> = None;
+        let mut meta: Option<acp::schema::v1::Meta> = None;
         let wta = extract_wta_meta(&mut meta);
         assert_eq!(wta, WtaMeta::default());
         assert!(meta.is_none(), "meta unchanged");
@@ -1873,7 +2148,7 @@ mod tests {
 
     #[test]
     fn inject_is_noop_when_wta_is_empty() {
-        let mut meta: Option<acp::Meta> = None;
+        let mut meta: Option<acp::schema::v1::Meta> = None;
         inject_wta_meta(&mut meta, &WtaMeta::default());
         assert!(meta.is_none(), "no spurious _meta created");
     }
@@ -1881,7 +2156,7 @@ mod tests {
     #[test]
     fn to_acp_session_info_carries_pane_session_id_in_meta() {
         let mut row = SessionInfo::new(
-            acp::SessionId::new("sess-1".to_string()),
+            acp::schema::v1::SessionId::new("sess-1".to_string()),
             PathBuf::from("/repo/a"),
         );
         row.title = Some("hello".into());
@@ -1900,7 +2175,7 @@ mod tests {
     #[test]
     fn to_acp_session_info_omits_meta_when_no_pane_session_id() {
         let row = SessionInfo::new(
-            acp::SessionId::new("sess-1".to_string()),
+            acp::schema::v1::SessionId::new("sess-1".to_string()),
             PathBuf::from("/repo/a"),
         );
         let acp = to_acp_session_info(&row);
@@ -1915,7 +2190,7 @@ mod tests {
     #[test]
     fn build_then_parse_session_added_is_round_trip() {
         let mut row = SessionInfo::new(
-            acp::SessionId::new("sess-77".to_string()),
+            acp::schema::v1::SessionId::new("sess-77".to_string()),
             PathBuf::from("/repo/x"),
         );
         row.title = Some("hello".into());
@@ -1932,7 +2207,7 @@ mod tests {
     #[test]
     fn build_session_added_with_no_pane_session_id_still_round_trips() {
         let row = SessionInfo::new(
-            acp::SessionId::new("sess-99".to_string()),
+            acp::schema::v1::SessionId::new("sess-99".to_string()),
             PathBuf::from("/repo/y"),
         );
         let ext = build_session_added_notification(&row);
@@ -1947,7 +2222,7 @@ mod tests {
 
     #[test]
     fn build_then_parse_session_removed_is_round_trip() {
-        let sid = acp::SessionId::new("sess-dead".to_string());
+        let sid = acp::schema::v1::SessionId::new("sess-dead".to_string());
         let ext = build_session_removed_notification(&sid);
         assert_eq!(&*ext.method, INTELLTERM_METHOD_SESSION_REMOVED);
         match parse_ext_notification(&ext) {
@@ -1959,7 +2234,7 @@ mod tests {
     #[test]
     fn parse_unknown_method_returns_unknown() {
         let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
-        let ext = acp::ExtNotification::new("somebody.else/event", Arc::from(raw));
+        let ext = acp::schema::v1::ExtNotification::new("somebody.else/event", Arc::from(raw));
         assert!(matches!(
             parse_ext_notification(&ext),
             WtaExtNotification::Unknown
@@ -1970,7 +2245,7 @@ mod tests {
     fn parse_session_added_with_garbage_params_is_malformed_not_panic() {
         let raw =
             serde_json::value::RawValue::from_string(r#"{"not":"a session"}"#.into()).unwrap();
-        let ext = acp::ExtNotification::new(INTELLTERM_METHOD_SESSION_ADDED, Arc::from(raw));
+        let ext = acp::schema::v1::ExtNotification::new(INTELLTERM_METHOD_SESSION_ADDED, Arc::from(raw));
         assert!(matches!(
             parse_ext_notification(&ext),
             WtaExtNotification::MalformedParams { .. }
@@ -1985,7 +2260,7 @@ mod tests {
     #[test]
     fn session_info_json_round_trips_all_master_fields() {
         let row = SessionInfo {
-            session_id: acp::SessionId::new("sess-full".to_string()),
+            session_id: acp::schema::v1::SessionId::new("sess-full".to_string()),
             cwd: PathBuf::from("C:\\repo"),
             title: Some("fix the build".into()),
             updated_at: Some("2026-05-27T12:34:56Z".into()),
@@ -2050,7 +2325,7 @@ mod tests {
     #[test]
     fn sessions_list_response_round_trips_rows() {
         let row = SessionInfo {
-            session_id: acp::SessionId::new("sess-list".to_string()),
+            session_id: acp::schema::v1::SessionId::new("sess-list".to_string()),
             cwd: PathBuf::from("C:\\repo"),
             title: Some("title".into()),
             updated_at: Some("2026-05-27T12:34:56Z".into()),
@@ -2082,7 +2357,7 @@ mod tests {
         }).await;
 
         assert!(changed);
-        let row = reg.lookup(&acp::SessionId::new("sid-1")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid-1")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
         assert_eq!(row.cli_source, Some(crate::agent_sessions::CliSource::Claude));
         assert_eq!(row.pane_session_id.as_deref(), Some("pane-a"));
@@ -2100,17 +2375,17 @@ mod tests {
             title: "t".into(),
         }).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ToolStarting { key: "sid".into(), tool_name: "bash".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Working));
         assert_eq!(row.current_tool.as_deref(), Some("bash"));
 
         reg.apply_event(crate::agent_sessions::SessionEvent::Notification { key: "sid".into(), message: "approve?".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Attention));
         assert_eq!(row.attention_reason.as_deref(), Some("approve?"));
 
         reg.apply_event(crate::agent_sessions::SessionEvent::ToolCompleted { key: "sid".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
         assert!(row.current_tool.is_none());
         assert!(row.attention_reason.is_none());
@@ -2135,7 +2410,7 @@ mod tests {
         }).await;
         reg.apply_event(SessionEvent::ToolStarting { key: "sid".into(), tool_name: "prompt".into() }).await;
         assert_eq!(
-            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap().status,
             Some(AgentStatus::Working),
         );
 
@@ -2148,7 +2423,7 @@ mod tests {
             title: "t".into(),
         }).await;
         assert_eq!(
-            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap().status,
             Some(AgentStatus::Working),
             "a late SessionStarted must preserve the live Working status",
         );
@@ -2169,7 +2444,7 @@ mod tests {
         }).await;
         reg.apply_event(SessionEvent::PaneClosed { pane_session_id: "p".into() }).await;
         assert_eq!(
-            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap().status,
             Some(AgentStatus::Ended),
         );
         reg.apply_event(SessionEvent::SessionStarted {
@@ -2180,7 +2455,7 @@ mod tests {
             title: "t".into(),
         }).await;
         assert_eq!(
-            reg.lookup(&acp::SessionId::new("sid")).await.unwrap().status,
+            reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap().status,
             Some(AgentStatus::Idle),
             "a SessionStarted reviving an Ended row must reset it to Idle",
         );
@@ -2196,9 +2471,9 @@ mod tests {
             cwd: PathBuf::from("C:\\x"),
             title: "t".into(),
         }).await;
-        reg.set_origin(&acp::SessionId::new("sid"), crate::agent_sessions::SessionOrigin::AgentPane).await;
+        reg.set_origin(&acp::schema::v1::SessionId::new("sid"), crate::agent_sessions::SessionOrigin::AgentPane).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::SessionStopped { key: "sid".into(), reason: "user_exit".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Ended));
         assert!(row.pane_session_id.is_none());
 
@@ -2210,7 +2485,7 @@ mod tests {
             title: "t".into(),
         }).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id: "P2".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid2")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid2")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Ended));
         assert!(row.pane_session_id.is_none());
     }
@@ -2226,7 +2501,7 @@ mod tests {
             title: "t".into(),
         }).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ConnectionFailed { pane_session_id: "P".into(), reason: "ECONNRESET".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
         assert_eq!(row.last_error.as_deref(), Some("ECONNRESET"));
         assert_eq!(row.pane_session_id.as_deref(), Some("p"));
@@ -2245,7 +2520,7 @@ mod tests {
         reg.apply_event(crate::agent_sessions::SessionEvent::PaneClosed { pane_session_id: "p".into() }).await;
 
         let changed = reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: "sid".into() }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
 
         assert!(changed);
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
@@ -2256,7 +2531,7 @@ mod tests {
     async fn master_reducer_resume_pane_assigned_binds_new_pane() {
         let reg = InMemoryRegistry::new();
         reg.upsert(SessionInfo {
-            session_id: acp::SessionId::new("sid".to_string()),
+            session_id: acp::schema::v1::SessionId::new("sid".to_string()),
             cwd: PathBuf::from("C:\\x"),
             title: Some("historical".into()),
             updated_at: None,
@@ -2277,7 +2552,7 @@ mod tests {
             key: "sid".into(),
             pane_session_id: "New-Pane".into(),
         }).await;
-        let row = reg.lookup(&acp::SessionId::new("sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("sid")).await.unwrap();
 
         assert!(changed);
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
@@ -2313,7 +2588,7 @@ mod tests {
         let reg = InMemoryRegistry::new();
         // Seed master's authoritative state: agent-pane session at
         // HELPER_PANE (where the wta-helper TUI lives).
-        let sid = acp::SessionId::new("agent-sid");
+        let sid = acp::schema::v1::SessionId::new("agent-sid");
         let mut info = SessionInfo::new(sid.clone(), PathBuf::from("/repo"));
         info.pane_session_id = Some("helper-pane".to_string());
         info.origin = Some(SessionOrigin::AgentPane);
@@ -2368,7 +2643,7 @@ mod tests {
             .await;
         assert!(applied);
         let row = reg
-            .lookup(&acp::SessionId::new("shell-agent-sid"))
+            .lookup(&acp::schema::v1::SessionId::new("shell-agent-sid"))
             .await
             .unwrap();
         assert_eq!(row.pane_session_id.as_deref(), Some("shell-pane"));
@@ -2389,7 +2664,7 @@ mod tests {
         // sees as a duplicate row in session management view.
         use crate::agent_sessions::{AgentStatus, SessionEvent};
         let reg = InMemoryRegistry::new();
-        let mut info = SessionInfo::new(acp::SessionId::new("ended-sid"), PathBuf::from("/repo"));
+        let mut info = SessionInfo::new(acp::schema::v1::SessionId::new("ended-sid"), PathBuf::from("/repo"));
         info.status = Some(AgentStatus::Ended);
         reg.upsert(info).await;
         let applied = reg
@@ -2399,7 +2674,7 @@ mod tests {
             })
             .await;
         assert!(!applied, "ToolStarting on Ended row must be a no-op");
-        let row = reg.lookup(&acp::SessionId::new("ended-sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("ended-sid")).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Ended), "status must stay Ended");
         assert_eq!(row.current_tool, None, "current_tool must not be set on a zombie");
     }
@@ -2410,7 +2685,7 @@ mod tests {
         // accidentally block legitimate Idle -> Working transitions.
         use crate::agent_sessions::{AgentStatus, SessionEvent};
         let reg = InMemoryRegistry::new();
-        let mut info = SessionInfo::new(acp::SessionId::new("idle-sid"), PathBuf::from("/repo"));
+        let mut info = SessionInfo::new(acp::schema::v1::SessionId::new("idle-sid"), PathBuf::from("/repo"));
         info.status = Some(AgentStatus::Idle);
         reg.upsert(info).await;
         let applied = reg
@@ -2420,7 +2695,7 @@ mod tests {
             })
             .await;
         assert!(applied);
-        let row = reg.lookup(&acp::SessionId::new("idle-sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("idle-sid")).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Working));
         assert_eq!(row.current_tool.as_deref(), Some("edit"));
     }
@@ -2429,7 +2704,7 @@ mod tests {
     async fn notification_does_not_resurrect_ended_row() {
         use crate::agent_sessions::{AgentStatus, SessionEvent};
         let reg = InMemoryRegistry::new();
-        let mut info = SessionInfo::new(acp::SessionId::new("ended-sid"), PathBuf::from("/repo"));
+        let mut info = SessionInfo::new(acp::schema::v1::SessionId::new("ended-sid"), PathBuf::from("/repo"));
         info.status = Some(AgentStatus::Ended);
         reg.upsert(info).await;
         let applied = reg
@@ -2439,7 +2714,7 @@ mod tests {
             })
             .await;
         assert!(!applied);
-        let row = reg.lookup(&acp::SessionId::new("ended-sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("ended-sid")).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Ended));
         assert_eq!(row.attention_reason, None);
     }
@@ -2448,7 +2723,7 @@ mod tests {
     async fn tool_completed_does_not_resurrect_ended_row() {
         use crate::agent_sessions::{AgentStatus, SessionEvent};
         let reg = InMemoryRegistry::new();
-        let mut info = SessionInfo::new(acp::SessionId::new("ended-sid"), PathBuf::from("/repo"));
+        let mut info = SessionInfo::new(acp::schema::v1::SessionId::new("ended-sid"), PathBuf::from("/repo"));
         info.status = Some(AgentStatus::Ended);
         info.current_tool = Some("edit".to_string()); // pretend it had a tool when ended
         reg.upsert(info).await;
@@ -2458,7 +2733,7 @@ mod tests {
             })
             .await;
         assert!(!applied);
-        let row = reg.lookup(&acp::SessionId::new("ended-sid")).await.unwrap();
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("ended-sid")).await.unwrap();
         assert_eq!(row.status, Some(AgentStatus::Ended));
     }
 
@@ -2491,7 +2766,7 @@ mod tests {
             title: String::new(),
         })
         .await;
-        let a_after_handoff = reg.lookup(&acp::SessionId::new("sid-a")).await.unwrap();
+        let a_after_handoff = reg.lookup(&acp::schema::v1::SessionId::new("sid-a")).await.unwrap();
         assert_eq!(a_after_handoff.status, Some(AgentStatus::Ended));
         assert_eq!(a_after_handoff.pane_session_id, None);
         // A straggling ToolStarting for A must not resurrect it.
@@ -2500,7 +2775,7 @@ mod tests {
             tool_name: "edit".to_string(),
         })
         .await;
-        let a_final = reg.lookup(&acp::SessionId::new("sid-a")).await.unwrap();
+        let a_final = reg.lookup(&acp::schema::v1::SessionId::new("sid-a")).await.unwrap();
         assert_eq!(a_final.status, Some(AgentStatus::Ended),
             "ToolStarting after pane handoff must not flip Ended -> Working (zombie)");
         assert_eq!(a_final.pane_session_id, None,
@@ -2521,13 +2796,13 @@ mod tests {
             title: "fan-in test".to_string(),
         };
         reg.apply_event(event).await;
-        let row = reg.lookup(&acp::SessionId::new("codex-fan-in-test")).await.expect("row inserted");
+        let row = reg.lookup(&acp::schema::v1::SessionId::new("codex-fan-in-test")).await.expect("row inserted");
         assert_eq!(row.cli_source, Some(CliSource::Codex));
     }
 
     #[test]
     fn sessions_list_response_round_trips_session_info_with_typed_fields() {
-        let mut info = SessionInfo::new(acp::SessionId::new("sid-1"), PathBuf::from("/repo"));
+        let mut info = SessionInfo::new(acp::schema::v1::SessionId::new("sid-1"), PathBuf::from("/repo"));
         info.title = Some("title".to_string());
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
         info.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
@@ -2542,7 +2817,7 @@ mod tests {
 
     #[test]
     fn session_resume_dispatched_request_carries_sid() {
-        let sid = acp::SessionId::new("resume-me");
+        let sid = acp::schema::v1::SessionId::new("resume-me");
         let req = build_session_resume_dispatched_request(&sid);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSION_RESUME_DISPATCHED);
         let parsed = parse_session_resume_dispatched_params(&req.params).unwrap();
@@ -2551,7 +2826,7 @@ mod tests {
 
     #[test]
     fn session_focus_request_carries_sid() {
-        let sid = acp::SessionId::new("focus-me");
+        let sid = acp::schema::v1::SessionId::new("focus-me");
         let req = build_session_focus_request(&sid);
         assert_eq!(&*req.method, INTELLTERM_METHOD_SESSION_FOCUS);
         let parsed = parse_session_focus_params(&req.params).unwrap();
@@ -2562,7 +2837,7 @@ mod tests {
 
     #[test]
     fn build_focus_session_request_carries_method_and_session_id() {
-        let sid = acp::SessionId::new("focus-target".to_string());
+        let sid = acp::schema::v1::SessionId::new("focus-target".to_string());
         let req = build_focus_session_request(&sid);
         assert_eq!(&*req.method, INTELLTERM_METHOD_FOCUS_SESSION);
         let parsed = parse_focus_session_params(&req.params)
@@ -2581,6 +2856,109 @@ mod tests {
         let notification = build_sessions_changed_notification();
         assert_eq!(&*notification.method, INTELLTERM_METHOD_SESSIONS_CHANGED);
         assert_eq!(notification.params.get(), "{}");
+    }
+
+    // ─── ext-method classification (ACP-1.0 leading-`_` strip) ──────────
+
+    #[test]
+    fn ext_method_matches_accepts_prefixed_and_wire_stripped() {
+        // Local/test construction keeps the `_`; the ACP-1.0 wire path strips it.
+        assert!(ext_method_matches(
+            INTELLTERM_METHOD_SESSIONS_LIST,
+            INTELLTERM_METHOD_SESSIONS_LIST
+        ));
+        assert!(ext_method_matches(
+            "intellterm.wta/sessions/list",
+            INTELLTERM_METHOD_SESSIONS_LIST
+        ));
+        assert!(!ext_method_matches(
+            "intellterm.wta/something_else",
+            INTELLTERM_METHOD_SESSIONS_LIST
+        ));
+    }
+
+    /// Emulate the ACP-1.0 receive path: drop the single leading `_` from an
+    /// `ExtRequest`'s method, keeping the params, so a test can exercise what
+    /// the master actually sees over the wire.
+    fn strip_leading_underscore(req: acp::schema::v1::ExtRequest) -> acp::schema::v1::ExtRequest {
+        let stripped = req
+            .method
+            .strip_prefix('_')
+            .expect("our INTELLTERM_METHOD_* constants are `_`-prefixed")
+            .to_string();
+        acp::schema::v1::ExtRequest::new(stripped, req.params.clone())
+    }
+
+    /// A prefixed (locally-constructed) request decodes to its typed variant,
+    /// and params flow through (checked on `sessions/list.rescan`).
+    #[test]
+    fn parse_ext_request_decodes_every_method_prefixed() {
+        let sid = acp::schema::v1::SessionId::new("sid-p".to_string());
+        let ev = crate::agent_sessions::SessionEvent::ToolCompleted { key: "k".to_string() };
+        assert!(matches!(parse_ext_request(build_focus_session_request(&sid)), WtaExtRequest::FocusSession(_)));
+        assert!(matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan));
+        assert!(matches!(parse_ext_request(build_session_hook_request(&ev)), WtaExtRequest::SessionHook(_)));
+        assert!(matches!(parse_ext_request(build_born_bound_request(&ev)), WtaExtRequest::SessionBornBound(..)));
+        assert!(matches!(parse_ext_request(build_session_resume_dispatched_request(&sid)), WtaExtRequest::SessionResumeDispatched(_)));
+        assert!(matches!(parse_ext_request(build_session_focus_request(&sid)), WtaExtRequest::SessionFocus(_)));
+    }
+
+    /// Regression: ACP 1.0 delivers the method name with the leading `_`
+    /// already stripped. Each must still decode to its handler variant, not
+    /// `ForwardToAgent` (which forwarded to the agent CLI → -32601).
+    #[test]
+    fn parse_ext_request_decodes_every_method_wire_stripped() {
+        let sid = acp::schema::v1::SessionId::new("sid-w".to_string());
+        let ev = crate::agent_sessions::SessionEvent::ToolCompleted { key: "k".to_string() };
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_focus_session_request(&sid))), WtaExtRequest::FocusSession(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_sessions_list_request(false))), WtaExtRequest::SessionsList(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_hook_request(&ev))), WtaExtRequest::SessionHook(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_born_bound_request(&ev))), WtaExtRequest::SessionBornBound(..)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_resume_dispatched_request(&sid))), WtaExtRequest::SessionResumeDispatched(_)));
+        assert!(matches!(parse_ext_request(strip_leading_underscore(build_session_focus_request(&sid))), WtaExtRequest::SessionFocus(_)));
+    }
+
+    #[test]
+    fn parse_ext_request_forwards_foreign_methods() {
+        let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
+        let foreign = acp::schema::v1::ExtRequest::new("somebody.else/method", Arc::from(raw));
+        assert!(matches!(parse_ext_request(foreign), WtaExtRequest::ForwardToAgent(_)));
+    }
+
+    /// A recognized method carrying the wrong param shape → `Malformed`, never a
+    /// silent forward-to-agent (which would surface to the user as -32601).
+    #[test]
+    fn parse_ext_request_reports_malformed_params_for_known_method() {
+        let raw = serde_json::value::RawValue::from_string(r#"{"wrong":"shape"}"#.into()).unwrap();
+        let bad = acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_FOCUS_SESSION, Arc::from(raw));
+        match parse_ext_request(bad) {
+            WtaExtRequest::Malformed { method, .. } => assert!(method.contains("focus_session")),
+            other => panic!("expected Malformed, got {other:?}"),
+        }
+    }
+
+    /// Regression for the notification side of the same ACP-1.0 strip: a
+    /// `session_added` arriving over the wire (no leading `_`) must parse to
+    /// `SessionAdded`, not `Unknown` — otherwise the helper's alive-mirror
+    /// never updates.
+    #[test]
+    fn parse_ext_notification_accepts_wire_stripped_method() {
+        let row = SessionInfo::new(
+            acp::schema::v1::SessionId::new("sess-strip".to_string()),
+            PathBuf::from("/repo/strip"),
+        );
+        let built = build_session_added_notification(&row);
+        // Emulate the ACP-1.0 receive path: drop the single leading `_`.
+        let stripped_method = built
+            .method
+            .strip_prefix('_')
+            .expect("our INTELLTERM_METHOD_* constants are `_`-prefixed")
+            .to_string();
+        let wire = acp::schema::v1::ExtNotification::new(stripped_method, built.params.clone());
+        match parse_ext_notification(&wire) {
+            WtaExtNotification::SessionAdded(parsed) => assert_eq!(parsed, row),
+            other => panic!("expected SessionAdded from wire-stripped method, got {other:?}"),
+        }
     }
 
     // ─── agent_session_to_session_info (master history seeding) ─────────
@@ -2736,6 +3114,101 @@ mod tests {
     }
 
     #[test]
+    fn born_bound_request_carries_optional_wsl_distro() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let event = SessionEvent::SessionStarted {
+            key: "bb-wsl".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane-wsl".to_string(),
+            cwd: PathBuf::from("/mnt/c/Users/dev"),
+            title: String::new(),
+        };
+
+        // Host (no distro): parses back to the event with no distro, and the
+        // event still round-trips through the plain hook parser.
+        let host = build_born_bound_request(&event);
+        let (ev_host, distro_host) =
+            parse_born_bound_params(&host.params).expect("host born-bound parses");
+        assert_eq!(ev_host, event);
+        assert_eq!(distro_host, None);
+        assert_eq!(
+            parse_session_hook_params(&host.params).expect("host body is hook-shaped"),
+            event,
+            "host born-bound body must stay compatible with the plain hook parser",
+        );
+
+        // WSL: the distro rides alongside, and the event still parses cleanly.
+        let wsl = build_born_bound_request_wsl(&event, "Ubuntu");
+        let (ev_wsl, distro_wsl) =
+            parse_born_bound_params(&wsl.params).expect("wsl born-bound parses");
+        assert_eq!(ev_wsl, event);
+        assert_eq!(distro_wsl.as_deref(), Some("Ubuntu"));
+        assert_eq!(
+            parse_session_hook_params(&wsl.params)
+                .expect("wsl body ignores the extra wsl_distro key"),
+            event,
+            "the extra wsl_distro key must not break the plain hook parser",
+        );
+    }
+
+    #[test]
+    fn parse_born_bound_params_rejects_malformed_wsl_distro() {
+        use crate::agent_sessions::{CliSource, SessionEvent};
+        let event = SessionEvent::SessionStarted {
+            key: "bb-bad".to_string(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: "pane".to_string(),
+            cwd: PathBuf::from("/mnt/c"),
+            title: String::new(),
+        };
+        // Build a valid WSL body, then corrupt `wsl_distro` to the wrong type.
+        let good = build_born_bound_request_wsl(&event, "Ubuntu");
+        let mut value: serde_json::Value = serde_json::from_str(good.params.get()).unwrap();
+        value["wsl_distro"] = serde_json::json!(123);
+        let raw = serde_json::value::RawValue::from_string(value.to_string()).unwrap();
+
+        // The event still parses, but the malformed distro must surface as an
+        // error rather than being silently dropped (which would mislabel the
+        // WSL row as a host session).
+        assert!(parse_session_hook_params(&raw).is_ok());
+        assert!(
+            parse_born_bound_params(&raw).is_err(),
+            "a wrong-typed wsl_distro must be rejected, not silently ignored"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_location_updates_only_on_change() {
+        use crate::agent_sessions::SessionLocation;
+        let reg = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("loc-1".to_string());
+        reg.upsert(SessionInfo::new(sid.clone(), PathBuf::from("/mnt/c/proj")))
+            .await;
+        // Default row is Host → stamping Wsl changes it.
+        assert!(
+            reg.set_location(&sid, SessionLocation::Wsl { distro: "Ubuntu".to_string() })
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().location,
+            SessionLocation::Wsl { distro: "Ubuntu".to_string() }
+        );
+        // Idempotent: same value → no change reported.
+        assert!(
+            !reg.set_location(&sid, SessionLocation::Wsl { distro: "Ubuntu".to_string() })
+                .await
+        );
+        // Absent id → no change.
+        assert!(
+            !reg.set_location(
+                &acp::schema::v1::SessionId::new("missing".to_string()),
+                SessionLocation::Host
+            )
+            .await
+        );
+    }
+
+    #[test]
     fn session_hook_cli_source_round_trips_codex() {
         use crate::agent_sessions::CliSource;
         let typed = CliSource::Codex;
@@ -2768,7 +3241,7 @@ mod tests {
 
     #[test]
     fn inject_creates_meta_when_missing_and_writes_pane_session_id() {
-        let mut meta: Option<acp::Meta> = None;
+        let mut meta: Option<acp::schema::v1::Meta> = None;
         inject_wta_meta(
             &mut meta,
             &WtaMeta {
@@ -2808,12 +3281,123 @@ mod tests {
         let original = WtaMeta {
             pane_session_id: Some("pane-X".to_string()),
             owner_tab_id: Some("{tab-owner-X}".to_string()),
+            ..Default::default()
         };
-        let mut meta: Option<acp::Meta> = None;
+        let mut meta: Option<acp::schema::v1::Meta> = None;
         inject_wta_meta(&mut meta, &original);
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "round-trip preserves data");
         assert!(meta.is_none(), "round-trip ends with empty meta");
+    }
+
+    #[test]
+    fn inject_then_extract_round_trips_agent_identity() {
+        // The multi-agent master selects + reconstructs the CLI from
+        // `agent_id` (+ `model`) carried on the helper's `initialize`
+        // handshake. Guard the wire round-trip of all three identity
+        // fields, including `model` (which used to ride inside
+        // `agent_cmd` and now travels on its own).
+        let original = WtaMeta {
+            agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp".to_string()),
+            agent_id: Some("gemini".to_string()),
+            model: Some("gemini-2.5-pro".to_string()),
+            ..Default::default()
+        };
+        let mut meta: Option<acp::schema::v1::Meta> = None;
+        inject_wta_meta(&mut meta, &original);
+        let parsed = extract_wta_meta(&mut meta);
+        assert_eq!(parsed, original, "agent identity survives the wire");
+    }
+
+    #[test]
+    fn extract_drops_empty_and_whitespace_string_fields_to_none() {
+        // An empty / whitespace-only value on the wire must parse back to
+        // `None`, not `Some("")` — otherwise `WtaMeta::is_empty()` stays
+        // false and a semantically-empty `_meta.wta` is kept alive on the
+        // wire and in registry rows.
+        let mut map = serde_json::Map::new();
+        map.insert(
+            WTA_META_NAMESPACE.to_string(),
+            serde_json::json!({
+                "pane_session_id": "",
+                "agent_cmd": "",
+                "agent_id": "   ",
+                "model": "\t",
+                "owner_tab_id": " ",
+            }),
+        );
+        let mut meta: Option<acp::schema::v1::Meta> = Some(map);
+        let parsed = extract_wta_meta(&mut meta);
+        assert_eq!(parsed, WtaMeta::default(), "all-blank fields ⇒ default");
+        assert!(parsed.is_empty(), "is_empty() true for all-blank input");
+        assert!(meta.is_none(), "_meta with only-blank wta collapses to None");
+    }
+
+    #[test]
+    fn inject_drops_whitespace_only_string_fields() {
+        // `inject_wta_meta` must mirror `extract_wta_meta`: a whitespace-only
+        // `Some(" ")` is semantically empty and must not be serialized as a
+        // real field (that would flip `is_empty()` off on the wire and keep an
+        // empty `_meta.wta` alive). When *every* field is blank, no `_meta.wta`
+        // is attached at all.
+        let mut meta: Option<acp::schema::v1::Meta> = None;
+        inject_wta_meta(
+            &mut meta,
+            &WtaMeta {
+                pane_session_id: Some("  ".to_string()),
+                agent_cmd: Some(String::new()),
+                agent_id: Some("\t".to_string()),
+                model: Some(" ".to_string()),
+                owner_tab_id: Some("\n".to_string()),
+            },
+        );
+        assert!(meta.is_none(), "all-blank meta ⇒ no _meta.wta on the wire");
+
+        // A blank field alongside a real one drops only the blank; the real
+        // value survives and round-trips.
+        let mut meta2: Option<acp::schema::v1::Meta> = None;
+        inject_wta_meta(
+            &mut meta2,
+            &WtaMeta {
+                agent_id: Some("claude".to_string()),
+                model: Some("   ".to_string()),
+                ..Default::default()
+            },
+        );
+        let parsed = extract_wta_meta(&mut meta2);
+        assert_eq!(parsed.agent_id.as_deref(), Some("claude"), "real id kept");
+        assert_eq!(parsed.model, None, "blank model dropped on inject");
+    }
+
+    #[test]
+    fn is_empty_treats_whitespace_only_fields_as_empty() {
+        // `is_empty()` must use the same trim-based notion of emptiness as
+        // `extract_wta_meta` / `inject_wta_meta`. A `Some("   ")` is dropped on
+        // the wire, so it must also count as empty here — otherwise the two
+        // views of "empty" disagree and `inject_wta_meta`'s `is_empty()`
+        // early-out keys off a value the wire never reflects.
+        assert!(WtaMeta::default().is_empty(), "all-None is empty");
+        assert!(
+            WtaMeta {
+                pane_session_id: Some("  ".to_string()),
+                agent_cmd: Some(String::new()),
+                agent_id: Some("\t".to_string()),
+                model: Some(" ".to_string()),
+                owner_tab_id: Some("\n".to_string()),
+            }
+            .is_empty(),
+            "all-whitespace fields ⇒ empty"
+        );
+        // A single real value flips it back to non-empty.
+        assert!(
+            !WtaMeta {
+                agent_id: Some("claude".to_string()),
+                model: Some("   ".to_string()),
+                ..Default::default()
+            }
+            .is_empty(),
+            "one real field ⇒ not empty"
+        );
     }
 
     // ── apply_ext_notification ──────────────────────────────────────
@@ -2822,7 +3406,7 @@ mod tests {
     async fn apply_ext_notification_upserts_on_session_added() {
         let reg = InMemoryRegistry::new();
         let info = SessionInfo::new(
-            acp::SessionId::new("sess-1".to_string()),
+            acp::schema::v1::SessionId::new("sess-1".to_string()),
             std::path::PathBuf::from("/tmp/x"),
         )
         .with_pane_session_id("pane-1".to_string());
@@ -2837,7 +3421,7 @@ mod tests {
     async fn apply_ext_notification_removes_on_session_removed() {
         let reg = InMemoryRegistry::new();
         let info = SessionInfo::new(
-            acp::SessionId::new("dies".to_string()),
+            acp::schema::v1::SessionId::new("dies".to_string()),
             std::path::PathBuf::from("/tmp/y"),
         );
         reg.upsert(info.clone()).await;
@@ -2851,12 +3435,12 @@ mod tests {
     async fn apply_ext_notification_is_noop_on_unknown_method() {
         let reg = InMemoryRegistry::new();
         let pre = SessionInfo::new(
-            acp::SessionId::new("keep".to_string()),
+            acp::schema::v1::SessionId::new("keep".to_string()),
             std::path::PathBuf::from("/tmp/z"),
         );
         reg.upsert(pre.clone()).await;
         let raw = serde_json::value::RawValue::from_string("{}".into()).unwrap();
-        let ext = acp::ExtNotification::new(
+        let ext = acp::schema::v1::ExtNotification::new(
             std::sync::Arc::<str>::from("some.other.vendor/event"),
             std::sync::Arc::from(raw),
         );
@@ -2874,7 +3458,7 @@ mod tests {
         // Right method, wrong shape (missing session_id).
         let raw =
             serde_json::value::RawValue::from_string(r#"{"not_session_id":"x"}"#.into()).unwrap();
-        let ext = acp::ExtNotification::new(
+        let ext = acp::schema::v1::ExtNotification::new(
             std::sync::Arc::<str>::from(INTELLTERM_METHOD_SESSION_REMOVED),
             std::sync::Arc::from(raw),
         );
@@ -2944,7 +3528,7 @@ mod tests {
 
         // Build a valid SessionInfo, serialise it, then strip the location key.
         let info = SessionInfo::new(
-            acp::SessionId::new("x"),
+            acp::schema::v1::SessionId::new("x"),
             PathBuf::from("/tmp"),
         );
         let mut value: serde_json::Value = serde_json::to_value(&info).unwrap();

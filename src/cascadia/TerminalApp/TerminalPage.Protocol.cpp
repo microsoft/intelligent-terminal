@@ -566,6 +566,43 @@ namespace winrt::TerminalApp::implementation
 
         Protocol::TabCreationResult result{};
 
+        // A protocol create_tab that carries a commandline but no profile would
+        // otherwise resolve (via CascadiaSettings::GetProfileForArgs) to the
+        // "Defaults" profile, whose panes are auto-closed on *any* process exit
+        // — even a non-zero one. So a command that runs and exits (e.g. a
+        // misconfigured delegate agent that prints "'x' is not recognized" and
+        // exits with code 1) flashes the tab shut before the user can read the
+        // error. Pin a real profile instead so its closeOnExit (automatic/
+        // graceful) keeps a non-zero exit visible, exactly like a normally-
+        // opened tab.
+        //
+        // Prefer the profile of the pane the user is currently working in, so a
+        // delegate/agent tab opened from e.g. a WSL/Ubuntu session matches that
+        // session (same intent as PR #366); fall back to the user's global
+        // default profile when there is no focused terminal. Either way this is
+        // never left empty — that's what re-introduces the auto-closing
+        // "Defaults" profile.
+        //
+        // Scope this narrowly to the case that actually hits the bug: a
+        // commandline with no explicit profile selection. A caller that omits
+        // the commandline already lands on the user's real default profile (not
+        // the auto-closing "Defaults"), and one that asked for a profile by name
+        // or index must keep it — so those are left untouched. If the resolved
+        // GUID somehow can't be matched, GetProfileForArgs falls back to the
+        // same "Defaults" profile as before (no regression).
+        if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
+        {
+            auto profileGuid = _settings.GlobalSettings().DefaultProfile();
+            if (const auto focusedTab = _GetFocusedTabImpl())
+            {
+                if (const auto focusedProfile = focusedTab->GetFocusedProfile())
+                {
+                    profileGuid = focusedProfile.Guid();
+                }
+            }
+            args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
+        }
+
         auto pane = _MakePane(args, nullptr);
         if (!pane)
             co_return result;

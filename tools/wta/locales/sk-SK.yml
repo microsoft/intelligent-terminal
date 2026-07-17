@@ -72,6 +72,7 @@ commands.fix.summary: "Diagnostikovať aktívny terminál a navrhnúť opravu (/
 commands.restart.summary: "Reštartovať agenta"
 commands.stop.summary: "Zrušiť prebiehajúcu výzvu"
 commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Vyberte agent pre túto tablu (/agent <id> na priame prepnutie)"  # {Locked="/agent","<id>"}
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ na navigáciu • ← → na prepínanie tlačidiel • Enter na výber • Esc na zrušenie)"
@@ -199,6 +200,16 @@ time.days_other: "pred %{count} dňami"
 
 # ── Vykonanie odporúčania (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "Voľba %{choice} zlyhala: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Vybrať agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Na tomto počítači sa nenašlo žiadne dostupné rozhranie CLI agenta."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Neznámy alebo nedostupný agent %{agent} — zadaním /agent zobrazíte dostupný zoznam."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Prepínanie agentov nie je k dispozícii mimo karty Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}

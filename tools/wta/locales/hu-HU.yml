@@ -195,9 +195,20 @@ commands.fix.summary: "Az aktív terminál diagnosztizálása és javítás java
 commands.restart.summary: "Ügynök újraindítása"
 commands.stop.summary: "Folyamatban lévő prompt megszakítása"
 commands.sessions.summary: "Előzménybeli munkamenetek választójának megnyitása (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Válassza ki a ügynökt ehhez a laphoz (/agent <id> a közvetlen váltáshoz)"  # {Locked="/agent","<id>"}
 
 # ── Javaslat végrehajtása (src/coordinator.rs) ──────────────────────────────
 system.choice_execution_failed: "A(z) %{choice}. választás sikertelen: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Ügynök kiválasztása (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Nem található elérhető ügynök-CLI ezen a gépen."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Ismeretlen vagy nem elérhető ügynök: %{agent} — írja be a /agent parancsot az elérhető lista megtekintéséhez."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Az ügynökváltás nem érhető el a Windows Terminal lapján kívül."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}

@@ -4,77 +4,6 @@
 #[cfg(windows)]
 use std::io;
 
-/// Copilot CLI stores its OAuth credential in Windows Credential Manager under
-/// target names containing `copilot-cli`. This predicate is deliberately kept
-/// pure so the matching behavior is testable without touching a user's
-/// Credential Manager store.
-pub(crate) fn credential_target_matches_copilot(target: &str) -> bool {
-    target.to_ascii_lowercase().contains("copilot-cli")
-}
-
-#[cfg(windows)]
-unsafe fn wide_ptr_to_string(ptr: *const u16) -> String {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-
-    if ptr.is_null() {
-        return String::new();
-    }
-    let mut len = 0usize;
-    while unsafe { *ptr.add(len) } != 0 {
-        len += 1;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    OsString::from_wide(slice).to_string_lossy().into_owned()
-}
-
-#[cfg(windows)]
-struct CredentialArray(*mut *mut windows_sys::Win32::Security::Credentials::CREDENTIALW);
-
-#[cfg(windows)]
-impl Drop for CredentialArray {
-    fn drop(&mut self) {
-        unsafe {
-            windows_sys::Win32::Security::Credentials::CredFree(self.0 as _);
-        }
-    }
-}
-
-/// Read-only Copilot credential presence check using the native Credential
-/// Manager API. We inspect target names only; the credential secret/blob is
-/// never read.
-#[cfg(windows)]
-pub(crate) fn copilot_credential_present() -> bool {
-    use windows_sys::Win32::Security::Credentials::{CredEnumerateW, CREDENTIALW};
-
-    let mut count = 0u32;
-    let mut credentials: *mut *mut CREDENTIALW = std::ptr::null_mut();
-    // Enumerate all targets and apply our own substring predicate to preserve
-    // parity with the old shell-based substring probe. Copilot CLI has
-    // used both prefix (`copilot-cli/...`) and suffix (`... .copilot-cli`)
-    // target shapes; CredEnumerateW's filter is prefix-only and would miss the
-    // suffix form. We still inspect target names only — never credential blobs.
-    let ok = unsafe { CredEnumerateW(std::ptr::null(), 0, &mut count, &mut credentials) != 0 };
-    if !ok || credentials.is_null() || count == 0 {
-        return false;
-    }
-
-    let _guard = CredentialArray(credentials);
-    let entries = unsafe { std::slice::from_raw_parts(credentials, count as usize) };
-    entries.iter().any(|&cred| {
-        if cred.is_null() {
-            return false;
-        }
-        let target = unsafe { wide_ptr_to_string((*cred).TargetName) };
-        credential_target_matches_copilot(&target)
-    })
-}
-
-#[cfg(not(windows))]
-pub(crate) fn copilot_credential_present() -> bool {
-    false
-}
-
 #[cfg(windows)]
 struct ClipboardGuard;
 
@@ -159,6 +88,86 @@ pub(crate) fn copy_text_to_clipboard(_text: &str) -> std::io::Result<()> {
     ))
 }
 
+/// Read text suitable for paste from the Windows clipboard.
+#[cfg(windows)]
+pub(crate) fn read_paste_string_from_clipboard() -> io::Result<String> {
+    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    const CF_UNICODETEXT: u32 = 13;
+    const MAX_CLIPBOARD_TEXT_BYTES: usize = 4 * 1024 * 1024;
+
+    let _guard = ClipboardGuard::open()?;
+    unsafe {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 {
+            let handle = GetClipboardData(CF_UNICODETEXT);
+            if !handle.is_null() {
+                let ptr = GlobalLock(handle);
+                if !ptr.is_null() {
+                    let size = GlobalSize(handle);
+                    if size == 0 || size > MAX_CLIPBOARD_TEXT_BYTES {
+                        GlobalUnlock(handle);
+                    } else {
+                        let units = std::slice::from_raw_parts(
+                            ptr as *const u16,
+                            size / std::mem::size_of::<u16>(),
+                        );
+                        let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
+                        let text = String::from_utf16_lossy(&units[..end]);
+                        GlobalUnlock(handle);
+                        return Ok(text);
+                    }
+                }
+            }
+        }
+
+        if let Some(path) = clipboard_file_path_from_open_clipboard() {
+            return Ok(path.to_string_lossy().into_owned());
+        }
+
+        Ok(String::new())
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn read_paste_string_from_clipboard() -> std::io::Result<String> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "clipboard is only supported on Windows",
+    ))
+}
+
+/// First file path from a CF_HDROP clipboard payload.
+///
+/// Must be called while the clipboard is already open.
+#[cfg(windows)]
+pub(crate) unsafe fn clipboard_file_path_from_open_clipboard() -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+    use windows_sys::Win32::UI::Shell::DragQueryFileW;
+
+    const CF_HDROP: u32 = 15;
+
+    if IsClipboardFormatAvailable(CF_HDROP) == 0 {
+        return None;
+    }
+    let handle = GetClipboardData(CF_HDROP);
+    if handle.is_null() {
+        return None;
+    }
+    let needed = DragQueryFileW(handle as _, 0, std::ptr::null_mut(), 0);
+    if needed == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; needed as usize + 1];
+    let got = DragQueryFileW(handle as _, 0, buf.as_mut_ptr(), buf.len() as u32);
+    if got == 0 {
+        return None;
+    }
+    buf.truncate(got as usize);
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf)))
+}
+
 /// Open a URL with the user's default handler using ShellExecuteW instead of a
 /// shell wrapper.
 #[cfg(windows)]
@@ -195,23 +204,4 @@ pub(crate) fn open_url_in_default_browser(_url: &str) -> std::io::Result<()> {
         std::io::ErrorKind::Unsupported,
         "opening URLs is only supported on Windows",
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::credential_target_matches_copilot;
-
-    #[test]
-    fn copilot_credential_match_accepts_known_target_shapes() {
-        assert!(credential_target_matches_copilot("copilot-cli/https://github.com:user"));
-        assert!(credential_target_matches_copilot("https://github.com:user.copilot-cli"));
-        assert!(credential_target_matches_copilot("COPILOT-CLI/https://example.ghe.com:user"));
-    }
-
-    #[test]
-    fn copilot_credential_match_rejects_unrelated_targets() {
-        assert!(!credential_target_matches_copilot(""));
-        assert!(!credential_target_matches_copilot("github.com:user"));
-        assert!(!credential_target_matches_copilot("other-agent-cli"));
-    }
 }

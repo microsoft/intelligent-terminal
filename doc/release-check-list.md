@@ -9,6 +9,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 - `[UT~]` — partially UT-coverable: decision/logic core can be unit-tested, full behavior still needs E2E/UI.
 - `[E2E]` — needs mock-ACP end-to-end or UI automation; not a UT.
 - `[MANUAL]` — human judgment (visual polish, real LLM quality, install/auth UX).
+- `[new]` — test case added for the current release cycle and not yet exercised in a prior sign-off. Orthogonal to the coverage markers above — read it alongside the `[UT*]`/`[E2E]`/`[MANUAL]` marker. Clear the `[new]` tag once the item has been through a release sign-off (it then becomes an ordinary tracked item).
 
 > **Checkbox semantics:** a ticked `- [x]` box means the item is fully verified by an automated unit test (pure `[UT✓]` items). Items tagged `[UT✓]` *and* `[E2E]`/`[MANUAL]` keep the `[UT✓]` marker to show the logic core is unit-tested, but stay unchecked because release sign-off still needs the E2E / manual portion.
 
@@ -41,6 +42,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C010` `[E2E]` **FRE privacy / help links work:** Links open the browser and do not block completion.
 - [ ] `C011` `[E2E]` **FRE save progress works:** The progress UI appears while setup/install work is running and returns to a usable state.
 - [x] `C012` `[UT✓]` `[E2E]` **FRE error messages are actionable:** Install/auth/setup failures show a useful message instead of a silent failure or raw OS error. _(UT: `classify_connection_closed_is_actionable` + `classify_connection_failed_is_critical` classify agent connection failures into actionable/critical categories that drive the user-facing message rather than a raw error; `auth_error_routes_to_signin_not_connection_lost` routes auth failures to a sign-in prompt.)_
+- [ ] `C214` `[new]` `[UT~]` `[E2E]` **FRE execution-policy detection is correct:** FRE flags a genuinely blocking PowerShell execution policy but does **not** false-block when a load-induced execution-policy probe merely times out; an unknown/unreadable policy is treated conservatively (as blocking). _(#336/#338/#309; UT: execution-policy gate.)_
 - [ ] `C013` `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, autofix, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLocked`, Effective* gates.)_
 - [ ] `C014` `[UT~]` `[MANUAL]` **FRE RTL/localized layout is usable:** Layout mirrors correctly for RTL locales and text is not clipped in localized builds. _(UT: `IsRtlLocale`.)_
 
@@ -122,6 +124,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C054` `[E2E]` **Different positions work:** Open/hide/focus works for bottom, right, left, and top pane positions.
 - [ ] `C055` `[E2E]` **Stash preserves chat:** Hiding and restoring the pane preserves helper process, connection state, and chat history.
 - [ ] `C056` `[E2E]` **Tab close cleans up:** Closing the owning tab cleans up the helper and does not leave a broken pane.
+- [ ] `C215` `[new]` `[E2E]` **Agent panes are not persisted into saved layout:** Saving and restoring a window layout does not resurrect a previously-open agent pane; restored windows come back without an unexpected agent pane. _(#360/#275.)_
 
 ### Built-in agent chat matrix
 
@@ -129,7 +132,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C058` `[UT✓]` `[E2E]` **Copilot missing CLI path works:** Missing Copilot shows actionable setup/auth guidance, not a silent failure. _(UT: `is_cli_available_*` availability check + the auth/setup screen renders `render_auth_sign_in_card` / `render_auth_screen_shows_agent_name`; a missing binary degrades to a guidance screen, not a silent failure. Exercising a truly uninstalled Copilot stays MANUAL.)_
 - [ ] `C059` `[E2E]` **Non-Copilot agents chat works:** Each installed+authenticated non-Copilot built-in agent (Claude/Codex/Gemini) connects through its ACP adapter and answers a prompt. _(One consolidated matrix case — all built-in agents share the same agent-pane/ACP path, so per-agent behavioural depth is covered by the Copilot suites.)_
 - [x] `C060` `[UT✓]` `[E2E]` **Agent auth failure works:** Unauthenticated agents show clear login guidance and can recover after sign-in. _(UT: `auth_error_routes_to_signin_not_connection_lost` (AuthRequired → sign-in, not a generic failure) + the in-pane auth screen renders `render_auth_screen_shows_agent_name` / `render_auth_sign_in_card` / `render_auth_checking_with_status_message` (login guidance + post-sign-in checking state). Driving a real sign-out stays MANUAL.)_
+- [ ] `C216` `[new]` `[E2E]` **GitHub Enterprise Copilot sign-in works:** On the auth screen, pressing **E** lets the user enter a GHE domain (e.g. `*.ghe.com`) and sign in; the last-used host is remembered and the device-verification URL targets that host. _(#362.)_
 - [ ] `C061` `[E2E]` **Agent restart after settings change works:** Changing the selected agent or model restarts/reconnects cleanly.
+- [ ] `C217` `[new]` `[UT~]` `[E2E]` **Master death is a consistent degraded state:** If `wta-master` exits, the agent pane shows a single consistent degraded state and requires `/restart` to recover — no silent "split-brain" where it looks half-alive. _(#329.)_
 
 ### Input and rendering
 
@@ -137,6 +142,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C063` `[UT✓]` `[E2E]` **Prompt out-of-focus appearance is correct:** Input box looks correct when focus leaves the agent pane. _(UT: `render_input_box_intact_when_pane_unfocused` renders with `pane_focused=false` and asserts the input box stays intact — prompt marker + connection placeholder still paint, not blanked/broken; only the caret style dims, input.rs:69/90.)_
 - [ ] `C064` `[E2E]` **Typing works:** User can type, edit, and submit prompt text correctly.
 - [ ] `C065` `[E2E]` **Paste works:** Pasted multi-line text is handled correctly.
+- [ ] `C218` `[new]` `[UT✓]` `[E2E]` **Image paste (Alt+V) works:** A copied screenshot (`CF_DIB`/`CF_DIBV5`) or image file is queued and sent to the agent as an ACP image content block on the next prompt; the action is gated on the agent advertising image support. When the agent does not support images, or the clipboard has no image, it does not paste but surfaces a clear system message (e.g. "image not supported" / "clipboard empty") rather than silently ignoring the keypress. _(UT: `clipboard_image` + `mock_agent_tests` `seen_images` side-channel; #354.)_
 - [ ] `C066` `[E2E]` **Keyboard navigation works:** Arrow keys, Tab completion, Ctrl combinations, and Esc behave correctly.
 - [x] `C067` `[UT✓]` `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing. _(UT: `render_agent_input_accepts_non_ascii` types accented-Latin/Greek/CJK via the real key handler and asserts the input buffer holds them verbatim (multi-byte caret advance) + they render. E2E send path (wtcli send-keys) cannot carry non-ASCII, so the product side is UT-covered; IME composition stays MANUAL.)_
 - [ ] `C068` `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; streaming-JSON unwrap incl. emoji/surrogate pairs in `ui::chat::tests`.)_
@@ -156,6 +162,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C079` `[UT✓]` **`/sessions` works:** Switches to session-management view. _(UT: `slash_sessions_opens_agents_view`.)_
 - [ ] `C080` `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render covered by `render_model_picker_lists_models`, full UI flow still E2E.)_
 - [x] `C081` `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
+- [ ] `C225` `[E2E]` **`/agent` picker works:** `/agent` opens a keyboard-operable picker containing the current installed/allowed agents, and selecting the current agent is a safe no-op.
+- [ ] `C226` `[E2E]` **Invalid `/agent` selection is safe:** `/agent <id>` rejects an unavailable agent without rebuilding the pane or changing the global default.
 - [ ] `C082` `[E2E]` **Esc/back navigation works:** User can return from popups/session/model views to chat.
 
 ### Chat/session view switching
@@ -171,7 +179,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Shell integration and detection
 
-- [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events.
+- [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events, including non-zero marks for PowerShell-level failures on Windows PowerShell 5.1.
+- [ ] `C219` `[new]` `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_
+- [ ] `C220` `[new]` `[E2E]` **Shells self-report identity (`OSC 9001;ShellType`):** The terminal knows which shell owns a pane — including after a nested shell (`pwsh` → `wsl` → `exit`) returns — so autofix suggests commands for the *current* shell (no PowerShell suggestions inside a WSL/bash pane). `wtcli list-panes` exposes the live shell + version per pane. _(#345.)_
 - [ ] `C088` `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
 - [x] `C089` `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
 - [x] `C090` `[UT✓]` **Successful commands ignored:** Successful commands do not trigger autofix. _(UT: `classify_wt_event` + `success_exit_code_does_not_arm_autofix`.)_
@@ -192,6 +202,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C102` `[UT✓]` `[E2E]` **Autofix target pane is correct:** Failure in one pane does not offer/run a fix in the wrong pane. _(UT: target-tab routing — busy-pane tests + `autofix_still_triggers_for_non_agent_pane`.)_
 - [ ] `C103` `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot returns a useful suggestion.
 - [ ] `C104` `[E2E]` **Autofix with non-Copilot agents works:** Autofix produces a usable suggestion with a non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent — same path as Copilot, covered once across the available agents.
+- [ ] `C221` `[new]` `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a nonexistent command. _(#306.)_
 
 ### Autofix across layout changes
 
@@ -211,7 +222,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C111` `[UT✓]` `[E2E]` **Slash command works:** `/sessions` opens the session view. _(UT: `/sessions` classify.)_
 - [x] `C112` `[UT✓]` `[E2E]` **Command action works:** The `openAgentSessions` action opens the session view. _(UT: `AgentActionsParse` verifies `openAgentSessions` parses to the action; the resulting open-the-view behavior is E2E-proven in `Feature.SessionList` 'Session view opens from chat' / 'Slash command works' (C083/C111), which route through the same `_HandleOpenAgentSessions`.)_
 - [x] `C113` `[UT✓]` `[E2E]` **Session view empty state works:** Empty/no-session state is useful and not visually broken. _(UT: `render_sessions_view_shows_footer_hint` + `render_agents_view_empty_when_no_sessions_is_stable` paint the agents-view chrome/footer with an empty registry (no panic, nav hint drawn).)_
-- [ ] `C114` `[E2E]` **Session view refresh works:** Newly created sessions appear without restarting Terminal when hooks are active.
+- [ ] `C114` `[E2E]` **Session view refresh works:** Pressing **F5** re-scans history on demand so sessions that appeared after launch show up without restarting Terminal — e.g. a CLI session started in another shell. Works independently of whether session hooks are active. _(#344.)_
+- [ ] `C222` `[new]` `[E2E]` **Session titles are clean:** Session rows show a meaningful title and never a bare "# AGENTS.md instructions" Codex heading or raw markdown artifact. _(#355.)_
 
 ### Session states
 
@@ -220,12 +232,13 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C117` `[UT✓]` `[E2E]` **Waiting-for-input state is correct:** A session waiting for user input/attention shows the waiting/attention state. _(UT: `agents_view::status_badge_renders_expected_text_per_state` (Attention→waiting_for_input badge).)_
 - [x] `C118` `[UT✓]` `[E2E]` **Idle state is correct:** A live session waiting for the next prompt shows idle/ready state. _(E2E `Feature.SessionState` drives a live shell copilot session to turn-completion and asserts its Idle badge in the /sessions view; UT: Idle activity derivation + badge render `agents_view.rs::status_badge_renders_expected_text_per_state`.)_
 - [x] `C119` `[UT✓]` **Ended state is correct:** A session whose pane was closed becomes ended and does not stay falsely live. _(UT: PaneClosed tombstone + "Ended must stay Ended" in `agent_sessions.rs`; Ended renders an empty badge `agents_view.rs::status_badge_renders_expected_text_per_state`, so it is visually distinct from any live/idle row.)_
-- [ ] `C120` `[UT✓]` `[E2E]` **Historical state is correct:** On-disk sessions show as historical when not live.
+- [ ] `C120` `[UT✓]` `[E2E]` **Historical state is correct:** Historical sessions (now sourced from the agent's ACP `session/list`, not on-disk file parsing) show as historical when not live. _(#365.)_
 - [ ] `C121` `[UT✓]` `[E2E]` **State transitions are correct:** Live -> ended, historical -> live, and working -> idle transitions update without duplicate/stale rows. _(UT: `apply_alive_session_join` / `apply_master_session_ended`.)_
 
 ### Focus and restore
 
 - [ ] `C122` `[UT✓]` `[E2E]` **Focus active session:** Selecting an active session navigates/focuses the existing pane. _(UT: `decide_enter_action` Focus.)_
+- [ ] `C223` `[new]` `[E2E]` **Focus brings the target window forward:** Focusing a session/pane that lives in another (background) window brings that window to the foreground, not just the pane within it. _(#353.)_
 - [x] `C123` `[UT✓]` `[E2E]` **Focus active stashed agent pane:** Selecting an active stashed agent-pane session restores/focuses the pane if applicable. _(UT: `session_mgmt::class_a_live_with_pane_enter_focuses` — a live Class-A agent-pane row routes Enter to FocusPane. E2E-blocked: the MVP picker `ShellOnly` filter does not render agent-pane rows.)_
 - [x] `C124` `[UT✓]` `[E2E]` **Restore old session:** Selecting a supported old session resumes it successfully. _(UT: `session_mgmt::class_a_historical_enter_routes_like_ended` + `class_a_ended_enter_resumes_in_agent_pane_when_supported`.)_
 - [x] `C125` `[UT✓]` `[E2E]` **Restore old shell-pane session:** Supported shell-pane sessions resume through the CLI resume path. _(UT: `session_mgmt::class_b_historical_enter_resumes_via_cli_flag` — ResumeCliFlag decision.)_
@@ -289,7 +302,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C160` `[UT~]` `[E2E]` **Split pane target selection is correct:** Agent insert/run/autofix targets the intended non-agent pane. _(UT: routing core.)_
 - [ ] `C161` `[UT~]` `[E2E]` **Multiple tabs work:** Each tab has its own agent pane/session state. _(UT: per-tab state.)_
 - [ ] `C162` `[E2E]` **Multiple agent panes work:** Opening agent panes in multiple tabs does not mix conversations.
+- [ ] `C227` `[E2E]` **Per-tab agent switching is isolated:** `/agent <id>` can switch one tab to a different built-in agent without rebuilding sibling tabs, losing either conversation, or restarting the shared master.
+- [ ] `C228` `[E2E]` **Global agent defaults respect per-tab overrides:** New tabs inherit the global agent; changing that default rebuilds follower tabs while preserving tabs with an explicit runtime override.
 - [ ] `C163` `[E2E]` **Move tab to new window preserves chat:** Dragging/tearing a tab to another window preserves agent pane state.
+- [ ] `C224` `[new]` `[E2E]` **Agent-created terminals inherit the active profile:** A terminal/tab the agent opens inherits the active pane's profile (e.g. an agent working in an Ubuntu session spawns new tabs in Ubuntu, not the default PowerShell profile). _(#366, closes #351.)_
 - [x] `C164` `[UT✓]` `[E2E]` **Move tab to new window preserves session routing:** Session events remain associated with the moved tab. _(UT: `wt_event_critical_from_owner_tab_raises_banner_not_chat` — events route by owner_tab_id, which survives the window move. E2E: `Feature.MultiWindow` sends a fresh prompt to the moved agent pane by its pinned session id after the move and asserts it answers, LLM-skip-guarded.)_
 - [ ] `C165` `[UT~]` `[E2E]` **Move tab to new window preserves autofix:** Autofix still routes to the moved tab/pane.
 - [x] `C166` `[UT✓]` `[E2E]` **Multiple windows do not cross-route:** Events from one window do not mutate another window's agent pane/session UI. _(UT: `wt_event_critical_from_other_tab_does_not_surface_in_owner_tab` — a helper owning tab A DROPS a connection-failure event broadcast from tab B (no banner, no chat, no notification), the exact cross-route isolation contract; helpers filter inbound events by window_id + owner_tab_id.)_

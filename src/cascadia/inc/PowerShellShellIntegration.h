@@ -352,8 +352,21 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // already references the v1 script byte-for-byte — get the new script
     // rewritten in; without the bump the orchestrator's block-match early-
     // out would leave the stale v1 script (no ShellType) in place.
+    //
+    // v3: fixed __ShellInteg_GetLastExitCode so PowerShell-level errors
+    // (invalid -match regex, [int]::Parse, 1/0, ...) report a non-zero
+    // OSC 133;D exit code on Windows PowerShell 5.1. 5.1 stamps
+    // InvocationInfo.HistoryId = -1 on these .NET-exception-class errors, so
+    // the old HistoryId-match check missed them and emitted the stale 0 from
+    // the prior command, causing autofix to treat the failure as success.
+    // Bumped so existing users get the corrected script rewritten in.
+    //
+    // v4: command-not-found errors can leave $LastExitCode null because no
+    // native process was started. Treat null like the stale zero used by
+    // PowerShell-level errors so OSC 133;D always carries a numeric non-zero
+    // failure code.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 2;
+    inline constexpr int kVersion = 4;
 
     inline std::wstring ScriptFileName()
     {
@@ -414,11 +427,14 @@ if (-not $Global:__ShellInteg_Installed) {
         # $? still reflects the *user's* last command here because this
         # is the very first call inside the prompt function.
         if ($? -eq $True) { return 0 }
-        $entry = Get-History -Count 1
-        if ($entry -and $Error[0].InvocationInfo.HistoryId -eq $entry.Id) {
-            return -1          # PowerShell-level error
+        # $? is False -> the last command failed. Preserve a real non-zero
+        # native exit code. PowerShell-level errors leave the previous value
+        # untouched, while command-not-found can leave it null because no
+        # native process started; zero/null therefore use a numeric sentinel.
+        if ($null -ne $LastExitCode -and $LastExitCode -ne 0) {
+            return $LastExitCode
         }
-        return $LastExitCode   # native command exit code
+        return -1
     }
 
     function prompt {

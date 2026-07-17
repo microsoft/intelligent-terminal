@@ -41,14 +41,14 @@ $publicFns = @(
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',
     # Agent / Autofix / Sessions
-    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Send-AgentPrompt', 'Wait-AgentState',
-    'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSession', 'Get-AgentPaneText',
+    'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-AgentCliStatus', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Send-AgentPrompt', 'Wait-AgentState',
+    'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSessions', 'Get-AgentPaneSession', 'Wait-NewAgentPaneSession', 'Get-AgentPaneText',
     'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',
     'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Set-ClipboardImage',
     'Wait-Autofix', 'Wait-WtCommandFailure', 'Send-AutofixState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Invoke-Wta',
-    'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionRows',
+    'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionViewRenderRegex', 'Get-SessionRows',
     'Get-SessionListSelection', 'Select-SessionRow', 'Resume-Session', 'Get-SessionListJson',
     # Verify
     'Assert-Setting', 'Assert-State', 'Assert-Ui', 'Assert-Xaml', 'Assert-Script', 'Assert-Pane',

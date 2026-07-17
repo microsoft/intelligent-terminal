@@ -36,7 +36,10 @@
 #include "TerminalSettingsCache.h"
 
 #include "LaunchPositionRequest.g.cpp"
+#include "WindowListEntry.g.cpp"
+#include "WindowListRequest.g.cpp"
 #include "RenameWindowRequestedArgs.g.cpp"
+#include "OpenWindowRequestedArgs.g.cpp"
 #include "RequestMoveContentArgs.g.cpp"
 #include "TerminalPage.g.cpp"
 
@@ -428,6 +431,21 @@ namespace winrt::TerminalApp::implementation
 
         auto tabRowImpl = winrt::get_self<implementation::TabRowControl>(_tabRow);
         _newTabButton = tabRowImpl->NewTabButton();
+        _workspaceFlyout = tabRowImpl->WorkspaceFlyout();
+        _workspaceDropdown = tabRowImpl->WorkspaceDropdown();
+
+        // Set the initial workspace name from the window name.
+        // Use raw WindowName() so unnamed windows show no text.
+        _tabRow.WorkspaceName(_WindowProperties.WindowName());
+
+        // Rebuild the workspace flyout each time it opens so it always
+        // reflects the latest set of persisted workspaces.
+        _workspaceFlyout.Opening([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (auto page{ weakThis.get() })
+            {
+                page->_PopulateWorkspaceFlyout();
+            }
+        });
 
         if (_settings.GlobalSettings().ShowTabsInTitlebar())
         {
@@ -536,6 +554,12 @@ namespace winrt::TerminalApp::implementation
         // them.
 
         _tabRow.ShowElevationShield(IsRunningElevated() && _settings.GlobalSettings().ShowAdminShield());
+
+        // Apply the ShowWorkspacesButton theme setting.
+        if (const auto theme = _settings.GlobalSettings().CurrentTheme())
+        {
+            _tabRow.ShowWorkspacesButton(theme.Window() ? theme.Window().ShowWorkspacesButton() : true);
+        }
 
         _adjustProcessPriorityThrottled = std::make_shared<ThrottledFunc<>>(
             DispatcherQueue::GetForCurrentThread(),
@@ -881,27 +905,6 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
-    // Find the tab whose AgentPaneContent leaf == `content`. Used when an
-    // AgentPaneContent click event fires; the sender doesn't know its tab.
-    winrt::com_ptr<Tab> TerminalPage::_FindTabHostingAgentPaneContent(const winrt::TerminalApp::AgentPaneContent& content) const
-    {
-        if (!content)
-        {
-            return {};
-        }
-        for (const auto& tab : _tabs)
-        {
-            if (auto tabImpl = _GetTabImpl(tab))
-            {
-                if (tabImpl->FindAgentPaneContent() == content)
-                {
-                    return tabImpl;
-                }
-            }
-        }
-        return {};
-    }
-
     SplitDirection TerminalPage::_AgentPanePositionToSplitDirection(const winrt::hstring& position)
     {
         if (position == L"bottom")
@@ -962,7 +965,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& /*sender*/,
-                                       const winrt::Windows::Foundation::IInspectable& /*args*/)
+                                       const winrt::Windows::Foundation::IInspectable& args)
     {
         // Hide the FRE overlay
         if (auto overlay = FreOverlayElement())
@@ -1017,7 +1020,8 @@ namespace winrt::TerminalApp::implementation
         // Now create the agent pane on the freshly-created tab.
         if (const auto tab = _GetFocusedTabImpl())
         {
-            _OpenOrReuseAgentPane(false, L"FirstRunExperience");
+            const auto initialAuthAgent = winrt::unbox_value_or<winrt::hstring>(args, L"");
+            _OpenOrReuseAgentPane(false, L"FirstRunExperience", std::wstring_view{ initialAuthAgent });
             // Focus is set in the Initialized callback once the pane is ready.
         }
     }
@@ -1125,6 +1129,36 @@ namespace winrt::TerminalApp::implementation
         }
 
         return _BuildAgentCommandLine(acpAgent, globals.AcpModel());
+    }
+
+    // Resolve a launchable agent command line for a SPECIFIC agent id +
+    // model — the per-tab override. Mirrors `_ResolveEffectiveAgentCliPath`
+    // but for an explicit id rather than the global `acpAgent`, and honors
+    // the same GPO policy (so a per-tab pick can never escape AllowedAgents
+    // / AllowCustomAgents). Returns empty when the id is blocked or has no
+    // usable command line, which the caller treats as "fall back".
+    static winrt::hstring _ResolveAgentCliPathForId(
+        const winrt::hstring& agentId,
+        const winrt::hstring& model,
+        const winrt::hstring& customCommand)
+    {
+        if (agentId.empty())
+        {
+            return winrt::hstring{};
+        }
+        if (_IsCustomAgentId(agentId))
+        {
+            if (!AgentPolicy::IsCustomAgentAllowed() || customCommand.empty())
+            {
+                return winrt::hstring{};
+            }
+            return customCommand;
+        }
+        if (!AgentPolicy::IsAgentAllowed(std::wstring_view{ agentId }))
+        {
+            return winrt::hstring{};
+        }
+        return _BuildAgentCommandLine(agentId, model);
     }
 
     // Resolve the effective delegate agent name from structured settings.
@@ -1494,6 +1528,42 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    // Rebuild a SINGLE tab's agent pane after its per-tab agent override
+    // changed (via `/agent`). Scoped, unlike
+    // `_RebuildAgentStack`: it touches only this tab and does NOT restart
+    // the shared master. The multi-agent master stays up; the freshly
+    // spawned helper declares this tab's new agent in its `initialize`
+    // handshake, so the master lazily spawns/reuses the matching CLI while
+    // sibling tabs (and their agents) keep running untouched.
+    //
+    // `Pane::Close()` rewrites the tab's pane tree synchronously, so
+    // `FindAgentPane()` is already null when we reopen — the conpty /
+    // `SharedWta::ReleasePane` teardown that lags behind balances against
+    // the reopen's `AcquirePane`.
+    void TerminalPage::_RebuildAgentPaneForTab(const winrt::com_ptr<Tab>& tab)
+    {
+        if (!tab)
+        {
+            return;
+        }
+        const bool hadPane = tab->FindAgentPane() != nullptr;
+        _TeardownAgentPane(tab);
+
+        const auto focusedTab = _GetFocusedTabImpl();
+        if (focusedTab && focusedTab == tab)
+        {
+            // `/agent` was entered in this tab's visible agent pane, so reopen
+            // a visible pane immediately.
+            _OpenOrReuseAgentPane(false, L"AgentSwitch");
+        }
+        else if (hadPane)
+        {
+            // Background tab: respawn a stashed (pre-warmed) helper so the
+            // new agent takes effect without stealing focus.
+            _AutoCreateHiddenAgentPaneShared(tab, /*intoSessionsView*/ false, /*autoStash*/ true);
+        }
+    }
+
     std::shared_ptr<Pane> TerminalPage::_WrapInAgentPaneContent(std::shared_ptr<Pane> rawPane)
     {
         if (!rawPane)
@@ -1702,6 +1772,53 @@ namespace winrt::TerminalApp::implementation
         };
         pushFlagValue(L"--agent", agentCliPath);
         pushFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
+        // Pass the GPO-filtered set of allowed agent ids to the master.
+        // A per-tab helper declares the agent it wants by *id* over the
+        // pipe; the master reconstructs the command from that id only when
+        // it appears in this set (otherwise it falls back to --agent). This
+        // keeps a peer/compromised helper from driving the master to spawn
+        // a policy-blocked agent — and, combined with the master refusing
+        // to execute any command string off the pipe, closes the
+        // arbitrary-process-spawn surface. FilteredAcpAgents() is the same
+        // policy-filtered list the picker/auto-detect use.
+        {
+            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            std::wstring allowedIds;
+            for (const auto& agent : Reg::FilteredAcpAgents())
+            {
+                if (agent.id.empty())
+                {
+                    continue;
+                }
+                if (!allowedIds.empty())
+                {
+                    allowedIds.push_back(L',');
+                }
+                allowedIds.append(agent.id);
+            }
+            // Always communicate the policy — even when it filters to nothing.
+            // FilteredAcpAgents() is empty ONLY when an AllowedAgents GPO policy
+            // is active and blocks every built-in ACP agent (with no policy the
+            // list is the full built-in set). Omitting the flag would read on
+            // the master as "no host policy" (absent => accept any known id),
+            // letting a peer/compromised helper request a blocked built-in id —
+            // a policy bypass. So when the set is empty we still pass the flag,
+            // fail-closed, and the master blocks every helper-selected id.
+            //
+            // An empty value can't survive as its own argv token (SharedWta's
+            // command-line builder, like pushFlagValue, drops empty args), so we
+            // attach it with '=': `--allowed-agent-ids=` is one non-empty token
+            // that clap parses to [""] — present-but-empty => block all. See
+            // master::normalize_allowed_agent_ids and its round-trip unit test.
+            if (allowedIds.empty())
+            {
+                extraArgs.emplace_back(L"--allowed-agent-ids=");
+            }
+            else
+            {
+                pushFlagValue(L"--allowed-agent-ids", allowedIds);
+            }
+        }
         if (!globals.EffectiveAutoFixEnabled())
         {
             extraArgs.emplace_back(L"--no-autofix");
@@ -1725,7 +1842,8 @@ namespace winrt::TerminalApp::implementation
                                                         bool intoSessionsView,
                                                         bool autoStash,
                                                         std::string_view initialLoadSessionId,
-                                                        std::string_view initialLoadCwd)
+                                                        std::string_view initialLoadCwd,
+                                                        std::wstring_view initialAuthAgent)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -1748,10 +1866,54 @@ namespace winrt::TerminalApp::implementation
 
         const auto& globals = _settings.GlobalSettings();
 
+        // Resolve the agent for THIS tab. A per-tab override (set via the
+        // agent-bar chip flyout) wins; otherwise we follow the global
+        // `acpAgent`/`acpModel`. This is what lets Gemini run in one tab and
+        // Claude in another within the same window — each tab's helper
+        // declares its own agent to the multi-agent master.
+        winrt::hstring effectiveAgentId;
+        winrt::hstring effectiveModel;
+        winrt::hstring agentCliPath;
+        const bool hasAgentOverride = tab->HasAgentOverride();
+        if (hasAgentOverride)
+        {
+            effectiveAgentId = tab->AgentIdOverride();
+            effectiveModel = tab->AgentModelOverride();
+            agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride());
+        }
+        // `_ResolveAgentCliPathForId` returns empty to signal "fall back"
+        // (the override id is unknown / blocked by GPO, or a custom override
+        // has no usable command line). Honor that contract here instead of
+        // proceeding with an empty command line — otherwise the helper is
+        // launched with no `--agent` but a stale `--agent-id`, and the tab
+        // silently runs whatever the master happens to default to. Fall back
+        // to the global/default agent (the same resolution as the
+        // no-override case). The GPO all-agents-blocked case is still caught
+        // by the policy check below.
+        if (!hasAgentOverride || agentCliPath.empty())
+        {
+            effectiveAgentId = globals.EffectiveAcpAgent();
+            effectiveModel = globals.AcpModel();
+            agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
+            // When the global selection is absent/blocked,
+            // _ResolveEffectiveAgentCliPath falls back to auto-detection and
+            // returns a command line — but the *id* it detected is discarded,
+            // leaving effectiveAgentId empty while agentCliPath is non-empty.
+            // The helper would then forward no --agent-id, and the multi-agent
+            // master would pick its own default agent (and mis-stamp the
+            // session's cli_source) instead of the one we actually resolved a
+            // CLI for. Recover the detected id so the helper declares it.
+            // _DetectAgentCli() is deterministic and is the same fallback the
+            // resolver used internally, so it yields the matching id.
+            if (effectiveAgentId.empty() && !agentCliPath.empty())
+            {
+                effectiveAgentId = _DetectAgentCli();
+            }
+        }
+
         // GPO `AllowedAgents` enforcement — mirror the legacy path so a
         // managed environment that blocks all agents doesn't get a
         // working pane via the shared master.
-        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
         if (agentCliPath.empty() && AgentPolicy::IsAllowedAgentsPolicyConfigured())
         {
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: ABORT — all agents blocked by GPO policy");
@@ -1806,6 +1968,7 @@ namespace winrt::TerminalApp::implementation
         helperCmd.push_back(L'"');
         helperCmd.append(L" --connect-master \"").append(masterPipeName).append(L"\"");
         helperCmd.append(L" --owner-tab-id \"").append(std::wstring_view{ stableId }).append(L"\"");
+        helperCmd.append(L" --owner-window-id \"").append(std::to_wstring(_WindowProperties.WindowId())).append(L"\"");
 
         // If master is degraded (died unexpectedly, not yet recovered via
         // /restart), AcquirePane opened this pane without respawning master.
@@ -1834,9 +1997,36 @@ namespace winrt::TerminalApp::implementation
             helperCmd.push_back(L' ');
             QuoteAndEscapeCommandlineArg(value, helperCmd);
         };
+        // Per-tab agent identity (override or global) — the helper forwards
+        // these to the multi-agent master in its `initialize` handshake so
+        // master spawns/reuses the right agent CLI for THIS tab.
         appendHelperFlagValue(L"--agent", agentCliPath);
-        appendHelperFlagValue(L"--agent-id", globals.EffectiveAcpAgent());
-        appendHelperFlagValue(L"--acp-model", globals.AcpModel());
+        appendHelperFlagValue(L"--agent-id", effectiveAgentId);
+        {
+            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            std::wstring allowedIds;
+            for (const auto& agent : Reg::FilteredAcpAgents())
+            {
+                if (agent.id.empty())
+                {
+                    continue;
+                }
+                if (!allowedIds.empty())
+                {
+                    allowedIds.push_back(L',');
+                }
+                allowedIds.append(agent.id);
+            }
+            if (allowedIds.empty())
+            {
+                helperCmd.append(L" --allowed-agent-ids=");
+            }
+            else
+            {
+                appendHelperFlagValue(L"--allowed-agent-ids", allowedIds);
+            }
+        }
+        appendHelperFlagValue(L"--acp-model", effectiveModel);
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
         if (!globals.EffectiveAutoFixEnabled())
@@ -1861,6 +2051,18 @@ namespace winrt::TerminalApp::implementation
             // opened the pane" assumption), C++ receives the echo on a
             // stashed pane and restores it — defeating pre-warm.
             helperCmd.append(L" --start-stashed");
+        }
+        if (!initialAuthAgent.empty())
+        {
+            if (autoStash)
+            {
+                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: ignoring initial auth hint for stashed helper");
+            }
+            else
+            {
+                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: helper starts in auth mode for agent=" + winrt::to_string(winrt::hstring{ initialAuthAgent }));
+                appendHelperFlagValue(L"--initial-auth-agent", initialAuthAgent);
+            }
         }
 
         // Plan-C: bundle the resume request with helper spawn. Caller
@@ -2069,6 +2271,7 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
+
     }
 
     // Window-level bottom-bar "agent toggle" click. Targets the active tab:
@@ -2566,6 +2769,15 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        // Custom commands are trusted only when supplied on the master's own
+        // argv. Helpers intentionally cannot ask the master to execute an
+        // arbitrary command from pipe metadata, so entering/leaving a custom
+        // selection or editing its command requires fresh trusted master args.
+        const bool customMasterArgsChanged =
+            (til::starts_with(_lastAgentSettings.acpAgent, L"custom:") || til::starts_with(current.acpAgent, L"custom:")) &&
+            (_lastAgentSettings.acpAgent != current.acpAgent ||
+             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
+
         // Reentrancy guard.
         if (_agentRebuilding)
         {
@@ -2594,16 +2806,17 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
 
-        // Tear down every tab's agent pane. The user must reopen each
-        // (per-tab toggle) — there's no longer a "shared pane" to
-        // reposition.
+        // Built-in global changes leave per-tab overrides untouched. A custom
+        // command change must restart the shared master, so every local helper
+        // is collected and reconnected even when its tab has an override.
         bool hadAny = false;
         std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
             {
-                if (tabImpl->FindAgentPane())
+                if (tabImpl->FindAgentPane() &&
+                    (customMasterArgsChanged || !tabImpl->HasAgentOverride()))
                 {
                     hadAny = true;
                     tabsThatHadAgentPane.push_back(tabImpl);
@@ -2621,47 +2834,64 @@ namespace winrt::TerminalApp::implementation
             _TeardownAgentPane(tabImpl);
         }
 
-        // Force-respawn the master with the NEW per-process settings
-        // before reopening. Without this, the pending teardowns above
-        // leave the refcount > 0 when `_OpenOrReuseAgentPane` calls
-        // `AcquirePane`, so AcquirePane sees a live master and reuses
-        // it — silently ignoring the freshly-built --agent / --agent-id /
-        // --acp-model args, leaving the OLD agent CLI behind the pipe.
-        //
-        // `SharedWta::Restart(wtaPath, extraArgs)` does
-        // `_CleanupLocked` + `_SpawnLocked(newArgs)` while leaving the
-        // refcount alone (outgoing ReleasePane / incoming AcquirePane
-        // balance out). When the master isn't running (e.g. settings
-        // changed while no pane was open in *any* window), it no-ops
-        // — the next AcquirePane will spawn fresh with the caller's
-        // new args.
-        //
-        // This call is also why we don't gate it behind `hadAny`: even
-        // when no pane is open in *this* window, the master may still
-        // be alive serving another window. Respawning here keeps every
-        // window in sync with the new settings.
-        if (const auto wtaPath = _DetectWtaPath(); !wtaPath.empty())
+        // Built-in agent changes do not restart the master. It is now a
+        // multi-agent broker — it spawns/reuses one agent CLI per distinct
+        // agent command line, driven by each helper's `initialize`
+        // handshake (which carries the tab's agent). The master's own
+        // `--agent` is only a fallback default for helpers that don't
+        // declare one (ours always do), so a global-agent change no longer
+        // requires respawning the master. Tearing down + reopening the
+        // affected (non-override) tabs' helpers is enough: each fresh
+        // helper declares the new global agent and the master lazily
+        // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
+        // (and other windows) untouched. A custom command is the exception:
+        // the master cannot trust a command received from a helper, so refresh
+        // its own trusted argv after the affected helpers have been torn down.
+        if (customMasterArgsChanged)
         {
-            const auto restartArgs = _BuildSharedWtaExtraArgs();
-            auto& shared = winrt::TerminalApp::implementation::SharedWta::Instance();
-            if (!shared.Restart(std::wstring_view{ wtaPath }, restartArgs))
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            if (wtaPath.empty() ||
+                !winrt::TerminalApp::implementation::SharedWta::Instance().Restart(
+                    std::wstring_view{ wtaPath },
+                    extraArgs))
             {
-                _agentPaneLog("_RebuildAgentStack: SharedWta::Restart returned false");
-                // Fall through — the reopen path will retry via AcquirePane.
+                _agentPaneLog("_RebuildAgentStack: custom-command SharedWta::Restart failed");
             }
         }
 
         if (!hadAny)
         {
             _lastAgentSettings = current;
-            _agentPaneLog("_RebuildAgentStack: no existing agent pane, snapshot only");
+            _agentPaneLog("_RebuildAgentStack: no affected agent pane, snapshot only");
             return;
         }
 
-        // Recreate on the active terminal tab so the user sees something
-        // immediately. Other tabs that had an agent pane will need to be
-        // re-toggled by the user.
-        _OpenOrReuseAgentPane(false, L"SettingsReload");
+        // A custom-command restart invalidates every helper, so reconnect all
+        // tabs that had panes: active remains visible and background tabs are
+        // pre-warmed stashed. Built-in changes retain the existing active-tab
+        // behavior and leave overrides untouched.
+        if (const auto activeTab = _GetFocusedTabImpl();
+            customMasterArgsChanged && activeTab)
+        {
+            for (const auto& tabImpl : tabsThatHadAgentPane)
+            {
+                if (tabImpl == activeTab)
+                {
+                    _OpenOrReuseAgentPane(false, L"SettingsReload");
+                }
+                else
+                {
+                    _AutoCreateHiddenAgentPaneShared(tabImpl,
+                                                     /*intoSessionsView*/ false,
+                                                     /*autoStash*/ true);
+                }
+            }
+        }
+        else if (activeTab && !activeTab->HasAgentOverride())
+        {
+            _OpenOrReuseAgentPane(false, L"SettingsReload");
+        }
 
         // Snapshot update at the very end of the change-handling block
         // so any early-failure path above leaves the snapshot stale and
@@ -2684,7 +2914,7 @@ namespace winrt::TerminalApp::implementation
         _RebuildAgentStack();
     }
 
-    void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource)
+    void TerminalPage::_OpenOrReuseAgentPane(bool intoSessionsView, const wchar_t* triggerSource, std::wstring_view initialAuthAgent)
     {
         _agentPaneLog(std::string{ "_OpenOrReuseAgentPane called, intoSessionsView=" } + (intoSessionsView ? "true" : "false"));
 
@@ -2810,7 +3040,7 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("no agent pane on focused tab, creating new one");
 
-        if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView))
+        if (!_AutoCreateHiddenAgentPaneShared(focusedTab, intoSessionsView, /*autoStash*/ false, std::string_view{}, std::string_view{}, initialAuthAgent))
         {
             _agentPaneLog("_OpenOrReuseAgentPane: _AutoCreateHiddenAgentPaneShared failed");
             return;
@@ -4183,8 +4413,21 @@ namespace winrt::TerminalApp::implementation
 
         // If WTA signals a new agent selection (e.g. from FRE or preflight),
         // persist it to settings so the next launch uses the same agent.
+        // BUT: never let a tab that the user pinned to a per-tab agent
+        // write that choice back to the global default — otherwise picking
+        // Gemini for one tab would silently change every other (non-pinned)
+        // tab's default. Tabs without an override still persist (legacy FRE
+        // behavior); a missing tab_id (broadcast context) also persists.
         const auto selectedAgent = pickStr("selected_agent");
-        if (!selectedAgent.empty())
+        bool emittingTabHasOverride = false;
+        if (const auto srcTabId = pickStr("tab_id"); !srcTabId.empty())
+        {
+            if (const auto srcTab = _FindTabByStableId(srcTabId))
+            {
+                emittingTabHasOverride = srcTab->HasAgentOverride();
+            }
+        }
+        if (!selectedAgent.empty() && !emittingTabHasOverride)
         {
             const auto& globals = _settings.GlobalSettings();
             if (globals.AcpAgent() != selectedAgent)
@@ -4485,6 +4728,67 @@ namespace winrt::TerminalApp::implementation
         // here so the chip can't get pinned by a dead helper.
         ownerTab->SetAgentChipOverride(std::nullopt);
         _TeardownAgentPane(ownerTab);
+    }
+
+    // Inbound `/agent` selection from WTA. SendEvent fans out to every page;
+    // window_id plus the stable tab id ensure only the owning page applies it.
+    void TerminalPage::OnAgentSwitchRequested(hstring eventJson)
+    {
+        Json::Value evt;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(winrt::to_string(eventJson));
+        std::string errs;
+        if (!Json::parseFromStream(rb, ss, &evt, &errs))
+        {
+            return;
+        }
+        const auto& params = evt["params"];
+        if (!params.isObject() ||
+            !params.isMember("window_id") || !params["window_id"].isString() ||
+            !params.isMember("tab_id") || !params["tab_id"].isString() ||
+            !params.isMember("agent_id") || !params["agent_id"].isString())
+        {
+            _agentPaneLog("OnAgentSwitchRequested: malformed payload");
+            return;
+        }
+        if (params["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
+        {
+            return;
+        }
+
+        const auto tab = _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString()));
+        const auto agentId = winrt::to_hstring(params["agent_id"].asString());
+        if (!tab || agentId.empty())
+        {
+            return;
+        }
+
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        bool allowed = false;
+        for (const auto& agent : Reg::FilteredAcpAgents())
+        {
+            if (agent.id == std::wstring_view{ agentId })
+            {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed)
+        {
+            _agentPaneLog("OnAgentSwitchRequested: unknown or policy-blocked agent");
+            return;
+        }
+
+        const auto currentId = tab->HasAgentOverride() ?
+                                   tab->AgentIdOverride() :
+                                   _settings.GlobalSettings().EffectiveAcpAgent();
+        if (currentId == agentId)
+        {
+            return;
+        }
+
+        tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{});
+        _RebuildAgentPaneForTab(tab);
     }
 
     // `/restart` from any agent pane's TUI lands here via the
@@ -5632,14 +5936,14 @@ namespace winrt::TerminalApp::implementation
         QuitRequested.raise(nullptr, nullptr);
     }
 
-    void TerminalPage::PersistState()
+    WindowLayout TerminalPage::GetWindowLayout()
     {
         // This method may be called for a window even if it hasn't had a tab yet or lost all of them.
         // We shouldn't persist such windows.
         const auto tabCount = _tabs.Size();
         if (_startupState != StartupState::Initialized || tabCount == 0)
         {
-            return;
+            return nullptr;
         }
 
         std::vector<ActionAndArgs> actions;
@@ -5654,7 +5958,7 @@ namespace winrt::TerminalApp::implementation
         // Avoid persisting a window with zero tabs, because `BuildStartupActions` happened to return an empty vector.
         if (actions.empty())
         {
-            return;
+            return nullptr;
         }
 
         // if the focused tab was not the last tab, restore that
@@ -5703,7 +6007,49 @@ namespace winrt::TerminalApp::implementation
         RequestLaunchPosition.raise(*this, launchPosRequest);
         layout.InitialPosition(launchPosRequest.Position());
 
-        ApplicationState::SharedInstance().AppendPersistedWindowLayout(layout);
+        return layout;
+    }
+
+    void TerminalPage::PersistState()
+    {
+        // There are two persistence mechanisms in play here:
+        //   * PersistedWindowLayouts (vector) — consumed on next startup to
+        //     re-open a matching set of windows. Cleared after restore.
+        //   * PersistedWorkspaces (name-keyed map) — the full tab/buffer
+        //     state of a named window, claimed by name on demand via
+        //     ApplicationState::TakeWorkspace.
+        //
+        // For named windows we save the full layout into the workspace map
+        // and drop a lightweight `openWorkspace` stub into the generic vector,
+        // so the generic restore path re-opens the named window which in
+        // turn claims its own workspace. Unnamed windows don't have a stable
+        // key, so their full layout is stored directly in the vector.
+        if (const auto layout = GetWindowLayout())
+        {
+            const auto& windowName = _WindowProperties.WindowName();
+            if (!windowName.empty())
+            {
+                // Persist the full layout into the workspace collection.
+                ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
+
+                // Build a minimal layout with just an openWorkspace action
+                // so the generic restore path re-opens this workspace by name.
+                std::vector<ActionAndArgs> actions;
+                ActionAndArgs action;
+                action.Action(ShortcutAction::OpenWorkspace);
+                OpenWorkspaceArgs args{ windowName };
+                action.Args(args);
+                actions.emplace_back(std::move(action));
+
+                WindowLayout stub;
+                stub.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+                ApplicationState::SharedInstance().AppendPersistedWindowLayout(stub);
+            }
+            else
+            {
+                ApplicationState::SharedInstance().AppendPersistedWindowLayout(layout);
+            }
+        }
     }
 
     // Method Description:
@@ -6437,6 +6783,44 @@ namespace winrt::TerminalApp::implementation
         const auto globalSettings = _settings.GlobalSettings();
         const auto bracketedPaste = eventArgs.BracketedPasteEnabled();
         const auto sourceId = sender.try_as<ControlInteractivity>().Id();
+        winrt::hstring agentPasteTabId;
+        const auto agentPasteWindowId = std::to_string(_WindowProperties.WindowId());
+        bool pasteTargetsAgentPane = false;
+
+        if (const auto tab{ _GetFocusedTabImpl() })
+        {
+            if (const auto root{ tab->GetRootPane() })
+            {
+                const auto sourcePane = root->WalkTree([&](const std::shared_ptr<Pane>& pane) -> std::shared_ptr<Pane> {
+                    if (const auto control{ pane->GetTerminalControl() })
+                    {
+                        if (control.ContentId() == sourceId)
+                        {
+                            return pane;
+                        }
+                    }
+                    return nullptr;
+                });
+                if (sourcePane)
+                {
+                    pasteTargetsAgentPane = sourcePane->IsAgentPane();
+                    if (pasteTargetsAgentPane)
+                    {
+                        agentPasteTabId = tab->StableId();
+                    }
+                }
+            }
+        }
+
+        if (pasteTargetsAgentPane)
+        {
+            Json::Value params{ Json::objectValue };
+            params["window_id"] = agentPasteWindowId;
+            params["tab_id"] = winrt::to_string(agentPasteTabId);
+            _agentPaneLog("agent pane text paste: forwarding structured paste request");
+            _RaiseProtocolEvent("agent_paste_text", params);
+            co_return;
+        }
 
         // GetClipboardData might block for up to 30s for delay-rendered contents.
         co_await winrt::resume_background();
@@ -7589,6 +7973,12 @@ namespace winrt::TerminalApp::implementation
         WUX::Media::Animation::Timeline::AllowDependentAnimations(!_settings.GlobalSettings().DisableAnimations());
 
         _tabRow.ShowElevationShield(IsRunningElevated() && _settings.GlobalSettings().ShowAdminShield());
+
+        // Apply the ShowWorkspacesButton theme setting.
+        if (const auto theme = _settings.GlobalSettings().CurrentTheme())
+        {
+            _tabRow.ShowWorkspacesButton(theme.Window() ? theme.Window().ShowWorkspacesButton() : true);
+        }
 
         Media::SolidColorBrush transparent{ Windows::UI::Colors::Transparent() };
         _tabView.Background(transparent);
@@ -9382,6 +9772,196 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    // Rebuild the workspace flyout contents. Called every time the flyout opens
+    // so it reflects the current set of persisted workspaces.
+    void TerminalPage::_PopulateWorkspaceFlyout()
+    {
+        if (!_workspaceFlyout)
+        {
+            return;
+        }
+
+        _workspaceFlyout.Items().Clear();
+
+        // --- "Name / Rename this window" ---
+        {
+            MenuFlyoutItem item{};
+            item.Text(_WindowProperties.WindowName().empty() ? RS_(L"NameThisWindowMenuItem") : RS_(L"RenameThisWindowMenuItem"));
+
+            auto iconElement = UI::IconPathConverter::IconWUX(L"\uE8AC"); // Rename glyph
+            Automation::AutomationProperties::SetAccessibilityView(iconElement, Automation::Peers::AccessibilityView::Raw);
+            item.Icon(iconElement);
+
+            item.Click([weakThis{ get_weak() }](auto&&, auto&&) {
+                if (auto page{ weakThis.get() })
+                {
+                    page->_actionDispatch->DoAction(ActionAndArgs{ ShortcutAction::OpenWindowRenamer, nullptr });
+                }
+            });
+            _workspaceFlyout.Items().Append(item);
+        }
+
+        // --- Gather open window info first so we can filter workspaces ---
+        const auto windowListReq{ winrt::make<WindowListRequest>() };
+        RequestWindowList.raise(*this, windowListReq);
+        const auto windowEntries = windowListReq.Entries();
+
+        std::set<winrt::hstring> openWindowNames;
+        if (windowEntries)
+        {
+            for (const auto& entry : windowEntries)
+            {
+                const auto& name = entry.Name();
+                if (!name.empty())
+                {
+                    openWindowNames.emplace(name);
+                }
+            }
+        }
+
+        // --- Saved workspaces section (only those not currently open) ---
+        // Collect workspace names that aren't currently open so we can show
+        // them both as top-level "open" items and inside the delete sub-menu.
+        const auto workspaces = ApplicationState::SharedInstance().AllPersistedWorkspaces();
+        if (workspaces && workspaces.Size() > 0)
+        {
+            bool addedSeparator = false;
+
+            for (const auto& pair : workspaces)
+            {
+                const auto name = pair.Key();
+
+                // Skip workspaces that correspond to a currently-open window.
+                if (openWindowNames.contains(name))
+                {
+                    continue;
+                }
+
+                if (!addedSeparator)
+                {
+                    _workspaceFlyout.Items().Append(MenuFlyoutSeparator{});
+                    addedSeparator = true;
+                }
+
+                MenuFlyoutItem item{};
+                item.Text(name);
+
+                auto iconElement = UI::IconPathConverter::IconWUX(L"\uE8F1"); // SwitchApps glyph
+                Automation::AutomationProperties::SetAccessibilityView(iconElement, Automation::Peers::AccessibilityView::Raw);
+                item.Icon(iconElement);
+
+                item.Click([weakThis{ get_weak() }, name](auto&&, auto&&) {
+                    if (auto page{ weakThis.get() })
+                    {
+                        page->_OpenWorkspaceWindow(name);
+                    }
+                });
+
+                // Right-click to delete: attach a context flyout with a
+                // "Delete workspace?" item that opens a confirmation dialog.
+                {
+                    WUX::Controls::MenuFlyout deleteFlyout{};
+                    deleteFlyout.Placement(WUX::Controls::Primitives::FlyoutPlacementMode::BottomEdgeAlignedRight);
+
+                    WUX::Controls::MenuFlyoutItem deleteItem{};
+                    deleteItem.Text(RS_(L"DeleteWorkspaceMenuItem"));
+
+                    auto trashIcon = UI::IconPathConverter::IconWUX(L"\xE74D"); // Delete  glyph
+
+                    deleteItem.Click([weakThis{ get_weak() }, name](auto&&, auto&&) -> safe_void_coroutine {
+                        auto page{ weakThis.get() };
+                        if (!page)
+                        {
+                            co_return;
+                        }
+
+                        // Build and show a confirmation ContentDialog.
+                        ContentDialog dialog{};
+                        dialog.Title(winrt::box_value(winrt::hstring{ RS_fmt(L"ConfirmDeleteWorkspaceTitle", name) }));
+                        dialog.Content(winrt::box_value(winrt::hstring{ RS_fmt(L"ConfirmDeleteWorkspaceBody", name) }));
+                        dialog.PrimaryButtonText(RS_(L"ConfirmDeleteWorkspaceDelete"));
+                        dialog.CloseButtonText(RS_(L"ConfirmDeleteWorkspaceCancel"));
+                        dialog.DefaultButton(ContentDialogButton::Close);
+
+                        if (auto presenter{ page->_dialogPresenter.get() })
+                        {
+                            const auto result = co_await presenter.ShowDialog(dialog);
+                            // Re-check after co_await
+                            page = weakThis.get();
+                            if (!page)
+                            {
+                                co_return;
+                            }
+                            if (result == ContentDialogResult::Primary)
+                            {
+                                ApplicationState::SharedInstance().RemoveWorkspace(name);
+                                page->_PopulateWorkspaceFlyout();
+                            }
+                        }
+                    });
+
+                    deleteFlyout.Items().Append(deleteItem);
+                    WUX::Controls::Primitives::FlyoutBase::SetAttachedFlyout(item, deleteFlyout);
+                    item.ContextRequested([item](auto&&, auto&&) {
+                        WUX::Controls::Primitives::FlyoutBase::ShowAttachedFlyout(item);
+                    });
+                }
+
+                _workspaceFlyout.Items().Append(item);
+            }
+        }
+
+        // --- Open windows section ---
+        if (windowEntries && windowEntries.Size() > 0)
+        {
+            _workspaceFlyout.Items().Append(MenuFlyoutSeparator{});
+
+            const auto thisWindowId = _WindowProperties.WindowId();
+
+            for (const auto& entry : windowEntries)
+            {
+                const auto id = entry.Id();
+                const auto& name = entry.Name();
+
+                winrt::hstring displayText;
+                if (name.empty())
+                {
+                    displayText = winrt::hstring{ RS_fmt(L"WindowListUnnamedEntry", id) };
+                }
+                else
+                {
+                    displayText = winrt::hstring{ fmt::format(FMT_COMPILE(L"#{}: {}"), id, name) };
+                }
+
+                MenuFlyoutItem item{};
+                item.Text(displayText);
+
+                if (id == thisWindowId)
+                {
+                    auto iconElement = UI::IconPathConverter::IconWUX(L"\uE73E"); // CheckMark glyph
+                    Automation::AutomationProperties::SetAccessibilityView(iconElement, Automation::Peers::AccessibilityView::Raw);
+                    item.Icon(iconElement);
+                    item.IsEnabled(false);
+                }
+                else
+                {
+                    auto iconElement = UI::IconPathConverter::IconWUX(L"\uE737"); // ChromeRestore glyph
+                    Automation::AutomationProperties::SetAccessibilityView(iconElement, Automation::Peers::AccessibilityView::Raw);
+                    item.Icon(iconElement);
+
+                    item.Click([weakThis{ get_weak() }, id](auto&&, auto&&) {
+                        if (auto page{ weakThis.get() })
+                        {
+                            page->SummonWindowByIdRequested.raise(*page, winrt::make<SummonWindowByIdRequestedArgs>(id));
+                        }
+                    });
+                }
+
+                _workspaceFlyout.Items().Append(item);
+            }
+        }
+    }
+
     // Handler for our WindowProperties's PropertyChanged event. We'll use this
     // to pop the "Identify Window" toast when the user renames our window.
     void TerminalPage::_windowPropertyChanged(const IInspectable& /*sender*/, const WUX::Data::PropertyChangedEventArgs& args)
@@ -9390,6 +9970,10 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+
+        // Keep the workspace dropdown label in sync with the window name.
+        // Use raw WindowName() so clearing the name hides the text.
+        _tabRow.WorkspaceName(_WindowProperties.WindowName());
 
         // DON'T display the confirmation if this is the name we were
         // given on startup!

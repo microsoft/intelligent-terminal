@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "הפעל מחדש את הסוכן"
 commands.stop.summary: "בטל את הבקשה שמתבצעת"
 commands.sessions.summary: "פתח את בורר ההפעלות ההיסטוריות (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "בחר את הסוכן עבור כרטיסייה זו (/agent <id> למעבר ישיר)"  # {Locked="/agent","<id>"}
 
 # ── לוח המלצות (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - שמות מקשים וסמל מקש Enter, אין לתרגם
@@ -199,6 +200,16 @@ time.days_other: "לפני %{count} ימים"
 
 # ── ביצוע המלצה (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "הבחירה %{choice} נכשלה: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "בחר סוכן (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "לא נמצא ממשק CLI זמין של סוכן במחשב זה."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "מודל לא ידוע %{agent} — הקלד /agent כדי לראות את הרשימה הזמינה."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין מחוץ לכרטיסייה של Windows Terminal."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}

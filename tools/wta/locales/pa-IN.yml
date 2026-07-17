@@ -75,6 +75,7 @@ commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hin
 commands.restart.summary: "ਏਜੰਟ ਮੁੜ-ਚਾਲੂ ਕਰੋ"
 commands.stop.summary: "ਚੱਲ ਰਹੇ ਪ੍ਰਾਂਪਟ ਨੂੰ ਰੱਦ ਕਰੋ"
 commands.sessions.summary: "ਇਤਿਹਾਸਕ ਸੈਸ਼ਨ ਪਿਕਰ ਖੋਲ੍ਹੋ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "ਇਸ ਪੈਨ ਲਈ ਏਜੰਟ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /agent <id>)"  # {Locked="/agent","<id>"}
 
 # ── ਸਿਫ਼ਾਰਸ਼ ਪੈਨਲ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ਕੀ ਨਾਮ ਅਤੇ Return-ਕੀ ਗਲਿਫ਼, ਅਨੁਵਾਦ ਨਾ ਕਰੋ
@@ -200,6 +201,16 @@ time.days_other: "%{count} ਦਿਨ ਪਹਿਲਾਂ"
 
 # ── ਸਿਫਾਰਸ਼ ਚਲਾਉਣਾ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ਚੋਣ %{choice} ਅਸਫਲ ਰਹੀ: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "ਏਜੰਟ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "ਇਸ ਮਸ਼ੀਨ ਤੇ ਕੋਈ ਉਪਲਬਧ ਏਜੰਟ CLI ਨਹੀਂ ਮਿਲਿਆ।"  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "ਅਣਜਾਣ ਜਾਂ ਅਣਉਪਲਬਧ ਏਜੰਟ %{agent} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /agent ਟਾਈਪ ਕਰੋ।"  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "ਵਿੰਡੋਜ਼ ਟਰਮੀਨਲ ਟੈਬ ਦੇ ਬਾਹਰ ਏਜੰਟ ਬਦਲਣਾ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /model <id>)"  # {Locked="/model","<id>"}

@@ -49,6 +49,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     // BuildShellIntegrationBlock — pure generator.
     TEST_METHOD(BuildBlock_ContainsMarkersAndScriptFilename);
     TEST_METHOD(BuildBlock_HonoursEolParameter);
+    TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
 
     // Install scenarios.
     TEST_METHOD(Install_EmptyPath_Fails);
@@ -404,6 +405,23 @@ void ShellIntegrationTests::BuildBlock_HonoursEolParameter()
     const auto crlf = BuildShellIntegrationBlock(L"PowerShell", "\r\n");
     VERIFY_IS_FALSE(_Contains(lf, "\r\n"), L"LF block must not contain CRLF");
     VERIFY_IS_TRUE(_Contains(crlf, "\r\n"), L"CRLF block must contain CRLF separators");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_HandlesNullLastExitCode()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto functionStart = script.find("function Global:__ShellInteg_GetLastExitCode");
+    const auto guard = script.find("$null -ne $LastExitCode -and $LastExitCode -ne 0", functionStart);
+    const auto nativeReturn = script.find("return $LastExitCode", functionStart);
+    const auto sentinelReturn = script.find("return -1", functionStart);
+    const auto functionEnd = script.find("function prompt", functionStart);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, functionStart);
+    VERIFY_IS_TRUE(functionStart < guard &&
+                       guard < nativeReturn &&
+                       nativeReturn < sentinelReturn &&
+                       sentinelReturn < functionEnd,
+                   L"The exit-code helper must guard null/zero before returning a native code, then fall back to a numeric non-zero sentinel");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────

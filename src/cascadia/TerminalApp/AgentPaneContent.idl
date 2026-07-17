@@ -38,5 +38,6 @@ namespace TerminalApp
         // subscribes to refresh the window-level bottom bar when the firing
         // pane belongs to the active tab.
         event Windows.Foundation.TypedEventHandler<AgentPaneContent, Object> StateChanged;
+
     }
 }

@@ -39,6 +39,21 @@ fn cli_initial_load_session_id_without_cwd_is_allowed() {
 }
 
 #[test]
+fn cli_parses_owner_tab_and_window_identity() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "--owner-tab-id",
+        "{tab-guid}",
+        "--owner-window-id",
+        "42",
+    ])
+    .expect("owner identity flags must parse");
+
+    assert_eq!(cli.owner_tab_id.as_deref(), Some("{tab-guid}"));
+    assert_eq!(cli.owner_window_id.as_deref(), Some("42"));
+}
+
+#[test]
 fn sessions_list_cli_parses_json_and_master_override() {
     let cli = Cli::try_parse_from([
         "wta",
@@ -100,7 +115,7 @@ fn sessions_list_cli_parses_origin_agent_pane() {
 #[test]
 fn sessions_json_lines_prints_one_session_info_per_line() {
     let mut row = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-json"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-json"),
         std::path::PathBuf::from("C:\\repo"),
     );
     row.status = Some(agent_sessions::AgentStatus::Working);
@@ -120,7 +135,7 @@ fn sessions_json_lines_prints_one_session_info_per_line() {
 #[test]
 fn sessions_table_prints_header_and_rows() {
     let mut row = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-table"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-table"),
         std::path::PathBuf::from("C:\\repo"),
     );
     row.title = Some("fix build".into());
@@ -147,12 +162,12 @@ fn sessions_table_prints_header_and_rows() {
 #[test]
 fn sessions_table_renders_origin_labels() {
     let mut shell = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-shell"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-shell"),
         std::path::PathBuf::from("C:\\repo"),
     );
     shell.origin = Some(agent_sessions::SessionOrigin::Unknown);
     let mut pane = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-pane"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-pane"),
         std::path::PathBuf::from("C:\\repo"),
     );
     pane.origin = Some(agent_sessions::SessionOrigin::AgentPane);
@@ -165,12 +180,12 @@ fn sessions_table_renders_origin_labels() {
 #[test]
 fn sessions_table_renders_location_labels() {
     let mut host = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-host"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-host"),
         std::path::PathBuf::from("C:\\repo"),
     );
     host.location = agent_sessions::SessionLocation::Host;
     let mut wsl = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-wsl"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-wsl"),
         std::path::PathBuf::from("/home/u"),
     );
     wsl.location = agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".into() };
@@ -193,7 +208,7 @@ fn format_epoch_ms_utc_known_values() {
 #[test]
 fn updated_label_falls_back_to_last_activity_ms() {
     let mut s = session_registry::SessionInfo::new(
-        agent_client_protocol::SessionId::new("sid-u"),
+        agent_client_protocol::schema::v1::SessionId::new("sid-u"),
         std::path::PathBuf::from("/home/u"),
     );
     // No updated_at, but an epoch-ms activity stamp -> formatted, not "-".
@@ -346,4 +361,87 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(json_str_or_num(&v, "b"), "-");
     assert_eq!(json_str_or_num(&v, "nl"), "-");
     assert_eq!(json_str_or_num(&v, "missing"), "-");
+}
+
+// ── Delegate: WSL pane target detection + launchable gate ───────────────────
+//
+// `delegate_command_launchable` only checks the Windows PATH, which is
+// meaningless for a WSL pane (the agent runs inside the distro). A WSL pane is
+// therefore treated as launchable when the agent CLI is present *inside the
+// distro* — so a `?<prompt>` from a WSL pane still gets its prompt
+// enriched/delivered when the agent (e.g. Copilot) is installed only inside the
+// distro (regression guard for the "prompt silently dropped" bug), while a WSL
+// pane whose distro lacks the CLI falls back to the Windows host term.
+
+/// Build a minimal active-pane JSON value with the given `shell` field, as
+/// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
+fn pane_with_shell(shell: &str) -> serde_json::Value {
+    serde_json::json!({ "shell": shell })
+}
+
+#[test]
+fn active_pane_wsl_distro_extracts_distro_name() {
+    // `wsl:<distro>` → the distro name (drives `wsl -d <distro>`).
+    assert_eq!(
+        active_pane_wsl_distro(Some(&pane_with_shell("wsl:Ubuntu"))),
+        Some("Ubuntu")
+    );
+    assert_eq!(
+        active_pane_wsl_distro(Some(&pane_with_shell("wsl:Ubuntu-22.04"))),
+        Some("Ubuntu-22.04")
+    );
+}
+
+#[test]
+fn active_pane_wsl_distro_rejects_non_wsl_shells() {
+    // Non-WSL shells → None (host path).
+    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("pwsh"))), None);
+    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("cmd"))), None);
+    // A pane name that merely contains "wsl" is not the `wsl:` prefix.
+    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("my-wsl"))), None);
+    // Bare `wsl:` with an empty distro name is not a valid WSL pane — shell
+    // integration only emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set —
+    // and would otherwise build an invalid `wsl -d "" …` command.
+    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("wsl:"))), None);
+    // `shell` field absent.
+    let no_shell = serde_json::json!({ "cwd": "/home/u" });
+    assert_eq!(active_pane_wsl_distro(Some(&no_shell)), None);
+    // `shell` present but not a string.
+    let numeric_shell = serde_json::json!({ "shell": 42 });
+    assert_eq!(active_pane_wsl_distro(Some(&numeric_shell)), None);
+    // No active pane at all.
+    assert_eq!(active_pane_wsl_distro(None), None);
+}
+
+#[test]
+fn wsl_agent_probe_script_prints_command_v_resolution() {
+    // Emits `command -v <exe>` straight to stdout (the caller captures it and
+    // rejects empty or /mnt results). Deliberately NOT wrapped in `$(…)`, which
+    // returns empty for snap apps. sh_quote single-quotes the exe.
+    assert_eq!(
+        wsl_agent_probe_script("copilot"),
+        "command -v 'copilot' 2>/dev/null"
+    );
+    // An agent identity with shell metacharacters stays contained in the quotes.
+    assert_eq!(
+        wsl_agent_probe_script("my agent; rm -rf /"),
+        "command -v 'my agent; rm -rf /' 2>/dev/null"
+    );
+}
+
+#[test]
+fn delegate_launchable_for_target_ors_host_and_wsl() {
+    // Agent not launchable on the Windows host, but present inside the WSL
+    // distro → launchable (in-distro path), so the prompt is enriched, not
+    // dropped.
+    assert!(delegate_launchable_for_target(false, true));
+
+    // Not launchable on host AND not available in WSL → stays non-launchable
+    // (the bare-command path, where the prompt is intentionally not baked in).
+    // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
+    assert!(!delegate_launchable_for_target(false, false));
+
+    // Launchable on the host is always launchable, regardless of WSL.
+    assert!(delegate_launchable_for_target(true, false));
+    assert!(delegate_launchable_for_target(true, true));
 }

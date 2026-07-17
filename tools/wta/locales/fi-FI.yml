@@ -196,9 +196,20 @@ commands.fix.summary: "Diagnosoi aktiivinen pääte ja ehdota korjausta (/fix <h
 commands.restart.summary: "Käynnistä agentti uudelleen"
 commands.stop.summary: "Peruuta käynnissä oleva kehote"
 commands.sessions.summary: "Avaa aiempien istuntojen valitsin (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
+commands.agent.summary: "Valitse tämän paneelin agentti (/agent <id> vaihtaaksesi suoraan)"  # {Locked="/agent","<id>"}
 
 # ── Suosituksen suorittaminen (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Valinta %{choice} epäonnistui: %{error}"
+
+# ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
+# {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+agent_picker.title: "Valitse agentti (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
+# Shown when no policy-allowed AI agent CLI is installed on the machine.
+system.no_agents: "Tältä koneelta ei löytynyt käytettävissä olevaa agentti-CLI-työkalua."  # {Locked="CLI"}
+# {agent} is the unrecognized text the user typed after /agent.
+system.agent_unknown: "Tuntematon tai ei-käytettävissä oleva agentti %{agent} — kirjoita /agent nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="/agent"}
+# Shown only when /agent is used outside a Windows Terminal-owned agent pane.
+system.agent_switch_unavailable: "Agentin vaihtaminen ei ole käytettävissä Windows Terminal -välilehden ulkopuolella."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valitse tämän paneelin malli (/model <id> vaihtaaksesi suoraan)"  # {Locked="/model","<id>"}

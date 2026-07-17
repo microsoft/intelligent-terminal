@@ -184,15 +184,15 @@ pub fn lookup_profile(executable: &str) -> &'static AgentProfile {
         .rsplit(|ch: char| ch == '\\' || ch == '/')
         .next()
         .unwrap_or(executable);
-    let lower = basename
+    let lower = basename.to_ascii_lowercase();
+    let normalized = lower
         .strip_suffix(".exe")
-        .or_else(|| basename.strip_suffix(".cmd"))
-        .or_else(|| basename.strip_suffix(".bat"))
-        .unwrap_or(basename)
-        .to_ascii_lowercase();
+        .or_else(|| lower.strip_suffix(".cmd"))
+        .or_else(|| lower.strip_suffix(".bat"))
+        .unwrap_or(&lower);
     KNOWN_AGENTS
         .iter()
-        .find(|p| p.id == lower)
+        .find(|p| p.id == normalized)
         .unwrap_or(&DEFAULT_PROFILE)
 }
 
@@ -202,6 +202,19 @@ pub fn lookup_profile_by_id(id: &str) -> &'static AgentProfile {
         .iter()
         .find(|p| p.id == id)
         .unwrap_or(&DEFAULT_PROFILE)
+}
+
+/// Returns `true` iff `id` is a real, selectable agent id present in
+/// [`KNOWN_AGENTS`] (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`).
+///
+/// Prefer this over `lookup_profile_by_id(id).id != DEFAULT_PROFILE.id` when
+/// distinguishing a known agent from the unknown/custom fallback: this checks
+/// membership directly and is **decoupled from [`DEFAULT_PROFILE`]**, so it
+/// never conflates a genuine agent with the fallback even if `DEFAULT_PROFILE.id`
+/// is later changed to a real, selectable agent id. Expects an already-canonical
+/// (lowercased) id — see [`resolve_agent_id_from_cmd`].
+pub fn is_known_id(id: &str) -> bool {
+    KNOWN_AGENTS.iter().any(|p| p.id == id)
 }
 
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
@@ -239,10 +252,14 @@ pub fn resolve_agent_id_from_cmd(agent_cmd: &str) -> &'static str {
         return profile.id;
     }
 
-    // Bare / path form: take the first whitespace-delimited token and let
-    // `lookup_profile` strip path and extension before matching.
-    let first = trimmed.split_whitespace().next().unwrap_or(trimmed);
-    lookup_profile(first).id
+    // Bare / path form: parse the first Windows commandline token so a quoted
+    // executable path containing spaces stays intact, then let `lookup_profile`
+    // strip path and extension before matching.
+    let tokens = crate::coordinator::split_windows_commandline(trimmed);
+    tokens
+        .first()
+        .map(|first| lookup_profile(first).id)
+        .unwrap_or(DEFAULT_PROFILE.id)
 }
 
 // ─── ACP Command Building ────────────────────────────────────────────────────
@@ -478,6 +495,24 @@ mod tests {
             "gemini",
         );
         assert_eq!(resolve_agent_id_from_cmd("copilot.cmd"), "copilot");
+        assert_eq!(
+            resolve_agent_id_from_cmd(r#""C:\npm tools\codex.cmd" --search"#),
+            "codex",
+        );
+    }
+
+    #[test]
+    fn lookup_and_resolve_recognize_mixed_case_batch_extensions() {
+        assert_eq!(lookup_profile(r"C:\Tools\codex.CMD").id, "codex");
+        assert_eq!(lookup_profile(r"C:\Tools\copilot.BaT").id, "copilot");
+        assert_eq!(
+            resolve_agent_id_from_cmd(r#""C:\npm tools\codex.CMD" --search"#),
+            "codex",
+        );
+        assert_eq!(
+            resolve_agent_id_from_cmd(r"C:\npm\copilot.BaT --model gpt-5"),
+            "copilot",
+        );
     }
 
     #[test]
@@ -486,6 +521,25 @@ mod tests {
         assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
         assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
         assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
+    }
+
+    #[test]
+    fn is_known_id_matches_registry_membership_only() {
+        // Every real agent id is known.
+        for p in KNOWN_AGENTS {
+            assert!(is_known_id(p.id), "{} should be known", p.id);
+        }
+        // The unknown/custom fallback ids are NOT known. Crucially,
+        // `is_known_id` doesn't depend on DEFAULT_PROFILE at all, so the
+        // literal "unknown" is rejected because it isn't in KNOWN_AGENTS —
+        // not because it happens to equal DEFAULT_PROFILE.id. This is what
+        // keeps the default agent from being conflated with the fallback.
+        assert!(!is_known_id(DEFAULT_PROFILE.id));
+        for bogus in ["unknown", "custom", "custom:calc.exe", "totally-bogus", ""] {
+            assert!(!is_known_id(bogus), "{bogus} must not be known");
+        }
+        // Case-sensitive: callers canonicalize to lowercase first.
+        assert!(!is_known_id("Copilot"));
     }
 
     #[test]
