@@ -710,13 +710,19 @@ namespace winrt::TerminalApp::implementation
                 cwd = activeControl.WorkingDirectory();
             }
 
-            // If the tab has an agent pane, record its WT session GUID
-            // (pane_session_id) so restore can resolve it to the ACP session id
-            // (via wta's agent-pane-sessions.jsonl) and resume that conversation.
-            // FindAgentPane() also finds a stashed (hidden) agent pane, so a
-            // toggled-closed-but-alive agent session is captured too.
+            // If the tab has an agent pane the user actually opened, record its
+            // WT session GUID (pane_session_id) so restore can resolve it to the
+            // ACP session id (via wta's agent-pane-sessions.jsonl) and resume
+            // that conversation, faithfully re-showing it.
+            //
+            // We deliberately capture ONLY a visible (open) agent pane, not a
+            // stashed/hidden one: every tab pre-warms a stashed agent pane with
+            // a fresh, empty ACP session (see `_InitializeTab`). Capturing that
+            // would resurrect an agent the user never engaged with — showing an
+            // empty pane on restore. Requiring `!IsHidden()` scopes capture to
+            // an agent the user had open, matching the saved display.
             winrt::hstring agentPaneSessionId;
-            if (const auto agentPane = tabImpl->FindAgentPane())
+            if (const auto agentPane = tabImpl->FindAgentPane(); agentPane && !agentPane->IsHidden())
             {
                 if (const auto sid = agentPane->GetSessionId(); sid != winrt::guid{})
                 {
