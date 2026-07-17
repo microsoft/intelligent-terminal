@@ -22,9 +22,9 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
 
-    let activity = if tab.turn.spinner_label().is_some()
-        && pending_stream_height(tab, wrap_width) == 0
-    {
+    // Reserve the row only when the shimmer will actually render; mirrors
+    // the suppression rule in `build_activity_line` below.
+    let activity = if tab.turn.spinner_label().is_some() && !is_reveal_catching_up(tab) {
         1usize
     } else {
         0
@@ -302,7 +302,17 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
     }
     let tab = app.current_tab();
-    if tab.turn.spinner_label().is_none() || pending_render_text(tab).is_some() {
+    if tab.turn.spinner_label().is_none() {
+        return None;
+    }
+    // While the reveal is still catching up, the growing text is itself the
+    // activity signal, so skip the shimmer to avoid a duplicate. Once it
+    // catches up (e.g. the model narrated a step, then went quiet for a
+    // tool call / permission round-trip), the text goes static with no
+    // cursor of its own, so fall back to the shimmer so busy always shows
+    // *something* (issue #189 covered the empty-buffer case; this covers
+    // the non-empty-but-stalled one).
+    if is_reveal_catching_up(tab) {
         return None;
     }
     let label = activity_label();
@@ -310,6 +320,16 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         &label,
         tab.activity_frame,
     )))
+}
+
+/// True while the reveal cursor hasn't caught up to the pending stream text,
+/// i.e. the growing text is still its own activity signal. `false` when
+/// there's no pending text, or the reveal has fully caught up.
+fn is_reveal_catching_up(tab: &crate::app::TabSession) -> bool {
+    match pending_render_text(tab) {
+        Some(text) => tab.reveal_chars < text.chars().count(),
+        None => false,
+    }
 }
 
 /// Incrementally extracts a JSON string field's decoded value from a
