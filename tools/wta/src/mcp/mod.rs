@@ -16,6 +16,8 @@ mod resolve_command;
 mod server;
 pub(crate) mod terminal_actions;
 
+pub const SERVER_NAME: &str = "wta";
+
 use server::serve;
 pub use terminal_actions::{
     build_terminal_actions_proposal_response, parse_terminal_actions_proposal_params,

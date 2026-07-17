@@ -37,6 +37,19 @@ card model locally, and waits for explicit user confirmation.
 The agent never supplies a pane id, tab id, helper id, ACP session id, or agent
 CLI id.
 
+## Permission model
+
+For the built-in Copilot agent, `wta-master` launches the ACP CLI with:
+
+```text
+--allow-tool=wta(propose_terminal_actions)
+```
+
+This exact allow rule removes Copilot's additional approval prompt for creating
+the proposal. It does not preapprove `resolve_command`, shell, write, or any
+terminal mutation. The MCP call only creates helper-owned UI; Run, Insert, Open,
+and Delegate remain blocked on the card's explicit user confirmation.
+
 ## Tool schema
 
 The request contains one to three ordered choices. The helper assigns their

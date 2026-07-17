@@ -183,7 +183,7 @@ async fn dispatch(
             serde_json::json!({
                 "protocolVersion": version,
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "wta", "version": env!("CARGO_PKG_VERSION") }
+                "serverInfo": { "name": super::SERVER_NAME, "version": env!("CARGO_PKG_VERSION") }
             })
         }
         "ping" => serde_json::json!({}),

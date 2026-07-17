@@ -107,7 +107,7 @@ The COM surface exposes reads and mutations, including `list_*`, `read_pane_outp
 ### Copilot
 
 ```
-wta --agent "copilot --acp --stdio"
+wta --agent "copilot --acp --stdio --allow-tool=wta(propose_terminal_actions)"
 ```
 
 Copilot speaks ACP directly (`--acp --stdio`). It is spawned by `wta-master`, not
@@ -118,7 +118,9 @@ hosts a localhost MCP tool server and injects a session-bound URL during ACP
 Autofix and Terminal Agent cards come only from the typed
 `propose_terminal_actions` MCP tool; the
 helper injects trusted pane/delegate routing and execution still requires user
-confirmation. Assistant-text JSON is never an action protocol.
+confirmation. The master preapproves only this proposal-only MCP call in Copilot
+so the card confirmation is the single user approval; no terminal operation or
+other tool is preapproved. Assistant-text JSON is never an action protocol.
 
 ### Claude and Codex
 

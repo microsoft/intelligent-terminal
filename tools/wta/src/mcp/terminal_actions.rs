@@ -8,6 +8,7 @@ use super::{RouteRegistry, Tool, ToolContext};
 
 pub const INTELLTERM_METHOD_PROPOSE_TERMINAL_ACTIONS: &str =
     "_intellterm.wta/propose_terminal_actions";
+pub const TOOL_NAME: &str = "propose_terminal_actions";
 
 const MAX_CWD_CHARS: usize = 4 * 1024;
 const MAX_INPUT_CHARS: usize = 16 * 1024;
@@ -284,7 +285,7 @@ impl ProposeTerminalActions {
 #[async_trait]
 impl Tool for ProposeTerminalActions {
     fn name(&self) -> &'static str {
-        "propose_terminal_actions"
+        TOOL_NAME
     }
 
     fn description(&self) -> &'static str {

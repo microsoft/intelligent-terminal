@@ -1045,7 +1045,10 @@ impl HelperHandler {
                     .register(self.helper_id, forwarder.clone())
                     .await;
                 args.mcp_servers.push(acp::schema::v1::McpServer::Http(
-                    acp::schema::v1::McpServerHttp::new("wta", host.route_url(&route_id)),
+                    acp::schema::v1::McpServerHttp::new(
+                        crate::mcp::SERVER_NAME,
+                        host.route_url(&route_id),
+                    ),
                 ));
                 Some(route_id)
             } else {
@@ -1208,7 +1211,7 @@ impl HelperHandler {
                     crate::mcp::LoadSessionRoute::Registered(route_id) => {
                         args.mcp_servers.push(acp::schema::v1::McpServer::Http(
                             acp::schema::v1::McpServerHttp::new(
-                                "wta",
+                                crate::mcp::SERVER_NAME,
                                 host.route_url(&route_id),
                             ),
                         ));
@@ -2162,7 +2165,7 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
 ///
 /// **Security invariant:** the returned command is always master-derived
 /// — either reconstructed from a *known, allowed* agent id via
-/// [`agent_registry::build_acp_command`], or the trusted `--agent`
+/// [`build_agent_pane_acp_command`], or the trusted `--agent`
 /// default. A command string arriving over the pipe (`wta_meta.agent_cmd`)
 /// is never returned and never executed; any same-user process that
 /// connects to the pipe therefore cannot drive arbitrary process
@@ -2204,7 +2207,7 @@ fn resolve_agent_selection(
             let model = requested_model
                 .map(str::trim)
                 .filter(|s| !s.is_empty());
-            let cmd = crate::agent_registry::build_acp_command(id, model);
+            let cmd = build_agent_pane_acp_command(id, model);
             return (cmd, Some(id.to_string()));
         }
 
@@ -2220,7 +2223,37 @@ fn resolve_agent_selection(
         );
     }
 
-    (default_cmd.to_string(), default_id.map(str::to_string))
+    let inferred_default_id =
+        default_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(default_cmd));
+    (
+        with_agent_pane_tool_permissions(default_cmd.to_string(), inferred_default_id),
+        default_id.map(str::to_string),
+    )
+}
+
+fn build_agent_pane_acp_command(agent_id: &str, model: Option<&str>) -> String {
+    let command = crate::agent_registry::build_acp_command(agent_id, model);
+    with_agent_pane_tool_permissions(command, agent_id)
+}
+
+fn with_agent_pane_tool_permissions(mut command: String, agent_id: &str) -> String {
+    if !agent_id.eq_ignore_ascii_case("copilot") {
+        return command;
+    }
+
+    let permission = format!(
+        "--allow-tool={}({})",
+        crate::mcp::SERVER_NAME,
+        crate::mcp::terminal_actions::TOOL_NAME
+    );
+    if !crate::coordinator::split_windows_commandline(&command)
+        .iter()
+        .any(|arg| arg == &permission)
+    {
+        command.push(' ');
+        command.push_str(&permission);
+    }
+    command
 }
 
 /// Get the agent CLI for `agent_cmd`, spawning + initializing it on
@@ -3971,6 +4004,8 @@ mod tests {
     // than injecting a fake spawner, which only the I/O plumbing needs).
 
     const DEFAULT_CMD: &str = "copilot --acp --stdio";
+    const PERMISSIONED_COPILOT_CMD: &str =
+        "copilot --acp --stdio --allow-tool=wta(propose_terminal_actions)";
 
     fn allow_set(ids: &[&str]) -> std::collections::HashSet<String> {
         ids.iter().map(|s| s.to_string()).collect()
@@ -4015,6 +4050,64 @@ mod tests {
     }
 
     #[test]
+    fn copilot_preapproves_only_the_proposal_tool() {
+        let (cmd, id) = resolve(None, Some("copilot"), Some("gpt-5.2"));
+        assert_eq!(
+            cmd,
+            "copilot --acp --stdio --model gpt-5.2 \
+             --allow-tool=wta(propose_terminal_actions)"
+        );
+        assert_eq!(id.as_deref(), Some("copilot"));
+
+        for agent_id in ["claude", "codex", "gemini"] {
+            let (cmd, _) = resolve(None, Some(agent_id), None);
+            assert!(
+                !cmd.contains("--allow-tool"),
+                "{agent_id} must not receive Copilot CLI permissions"
+            );
+        }
+    }
+
+    #[test]
+    fn copilot_fallback_adds_permission_once() {
+        let (cmd, _) = resolve(None, None, None);
+        assert_eq!(cmd, PERMISSIONED_COPILOT_CMD);
+        assert_eq!(
+            with_agent_pane_tool_permissions(cmd, "copilot"),
+            PERMISSIONED_COPILOT_CMD
+        );
+    }
+
+    #[test]
+    fn explicit_custom_default_never_inherits_copilot_permission() {
+        let custom_command = "copilot --acp --stdio --custom-mode";
+        let (cmd, id) = resolve_agent_selection(
+            custom_command,
+            Some("custom:copilot-compatible"),
+            None,
+            None,
+            None,
+            HelperId(1),
+        );
+        assert_eq!(cmd, custom_command);
+        assert_eq!(id.as_deref(), Some("custom:copilot-compatible"));
+    }
+
+    #[test]
+    fn missing_default_id_infers_builtin_copilot_permission() {
+        let (cmd, id) = resolve_agent_selection(
+            DEFAULT_CMD,
+            None,
+            None,
+            None,
+            None,
+            HelperId(1),
+        );
+        assert_eq!(cmd, PERMISSIONED_COPILOT_CMD);
+        assert_eq!(id, None);
+    }
+
+    #[test]
     fn id_is_case_insensitive() {
         let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
         assert_eq!(cmd, "gemini --experimental-acp");
@@ -4025,7 +4118,7 @@ mod tests {
     fn empty_or_missing_id_falls_back_to_default() {
         for requested in [None, Some(""), Some("   ")] {
             let (cmd, id) = resolve(None, requested, None);
-            assert_eq!(cmd, DEFAULT_CMD, "requested={requested:?}");
+            assert_eq!(cmd, PERMISSIONED_COPILOT_CMD, "requested={requested:?}");
             assert_eq!(id.as_deref(), Some("copilot"));
         }
     }
@@ -4041,7 +4134,7 @@ mod tests {
         // its own rebuilt command and stamp its own id.
         for profile in crate::agent_registry::KNOWN_AGENTS {
             let (cmd, id) = resolve(None, Some(profile.id), None);
-            let expected = crate::agent_registry::build_acp_command(profile.id, None);
+            let expected = build_agent_pane_acp_command(profile.id, None);
             assert_eq!(cmd, expected, "agent {} must be honored, not fall back", profile.id);
             assert_eq!(id.as_deref(), Some(profile.id), "id stamp for {}", profile.id);
         }
@@ -4054,7 +4147,7 @@ mod tests {
         // global custom command), never a string from the pipe.
         for requested in ["custom", "custom:calc.exe", "totally-bogus"] {
             let (cmd, id) = resolve(None, Some(requested), None);
-            assert_eq!(cmd, DEFAULT_CMD, "requested={requested}");
+            assert_eq!(cmd, PERMISSIONED_COPILOT_CMD, "requested={requested}");
             assert_eq!(id.as_deref(), Some("copilot"));
         }
     }
@@ -4112,16 +4205,19 @@ mod tests {
         let (cmd, _) = resolve(None, Some("copilot"), None);
         assert_eq!(
             cmd,
-            crate::agent_registry::build_acp_command("copilot", None),
+            build_agent_pane_acp_command("copilot", None),
             "no allowlist ⇒ known id honored (reconstructed)"
         );
         let listed = normalize_allowed_agent_ids(&["gemini".to_string()]);
         let (cmd, id) = resolve(listed.as_ref(), Some("copilot"), None);
-        assert_eq!(cmd, DEFAULT_CMD, "unlisted id is refused");
+        assert_eq!(cmd, PERMISSIONED_COPILOT_CMD, "unlisted id is refused");
         assert_eq!(id.as_deref(), Some("copilot"));
         let blocked = normalize_allowed_agent_ids(&[String::new()]);
         let (cmd, id) = resolve(blocked.as_ref(), Some("gemini"), None);
-        assert_eq!(cmd, DEFAULT_CMD, "present-but-empty blocks even a known id");
+        assert_eq!(
+            cmd, PERMISSIONED_COPILOT_CMD,
+            "present-but-empty blocks even a known id"
+        );
         assert_eq!(id.as_deref(), Some("copilot"));
     }
 
@@ -4166,7 +4262,7 @@ mod tests {
         // refused, fall back to default. (Defends against a peer helper
         // selecting a policy-blocked agent.)
         let (cmd, id) = resolve(Some(&allowed), Some("copilot"), None);
-        assert_eq!(cmd, DEFAULT_CMD);
+        assert_eq!(cmd, PERMISSIONED_COPILOT_CMD);
         assert_eq!(id.as_deref(), Some("copilot"));
     }
 

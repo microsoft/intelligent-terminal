@@ -137,8 +137,12 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
+    if needs_cmd {
+        cmd.args(args.iter().map(|arg| escape_cmd_parentheses(arg)));
+    } else {
+        cmd.args(&args);
+    }
     let child = cmd
-        .args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -153,6 +157,10 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
         is_npx,
         adapter_package,
     })
+}
+
+fn escape_cmd_parentheses(arg: &str) -> String {
+    arg.replace('(', "^(").replace(')', "^)")
 }
 
 /// Convert a BCP-47 locale tag (e.g. `zh-CN`, `gd-gb`) to the POSIX
@@ -217,5 +225,29 @@ mod tests {
     fn canonicalizes_language_only() {
         assert_eq!(canonicalize_posix_locale("en"), "en.UTF-8");
     }
-}
 
+    #[test]
+    fn escapes_exact_mcp_permission_for_cmd_shims() {
+        assert_eq!(
+            escape_cmd_parentheses("--allow-tool=wta(propose_terminal_actions)"),
+            "--allow-tool=wta^(propose_terminal_actions^)"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cmd_shim_receives_exact_mcp_permission() {
+        let permission = "--allow-tool=wta(propose_terminal_actions)";
+        let output = std::process::Command::new("cmd.exe")
+            .arg("/d")
+            .arg("/s")
+            .arg("/c")
+            .arg("echo")
+            .arg(escape_cmd_parentheses(permission))
+            .output()
+            .expect("cmd.exe should run");
+
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), permission);
+    }
+}
