@@ -1592,9 +1592,9 @@ namespace winrt::TerminalApp::implementation
             }
         }
         auto agentContent = winrt::make<winrt::TerminalApp::implementation::AgentPaneContent>(innerTerm);
-        // Theme the new pane's top bar right away so it matches the tab-row
-        // color even when created mid-session (#348). The brushes are cached
-        // by _updateThemeColors, which has already run by first pane creation.
+        // Apply the cached fallback immediately when a pane is created
+        // mid-session (#348). The next theme refresh replaces it with the
+        // agent pane's own background color.
         if (_agentBarBackgroundBrush && _agentBarForegroundBrush)
         {
             if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
@@ -9140,7 +9140,11 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto b = agent.BackgroundBrush())
                     {
-                        return til::color{ ThemeColor::ColorFromBrush(b) };
+                        const til::color color{ ThemeColor::ColorFromBrush(b) };
+                        if (color.a != 0)
+                        {
+                            return color;
+                        }
                     }
                 }
                 return std::nullopt;
