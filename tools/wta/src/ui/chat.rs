@@ -21,10 +21,19 @@ const MAX_RENDER_LINE_CHARS: usize = 4096;
 pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
+    // Fetch once and reuse below for both the reveal-catchup check and the
+    // pending-height calc. `pending_render_text` re-parses the streaming
+    // buffer on every call (and allocates on the JSON-wrapper path via
+    // `extract_json_string_field`), so calling it twice per frame here would
+    // be a redundant, measurable cost on the render hot path.
+    let pending_text = pending_render_text(tab);
 
-    let activity = if tab.turn.spinner_label().is_some()
-        && pending_stream_height(tab, wrap_width) == 0
-    {
+    // Reserve the row only when the shimmer will actually render; mirrors
+    // the suppression rule in `build_activity_line` below.
+    let reveal_catching_up = pending_text
+        .as_deref()
+        .is_some_and(|text| tab.reveal_chars < text.chars().count());
+    let activity = if tab.turn.spinner_label().is_some() && !reveal_catching_up {
         1usize
     } else {
         0
@@ -32,7 +41,10 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
 
     let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
     let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
-    let pending = pending_stream_height(tab, wrap_width);
+    let pending = pending_text
+        .as_deref()
+        .map(|text| markdown::agent_markdown_height(text, wrap_width))
+        .unwrap_or(0);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
     // is on; must be counted here or else any pushed message will scroll
     // it off the top of the visible chat block. Always a single row —
@@ -47,13 +59,6 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     };
 
     (activity + messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
-}
-
-fn pending_stream_height(tab: &crate::app::TabSession, wrap_width: usize) -> usize {
-    let Some(text) = pending_render_text(tab) else {
-        return 0;
-    };
-    markdown::agent_markdown_height(&text, wrap_width)
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -302,7 +307,17 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
     }
     let tab = app.current_tab();
-    if tab.turn.spinner_label().is_none() || pending_render_text(tab).is_some() {
+    if tab.turn.spinner_label().is_none() {
+        return None;
+    }
+    // While the reveal is still catching up, the growing text is itself the
+    // activity signal, so skip the shimmer to avoid a duplicate. Once it
+    // catches up (e.g. the model narrated a step, then went quiet for a
+    // tool call / permission round-trip), the text goes static with no
+    // cursor of its own, so fall back to the shimmer so busy always shows
+    // *something* (issue #189 covered the empty-buffer case; this covers
+    // the non-empty-but-stalled one).
+    if is_reveal_catching_up(tab) {
         return None;
     }
     let label = activity_label();
@@ -310,6 +325,16 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         &label,
         tab.activity_frame,
     )))
+}
+
+/// True while the reveal cursor hasn't caught up to the pending stream text,
+/// i.e. the growing text is still its own activity signal. `false` when
+/// there's no pending text, or the reveal has fully caught up.
+fn is_reveal_catching_up(tab: &crate::app::TabSession) -> bool {
+    match pending_render_text(tab) {
+        Some(text) => tab.reveal_chars < text.chars().count(),
+        None => false,
+    }
 }
 
 /// Incrementally extracts a JSON string field's decoded value from a
@@ -774,6 +799,63 @@ mod tests {
     #[test]
     fn stream_text_empty_is_none() {
         assert_eq!(user_visible_stream_text("   \n  "), None);
+    }
+
+    // ── is_reveal_catching_up ────────────────────────────────────────────────
+
+    fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
+        crate::app::TabSession {
+            turn: crate::app::TurnState::Streaming {
+                prompt: crate::app::SubmittedPrompt {
+                    id: 1,
+                    text: "hi".into(),
+                    submitted_at_unix_s: 0.0,
+                    autofix: None,
+                },
+                buf: buf.to_string(),
+            },
+            reveal_chars,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn reveal_catching_up_true_while_behind_visible_length() {
+        // "hello" is 5 chars; reveal_chars=2 means the typewriter is still
+        // mid-reveal, so the growing text is still its own activity signal.
+        let tab = streaming_tab("hello", 2);
+        assert!(is_reveal_catching_up(&tab));
+    }
+
+    #[test]
+    fn reveal_catching_up_false_once_reveal_equals_visible_length() {
+        // reveal_chars caught up exactly to the visible length: the boundary
+        // case (`<` vs `>=`) that must flip to false, not stay true.
+        let tab = streaming_tab("hello", 5);
+        assert!(!is_reveal_catching_up(&tab));
+    }
+
+    #[test]
+    fn reveal_catching_up_false_once_reveal_exceeds_visible_length() {
+        let tab = streaming_tab("hello", 99);
+        assert!(!is_reveal_catching_up(&tab));
+    }
+
+    #[test]
+    fn reveal_catching_up_false_when_buffer_empty() {
+        // Empty buffer (no narration streamed yet) has no pending text to
+        // catch up to — the empty-buffer case fixed for issue #189 must not
+        // be treated as "still revealing".
+        let tab = streaming_tab("", 0);
+        assert!(!is_reveal_catching_up(&tab));
+    }
+
+    #[test]
+    fn reveal_catching_up_false_when_not_streaming() {
+        // Idle (no turn in flight) has no `buffer()` at all: `pending_render_text`
+        // returns None, so there's nothing to catch up to.
+        let tab = crate::app::TabSession::default();
+        assert!(!is_reveal_catching_up(&tab));
     }
 
     // ── truncate_render_text ────────────────────────────────────────────────

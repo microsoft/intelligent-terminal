@@ -14,6 +14,8 @@
     'Different positions work'          = 'at all four pane positions'
     'Focus hotkey works'                = 'Focus hotkey / focus works'
     '/model works'                      = '/model opens the model picker'
+    '/agent picker works'               = '/agent appears in the slash menu and opens a keyboard-operable picker'
+    'Invalid /agent selection is safe'  = '/agent rejects an unavailable id without changing the pane or global setting'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).
@@ -51,7 +53,7 @@
     'Stashed agent pane autofix works'  = 'Stashed agent pane autofix works'
 
     # §3 shell integration
-    'PowerShell shell integration installed' = 'PowerShell shell integration emits'
+    'PowerShell shell integration installed' = 'PowerShell shell integration emits|PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5\.1'
 
     # §4 session view / focus
     # NOTE: 'Shift+Enter behavior works' is NOT E2E-mapped — its contract (Live row Shift+Enter ->
@@ -165,6 +167,8 @@
     'Split pane does not break chat'    = 'Split pane does not break chat'
     'Multiple tabs work'                = 'Multiple tabs each get an independent agent session'
     'Multiple agent panes work'         = 'Multiple tabs each get an independent agent session'
+    'Per-tab agent switching is isolated' = 'Switching tab B rebuilds only tab B and leaves tab A conversation alive|Both agent tabs remain independently usable after the switch'
+    'Global agent defaults respect per-tab overrides' = 'A newly opened tab still follows the global default agent|Changing the global default rebuilds follower tabs but preserves overridden tab B'
     'Close target tab cleans up'        = 'Close target tab cleans up'
     # Agent insert/run/autofix targeting the intended split pane is proven by the autofix-in-a-split
     # case plus the autofix-target-pane assertion.
@@ -200,6 +204,11 @@
     'Delegate provider is correct'      = 'Delegate provider is correct'
     'Delegate with Copilot works'       = 'Delegate with Copilot works'
     'Delegate errors are actionable'    = 'Delegate errors are actionable'
+    # C229 (#400): the delegate must not surface its baked `## Terminal Context (pane …)` first
+    # message as a session/list title (no injected pane-context/GUID leak). The E2E case is
+    # OPPORTUNISTIC — the echo only appears in a timing window — so the item's deterministic
+    # backing is the Rust UT session_registry::title_is_injected_context_echo_detects_delegate_marker_only.
+    'Delegate session title is clean'   = 'Delegate session title does not leak the injected terminal-context echo'
     # §5 non-Copilot delegate (Feature.DelegateNonCopilot) — claude/gemini delegate tab launches.
     'Delegate with non-Copilot agents works' = 'Delegate with non-Copilot agents works'
 }

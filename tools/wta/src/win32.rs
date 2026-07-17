@@ -88,6 +88,86 @@ pub(crate) fn copy_text_to_clipboard(_text: &str) -> std::io::Result<()> {
     ))
 }
 
+/// Read text suitable for paste from the Windows clipboard.
+#[cfg(windows)]
+pub(crate) fn read_paste_string_from_clipboard() -> io::Result<String> {
+    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+    const CF_UNICODETEXT: u32 = 13;
+    const MAX_CLIPBOARD_TEXT_BYTES: usize = 4 * 1024 * 1024;
+
+    let _guard = ClipboardGuard::open()?;
+    unsafe {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 {
+            let handle = GetClipboardData(CF_UNICODETEXT);
+            if !handle.is_null() {
+                let ptr = GlobalLock(handle);
+                if !ptr.is_null() {
+                    let size = GlobalSize(handle);
+                    if size == 0 || size > MAX_CLIPBOARD_TEXT_BYTES {
+                        GlobalUnlock(handle);
+                    } else {
+                        let units = std::slice::from_raw_parts(
+                            ptr as *const u16,
+                            size / std::mem::size_of::<u16>(),
+                        );
+                        let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
+                        let text = String::from_utf16_lossy(&units[..end]);
+                        GlobalUnlock(handle);
+                        return Ok(text);
+                    }
+                }
+            }
+        }
+
+        if let Some(path) = clipboard_file_path_from_open_clipboard() {
+            return Ok(path.to_string_lossy().into_owned());
+        }
+
+        Ok(String::new())
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn read_paste_string_from_clipboard() -> std::io::Result<String> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "clipboard is only supported on Windows",
+    ))
+}
+
+/// First file path from a CF_HDROP clipboard payload.
+///
+/// Must be called while the clipboard is already open.
+#[cfg(windows)]
+pub(crate) unsafe fn clipboard_file_path_from_open_clipboard() -> Option<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+    use windows_sys::Win32::UI::Shell::DragQueryFileW;
+
+    const CF_HDROP: u32 = 15;
+
+    if IsClipboardFormatAvailable(CF_HDROP) == 0 {
+        return None;
+    }
+    let handle = GetClipboardData(CF_HDROP);
+    if handle.is_null() {
+        return None;
+    }
+    let needed = DragQueryFileW(handle as _, 0, std::ptr::null_mut(), 0);
+    if needed == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; needed as usize + 1];
+    let got = DragQueryFileW(handle as _, 0, buf.as_mut_ptr(), buf.len() as u32);
+    if got == 0 {
+        return None;
+    }
+    buf.truncate(got as usize);
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf)))
+}
+
 /// Open a URL with the user's default handler using ShellExecuteW instead of a
 /// shell wrapper.
 #[cfg(windows)]

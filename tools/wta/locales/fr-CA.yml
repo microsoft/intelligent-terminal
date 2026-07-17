@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Le changement d'agent n'est pas disponible en 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Choisissez le modèle pour ce volet (/model <id> pour changer directement)"  # {Locked="/model","<id>"}
+commands.move.summary: "Déplacer le volet de l'agent de cet onglet (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L'agent connecté n'a annoncé aucun modèle sélectionnable."
 system.model_set: "Le modèle pour ce volet est défini sur %{model}."  # {Locked="%{model}"}

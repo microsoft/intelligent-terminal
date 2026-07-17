@@ -214,6 +214,18 @@ namespace winrt::TerminalApp::implementation
             return true;
         }
 
+        // Settings reload is delivered to every window, and a page may defer
+        // its rebuild until a terminal tab regains focus. If the live master
+        // already has these exact trusted arguments, restarting it again is
+        // both unnecessary and disruptive to helpers in other windows.
+        const bool sameArgs = _cachedWtaPath == wtaPath &&
+                              _cachedExtraArgs.size() == extraArgs.size() &&
+                              std::equal(_cachedExtraArgs.begin(), _cachedExtraArgs.end(), extraArgs.begin());
+        if (sameArgs)
+        {
+            return true;
+        }
+
         // Respawn the master with the *new* args so the running agent
         // CLI is replaced with whatever the new settings demand. The
         // surrounding `_RebuildAgentStack` flow has already torn down
@@ -221,7 +233,12 @@ namespace winrt::TerminalApp::implementation
         // refcount is left alone for the same reason as the cached-args
         // overload — outgoing ReleasePane / incoming AcquirePane balance.
         _CleanupLocked();
-        return _SpawnLocked(wtaPath, extraArgs);
+        const bool spawned = _SpawnLocked(wtaPath, extraArgs);
+        if (spawned)
+        {
+            _lastRestartRequest = std::chrono::steady_clock::now();
+        }
+        return spawned;
     }
 
     bool SharedWta::_SpawnLocked(const std::wstring_view wtaPath,

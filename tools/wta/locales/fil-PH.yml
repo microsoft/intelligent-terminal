@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}
+commands.move.summary: "Ilipat ang agent pane ng tab na ito (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}

@@ -162,6 +162,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C079` `[UT✓]` **`/sessions` works:** Switches to session-management view. _(UT: `slash_sessions_opens_agents_view`.)_
 - [ ] `C080` `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render covered by `render_model_picker_lists_models`, full UI flow still E2E.)_
 - [x] `C081` `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
+- [ ] `C225` `[E2E]` **`/agent` picker works:** `/agent` opens a keyboard-operable picker containing the current installed/allowed agents, and selecting the current agent is a safe no-op.
+- [ ] `C226` `[E2E]` **Invalid `/agent` selection is safe:** `/agent <id>` rejects an unavailable agent without rebuilding the pane or changing the global default.
 - [ ] `C082` `[E2E]` **Esc/back navigation works:** User can return from popups/session/model views to chat.
 
 ### Chat/session view switching
@@ -177,7 +179,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Shell integration and detection
 
-- [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events.
+- [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events, including non-zero marks for PowerShell-level failures on Windows PowerShell 5.1.
 - [ ] `C219` `[new]` `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_
 - [ ] `C220` `[new]` `[E2E]` **Shells self-report identity (`OSC 9001;ShellType`):** The terminal knows which shell owns a pane — including after a nested shell (`pwsh` → `wsl` → `exit`) returns — so autofix suggests commands for the *current* shell (no PowerShell suggestions inside a WSL/bash pane). `wtcli list-panes` exposes the live shell + version per pane. _(#345.)_
 - [ ] `C088` `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
@@ -267,6 +269,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C142` `[E2E]` `[MANUAL]` **Delegate with Copilot works:** Copilot delegate task starts and responds.
 - [ ] `C143` `[E2E]` `[MANUAL]` **Delegate with non-Copilot agents works:** Claude/Codex/Gemini delegate tasks start and respond where supported by delegate mode.
 - [ ] `C144` `[UT~]` `[E2E]` **Delegate errors are actionable:** Missing CLI/auth errors are clear.
+- [ ] `C229` `[UT✓]` `[E2E]` **Delegate session title is clean:** The delegate's baked `## Terminal Context (pane …)` first message never surfaces as the session's `session/list` title — no injected pane-context/GUID leak, and the row heals to the CLI's real summary.
 
 ## 6. Custom agents
 
@@ -300,6 +303,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C160` `[UT~]` `[E2E]` **Split pane target selection is correct:** Agent insert/run/autofix targets the intended non-agent pane. _(UT: routing core.)_
 - [ ] `C161` `[UT~]` `[E2E]` **Multiple tabs work:** Each tab has its own agent pane/session state. _(UT: per-tab state.)_
 - [ ] `C162` `[E2E]` **Multiple agent panes work:** Opening agent panes in multiple tabs does not mix conversations.
+- [ ] `C227` `[E2E]` **Per-tab agent switching is isolated:** `/agent <id>` can switch one tab to a different built-in agent without rebuilding sibling tabs, losing either conversation, or restarting the shared master.
+- [ ] `C228` `[E2E]` **Global agent defaults respect per-tab overrides:** New tabs inherit the global agent; changing that default rebuilds follower tabs while preserving tabs with an explicit runtime override.
 - [ ] `C163` `[E2E]` **Move tab to new window preserves chat:** Dragging/tearing a tab to another window preserves agent pane state.
 - [ ] `C224` `[new]` `[E2E]` **Agent-created terminals inherit the active profile:** A terminal/tab the agent opens inherits the active pane's profile (e.g. an agent working in an Ubuntu session spawns new tabs in Ubuntu, not the default PowerShell profile). _(#366, closes #351.)_
 - [x] `C164` `[UT✓]` `[E2E]` **Move tab to new window preserves session routing:** Session events remain associated with the moved tab. _(UT: `wt_event_critical_from_owner_tab_raises_banner_not_chat` — events route by owner_tab_id, which survives the window move. E2E: `Feature.MultiWindow` sends a fresh prompt to the moved agent pane by its pinned session id after the move and asserts it answers, LLM-skip-guarded.)_

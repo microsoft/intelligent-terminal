@@ -28,7 +28,7 @@ If (-not $MakePriPath) {
 }
 
 If ($null -Eq (Get-Item $MakePriPath -EA:SilentlyContinue)) {
-    Write-Error "Could not find MakePriPath.exe at `"$MakePriPath`".`nMake sure that -MakePriPath points to a valid SDK."
+    Write-Error "Could not find MakePri.exe at `"$MakePriPath`".`nMake sure that -MakePriPath points to a valid SDK."
     Exit 1
 }
 

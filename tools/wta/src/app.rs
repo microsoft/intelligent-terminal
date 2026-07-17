@@ -89,7 +89,9 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
     }
 }
 
-use crate::commands::{self, CommandKind, CommandSpec, ParseOutcome, ParsedCommand};
+use crate::commands::{
+    self, CommandKind, CommandSpec, MovePositionSpec, ParseOutcome, ParsedCommand,
+};
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
     validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
@@ -976,12 +978,12 @@ pub fn classify_wt_event(
                 age_ticks: 100,
             }
         }
-        "set_agent_state" => {
-            // handle_event consumes set_agent_state at the top of WtEvent
+        "set_agent_state" | "agent_paste_text" => {
+            // handle_event consumes these at the top of WtEvent
             // before classification runs, so classify normally never sees
             // it. Add an explicit arm anyway so a future refactor that
             // drops the early return doesn't surface a stray
-            // "Pane: set_agent_state" banner via the default catch-all.
+            // "Pane: <method>" banner via the default catch-all.
             WtNotification {
                 severity: WtEventSeverity::Informational,
                 pane_id: pane_id.to_string(),
@@ -1123,6 +1125,16 @@ pub enum AppEvent {
     TabSystemMessage {
         tab_id: String,
         message: String,
+    },
+    AgentPasteTextReady {
+        tab_id: String,
+        generation: u64,
+        text: String,
+    },
+    AgentPasteTextFailed {
+        tab_id: String,
+        generation: u64,
+        error: String,
     },
     PromptTemplateLoaded {
         name: String,
@@ -1489,12 +1501,22 @@ pub struct TabSession {
     /// into the `PromptSubmission` on Enter and cleared after submit, and on
     /// `/clear` / `/new` / session reset via `clear_chat_history`.
     pub pending_images: Vec<crate::clipboard_image::PastedImage>,
+    /// True while a host-triggered text paste is reading the clipboard on a
+    /// blocking worker. Keystrokes are ignored until the paste resolves so the
+    /// pasted text cannot be reordered after later edits/submits.
+    pub paste_pending: bool,
+    /// Monotonic generation for async text paste. Completion events only apply
+    /// if their captured generation still matches this value.
+    pub paste_generation: u64,
     /// Recomputed on every input mutation. Empty when not in
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
     pub command_popup_candidates: Vec<&'static CommandSpec>,
-    /// Index into [`Self::command_popup_candidates`]. Clamped on every
-    /// mutation that could shrink the list.
+    /// Position candidates shown after `/move `. Kept separate from command
+    /// candidates so the existing command registry remains strongly typed.
+    pub move_position_candidates: Vec<&'static MovePositionSpec>,
+    /// Index into whichever popup candidate list is active: commands or
+    /// `/move` positions. Clamped whenever either list can shrink.
     pub command_popup_selected: usize,
 
     // Filled in Milestone 2 once each tab has its own ACP SessionId.
@@ -1540,6 +1562,9 @@ pub struct TabSession {
     // C++-originated `set_agent_state` requests (hotkey/button toggles)
     // and by wta-internal events like Ctrl+C×2 reset.
     pub pane_open: bool,
+    /// Transient position override for this tab's agent pane. `None` follows
+    /// the global `agentPanePosition` setting; `/move` sets a canonical value.
+    pub agent_pane_position: Option<&'static str>,
 
     // Pre-entry pane visibility, remembered when the user opens the
     // session-management (Agents) view so Esc can restore *that* state rather
@@ -1561,17 +1586,18 @@ impl TabSession {
     }
 
     /// Whether the input box is the live, enterable caret target. False when
-    /// the user is browsing a completed turn, a recommendation card is
-    /// showing, or a permission card is up — in all three the input is not
-    /// enterable (`handle_key` routes keys to that surface and returns early),
-    /// so ↑↓ navigate it instead. UI indicators that track "is the input cell
-    /// live" (e.g. the painted caret cell) gate on this together with the
-    /// pane's XAML focus, so a non-enterable state reads the same as lost
-    /// focus.
+    /// the user is browsing a completed turn, a recommendation card is showing,
+    /// a permission card is up, a paste is pending, or a modal picker is open.
+    /// UI indicators that track "is the input cell live" (e.g. the painted
+    /// caret cell) gate on this together with the pane's XAML focus, so a
+    /// non-enterable state reads the same as lost focus.
     pub fn input_has_nav_focus(&self) -> bool {
         self.selected_completed_turn_idx.is_none()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
+            && !self.paste_pending
+            && !self.model_picker_open
+            && !self.agent_picker_open
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -1641,6 +1667,8 @@ impl TabSession {
         // Drop any clipboard image queued but not yet sent — a wiped/fresh
         // conversation must not carry a stale attachment into the next prompt.
         self.pending_images.clear();
+        self.paste_pending = false;
+        self.paste_generation = self.paste_generation.wrapping_add(1);
     }
 
     /// Flush pending user/agent replay buffers at a turn boundary during
@@ -1783,6 +1811,16 @@ impl TabSession {
         self.refresh_command_popup();
     }
 
+    pub fn insert_input_str(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
+        self.input.insert_str(self.cursor_pos, text);
+        self.cursor_pos += text.len();
+        self.refresh_command_popup();
+    }
+
     pub fn delete_before_cursor(&mut self) {
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         if self.cursor_pos == 0 {
@@ -1845,25 +1883,32 @@ impl TabSession {
     /// input. Called after every input mutation. Clamps the selected
     /// index so it stays valid when the candidate list shrinks.
     pub fn refresh_command_popup(&mut self) {
-        if commands::is_command_prefix(&self.input) {
+        if let Some(prefix) = commands::move_position_prefix(&self.input) {
+            self.command_popup_candidates.clear();
+            self.move_position_candidates = commands::match_move_positions(prefix);
+        } else if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
             // partial name. `is_command_prefix` already guarantees the
             // shape, so the unwrap is safe.
             let trimmed = self.input.trim_start();
             let name = trimmed.strip_prefix('/').unwrap_or("");
             self.command_popup_candidates = commands::matches(name);
+            self.move_position_candidates.clear();
         } else {
             self.command_popup_candidates.clear();
+            self.move_position_candidates.clear();
         }
-        if self.command_popup_candidates.is_empty() {
+        let candidate_count =
+            self.command_popup_candidates.len() + self.move_position_candidates.len();
+        if candidate_count == 0 {
             self.command_popup_selected = 0;
-        } else if self.command_popup_selected >= self.command_popup_candidates.len() {
-            self.command_popup_selected = self.command_popup_candidates.len() - 1;
+        } else if self.command_popup_selected >= candidate_count {
+            self.command_popup_selected = candidate_count - 1;
         }
     }
 
     pub fn command_popup_visible(&self) -> bool {
-        !self.command_popup_candidates.is_empty()
+        !self.command_popup_candidates.is_empty() || !self.move_position_candidates.is_empty()
     }
 
     pub fn command_popup_up(&mut self) {
@@ -1873,7 +1918,9 @@ impl TabSession {
     }
 
     pub fn command_popup_down(&mut self) {
-        if self.command_popup_selected + 1 < self.command_popup_candidates.len() {
+        let candidate_count =
+            self.command_popup_candidates.len() + self.move_position_candidates.len();
+        if self.command_popup_selected + 1 < candidate_count {
             self.command_popup_selected += 1;
         }
     }
@@ -1884,12 +1931,22 @@ impl TabSession {
             .copied()
     }
 
+    pub fn selected_move_position(&self) -> Option<&'static MovePositionSpec> {
+        self.move_position_candidates
+            .get(self.command_popup_selected)
+            .copied()
+    }
+
     /// Tab-completion: replace the input buffer with `/<name> ` (with a
     /// trailing space if the command takes args; otherwise just the
     /// name) and reset the cursor to the end. Triggered by Tab when the
     /// popup is visible.
     pub fn accept_command_popup_completion(&mut self) {
-        if let Some(spec) = self.selected_command_spec() {
+        if let Some(position) = self.selected_move_position() {
+            self.input = format!("/move {}", position.name);
+            self.cursor_pos = self.input.len();
+            self.refresh_command_popup();
+        } else if let Some(spec) = self.selected_command_spec() {
             self.input = if spec.takes_args {
                 format!("/{} ", spec.name)
             } else {
@@ -4462,6 +4519,8 @@ impl App {
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
+            AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
+            AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
@@ -4571,9 +4630,194 @@ impl App {
         tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
+    fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {
+        let Some(target_tab) = self.agent_paste_target_tab(params) else {
+            return;
+        };
+
+        if self.mode != AppMode::Chat {
+            tracing::debug!(
+                target: "agent_paste",
+                mode = ?self.mode,
+                tab_id = target_tab,
+                "dropping paste because app is not in chat mode"
+            );
+            return;
+        }
+
+        if !self.agent_paste_input_is_live(target_tab) {
+            tracing::debug!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                "dropping paste because chat input is not live"
+            );
+            return;
+        }
+
+        let Some(tx) = self.event_tx.clone() else {
+            tracing::warn!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                "cannot read clipboard: app event channel is not initialized"
+            );
+            return;
+        };
+        let target_tab = target_tab.to_string();
+        let generation = {
+            let tab = self.tab_mut(&target_tab);
+            tab.paste_generation = tab.paste_generation.wrapping_add(1);
+            tab.paste_pending = true;
+            tab.paste_generation
+        };
+        tokio::task::spawn_local(async move {
+            let tab_for_result = target_tab.clone();
+            let result = tokio::task::spawn_blocking(crate::win32::read_paste_string_from_clipboard).await;
+            let event = match result {
+                Ok(Ok(text)) => AppEvent::AgentPasteTextReady {
+                    tab_id: tab_for_result,
+                    generation,
+                    text,
+                },
+                Ok(Err(e)) => AppEvent::AgentPasteTextFailed {
+                    tab_id: tab_for_result,
+                    generation,
+                    error: e.to_string(),
+                },
+                Err(e) => AppEvent::AgentPasteTextFailed {
+                    tab_id: tab_for_result,
+                    generation,
+                    error: e.to_string(),
+                },
+            };
+            let _ = tx.send(event);
+        });
+    }
+
+    fn agent_paste_target_tab<'a>(&self, params: &'a serde_json::Value) -> Option<&'a str> {
+        let target_window = params.get("window_id").and_then(|v| v.as_str()).unwrap_or("");
+        let target_tab = params.get("tab_id").and_then(|v| v.as_str()).unwrap_or("");
+        let our_window = self.window_id.as_deref().unwrap_or("");
+        let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
+
+        if target_window.is_empty()
+            || target_tab.is_empty()
+            || owner_tab.is_empty()
+            || target_tab != owner_tab
+            || (!our_window.is_empty() && target_window != our_window)
+        {
+            tracing::debug!(
+                target: "agent_paste",
+                target_window,
+                our_window,
+                target_tab,
+                owner_tab,
+                "ignoring paste event not targeted at this helper"
+            );
+            return None;
+        }
+
+        Some(target_tab)
+    }
+
+    fn agent_paste_input_is_live(&self, target_tab: &str) -> bool {
+        self.tab_sessions
+            .get(target_tab)
+            .map(|tab| tab.current_view == View::Chat && tab.input_has_nav_focus())
+            .unwrap_or(false)
+    }
+
+    fn insert_agent_paste_text(&mut self, target_tab: &str, generation: u64, text: &str) {
+        if self.mode != AppMode::Chat {
+            if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
+                if tab.paste_generation == generation {
+                    tab.paste_pending = false;
+                }
+            }
+            tracing::debug!(
+                target: "agent_paste",
+                mode = ?self.mode,
+                tab_id = target_tab,
+                "dropping paste because app is not in chat mode"
+            );
+            return;
+        }
+
+        let text = normalize_agent_paste_text(text);
+        let Some(tab) = self.tab_sessions.get_mut(target_tab) else {
+            return;
+        };
+        if tab.paste_generation != generation {
+            tracing::debug!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                generation,
+                current_generation = tab.paste_generation,
+                "dropping stale paste completion"
+            );
+            return;
+        }
+        {
+            tab.paste_pending = false;
+        }
+        if text.is_empty() {
+            tracing::debug!(target: "agent_paste", tab_id = target_tab, "ignoring empty paste");
+            return;
+        }
+
+        let byte_len = text.len();
+        let line_count = text.split('\n').count();
+        let tab = self.tab_mut(target_tab);
+        if tab.current_view != View::Chat || !tab.input_has_nav_focus() {
+            tracing::debug!(
+                target: "agent_paste",
+                tab_id = target_tab,
+                view = ?tab.current_view,
+                input_live = tab.input_has_nav_focus(),
+                byte_len,
+                line_count,
+                "dropping paste because chat input is not live"
+            );
+            return;
+        }
+
+        tab.insert_input_str(&text);
+        tracing::info!(
+            target: "agent_paste",
+            tab_id = target_tab,
+            byte_len,
+            line_count,
+            "inserted pasted text into agent input"
+        );
+    }
+
     fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
+            AppEvent::AgentPasteTextReady {
+                tab_id,
+                generation,
+                text,
+            } => {
+                self.insert_agent_paste_text(&tab_id, generation, &text);
+            }
+            AppEvent::AgentPasteTextFailed {
+                tab_id,
+                generation,
+                error,
+            } => {
+                if let Some(tab) = self.tab_sessions.get_mut(&tab_id) {
+                    if tab.paste_generation != generation {
+                        return;
+                    }
+                    tab.paste_pending = false;
+                }
+                tracing::warn!(
+                    target: "agent_paste",
+                    tab_id = %tab_id,
+                    error = %error,
+                    "failed to read text from clipboard"
+                );
+            }
             AppEvent::Tick => {
                 // Fan out across all tabs: a background tab with an in-flight
                 // prompt should keep its shimmer phase advancing so when the
@@ -5450,6 +5694,11 @@ impl App {
                     return;
                 }
 
+                if method == "agent_paste_text" {
+                    self.handle_agent_paste_text(&params);
+                    return;
+                }
+
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
                     // agent setting (auto-suggest gate, acp-model, delegate
@@ -5705,14 +5954,10 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        tab.messages.push(ChatMessage::System(
-                            t!(
-                                "system.resuming_session",
-                                session_id = session_id
-                            )
-                            .into_owned(),
-                        ));
-                        tab.scroll_to_bottom();
+                        // Resume is intentionally silent — no "Resuming…"
+                        // marker — so a resumed pane presents exactly like a
+                        // normal connection. `loading_session` still opens the
+                        // replay window; any past content just streams in above.
                     }
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
@@ -6852,6 +7097,11 @@ impl App {
             return;
         }
 
+        if self.current_tab().paste_pending {
+            tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
+            return;
+        }
+
         if self.agent_picker_visible() {
             match key.code {
                 KeyCode::Up => self.agent_picker_up(),
@@ -7401,7 +7651,7 @@ impl App {
     /// popup should not be drawn this frame. Reads from the active tab.
     pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
         let tab = self.current_tab();
-        if tab.command_popup_candidates.is_empty() {
+        if !tab.command_popup_visible() {
             return None;
         }
         // When the transport to master is lost, only /restart can run — so the
@@ -7411,21 +7661,24 @@ impl App {
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Normal path borrows the tab's list (no per-frame allocation on the
         // render hot path); only the degraded filter allocates.
-        let candidates: std::borrow::Cow<'_, [&'static crate::commands::CommandSpec]> =
-            if self.transport_lost {
-                let filtered: Vec<&'static crate::commands::CommandSpec> = tab
-                    .command_popup_candidates
-                    .iter()
-                    .copied()
-                    .filter(|s| s.kind == crate::commands::CommandKind::Restart)
-                    .collect();
-                if filtered.is_empty() {
-                    return None;
-                }
-                std::borrow::Cow::Owned(filtered)
-            } else {
-                std::borrow::Cow::Borrowed(tab.command_popup_candidates.as_slice())
-            };
+        let candidates = if self.transport_lost {
+            let filtered: Vec<&'static crate::commands::CommandSpec> = tab
+                .command_popup_candidates
+                .iter()
+                .copied()
+                .filter(|s| s.kind == crate::commands::CommandKind::Restart)
+                .collect();
+            if filtered.is_empty() {
+                return None;
+            }
+            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
+        } else if !tab.move_position_candidates.is_empty() {
+            crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
+        } else {
+            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Borrowed(
+                tab.command_popup_candidates.as_slice(),
+            ))
+        };
         Some(crate::ui::PopupState {
             candidates,
             selected: tab.command_popup_selected,
@@ -7540,6 +7793,20 @@ impl App {
             // (everything else would hit the dead pipe). Pick the /restart
             // spec if it's in the filtered candidate list; otherwise there's
             // nothing to run, so consume Enter and show the reconnect hint.
+            if !self.transport_lost {
+                if let Some(position) = self.current_tab().selected_move_position() {
+                    let spec = commands::lookup("move").expect("/move is registered");
+                    let parsed = ParsedCommand {
+                        kind: CommandKind::Move,
+                        spec,
+                        rest: position.name.to_string(),
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                    return true;
+                }
+            }
+
             let spec = if self.transport_lost {
                 self.current_tab()
                     .command_popup_candidates
@@ -7642,6 +7909,7 @@ impl App {
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Move => self.cmd_move(cmd.rest),
         }
     }
 
@@ -7838,6 +8106,22 @@ impl App {
         // Per-tab — only flips the active tab's view state.
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
+        self.project_active_tab_state();
+    }
+
+    /// `/move <position>` — move only this tab's agent pane. Positions accept
+    /// full names (`left`, `right`, `up`, `bottom`) or `l/r/u/b`. Bare or
+    /// invalid input reopens the position completion popup.
+    fn cmd_move(&mut self, position: String) {
+        let Some(position) = commands::lookup_move_position(&position) else {
+            let tab = self.current_tab_mut();
+            tab.input = "/move ".to_string();
+            tab.cursor_pos = tab.input.len();
+            tab.refresh_command_popup();
+            return;
+        };
+
+        self.current_tab_mut().agent_pane_position = Some(position.name);
         self.project_active_tab_state();
     }
 
@@ -9481,7 +9765,8 @@ impl App {
     ///   "method": "agent_state_changed",
     ///   "params": {
     ///     "view":      "chat" | "sessions",
-    ///     "pane_open": true | false
+    ///     "pane_open": true | false,
+    ///     "pane_position": "left" | "right" | "up" | "bottom" | null
     ///   }
     /// }
     /// ```
@@ -9535,6 +9820,7 @@ impl App {
                 "tab_id":    target_tab,
                 "view":      view,
                 "pane_open": tab.pane_open,
+                "pane_position": tab.agent_pane_position,
             }
         });
         send_wt_protocol_event(evt.to_string());
@@ -9758,6 +10044,27 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
+fn normalize_agent_paste_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if matches!(chars.peek(), Some('\n')) {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\n' | '\u{0085}' | '\u{2028}' | '\u{2029}' => out.push('\n'),
+            '\t' => out.push('\t'),
+            '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' => {}
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn now_unix_s() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -9939,6 +10246,227 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
+    }
+
+    fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {
+        json!({
+            "window_id": window_id,
+            "tab_id": tab_id,
+        })
+    }
+
+    #[test]
+    fn agent_paste_text_normalizes_and_filters_control_chars() {
+        assert_eq!(
+            normalize_agent_paste_text("a\r\nb\rc\n\u{0085}d\u{2028}e\u{2029}f"),
+            "a\nb\nc\n\nd\ne\nf"
+        );
+        assert_eq!(
+            normalize_agent_paste_text("ok\u{0000}\u{001b}\u{0007}\tΩ\u{202E}x"),
+            "ok\tΩx",
+            "paste sanitizer must preserve tabs/text but strip controls and bidi overrides"
+        );
+    }
+
+    #[test]
+    fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.tab_mut("tab-a");
+        let pasted = format!("{}\r\n{}", "alpha", "beta");
+        let expected = ["alpha", "beta"].join("\n");
+
+        app.insert_agent_paste_text("tab-a", 0, &pasted);
+
+        let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
+        assert_eq!(tab.input, expected);
+        assert_eq!(tab.cursor_pos, tab.input.len());
+        assert!(tab.messages.iter().all(|m| !matches!(m, ChatMessage::User(_))));
+    }
+
+    #[test]
+    fn agent_paste_text_inserts_at_cursor() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        {
+            let tab = app.tab_mut("tab-a");
+            tab.input = "ab".into();
+            tab.cursor_pos = 1;
+            tab.paste_pending = true;
+        }
+
+        app.insert_agent_paste_text("tab-a", 0, "X\nY");
+
+        let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
+        assert_eq!(tab.input, "aX\nYb");
+        assert_eq!(tab.cursor_pos, "aX\nY".len());
+        assert!(!tab.paste_pending);
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_wrong_window_and_non_owner_helpers() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.tab_mut("tab-a");
+
+        assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w2", "tab-a")), None);
+        assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w1", "tab-b")), None);
+
+        assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+        assert!(
+            app.tab_sessions
+                .get("tab-b")
+                .map(|t| t.input.is_empty())
+                .unwrap_or(true),
+            "non-owner helper must not create a phantom draft for another tab"
+        );
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_missing_owner_or_window() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = None;
+        assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")), None);
+        assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+
+        app.owner_tab_id = Some("tab-a".into());
+        let missing_window = json!({ "tab_id": "tab-a" });
+        assert_eq!(app.agent_paste_target_tab(&missing_window), None);
+    }
+
+    #[test]
+    fn agent_paste_text_allows_unknown_helper_window_when_owner_matches() {
+        let mut app = test_app();
+        app.owner_tab_id = Some("tab-a".into());
+        app.window_id = None;
+        assert_eq!(
+            app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")),
+            Some("tab-a")
+        );
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_non_chat_or_non_live_input() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+        app.tab_mut("tab-a").current_view = View::Agents;
+
+        app.insert_agent_paste_text("tab-a", 0, "hidden");
+        assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+
+        app.tab_mut("tab-a").current_view = View::Chat;
+        app.tab_mut("tab-a").completed_turns.push(CompletedTurn {
+            prompt: "old".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
+
+        app.insert_agent_paste_text("tab-a", 0, "locked");
+        assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
+    }
+
+    #[test]
+    fn agent_paste_input_live_requires_existing_chat_input_focus() {
+        let mut app = test_app();
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a");
+        assert!(app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").paste_pending = true;
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+        app.tab_mut("tab-a").paste_pending = false;
+
+        app.tab_mut("tab-a").current_view = View::Agents;
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").current_view = View::Chat;
+        app.tab_mut("tab-a").completed_turns.push(CompletedTurn {
+            prompt: "old".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        app.tab_mut("tab-a").selected_completed_turn_idx = Some(0);
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+
+        app.tab_mut("tab-a").selected_completed_turn_idx = None;
+        app.tab_mut("tab-a").model_picker_open = true;
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+        app.tab_mut("tab-a").model_picker_open = false;
+
+        app.tab_mut("tab-a").agent_picker_open = true;
+        assert!(!app.agent_paste_input_is_live("tab-a"));
+    }
+
+    #[test]
+    fn agent_paste_failure_clears_pending_state() {
+        let mut app = test_app();
+        app.tab_mut("tab-a").paste_pending = true;
+        app.tab_mut("tab-a").paste_generation = 1;
+
+        app.handle_event(AppEvent::AgentPasteTextFailed {
+            tab_id: "tab-a".into(),
+            generation: 1,
+            error: "clipboard busy".into(),
+        });
+
+        assert!(!app.tab_sessions.get("tab-a").unwrap().paste_pending);
+    }
+
+    #[test]
+    fn stale_agent_paste_completion_is_ignored() {
+        let mut app = test_app();
+        app.mode = AppMode::Chat;
+        app.tab_mut("tab-a").paste_pending = true;
+        app.tab_mut("tab-a").paste_generation = 2;
+
+        app.handle_event(AppEvent::AgentPasteTextReady {
+            tab_id: "tab-a".into(),
+            generation: 1,
+            text: "stale".into(),
+        });
+
+        let tab = app.tab_sessions.get("tab-a").unwrap();
+        assert!(tab.input.is_empty());
+        assert!(tab.paste_pending, "stale completion must not clear a newer pending paste");
+    }
+
+    #[test]
+    fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
+        let mut app = test_app();
+        app.window_id = Some("w1".into());
+        app.owner_tab_id = Some("tab-a".into());
+        app.tab_id = Some("tab-a".into());
+
+        app.mode = AppMode::Auth;
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_paste_text".into(),
+            pane_id: String::new(),
+            tab_id: Some("tab-a".into()),
+            params: agent_paste_params("w1", "tab-a"),
+        });
+        assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+
+        app.mode = AppMode::Setup;
+        app.handle_event(AppEvent::WtEvent {
+            method: "agent_paste_text".into(),
+            pane_id: String::new(),
+            tab_id: Some("tab-a".into()),
+            params: agent_paste_params("w1", "tab-a"),
+        });
+        assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
     }
 
     #[test]
@@ -11177,13 +11705,14 @@ mod tests {
         for turn in &tab.completed_turns {
             assert!(!turn.expanded, "replayed turns default collapsed");
         }
-        // The leading System("Resuming session ...") marker stays in
-        // messages — it's not anchored to a User so packing leaves it
-        // alone.
-        assert!(tab
-            .messages
-            .iter()
-            .all(|m| matches!(m, ChatMessage::System(_))));
+        // Resume is silent now — no "Resuming…" marker is posted, so after
+        // packing the replayed User/Agent rows into turns nothing is left in
+        // `messages`.
+        assert!(
+            tab.messages.is_empty(),
+            "resume must not leave any loose chat messages, got {:?}",
+            tab.messages
+        );
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────
@@ -14211,6 +14740,66 @@ mod tests {
         };
         assert_eq!(perm.allow_index(), Some(0));
         assert_eq!(perm.reject_index(), Some(1));
+    }
+
+    /// Regression (issue #189): while the agent has queued a permission request
+    /// but `AgentMessageEnd` has not yet arrived (turn is
+    /// `Surfaced{end_pending:true}`), the thinking/activity indicator must
+    /// remain visible. Previously `spinner_label()` returned `None` for any
+    /// `Surfaced` variant, making the pane look frozen between the eager surface
+    /// and the permission card appearing.
+    #[test]
+    fn thinking_indicator_visible_while_permission_pending_and_end_pending() {
+        let mut app = test_app();
+
+        // Put the tab in `Surfaced{end_pending:true}` — the state that exists
+        // between an eager surface (recommendation / chat turn visible) and the
+        // `AgentMessageEnd` event that releases the UI gate. A permission
+        // request can arrive in this window.
+        let prompt = SubmittedPrompt {
+            id: 1,
+            text: "test".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: None,
+        };
+        app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::Empty,
+            end_pending: true,
+        };
+
+        // The spinner must be active while end_pending=true.
+        assert!(
+            app.current_tab().turn.spinner_label().is_some(),
+            "spinner_label must be Some while Surfaced{{end_pending:true}} (issue #189)"
+        );
+        assert!(
+            app.has_activity_indicator(),
+            "has_activity_indicator must be true while Surfaced{{end_pending:true}} (issue #189)"
+        );
+
+        // Simulate the PermissionRequest arriving in this window.
+        app.tab_mut(DEFAULT_TAB_ID)
+            .permission
+            .push_back(PermissionState {
+                description: "Allow tool X?".into(),
+                options: vec![
+                    PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
+                    PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
+                ],
+                selected: 0,
+                responder: None,
+            });
+
+        // With a queued permission AND end_pending=true the spinner must still be on.
+        assert!(
+            app.current_tab().turn.spinner_label().is_some(),
+            "spinner_label must remain Some after PermissionRequest queued while end_pending=true"
+        );
+        assert!(
+            app.has_activity_indicator(),
+            "has_activity_indicator must remain true after PermissionRequest queued"
+        );
     }
 
     /// Tool-call card: when the mock proposes a command (a `ToolCall`

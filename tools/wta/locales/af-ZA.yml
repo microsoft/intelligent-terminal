@@ -214,6 +214,7 @@ system.agent_switch_unavailable: "Agent-oorskakeling is nie beskikbaar buite 'n 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
+commands.move.summary: "Skuif hierdie oortjie se agentpaneel (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}

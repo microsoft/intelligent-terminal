@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Przełączanie agentów jest niedostępne poza
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Wybierz model dla tego panelu (/model <id>, aby przełączyć bezpośrednio)"  # {Locked="/model","<id>"}
+commands.move.summary: "Przenieś panel agenta tej karty (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Wybierz model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Połączony agent nie ogłosił żadnych modeli do wyboru."
 system.model_set: "Model dla tego panelu ustawiono na %{model}."  # {Locked="%{model}"}

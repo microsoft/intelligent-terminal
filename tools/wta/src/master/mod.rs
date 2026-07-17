@@ -278,6 +278,23 @@ struct MasterStateInner {
     /// and re-adding is idempotent, so no eviction is needed. Independent lock —
     /// touched only on the session_hook ingest path and the watcher apply path.
     hook_owned: Mutex<HashSet<acp::schema::v1::SessionId>>,
+    /// Sessions loaded on a shared agent CLI whose owning helper has
+    /// disconnected (its tab/pane closed) — the CLI keeps them loaded as
+    /// "orphans". Keyed by `AgentCmdKey` so orphans belong to a specific
+    /// agent CLI, never a global pool: a window can run Copilot in one tab
+    /// and Gemini in another, and reaping one must not affect the other.
+    ///
+    /// When a helper resumes such a session (`--initial-load-session-id`
+    /// re-warm or `/restart`), `load_session` re-binds routing to the new
+    /// helper *directly* — no fresh `session/load` — because the CLI already
+    /// has it (a re-load would be rejected "already loaded", or, if the
+    /// orphan turn is still running, wedge behind it and hang the pane on
+    /// "Resuming…"). Only recorded while the owning CLI *instance* is still
+    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
+    /// drops just that agent's set on CLI death, so a crashed-and-respawned
+    /// CLI under the same command line never re-binds to a session it never
+    /// had — such a resume falls back to a real `session/load` from disk.
+    orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
     /// still supply STATUS for these when no real hook is installed
@@ -330,6 +347,13 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
+    /// The pool key (agent command line) this CLI was spawned under —
+    /// the same `AgentCmdKey` used in [`MasterStateInner::agents`]. Lets
+    /// helper-disconnect cleanup and `load_session` scope orphan tracking
+    /// to THIS agent (and this exact instance, via `Arc::ptr_eq`), so a
+    /// crashed-and-respawned CLI under the same command line never inherits
+    /// another instance's stale orphan sessions.
+    cmd_key: AgentCmdKey,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -413,13 +437,49 @@ impl MasterClient {
     }
 }
 
+/// True when an agent CLI's `session/load` error means the session id is
+/// already live inside the CLI (not missing). Copilot reports this as a
+/// "… is already loaded" message under `-32602`; we match that stable
+/// substring (in message or data) rather than the code. `load_session`
+/// uses it to re-bind an orphan session instead of failing the resume.
+fn is_already_loaded_error(err: &acp::Error) -> bool {
+    let msg = err.message.to_ascii_lowercase();
+    if msg.contains("already loaded") {
+        return true;
+    }
+    err.data
+        .as_ref()
+        .and_then(|d| d.as_str())
+        .map(|s| s.to_ascii_lowercase().contains("already loaded"))
+        .unwrap_or(false)
+}
+
 impl MasterClient {
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
     ) -> acp::Result<acp::schema::v1::RequestPermissionResponse> {
         let sid = args.session_id.clone();
-        let (helper_id, forwarder) = self.route_for(&sid, "request_permission").await?;
+        // The shared agent CLI can ask permission for an orphan session
+        // (its owning tab closed mid-turn). With no helper to ask, answer
+        // `Cancelled` — a well-formed "user dismissed it" the agent handles
+        // by aborting the tool call. Never return an error to the shared CLI
+        // here: a hard failure can make it drop the whole connection and take
+        // every other tab down with it.
+        let (helper_id, forwarder) = match self.route_for(&sid, "request_permission").await {
+            Ok(route) => route,
+            Err(_) => {
+                tracing::info!(
+                    target: "master",
+                    op = "request_permission",
+                    session_id = ?sid,
+                    "orphan session permission request answered with Cancelled"
+                );
+                return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                    acp::schema::v1::RequestPermissionOutcome::Cancelled,
+                ));
+            }
+        };
         tracing::info!(
             target: "master",
             step = "agent→helper",
@@ -1124,73 +1184,110 @@ impl HelperHandler {
                 },
             );
         }
-        match agent.conn.load_session(args).await {
-            Ok(resp) => {
-                let mut info = crate::session_registry::SessionInfo::new(
-                    session_id.clone(),
-                    cwd_for_registry,
-                );
-                info.pane_session_id = wta_meta.pane_session_id;
-                // See new_session above for rationale — load_session is the
-                // resume path and the resumed row must also be Live + tagged.
-                info.status = Some(crate::agent_sessions::AgentStatus::Idle);
-                info.cli_source = agent.cli_source.clone();
-                info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
-                info.last_activity_at_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .ok()
-                    .map(|d| d.as_millis() as u64);
-                // Carry the title (and updated_at) forward from the row
-                // that already exists for this sid. Master seeds the
-                // registry at startup with rows from `history_loader`
-                // which include the disk-derived chat title (e.g.
-                // "# Terminal AgentYou"). A naked `SessionInfo::new`
-                // upsert would clobber that title with `None`, leaving
-                // the resumed Live row showing "—" in session management view. By copying
-                // the prior title we keep the resumed row identifiable
-                // to the user.
-                if let Some(existing) =
-                    self.state.registry.lookup(&session_id).await
-                {
-                    if info.title.is_none() {
-                        info.title = existing.title;
-                    }
-                    if info.updated_at.is_none() {
-                        info.updated_at = existing.updated_at;
-                    }
+        // Orphan re-bind fast path: this session's previous helper
+        // disconnected but the shared CLI still has it loaded (tracked in
+        // `orphaned_sessions` under this agent's key). Re-attach onto the
+        // routing pre-registered above WITHOUT a `session/load` round-trip —
+        // the CLI already has the session, and forwarding a load would be
+        // rejected "already loaded", or (if the orphan turn is still running)
+        // wedge behind it and hang the pane on "Resuming…". Any in-flight
+        // turn now streams its `session/update`s to this new helper. Scoped
+        // to `agent.cmd_key` so we only re-bind sessions this exact CLI still
+        // holds (a crashed+respawned CLI's set was dropped by `reap_agent`).
+        let is_orphan_rebind = {
+            let mut orphans = self.state.orphaned_sessions.lock().await;
+            orphans
+                .get_mut(&agent.cmd_key)
+                .is_some_and(|set| set.remove(&session_id))
+        };
+
+        // Both a re-bind and a real `session/load` resume the session; only a
+        // genuine load failure rolls back. Resolve the response, then register
+        // the resumed row once for either success path.
+        let resp = if is_orphan_rebind {
+            tracing::info!(
+                target: "master",
+                step = "helper→agent",
+                op = "load_session",
+                helper_id = ?self.helper_id,
+                session_id = ?session_id,
+                "re-binding orphan session without a session/load round-trip"
+            );
+            acp::schema::v1::LoadSessionResponse::new()
+        } else {
+            match agent.conn.load_session(args).await {
+                Ok(resp) => resp,
+                // Fallback for an orphan we didn't track (e.g. it predates
+                // this master): the CLI reports "already loaded", so re-bind
+                // onto the pre-registered routing just like the fast path.
+                Err(err) if is_already_loaded_error(&err) => {
+                    tracing::info!(
+                        target: "master",
+                        step = "helper→agent",
+                        op = "load_session",
+                        helper_id = ?self.helper_id,
+                        session_id = ?session_id,
+                        "re-binding session already loaded in the shared CLI"
+                    );
+                    acp::schema::v1::LoadSessionResponse::new()
                 }
-                self.state.registry.upsert(info.clone()).await;
-                // Mirror new_session: refresh crash-recovery metadata so
-                // a resume targets the session the user is now looking at.
-                {
-                    let mut meta = self.state.helper_meta.lock().await;
-                    let entry = meta.entry(self.helper_id).or_default();
-                    if wta_meta.owner_tab_id.is_some() {
-                        entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+                Err(err) => {
+                    // Roll back the pre-registration. Only `session_to_helper`
+                    // needs touching — we never wrote to `registry` and we
+                    // never broadcast `session_added`, so peers never saw
+                    // this row.
+                    {
+                        let mut map = self.state.session_to_helper.lock().await;
+                        map.remove(&session_id);
                     }
-                    entry.last_session_id = Some(session_id.clone());
+                    tracing::warn!(
+                        target: "master",
+                        helper_id = ?self.helper_id,
+                        session_id = ?session_id,
+                        error = %err,
+                        "load_session failed; rolled back routing entry"
+                    );
+                    return Err(err);
                 }
-                Ok(resp)
             }
-            Err(err) => {
-                // Roll back the pre-registration. Only `session_to_helper`
-                // needs touching — we never wrote to `registry` and we
-                // never broadcast `session_added`, so peers never saw
-                // this row.
-                {
-                    let mut map = self.state.session_to_helper.lock().await;
-                    map.remove(&session_id);
-                }
-                tracing::warn!(
-                    target: "master",
-                    helper_id = ?self.helper_id,
-                    session_id = ?session_id,
-                    error = %err,
-                    "load_session failed; rolled back routing entry"
-                );
-                Err(err)
+        };
+
+        // Register the resumed row (Live + tagged) — shared by the real-load
+        // and orphan-re-bind paths.
+        let mut info =
+            crate::session_registry::SessionInfo::new(session_id.clone(), cwd_for_registry);
+        info.pane_session_id = wta_meta.pane_session_id;
+        info.status = Some(crate::agent_sessions::AgentStatus::Idle);
+        info.cli_source = agent.cli_source.clone();
+        info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
+        info.last_activity_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_millis() as u64);
+        // Carry the title (and updated_at) forward from the row that already
+        // exists for this sid so the resumed Live row stays identifiable
+        // (master seeds the registry at startup with disk-derived chat titles;
+        // a naked `SessionInfo::new` upsert would blank them to "—" in the
+        // session-management view).
+        if let Some(existing) = self.state.registry.lookup(&session_id).await {
+            if info.title.is_none() {
+                info.title = existing.title;
+            }
+            if info.updated_at.is_none() {
+                info.updated_at = existing.updated_at;
             }
         }
+        self.state.registry.upsert(info.clone()).await;
+        // Refresh crash-recovery metadata so a later resume targets this session.
+        {
+            let mut meta = self.state.helper_meta.lock().await;
+            let entry = meta.entry(self.helper_id).or_default();
+            if wta_meta.owner_tab_id.is_some() {
+                entry.owner_tab_id = wta_meta.owner_tab_id.clone();
+            }
+            entry.last_session_id = Some(session_id.clone());
+        }
+        Ok(resp)
     }
 
     async fn set_session_mode(
@@ -1314,10 +1411,26 @@ impl HelperHandler {
                         "prompt failed"
                     ),
                 }
-                conn::respond_enum(
+                // Deliver the turn result to the helper that issued the prompt.
+                // This callback runs on the SHARED agent-CLI connection's
+                // dispatch loop, so a delivery error must NEVER propagate: if
+                // the helper's tab closed mid-turn its channel is gone, and
+                // returning that error would tear the shared CLI connection
+                // down and every other tab with it. Swallow it — the orphan
+                // turn's result just has nowhere to go.
+                if let Err(err) = conn::respond_enum(
                     responder,
                     resp.map(acp::schema::v1::AgentResponse::PromptResponse),
-                )
+                ) {
+                    tracing::info!(
+                        target: "master",
+                        op = "prompt",
+                        helper_id = ?helper_id,
+                        error = %err,
+                        "dropping orphan prompt result (helper gone)"
+                    );
+                }
+                Ok(())
             })
             .await
     }
@@ -1754,6 +1867,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         helper_meta: Mutex::new(HashMap::new()),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
+        orphaned_sessions: Mutex::new(HashMap::new()),
         host_list_cache: Mutex::new(None),
         wsl_titles_seed_at: Mutex::new(None),
         wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
@@ -2331,6 +2445,7 @@ async fn spawn_one_agent(
         conn,
         cached_init_resp: init_resp,
         cli_source,
+        cmd_key: key.clone(),
     }))
 }
 
@@ -2342,6 +2457,11 @@ async fn spawn_one_agent(
 async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
     let removed = { state.agents.lock().await.remove(key).is_some() };
     if removed {
+        // Every session THIS CLI held died with it, so drop only this
+        // agent's orphan set — a post-respawn resume then forwards a real
+        // `session/load` (reloading from disk) instead of re-binding to a
+        // session the new CLI never had. Other agents' orphans are untouched.
+        state.orphaned_sessions.lock().await.remove(key);
         tracing::info!(
             target: "master",
             agent = %key,
@@ -2500,13 +2620,44 @@ async fn serve_helper(
     // Drop every session this helper owned so the map can't grow
     // unboundedly across the master's lifetime, and so the agent
     // CLI's notifications for already-detached sessions don't keep
-    // lighting up "unknown SessionId" warnings.
-    let dropped = drop_sessions_for_helper(&state, helper_id).await;
+    // lighting up "unknown SessionId" warnings. Master intentionally
+    // sends nothing to the shared CLI here: a closed tab's orphan turn
+    // routes nowhere and the CLI keeps serving every surviving tab.
+    let victims = drop_sessions_for_helper(&state, helper_id).await;
+
+    // The dropped sessions are still loaded on the shared CLI — they're now
+    // orphans. Record them under the owning agent's key so a later resume
+    // re-binds directly instead of forwarding a `session/load` that the CLI
+    // rejects "already loaded" (or, mid-turn, wedges behind the running
+    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
+    // is STILL the live pool instance for its key. If that CLI already died
+    // (reaped, possibly respawned under the same command line), these
+    // sessions are gone — recording them would make a later resume skip the
+    // `session/load` the new CLI needs, binding to a session it never had.
+    if !victims.is_empty() {
+        if let Some(agent) = handler.agent.get() {
+            let key = agent.cmd_key.clone();
+            let still_live = {
+                let agents = state.agents.lock().await;
+                agents
+                    .get(&key)
+                    .and_then(|cell| cell.get())
+                    .is_some_and(|current| Arc::ptr_eq(current, agent))
+            };
+            if still_live {
+                let mut orphans = state.orphaned_sessions.lock().await;
+                let set = orphans.entry(key).or_default();
+                for sid in &victims {
+                    set.insert(sid.clone());
+                }
+            }
+        }
+    }
 
     tracing::info!(
         target: "master",
         helper_id = ?helper_id,
-        sessions_dropped = dropped,
+        sessions_dropped = victims.len(),
         "helper disconnected"
     );
 
@@ -2564,11 +2715,14 @@ fn build_restart_agent_pane_event(
     })
 }
 
-/// Remove every `session_to_helper` entry owned by `helper_id`.
-/// Returns the number of entries dropped. Factored out of
-/// `serve_helper` so the cleanup is unit-testable without a real
-/// named pipe.
-async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId) -> usize {
+/// Remove every `session_to_helper` entry owned by `helper_id` and return
+/// the dropped `SessionId`s (used for the `sessions_dropped` disconnect
+/// log line). Factored out of `serve_helper` so the cleanup is
+/// unit-testable without a real named pipe.
+async fn drop_sessions_for_helper(
+    state: &MasterStateInner,
+    helper_id: HelperId,
+) -> Vec<acp::schema::v1::SessionId> {
     // Collect the owned SessionIds first so we can drop them from the
     // live registry too. Single pass through `session_to_helper` while
     // we already hold its lock; the corresponding `registry.remove`
@@ -2602,7 +2756,7 @@ async fn drop_sessions_for_helper(state: &MasterStateInner, helper_id: HelperId)
         )
         .await;
     }
-    victims.len()
+    victims
 }
 
 /// Fan an ACP `ExtNotification` out to every currently-attached helper.
@@ -3963,6 +4117,7 @@ mod tests {
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
+            orphaned_sessions: Mutex::new(HashMap::new()),
             host_list_cache: Mutex::new(None),
             wsl_titles_seed_at: Mutex::new(None),
             wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),
@@ -4017,6 +4172,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ),
                     cli_source: None,
+                    cmd_key: "copilot --acp --stdio".to_string(),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
@@ -4058,6 +4214,94 @@ mod tests {
         assert!(
             Arc::ptr_eq(&handler.agent, &request_handler.agent),
             "all request handler clones must share initialize's binding slot"
+        );
+    }
+
+    /// An orphan session's `request_permission` (owning tab closed
+    /// mid-turn) must resolve to `Cancelled`, never an error — an error to
+    /// the shared CLI can drop the connection and every other tab with it.
+    #[tokio::test]
+    async fn request_permission_for_orphaned_session_returns_cancelled_not_error() {
+        use acp::schema::v1::{
+            PermissionOption, PermissionOptionId, PermissionOptionKind,
+            RequestPermissionOutcome, RequestPermissionRequest, ToolCallId, ToolCallUpdate,
+            ToolCallUpdateFields,
+        };
+        let state = make_state();
+        let client = MasterClient {
+            state: Arc::clone(&state),
+        };
+        // No routing entry for this session — it's orphaned.
+        let req = RequestPermissionRequest::new(
+            SessionId::new("orphaned-sess"),
+            ToolCallUpdate::new(
+                ToolCallId::new("tool-1"),
+                ToolCallUpdateFields::new().title("Run: echo hi"),
+            ),
+            vec![PermissionOption::new(
+                PermissionOptionId::new("allow-once"),
+                "Allow once",
+                PermissionOptionKind::AllowOnce,
+            )],
+        );
+        let resp = client
+            .request_permission(req)
+            .await
+            .expect("orphaned permission must resolve, not error");
+        assert!(
+            matches!(resp.outcome, RequestPermissionOutcome::Cancelled),
+            "expected Cancelled outcome for orphaned session, got {:?}",
+            resp.outcome
+        );
+    }
+
+    /// `is_already_loaded_error` recognizes the orphan-resume signal (in
+    /// message OR data) so `load_session` re-binds instead of `/new`.
+    #[test]
+    fn is_already_loaded_error_matches_message_and_data() {
+        let in_msg = acp::Error::new(-32602, "Session abc is already loaded");
+        assert!(is_already_loaded_error(&in_msg));
+        let in_data = acp::Error::internal_error()
+            .data(serde_json::json!("Session abc is ALREADY LOADED in agent"));
+        assert!(is_already_loaded_error(&in_data));
+        let unrelated = acp::Error::new(-32603, "no helper bound to session_id");
+        assert!(!is_already_loaded_error(&unrelated));
+    }
+
+    /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
+    /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
+    #[tokio::test]
+    async fn reap_agent_drops_only_its_own_orphans() {
+        let state = make_state();
+        let key_a = "copilot --acp --stdio".to_string();
+        let key_b = "gemini --acp".to_string();
+        {
+            let mut orphans = state.orphaned_sessions.lock().await;
+            orphans
+                .entry(key_a.clone())
+                .or_default()
+                .insert(SessionId::new("a-sess"));
+            orphans
+                .entry(key_b.clone())
+                .or_default()
+                .insert(SessionId::new("b-sess"));
+        }
+        // reap only acts when the key is a live pool entry.
+        {
+            let mut agents = state.agents.lock().await;
+            agents.insert(key_a.clone(), Arc::new(tokio::sync::OnceCell::new()));
+        }
+        reap_agent(&state, &key_a).await;
+        let orphans = state.orphaned_sessions.lock().await;
+        assert!(
+            !orphans.contains_key(&key_a),
+            "reaped agent's orphan set must be dropped"
+        );
+        assert!(
+            orphans
+                .get(&key_b)
+                .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
+            "a co-resident agent's orphans must be untouched"
         );
     }
 
@@ -4202,6 +4446,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    cmd_key: "copilot --acp --stdio".to_string(),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
@@ -4610,7 +4855,9 @@ mod tests {
         }
 
         let dropped = drop_sessions_for_helper(&state, HelperId(1)).await;
-        assert_eq!(dropped, 2);
+        assert_eq!(dropped.len(), 2);
+        assert!(dropped.contains(&SessionId::new("a1")));
+        assert!(dropped.contains(&SessionId::new("a2")));
 
         let map = state.session_to_helper.lock().await;
         assert!(!map.contains_key(&SessionId::new("a1")));
@@ -5114,6 +5361,7 @@ mod tests {
             helper_meta: Mutex::new(HashMap::new()),
             hook_owned: Mutex::new(HashSet::new()),
             born_bound: Mutex::new(HashSet::new()),
+            orphaned_sessions: Mutex::new(HashMap::new()),
             host_list_cache: Mutex::new(None),
             wsl_titles_seed_at: Mutex::new(None),
             wsl_seed_in_flight: std::sync::atomic::AtomicBool::new(false),

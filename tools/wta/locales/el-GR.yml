@@ -214,6 +214,7 @@ system.agent_switch_unavailable: "Η εναλλαγή πρακτόρων δεν 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
+commands.move.summary: "Μετακίνηση του πλαισίου παράγοντα αυτής της καρτέλας (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}

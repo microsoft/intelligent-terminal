@@ -909,7 +909,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (position == L"bottom")
             return SplitDirection::Down;
-        if (position == L"top")
+        if (position == L"top" || position == L"up")
             return SplitDirection::Up;
         if (position == L"left")
             return SplitDirection::Left;
@@ -1592,6 +1592,16 @@ namespace winrt::TerminalApp::implementation
             }
         }
         auto agentContent = winrt::make<winrt::TerminalApp::implementation::AgentPaneContent>(innerTerm);
+        // Apply the cached fallback immediately when a pane is created
+        // mid-session (#348). The next theme refresh replaces it with the
+        // agent pane's own background color.
+        if (_agentBarBackgroundBrush && _agentBarForegroundBrush)
+        {
+            if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+            {
+                agentImpl->ApplyThemeColors(_agentBarBackgroundBrush, _agentBarForegroundBrush);
+            }
+        }
         return std::make_shared<Pane>(agentContent);
     }
 
@@ -2759,6 +2769,15 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        // Custom commands are trusted only when supplied on the master's own
+        // argv. Helpers intentionally cannot ask the master to execute an
+        // arbitrary command from pipe metadata, so entering/leaving a custom
+        // selection or editing its command requires fresh trusted master args.
+        const bool customMasterArgsChanged =
+            (til::starts_with(_lastAgentSettings.acpAgent, L"custom:") || til::starts_with(current.acpAgent, L"custom:")) &&
+            (_lastAgentSettings.acpAgent != current.acpAgent ||
+             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
+
         // Reentrancy guard.
         if (_agentRebuilding)
         {
@@ -2787,18 +2806,17 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
 
-        // Tear down each affected tab's agent pane. The user must reopen
-        // each (per-tab toggle) — there's no longer a "shared pane" to
-        // reposition. Tabs with a per-tab agent override are SKIPPED: a
-        // change to the global default must not stomp a tab the user
-        // explicitly pinned to a different agent.
+        // Built-in global changes leave per-tab overrides untouched. A custom
+        // command change must restart the shared master, so every local helper
+        // is collected and reconnected even when its tab has an override.
         bool hadAny = false;
         std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
         for (const auto& t : _tabs)
         {
             if (auto tabImpl = _GetTabImpl(t))
             {
-                if (tabImpl->FindAgentPane() && !tabImpl->HasAgentOverride())
+                if (tabImpl->FindAgentPane() &&
+                    (customMasterArgsChanged || !tabImpl->HasAgentOverride()))
                 {
                     hadAny = true;
                     tabsThatHadAgentPane.push_back(tabImpl);
@@ -2816,7 +2834,7 @@ namespace winrt::TerminalApp::implementation
             _TeardownAgentPane(tabImpl);
         }
 
-        // NOTE: no `SharedWta::Restart` here anymore. The master is now a
+        // Built-in agent changes do not restart the master. It is now a
         // multi-agent broker — it spawns/reuses one agent CLI per distinct
         // agent command line, driven by each helper's `initialize`
         // handshake (which carries the tab's agent). The master's own
@@ -2826,7 +2844,21 @@ namespace winrt::TerminalApp::implementation
         // affected (non-override) tabs' helpers is enough: each fresh
         // helper declares the new global agent and the master lazily
         // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
-        // (and other windows) untouched.
+        // (and other windows) untouched. A custom command is the exception:
+        // the master cannot trust a command received from a helper, so refresh
+        // its own trusted argv after the affected helpers have been torn down.
+        if (customMasterArgsChanged)
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            if (wtaPath.empty() ||
+                !winrt::TerminalApp::implementation::SharedWta::Instance().Restart(
+                    std::wstring_view{ wtaPath },
+                    extraArgs))
+            {
+                _agentPaneLog("_RebuildAgentStack: custom-command SharedWta::Restart failed");
+            }
+        }
 
         if (!hadAny)
         {
@@ -2835,12 +2867,28 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Recreate on the active terminal tab so the user sees something
-        // immediately — but only if the active tab is one we tore down
-        // (i.e. it follows the global default). If the active tab has its
-        // own override, its pane was deliberately left intact above.
+        // A custom-command restart invalidates every helper, so reconnect all
+        // tabs that had panes: active remains visible and background tabs are
+        // pre-warmed stashed. Built-in changes retain the existing active-tab
+        // behavior and leave overrides untouched.
         if (const auto activeTab = _GetFocusedTabImpl();
-            activeTab && !activeTab->HasAgentOverride())
+            customMasterArgsChanged && activeTab)
+        {
+            for (const auto& tabImpl : tabsThatHadAgentPane)
+            {
+                if (tabImpl == activeTab)
+                {
+                    _OpenOrReuseAgentPane(false, L"SettingsReload");
+                }
+                else
+                {
+                    _AutoCreateHiddenAgentPaneShared(tabImpl,
+                                                     /*intoSessionsView*/ false,
+                                                     /*autoStash*/ true);
+                }
+            }
+        }
+        else if (activeTab && !activeTab->HasAgentOverride())
         {
             _OpenOrReuseAgentPane(false, L"SettingsReload");
         }
@@ -4559,6 +4607,25 @@ namespace winrt::TerminalApp::implementation
             view = params["view"].asString();
             logSuffix += " view=" + *view;
         }
+        std::optional<winrt::hstring> panePosition;
+        if (params.isMember("pane_position"))
+        {
+            if (params["pane_position"].isString())
+            {
+                const auto requested = winrt::to_hstring(params["pane_position"].asString());
+                if (requested == L"left" || requested == L"right" ||
+                    requested == L"up" || requested == L"bottom")
+                {
+                    panePosition = requested;
+                    logSuffix += " pane_position=" + winrt::to_string(requested);
+                }
+            }
+            else if (params["pane_position"].isNull())
+            {
+                panePosition = _settings.GlobalSettings().AgentPanePosition();
+                logSuffix += " pane_position=global";
+            }
+        }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
         // Apply view to the existing AgentPaneContent if any.
@@ -4625,6 +4692,54 @@ namespace winrt::TerminalApp::implementation
                     // background pane while the agent is out of sight.
                     targetTab->SetAgentChipOverride(std::nullopt);
                     targetTab->StashAgentPane();
+                }
+            }
+        }
+
+        // Apply the per-tab `/move` override, or reset this tab to the global
+        // position when WTA explicitly sends null. Never mutate GlobalSettings
+        // or walk the other tabs.
+        if (panePosition.has_value())
+        {
+            const auto agentPane = targetTab->FindAgentPane();
+            const auto focusedTab = _GetFocusedTabImpl();
+            const bool restoreAgentFocus = agentPane &&
+                                           !agentPane->IsHidden() &&
+                                           focusedTab &&
+                                           focusedTab->StableId() == tabId &&
+                                           targetTab->GetActivePane() == agentPane;
+            bool repositioned = false;
+            if (const auto rootPane = targetTab->GetRootPane())
+            {
+                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+            }
+            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            {
+                // AgentPaneContent uses the settings spelling "top" for Up.
+                const auto contentPosition = *panePosition == L"up" ?
+                                                 winrt::hstring{ L"top" } :
+                                                 *panePosition;
+                agentContent.SetAgentPanePosition(contentPosition);
+
+                // RepositionAgentPane rebuilds the split's XAML visual tree,
+                // which clears focus. `/move` originates in this TermControl,
+                // so restore it after the next layout pass, but only if this
+                // pane was focused before the move.
+                if (repositioned && restoreAgentFocus)
+                {
+                    if (const auto termControl = agentContent.GetTermControl())
+                    {
+                        if (const auto dispatcher = DispatcherQueue::GetForCurrentThread())
+                        {
+                            const auto weakControl = winrt::make_weak(termControl);
+                            dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(FocusState::Programmatic);
+                                }
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -6735,6 +6850,44 @@ namespace winrt::TerminalApp::implementation
         const auto globalSettings = _settings.GlobalSettings();
         const auto bracketedPaste = eventArgs.BracketedPasteEnabled();
         const auto sourceId = sender.try_as<ControlInteractivity>().Id();
+        winrt::hstring agentPasteTabId;
+        const auto agentPasteWindowId = std::to_string(_WindowProperties.WindowId());
+        bool pasteTargetsAgentPane = false;
+
+        if (const auto tab{ _GetFocusedTabImpl() })
+        {
+            if (const auto root{ tab->GetRootPane() })
+            {
+                const auto sourcePane = root->WalkTree([&](const std::shared_ptr<Pane>& pane) -> std::shared_ptr<Pane> {
+                    if (const auto control{ pane->GetTerminalControl() })
+                    {
+                        if (control.ContentId() == sourceId)
+                        {
+                            return pane;
+                        }
+                    }
+                    return nullptr;
+                });
+                if (sourcePane)
+                {
+                    pasteTargetsAgentPane = sourcePane->IsAgentPane();
+                    if (pasteTargetsAgentPane)
+                    {
+                        agentPasteTabId = tab->StableId();
+                    }
+                }
+            }
+        }
+
+        if (pasteTargetsAgentPane)
+        {
+            Json::Value params{ Json::objectValue };
+            params["window_id"] = agentPasteWindowId;
+            params["tab_id"] = winrt::to_string(agentPasteTabId);
+            _agentPaneLog("agent pane text paste: forwarding structured paste request");
+            _RaiseProtocolEvent("agent_paste_text", params);
+            co_return;
+        }
 
         // GetClipboardData might block for up to 30s for delay-rendered contents.
         co_await winrt::resume_background();
@@ -9027,6 +9180,68 @@ namespace winrt::TerminalApp::implementation
             // Nothing was set in the theme - fall back to null. The window will
             // use that as an indication to use the default window frame.
             FrameBrush(nullptr);
+        }
+
+        // #348: Each agent-pane title bar follows that pane's own background
+        // color (its coordinator profile), not the tab's effective color. The
+        // window-level bottom bar remains fixed black.
+        {
+            constexpr auto lightnessThreshold = 0.6f;
+            // Given a background color, produce an opaque background brush plus
+            // a legible foreground brush (black/white by luminance — the same
+            // way tabs choose their font color, see Tab::_ApplyTabColorOnUIThread).
+            // Opacity is forced to 255 so the title bar is a solid fill.
+            const auto brushesFor = [lightnessThreshold](const til::color c) {
+                const til::color opaque{ c.r, c.g, c.b, 255 };
+                const auto fg = ColorFix::GetLightness(opaque) >= lightnessThreshold ?
+                                    winrt::Windows::UI::Colors::Black() :
+                                    winrt::Windows::UI::Colors::White();
+                return std::pair{ Media::SolidColorBrush{ static_cast<winrt::Windows::UI::Color>(opaque) },
+                                  Media::SolidColorBrush{ fg } };
+            };
+
+            // Helper: resolve an agent pane's own background color (visible or
+            // stashed — FindAgentPaneContent finds hidden panes too).
+            const auto agentPaneColor = [](const winrt::TerminalApp::AgentPaneContent& agent) -> std::optional<til::color> {
+                if (agent)
+                {
+                    if (const auto b = agent.BackgroundBrush())
+                    {
+                        const til::color color{ ThemeColor::ColorFromBrush(b) };
+                        if (color.a != 0)
+                        {
+                            return color;
+                        }
+                    }
+                }
+                return std::nullopt;
+            };
+
+            // Cache so an agent pane created later (mid-session, before the
+            // next theme refresh) can be themed at construction time. The tab
+            // row is only a temporary fallback until its pane brush is ready.
+            const auto [fallbackBackground, fallbackForeground] = brushesFor(bgColor);
+            _agentBarBackgroundBrush = fallbackBackground;
+            _agentBarForegroundBrush = fallbackForeground;
+
+            // Each tab's agent-pane top bar follows ITS OWN pane's background
+            // (so it is stable regardless of which pane is focused), falling
+            // back to the tab-row color only if the pane has no brush yet.
+            for (const auto& tab : _tabs)
+            {
+                if (const auto tabImpl{ _GetTabImpl(tab) })
+                {
+                    if (const auto agentContent = tabImpl->FindAgentPaneContent())
+                    {
+                        if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+                        {
+                            const til::color agentColor = agentPaneColor(agentContent).value_or(bgColor);
+                            const auto [agentBackground, agentForeground] = brushesFor(agentColor);
+                            agentImpl->ApplyThemeColors(agentBackground, agentForeground);
+                        }
+                    }
+                }
+            }
         }
     }
 
