@@ -909,7 +909,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (position == L"bottom")
             return SplitDirection::Down;
-        if (position == L"top")
+        if (position == L"top" || position == L"up")
             return SplitDirection::Up;
         if (position == L"left")
             return SplitDirection::Left;
@@ -1592,6 +1592,16 @@ namespace winrt::TerminalApp::implementation
             }
         }
         auto agentContent = winrt::make<winrt::TerminalApp::implementation::AgentPaneContent>(innerTerm);
+        // Apply the cached fallback immediately when a pane is created
+        // mid-session (#348). The next theme refresh replaces it with the
+        // agent pane's own background color.
+        if (_agentBarBackgroundBrush && _agentBarForegroundBrush)
+        {
+            if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+            {
+                agentImpl->ApplyThemeColors(_agentBarBackgroundBrush, _agentBarForegroundBrush);
+            }
+        }
         return std::make_shared<Pane>(agentContent);
     }
 
@@ -4597,6 +4607,25 @@ namespace winrt::TerminalApp::implementation
             view = params["view"].asString();
             logSuffix += " view=" + *view;
         }
+        std::optional<winrt::hstring> panePosition;
+        if (params.isMember("pane_position"))
+        {
+            if (params["pane_position"].isString())
+            {
+                const auto requested = winrt::to_hstring(params["pane_position"].asString());
+                if (requested == L"left" || requested == L"right" ||
+                    requested == L"up" || requested == L"bottom")
+                {
+                    panePosition = requested;
+                    logSuffix += " pane_position=" + winrt::to_string(requested);
+                }
+            }
+            else if (params["pane_position"].isNull())
+            {
+                panePosition = _settings.GlobalSettings().AgentPanePosition();
+                logSuffix += " pane_position=global";
+            }
+        }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
         // Apply view to the existing AgentPaneContent if any.
@@ -4663,6 +4692,54 @@ namespace winrt::TerminalApp::implementation
                     // background pane while the agent is out of sight.
                     targetTab->SetAgentChipOverride(std::nullopt);
                     targetTab->StashAgentPane();
+                }
+            }
+        }
+
+        // Apply the per-tab `/move` override, or reset this tab to the global
+        // position when WTA explicitly sends null. Never mutate GlobalSettings
+        // or walk the other tabs.
+        if (panePosition.has_value())
+        {
+            const auto agentPane = targetTab->FindAgentPane();
+            const auto focusedTab = _GetFocusedTabImpl();
+            const bool restoreAgentFocus = agentPane &&
+                                           !agentPane->IsHidden() &&
+                                           focusedTab &&
+                                           focusedTab->StableId() == tabId &&
+                                           targetTab->GetActivePane() == agentPane;
+            bool repositioned = false;
+            if (const auto rootPane = targetTab->GetRootPane())
+            {
+                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+            }
+            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            {
+                // AgentPaneContent uses the settings spelling "top" for Up.
+                const auto contentPosition = *panePosition == L"up" ?
+                                                 winrt::hstring{ L"top" } :
+                                                 *panePosition;
+                agentContent.SetAgentPanePosition(contentPosition);
+
+                // RepositionAgentPane rebuilds the split's XAML visual tree,
+                // which clears focus. `/move` originates in this TermControl,
+                // so restore it after the next layout pass, but only if this
+                // pane was focused before the move.
+                if (repositioned && restoreAgentFocus)
+                {
+                    if (const auto termControl = agentContent.GetTermControl())
+                    {
+                        if (const auto dispatcher = DispatcherQueue::GetForCurrentThread())
+                        {
+                            const auto weakControl = winrt::make_weak(termControl);
+                            dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(FocusState::Programmatic);
+                                }
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -9103,6 +9180,68 @@ namespace winrt::TerminalApp::implementation
             // Nothing was set in the theme - fall back to null. The window will
             // use that as an indication to use the default window frame.
             FrameBrush(nullptr);
+        }
+
+        // #348: Each agent-pane title bar follows that pane's own background
+        // color (its coordinator profile), not the tab's effective color. The
+        // window-level bottom bar remains fixed black.
+        {
+            constexpr auto lightnessThreshold = 0.6f;
+            // Given a background color, produce an opaque background brush plus
+            // a legible foreground brush (black/white by luminance — the same
+            // way tabs choose their font color, see Tab::_ApplyTabColorOnUIThread).
+            // Opacity is forced to 255 so the title bar is a solid fill.
+            const auto brushesFor = [lightnessThreshold](const til::color c) {
+                const til::color opaque{ c.r, c.g, c.b, 255 };
+                const auto fg = ColorFix::GetLightness(opaque) >= lightnessThreshold ?
+                                    winrt::Windows::UI::Colors::Black() :
+                                    winrt::Windows::UI::Colors::White();
+                return std::pair{ Media::SolidColorBrush{ static_cast<winrt::Windows::UI::Color>(opaque) },
+                                  Media::SolidColorBrush{ fg } };
+            };
+
+            // Helper: resolve an agent pane's own background color (visible or
+            // stashed — FindAgentPaneContent finds hidden panes too).
+            const auto agentPaneColor = [](const winrt::TerminalApp::AgentPaneContent& agent) -> std::optional<til::color> {
+                if (agent)
+                {
+                    if (const auto b = agent.BackgroundBrush())
+                    {
+                        const til::color color{ ThemeColor::ColorFromBrush(b) };
+                        if (color.a != 0)
+                        {
+                            return color;
+                        }
+                    }
+                }
+                return std::nullopt;
+            };
+
+            // Cache so an agent pane created later (mid-session, before the
+            // next theme refresh) can be themed at construction time. The tab
+            // row is only a temporary fallback until its pane brush is ready.
+            const auto [fallbackBackground, fallbackForeground] = brushesFor(bgColor);
+            _agentBarBackgroundBrush = fallbackBackground;
+            _agentBarForegroundBrush = fallbackForeground;
+
+            // Each tab's agent-pane top bar follows ITS OWN pane's background
+            // (so it is stable regardless of which pane is focused), falling
+            // back to the tab-row color only if the pane has no brush yet.
+            for (const auto& tab : _tabs)
+            {
+                if (const auto tabImpl{ _GetTabImpl(tab) })
+                {
+                    if (const auto agentContent = tabImpl->FindAgentPaneContent())
+                    {
+                        if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
+                        {
+                            const til::color agentColor = agentPaneColor(agentContent).value_or(bgColor);
+                            const auto [agentBackground, agentForeground] = brushesFor(agentColor);
+                            agentImpl->ApplyThemeColors(agentBackground, agentForeground);
+                        }
+                    }
+                }
+            }
         }
     }
 

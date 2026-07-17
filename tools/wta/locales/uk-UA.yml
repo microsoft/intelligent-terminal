@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Перемикання агентів недо
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
+commands.move.summary: "Перемістити панель агента цієї вкладки (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
 system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}

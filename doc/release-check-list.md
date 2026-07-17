@@ -269,6 +269,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C142` `[E2E]` `[MANUAL]` **Delegate with Copilot works:** Copilot delegate task starts and responds.
 - [ ] `C143` `[E2E]` `[MANUAL]` **Delegate with non-Copilot agents works:** Claude/Codex/Gemini delegate tasks start and respond where supported by delegate mode.
 - [ ] `C144` `[UT~]` `[E2E]` **Delegate errors are actionable:** Missing CLI/auth errors are clear.
+- [ ] `C229` `[UT✓]` `[E2E]` **Delegate session title is clean:** The delegate's baked `## Terminal Context (pane …)` first message never surfaces as the session's `session/list` title — no injected pane-context/GUID leak, and the row heals to the CLI's real summary.
 
 ## 6. Custom agents
 

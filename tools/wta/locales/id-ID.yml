@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Peralihan agen tidak tersedia di luar tab Wind
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}
+commands.move.summary: "Pindahkan panel agen tab ini (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}

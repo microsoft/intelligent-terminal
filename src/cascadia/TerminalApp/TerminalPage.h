@@ -588,6 +588,11 @@ namespace winrt::TerminalApp::implementation
         TerminalApp::WindowProperties _WindowProperties{ nullptr };
         PaneResources _paneResources;
 
+        // Cached agent-pane title-bar fallback brushes (#348). Reused to theme
+        // agent panes created mid-session before their own background is ready.
+        winrt::Windows::UI::Xaml::Media::Brush _agentBarBackgroundBrush{ nullptr };
+        winrt::Windows::UI::Xaml::Media::Brush _agentBarForegroundBrush{ nullptr };
+
         TerminalApp::ContentManager _manager{ nullptr };
 
         std::shared_ptr<TerminalSettingsCache> _terminalSettingsCache{};

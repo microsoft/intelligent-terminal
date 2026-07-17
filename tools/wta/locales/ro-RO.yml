@@ -212,6 +212,7 @@ system.agent_switch_unavailable: "Comutarea agentului nu este disponibilă în a
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Alegeți modelul pentru acest panou (/model <id> pentru a comuta direct)"  # {Locked="/model","<id>"}
+commands.move.summary: "Mutați panoul agentului al acestei file (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
 system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}

@@ -168,12 +168,20 @@ impl TurnState {
     }
 
     /// Spinner label, if the state should drive a busy indicator.
-    /// `Submitted` / `Streaming` show the spinner; `Surfaced` and `Idle`
-    /// do not.
+    /// `Submitted`, `Streaming`, and `Surfaced{end_pending:true}` show the
+    /// spinner. `Surfaced{end_pending:false}` and `Idle` do not.
+    ///
+    /// `Surfaced{end_pending:true}` is included because the UI gate is still
+    /// held open — `AgentMessageEnd` has not arrived yet. A permission request
+    /// can arrive in this window, and without the spinner the pane looks frozen
+    /// between the eager surface and the permission card appearing (issue #189).
     pub fn spinner_label(&self) -> Option<&'static str> {
         match self {
             TurnState::Submitted(_) => Some("Thinking..."),
             TurnState::Streaming { .. } => Some("Thinking..."),
+            TurnState::Surfaced {
+                end_pending: true, ..
+            } => Some("Thinking..."),
             _ => None,
         }
     }
@@ -269,8 +277,22 @@ mod tests {
             end_pending: true,
         };
         assert!(!s.accepts_new_prompt());
-        assert!(s.spinner_label().is_none());
+        // end_pending=true means AgentMessageEnd hasn't arrived yet — the UI
+        // gate is still held and the spinner must stay visible (issue #189).
+        assert!(s.spinner_label().is_some());
         assert!(s.is_in_flight());
+    }
+
+    #[test]
+    fn surfaced_end_done_has_no_spinner() {
+        let s = TurnState::Surfaced {
+            prompt: prompt(),
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: false,
+        };
+        assert!(s.accepts_new_prompt());
+        assert!(s.spinner_label().is_none());
+        assert!(!s.is_in_flight());
     }
 
     #[test]

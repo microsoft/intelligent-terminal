@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "D'Agenten-Umschalten ass ausserhalb vun engem 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}
+commands.move.summary: "Deen Agent-Panell vun dësem Tab réckelen (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
 system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}

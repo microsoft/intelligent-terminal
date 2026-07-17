@@ -23,7 +23,6 @@ namespace winrt::TerminalApp::implementation
                                const winrt::hstring& state);
 
         void SetSessionsView(bool active);
-
         // Whether the agent pane is currently displaying its sessions view
         // (vs the chat view). Reflects the last `agent_state_changed` snapshot
         // from wta for this pane. Read by the window-level bottom bar to
@@ -79,6 +78,11 @@ namespace winrt::TerminalApp::implementation
             _pendingRenameFromTabId = {};
             return v;
         }
+
+        // Apply the provided background and foreground brushes to the
+        // agent-pane top bar (#348). Internal-only (not on IDL).
+        void ApplyThemeColors(const winrt::Windows::UI::Xaml::Media::Brush& background,
+                              const winrt::Windows::UI::Xaml::Media::Brush& foreground);
 
         // Accessors for state that the window-level bottom bar projects.
         AutofixState GetAutofixState() const noexcept { return _autofixState; }
