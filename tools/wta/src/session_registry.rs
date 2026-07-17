@@ -347,6 +347,12 @@ pub struct ShellSessionInfo {
     /// Opaque WT `WindowLayout` JSON, replayed verbatim by the C++ side.
     #[serde(default)]
     pub layout_json: String,
+    /// The agent pane's WT session GUID (`pane_session_id`) at save time, if the
+    /// saved tab had an open agent pane. `None`/absent when it didn't. Resolved
+    /// to an ACP session id (via `agent_pane_origin`) when restoring, so the
+    /// agent conversation is resumed into the rebuilt tab.
+    #[serde(default)]
+    pub agent_pane_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]

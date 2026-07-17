@@ -3150,22 +3150,65 @@ impl App {
     /// tab via a one-way `restore_shell_session` protocol event. The row
     /// carries master's authoritative `layout_json`, so we forward it (plus the
     /// name) and let the C++ side replay the layout and reconnect scrollback.
+    /// When the saved tab had an agent pane, resolve its WT pane GUID to the ACP
+    /// session id so WT can resume that conversation into the rebuilt tab.
     fn commit_shell_session_pick(&mut self) {
         let picked = {
             let tab = self.current_tab();
             let idx = tab.shell_sessions_picker_selected;
-            tab.shell_sessions
-                .get(idx)
-                .map(|entry| (entry.name.clone(), entry.layout_json.clone()))
+            tab.shell_sessions.get(idx).cloned()
         };
         self.close_shell_sessions_view();
-        let Some((name, layout_json)) = picked else {
+        let Some(picked) = picked else {
             return;
         };
+        let name = picked.name.clone();
+
+        let mut params = serde_json::Map::new();
+        params.insert("name".to_string(), serde_json::Value::String(name.clone()));
+        // master's authoritative WT layout — forwarded verbatim so C++ replays
+        // it without a second round-trip.
+        params.insert(
+            "layout_json".to_string(),
+            serde_json::Value::String(picked.layout_json.clone()),
+        );
+
+        // Resolve the saved agent pane's WT pane GUID (pane_session_id) to the
+        // latest ACP session id created in that pane, from the persistent
+        // agent-pane-sessions.jsonl index (survives a Terminal restart). Skip
+        // silently when the tab had no agent pane or the session can't be
+        // resolved — the shell session still restores without an agent.
+        if let Some(pane_id) = picked
+            .agent_pane_session_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            if let Some(agent_session_id) =
+                crate::agent_pane_origin::resolve_latest_session_for_pane(pane_id)
+            {
+                params.insert(
+                    "agent_session_id".to_string(),
+                    serde_json::Value::String(agent_session_id),
+                );
+                if !picked.cwd.is_empty() {
+                    params.insert(
+                        "agent_cwd".to_string(),
+                        serde_json::Value::String(picked.cwd.clone()),
+                    );
+                }
+            } else {
+                tracing::info!(
+                    target: "shell_sessions",
+                    pane_id,
+                    "no ACP session found for saved agent pane; restoring shell only",
+                );
+            }
+        }
+
         let evt = serde_json::json!({
             "type": "event",
             "method": "restore_shell_session",
-            "params": { "name": name, "layout_json": layout_json },
+            "params": serde_json::Value::Object(params),
         });
         send_wt_protocol_event(evt.to_string());
         tracing::info!(target: "shell_sessions", %name, "restore_shell_session event published");

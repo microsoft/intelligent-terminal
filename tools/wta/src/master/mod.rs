@@ -3334,6 +3334,13 @@ fn save_shell_session_from_event(params: &serde_json::Value) {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    // Present only when the closed tab had an open agent pane (see the C++
+    // `_SaveShellSessionForTab`); resolved to an ACP session id on restore.
+    let agent_pane_session_id = params
+        .get("agent_pane_session_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
 
     let row = shell_sessions_db::ShellSessionRow {
         name: name.to_string(),
@@ -3341,6 +3348,7 @@ fn save_shell_session_from_event(params: &serde_json::Value) {
         saved_at,
         layout_json: layout_json.to_string(),
         buffer_guids,
+        agent_pane_session_id,
     };
 
     match shell_sessions_db::open(&db_path).and_then(|conn| shell_sessions_db::upsert(&conn, &row)) {
@@ -3417,6 +3425,7 @@ fn load_shell_sessions_for_list() -> Vec<crate::session_registry::ShellSessionIn
                 cwd: r.cwd,
                 saved_at: r.saved_at,
                 layout_json: r.layout_json,
+                agent_pane_session_id: r.agent_pane_session_id,
             })
             .collect(),
         Err(e) => {
