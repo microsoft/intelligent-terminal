@@ -103,4 +103,37 @@ Describe 'Feature §5 delegate agent engine (wta delegate)' -Tag 'Feature' -Skip
                 (Get-WtCapture -App $script:app -SessionId $sid -MaxLines 40) -match "(?i)not recognized|not found|is not recognized|exited with code|cannot find"
             }) | Should -BeTrue -Because 'a bad delegate command must surface a clear, actionable error in the delegate tab'
     }
+
+    It 'Delegate session title does not leak the injected terminal-context echo (#400)' {
+        # PR #400: `delegate_with_context` bakes a `## Terminal Context (pane <id>)`
+        # block into the first message it sends to the agent CLI. An agent CLI (e.g.
+        # Copilot) can briefly report that first message as a session's `session/list`
+        # title before it generates a real summary, so WTA must drop the echo — else
+        # the delegate's session row leaks the injected context (pane GUID included)
+        # and never heals to the real name. This is an OPPORTUNISTIC guard: the echo
+        # only surfaces in a timing window, so a green run does not prove the drop
+        # fired. The DETERMINISTIC regression guard is the master-side unit test
+        # `host_titles_via_acp_drops_injected_context_echo_and_empty_titles`.
+        $d = & $script:RunDelegate -Prompt 'What is 3 plus 4? Reply with only the number.' -Cwd $script:repo
+        $d.Tab | Should -Not -BeNullOrEmpty -Because 'the delegate must create a tab whose born-bound session master tracks'
+
+        # Read the master registry through the session view and assert the injected
+        # marker never surfaces there. Open a pane's session view (the registry is
+        # window-global, so the delegate row shows regardless of which tab renders it).
+        Open-AgentPane -App $script:app | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
+
+        # `Test-Until` returns $true the moment the marker appears, else $false after
+        # the window — so a leak fails the test while "never leaked" passes. Checking
+        # the raw session-view text (not just parsed titles) catches the marker
+        # wherever it renders.
+        $leaked = Test-Until -TimeoutSec 15 -IntervalSec 1.5 -Condition {
+            Open-SessionList -App $script:app | Out-Null
+            $shown = Test-SessionListShown -App $script:app -TimeoutSec 2
+            $text = if ($shown) { Get-AgentPaneText -App $script:app -MaxLines 60 } else { '' }
+            Close-SessionList -App $script:app | Out-Null
+            $text -match 'Terminal Context \(pane'
+        }
+        $leaked | Should -BeFalse -Because 'a delegate session title must never leak the injected "## Terminal Context (pane ...)" echo (#400)'
+    }
 }
