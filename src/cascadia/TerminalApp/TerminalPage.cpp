@@ -4682,9 +4682,17 @@ namespace winrt::TerminalApp::implementation
         // tab; do not mutate GlobalSettings or walk the other tabs.
         if (panePosition.has_value())
         {
+            const auto agentPane = targetTab->FindAgentPane();
+            const auto focusedTab = _GetFocusedTabImpl();
+            const bool restoreAgentFocus = agentPane &&
+                                           !agentPane->IsHidden() &&
+                                           focusedTab &&
+                                           focusedTab->StableId() == tabId &&
+                                           targetTab->GetActivePane() == agentPane;
+            bool repositioned = false;
             if (const auto rootPane = targetTab->GetRootPane())
             {
-                rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
             }
             if (const auto agentContent = targetTab->FindAgentPaneContent())
             {
@@ -4693,6 +4701,27 @@ namespace winrt::TerminalApp::implementation
                                                  winrt::hstring{ L"top" } :
                                                  *panePosition;
                 agentContent.SetAgentPanePosition(contentPosition);
+
+                // RepositionAgentPane rebuilds the split's XAML visual tree,
+                // which clears focus. `/move` originates in this TermControl,
+                // so restore it after the next layout pass, but only if this
+                // pane was focused before the move.
+                if (repositioned && restoreAgentFocus)
+                {
+                    if (const auto termControl = agentContent.GetTermControl())
+                    {
+                        if (const auto dispatcher = DispatcherQueue::GetForCurrentThread())
+                        {
+                            const auto weakControl = winrt::make_weak(termControl);
+                            dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(FocusState::Programmatic);
+                                }
+                            });
+                        }
+                    }
+                }
             }
         }
 
