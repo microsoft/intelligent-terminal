@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agent_popup, agents_view, auth, chat, command_popup, debug_panel, input, model_popup,
-    permission, recommendations, setup,
+    permission, recommendations, setup, shell_sessions_popup,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -231,6 +231,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     if let Some(agent_state) = app.agent_popup_state() {
         agent_popup::render_popup(frame, agent_state, chunks[6]);
+    }
+
+    if let Some(shell_sessions_state) = app.shell_sessions_popup_state() {
+        shell_sessions_popup::render_popup(frame, shell_sessions_state, chunks[6]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

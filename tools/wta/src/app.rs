@@ -1543,6 +1543,14 @@ pub struct TabSession {
     /// Highlighted row in `App::available_agents`.
     pub agent_picker_selected: usize,
 
+    /// True while the `/shell-sessions` restore picker is open for this tab.
+    pub shell_sessions_picker_open: bool,
+    /// Highlighted row in `shell_sessions` below.
+    pub shell_sessions_picker_selected: usize,
+    /// Snapshot of the durable shell sessions, loaded from the C++-written
+    /// `shell-sessions.json` sidecar when the picker opens. Empty otherwise.
+    pub shell_sessions: Vec<crate::shell_sessions::ShellSessionEntry>,
+
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
     pub current_view: View,
@@ -1598,6 +1606,7 @@ impl TabSession {
             && !self.paste_pending
             && !self.model_picker_open
             && !self.agent_picker_open
+            && !self.shell_sessions_picker_open
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -2991,6 +3000,84 @@ impl App {
             self.send_session_model(Some(sid), model_id);
         }
         self.publish_agent_status();
+    }
+
+    // ── /shell-sessions picker ──────────────────────────────────────────
+
+    /// True while the shell-session restore picker is up for the active tab.
+    fn shell_sessions_picker_visible(&self) -> bool {
+        self.current_tab().shell_sessions_picker_open
+    }
+
+    /// `/shell-sessions` — open a picker of durable shell sessions Windows
+    /// Terminal saved on tab close. Enter restores the highlighted tab (its
+    /// layout, working directory, and scrollback) via a protocol event.
+    fn cmd_shell_sessions(&mut self) {
+        let sessions = crate::shell_sessions::load();
+        if sessions.is_empty() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                // TODO(localize): extract to `system.no_shell_sessions`.
+                .push(ChatMessage::System(
+                    "No saved shell sessions yet — close a tab to save one.".to_string(),
+                ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let tab = self.current_tab_mut();
+        tab.shell_sessions = sessions;
+        tab.shell_sessions_picker_selected = 0;
+        tab.shell_sessions_picker_open = true;
+    }
+
+    fn close_shell_sessions_picker(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.shell_sessions_picker_open = false;
+        tab.shell_sessions.clear();
+    }
+
+    fn shell_sessions_picker_up(&mut self) {
+        let tab = self.current_tab_mut();
+        if tab.shell_sessions_picker_selected > 0 {
+            tab.shell_sessions_picker_selected -= 1;
+        }
+    }
+
+    fn shell_sessions_picker_down(&mut self) {
+        let tab = self.current_tab_mut();
+        let last = tab.shell_sessions.len().saturating_sub(1);
+        if tab.shell_sessions_picker_selected < last {
+            tab.shell_sessions_picker_selected += 1;
+        }
+    }
+
+    /// Commit the highlighted row: ask Windows Terminal to restore the saved
+    /// tab by name via a one-way `restore_shell_session` protocol event. WT
+    /// owns the authoritative layout + scrollback, so the helper just names
+    /// the session and lets the C++ side rebuild the tab.
+    fn commit_shell_session_pick(&mut self) {
+        let name = {
+            let tab = self.current_tab();
+            let idx = tab.shell_sessions_picker_selected;
+            tab.shell_sessions.get(idx).map(|entry| entry.name.clone())
+        };
+        self.close_shell_sessions_picker();
+        let Some(name) = name else {
+            return;
+        };
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "restore_shell_session",
+            "params": { "name": name },
+        });
+        send_wt_protocol_event(evt.to_string());
+        tracing::info!(target: "shell_sessions", %name, "restore_shell_session event published");
+        let tab = self.current_tab_mut();
+        tab.messages.push(ChatMessage::System(
+            // TODO(localize): extract to `system.shell_session_restoring`.
+            format!("Restoring shell session {}…", name),
+        ));
+        tab.scroll_to_bottom();
     }
 
     /// Rebuild the shared delegate runtime table from a settings change.
@@ -7097,6 +7184,20 @@ impl App {
             return;
         }
 
+        // Shell-session restore picker (`/shell-sessions`): same modal shape as
+        // the model picker — arrows move, Enter restores the highlighted tab,
+        // Esc dismisses. Swallow everything else.
+        if self.shell_sessions_picker_visible() {
+            match key.code {
+                KeyCode::Up => self.shell_sessions_picker_up(),
+                KeyCode::Down => self.shell_sessions_picker_down(),
+                KeyCode::Enter => self.commit_shell_session_pick(),
+                KeyCode::Esc => self.close_shell_sessions_picker(),
+                _ => {}
+            }
+            return;
+        }
+
         if self.current_tab().paste_pending {
             tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
             return;
@@ -7771,6 +7872,19 @@ impl App {
         })
     }
 
+    /// Per-frame state for the `/shell-sessions` picker modal, or `None` when
+    /// it's not open on the active tab.
+    pub fn shell_sessions_popup_state(&self) -> Option<crate::ui::ShellSessionsPopupState<'_>> {
+        let tab = self.current_tab();
+        if !tab.shell_sessions_picker_open || tab.shell_sessions.is_empty() {
+            return None;
+        }
+        Some(crate::ui::ShellSessionsPopupState {
+            sessions: &tab.shell_sessions,
+            selected: tab.shell_sessions_picker_selected,
+        })
+    }
+
     /// Handle Enter for the slash-command system. Centralizes all three
     /// intents in one place so the giant `handle_key` match has a single
     /// guard instead of an inline block plus a separate popup arm:
@@ -7910,6 +8024,7 @@ impl App {
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
             CommandKind::Move => self.cmd_move(cmd.rest),
+            CommandKind::ShellSessions => self.cmd_shell_sessions(),
         }
     }
 

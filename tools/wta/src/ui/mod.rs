@@ -12,6 +12,7 @@ mod model_popup;
 mod permission;
 mod popup;
 mod recommendations;
+mod shell_sessions_popup;
 pub mod setup;
 pub mod shimmer;
 
@@ -19,4 +20,5 @@ pub use agent_popup::AgentPopupState;
 pub use command_popup::{PopupCandidates, PopupState};
 pub use layout::render;
 pub use model_popup::ModelPopupState;
+pub use shell_sessions_popup::ShellSessionsPopupState;
 pub use shimmer::CYCLE_FRAMES as ACTIVITY_CYCLE_FRAMES;

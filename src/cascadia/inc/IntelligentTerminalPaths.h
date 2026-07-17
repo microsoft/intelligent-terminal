@@ -58,6 +58,39 @@ namespace IntelligentTerminal
         return base / L"IntelligentTerminal" / L"logs";
     }
 
+    // Resolve the persistent, package-private STATE root:
+    //
+    //   * Packaged:   %LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\IntelligentTerminal
+    //   * Unpackaged: %LOCALAPPDATA%\IntelligentTerminal
+    //
+    // Mirrors wta's Rust `runtime_paths::intelligent_terminal_root()` exactly, so
+    // both sides agree on the shared C++<->Rust state directory. Unlike `LogDir()`
+    // (transient cache under LocalCache\Local), this is persistent state that must
+    // survive — it backs the agent-pane session index (`agent-pane-sessions.jsonl`)
+    // and the durable-sessions sidecar index (`shell-sessions.json`) the agent-pane
+    // TUI reads. Returns an empty path when `%LOCALAPPDATA%` is unavailable.
+    inline std::filesystem::path StateDir()
+    {
+        wchar_t localAppData[MAX_PATH];
+        if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+        {
+            return {};
+        }
+        std::filesystem::path base{ std::wstring(localAppData) };
+
+        UINT32 length = 0;
+        if (GetCurrentPackageFamilyName(&length, nullptr) == ERROR_INSUFFICIENT_BUFFER && length != 0)
+        {
+            std::wstring family(length, L'\0');
+            if (GetCurrentPackageFamilyName(&length, family.data()) == ERROR_SUCCESS)
+            {
+                family.resize(::wcslen(family.c_str())); // drop trailing NUL(s)
+                return base / L"Packages" / family / L"LocalState" / L"IntelligentTerminal";
+            }
+        }
+        return base / L"IntelligentTerminal";
+    }
+
     // The current process's package version as `"Major.Minor.Build.Revision"`
     // (e.g. `"0.8.0.2"`), or an empty string when unpackaged. This is the
     // shared per-version key — wta's Rust `logging::package_version()` reads

@@ -56,6 +56,13 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Restore a durable shell session Windows Terminal saved on tab close.
+    ///
+    /// Bare `/shell-sessions` opens an interactive picker of the saved
+    /// sessions (read from the `shell-sessions.json` sidecar WT writes); Enter
+    /// asks WT to rebuild the highlighted tab — its layout, working directory,
+    /// and scrollback. This is a zero-arg command; the picker is the only UI.
+    ShellSessions,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -146,6 +153,15 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
         takes_args: true,
+    },
+    CommandSpec {
+        name: "shell-sessions",
+        // TODO(localize): use a `commands.shell_sessions.summary` catalog key
+        // when the localization pass adds it to every locale. Until then the
+        // English text is returned verbatim by `t!` (unknown key -> key text).
+        summary_key: "Restore a saved shell session (layout, scrollback, working directory)",
+        kind: CommandKind::ShellSessions,
+        takes_args: false,
     },
 ];
 
@@ -359,6 +375,17 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn shell_sessions_parses() {
+        let p = parse("/shell-sessions").unwrap();
+        assert_eq!(p.kind, CommandKind::ShellSessions);
+        assert_eq!(p.rest, "");
+        assert!(!lookup("shell-sessions").unwrap().takes_args);
+        // Prefix "shell" resolves uniquely to the shell-sessions command.
+        let m: Vec<&str> = matches("shell").into_iter().map(|c| c.name).collect();
+        assert_eq!(m, vec!["shell-sessions"]);
     }
 
     #[test]

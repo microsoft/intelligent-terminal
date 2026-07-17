@@ -189,6 +189,13 @@ namespace TerminalApp
         void OnResumeInNewAgentTabRequested(String eventJson);
 
         // Inbound event from WTA carrying
+        // {method:"restore_shell_session",params:{name}}. Emitted by the
+        // agent-pane `/shell-sessions` picker's Enter handler. The page looks
+        // up the saved layout by name and rebuilds the tab (working directory,
+        // panes, and scrollback).
+        void OnRestoreShellSessionRequested(String eventJson);
+
+        // Inbound event from WTA carrying
         // {method:"set_agent_chip_target",params:{tab_id, pane_session_id?}}.
         // Helper override for which pane in the tab gets the blue "Agent"
         // chip. A missing or null pane_session_id reverts that tab to the
