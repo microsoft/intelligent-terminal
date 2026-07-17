@@ -326,9 +326,10 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap().to_string())
             .collect();
-        assert!(
-            names.contains(&"resolve_command".to_string()),
-            "got {names:?}"
+        assert_eq!(
+            names,
+            ["resolve_command", "propose_terminal_actions"],
+            "the unified proposal protocol must expose one action tool"
         );
         // Notification → no response.
         assert!(dispatch(

@@ -4,17 +4,24 @@ use agent_client_protocol as acp;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::terminal_input::{
-    validate_text, MAX_INPUT_CHARS, MAX_RATIONALE_CHARS, MAX_TITLE_CHARS,
-};
 use super::{RouteRegistry, Tool, ToolContext};
 
 pub const INTELLTERM_METHOD_PROPOSE_TERMINAL_ACTIONS: &str =
     "_intellterm.wta/propose_terminal_actions";
 
 const MAX_CWD_CHARS: usize = 4 * 1024;
+const MAX_INPUT_CHARS: usize = 16 * 1024;
 const MAX_PROFILE_CHARS: usize = 512;
+const MAX_RATIONALE_CHARS: usize = 2 * 1024;
+const MAX_TITLE_CHARS: usize = 160;
 const MAX_CHOICES: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreferredInputAction {
+    Insert,
+    Execute,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +64,8 @@ impl ProposedSplitDirection {
 pub enum ProposedTerminalAction {
     SendInput {
         input: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preferred_action: Option<PreferredInputAction>,
     },
     Open {
         target: ProposedOpenTarget,
@@ -84,10 +93,28 @@ pub enum ProposedTerminalAction {
     },
 }
 
+fn validate_text(
+    name: &str,
+    text: &str,
+    max_chars: usize,
+    allow_blank: bool,
+) -> Result<(), String> {
+    if text.contains('\0') {
+        return Err(format!("{name} must not contain NUL"));
+    }
+    if !allow_blank && text.trim().is_empty() {
+        return Err(format!("{name} must not be empty"));
+    }
+    if text.chars().count() > max_chars {
+        return Err(format!("{name} exceeds the {max_chars}-character limit"));
+    }
+    Ok(())
+}
+
 impl ProposedTerminalAction {
     fn validate(&self) -> Result<(), String> {
         match self {
-            Self::SendInput { input } => {
+            Self::SendInput { input, .. } => {
                 validate_text("input", input, MAX_INPUT_CHARS, false)
             }
             Self::Open {
@@ -197,9 +224,8 @@ pub struct TerminalActionsProposalParams {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PlannerProposalDisposition {
+pub enum ProposalDisposition {
     Accepted,
-    NotPlanner,
     Stale,
     ContextUnavailable,
     TargetUnavailable,
@@ -211,7 +237,7 @@ pub enum PlannerProposalDisposition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalActionsProposalResponse {
-    pub disposition: PlannerProposalDisposition,
+    pub disposition: ProposalDisposition,
 }
 
 pub fn build_terminal_actions_proposal_request(
@@ -262,12 +288,12 @@ impl Tool for ProposeTerminalActions {
     }
 
     fn description(&self) -> &'static str {
-        "Propose one to three typed terminal actions for the current Terminal Agent \
-         turn. The owning Intelligent Terminal helper injects trusted pane and \
-         delegate routing, then shows confirmation cards; this tool never executes \
-         an action. Call it exactly once without assistant prose. If no proposal is \
-         appropriate or the tool is unavailable, answer in Markdown and never emit \
-         recommendation JSON."
+        "Propose typed terminal actions for the current Intelligent Terminal turn. \
+         Autofix accepts exactly one send_input choice; normal Terminal Agent turns \
+         accept one to three send_input, open, or open_and_send choices. The helper \
+         injects trusted pane and delegate routing and shows confirmation cards; this \
+         tool never executes an action. Call it exactly once without assistant prose. \
+         If no proposal is appropriate or the tool is unavailable, answer in Markdown."
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -323,6 +349,11 @@ impl Tool for ProposeTerminalActions {
                                                 "type": "string",
                                                 "minLength": 1,
                                                 "maxLength": MAX_INPUT_CHARS
+                                            },
+                                            "preferred_action": {
+                                                "type": "string",
+                                                "enum": ["insert", "execute"],
+                                                "description": "Optional initially focused choice; never automatic."
                                             }
                                         },
                                         "required": ["type", "input"]
@@ -395,31 +426,28 @@ impl Tool for ProposeTerminalActions {
             .map_err(|err| format!("invalid helper proposal response: {err}"))?;
 
         match response.disposition {
-            PlannerProposalDisposition::Accepted => {
+            ProposalDisposition::Accepted => {
                 Ok("Proposal surfaced for user review. Do not add assistant text.".to_string())
             }
-            PlannerProposalDisposition::NotPlanner => {
-                Err("This tool is only available during a normal Terminal Agent turn.".to_string())
-            }
-            PlannerProposalDisposition::Stale => {
+            ProposalDisposition::Stale => {
                 Err("The Terminal Agent turn has ended; do not retry the tool.".to_string())
             }
-            PlannerProposalDisposition::ContextUnavailable => {
+            ProposalDisposition::ContextUnavailable => {
                 Err("Trusted prompt context is not ready; explain in Markdown instead.".to_string())
             }
-            PlannerProposalDisposition::TargetUnavailable => Err(
+            ProposalDisposition::TargetUnavailable => Err(
                 "The proposed action requires an active working pane, but none is available; \
                  explain in Markdown or propose a tab action instead."
                     .to_string(),
             ),
-            PlannerProposalDisposition::DelegateUnavailable => {
+            ProposalDisposition::DelegateUnavailable => {
                 Err("No delegate agent is configured; explain in Markdown instead.".to_string())
             }
-            PlannerProposalDisposition::Duplicate => {
+            ProposalDisposition::Duplicate => {
                 Err("A terminal action proposal was already accepted for this turn.".to_string())
             }
-            PlannerProposalDisposition::Invalid => {
-                Err("The helper rejected the proposal as invalid; explain in Markdown.".to_string())
+            ProposalDisposition::Invalid => {
+                Err("The helper rejected this action shape for the current turn; explain in Markdown.".to_string())
             }
         }
     }
@@ -437,6 +465,7 @@ mod tests {
                 rationale: "Verify the change.".to_string(),
                 action: ProposedTerminalAction::SendInput {
                     input: "cargo test".to_string(),
+                    preferred_action: None,
                 },
             }],
         }

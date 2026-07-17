@@ -15,20 +15,13 @@
 mod resolve_command;
 mod server;
 pub(crate) mod terminal_actions;
-mod terminal_input;
 
 use server::serve;
 pub use terminal_actions::{
     build_terminal_actions_proposal_response, parse_terminal_actions_proposal_params,
-    PlannerProposalDisposition, ProposedDestination, ProposedOpenTarget,
+    PreferredInputAction, ProposalDisposition, ProposedDestination, ProposedOpenTarget,
     ProposedTerminalAction, TerminalActionsProposal, TerminalActionsProposalResponse,
     INTELLTERM_METHOD_PROPOSE_TERMINAL_ACTIONS,
-};
-pub use terminal_input::{
-    build_terminal_input_proposal_response, parse_terminal_input_proposal_params,
-    PreferredTerminalInputAction, ProposalDisposition, TerminalInputProposal,
-    TerminalInputProposalResponse,
-    INTELLTERM_METHOD_PROPOSE_TERMINAL_INPUT,
 };
 
 use async_trait::async_trait;
@@ -65,8 +58,7 @@ pub trait Tool: Send + Sync {
 pub fn default_registry(routes: RouteRegistry) -> Vec<Arc<dyn Tool>> {
     vec![
         Arc::new(resolve_command::ResolveCommand),
-        Arc::new(terminal_actions::ProposeTerminalActions::new(routes.clone())),
-        Arc::new(terminal_input::ProposeTerminalInput::new(routes)),
+        Arc::new(terminal_actions::ProposeTerminalActions::new(routes)),
     ]
 }
 

@@ -89,8 +89,8 @@ wta hooks install                         # install the agent-hook bridge
 Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
 to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit. Used by humans
 debugging WTA and by agents that can shell out. General WT control still uses
-`wta` / `wtcli`; master also injects session-bound MCP tools for typed Autofix
-terminal-input and Terminal Agent action proposals.
+`wta` / `wtcli`; master also injects the session-bound
+`propose_terminal_actions` MCP tool for typed Autofix and Terminal Agent cards.
 
 ---
 

@@ -1221,20 +1221,12 @@ pub enum AppEvent {
     AgentMessageEnd {
         session_id: String,
     },
-    /// Typed proposal emitted by WTA's session-bound MCP tool. The synchronous
-    /// responder lets the tool report whether the current Autofix turn accepted
-    /// the proposal; it never performs terminal input itself.
-    TerminalInputProposal {
-        session_id: String,
-        proposal: crate::mcp::TerminalInputProposal,
-        responder: tokio::sync::oneshot::Sender<crate::mcp::ProposalDisposition>,
-    },
-    /// Typed planner proposal emitted by the session-bound MCP tool. The helper
-    /// injects trusted pane/delegate routing before surfacing confirmation cards.
+    /// Typed proposal emitted by the session-bound MCP tool for either Autofix
+    /// or a normal Terminal Agent turn. The helper injects trusted routing.
     TerminalActionsProposal {
         session_id: String,
         proposal: crate::mcp::TerminalActionsProposal,
-        responder: tokio::sync::oneshot::Sender<crate::mcp::PlannerProposalDisposition>,
+        responder: tokio::sync::oneshot::Sender<crate::mcp::ProposalDisposition>,
     },
     TimingMetric {
         session_id: String,
@@ -1431,7 +1423,6 @@ impl Scroll {
 pub struct PlannerTargetContext {
     pub prompt_id: u64,
     pub pane_id: Option<String>,
-    pub proposal_accepted: bool,
 }
 
 #[derive(Default)]
@@ -1479,6 +1470,9 @@ pub struct TabSession {
     /// Trusted planner routing resolved for the current prompt. This is kept
     /// outside model-authored tool arguments and reset on every submission.
     pub planner_target: Option<PlannerTargetContext>,
+    /// A typed proposal is the sole action outcome for a turn, even if its card
+    /// is executed before the agent emits the final message-end notification.
+    pub proposal_accepted: bool,
 
     // Agent-supplied progress message (e.g. "Reading file foo.rs"). Falls
     // back to the spinner label derived from `turn` when None.
@@ -4539,7 +4533,6 @@ impl App {
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
-            AppEvent::TerminalInputProposal { .. } => "terminal_input_proposal",
             AppEvent::TerminalActionsProposal { .. } => "terminal_actions_proposal",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
@@ -5363,14 +5356,6 @@ impl App {
                 }
                 self.turn_close(&session_id);
                 self.session_tab_mut(&session_id).scroll_to_bottom();
-            }
-            AppEvent::TerminalInputProposal {
-                session_id,
-                proposal,
-                responder,
-            } => {
-                let disposition = self.accept_terminal_input_proposal(&session_id, proposal);
-                let _ = responder.send(disposition);
             }
             AppEvent::TerminalActionsProposal {
                 session_id,
@@ -8148,7 +8133,6 @@ impl App {
         tab.planner_target = Some(PlannerTargetContext {
             prompt_id,
             pane_id,
-            proposal_accepted: false,
         });
     }
 
@@ -8849,6 +8833,7 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.planner_target = None;
+        tab.proposal_accepted = false;
         tab.turn = TurnState::Submitted(prompt);
 
         // Submitting a new prompt dismisses any prior leftover card (the
@@ -9032,109 +9017,98 @@ impl App {
         self.turn_release_end_pending(session_id);
     }
 
-    fn accept_terminal_input_proposal(
-        &mut self,
-        session_id: &str,
-        proposal: crate::mcp::TerminalInputProposal,
-    ) -> crate::mcp::ProposalDisposition {
-        use crate::mcp::{PreferredTerminalInputAction, ProposalDisposition};
-
-        let Some(tab_id) = self.session_to_tab.get(session_id).cloned() else {
-            return ProposalDisposition::Stale;
-        };
-        let Some(tab) = self.tab_sessions.get(&tab_id) else {
-            return ProposalDisposition::Stale;
-        };
-        let Some(autofix) = tab.turn.prompt().and_then(|prompt| prompt.autofix.as_ref()) else {
-            return ProposalDisposition::NotAutofix;
-        };
-        if !tab.turn.is_in_flight() || autofix.generation != tab.autofix.generation {
-            return ProposalDisposition::Stale;
-        }
-        if matches!(
-            tab.turn,
-            TurnState::Surfaced {
-                outcome: TurnOutcome::Recommendation(_),
-                ..
-            }
-        ) {
-            return ProposalDisposition::Duplicate;
-        }
-        if autofix.target_pane_id.trim().is_empty() {
-            return ProposalDisposition::TargetUnavailable;
-        }
-
-        let preferred_action = proposal.preferred_action;
-        let recommendations = RecommendationSet {
-            recommended_choice: Some(1),
-            choices: vec![RecommendationChoice {
-                choice: 1,
-                title: proposal.title.unwrap_or_else(|| "Suggested fix".to_string()),
-                rationale: proposal.rationale.unwrap_or_default(),
-                actions: vec![crate::coordinator::RecommendedAction::Send {
-                    parent: String::new(),
-                    input: proposal.input,
-                }],
-            }],
-        };
-        self.turn_surface_fix(session_id, recommendations, "autofix_mcp_proposal");
-        self.session_tab_mut(session_id).selected_button =
-            usize::from(preferred_action == PreferredTerminalInputAction::Insert);
-        ProposalDisposition::Accepted
-    }
-
     fn accept_terminal_actions_proposal(
         &mut self,
         session_id: &str,
         proposal: crate::mcp::TerminalActionsProposal,
-    ) -> crate::mcp::PlannerProposalDisposition {
+    ) -> crate::mcp::ProposalDisposition {
         use crate::coordinator::{OpenTarget, RecommendedAction};
         use crate::mcp::{
-            PlannerProposalDisposition, ProposedDestination, ProposedOpenTarget,
+            PreferredInputAction, ProposalDisposition, ProposedDestination, ProposedOpenTarget,
             ProposedTerminalAction,
         };
 
         if proposal.validate().is_err() {
-            return PlannerProposalDisposition::Invalid;
+            return ProposalDisposition::Invalid;
         }
         let Some(tab_id) = self.session_to_tab.get(session_id).cloned() else {
-            return PlannerProposalDisposition::Stale;
+            return ProposalDisposition::Stale;
         };
-        let (prompt_id, planner_target) = {
+        let (prompt_id, autofix, planner_target) = {
             let Some(tab) = self.tab_sessions.get(&tab_id) else {
-                return PlannerProposalDisposition::Stale;
+                return ProposalDisposition::Stale;
             };
             if tab.session_id.as_deref() != Some(session_id) {
-                return PlannerProposalDisposition::Stale;
+                return ProposalDisposition::Stale;
             }
             let Some(prompt) = tab.turn.prompt() else {
-                return PlannerProposalDisposition::Stale;
+                return ProposalDisposition::Stale;
             };
-            if prompt.autofix.is_some() {
-                return PlannerProposalDisposition::NotPlanner;
-            }
-            if matches!(
-                tab.turn,
-                TurnState::Surfaced {
-                    outcome: TurnOutcome::Recommendation(_),
-                    ..
-                }
-            ) {
-                return PlannerProposalDisposition::Duplicate;
+            if tab.proposal_accepted {
+                return ProposalDisposition::Duplicate;
             }
             if !tab.turn.is_in_flight() {
-                return PlannerProposalDisposition::Stale;
+                return ProposalDisposition::Stale;
             }
-            (prompt.id, tab.planner_target.clone())
+            (
+                prompt.id,
+                prompt.autofix.clone(),
+                tab.planner_target.clone(),
+            )
         };
+
+        if let Some(autofix) = autofix {
+            if autofix.generation != self.tab_sessions[&tab_id].autofix.generation {
+                return ProposalDisposition::Stale;
+            }
+            if autofix.target_pane_id.trim().is_empty() {
+                return ProposalDisposition::TargetUnavailable;
+            }
+            if proposal.choices.len() != 1 {
+                return ProposalDisposition::Invalid;
+            }
+            let choice = proposal
+                .choices
+                .into_iter()
+                .next()
+                .expect("one Autofix choice was validated");
+            let ProposedTerminalAction::SendInput {
+                input,
+                preferred_action: Some(preferred_action),
+            } = choice.action
+            else {
+                return ProposalDisposition::Invalid;
+            };
+            self.tab_sessions
+                .get_mut(&tab_id)
+                .expect("proposal session was validated")
+                .proposal_accepted = true;
+            self.turn_surface_fix(
+                session_id,
+                RecommendationSet {
+                    recommended_choice: Some(1),
+                    choices: vec![RecommendationChoice {
+                        choice: 1,
+                        title: choice.title,
+                        rationale: choice.rationale,
+                        actions: vec![RecommendedAction::Send {
+                            parent: String::new(),
+                            input,
+                        }],
+                    }],
+                },
+                "autofix_mcp_proposal",
+            );
+            self.session_tab_mut(session_id).selected_button =
+                usize::from(preferred_action == PreferredInputAction::Insert);
+            return ProposalDisposition::Accepted;
+        }
+
         let Some(planner_target) =
             planner_target.filter(|context| context.prompt_id == prompt_id)
         else {
-            return PlannerProposalDisposition::ContextUnavailable;
+            return ProposalDisposition::ContextUnavailable;
         };
-        if planner_target.proposal_accepted {
-            return PlannerProposalDisposition::Duplicate;
-        }
         let target_pane_id = planner_target.pane_id.filter(|pane_id| {
             !pane_id.is_empty() && self.pane_id.as_deref() != Some(pane_id.as_str())
         });
@@ -9144,7 +9118,7 @@ impl App {
                 .iter()
                 .any(|choice| choice.action.requires_active_pane())
         {
-            return PlannerProposalDisposition::TargetUnavailable;
+            return ProposalDisposition::TargetUnavailable;
         }
 
         let needs_delegate = proposal.choices.iter().any(|choice| {
@@ -9158,7 +9132,7 @@ impl App {
         });
         let delegate_agent_id = if needs_delegate {
             let Some(delegate_agents) = self.delegate_agents.as_ref() else {
-                return PlannerProposalDisposition::DelegateUnavailable;
+                return ProposalDisposition::DelegateUnavailable;
             };
             let agents = match delegate_agents.lock() {
                 Ok(agents) => agents,
@@ -9171,7 +9145,7 @@ impl App {
                 }
             };
             let Some(agent) = agents.first() else {
-                return PlannerProposalDisposition::DelegateUnavailable;
+                return ProposalDisposition::DelegateUnavailable;
             };
             Some(agent.id.clone())
         } else {
@@ -9179,19 +9153,29 @@ impl App {
         };
 
         let recommended_choice = proposal.recommended_choice;
+        let selected_index = recommended_choice.unwrap_or(1) - 1;
+        let prefer_insert = matches!(
+            proposal.choices[selected_index].action,
+            ProposedTerminalAction::SendInput {
+                preferred_action: Some(PreferredInputAction::Insert),
+                ..
+            }
+        );
         let choices = proposal
             .choices
             .into_iter()
             .enumerate()
             .map(|(index, choice)| {
                 let action = match choice.action {
-                    ProposedTerminalAction::SendInput { input } => RecommendedAction::Send {
-                        parent: target_pane_id
-                            .as_ref()
-                            .expect("active-pane requirement was validated")
-                            .clone(),
-                        input,
-                    },
+                    ProposedTerminalAction::SendInput { input, .. } => {
+                        RecommendedAction::Send {
+                            parent: target_pane_id
+                                .as_ref()
+                                .expect("active-pane requirement was validated")
+                                .clone(),
+                            input,
+                        }
+                    }
                     ProposedTerminalAction::Open {
                         target,
                         cwd,
@@ -9263,8 +9247,7 @@ impl App {
             .collect();
         self.tab_sessions
             .get_mut(&tab_id)
-            .and_then(|tab| tab.planner_target.as_mut())
-            .expect("planner target was validated above")
+            .expect("proposal session was validated")
             .proposal_accepted = true;
         self.turn_surface_recommendation(
             session_id,
@@ -9274,7 +9257,8 @@ impl App {
             },
             "planner_mcp_proposal",
         );
-        PlannerProposalDisposition::Accepted
+        self.session_tab_mut(session_id).selected_button = usize::from(prefer_insert);
+        ProposalDisposition::Accepted
     }
 
     /// Path (4b): non-Autofix assistant text is always Markdown. Only the typed
@@ -16213,15 +16197,13 @@ mod tests {
         app.tab_mut(DEFAULT_TAB_ID).session_id = Some(session_id.to_string());
     }
 
-    fn terminal_input_proposal(
-        action: crate::mcp::PreferredTerminalInputAction,
-    ) -> crate::mcp::TerminalInputProposal {
-        crate::mcp::TerminalInputProposal {
+    fn autofix_proposal(
+        action: crate::mcp::PreferredInputAction,
+    ) -> crate::mcp::TerminalActionsProposal {
+        planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
             input: "dotnet test".to_string(),
-            preferred_action: action,
-            title: Some("Retry tests".to_string()),
-            rationale: Some("The previous command had a typo.".to_string()),
-        }
+            preferred_action: Some(action),
+        })
     }
 
     #[test]
@@ -16230,9 +16212,9 @@ mod tests {
         bind_test_session(&mut app, "session-a");
         submit_autofix_prompt(&mut app, "trusted-pane");
 
-        let disposition = app.accept_terminal_input_proposal(
+        let disposition = app.accept_terminal_actions_proposal(
             "session-a",
-            terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Insert),
+            autofix_proposal(crate::mcp::PreferredInputAction::Insert),
         );
 
         assert_eq!(disposition, crate::mcp::ProposalDisposition::Accepted);
@@ -16257,34 +16239,34 @@ mod tests {
         bind_test_session(&mut app, "session-a");
         submit_autofix_prompt(&mut app, "trusted-pane");
         assert_eq!(
-            app.accept_terminal_input_proposal(
+            app.accept_terminal_actions_proposal(
                 "session-a",
-                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+                autofix_proposal(crate::mcp::PreferredInputAction::Execute),
             ),
             crate::mcp::ProposalDisposition::Accepted
         );
         assert_eq!(
-            app.accept_terminal_input_proposal(
+            app.accept_terminal_actions_proposal(
                 "session-a",
-                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+                autofix_proposal(crate::mcp::PreferredInputAction::Execute),
             ),
             crate::mcp::ProposalDisposition::Duplicate
         );
 
         app.turn_cancel("session-a");
         assert_eq!(
-            app.accept_terminal_input_proposal(
+            app.accept_terminal_actions_proposal(
                 "session-a",
-                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+                autofix_proposal(crate::mcp::PreferredInputAction::Execute),
             ),
-            crate::mcp::ProposalDisposition::NotAutofix
+            crate::mcp::ProposalDisposition::Stale
         );
 
         submit_fix_prompt(&mut app, 100);
         assert_eq!(
-            app.accept_terminal_input_proposal(
+            app.accept_terminal_actions_proposal(
                 "session-a",
-                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+                autofix_proposal(crate::mcp::PreferredInputAction::Execute),
             ),
             crate::mcp::ProposalDisposition::TargetUnavailable
         );
@@ -16292,16 +16274,16 @@ mod tests {
         let generation = app.current_tab().autofix.generation;
         app.current_tab_mut().autofix.generation = generation.wrapping_add(1);
         assert_eq!(
-            app.accept_terminal_input_proposal(
+            app.accept_terminal_actions_proposal(
                 "session-a",
-                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+                autofix_proposal(crate::mcp::PreferredInputAction::Execute),
             ),
             crate::mcp::ProposalDisposition::Stale
         );
         assert_eq!(
-            app.accept_terminal_input_proposal(
+            app.accept_terminal_actions_proposal(
                 "unknown-session",
-                terminal_input_proposal(crate::mcp::PreferredTerminalInputAction::Execute),
+                autofix_proposal(crate::mcp::PreferredInputAction::Execute),
             ),
             crate::mcp::ProposalDisposition::Stale
         );
@@ -16331,12 +16313,13 @@ mod tests {
             "session-a",
             planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
                 input: "cargo test".to_string(),
+                preferred_action: None,
             }),
         );
 
         assert_eq!(
             disposition,
-            crate::mcp::PlannerProposalDisposition::Accepted
+            crate::mcp::ProposalDisposition::Accepted
         );
         let recommendations = app.current_tab().turn.recommendations().unwrap();
         assert_eq!(recommendations.choices[0].choice, 1);
@@ -16376,7 +16359,7 @@ mod tests {
 
         assert_eq!(
             disposition,
-            crate::mcp::PlannerProposalDisposition::Accepted
+            crate::mcp::ProposalDisposition::Accepted
         );
         let action = &app.current_tab().turn.recommendations().unwrap().choices[0].actions[0];
         assert!(matches!(
@@ -16411,9 +16394,10 @@ mod tests {
                 "session-old",
                 planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
                     input: "cargo test".to_string(),
+                    preferred_action: None,
                 }),
             ),
-            crate::mcp::PlannerProposalDisposition::Stale
+            crate::mcp::ProposalDisposition::Stale
         );
 
         app.session_to_tab.remove("session-old");
@@ -16425,15 +16409,16 @@ mod tests {
         );
         let proposal = planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
             input: "cargo test".to_string(),
+            preferred_action: None,
         });
         assert_eq!(
             app.accept_terminal_actions_proposal("session-new", proposal.clone()),
-            crate::mcp::PlannerProposalDisposition::Accepted
+            crate::mcp::ProposalDisposition::Accepted
         );
         app.turn_execute_card("session-new");
         assert_eq!(
             app.accept_terminal_actions_proposal("session-new", proposal),
-            crate::mcp::PlannerProposalDisposition::Duplicate
+            crate::mcp::ProposalDisposition::Duplicate
         );
     }
 
@@ -16455,7 +16440,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_planner_proposal_enforces_turn_and_target_context() {
+    fn unified_proposal_enforces_autofix_shape_and_planner_target_context() {
         let mut app = test_app();
         bind_test_session(&mut app, "session-a");
         submit_autofix_prompt(&mut app, "trusted-pane");
@@ -16464,24 +16449,39 @@ mod tests {
                 "session-a",
                 planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
                     input: "cargo test".to_string(),
+                    preferred_action: None,
                 }),
             ),
-            crate::mcp::PlannerProposalDisposition::NotPlanner
+            crate::mcp::ProposalDisposition::Invalid
+        );
+        assert_eq!(
+            app.accept_terminal_actions_proposal(
+                "session-a",
+                planner_proposal(crate::mcp::ProposedTerminalAction::Open {
+                    target: crate::mcp::ProposedOpenTarget::Tab,
+                    cwd: None,
+                    title: None,
+                    direction: None,
+                    profile: None,
+                }),
+            ),
+            crate::mcp::ProposalDisposition::Invalid
         );
 
         app.turn_cancel("session-a");
         submit_test_prompt(&mut app, "run tests");
         let send = planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
             input: "cargo test".to_string(),
+            preferred_action: None,
         });
         assert_eq!(
             app.accept_terminal_actions_proposal("session-a", send.clone()),
-            crate::mcp::PlannerProposalDisposition::ContextUnavailable
+            crate::mcp::ProposalDisposition::ContextUnavailable
         );
         app.apply_planner_target_resolved("session-a", 42, None);
         assert_eq!(
             app.accept_terminal_actions_proposal("session-a", send),
-            crate::mcp::PlannerProposalDisposition::TargetUnavailable
+            crate::mcp::ProposalDisposition::TargetUnavailable
         );
 
         let open_tab =
@@ -16494,20 +16494,21 @@ mod tests {
             });
         assert_eq!(
             app.accept_terminal_actions_proposal("session-a", open_tab.clone()),
-            crate::mcp::PlannerProposalDisposition::Accepted
+            crate::mcp::ProposalDisposition::Accepted
         );
         assert_eq!(
             app.accept_terminal_actions_proposal("session-a", open_tab),
-            crate::mcp::PlannerProposalDisposition::Duplicate
+            crate::mcp::ProposalDisposition::Duplicate
         );
         assert_eq!(
             app.accept_terminal_actions_proposal(
                 "unknown",
                 planner_proposal(crate::mcp::ProposedTerminalAction::SendInput {
                     input: "cargo test".to_string(),
+                    preferred_action: None,
                 }),
             ),
-            crate::mcp::PlannerProposalDisposition::Stale
+            crate::mcp::ProposalDisposition::Stale
         );
     }
 
@@ -16847,7 +16848,6 @@ mod tests {
         app.current_tab_mut().planner_target = Some(PlannerTargetContext {
             prompt_id: 42,
             pane_id: Some("pane-X".into()),
-            proposal_accepted: false,
         });
         let disposition = app.accept_terminal_actions_proposal(
             "session-a",
@@ -16858,13 +16858,14 @@ mod tests {
                     rationale: "r".into(),
                     action: crate::mcp::ProposedTerminalAction::SendInput {
                         input: "ls".into(),
+                        preferred_action: None,
                     },
                 }],
             },
         );
         assert_eq!(
             disposition,
-            crate::mcp::PlannerProposalDisposition::Accepted
+            crate::mcp::ProposalDisposition::Accepted
         );
         let tab = app.current_tab();
         assert!(

@@ -267,7 +267,8 @@ mod tests {
 
     #[test]
     fn embedded_autofix_prompt_requires_tool_or_markdown_not_json() {
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("propose_terminal_input"));
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("propose_terminal_actions"));
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("exactly one `send_input` action"));
         assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Never return JSON"));
         assert!(!EMBEDDED_AUTOFIX_PROMPT.contains("\"action\": \"fix\""));
     }

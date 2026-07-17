@@ -62,6 +62,7 @@ Each choice has exactly one action:
 
 1. `send_input`
    - Required: `input`
+   - Optional: `preferred_action` (`execute` or `insert`)
    - The helper injects the active working pane captured for this prompt.
    - The card offers Run and Insert.
 2. `open`
@@ -103,9 +104,14 @@ user prompt
 ```
 
 The first accepted tool proposal surfaces the card immediately as the turn's
-single outcome. Duplicate, stale, Autofix, or invalid-context calls are rejected.
+single outcome. Duplicate, stale, or invalid-context calls are rejected.
 Assistant text is never inspected for action JSON. If an agent emits legacy JSON
 as text, it is displayed as ordinary Markdown and cannot create a card.
+
+The same MCP tool also serves Autofix turns. The helper identifies the trusted
+turn type and restricts Autofix to exactly one `send_input` choice with a
+`preferred_action`; open, split, delegate, and multi-choice proposals are
+rejected there.
 
 ## Prompt contract
 

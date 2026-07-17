@@ -1,4 +1,4 @@
-# Autofix MCP Terminal Input Proposal
+# Autofix MCP Terminal Action Proposal
 
 Author: GitHub Copilot with vanzue
 Date: 2026-07-16
@@ -14,12 +14,13 @@ prose-wrapped model output can silently discard a useful answer.
 
 This change replaces model-authored Autofix JSON with two explicit outcomes:
 
-1. A deterministic one-command fix is submitted through a typed MCP tool named
-   `propose_terminal_input`.
+1. A deterministic one-command fix is submitted through the shared typed MCP
+   tool `propose_terminal_actions`.
 2. Every non-deterministic, unsafe, ambiguous, or explanatory result is returned
    as normal Markdown.
 
-The MCP tool creates a proposal only. It never inserts or executes terminal
+The MCP tool creates a proposal only. Autofix restricts it to exactly one
+`send_input` choice; it never inserts or executes terminal
 input by itself. The owning helper renders `Run` and `Insert` actions, and the
 user chooses the side effect.
 
@@ -61,25 +62,32 @@ registry or Autofix context. `session_to_helper` and the helper's
 Name:
 
 ```text
-propose_terminal_input
+propose_terminal_actions
 ```
 
 Arguments:
 
 ```json
 {
-  "input": "dotnet test",
-  "preferred_action": "execute",
-  "title": "Retry dotnet test",
-  "rationale": "The previous command contained a typo."
+  "recommended_choice": 1,
+  "choices": [{
+    "title": "Retry dotnet test",
+    "rationale": "The previous command contained a typo.",
+    "action": {
+      "type": "send_input",
+      "input": "dotnet test",
+      "preferred_action": "execute"
+    }
+  }]
 }
 ```
 
 Schema and server validation:
 
+- Autofix requires exactly one choice whose action is `send_input`.
 - `input` is required, non-empty, and length-bounded.
-- `preferred_action` is required and is either `insert` or `execute`.
-- `title` and `rationale` are optional and length-bounded.
+- `preferred_action` is required for Autofix and is either `insert` or `execute`.
+- `title` is required; `rationale` is optional and length-bounded.
 - Unknown fields are rejected.
 - NUL characters are rejected.
 - No target or routing identifiers are accepted.
@@ -138,7 +146,8 @@ existing card renderer and execution path. It is never parsed from model text.
 
 The Autofix prompt no longer requests JSON.
 
-- Call `propose_terminal_input` exactly once only when one non-destructive,
+- Call `propose_terminal_actions` exactly once with one `send_input` choice only
+  when one non-destructive,
   deterministic command resolves the failure.
 - Return Markdown when installation, authentication, elevation, destructive
   behavior, multiple steps, multiple plausible corrections, or user intent is
@@ -175,8 +184,8 @@ This is delivered as one complete change:
 
 1. Make the master-owned MCP server session-routable and inject routes from
    master for every `session/new` and `session/load`.
-2. Add the strict `propose_terminal_input` tool and synchronous typed
-   master-to-helper extension request.
+2. Add the session-bound `propose_terminal_actions` tool and synchronous typed
+   master-to-helper extension request shared by Autofix and normal agent turns.
 3. Convert an accepted typed proposal into a helper-owned one-choice card and
    reuse Run/Insert/Esc handling with the trusted Autofix context.
 4. Change `auto-fix.md` to tool-or-Markdown behavior.

@@ -1553,31 +1553,6 @@ impl WtaClient {
     ) -> acp::Result<acp::schema::v1::ExtResponse> {
         if crate::session_registry::ext_method_matches(
             &args.method,
-            crate::mcp::INTELLTERM_METHOD_PROPOSE_TERMINAL_INPUT,
-        ) {
-            let params = crate::mcp::parse_terminal_input_proposal_params(&args.params)
-                .map_err(|err| acp::Error::invalid_params().data(err.to_string()))?;
-            let session_id = params.session_id.0.to_string();
-            let (responder, response) = tokio::sync::oneshot::channel();
-            self.state
-                .event_tx
-                .send(AppEvent::TerminalInputProposal {
-                    session_id,
-                    proposal: params.proposal,
-                    responder,
-                })
-                .map_err(|_| {
-                    acp::Error::internal_error().data("terminal proposal UI channel is closed")
-                })?;
-            let disposition = response.await.map_err(|_| {
-                acp::Error::internal_error().data("terminal proposal response channel is closed")
-            })?;
-            return Ok(crate::mcp::build_terminal_input_proposal_response(
-                &crate::mcp::TerminalInputProposalResponse { disposition },
-            ));
-        }
-        if crate::session_registry::ext_method_matches(
-            &args.method,
             crate::mcp::INTELLTERM_METHOD_PROPOSE_TERMINAL_ACTIONS,
         ) {
             let params = crate::mcp::parse_terminal_actions_proposal_params(&args.params)
@@ -1593,11 +1568,10 @@ impl WtaClient {
                 })
                 .map_err(|_| {
                     acp::Error::internal_error()
-                        .data("terminal actions proposal UI channel is closed")
+                        .data("terminal proposal UI channel is closed")
                 })?;
             let disposition = response.await.map_err(|_| {
-                acp::Error::internal_error()
-                    .data("terminal actions proposal response channel is closed")
+                acp::Error::internal_error().data("terminal proposal response channel is closed")
             })?;
             return Ok(crate::mcp::build_terminal_actions_proposal_response(
                 &crate::mcp::TerminalActionsProposalResponse { disposition },

@@ -70,6 +70,7 @@ Submit one to three ordered choices. `recommended_choice` is optional and
 ```text
 type: send_input
 input: command text for the active pane's shell
+preferred_action: optional execute | insert initial focus
 ```
 
 The helper binds this action to the trusted active working pane. The card offers
