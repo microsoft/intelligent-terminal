@@ -44,27 +44,38 @@ for /f "usebackq delims=" %%I in (`dir /b /aD /o-N /s "%~dp0..\packages\vswhere*
 
 if not defined VSWHERE (
     echo Could not find vswhere on your machine. Please set the VSWHERE variable to the location of vswhere.exe and run razzle again.
-    goto :EXIT
+    exit /b 1
 )
 
 rem Add path to MSBuild Binaries
 rem
-rem We're going to always prefer prerelease version of VS 2022. The -version
-rem range [17.0,18.0) ensures we pick VS 2022 (including previews) but not a
-rem newer major version whose toolset may be incompatible with our v143
-rem PlatformToolset. If you need VS 18+, update PlatformToolset in
-rem src\common.build.pre.props as well.
+rem We accept the latest prerelease of VS in the 17.x or 18.x range. The -version
+rem range [17.0,19.0) picks up both VS 2022 (17.x) and VS 18 (including previews)
+rem but not a still-newer major whose toolset may be incompatible. VS 18 builds
+rem fine with our current v143 PlatformToolset; if a future major needs a newer
+rem toolset, update PlatformToolset in src\common.build.pre.props as well.
 rem
-for /f "usebackq tokens=*" %%B in (`%VSWHERE% -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,18.0)" -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do (
+for /f "usebackq tokens=*" %%B in (`%VSWHERE% -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do (
     set MSBUILD=%%B
 )
 
 if not defined MSBUILD (
     echo Could not find MsBuild on your machine. Please set the MSBUILD variable to the location of MSBuild.exe and run razzle again.
-    goto :EXIT
+    exit /b 1
 )
 
 :FOUND_MSBUILD
+
+rem Guard: make sure we actually resolved a real MSBuild.exe. Without this, a
+rem chained command like `razzle && bcz` would run bcz with an empty MSBUILD/
+rem PLATFORM/CONFIGURATION and fail cryptically with '""' is not recognized.
+if not exist "%MSBUILD%" (
+    echo Could not find a usable MSBuild.exe ^(resolved: "%MSBUILD%"^).
+    echo Open a "Developer PowerShell/Command Prompt for VS", or run
+    echo   Import-Module .\tools\OpenConsole.psm1; Set-MsbuildDevEnvironment
+    echo in your shell before razzle, then try again.
+    exit /b 1
+)
 
 set PATH=%PATH%%MSBUILD%\..;
 
@@ -123,5 +134,6 @@ set OpenConBuild=true
 
 :END
 echo The dev environment is ready to go!
+exit /b 0
 
 :EXIT
