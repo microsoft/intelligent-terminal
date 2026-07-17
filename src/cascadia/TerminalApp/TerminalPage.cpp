@@ -5189,7 +5189,8 @@ namespace winrt::TerminalApp::implementation
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }
 
-    // Inbound event from WTA: {method:"restore_shell_session", params:{name}}.
+    // Inbound event from WTA: {method:"restore_shell_session",
+    //   params:{name, agent_session_id?, agent_cwd?}}.
     // Sent by the agent-pane `/shell-sessions` picker's Enter handler. We look
     // up the durable layout saved under `name` (on tab close, see
     // `_SaveShellSessionForTab`) and replay its startup actions to rebuild the
@@ -5197,6 +5198,10 @@ namespace winrt::TerminalApp::implementation
     // reconnected from its `shellsession_buffer_{guid}.txt` file: we pre-mark
     // the layout's session GUIDs in `_pendingShellSessionBufferIds` so the
     // buffer-restore path (in `_MakePane`) reads the durable file.
+    //
+    // When the saved tab had an agent pane, wta resolves its ACP session id and
+    // passes it as `agent_session_id` (+ `agent_cwd`); we resume that
+    // conversation into the rebuilt tab (see `_RestoreShellSessionCoro`).
     void TerminalPage::OnRestoreShellSessionRequested(hstring eventJson)
     {
         _agentPaneLog("OnRestoreShellSessionRequested: received from wta");
@@ -5216,12 +5221,15 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("OnRestoreShellSessionRequested: missing params object");
             return;
         }
-        const auto nameStr = evt["params"].get("name", "").asString();
+        const auto& params = evt["params"];
+        const auto nameStr = params.get("name", "").asString();
         if (nameStr.empty())
         {
             _agentPaneLog("OnRestoreShellSessionRequested: empty name — ignoring");
             return;
         }
+        const auto agentSessionId = params.get("agent_session_id", "").asString();
+        const auto agentCwd = params.get("agent_cwd", "").asString();
 
         const auto layout = ApplicationState::SharedInstance().GetShellSession(winrt::to_hstring(nameStr));
         if (!layout)
@@ -5262,7 +5270,63 @@ namespace winrt::TerminalApp::implementation
         }
 
         _agentPaneLog("OnRestoreShellSessionRequested: rebuilding tab for session '" + nameStr + "'");
-        ProcessStartupActions(std::move(actions));
+        _RestoreShellSessionCoro(std::move(actions), agentSessionId, agentCwd);
+    }
+
+    // Rebuild a shell session's tab from its saved startup actions, then (when
+    // the saved tab had an agent pane) resume that agent session into the new
+    // tab. This is a coroutine so it can sequence the agent-pane open AFTER the
+    // async tab/pane construction has settled.
+    //
+    // Agent-pane handling mirrors `OnAgentPaneRestartRequested`: every new tab
+    // pre-warms a FRESH stashed agent pane (`_InitializeTab`), so we tear that
+    // down first (FindAgentPane also finds the stashed/hidden one) and then
+    // create a RESUMED pane via `--initial-load-session-id`. Because both steps
+    // run in one synchronous block on the UI thread, the pre-warm's deferred
+    // tick either already ran (we tear it down) or runs later and no-ops on our
+    // now-present pane — so we never end up with two agent panes.
+    safe_void_coroutine TerminalPage::_RestoreShellSessionCoro(std::vector<ActionAndArgs> actions, std::string agentSessionId, std::string agentCwd)
+    {
+        const auto strong = get_strong();
+
+        // Same replay shape as ProcessStartupActions: don't suspend before the
+        // first action if this is the first tab, but suspend between subsequent
+        // ones so WinUI can lay out each new control.
+        auto suspend = _tabs.Size() > 0;
+        for (const auto& action : actions)
+        {
+            if (suspend)
+            {
+                co_await wil::resume_foreground(Dispatcher(), CoreDispatcherPriority::Low);
+            }
+            _actionDispatch->DoAction(action);
+            suspend = true;
+        }
+
+        if (!agentSessionId.empty())
+        {
+            if (const auto newTab = _GetFocusedTabImpl())
+            {
+                _agentPaneLog("OnRestoreShellSessionRequested: resuming agent session " + agentSessionId + " into restored tab");
+                // Replace any pre-warmed (fresh-session) agent pane with a
+                // resumed one bound to the saved ACP session id.
+                _TeardownAgentPane(newTab, /*suppressMasterRestart*/ true);
+                _AutoCreateHiddenAgentPaneShared(newTab,
+                                                 /*intoSessionsView*/ false,
+                                                 /*autoStash*/ false,
+                                                 agentSessionId,
+                                                 agentCwd);
+            }
+        }
+
+        // Mirror ProcessStartupActions' tail: focus the active pane's content.
+        if (const auto& tabImpl{ _GetFocusedTabImpl() })
+        {
+            if (const auto& content{ tabImpl->GetActiveContent() })
+            {
+                content.Focus(FocusState::Programmatic);
+            }
+        }
     }
 
     // Method Description:

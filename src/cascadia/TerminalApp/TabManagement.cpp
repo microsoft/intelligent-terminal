@@ -709,7 +709,22 @@ namespace winrt::TerminalApp::implementation
             {
                 cwd = activeControl.WorkingDirectory();
             }
-            _WriteShellSessionsIndexEntry(name, cwd);
+
+            // If the tab has an agent pane, record its WT session GUID
+            // (pane_session_id) so restore can resolve it to the ACP session id
+            // (via wta's agent-pane-sessions.jsonl) and resume that conversation.
+            // FindAgentPane() also finds a stashed (hidden) agent pane, so a
+            // toggled-closed-but-alive agent session is captured too.
+            winrt::hstring agentPaneSessionId;
+            if (const auto agentPane = tabImpl->FindAgentPane())
+            {
+                if (const auto sid = agentPane->GetSessionId(); sid != winrt::guid{})
+                {
+                    agentPaneSessionId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(sid) };
+                }
+            }
+
+            _WriteShellSessionsIndexEntry(name, cwd, agentPaneSessionId);
         }
         CATCH_LOG();
     }
@@ -770,7 +785,7 @@ namespace winrt::TerminalApp::implementation
     //   lightweight index just carries display metadata (name, cwd, saved_at)
     //   so the Rust side doesn't have to parse WT layouts. Written to the shared
     //   IntelligentTerminal LocalState dir (same root as agent-pane-sessions.jsonl).
-    void TerminalPage::_WriteShellSessionsIndexEntry(const winrt::hstring& name, const winrt::hstring& cwd)
+    void TerminalPage::_WriteShellSessionsIndexEntry(const winrt::hstring& name, const winrt::hstring& cwd, const winrt::hstring& agentPaneSessionId)
     {
         const auto stateDir = ::IntelligentTerminal::StateDir();
         if (stateDir.empty())
@@ -817,6 +832,10 @@ namespace winrt::TerminalApp::implementation
         entry["name"] = nameUtf8;
         entry["cwd"] = winrt::to_string(cwd);
         entry["saved_at"] = static_cast<Json::Int64>(savedAt);
+        if (!agentPaneSessionId.empty())
+        {
+            entry["agent_pane_session_id"] = winrt::to_string(agentPaneSessionId);
+        }
         updated.append(std::move(entry));
         root["sessions"] = std::move(updated);
 

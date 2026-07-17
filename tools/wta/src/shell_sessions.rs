@@ -26,6 +26,12 @@ pub struct ShellSessionEntry {
     /// Unix seconds when the session was saved. Used to sort newest-first.
     #[serde(default)]
     pub saved_at: i64,
+    /// The agent pane's WT session GUID (`pane_session_id`) at save time, if the
+    /// saved tab had an agent pane. `None`/absent when it didn't. Resolved to an
+    /// ACP session id (via `agent_pane_origin`) when restoring, so the agent
+    /// conversation is resumed into the rebuilt tab.
+    #[serde(default)]
+    pub agent_pane_session_id: Option<String>,
 }
 
 /// On-disk shape of `shell-sessions.json`.
@@ -99,6 +105,19 @@ mod tests {
         assert_eq!(index.sessions[0].name, "only-name");
         assert_eq!(index.sessions[0].cwd, "");
         assert_eq!(index.sessions[0].saved_at, 0);
+        assert_eq!(index.sessions[0].agent_pane_session_id, None);
+    }
+
+    #[test]
+    fn parses_agent_pane_session_id_when_present() {
+        let json = r#"{ "sessions": [
+            { "name": "with-agent", "cwd": "C:\\p", "saved_at": 5, "agent_pane_session_id": "pane-guid-1" }
+        ] }"#;
+        let index: ShellSessionsIndex = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            index.sessions[0].agent_pane_session_id.as_deref(),
+            Some("pane-guid-1")
+        );
     }
 
     #[test]

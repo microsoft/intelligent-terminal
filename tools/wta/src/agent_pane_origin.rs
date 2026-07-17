@@ -250,11 +250,61 @@ pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord
     out
 }
 
+/// Resolve the most recent ACP session id created for the given WT pane
+/// (`pane_session_id` — the agent pane's `WT_SESSION` GUID). Scans the index in
+/// append order across all default index paths and returns the last matching
+/// `session_id`, so a pane that hosted several sessions (via `/new`) resolves to
+/// its latest. The GUID comparison is case-insensitive. Returns `None` when
+/// nothing matches (e.g. the pane never hosted an agent-pane session, or the
+/// index is absent).
+///
+/// Used by the durable `/shell-sessions` restore to turn the pane GUID saved by
+/// Windows Terminal into an ACP session id it can `session/load`.
+pub fn resolve_latest_session_for_pane(pane_session_id: &str) -> Option<String> {
+    let needle = pane_session_id.trim();
+    if needle.is_empty() {
+        return None;
+    }
+    let mut found = None;
+    // Later paths (the current runtime's index) win over installed-package
+    // indices, matching the `default_index_paths` / `load_default_records` order.
+    for path in default_index_paths() {
+        if let Some(session_id) = last_session_for_pane_in(&path, needle) {
+            found = Some(session_id);
+        }
+    }
+    found
+}
+
+/// Scan one index file in append order, returning the `session_id` of the last
+/// record whose `pane_session_id` matches (case-insensitive), or `None`.
+fn last_session_for_pane_in(path: &std::path::Path, pane_session_id: &str) -> Option<String> {
+    let file = File::open(path).ok()?;
+    let mut last = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        let Some(pane) = value.get("pane_session_id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if !pane.eq_ignore_ascii_case(pane_session_id) {
+            continue;
+        }
+        if let Some(sid) = value.get("session_id").and_then(|v| v.as_str()) {
+            if !sid.is_empty() {
+                last = Some(sid.to_string());
+            }
+        }
+    }
+    last
+}
+
 fn rfc3339_now() -> String {
-    // Tiny RFC3339 emitter — we don't pull in chrono just for this. The
-    // exact format is unspecified by callers (the index is for our own
-    // consumption); a sortable UTC timestamp is enough for `tail -f`
-    // debugging.
     let secs = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -375,6 +425,30 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let set = load_set_from(&path);
         assert!(set.is_empty());
+    }
+
+    #[test]
+    fn resolve_latest_session_for_pane_returns_last_match() {
+        let path = tmp_index_path("resolve-pane");
+        // The same pane hosted two sessions over time (e.g. via `/new`); the
+        // latest (last appended) must win. GUID compare is case-insensitive.
+        append_to(&path, "sess-old", Some("PANE-GUID")).unwrap();
+        append_to(&path, "sess-new", Some("pane-guid")).unwrap();
+        append_to(&path, "other", Some("different-pane")).unwrap();
+
+        assert_eq!(
+            last_session_for_pane_in(&path, "pane-guid").as_deref(),
+            Some("sess-new")
+        );
+        assert_eq!(
+            last_session_for_pane_in(&path, "PANE-GUID").as_deref(),
+            Some("sess-new")
+        );
+        // Unknown pane, and a missing file, both resolve to None.
+        assert_eq!(last_session_for_pane_in(&path, "no-such-pane"), None);
+        let missing = std::env::temp_dir().join("no-such-index-77a1.jsonl");
+        let _ = std::fs::remove_file(&missing);
+        assert_eq!(last_session_for_pane_in(&missing, "pane-guid"), None);
     }
 
     #[test]
