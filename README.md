@@ -257,6 +257,9 @@ We are excited to work alongside you, our amazing community, to build and enhanc
 
 **Before you start work on a feature/fix**, please read & follow the [Windows Terminal Contributor's Guide](https://github.com/microsoft/terminal/blob/main/CONTRIBUTING.md). The contribution process is the same.
 
+For local dev/build of this repo, see:
+[quick-start-local-dev](doc/quick-start-local-dev.md)
+
 ---
 
 ## Code of Conduct
