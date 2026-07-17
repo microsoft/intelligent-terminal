@@ -91,6 +91,7 @@ commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch directly)"  # {Locked="/agent","<id>"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate

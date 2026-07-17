@@ -215,6 +215,7 @@ system.agent_switch_unavailable: "Přepínání agentů není mimo kartu Windows
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}
+commands.move.summary: "Přesunout panel agenta pro tuto kartu (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Vyberte model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Připojený agent neohlásil žádné dostupné modely."
 system.model_set: "Model pro tento panel nastaven na %{model}."  # {Locked="%{model}"}

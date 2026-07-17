@@ -208,6 +208,7 @@ system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}
+commands.move.summary: "이 탭의 에이전트 창 이동 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "모델 선택 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "연결된 에이전트가 선택 가능한 모델을 알리지 않았습니다."
 system.model_set: "이 창의 모델이 %{model}(으)로 설정되었습니다."  # {Locked="%{model}"}

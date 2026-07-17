@@ -909,7 +909,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (position == L"bottom")
             return SplitDirection::Down;
-        if (position == L"top")
+        if (position == L"top" || position == L"up")
             return SplitDirection::Up;
         if (position == L"left")
             return SplitDirection::Left;
@@ -4607,6 +4607,25 @@ namespace winrt::TerminalApp::implementation
             view = params["view"].asString();
             logSuffix += " view=" + *view;
         }
+        std::optional<winrt::hstring> panePosition;
+        if (params.isMember("pane_position"))
+        {
+            if (params["pane_position"].isString())
+            {
+                const auto requested = winrt::to_hstring(params["pane_position"].asString());
+                if (requested == L"left" || requested == L"right" ||
+                    requested == L"up" || requested == L"bottom")
+                {
+                    panePosition = requested;
+                    logSuffix += " pane_position=" + winrt::to_string(requested);
+                }
+            }
+            else if (params["pane_position"].isNull())
+            {
+                panePosition = _settings.GlobalSettings().AgentPanePosition();
+                logSuffix += " pane_position=global";
+            }
+        }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
         // Apply view to the existing AgentPaneContent if any.
@@ -4673,6 +4692,54 @@ namespace winrt::TerminalApp::implementation
                     // background pane while the agent is out of sight.
                     targetTab->SetAgentChipOverride(std::nullopt);
                     targetTab->StashAgentPane();
+                }
+            }
+        }
+
+        // Apply the per-tab `/move` override, or reset this tab to the global
+        // position when WTA explicitly sends null. Never mutate GlobalSettings
+        // or walk the other tabs.
+        if (panePosition.has_value())
+        {
+            const auto agentPane = targetTab->FindAgentPane();
+            const auto focusedTab = _GetFocusedTabImpl();
+            const bool restoreAgentFocus = agentPane &&
+                                           !agentPane->IsHidden() &&
+                                           focusedTab &&
+                                           focusedTab->StableId() == tabId &&
+                                           targetTab->GetActivePane() == agentPane;
+            bool repositioned = false;
+            if (const auto rootPane = targetTab->GetRootPane())
+            {
+                repositioned = rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+            }
+            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            {
+                // AgentPaneContent uses the settings spelling "top" for Up.
+                const auto contentPosition = *panePosition == L"up" ?
+                                                 winrt::hstring{ L"top" } :
+                                                 *panePosition;
+                agentContent.SetAgentPanePosition(contentPosition);
+
+                // RepositionAgentPane rebuilds the split's XAML visual tree,
+                // which clears focus. `/move` originates in this TermControl,
+                // so restore it after the next layout pass, but only if this
+                // pane was focused before the move.
+                if (repositioned && restoreAgentFocus)
+                {
+                    if (const auto termControl = agentContent.GetTermControl())
+                    {
+                        if (const auto dispatcher = DispatcherQueue::GetForCurrentThread())
+                        {
+                            const auto weakControl = winrt::make_weak(termControl);
+                            dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
+                                if (const auto ctrl = weakControl.get())
+                                {
+                                    ctrl.Focus(FocusState::Programmatic);
+                                }
+                            });
+                        }
+                    }
                 }
             }
         }

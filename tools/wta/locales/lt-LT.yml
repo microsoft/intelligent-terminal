@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Window
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
+commands.move.summary: "Perkelti šios kortelės agento skydelį (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."
 system.model_set: "Šios srities modelis nustatytas į %{model}."  # {Locked="%{model}"}

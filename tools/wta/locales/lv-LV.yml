@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Aģenta pārslēgšana nav pieejama ārpus Win
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izvēlieties šīs rūts modeli (/model <id>, lai pārslēgtu tieši)"  # {Locked="/model","<id>"}
+commands.move.summary: "Pārvietot šīs cilnes aģenta paneli (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}

@@ -89,7 +89,9 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
     }
 }
 
-use crate::commands::{self, CommandKind, CommandSpec, ParseOutcome, ParsedCommand};
+use crate::commands::{
+    self, CommandKind, CommandSpec, MovePositionSpec, ParseOutcome, ParsedCommand,
+};
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
     validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
@@ -1510,8 +1512,11 @@ pub struct TabSession {
     /// command-prefix mode. The popup renderer treats an empty Vec as
     /// "do not render".
     pub command_popup_candidates: Vec<&'static CommandSpec>,
-    /// Index into [`Self::command_popup_candidates`]. Clamped on every
-    /// mutation that could shrink the list.
+    /// Position candidates shown after `/move `. Kept separate from command
+    /// candidates so the existing command registry remains strongly typed.
+    pub move_position_candidates: Vec<&'static MovePositionSpec>,
+    /// Index into whichever popup candidate list is active: commands or
+    /// `/move` positions. Clamped whenever either list can shrink.
     pub command_popup_selected: usize,
 
     // Filled in Milestone 2 once each tab has its own ACP SessionId.
@@ -1557,6 +1562,9 @@ pub struct TabSession {
     // C++-originated `set_agent_state` requests (hotkey/button toggles)
     // and by wta-internal events like Ctrl+C×2 reset.
     pub pane_open: bool,
+    /// Transient position override for this tab's agent pane. `None` follows
+    /// the global `agentPanePosition` setting; `/move` sets a canonical value.
+    pub agent_pane_position: Option<&'static str>,
 
     // Pre-entry pane visibility, remembered when the user opens the
     // session-management (Agents) view so Esc can restore *that* state rather
@@ -1875,25 +1883,32 @@ impl TabSession {
     /// input. Called after every input mutation. Clamps the selected
     /// index so it stays valid when the candidate list shrinks.
     pub fn refresh_command_popup(&mut self) {
-        if commands::is_command_prefix(&self.input) {
+        if let Some(prefix) = commands::move_position_prefix(&self.input) {
+            self.command_popup_candidates.clear();
+            self.move_position_candidates = commands::match_move_positions(prefix);
+        } else if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
             // partial name. `is_command_prefix` already guarantees the
             // shape, so the unwrap is safe.
             let trimmed = self.input.trim_start();
             let name = trimmed.strip_prefix('/').unwrap_or("");
             self.command_popup_candidates = commands::matches(name);
+            self.move_position_candidates.clear();
         } else {
             self.command_popup_candidates.clear();
+            self.move_position_candidates.clear();
         }
-        if self.command_popup_candidates.is_empty() {
+        let candidate_count =
+            self.command_popup_candidates.len() + self.move_position_candidates.len();
+        if candidate_count == 0 {
             self.command_popup_selected = 0;
-        } else if self.command_popup_selected >= self.command_popup_candidates.len() {
-            self.command_popup_selected = self.command_popup_candidates.len() - 1;
+        } else if self.command_popup_selected >= candidate_count {
+            self.command_popup_selected = candidate_count - 1;
         }
     }
 
     pub fn command_popup_visible(&self) -> bool {
-        !self.command_popup_candidates.is_empty()
+        !self.command_popup_candidates.is_empty() || !self.move_position_candidates.is_empty()
     }
 
     pub fn command_popup_up(&mut self) {
@@ -1903,7 +1918,9 @@ impl TabSession {
     }
 
     pub fn command_popup_down(&mut self) {
-        if self.command_popup_selected + 1 < self.command_popup_candidates.len() {
+        let candidate_count =
+            self.command_popup_candidates.len() + self.move_position_candidates.len();
+        if self.command_popup_selected + 1 < candidate_count {
             self.command_popup_selected += 1;
         }
     }
@@ -1914,12 +1931,22 @@ impl TabSession {
             .copied()
     }
 
+    pub fn selected_move_position(&self) -> Option<&'static MovePositionSpec> {
+        self.move_position_candidates
+            .get(self.command_popup_selected)
+            .copied()
+    }
+
     /// Tab-completion: replace the input buffer with `/<name> ` (with a
     /// trailing space if the command takes args; otherwise just the
     /// name) and reset the cursor to the end. Triggered by Tab when the
     /// popup is visible.
     pub fn accept_command_popup_completion(&mut self) {
-        if let Some(spec) = self.selected_command_spec() {
+        if let Some(position) = self.selected_move_position() {
+            self.input = format!("/move {}", position.name);
+            self.cursor_pos = self.input.len();
+            self.refresh_command_popup();
+        } else if let Some(spec) = self.selected_command_spec() {
             self.input = if spec.takes_args {
                 format!("/{} ", spec.name)
             } else {
@@ -7624,7 +7651,7 @@ impl App {
     /// popup should not be drawn this frame. Reads from the active tab.
     pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
         let tab = self.current_tab();
-        if tab.command_popup_candidates.is_empty() {
+        if !tab.command_popup_visible() {
             return None;
         }
         // When the transport to master is lost, only /restart can run — so the
@@ -7634,21 +7661,24 @@ impl App {
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Normal path borrows the tab's list (no per-frame allocation on the
         // render hot path); only the degraded filter allocates.
-        let candidates: std::borrow::Cow<'_, [&'static crate::commands::CommandSpec]> =
-            if self.transport_lost {
-                let filtered: Vec<&'static crate::commands::CommandSpec> = tab
-                    .command_popup_candidates
-                    .iter()
-                    .copied()
-                    .filter(|s| s.kind == crate::commands::CommandKind::Restart)
-                    .collect();
-                if filtered.is_empty() {
-                    return None;
-                }
-                std::borrow::Cow::Owned(filtered)
-            } else {
-                std::borrow::Cow::Borrowed(tab.command_popup_candidates.as_slice())
-            };
+        let candidates = if self.transport_lost {
+            let filtered: Vec<&'static crate::commands::CommandSpec> = tab
+                .command_popup_candidates
+                .iter()
+                .copied()
+                .filter(|s| s.kind == crate::commands::CommandKind::Restart)
+                .collect();
+            if filtered.is_empty() {
+                return None;
+            }
+            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
+        } else if !tab.move_position_candidates.is_empty() {
+            crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
+        } else {
+            crate::ui::PopupCandidates::Commands(std::borrow::Cow::Borrowed(
+                tab.command_popup_candidates.as_slice(),
+            ))
+        };
         Some(crate::ui::PopupState {
             candidates,
             selected: tab.command_popup_selected,
@@ -7763,6 +7793,20 @@ impl App {
             // (everything else would hit the dead pipe). Pick the /restart
             // spec if it's in the filtered candidate list; otherwise there's
             // nothing to run, so consume Enter and show the reconnect hint.
+            if !self.transport_lost {
+                if let Some(position) = self.current_tab().selected_move_position() {
+                    let spec = commands::lookup("move").expect("/move is registered");
+                    let parsed = ParsedCommand {
+                        kind: CommandKind::Move,
+                        spec,
+                        rest: position.name.to_string(),
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                    return true;
+                }
+            }
+
             let spec = if self.transport_lost {
                 self.current_tab()
                     .command_popup_candidates
@@ -7865,6 +7909,7 @@ impl App {
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
+            CommandKind::Move => self.cmd_move(cmd.rest),
         }
     }
 
@@ -8061,6 +8106,22 @@ impl App {
         // Per-tab — only flips the active tab's view state.
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
+        self.project_active_tab_state();
+    }
+
+    /// `/move <position>` — move only this tab's agent pane. Positions accept
+    /// full names (`left`, `right`, `up`, `bottom`) or `l/r/u/b`. Bare or
+    /// invalid input reopens the position completion popup.
+    fn cmd_move(&mut self, position: String) {
+        let Some(position) = commands::lookup_move_position(&position) else {
+            let tab = self.current_tab_mut();
+            tab.input = "/move ".to_string();
+            tab.cursor_pos = tab.input.len();
+            tab.refresh_command_popup();
+            return;
+        };
+
+        self.current_tab_mut().agent_pane_position = Some(position.name);
         self.project_active_tab_state();
     }
 
@@ -9704,7 +9765,8 @@ impl App {
     ///   "method": "agent_state_changed",
     ///   "params": {
     ///     "view":      "chat" | "sessions",
-    ///     "pane_open": true | false
+    ///     "pane_open": true | false,
+    ///     "pane_position": "left" | "right" | "up" | "bottom" | null
     ///   }
     /// }
     /// ```
@@ -9758,6 +9820,7 @@ impl App {
                 "tab_id":    target_tab,
                 "view":      view,
                 "pane_open": tab.pane_open,
+                "pane_position": tab.agent_pane_position,
             }
         });
         send_wt_protocol_event(evt.to_string());

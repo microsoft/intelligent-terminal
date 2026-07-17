@@ -212,6 +212,7 @@ system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponuesh�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
+commands.move.summary: "Lëvizni panelin e agjentit të kësaj skede (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
 system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}
