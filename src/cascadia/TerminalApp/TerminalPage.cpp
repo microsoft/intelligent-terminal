@@ -9115,22 +9115,15 @@ namespace winrt::TerminalApp::implementation
             FrameBrush(nullptr);
         }
 
-        // #348: The AI agent bars (window-level bottom bar + each tab's
-        // agent-pane top bar) used to be hard-coded black. They now follow the
-        // AGENT PANE's own background color (its coordinator profile), *not*
-        // the tab's effective color — the tab color tracks whichever pane is
-        // focused, so following it would recolor the agent chrome when the
-        // user clicks a sibling terminal pane. The agent pane background is
-        // fixed by its profile, so the chrome stays stable and blends with the
-        // agent pane it belongs to regardless of focus.
+        // #348: Each agent-pane title bar follows that pane's own background
+        // color (its coordinator profile), not the tab's effective color. The
+        // window-level bottom bar remains fixed black.
         {
             constexpr auto lightnessThreshold = 0.6f;
             // Given a background color, produce an opaque background brush plus
             // a legible foreground brush (black/white by luminance — the same
             // way tabs choose their font color, see Tab::_ApplyTabColorOnUIThread).
-            // Opacity is forced to 255: the bars are window chrome and must be
-            // a solid fill (a translucent color would let the desktop show
-            // through — see the BottomBar XAML comments).
+            // Opacity is forced to 255 so the title bar is a solid fill.
             const auto brushesFor = [lightnessThreshold](const til::color c) {
                 const til::color opaque{ c.r, c.g, c.b, 255 };
                 const auto fg = ColorFix::GetLightness(opaque) >= lightnessThreshold ?
@@ -9153,73 +9146,16 @@ namespace winrt::TerminalApp::implementation
                 return std::nullopt;
             };
 
-            // The window-level bottom bar reflects the *active* tab's agent
-            // pane. Fall back to the tab-row color only when the active tab has
-            // no agent pane at all.
-            til::color bottomColor = bgColor;
-            if (const auto focused = _GetFocusedTabImpl())
-            {
-                if (const auto c = agentPaneColor(focused->FindAgentPaneContent()))
-                {
-                    bottomColor = *c;
-                }
-            }
-            const auto [barBackground, barForeground] = brushesFor(bottomColor);
-
             // Cache so an agent pane created later (mid-session, before the
-            // next theme refresh) can be themed at construction time.
-            _agentBarBackgroundBrush = barBackground;
-            _agentBarForegroundBrush = barForeground;
-
-            if (const auto barRoot = BottomBarRoot())
-            {
-                barRoot.Background(barBackground);
-            }
-            if (const auto bar = BottomBar())
-            {
-                bar.Background(barBackground);
-            }
-            if (const auto filler = TabContentFiller())
-            {
-                filler.Background(barBackground);
-            }
-            // Recolor the bar's glyph icons + diagnostics text for contrast.
-            // All three toggles are PathIcons/FontIcons, so Foreground tints
-            // them directly.
-            if (const auto icon = AgentToggleIconBottom())
-            {
-                icon.Foreground(barForeground);
-            }
-            if (const auto icon = AgentToggleIconRight())
-            {
-                icon.Foreground(barForeground);
-            }
-            if (const auto icon = DiagnosticsIcon())
-            {
-                icon.Foreground(barForeground);
-            }
-            if (const auto icon = SessionToggleIcon())
-            {
-                icon.Foreground(barForeground);
-            }
-            if (const auto label = DiagnosticsLabel())
-            {
-                label.Foreground(barForeground);
-            }
-            // The 1px divider uses the bar's foreground color at ~15% alpha,
-            // so it reads as a soft hairline (like the original #26FFFFFF) —
-            // consistent with the text/glyphs but not a hard full-white/black
-            // line (#348).
-            if (const auto divider = BottomBarDivider())
-            {
-                auto dividerColor = barForeground.Color();
-                dividerColor.A = 0x26;
-                divider.Background(Media::SolidColorBrush{ dividerColor });
-            }
+            // next theme refresh) can be themed at construction time. The tab
+            // row is only a temporary fallback until its pane brush is ready.
+            const auto [fallbackBackground, fallbackForeground] = brushesFor(bgColor);
+            _agentBarBackgroundBrush = fallbackBackground;
+            _agentBarForegroundBrush = fallbackForeground;
 
             // Each tab's agent-pane top bar follows ITS OWN pane's background
             // (so it is stable regardless of which pane is focused), falling
-            // back to the bottom-bar color only if the pane has no brush yet.
+            // back to the tab-row color only if the pane has no brush yet.
             for (const auto& tab : _tabs)
             {
                 if (const auto tabImpl{ _GetTabImpl(tab) })
@@ -9228,7 +9164,7 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (const auto agentImpl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
                         {
-                            const til::color agentColor = agentPaneColor(agentContent).value_or(bottomColor);
+                            const til::color agentColor = agentPaneColor(agentContent).value_or(bgColor);
                             const auto [agentBackground, agentForeground] = brushesFor(agentColor);
                             agentImpl->ApplyThemeColors(agentBackground, agentForeground);
                         }
