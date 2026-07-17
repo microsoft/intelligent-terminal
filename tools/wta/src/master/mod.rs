@@ -58,6 +58,8 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+mod orphan_notifications;
+
 use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::spawn_agent_process;
 use crate::Cli;
@@ -138,6 +140,17 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    /// Notifications the agent CLI emitted for a session *before* its
+    /// `session_to_helper` route existed, held for replay once the route
+    /// is installed. Populated by `MasterClient::session_notification`'s
+    /// unbound-session path and drained by `new_session` (see
+    /// [`orphan_notifications`] for the why).
+    ///
+    /// **Lock ordering:** always taken *while holding* `session_to_helper`
+    /// (both the buffering path and the replay path re-take
+    /// `session_to_helper` first), so the two can't interleave and strand
+    /// a buffered notification after the queue was already drained.
+    orphan_notifications: Mutex<orphan_notifications::OrphanNotificationBuffer>,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside
@@ -645,12 +658,53 @@ impl MasterClient {
                 }
             }
             None => {
-                tracing::warn!(
-                    target: "master",
-                    session_id = ?sid,
-                    kind = %kind,
-                    "agent CLI emitted session_notification for unknown SessionId — no helper to route to"
-                );
+                // The session's route isn't installed yet. For a
+                // brand-new session this is the normal pre-binding race:
+                // the agent CLI emits `available_commands_update` (and
+                // occasionally an opening chunk) synchronously while
+                // `session/new` is still returning, so the notification
+                // reaches master a few ms before `new_session` records
+                // the route. Rather than drop it — the old behavior, a
+                // WARN on every session create with the slash-command
+                // list silently lost — buffer it for `new_session` to
+                // replay once the route lands. See the
+                // `orphan_notifications` module.
+                //
+                // Re-lock `session_to_helper` and re-check: the route may
+                // have been installed between the snapshot above and now.
+                // If so, deliver directly (best-effort). Otherwise buffer
+                // *while still holding* `session_to_helper` so the replay
+                // drain in `new_session` can't run between our check and
+                // our insert and leave this entry stranded (the
+                // lock-ordering invariant documented on
+                // `MasterStateInner::orphan_notifications`).
+                let map = self.state.session_to_helper.lock().await;
+                if let Some(route) = map.get(&sid) {
+                    let tx = route.notif_tx.clone();
+                    drop(map);
+                    let _ = tx.try_send(args);
+                } else {
+                    let evicted = {
+                        let mut orphans = self.state.orphan_notifications.lock().await;
+                        orphans.buffer(sid.clone(), args, std::time::Instant::now())
+                    };
+                    drop(map);
+                    for e in evicted {
+                        tracing::warn!(
+                            target: "master",
+                            session_id = ?e.session_id,
+                            dropped = e.dropped,
+                            reason = ?e.reason,
+                            "dropping buffered session notifications for a session that never bound to a helper"
+                        );
+                    }
+                    tracing::debug!(
+                        target: "master",
+                        session_id = ?sid,
+                        kind = %kind,
+                        "buffered session notification for a not-yet-bound session; will replay after route install"
+                    );
+                }
             }
         }
         Ok(())
@@ -797,6 +851,43 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
         AvailableCommandsUpdate { .. } => "available_commands_update",
         _ => "other",
     }
+}
+
+/// Drain and replay any notifications buffered for `sid` before its
+/// `session_to_helper` route existed (the new-session pre-binding race —
+/// see the [`orphan_notifications`] module and
+/// `MasterClient::session_notification`).
+///
+/// The caller MUST hold the `session_to_helper` lock across this call so
+/// a concurrently-arriving post-binding notification (which takes the
+/// same lock before delivering directly) can't be enqueued ahead of the
+/// replayed ones, preserving arrival order across the bind transition.
+async fn replay_orphan_notifications(
+    state: &MasterStateInner,
+    notif_tx: &mpsc::Sender<acp::schema::v1::SessionNotification>,
+    sid: &acp::schema::v1::SessionId,
+) {
+    let buffered = {
+        let mut orphans = state.orphan_notifications.lock().await;
+        orphans.take(sid)
+    };
+    if buffered.is_empty() {
+        return;
+    }
+    let replayed = buffered.len();
+    for notif in buffered {
+        // The helper's channel was just created (empty), so `Full` is
+        // effectively impossible here; `Closed` only if the helper
+        // vanished between binding and now. Best-effort is correct —
+        // there's no better fallback than the normal drop path.
+        let _ = notif_tx.try_send(notif);
+    }
+    tracing::debug!(
+        target: "master",
+        session_id = ?sid,
+        replayed = replayed,
+        "replayed buffered session notifications after route install"
+    );
 }
 
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
@@ -1058,6 +1149,16 @@ impl HelperHandler {
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
+            // Replay any notifications the agent CLI emitted for this
+            // brand-new session before the route above existed — the
+            // pre-binding race (e.g. `available_commands_update` fired
+            // synchronously during `session/new`; see
+            // `MasterClient::session_notification`). Drained + enqueued
+            // while still holding `session_to_helper` so a concurrent
+            // post-binding notification (which must take this same lock)
+            // can't jump ahead of the replayed ones — arrival order is
+            // preserved across the bind transition.
+            replay_orphan_notifications(&self.state, &self.notif_tx, &resp.session_id).await;
             map.len()
         };
         // Mirror the binding into the live-session registry. Lock
@@ -1850,6 +1951,9 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        orphan_notifications: Mutex::new(
+            orphan_notifications::OrphanNotificationBuffer::default(),
+        ),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
@@ -4104,6 +4208,9 @@ mod tests {
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            orphan_notifications: Mutex::new(
+                orphan_notifications::OrphanNotificationBuffer::default(),
+            ),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
@@ -4630,6 +4737,84 @@ mod tests {
         assert!(
             rx2.try_recv().is_err(),
             "helper 2 should NOT have received helper 1's notification"
+        );
+    }
+
+    /// A notification for a session with no route yet is buffered (not
+    /// dropped), and a later `replay_orphan_notifications` — as issued by
+    /// `new_session` once the route lands — delivers it to the newly
+    /// bound helper in arrival order. This is the pre-binding race the
+    /// old code warned-and-dropped on every session create.
+    #[tokio::test]
+    async fn unbound_notification_is_buffered_then_replayed_on_bind() {
+        let state = make_state();
+        let sid = SessionId::new("late-bound");
+
+        // Two notifications arrive before the route exists.
+        route(&state, make_notif(&sid)).await;
+        route(&state, make_notif(&sid)).await;
+
+        assert_eq!(
+            state.orphan_notifications.lock().await.session_count(),
+            1,
+            "both notifications buffered under one session"
+        );
+
+        // The helper binds: install its route, then replay (production
+        // does the replay while holding session_to_helper — here the test
+        // is single-threaded so ordering is trivially preserved).
+        let (tx, mut rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    notif_tx: tx.clone(),
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+        }
+        replay_orphan_notifications(&state, &tx, &sid).await;
+
+        assert!(rx.try_recv().is_ok(), "first buffered notification replayed");
+        assert!(rx.try_recv().is_ok(), "second buffered notification replayed");
+        assert!(rx.try_recv().is_err(), "exactly two replayed");
+        assert_eq!(
+            state.orphan_notifications.lock().await.session_count(),
+            0,
+            "buffer drained on replay"
+        );
+    }
+
+    /// A notification whose route already exists never gets buffered — it
+    /// is delivered directly, and the orphan buffer stays empty.
+    #[tokio::test]
+    async fn bound_session_notification_is_not_buffered() {
+        let state = make_state();
+        let (tx, mut rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        let sid = SessionId::new("already-bound");
+        {
+            let mut map = state.session_to_helper.lock().await;
+            map.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    notif_tx: tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+        }
+
+        route(&state, make_notif(&sid)).await;
+
+        assert!(rx.try_recv().is_ok(), "delivered directly to the helper");
+        assert_eq!(
+            state.orphan_notifications.lock().await.session_count(),
+            0,
+            "nothing buffered for an already-bound session"
         );
     }
 
@@ -5348,6 +5533,9 @@ mod tests {
     ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            orphan_notifications: Mutex::new(
+                orphan_notifications::OrphanNotificationBuffer::default(),
+            ),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),
