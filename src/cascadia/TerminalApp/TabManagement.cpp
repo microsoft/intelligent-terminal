@@ -718,6 +718,20 @@ namespace winrt::TerminalApp::implementation
                 cwd = activeControl.WorkingDirectory();
             }
 
+            // If the tab has an agent pane, record its WT session GUID
+            // (pane_session_id) so restore can resolve it to the ACP session id
+            // (via wta's agent-pane-sessions.jsonl) and resume that conversation.
+            // FindAgentPane() also finds a stashed (hidden) agent pane, so a
+            // toggled-closed-but-alive agent session is captured too.
+            winrt::hstring agentPaneSessionId;
+            if (const auto agentPane = tabImpl->FindAgentPane())
+            {
+                if (const auto sid = agentPane->GetSessionId(); sid != winrt::guid{})
+                {
+                    agentPaneSessionId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(sid) };
+                }
+            }
+
             // wta-master is the SOLE owner of the durable shell-session store
             // (SQLite). We do NOT persist into WT's state.json; instead we ship
             // the whole snapshot as a `save_shell_session` event, which master's
@@ -741,6 +755,12 @@ namespace winrt::TerminalApp::implementation
                 guidsArr.append(winrt::to_string(guid));
             }
             params["buffer_guids"] = std::move(guidsArr);
+            // When the tab had an agent pane, forward its WT session GUID so
+            // master can persist it and restore can resume that conversation.
+            if (!agentPaneSessionId.empty())
+            {
+                params["agent_pane_session_id"] = winrt::to_string(agentPaneSessionId);
+            }
             evt["params"] = std::move(params);
 
             Json::StreamWriterBuilder wb;

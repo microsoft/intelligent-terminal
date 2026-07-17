@@ -40,6 +40,11 @@ pub struct ShellSessionRow {
     /// `<it_root>\shell-session-buffers\{guid}.txt`. Used by TTL / upsert to
     /// delete the orphaned buffer files.
     pub buffer_guids: Vec<String>,
+    /// The agent pane's WT session GUID (`pane_session_id`) at save time, if the
+    /// saved tab had an open agent pane. `None` when it didn't. Resolved to an
+    /// ACP session id (via `agent_pane_origin`) on restore, so the agent
+    /// conversation is resumed into the rebuilt tab.
+    pub agent_pane_session_id: Option<String>,
 }
 
 /// Open (creating if needed) the shell-session DB at `db_path` and ensure the
@@ -72,7 +77,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
              cwd          TEXT NOT NULL DEFAULT '',
              saved_at     INTEGER NOT NULL DEFAULT 0,
              layout_json  TEXT NOT NULL,
-             buffer_guids TEXT NOT NULL DEFAULT '[]'
+             buffer_guids TEXT NOT NULL DEFAULT '[]',
+             agent_pane_session_id TEXT
          );
          CREATE INDEX IF NOT EXISTS idx_sessions_saved_at ON sessions(saved_at);
          CREATE TABLE IF NOT EXISTS meta (
@@ -81,6 +87,24 @@ fn init_schema(conn: &Connection) -> Result<()> {
          );",
     )
     .context("initializing shell-session schema")?;
+    // Migrate DBs created before `agent_pane_session_id` existed (the column was
+    // added when durable agent-session resume landed). Idempotent: skipped once
+    // the column is present.
+    ensure_agent_pane_session_id_column(conn)?;
+    Ok(())
+}
+
+/// Add the `agent_pane_session_id` column to a pre-existing `sessions` table
+/// that was created before that column existed. No-op when it's already there.
+fn ensure_agent_pane_session_id_column(conn: &Connection) -> Result<()> {
+    let has_column = conn
+        .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'agent_pane_session_id'")
+        .and_then(|mut stmt| stmt.exists([]))
+        .context("checking for agent_pane_session_id column")?;
+    if !has_column {
+        conn.execute("ALTER TABLE sessions ADD COLUMN agent_pane_session_id TEXT", [])
+            .context("adding agent_pane_session_id column")?;
+    }
     Ok(())
 }
 
@@ -106,14 +130,22 @@ pub fn upsert(conn: &Connection, row: &ShellSessionRow) -> Result<Vec<String>> {
     let guids_json = serde_json::to_string(&row.buffer_guids)
         .context("serializing buffer_guids")?;
     conn.execute(
-        "INSERT INTO sessions (name, cwd, saved_at, layout_json, buffer_guids)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO sessions (name, cwd, saved_at, layout_json, buffer_guids, agent_pane_session_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(name) DO UPDATE SET
              cwd          = excluded.cwd,
              saved_at     = excluded.saved_at,
              layout_json  = excluded.layout_json,
-             buffer_guids = excluded.buffer_guids",
-        rusqlite::params![row.name, row.cwd, row.saved_at, row.layout_json, guids_json],
+             buffer_guids = excluded.buffer_guids,
+             agent_pane_session_id = excluded.agent_pane_session_id",
+        rusqlite::params![
+            row.name,
+            row.cwd,
+            row.saved_at,
+            row.layout_json,
+            guids_json,
+            row.agent_pane_session_id
+        ],
     )
     .with_context(|| format!("upserting shell session {}", row.name))?;
 
@@ -124,7 +156,7 @@ pub fn upsert(conn: &Connection, row: &ShellSessionRow) -> Result<Vec<String>> {
 pub fn list(conn: &Connection) -> Result<Vec<ShellSessionRow>> {
     let mut stmt = conn
         .prepare(
-            "SELECT name, cwd, saved_at, layout_json, buffer_guids
+            "SELECT name, cwd, saved_at, layout_json, buffer_guids, agent_pane_session_id
              FROM sessions ORDER BY saved_at DESC",
         )
         .context("preparing shell-session list query")?;
@@ -266,6 +298,7 @@ fn row_from_sqlite(r: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionRow> {
         saved_at: r.get(2)?,
         layout_json: r.get(3)?,
         buffer_guids: parse_guids(&buffer_guids),
+        agent_pane_session_id: r.get(5)?,
     })
 }
 
@@ -286,6 +319,7 @@ mod tests {
             saved_at,
             layout_json: format!("{{\"tab\":\"{name}\"}}"),
             buffer_guids: guids.iter().map(|s| s.to_string()).collect(),
+            agent_pane_session_id: None,
         }
     }
 
@@ -445,5 +479,64 @@ mod tests {
         let all = list(&conn).unwrap();
         assert_eq!(all.len(), 1);
         assert!(all[0].buffer_guids.is_empty());
+    }
+
+    #[test]
+    fn upsert_round_trips_agent_pane_session_id() {
+        let conn = mem();
+        let mut with_agent = row("with-agent", 100, &["g1"]);
+        with_agent.agent_pane_session_id = Some("pane-guid-1".to_string());
+        upsert(&conn, &with_agent).unwrap();
+        upsert(&conn, &row("no-agent", 50, &["g2"])).unwrap();
+
+        let all = list(&conn).unwrap();
+        assert_eq!(all[0].name, "with-agent");
+        assert_eq!(
+            all[0].agent_pane_session_id.as_deref(),
+            Some("pane-guid-1")
+        );
+        assert_eq!(all[1].name, "no-agent");
+        assert_eq!(all[1].agent_pane_session_id, None);
+    }
+
+    #[test]
+    fn ensure_agent_pane_session_id_column_migrates_legacy_table() {
+        // Simulate a DB created before the column existed, then run the
+        // migration path (init_schema calls it) and confirm reads/writes work.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sessions (
+                 name         TEXT PRIMARY KEY,
+                 cwd          TEXT NOT NULL DEFAULT '',
+                 saved_at     INTEGER NOT NULL DEFAULT 0,
+                 layout_json  TEXT NOT NULL,
+                 buffer_guids TEXT NOT NULL DEFAULT '[]'
+             );
+             CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sessions (name, cwd, saved_at, layout_json, buffer_guids)
+             VALUES ('legacy', '', 1, '{}', '[]')",
+            [],
+        )
+        .unwrap();
+
+        // Idempotent: running the migration twice must not error.
+        ensure_agent_pane_session_id_column(&conn).unwrap();
+        ensure_agent_pane_session_id_column(&conn).unwrap();
+
+        // The pre-existing row reads back with a NULL (None) agent id.
+        let all = list(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].agent_pane_session_id, None);
+
+        // And new upserts can now store an agent id.
+        let mut r = row("fresh", 200, &["g1"]);
+        r.agent_pane_session_id = Some("pane-2".to_string());
+        upsert(&conn, &r).unwrap();
+        let all = list(&conn).unwrap();
+        assert_eq!(all[0].name, "fresh");
+        assert_eq!(all[0].agent_pane_session_id.as_deref(), Some("pane-2"));
     }
 }
