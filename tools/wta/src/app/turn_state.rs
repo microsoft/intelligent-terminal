@@ -66,7 +66,7 @@ pub enum TurnOutcome {
     Recommendation(RecommendationSet),
     /// Prose / explain text has been committed to `completed_turns`.
     ChatTurn,
-    /// No visible response (cancelled, or model returned nothing parseable).
+    /// No visible response (cancelled, or the model returned no message).
     Empty,
 }
 

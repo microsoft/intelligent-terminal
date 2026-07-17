@@ -395,7 +395,7 @@ pub enum ChatMessage {
     User(String),
     Agent(String),
     /// App-generated agent-style text that should stay literal (for example
-    /// parsed recommendation summaries containing command strings).
+    /// locally formatted recommendation summaries containing command strings).
     AgentLiteral(String),
     System(String),
     ToolCall {
@@ -9790,12 +9790,11 @@ pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -
     ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
 }
 
-/// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
+/// Render a helper-owned `RecommendationSet` as the agent's "reply" text in chat.
 ///
-/// Recommendation responses arrive as JSON; storing the raw JSON in a completed
-/// turn means re-expanding the prompt header reveals raw JSON instead of a
-/// CLI-style answer. This builds a single line per choice that mirrors what the
-/// recommendation cards show, prefixed with `✓` for the recommended one.
+/// Typed MCP proposals surface as cards, while completed-turn history needs a
+/// compact textual summary. This builds a single line per choice that mirrors
+/// what the recommendation cards show, prefixed with `✓` for the recommended one.
 fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
     use crate::coordinator::{OpenTarget, RecommendedAction};
 
@@ -16662,7 +16661,7 @@ mod tests {
     fn end_with_no_eager_chat_fallback_commits_completed_turn() {
         let mut app = test_app();
         submit_test_prompt(&mut app, "why blue?");
-        // Pure prose — won't parse as a RecommendationSet, falls to chat.
+        // Pure prose is committed directly as a normal chat response.
         app.turn_observe_chunk(
             DEFAULT_TAB_ID,
             ChunkKind::Message,
