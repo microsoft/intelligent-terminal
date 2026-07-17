@@ -44,6 +44,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Local, Windows::Foundation::Collections::IVector<hstring>, AllowedCommandlines, "allowedCommandlines")                                                  \
     X(FileSource::Local, std::unordered_set<hstring>, DismissedBadges, "dismissedBadges")                                                                                 \
     X(FileSource::Local, Windows::Foundation::Collections::IMap<hstring COMMA Model::WindowLayout>, PersistedWorkspaces, "persistedWorkspaces")                           \
+    X(FileSource::Local, Windows::Foundation::Collections::IMap<hstring COMMA Model::WindowLayout>, PersistedShellSessions, "persistedShellSessions")                     \
     X(FileSource::Shared, bool, SSHFolderGenerated, "sshFolderGenerated", false)                                                                                          \
     X(FileSource::Shared, bool, AgentFreCompleted, "agentFreCompleted", false)                                                                                           \
     X(FileSource::Shared, bool, AgentWelcomeShown, "agentWelcomeShown", false)
@@ -86,6 +87,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool RenameWorkspace(const hstring& oldName, const hstring& newName);
         Model::WindowLayout TakeWorkspace(const hstring& name);
         Windows::Foundation::Collections::IMapView<hstring, Model::WindowLayout> AllPersistedWorkspaces();
+
+        void SaveShellSession(const hstring& name, const Model::WindowLayout& layout);
+        Model::WindowLayout TakeShellSession(const hstring& name);
+        Windows::Foundation::Collections::IMapView<hstring, Model::WindowLayout> AllPersistedShellSessions();
+        Windows::Foundation::Collections::IVectorView<hstring> ShellSessionNames();
 
         // State getters/setters
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) \

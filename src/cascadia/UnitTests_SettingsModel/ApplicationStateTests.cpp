@@ -29,6 +29,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
+        TEST_METHOD(SaveLookupAndTakeShellSession);
+        TEST_METHOD(SaveShellSessionOverwritesSameName);
 
     private:
         static std::filesystem::path _tempRoot()
@@ -134,5 +136,33 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_NULL(state->TakeWorkspace(L"missing"));
+    }
+
+    void ApplicationStateTests::SaveLookupAndTakeShellSession()
+    {
+        auto state = _make();
+        const auto layout = _makeLayout();
+
+        state->SaveShellSession(L"build", layout);
+
+        VERIFY_IS_TRUE(state->AllPersistedShellSessions().Lookup(L"build") == layout);
+        VERIFY_ARE_EQUAL(static_cast<uint32_t>(1), state->ShellSessionNames().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"build" }, state->ShellSessionNames().GetAt(0));
+        VERIFY_IS_TRUE(state->TakeShellSession(L"build") == layout);
+        VERIFY_IS_NULL(state->TakeShellSession(L"build"));
+    }
+
+    void ApplicationStateTests::SaveShellSessionOverwritesSameName()
+    {
+        auto state = _make();
+        const auto original = _makeLayout();
+        const auto replacement = _makeLayout();
+        replacement.LaunchMode(LaunchMode::Maximized);
+
+        state->SaveShellSession(L"build", original);
+        state->SaveShellSession(L"build", replacement);
+
+        VERIFY_ARE_EQUAL(static_cast<uint32_t>(1), state->AllPersistedShellSessions().Size());
+        VERIFY_ARE_EQUAL(LaunchMode::Maximized, state->TakeShellSession(L"build").LaunchMode().Value());
     }
 }

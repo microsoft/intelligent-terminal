@@ -460,6 +460,73 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         return nullptr;
     }
 
+    void ApplicationState::SaveShellSession(const hstring& name, const Model::WindowLayout& layout)
+    {
+        if (name.empty() || !layout)
+        {
+            return;
+        }
+
+        {
+            const auto state = _state.lock();
+            if (!state->PersistedShellSessions || !*state->PersistedShellSessions)
+            {
+                state->PersistedShellSessions = winrt::single_threaded_map<hstring, Model::WindowLayout>();
+            }
+            (*state->PersistedShellSessions).Insert(name, layout);
+        }
+        _throttler();
+    }
+
+    Model::WindowLayout ApplicationState::TakeShellSession(const hstring& name)
+    {
+        Model::WindowLayout result{ nullptr };
+        {
+            const auto state = _state.lock();
+            if (state->PersistedShellSessions && *state->PersistedShellSessions)
+            {
+                auto map = *state->PersistedShellSessions;
+                if (map.HasKey(name))
+                {
+                    result = map.Lookup(name);
+                    map.Remove(name);
+                }
+            }
+        }
+        if (result)
+        {
+            _throttler();
+        }
+        return result;
+    }
+
+    Windows::Foundation::Collections::IMapView<hstring, Model::WindowLayout> ApplicationState::AllPersistedShellSessions()
+    {
+        const auto state = _state.lock_shared();
+        if (state->PersistedShellSessions && *state->PersistedShellSessions)
+        {
+            return (*state->PersistedShellSessions).GetView();
+        }
+        return nullptr;
+    }
+
+    Windows::Foundation::Collections::IVectorView<hstring> ApplicationState::ShellSessionNames()
+    {
+        std::vector<hstring> names;
+        {
+            const auto state = _state.lock_shared();
+            if (state->PersistedShellSessions && *state->PersistedShellSessions)
+            {
+                names.reserve((*state->PersistedShellSessions).Size());
+                for (const auto& session : *state->PersistedShellSessions)
+                {
+                    names.emplace_back(session.Key());
+                }
+            }
+        }
+        return winrt::single_threaded_vector<hstring>(std::move(names)).GetView();
+    }
+
     // Generate all getter/setters
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) \
     type ApplicationState::name() const noexcept                 \

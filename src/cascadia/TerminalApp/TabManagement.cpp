@@ -26,6 +26,7 @@
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <shlobj.h>
+#include <sddl.h>
 
 using namespace winrt;
 using namespace winrt::Windows::Foundation::Collections;
@@ -604,6 +605,115 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_PersistShellSession(const winrt::com_ptr<Tab>& tab)
+    {
+        const auto sessionName = tab->Title();
+        auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
+        if (sessionName.empty() || actions.empty())
+        {
+            return;
+        }
+
+        using namespace std::string_view_literals;
+        const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        const auto elevated = IsRunningElevated();
+        const auto filenamePrefix = elevated ? L"shell_elevated_"sv : L"shell_buffer_"sv;
+        std::vector<std::filesystem::path> persistedPaths;
+        bool committed = false;
+        const auto cleanup = wil::scope_exit([&]() {
+            if (!committed)
+            {
+                for (const auto& path : persistedPaths)
+                {
+                    std::error_code error;
+                    std::filesystem::remove(path, error);
+                }
+            }
+        });
+
+        wil::unique_hlocal_security_descriptor sd;
+        SECURITY_ATTRIBUTES sa{};
+        if (elevated)
+        {
+            unsigned long size;
+            THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &size));
+            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+            sa.lpSecurityDescriptor = sd.get();
+        }
+
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (pane->IsAgentPane())
+            {
+                return;
+            }
+
+            std::filesystem::path path;
+            try
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    if (const auto connection = control.Connection())
+                    {
+                        const auto sessionId = connection.SessionId();
+                        if (sessionId != winrt::guid{})
+                        {
+                            const auto filename = fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sessionId);
+                            path = settingsDirectory / filename;
+                            wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                            THROW_LAST_ERROR_IF(!file);
+                            control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                            persistedPaths.emplace_back(path);
+                        }
+                    }
+                }
+            }
+            catch (...)
+            {
+                if (!path.empty())
+                {
+                    std::error_code error;
+                    std::filesystem::remove(path, error);
+                }
+                throw;
+            }
+        });
+
+        WindowLayout layout;
+        layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+
+        const auto state = ApplicationState::SharedInstance();
+        if (const auto sessions = state.AllPersistedShellSessions(); sessions && sessions.HasKey(sessionName))
+        {
+            const auto oldLayout = sessions.Lookup(sessionName);
+            for (const auto& action : oldLayout.TabLayout())
+            {
+                INewContentArgs contentArgs{ nullptr };
+                if (const auto args = action.Args().try_as<NewTabArgs>())
+                {
+                    contentArgs = args.ContentArgs();
+                }
+                else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+                {
+                    contentArgs = args.ContentArgs();
+                }
+
+                if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+                {
+                    const auto sessionId = terminalArgs.SessionId();
+                    if (sessionId != winrt::guid{})
+                    {
+                        std::error_code error;
+                        std::filesystem::remove(settingsDirectory / fmt::format(FMT_COMPILE(L"shell_buffer_{}.txt"), sessionId), error);
+                        error.clear();
+                        std::filesystem::remove(settingsDirectory / fmt::format(FMT_COMPILE(L"shell_elevated_{}.txt"), sessionId), error);
+                    }
+                }
+            }
+        }
+        state.SaveShellSession(sessionName, layout);
+        committed = true;
+    }
+
     // Method Description:
     // - Removes the tab (both TerminalControl and XAML) after prompting for approval
     // Arguments:
@@ -662,6 +772,11 @@ namespace winrt::TerminalApp::implementation
             _SaveWorkspaceIfNeeded();
         }
 
+        try
+        {
+            _PersistShellSession(t);
+        }
+        CATCH_LOG()
         tab.Close();
     }
 

@@ -123,6 +123,18 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
+    void AgentPaneContent::SetShellSessionsView(bool active)
+    {
+        if (_isShellSessionsView == active)
+        {
+            return;
+        }
+        _isShellSessionsView = active;
+        _refreshLabel();
+        _refreshLogo();
+        StateChanged.raise(*this, nullptr);
+    }
+
     void AgentPaneContent::ApplyAutofixState(AutofixState state,
                                              const winrt::hstring& paneId,
                                              const winrt::hstring& summary,
@@ -209,6 +221,12 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLabel()
     {
+        if (_isShellSessionsView)
+        {
+            AgentLabelText().Text(L"Shell sessions");
+            return;
+        }
+
         // Session-management view takes over the bar — the wta TUI below no
         // longer renders its own "Agent sessions" header, so this is where
         // that title lives.
@@ -245,7 +263,7 @@ namespace winrt::TerminalApp::implementation
 
     void AgentPaneContent::_refreshLogo()
     {
-        if (_isSessionsView)
+        if (_isSessionsView || _isShellSessionsView)
         {
             AgentLogo().Visibility(Visibility::Collapsed);
             return;

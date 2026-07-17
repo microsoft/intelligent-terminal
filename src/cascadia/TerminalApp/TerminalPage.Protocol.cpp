@@ -838,4 +838,46 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
+    IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring name)
+    {
+        co_await wil::resume_foreground(Dispatcher());
+
+        const auto layout = ApplicationState::SharedInstance().TakeShellSession(name);
+        if (!layout || !layout.TabLayout())
+        {
+            co_return false;
+        }
+
+        auto actions = wil::to_vector(layout.TabLayout());
+        for (const auto& action : actions)
+        {
+            INewContentArgs contentArgs{ nullptr };
+            if (action.Action() == ShortcutAction::NewTab)
+            {
+                if (const auto args = action.Args().try_as<NewTabArgs>())
+                {
+                    contentArgs = args.ContentArgs();
+                }
+            }
+            else if (action.Action() == ShortcutAction::SplitPane)
+            {
+                if (const auto args = action.Args().try_as<SplitPaneArgs>())
+                {
+                    contentArgs = args.ContentArgs();
+                }
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            {
+                if (const auto sessionId = terminalArgs.SessionId(); sessionId != winrt::guid{})
+                {
+                    terminalArgs.UseShellSessionBuffer(true);
+                }
+            }
+        }
+
+        ProcessStartupActions(std::move(actions));
+        co_return true;
+    }
+
 }

@@ -517,12 +517,14 @@ try
         "get_process_status",
         "get_session_variable",
         "get_settings",
+        "list_shell_sessions",
         "create_tab",
         "split_pane",
         "close_pane",
         "send_input",
         "focus_pane",
         "set_session_variable",
+        "restore_shell_session",
         "subscribe",
         "unsubscribe",
         "send_event",
@@ -592,6 +594,35 @@ try
         arr.append(_toJson(info));
     }
 
+    *json = _bstrFromJson(arr);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListShellSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+
+    std::vector<std::string> names;
+    if (const auto sessions = winrt::Microsoft::Terminal::Settings::Model::ApplicationState::SharedInstance().ShellSessionNames())
+    {
+        names.reserve(sessions.Size());
+        for (const auto& name : sessions)
+        {
+            names.emplace_back(winrt::to_string(name));
+        }
+    }
+    std::sort(names.begin(), names.end());
+
+    Json::Value arr(Json::arrayValue);
+    for (const auto& name : names)
+    {
+        Json::Value entry;
+        entry["name"] = name;
+        arr.append(std::move(entry));
+    }
     *json = _bstrFromJson(arr);
     return S_OK;
 }
@@ -941,6 +972,22 @@ try
     }
 
     return E_FAIL;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::RestoreShellSession(unsigned __int64 windowId, BSTR name)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    const auto nameH = _hstr(name);
+    RETURN_HR_IF(E_INVALIDARG, nameH.empty());
+
+    auto* targetHost = windowId == 0 ? s_emperor->GetMostRecentWindow() : s_emperor->GetWindowById(windowId);
+    RETURN_HR_IF(E_FAIL, !targetHost);
+
+    const auto page = _getPage(targetHost);
+    RETURN_HR_IF(E_FAIL, !page);
+    return page.RestoreProtocolShellSession(nameH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 

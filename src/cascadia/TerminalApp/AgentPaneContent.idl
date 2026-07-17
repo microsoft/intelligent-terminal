@@ -23,6 +23,7 @@ namespace TerminalApp
         // label (and hide the agent logo) while wta's session management view is
         // active. Driven by TerminalPage whenever the wta view changes.
         void SetSessionsView(Boolean active);
+        void SetShellSessionsView(Boolean active);
 
         // True iff the pane is in sessions view (last value passed to
         // SetSessionsView). Used by the page to decide toggle direction.

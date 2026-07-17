@@ -13,6 +13,7 @@ mod permission;
 mod popup;
 mod recommendations;
 pub mod setup;
+pub mod shell_sessions_view;
 pub mod shimmer;
 
 pub use agent_popup::AgentPopupState;

@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agent_popup, agents_view, auth, chat, command_popup, debug_panel, input, model_popup,
-    permission, recommendations, setup,
+    permission, recommendations, setup, shell_sessions_view,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -74,6 +74,19 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             cli_filter.as_ref(),
             origin_filter,
             show_loading,
+        );
+        return;
+    }
+
+    if app.current_tab().current_view == View::ShellSessions {
+        let tab = app.current_tab_mut();
+        shell_sessions_view::render(
+            frame,
+            area,
+            &tab.shell_sessions,
+            &mut tab.shell_sessions_list_state,
+            tab.shell_sessions_loading,
+            tab.shell_sessions_error.as_deref(),
         );
         return;
     }

@@ -62,6 +62,7 @@ private:
         CLI::Option* commandlineOption;
         CLI::Option* profileNameOption;
         CLI::Option* sessionIdOption;
+        CLI::Option* useShellSessionBufferOption;
         CLI::Option* startingDirectoryOption;
         CLI::Option* titleOption;
         CLI::Option* tabColorOption;
@@ -98,6 +99,7 @@ private:
 
     std::string _profileName;
     std::string _sessionId;
+    bool _useShellSessionBuffer{ false };
     std::string _startingDirectory;
     std::string _startingTitle;
     std::string _startingTabColor;

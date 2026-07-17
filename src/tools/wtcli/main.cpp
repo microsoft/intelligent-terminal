@@ -400,6 +400,57 @@ int main()
         }
     });
 
+    // ── list-shell-sessions ──
+    auto* listShellSessionsCmd = app.add_subcommand("list-shell-sessions", "List saved shell sessions");
+    listShellSessionsCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        Json::Value sessions;
+        auto hr = CallJson([&](BSTR* j) { return server->ListShellSessions(j); }, sessions);
+        if (FAILED(hr)) { fprintf(stderr, "ListShellSessions failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["shell_sessions"] = sessions;
+            PrintJson(result);
+        }
+        else
+        {
+            for (const auto& session : sessions)
+                printf("%s\n", session["name"].asCString());
+        }
+    });
+
+    // ── restore-shell-session ──
+    std::string restoreShellSessionName;
+    std::string restoreShellSessionWindowId;
+    auto* restoreShellSessionCmd = app.add_subcommand("restore-shell-session", "Restore a saved shell session");
+    restoreShellSessionCmd->add_option("name", restoreShellSessionName, "Shell session name")->required();
+    restoreShellSessionCmd->add_option("-w,--window-id", restoreShellSessionWindowId, "Target window ID");
+    restoreShellSessionCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+
+        uint64_t windowId = 0;
+        if (!restoreShellSessionWindowId.empty() && !TryParseU64(restoreShellSessionWindowId, windowId))
+        {
+            fprintf(stderr, "[wtcli] Invalid --window-id: %s\n", restoreShellSessionWindowId.c_str());
+            exitCode = 1;
+            return;
+        }
+
+        wil::unique_bstr name{ Bstr(restoreShellSessionName) };
+        const auto hr = server->RestoreShellSession(windowId, name.get());
+        if (FAILED(hr)) { fprintf(stderr, "RestoreShellSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
+        if (jsonMode)
+        {
+            Json::Value result(Json::objectValue);
+            result["ok"] = true;
+            result["name"] = restoreShellSessionName;
+            PrintJson(result);
+        }
+    });
+
     // ── active-pane ──
     auto* activePaneCmd = app.add_subcommand("active-pane", "Show the currently active pane");
     activePaneCmd->callback([&]() {

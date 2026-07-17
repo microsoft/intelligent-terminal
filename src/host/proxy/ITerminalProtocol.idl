@@ -76,4 +76,8 @@ import "unknwn.idl";
     HRESULT Subscribe([in] ITerminalProtocolEventSink* sink);
     HRESULT Unsubscribe();
     HRESULT SendEvent([in] BSTR eventJson);
+
+    // Append-only: keep existing vtable slots stable for older wtcli clients.
+    HRESULT ListShellSessions([out, retval] BSTR* json);
+    HRESULT RestoreShellSession([in] unsigned hyper windowId, [in] BSTR name);
 };

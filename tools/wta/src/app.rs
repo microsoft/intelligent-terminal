@@ -1347,6 +1347,16 @@ pub enum AppEvent {
     AgentsSnapshotFailed {
         request_id: u64,
     },
+    ShellSessionsLoaded {
+        tab_id: String,
+        sessions: Vec<String>,
+        error: Option<String>,
+    },
+    ShellSessionRestored {
+        tab_id: String,
+        name: String,
+        error: Option<String>,
+    },
     MasterMutationCompleted {
         request_id: u64,
     },
@@ -1548,6 +1558,10 @@ pub struct TabSession {
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
+    pub shell_sessions: Vec<String>,
+    pub shell_sessions_list_state: ratatui::widgets::ListState,
+    pub shell_sessions_loading: bool,
+    pub shell_sessions_error: Option<String>,
 
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     // Independent of where the (single, shared) XAML pane physically lives:
@@ -2192,6 +2206,7 @@ pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from
 pub enum View {
     Chat,
     Agents,
+    ShellSessions,
 }
 
 impl Default for View {
@@ -3699,6 +3714,93 @@ impl App {
         tab.agents_view_prev_pane_open = None;
     }
 
+    fn open_shell_sessions_view_for_tab(&mut self, tab_id: String) {
+        {
+            let tab = self.tab_mut(&tab_id);
+            tab.current_view = View::ShellSessions;
+            tab.shell_sessions_loading = true;
+            tab.shell_sessions_error = None;
+        }
+        self.load_shell_sessions(tab_id);
+    }
+
+    fn close_shell_sessions_view_for_tab(&mut self, tab_id: &str) {
+        let tab = self.tab_mut(tab_id);
+        tab.current_view = View::Chat;
+        tab.shell_sessions_loading = false;
+        tab.shell_sessions_error = None;
+    }
+
+    fn load_shell_sessions(&mut self, tab_id: String) {
+        let Some(event_tx) = self.event_tx.clone() else {
+            self.tab_mut(&tab_id).shell_sessions_loading = false;
+            return;
+        };
+
+        tokio::spawn(async move {
+            use crate::shell::wt_channel::WtChannel;
+
+            let result = async {
+                let channel = crate::shell::wt_channel::CliChannel::connect().await?;
+                let value = channel
+                    .request("list_shell_sessions", serde_json::json!({}))
+                    .await?;
+                let sessions = value
+                    .get("shell_sessions")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| anyhow::anyhow!("list_shell_sessions returned an invalid response"))?
+                    .iter()
+                    .filter_map(|entry| entry.get("name").and_then(|v| v.as_str()))
+                    .map(str::to_string)
+                    .collect();
+                anyhow::Ok(sessions)
+            }
+            .await;
+
+            let (sessions, error) = match result {
+                Ok(sessions) => (sessions, None),
+                Err(error) => (Vec::new(), Some(error.to_string())),
+            };
+            let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
+                tab_id,
+                sessions,
+                error,
+            });
+        });
+    }
+
+    fn restore_shell_session(&mut self, tab_id: String, name: String) {
+        let Some(event_tx) = self.event_tx.clone() else {
+            return;
+        };
+        let window_id = self.window_id.clone();
+        self.tab_mut(&tab_id).shell_sessions_error = None;
+
+        tokio::spawn(async move {
+            use crate::shell::wt_channel::WtChannel;
+
+            let error = match crate::shell::wt_channel::CliChannel::connect().await {
+                Ok(channel) => channel
+                    .request(
+                        "restore_shell_session",
+                        serde_json::json!({
+                            "name": name,
+                            "window_id": window_id,
+                        }),
+                    )
+                    .await
+                    .err()
+                    .map(|error| error.to_string()),
+                Err(error) => Some(error.to_string()),
+            };
+            let _ = event_tx.send(AppEvent::ShellSessionRestored {
+                tab_id,
+                name,
+                error,
+            });
+        });
+    }
+
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
         let request = {
             let tab = self.tab_mut(tab_id);
@@ -4554,6 +4656,8 @@ impl App {
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
+            AppEvent::ShellSessionsLoaded { .. } => "shell_sessions_loaded",
+            AppEvent::ShellSessionRestored { .. } => "shell_session_restored",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
         }
@@ -5607,6 +5711,47 @@ impl App {
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
             }
+            AppEvent::ShellSessionsLoaded {
+                tab_id,
+                sessions,
+                error,
+            } => {
+                let tab = self.tab_mut(&tab_id);
+                tab.shell_sessions = sessions;
+                tab.shell_sessions_loading = false;
+                tab.shell_sessions_error = error;
+                if tab.shell_sessions.is_empty() {
+                    tab.shell_sessions_list_state.select(None);
+                } else {
+                    let selected = tab
+                        .shell_sessions_list_state
+                        .selected()
+                        .unwrap_or(0)
+                        .min(tab.shell_sessions.len() - 1);
+                    tab.shell_sessions_list_state.select(Some(selected));
+                }
+            }
+            AppEvent::ShellSessionRestored {
+                tab_id,
+                name,
+                error,
+            } => {
+                let tab = self.tab_mut(&tab_id);
+                if error.is_none() {
+                    tab.shell_sessions.retain(|session| session != &name);
+                    if tab.shell_sessions.is_empty() {
+                        tab.shell_sessions_list_state.select(None);
+                    } else {
+                        let selected = tab
+                            .shell_sessions_list_state
+                            .selected()
+                            .unwrap_or(0)
+                            .min(tab.shell_sessions.len() - 1);
+                        tab.shell_sessions_list_state.select(Some(selected));
+                    }
+                }
+                tab.shell_sessions_error = error;
+            }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
                 self.schedule_agents_refetch_for_open_views();
@@ -6068,8 +6213,20 @@ impl App {
                                 }
                                 self.open_agents_view_for_tab(target_tab.clone());
                             }
+                            "shell_sessions" => {
+                                self.open_shell_sessions_view_for_tab(target_tab.clone());
+                            }
                             "chat" => {
-                                self.close_agents_view_for_tab(&target_tab);
+                                let shell_sessions_open = self
+                                    .tab_sessions
+                                    .get(&target_tab)
+                                    .map(|tab| tab.current_view == View::ShellSessions)
+                                    .unwrap_or(false);
+                                if shell_sessions_open {
+                                    self.close_shell_sessions_view_for_tab(&target_tab);
+                                } else {
+                                    self.close_agents_view_for_tab(&target_tab);
+                                }
                             }
                             other => {
                                 tracing::warn!(
@@ -6894,6 +7051,55 @@ impl App {
                         }
                     }
                     self.auth = None;
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        if self.current_tab().current_view == View::ShellSessions {
+            let tab_id = self.active_tab_key().to_string();
+            let count = self.current_tab().shell_sessions.len();
+            match key.code {
+                KeyCode::Down => {
+                    let current = self
+                        .current_tab()
+                        .shell_sessions_list_state
+                        .selected()
+                        .unwrap_or(0);
+                    let next = if count == 0 {
+                        0
+                    } else {
+                        (current + 1).min(count - 1)
+                    };
+                    self.current_tab_mut()
+                        .shell_sessions_list_state
+                        .select((count > 0).then_some(next));
+                }
+                KeyCode::Up => {
+                    let current = self
+                        .current_tab()
+                        .shell_sessions_list_state
+                        .selected()
+                        .unwrap_or(0);
+                    self.current_tab_mut()
+                        .shell_sessions_list_state
+                        .select((count > 0).then_some(current.saturating_sub(1)));
+                }
+                KeyCode::Enter => {
+                    if let Some(index) = self.current_tab().shell_sessions_list_state.selected() {
+                        if let Some(name) = self.current_tab().shell_sessions.get(index).cloned() {
+                            self.restore_shell_session(tab_id, name);
+                        }
+                    }
+                }
+                KeyCode::F(5) => {
+                    self.current_tab_mut().shell_sessions_loading = true;
+                    self.load_shell_sessions(tab_id);
+                }
+                KeyCode::Esc => {
+                    self.close_shell_sessions_view_for_tab(&tab_id);
+                    self.project_active_tab_state();
                 }
                 _ => {}
             }
@@ -7844,7 +8050,12 @@ impl App {
             ParseOutcome::Command(cmd) => {
                 // Degraded: a typed command other than /restart can't run
                 // against the dead pipe — swallow it with the reconnect hint.
-                if self.transport_lost && cmd.kind != CommandKind::Restart {
+                if self.transport_lost
+                    && !matches!(
+                        cmd.kind,
+                        CommandKind::Restart | CommandKind::ShellSessions
+                    )
+                {
                     self.current_tab_mut().clear_input();
                     self.push_degraded_command_hint();
                     return true;
@@ -7891,7 +8102,12 @@ impl App {
         // reconnect hint so a command can never silently fail against a dead
         // connection. This is the defensive backstop; the Enter handler and
         // greyed popup already steer the user here.
-        if self.transport_lost && cmd.kind != CommandKind::Restart {
+        if self.transport_lost
+            && !matches!(
+                cmd.kind,
+                CommandKind::Restart | CommandKind::ShellSessions
+            )
+        {
             self.push_degraded_command_hint();
             return;
         }
@@ -7906,6 +8122,7 @@ impl App {
             CommandKind::New => self.cmd_new(in_flight),
             CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
+            CommandKind::ShellSessions => self.cmd_shell_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
@@ -8106,6 +8323,12 @@ impl App {
         // Per-tab — only flips the active tab's view state.
         let tab_id = self.active_tab_key().to_string();
         self.open_agents_view_for_tab(tab_id);
+        self.project_active_tab_state();
+    }
+
+    fn cmd_shell_sessions(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        self.open_shell_sessions_view_for_tab(tab_id);
         self.project_active_tab_state();
     }
 
@@ -9811,6 +10034,7 @@ impl App {
         };
         let view = match tab.current_view {
             View::Agents => "sessions",
+            View::ShellSessions => "shell_sessions",
             View::Chat => "chat",
         };
         let evt = serde_json::json!({
