@@ -671,11 +671,12 @@ mod tests {
         assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
     }
 
-    static WSL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn wsl_gate_defaults_off_and_honors_env() {
-        let _g = WSL_ENV_LOCK.lock().unwrap();
+        // Share the crate-wide env lock so this and the master-side gate tests
+        // (`spawn_wsl_seed_is_noop_when_wsl_sessions_disabled` et al.) can't race
+        // on the process-global `WTA_WSL_SESSIONS` var.
+        let _g = crate::test_support::lock_env();
         std::env::remove_var("WTA_WSL_SESSIONS");
         assert!(!wsl_sessions_enabled(), "default must be disabled");
         std::env::set_var("WTA_WSL_SESSIONS", "1");

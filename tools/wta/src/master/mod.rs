@@ -5756,6 +5756,64 @@ mod tests {
         );
     }
 
+    /// PR #407 (master-side gate): with `WTA_WSL_SESSIONS` unset (the default),
+    /// `spawn_wsl_seed` must be a no-op — it dispatches no distro scan, claims no
+    /// scan slot, and surfaces no WSL row into the registry. This is the master
+    /// half of "hide WSL delegate sessions when the flag is off": even with a
+    /// running distro, the whole WSL surface stays dark.
+    #[tokio::test]
+    async fn spawn_wsl_seed_is_noop_when_wsl_sessions_disabled() {
+        let _env = crate::test_support::lock_env();
+        std::env::remove_var("WTA_WSL_SESSIONS");
+
+        let state = make_state();
+        let dispatched = spawn_wsl_seed(&state);
+
+        assert!(
+            !dispatched,
+            "no WSL scan may be dispatched while WTA_WSL_SESSIONS is disabled"
+        );
+        assert!(
+            !state
+                .wsl_seed_in_flight
+                .load(std::sync::atomic::Ordering::SeqCst),
+            "the scan slot must stay free — a disabled seed claims nothing"
+        );
+        assert!(
+            state.registry.snapshot().await.is_empty(),
+            "no WSL session may be surfaced into the registry when disabled"
+        );
+    }
+
+    /// PR #407: the poll-path `maybe_spawn_wsl_title_seed` must short-circuit on
+    /// the disabled flag *before* it touches a distro or arms its throttle — even
+    /// when a genuinely seed-warranting born-bound WSL row is present (live,
+    /// synthetic, pane-bound, WSL-located, not host-listed). Otherwise a hidden
+    /// WSL delegate could still drive `wsl.exe` scans from behind the flag.
+    #[tokio::test]
+    async fn maybe_spawn_wsl_title_seed_skips_warranted_seed_when_disabled() {
+        let _env = crate::test_support::lock_env();
+        std::env::remove_var("WTA_WSL_SESSIONS");
+
+        let state = make_state();
+        // A row that WOULD warrant a seed if the flag were on (mirrors
+        // `wsl_title_seed_warranted_only_for_live_pane_bound_non_host_synthetic`).
+        let warranting = vec![live_synthetic_pane_row("wsl-sid")];
+
+        maybe_spawn_wsl_title_seed(&state, &warranting).await;
+
+        assert!(
+            state.wsl_titles_seed_at.lock().await.is_none(),
+            "the throttle must not be armed — the disabled gate returns before dispatch"
+        );
+        assert!(
+            !state
+                .wsl_seed_in_flight
+                .load(std::sync::atomic::Ordering::SeqCst),
+            "no scan slot may be claimed while WSL sessions are disabled"
+        );
+    }
+
     #[test]
     fn row_refreshable_skips_only_definitively_cross_cli() {
         use crate::agent_sessions::CliSource;
