@@ -214,7 +214,7 @@ system.agent_switch_unavailable: "የኤጅንት መቀያየር ከWindows Ter
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ለዚህ ፓነል ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /model <id>)"  # {Locked="/model","<id>"}
-commands.move.summary: "የዚህን ትр ኤጅንት ገጽታ ያንቀሳቅሱ (/move <position>)"  # {Locked="/move","<position>"}
+commands.move.summary: "የዚህን ትር ኤጅንት ገጽታ ያንቀሳቅሱ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}

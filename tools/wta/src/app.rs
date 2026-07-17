@@ -1515,8 +1515,8 @@ pub struct TabSession {
     /// Position candidates shown after `/move `. Kept separate from command
     /// candidates so the existing command registry remains strongly typed.
     pub move_position_candidates: Vec<&'static MovePositionSpec>,
-    /// Index into [`Self::command_popup_candidates`]. Clamped on every
-    /// mutation that could shrink the list.
+    /// Index into whichever popup candidate list is active: commands or
+    /// `/move` positions. Clamped whenever either list can shrink.
     pub command_popup_selected: usize,
 
     // Filled in Milestone 2 once each tab has its own ACP SessionId.

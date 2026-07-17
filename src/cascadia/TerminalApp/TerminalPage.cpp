@@ -4598,14 +4598,22 @@ namespace winrt::TerminalApp::implementation
             logSuffix += " view=" + *view;
         }
         std::optional<winrt::hstring> panePosition;
-        if (params.isMember("pane_position") && params["pane_position"].isString())
+        if (params.isMember("pane_position"))
         {
-            const auto requested = winrt::to_hstring(params["pane_position"].asString());
-            if (requested == L"left" || requested == L"right" ||
-                requested == L"up" || requested == L"bottom")
+            if (params["pane_position"].isString())
             {
-                panePosition = requested;
-                logSuffix += " pane_position=" + winrt::to_string(requested);
+                const auto requested = winrt::to_hstring(params["pane_position"].asString());
+                if (requested == L"left" || requested == L"right" ||
+                    requested == L"up" || requested == L"bottom")
+                {
+                    panePosition = requested;
+                    logSuffix += " pane_position=" + winrt::to_string(requested);
+                }
+            }
+            else if (params["pane_position"].isNull())
+            {
+                panePosition = _settings.GlobalSettings().AgentPanePosition();
+                logSuffix += " pane_position=global";
             }
         }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
@@ -4678,8 +4686,9 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // `/move` is a transient per-tab override. Reposition only the routed
-        // tab; do not mutate GlobalSettings or walk the other tabs.
+        // Apply the per-tab `/move` override, or reset this tab to the global
+        // position when WTA explicitly sends null. Never mutate GlobalSettings
+        // or walk the other tabs.
         if (panePosition.has_value())
         {
             const auto agentPane = targetTab->FindAgentPane();
