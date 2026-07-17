@@ -214,6 +214,7 @@ system.agent_switch_unavailable: "விண்டோஸ் டெர்மின
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
+commands.move.summary: "இந்தத் தாவலின் ஏஜெண்ட் பலகத்தை நகர்த்தவும் (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}

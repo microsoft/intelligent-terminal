@@ -215,6 +215,7 @@ system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kəna
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}
+commands.move.summary: "Bu tabın agent panelini köçür (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}

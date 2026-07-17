@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en W
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}
+commands.move.summary: "Flytta agentpanelen för den här fliken (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}

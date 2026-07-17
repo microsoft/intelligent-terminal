@@ -53,6 +53,9 @@ pub enum CommandKind {
     /// the life of the pane but is reset by a global `acpModel` settings
     /// change — see `App::apply_global_acp_model`.
     Model,
+    /// Move this tab's agent pane without changing the global pane-position
+    /// setting or any other tab.
+    Move,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -138,6 +141,25 @@ pub const REGISTRY: &[CommandSpec] = &[
         kind: CommandKind::Model,
         takes_args: true,
     },
+    CommandSpec {
+        name: "move",
+        summary_key: "commands.move.summary",
+        kind: CommandKind::Move,
+        takes_args: true,
+    },
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MovePositionSpec {
+    pub name: &'static str,
+    pub alias: &'static str,
+}
+
+pub const MOVE_POSITIONS: &[MovePositionSpec] = &[
+    MovePositionSpec { name: "left", alias: "l" },
+    MovePositionSpec { name: "right", alias: "r" },
+    MovePositionSpec { name: "up", alias: "u" },
+    MovePositionSpec { name: "bottom", alias: "b" },
 ];
 
 #[derive(Debug, Clone)]
@@ -258,6 +280,46 @@ pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
         .collect()
 }
 
+/// Resolve a `/move` argument from either its full name or one-letter alias.
+pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
+    let value = value.trim();
+    MOVE_POSITIONS
+        .iter()
+        .find(|position| {
+            position.name.eq_ignore_ascii_case(value)
+                || position.alias.eq_ignore_ascii_case(value)
+        })
+}
+
+/// Prefix-match `/move` positions by full name or one-letter alias.
+pub fn match_move_positions(prefix: &str) -> Vec<&'static MovePositionSpec> {
+    let needle = prefix.trim().to_ascii_lowercase();
+    MOVE_POSITIONS
+        .iter()
+        .filter(|position| {
+            position.name.starts_with(&needle) || position.alias.starts_with(&needle)
+        })
+        .collect()
+}
+
+/// Return the argument prefix while the input is completing `/move <position>`.
+///
+/// The command name must be complete and followed by whitespace. A second
+/// argument hides the popup because `/move` accepts exactly one position.
+pub fn move_position_prefix(input: &str) -> Option<&str> {
+    let trimmed = input.trim_start();
+    let rest = trimmed.strip_prefix('/')?;
+    let command_end = rest.find(char::is_whitespace)?;
+    if !rest[..command_end].eq_ignore_ascii_case("move") {
+        return None;
+    }
+    let argument = rest[command_end..].trim_start();
+    if argument.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(argument)
+}
+
 /// True if the input *looks like* a slash-command attempt (starts with `/`
 /// and has no whitespace yet). Used to decide whether to show the popup.
 pub fn is_command_prefix(input: &str) -> bool {
@@ -309,6 +371,18 @@ mod tests {
         assert_eq!(direct.kind, CommandKind::Agent);
         assert_eq!(direct.rest, "claude");
         assert!(lookup("agent").unwrap().takes_args);
+    }
+
+    #[test]
+    fn move_parses_and_resolves_positions() {
+        let direct = parse("/move l").unwrap();
+        assert_eq!(direct.kind, CommandKind::Move);
+        assert_eq!(direct.rest, "l");
+        assert_eq!(lookup_move_position(&direct.rest).unwrap().name, "left");
+        assert_eq!(lookup_move_position("R").unwrap().name, "right");
+        assert_eq!(lookup_move_position("up").unwrap().alias, "u");
+        assert_eq!(lookup_move_position("b").unwrap().name, "bottom");
+        assert!(lookup_move_position("top").is_none());
     }
 
     #[test]
@@ -379,6 +453,23 @@ mod tests {
         let h = matches("HE");
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].name, "help");
+    }
+
+    #[test]
+    fn move_position_matches_full_names_and_aliases() {
+        let all = match_move_positions("");
+        assert_eq!(all.len(), MOVE_POSITIONS.len());
+        assert_eq!(match_move_positions("l")[0].name, "left");
+        assert_eq!(match_move_positions("ri")[0].name, "right");
+        assert_eq!(match_move_positions("U")[0].name, "up");
+        assert!(match_move_positions("x").is_empty());
+
+        assert_eq!(move_position_prefix("/move "), Some(""));
+        assert_eq!(move_position_prefix("/MOVE r"), Some("r"));
+        assert_eq!(move_position_prefix("  /move bot"), Some("bot"));
+        assert_eq!(move_position_prefix("/move"), None);
+        assert_eq!(move_position_prefix("/move left extra"), None);
+        assert_eq!(move_position_prefix("/model r"), None);
     }
 
     #[test]

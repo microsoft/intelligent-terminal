@@ -909,7 +909,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (position == L"bottom")
             return SplitDirection::Down;
-        if (position == L"top")
+        if (position == L"top" || position == L"up")
             return SplitDirection::Up;
         if (position == L"left")
             return SplitDirection::Left;
@@ -4597,6 +4597,17 @@ namespace winrt::TerminalApp::implementation
             view = params["view"].asString();
             logSuffix += " view=" + *view;
         }
+        std::optional<winrt::hstring> panePosition;
+        if (params.isMember("pane_position") && params["pane_position"].isString())
+        {
+            const auto requested = winrt::to_hstring(params["pane_position"].asString());
+            if (requested == L"left" || requested == L"right" ||
+                requested == L"up" || requested == L"bottom")
+            {
+                panePosition = requested;
+                logSuffix += " pane_position=" + winrt::to_string(requested);
+            }
+        }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
         // Apply view to the existing AgentPaneContent if any.
@@ -4664,6 +4675,24 @@ namespace winrt::TerminalApp::implementation
                     targetTab->SetAgentChipOverride(std::nullopt);
                     targetTab->StashAgentPane();
                 }
+            }
+        }
+
+        // `/move` is a transient per-tab override. Reposition only the routed
+        // tab; do not mutate GlobalSettings or walk the other tabs.
+        if (panePosition.has_value())
+        {
+            if (const auto rootPane = targetTab->GetRootPane())
+            {
+                rootPane->RepositionAgentPane(_AgentPanePositionToSplitDirection(*panePosition));
+            }
+            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            {
+                // AgentPaneContent uses the settings spelling "top" for Up.
+                const auto contentPosition = *panePosition == L"up" ?
+                                                 winrt::hstring{ L"top" } :
+                                                 *panePosition;
+                agentContent.SetAgentPanePosition(contentPosition);
             }
         }
 

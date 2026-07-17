@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Prepínanie agentov nie je k dispozícii mimo 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
+commands.move.summary: "Presunúť panel agenta pre túto kartu (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
 system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}

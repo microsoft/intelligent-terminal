@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Ekki er hægt að skipta um fulltrúa utan Win
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Veldu líkanið fyrir þetta spjald (/model <id> til að skipta beint)"  # {Locked="/model","<id>"}
+commands.move.summary: "Færa agentspjald þessa flipa (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}
