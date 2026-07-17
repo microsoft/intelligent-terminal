@@ -28,8 +28,22 @@ static GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
 /// compiled in debug mode.
 pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
     if debug_assertions {
-        // Verbose for developers iterating on the code.
-        "debug"
+        // Verbose for developers iterating on *our* code, but cap the
+        // `agent_client_protocol` crate at `info`. At `debug` that crate dumps
+        // every JSON-RPC message body verbatim — and logs each outgoing
+        // response twice via its actor spans (`send_raw_message` +
+        // `outgoing_protocol_actor`). For the `sessions/list` poll that
+        // response is the whole session-registry snapshot (~27 KB), so a
+        // routine debug session bloats `wta-main_master.log` to multiple GB, of
+        // which ~99% is this one crate's wire trace. Capping at `info` drops
+        // that debug/trace flood while still surfacing anything the crate logs
+        // at info and above. Today the crate emits only `trace!`/`debug!` (no
+        // info/warn/error), so this is behaviorally identical to `warn` but
+        // reads as the minimal cap and is forward-safe if the crate later adds
+        // info-level logs. WTA keeps its own dedicated ACP wire log
+        // (`wta-acp-debug.log`) for deep debugging; opt the crate's trace back
+        // in explicitly with `WTA_LOG=debug,agent_client_protocol=debug`.
+        "debug,agent_client_protocol=info"
     } else {
         // Shipping release binaries log at info: enough to follow lifecycle
         // and connection flow out of the box, without the noisy debug traces.
@@ -433,7 +447,20 @@ mod tests {
 
     #[test]
     fn debug_build_default_is_debug() {
-        assert_eq!(default_filter_directive(true), "debug");
+        assert_eq!(
+            default_filter_directive(true),
+            "debug,agent_client_protocol=info"
+        );
+    }
+
+    #[test]
+    fn debug_build_default_caps_acp_crate_at_info() {
+        // The debug default keeps our own code at `debug` but must cap the
+        // noisy `agent_client_protocol` wire trace, or a routine debug run
+        // balloons wta-main_master.log to multiple GB (see the directive doc).
+        let directive = default_filter_directive(true);
+        assert!(directive.starts_with("debug"));
+        assert!(directive.contains("agent_client_protocol=info"));
     }
 
     #[test]

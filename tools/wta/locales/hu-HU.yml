@@ -212,6 +212,7 @@ system.agent_switch_unavailable: "Az ügynökváltás nem érhető el a Windows 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}
+commands.move.summary: "A lap ügynökpanelének áthelyezése (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modell kiválasztása (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "A csatlakoztatott ügynök nem hirdetett meg kiválasztható modelleket."
 system.model_set: "A panel modellje erre állítva: %{model}."  # {Locked="%{model}"}

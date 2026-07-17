@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "El cambio de agente no está disponible fuera 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Elige el modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
+commands.move.summary: "Mover el panel del agente de esta pestaña (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "El agente conectado no anunció ningún modelo seleccionable."
 system.model_set: "El modelo para este panel se estableció en %{model}."  # {Locked="%{model}"}

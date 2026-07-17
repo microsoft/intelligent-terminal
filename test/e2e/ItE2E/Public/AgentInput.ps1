@@ -78,9 +78,9 @@ function Send-AgentShiftEnter {
 
 function Clear-AgentInput {
     <# Clear the agent pane input line / dismiss any popup (Escape resets to the hint). #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$PaneSessionId)
     process {
-        Send-AgentKey -App $App -Key Escape | Out-Null
+        Send-AgentKey -App $App -Key Escape -PaneSessionId $PaneSessionId | Out-Null
         Start-Sleep -Milliseconds 200
         $App
     }
@@ -142,12 +142,16 @@ function Open-AgentCommandMenu {
         Clears any existing input first (Escape) so a stale char can't suppress the menu.
         Returns the agent pane session object.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 15)
+    [CmdletBinding()] param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [int]$TimeoutSec = 15,
+        [string]$PaneSessionId
+    )
     process {
-        Clear-AgentInput -App $App | Out-Null
-        $sess = Send-AgentPrompt -App $App -Text '/' -NoSubmit
+        Clear-AgentInput -App $App -PaneSessionId $PaneSessionId | Out-Null
+        $sess = Send-AgentPrompt -App $App -Text '/' -NoSubmit -PaneSessionId $PaneSessionId
         Wait-Until -TimeoutSec $TimeoutSec -Because "the / command popup to render" -Condition {
-            (Get-AgentPaneText -App $App -MaxLines 40) -match '/help|/clear|/new'
+            (Get-AgentPaneText -App $App -MaxLines 40 -PaneSessionId $sess.PaneSessionId) -match '/help|/clear|/new'
         } | Out-Null
         $sess
     }
@@ -155,9 +159,9 @@ function Open-AgentCommandMenu {
 
 function Get-AgentMenuSelection {
     <# Return the menu row currently marked selected (the `>` line), trimmed. #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [string]$PaneSessionId)
     process {
-        $line = (Get-AgentPaneText -App $App -MaxLines 40) -split "`n" |
+        $line = (Get-AgentPaneText -App $App -MaxLines 40 -PaneSessionId $PaneSessionId) -split "`n" |
             Where-Object { $_ -match '>\s*/\w' } | Select-Object -First 1
         if ($line) { ($line -replace '[│┌┐└┘>]', '').Trim() } else { $null }
     }
@@ -171,17 +175,22 @@ function Invoke-AgentMenuItem {
     .PARAMETER Name   A regex matched against the menu rows (e.g. '/new', 'clear').
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Name, [int]$MaxMoves = 12)
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][string]$Name,
+        [int]$MaxMoves = 12,
+        [string]$PaneSessionId
+    )
     process {
-        Open-AgentCommandMenu -App $App | Out-Null
+        $sess = Open-AgentCommandMenu -App $App -PaneSessionId $PaneSessionId
         $reached = $false
         for ($i = 0; $i -le $MaxMoves; $i++) {
-            $sel = Get-AgentMenuSelection -App $App
+            $sel = Get-AgentMenuSelection -App $App -PaneSessionId $sess.PaneSessionId
             if ($sel -and $sel -match $Name) { $reached = $true; break }
-            Send-AgentKey -App $App -Key Down | Out-Null
+            Send-AgentKey -App $App -Key Down -PaneSessionId $sess.PaneSessionId | Out-Null
         }
         if (-not $reached) { throw "Invoke-AgentMenuItem: could not select a menu row matching /$Name/." }
-        Send-AgentKey -App $App -Key Enter | Out-Null
+        Send-AgentKey -App $App -Key Enter -PaneSessionId $sess.PaneSessionId | Out-Null
         $App
     }
 }
@@ -193,10 +202,15 @@ function Test-AgentPopupShown {
         rendered text (e.g. 'Allow', 'permission', '/help', a model name). Returns bool.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Pattern, [int]$TimeoutSec = 15)
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][string]$Pattern,
+        [int]$TimeoutSec = 15,
+        [string]$PaneSessionId
+    )
     process {
         Test-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Condition {
-            (Get-AgentPaneText -App $App -MaxLines 60) -match $Pattern
+            (Get-AgentPaneText -App $App -MaxLines 60 -PaneSessionId $PaneSessionId) -match $Pattern
         }
     }
 }
@@ -232,8 +246,13 @@ function Resolve-AgentPermission {
 function Assert-AgentPaneText {
     <# Assert the agent pane buffer matches a regex within the timeout. #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$App, [Parameter(Mandatory)][string]$Pattern, [int]$TimeoutSec = 30)
-    if (-not (Test-AgentPopupShown -App $App -Pattern $Pattern -TimeoutSec $TimeoutSec)) {
+    param(
+        [Parameter(Mandatory)]$App,
+        [Parameter(Mandatory)][string]$Pattern,
+        [int]$TimeoutSec = 30,
+        [string]$PaneSessionId
+    )
+    if (-not (Test-AgentPopupShown -App $App -Pattern $Pattern -TimeoutSec $TimeoutSec -PaneSessionId $PaneSessionId)) {
         $shot = Save-UiScreenshot -App $App -Path (Join-Path $env:TEMP 'ite2e-agentpane-fail.png')
         throw "Assert-AgentPaneText: agent pane never matched /$Pattern/ within ${TimeoutSec}s. Screenshot: $shot"
     }

@@ -200,6 +200,41 @@ function Get-AgentConnectedPlaceholderRegex {
     if ($re) { $re } else { '(?i)Ask anything.*for commands' }
 }
 
+function Get-AgentCliStatus {
+    <#
+    .SYNOPSIS
+        Classify a built-in agent CLI as not-installed, probe-timeout,
+        installed-unauthenticated, or authed using its non-interactive print mode.
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)][ValidateSet('claude', 'codex', 'gemini')][string]$Agent,
+        [int]$TimeoutSec = 50
+    )
+    if (-not (Get-Command $Agent -ErrorAction SilentlyContinue)) { return 'not-installed' }
+
+    $job = Start-Job -ArgumentList $Agent -ScriptBlock {
+        param($AgentId)
+        switch ($AgentId) {
+            'claude' { claude -p 'Reply with only the token AUTHOK' 2>&1 }
+            'codex'  { $null | codex exec 'Reply with only the token AUTHOK' 2>&1 }
+            'gemini' { gemini -p 'Reply with only the token AUTHOK' 2>&1 }
+        }
+    }
+    $out = ''
+    try {
+        $finished = Wait-Job $job -Timeout $TimeoutSec
+        if (-not $finished) {
+            Stop-Job $job -ErrorAction SilentlyContinue
+            return 'probe-timeout'
+        }
+        $out = ((Receive-Job $job 2>&1) -join "`n")
+    }
+    finally {
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
+    }
+    if ($out -match 'AUTHOK') { 'authed' } else { 'installed-unauthenticated' }
+}
+
 function Wait-AgentReady {
     <#
     .SYNOPSIS
@@ -218,7 +253,11 @@ function Wait-AgentReady {
         after /restart or a settings-driven rebuild. A logged auth/fatal failure short-circuits
         so a genuinely-failed connect fails fast instead of burning the whole timeout.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$TimeoutSec = 90)
+    [CmdletBinding()] param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [int]$TimeoutSec = 90,
+        [string]$PaneSessionId
+    )
     process {
         Open-AgentPane -App $App | Out-Null
         $readyRe = Get-AgentConnectedPlaceholderRegex
@@ -230,7 +269,7 @@ function Wait-AgentReady {
             # placeholder of ANY bundled wta locale — never just the en-US string — to stay
             # robust on non-en-US machines. The connecting/disconnected placeholders are distinct
             # per locale, so this remains a clean Connected-only signal.
-            if ((Get-AgentPaneText -App $App -MaxLines 50) -match $readyRe) { return $true }
+            if ((Get-AgentPaneText -App $App -MaxLines 50 -PaneSessionId $PaneSessionId) -match $readyRe) { return $true }
             # Throttle the fail-fast log read to every ~2s (UI placeholder is still polled at
             # 500ms): Get-ItLogText re-reads the whole appended slice each call and the helper log
             # grows while connecting, so reading it every loop would be O(n²) IO on long waits.
@@ -282,15 +321,77 @@ function Wait-AgentReady {
     }
 }
 
+function Get-AgentPaneSessions {
+    <#
+    .SYNOPSIS
+        Resolve every live agent pane created by THIS run from agent-pane-sessions.jsonl.
+    .DESCRIPTION
+        Returns newest-first, de-duplicated by PaneSessionId. This is the multi-tab-safe
+        primitive; callers can pin a pane before another tab creates or rebuilds its helper.
+    #>
+    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    process {
+        $jsonl = Join-Path $App.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
+        if (-not (Test-Path $jsonl)) { return }
+        $preIds = if ($App.PSObject.Properties.Name -contains 'PreExistingAgentPaneIds') { $App.PreExistingAgentPaneIds } else { $null }
+        $records = @(Get-Content -LiteralPath $jsonl -Tail 256 | Where-Object { $_.Trim() } |
+                ForEach-Object { $_ | ConvertFrom-JsonSafe } | Where-Object { $_ -and $_.pane_session_id })
+        if ($preIds) {
+            $records = @($records | Where-Object { -not $preIds.Contains([string]$_.pane_session_id) })
+        }
+
+        $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        for ($i = $records.Count - 1; $i -ge 0; $i--) {
+            $r = $records[$i]
+            $paneId = [string]$r.pane_session_id
+            if (-not $seen.Add($paneId)) { continue }
+            $alive = $false
+            try { $st = Get-WtPaneStatus -App $App -SessionId $paneId; $alive = ($st -and $st.state -match 'run') } catch { $alive = $false }
+            if ($alive) {
+                [pscustomobject]@{
+                    PaneSessionId   = $paneId
+                    AcpSessionId    = $r.session_id
+                    StartedAt       = $r.started_at
+                    HelperProcessId = $st.pid
+                }
+            }
+        }
+    }
+}
+
+function Resolve-AgentOwnerTabId {
+    param(
+        [Parameter(Mandatory)]$App,
+        [Parameter(Mandatory)][string]$OwnerPaneSessionId
+    )
+
+    $listener = Start-WtEventListener -App $App
+    try {
+        Start-Sleep -Milliseconds 500
+        Invoke-RunCommand -App $App -SessionId $OwnerPaneSessionId -Command 'echo ite2e-tab-id-probe' | Out-Null
+        $event = Wait-WtEvent -Listener $listener -TimeoutSec 15 -Predicate {
+            $_.method -eq 'vt_sequence' -and
+            "$($_.params.pane_id)" -eq $OwnerPaneSessionId -and
+            $_.params.tab_id
+        }
+        [string]$event.params.tab_id
+    }
+    finally {
+        Stop-WtEventListener -Listener $listener
+    }
+}
+
 function Get-AgentPaneSession {
     <#
     .SYNOPSIS
-        Resolve THIS run's agent pane identity from agent-pane-sessions.jsonl:
+        Resolve THIS run's newest live agent pane, a specific pinned pane, or a tab's pane:
           - PaneSessionId : the WT pane session GUID (use with send-keys / focus-pane /
                             pane-status / capture-pane). The agent pane is XAML chrome around
                             the helper's TermControl and is NEVER in list-panes (open OR
                             stashed), so the jsonl is the only way to find it.
           - AcpSessionId  : the ACP conversation id (use to resume the session).
+          - TabId         : the owner tab StableId GUID (not the numeric protocol tab index).
+          - OwnerPaneSessionId : a shell pane in the owner tab; its VT event supplies the StableId.
     .DESCRIPTION
         WT is single-instance: one monarch owns the COM server, and agent-pane-sessions.jsonl is
         a SHARED, append-only file accumulating records across every window AND every prior test
@@ -302,31 +403,58 @@ function Get-AgentPaneSession {
         ($App.PreExistingAgentPaneIds, snapshotted before activation). Those are exactly the
         agent pane(s) this run created; among them return the newest still-alive one.
     #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App)
+    [CmdletBinding()] param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [string]$PaneSessionId,
+        [string]$TabId,
+        [string]$OwnerPaneSessionId
+    )
     process {
-        $jsonl = Join-Path $App.LocalStateDir 'IntelligentTerminal\agent-pane-sessions.jsonl'
-        if (-not (Test-Path $jsonl)) { return $null }
-        $preIds = if ($App.PSObject.Properties.Name -contains 'PreExistingAgentPaneIds') { $App.PreExistingAgentPaneIds } else { $null }
-        $records = Get-Content -LiteralPath $jsonl | Where-Object { $_.Trim() } |
-            ForEach-Object { $_ | ConvertFrom-JsonSafe } | Where-Object { $_ -and $_.pane_session_id }
-        # Keep only agent panes created by THIS launch (not prior runs / other windows).
-        if ($preIds) {
-            $records = @($records | Where-Object { -not $preIds.Contains([string]$_.pane_session_id) })
+        $sessions = @(Get-AgentPaneSessions -App $App)
+        if ($PaneSessionId) {
+            return $sessions | Where-Object { $_.PaneSessionId -eq $PaneSessionId } | Select-Object -First 1
         }
-        # Newest first; pick the first whose pane is still alive.
-        for ($i = $records.Count - 1; $i -ge 0; $i--) {
-            $r = $records[$i]
-            $alive = $false
-            try { $st = Get-WtPaneStatus -App $App -SessionId $r.pane_session_id; $alive = ($st -and $st.state -match 'run') } catch { $alive = $false }
-            if ($alive) {
-                return [pscustomobject]@{
-                    PaneSessionId = $r.pane_session_id
-                    AcpSessionId  = $r.session_id
-                    StartedAt     = $r.started_at
-                }
+        if ($OwnerPaneSessionId) {
+            $TabId = Resolve-AgentOwnerTabId -App $App -OwnerPaneSessionId $OwnerPaneSessionId
+        }
+        if ($TabId) {
+            $normalizedTabId = $TabId.Trim('{}')
+            $tabPattern = '--owner-tab-id\s+"?\{?' + [regex]::Escape($normalizedTabId) + '\}?(?:"|\s|$)'
+            $helperPids = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -match '--connect-master' -and $_.CommandLine -match $tabPattern } |
+                    ForEach-Object { [int]$_.ProcessId })
+            return $sessions |
+                Where-Object { [int]$_.HelperProcessId -in $helperPids } |
+                Select-Object -First 1
+        }
+        $sessions | Select-Object -First 1
+    }
+}
+
+function Wait-NewAgentPaneSession {
+    <# Wait for a tab's live pane, or the newest live pane, excluding any prior pane ids. #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [string[]]$ExcludePaneSessionId = @(),
+        [string]$TabId,
+        [string]$OwnerPaneSessionId,
+        [int]$TimeoutSec = 30
+    )
+    process {
+        if ($OwnerPaneSessionId) {
+            $TabId = Resolve-AgentOwnerTabId -App $App -OwnerPaneSessionId $OwnerPaneSessionId
+        }
+        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Because 'a new agent pane session id' -Condition {
+            if ($TabId) {
+                Get-AgentPaneSession -App $App -TabId $TabId |
+                    Where-Object { $_.PaneSessionId -notin $ExcludePaneSessionId }
+            }
+            else {
+                Get-AgentPaneSessions -App $App |
+                    Where-Object { $_.PaneSessionId -notin $ExcludePaneSessionId } |
+                    Select-Object -First 1
             }
         }
-        $null
     }
 }
 
@@ -339,10 +467,17 @@ function Send-AgentPrompt {
         is absent from `list-panes`.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Text, [switch]$NoSubmit)
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][string]$Text,
+        [switch]$NoSubmit,
+        [string]$PaneSessionId
+    )
     process {
         Open-AgentPane -App $App | Out-Null
-        $sess = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Because "agent pane session id" -Condition { Get-AgentPaneSession -App $App }
+        $sess = Wait-Until -TimeoutSec 20 -IntervalSec 0.5 -Because "agent pane session id" -Condition {
+            Get-AgentPaneSession -App $App -PaneSessionId $PaneSessionId
+        }
         Write-ItLog -Level INFO -Message "Send-AgentPrompt -> agent pane $($sess.PaneSessionId)"
         Invoke-WtCli -App $App -Arguments @('send-keys', '--raw', '-t', $sess.PaneSessionId, '--', $Text) | Out-Null
         if (-not $NoSubmit) {
@@ -355,9 +490,13 @@ function Send-AgentPrompt {
 
 function Get-AgentPaneText {
     <# Capture the agent pane's rendered buffer text (its conpty/TUI), via its session id. #>
-    [CmdletBinding()] param([Parameter(Mandatory, ValueFromPipeline)]$App, [int]$MaxLines = 100)
+    [CmdletBinding()] param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [int]$MaxLines = 100,
+        [string]$PaneSessionId
+    )
     process {
-        $sess = Get-AgentPaneSession -App $App
+        $sess = Get-AgentPaneSession -App $App -PaneSessionId $PaneSessionId
         if (-not $sess) { return '' }
         try { Get-WtCapture -App $App -SessionId $sess.PaneSessionId -MaxLines $MaxLines } catch { '' }
     }

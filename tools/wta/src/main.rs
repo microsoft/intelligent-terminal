@@ -2921,7 +2921,25 @@ async fn run_acp_app(
                         // terminal output/scrollback) — keep it out of debug;
                         // log only the method there, full JSON at trace.
                         tracing::debug!(method = %method, "wt_event_rx: received event");
-                        tracing::trace!(target: "wt_event.content", event = %event_json, "wt_event_rx: full event");
+                        if method == "agent_paste_text" {
+                            let mut redacted = event_json.clone();
+                            let paste_len = redacted
+                                .get("params")
+                                .and_then(|p| p.get("text"))
+                                .and_then(|v| v.as_str())
+                                .map(str::len);
+                            if let Some(paste_len) = paste_len {
+                                if let Some(params) = redacted.get_mut("params").and_then(|v| v.as_object_mut()) {
+                                    params.insert(
+                                        "text".to_string(),
+                                        serde_json::json!(format!("<redacted {} bytes>", paste_len)),
+                                    );
+                                }
+                            }
+                            tracing::trace!(target: "wt_event.content", event = %redacted, "wt_event_rx: full event");
+                        } else {
+                            tracing::trace!(target: "wt_event.content", event = %event_json, "wt_event_rx: full event");
+                        }
 
                         let params = event_json
                             .get("params")

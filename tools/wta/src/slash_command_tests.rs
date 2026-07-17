@@ -294,6 +294,55 @@ fn slash_model_direct_switch_sets_override() {
 }
 
 #[test]
+fn slash_move_changes_only_the_active_tab() {
+    let mut app = test_app();
+    app.tab_sessions
+        .insert("other-tab".to_string(), TabSession::default());
+
+    run_slash_args(&mut app, "move", "l");
+
+    assert_eq!(
+        app.current_tab().agent_pane_position,
+        Some("left"),
+        "/move l must normalize to the canonical left position"
+    );
+    assert_eq!(
+        app.tab_sessions["other-tab"].agent_pane_position,
+        None,
+        "/move must not alter another tab's pane position"
+    );
+}
+
+#[test]
+fn slash_move_invalid_argument_reopens_position_completion() {
+    let mut app = test_app();
+
+    run_slash_args(&mut app, "move", "sideways");
+
+    assert_eq!(app.current_tab().input, "/move ");
+    assert_eq!(
+        app.current_tab().move_position_candidates.len(),
+        commands::MOVE_POSITIONS.len()
+    );
+    assert!(app.command_popup_state().is_some());
+}
+
+#[test]
+fn move_position_popup_completes_alias_and_dispatches() {
+    let mut app = test_app();
+    type_input(&mut app, "/move r");
+
+    assert_eq!(app.current_tab().move_position_candidates.len(), 1);
+    assert_eq!(
+        app.current_tab().selected_move_position().unwrap().name,
+        "right"
+    );
+    assert!(app.try_handle_slash_on_enter());
+    assert_eq!(app.current_tab().agent_pane_position, Some("right"));
+    assert!(app.current_tab().input.is_empty());
+}
+
+#[test]
 fn explicit_empty_agent_allowlist_is_fail_closed() {
     let mut app = test_app();
     app.set_allowed_agent_ids(vec![String::new()]);

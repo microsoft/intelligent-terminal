@@ -14,6 +14,8 @@
     'Different positions work'          = 'at all four pane positions'
     'Focus hotkey works'                = 'Focus hotkey / focus works'
     '/model works'                      = '/model opens the model picker'
+    '/agent picker works'               = '/agent appears in the slash menu and opens a keyboard-operable picker'
+    'Invalid /agent selection is safe'  = '/agent rejects an unavailable id without changing the pane or global setting'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).
@@ -165,6 +167,8 @@
     'Split pane does not break chat'    = 'Split pane does not break chat'
     'Multiple tabs work'                = 'Multiple tabs each get an independent agent session'
     'Multiple agent panes work'         = 'Multiple tabs each get an independent agent session'
+    'Per-tab agent switching is isolated' = 'Switching tab B rebuilds only tab B and leaves tab A conversation alive|Both agent tabs remain independently usable after the switch'
+    'Global agent defaults respect per-tab overrides' = 'A newly opened tab still follows the global default agent|Changing the global default rebuilds follower tabs but preserves overridden tab B'
     'Close target tab cleans up'        = 'Close target tab cleans up'
     # Agent insert/run/autofix targeting the intended split pane is proven by the autofix-in-a-split
     # case plus the autofix-target-pane assertion.

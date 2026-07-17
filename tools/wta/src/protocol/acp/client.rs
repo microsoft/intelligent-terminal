@@ -2527,10 +2527,10 @@ pub async fn run_acp_client_over_pipe(
                 "skipping bootstrap session/new (initial_load_session_id={} set)",
                 load_sid,
             ));
-            let _ = event_tx.send(AppEvent::ConnectionStage(format!(
-                "Resuming session {}...",
-                load_sid
-            )));
+            // Resume is intentionally silent: show the same neutral connecting
+            // stage a fresh pane would, never "Resuming session …", so a
+            // resumed pane is indistinguishable from a normal connection.
+            let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
             (
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
                 Vec::<crate::app::AcpModelInfo>::new(),
@@ -3103,20 +3103,15 @@ fn dispatch_load_session(
                 // load_session/LoadSessionResponse does not carry the
                 // per-session model list (only modes); leave the
                 // previously-published list alone.
+                //
+                // Resume is intentionally silent: no "Session loaded" note
+                // and no "Resuming…" marker (see the `load_session` handler),
+                // so a resumed pane presents exactly like a normal connection.
                 let _ = event_tx.send(AppEvent::SessionAttached {
                     tab_id: req.tab_id.clone(),
                     session_id: session_id.to_string(),
                     available_models: Vec::new(),
                     current_model_id: None,
-                });
-                // Confirmation note so the user sees the tab transition
-                // out of "Resuming..." even if the agent's replay is
-                // empty or delayed.
-                let _ = event_tx.send(AppEvent::TabSystemMessage {
-                    tab_id: req.tab_id.clone(),
-                    message: "Session loaded. Past content from \
-                              the agent (if any) will appear above."
-                        .to_string(),
                 });
             }
             Ok(Err(e)) => {

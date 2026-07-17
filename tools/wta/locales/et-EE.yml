@@ -213,6 +213,7 @@ system.agent_switch_unavailable: "Agendi vahetamine pole väljaspool Windows Ter
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
+commands.move.summary: "Teisalda selle vahekaardi agendipaneel (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}

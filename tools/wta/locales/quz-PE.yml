@@ -212,6 +212,7 @@ system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Te
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
+commands.move.summary: "Kay hunt'a k'itipi agente k'itita astay (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}

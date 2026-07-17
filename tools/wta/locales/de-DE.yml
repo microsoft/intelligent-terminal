@@ -215,6 +215,7 @@ system.agent_switch_unavailable: "Das Umschalten des Agenten ist außerhalb eine
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}
+commands.move.summary: "Agentenbereich dieser Registerkarte verschieben (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
 system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}

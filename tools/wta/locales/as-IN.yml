@@ -216,6 +216,7 @@ system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনে
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
+commands.move.summary: "এই টেবৰ এজেণ্ট পেন স্থানান্তৰ কৰক (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
 system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}

@@ -162,6 +162,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C079` `[UT✓]` **`/sessions` works:** Switches to session-management view. _(UT: `slash_sessions_opens_agents_view`.)_
 - [ ] `C080` `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render covered by `render_model_picker_lists_models`, full UI flow still E2E.)_
 - [x] `C081` `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
+- [ ] `C225` `[E2E]` **`/agent` picker works:** `/agent` opens a keyboard-operable picker containing the current installed/allowed agents, and selecting the current agent is a safe no-op.
+- [ ] `C226` `[E2E]` **Invalid `/agent` selection is safe:** `/agent <id>` rejects an unavailable agent without rebuilding the pane or changing the global default.
 - [ ] `C082` `[E2E]` **Esc/back navigation works:** User can return from popups/session/model views to chat.
 
 ### Chat/session view switching
@@ -300,6 +302,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C160` `[UT~]` `[E2E]` **Split pane target selection is correct:** Agent insert/run/autofix targets the intended non-agent pane. _(UT: routing core.)_
 - [ ] `C161` `[UT~]` `[E2E]` **Multiple tabs work:** Each tab has its own agent pane/session state. _(UT: per-tab state.)_
 - [ ] `C162` `[E2E]` **Multiple agent panes work:** Opening agent panes in multiple tabs does not mix conversations.
+- [ ] `C227` `[E2E]` **Per-tab agent switching is isolated:** `/agent <id>` can switch one tab to a different built-in agent without rebuilding sibling tabs, losing either conversation, or restarting the shared master.
+- [ ] `C228` `[E2E]` **Global agent defaults respect per-tab overrides:** New tabs inherit the global agent; changing that default rebuilds follower tabs while preserving tabs with an explicit runtime override.
 - [ ] `C163` `[E2E]` **Move tab to new window preserves chat:** Dragging/tearing a tab to another window preserves agent pane state.
 - [ ] `C224` `[new]` `[E2E]` **Agent-created terminals inherit the active profile:** A terminal/tab the agent opens inherits the active pane's profile (e.g. an agent working in an Ubuntu session spawns new tabs in Ubuntu, not the default PowerShell profile). _(#366, closes #351.)_
 - [x] `C164` `[UT✓]` `[E2E]` **Move tab to new window preserves session routing:** Session events remain associated with the moved tab. _(UT: `wt_event_critical_from_owner_tab_raises_banner_not_chat` — events route by owner_tab_id, which survives the window move. E2E: `Feature.MultiWindow` sends a fresh prompt to the moved agent pane by its pinned session id after the move and asserts it answers, LLM-skip-guarded.)_

@@ -18,25 +18,10 @@ Describe 'Feature §2 non-Copilot built-in agents connect through the ACP adapte
     BeforeAll { Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force }
 
     It 'Each installed+authenticated non-Copilot agent (Claude/Codex/Gemini) connects and answers' {
-        # Classify each CLI precisely so a skip is actionable: not-installed vs
-        # installed-but-unauthenticated vs authed (only 'authed' agents are exercised).
-        function Get-CliStatus([string]$Cli, [scriptblock]$Probe) {
-            if (-not (Get-Command $Cli -ErrorAction SilentlyContinue)) { return 'not-installed' }
-            $job = Start-Job -ScriptBlock $Probe
-            $out = ''
-            $finished = Wait-Job $job -Timeout 50
-            if ($finished) { $out = ((Receive-Job $job 2>&1) -join "`n") } else { Stop-Job $job -ErrorAction SilentlyContinue }
-            Remove-Job $job -Force -ErrorAction SilentlyContinue
-            # A probe that never returns is NOT the same as unauthenticated — surface it
-            # distinctly so a hung/changed CLI doesn't masquerade as a clean auth gap in CI.
-            if (-not $finished) { return 'probe-timeout' }
-            if ($out -match 'AUTHOK') { return 'authed' } else { return 'installed-unauthenticated' }
-        }
-
         $status = [ordered]@{}
-        $status['claude'] = Get-CliStatus 'claude' { claude -p "Reply with only the token AUTHOK" 2>&1 }
-        $status['codex']  = Get-CliStatus 'codex'  { $null | codex exec "Reply with only the token AUTHOK" 2>&1 }
-        $status['gemini'] = Get-CliStatus 'gemini' { gemini -p "Reply with only the token AUTHOK" 2>&1 }
+        $status['claude'] = Get-AgentCliStatus -Agent 'claude'
+        $status['codex']  = Get-AgentCliStatus -Agent 'codex'
+        $status['gemini'] = Get-AgentCliStatus -Agent 'gemini'
 
         $detail = (($status.Keys | ForEach-Object { "${_}=$($status[$_])" }) -join ', ')
         Write-ItLog -Level INFO -Message "AgentMatrix CLI status: $detail"
@@ -54,15 +39,17 @@ Describe 'Feature §2 non-Copilot built-in agents connect through the ACP adapte
             $app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = $id }
             try {
                 Open-AgentPane -App $app | Out-Null
+                $shellPane = Get-ActivePane -App $app
+                $agentPane = (Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30).PaneSessionId
                 # Non-copilot agents connect via an `npx -y` ACP adapter whose first run can
                 # cold-fetch the adapter, so allow a generous readiness window.
-                (Wait-AgentReady -App $app -TimeoutSec 120) | Should -BeTrue -Because "$id should reach a connected ACP session"
-                Send-AgentPrompt -App $app -Text 'What is 3 plus 4? Reply with only the number.' | Out-Null
+                (Wait-AgentReady -App $app -PaneSessionId $agentPane -TimeoutSec 120) | Should -BeTrue -Because "$id should reach a connected ACP session"
+                Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text 'What is 3 plus 4? Reply with only the number.' | Out-Null
                 # Non-Copilot agents answer via the npx ACP adapter (extra hop + remote model
                 # latency), so the first reply is markedly slower than Copilot's local-ish path.
                 # 90s was demonstrably too tight (observed turns approaching it); 150s keeps the
                 # consolidated external-CLI case from flaking on adapter/model latency.
-                Assert-AgentPaneText -App $app -Pattern '\b7\b' -TimeoutSec 150
+                Assert-AgentPaneText -App $app -PaneSessionId $agentPane -Pattern '\b7\b' -TimeoutSec 150
             }
             finally { Stop-Terminal -App $app }
         }
