@@ -4050,7 +4050,7 @@ mod tests {
     }
 
     #[test]
-    fn copilot_preapproves_only_the_proposal_tool() {
+    fn copilot_only_allows_the_proposal_tool() {
         let (cmd, id) = resolve(None, Some("copilot"), Some("gpt-5.2"));
         assert_eq!(
             cmd,

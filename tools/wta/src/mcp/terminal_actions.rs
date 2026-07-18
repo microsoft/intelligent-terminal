@@ -112,11 +112,24 @@ fn validate_text(
     Ok(())
 }
 
+fn validate_single_line_text(
+    name: &str,
+    text: &str,
+    max_chars: usize,
+    allow_blank: bool,
+) -> Result<(), String> {
+    validate_text(name, text, max_chars, allow_blank)?;
+    if text.contains('\r') || text.contains('\n') {
+        return Err(format!("{name} must be a single line"));
+    }
+    Ok(())
+}
+
 impl ProposedTerminalAction {
     fn validate(&self) -> Result<(), String> {
         match self {
             Self::SendInput { input, .. } => {
-                validate_text("input", input, MAX_INPUT_CHARS, false)
+                validate_single_line_text("input", input, MAX_INPUT_CHARS, false)
             }
             Self::Open {
                 target,
@@ -349,7 +362,8 @@ impl Tool for ProposeTerminalActions {
                                             "input": {
                                                 "type": "string",
                                                 "minLength": 1,
-                                                "maxLength": MAX_INPUT_CHARS
+                                                "maxLength": MAX_INPUT_CHARS,
+                                                "pattern": "^[^\\r\\n]*$"
                                             },
                                             "preferred_action": {
                                                 "type": "string",
@@ -422,7 +436,7 @@ impl Tool for ProposeTerminalActions {
             .expect("route() requires a connected helper")
             .ext_method(request)
             .await
-            .map_err(|err| format!("helper rejected planner proposal request: {err}"))?;
+            .map_err(|err| format!("helper rejected terminal action proposal request: {err}"))?;
         let response = parse_terminal_actions_proposal_response(&response.0)
             .map_err(|err| format!("invalid helper proposal response: {err}"))?;
 
@@ -514,6 +528,25 @@ mod tests {
         let mut nul = send_proposal();
         nul.choices[0].title = "bad\0title".to_string();
         assert!(nul.validate().is_err());
+    }
+
+    #[test]
+    fn proposal_rejects_multiline_send_input() {
+        for input in ["echo first\necho second", "echo first\recho second"] {
+            let mut proposal = send_proposal();
+            let ProposedTerminalAction::SendInput {
+                input: proposed_input,
+                ..
+            } = &mut proposal.choices[0].action
+            else {
+                unreachable!("send_proposal must contain send_input");
+            };
+            *proposed_input = input.to_string();
+            assert_eq!(
+                proposal.validate(),
+                Err("input must be a single line".to_string())
+            );
+        }
     }
 
     #[test]

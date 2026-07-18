@@ -81,8 +81,8 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
         if content_len > MAX_BODY {
             return Ok(()); // body too large — drop
         }
-        // Enforce POST /mcp: this is a single JSON-RPC endpoint. Anything else
-        // → 405, don't treat the payload as a body.
+        // Accept POST on the base or session-bound MCP endpoint. Unknown paths
+        // return 404; valid endpoints reserve 405 for unsupported methods.
         let mut request_line = std::str::from_utf8(&buf[..headers_end])
             .ok()
             .and_then(|s| s.lines().next())
@@ -93,7 +93,7 @@ async fn handle_conn(mut stream: TcpStream, tools: Arc<Vec<Arc<dyn Tool>>>) -> s
         let route_id = match mcp_route_id(path) {
             Some(route_id) => route_id.map(str::to_string),
             None => {
-                write_json(&mut stream, 405, "").await?;
+                write_json(&mut stream, 404, "").await?;
                 return Ok(());
             }
         };
@@ -284,6 +284,7 @@ async fn write_json(stream: &mut TcpStream, status: u16, body: &str) -> std::io:
     let reason = match status {
         200 => "OK",
         202 => "Accepted",
+        404 => "Not Found",
         405 => "Method Not Allowed",
         _ => "OK",
     };
@@ -441,6 +442,16 @@ mod tests {
             .unwrap();
         let n2 = s2.read(&mut buf).await.unwrap();
         assert!(String::from_utf8_lossy(&buf[..n2]).starts_with("HTTP/1.1 405"));
+
+        // Unknown path → 404.
+        let mut s3 = tokio::net::TcpStream::connect(("127.0.0.1", ep.port))
+            .await
+            .unwrap();
+        s3.write_all(b"POST /other HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+        let n3 = s3.read(&mut buf).await.unwrap();
+        assert!(String::from_utf8_lossy(&buf[..n3]).starts_with("HTTP/1.1 404"));
     }
 
     #[test]

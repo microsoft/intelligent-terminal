@@ -118,7 +118,7 @@ hosts a localhost MCP tool server and injects a session-bound URL during ACP
 Autofix and Terminal Agent cards come only from the typed
 `propose_terminal_actions` MCP tool; the
 helper injects trusted pane/delegate routing and execution still requires user
-confirmation. The master preapproves only this proposal-only MCP call in Copilot
+confirmation. The master pre-approves only this proposal-only MCP call in Copilot
 so the card confirmation is the single user approval; no terminal operation or
 other tool is preapproved. Assistant-text JSON is never an action protocol.
 
