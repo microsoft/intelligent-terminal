@@ -3722,7 +3722,7 @@ impl App {
         tab.agents_view_prev_pane_open = None;
     }
 
-    fn open_shell_sessions_view_for_tab(&mut self, tab_id: String) {
+    pub(crate) fn open_shell_sessions_view_for_tab(&mut self, tab_id: String) {
         {
             let tab = self.tab_mut(&tab_id);
             tab.current_view = View::ShellSessions;
@@ -5030,6 +5030,7 @@ impl App {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&bind_tab);
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -5087,6 +5088,7 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -5103,6 +5105,7 @@ impl App {
                 tab.turn = TurnState::Idle;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
@@ -6075,7 +6078,6 @@ impl App {
                     }
                     {
                         let tab = self.tab_mut(tab_id);
-                        tab.current_view = View::Chat;
                         tab.clear_chat_history();
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
@@ -10059,6 +10061,10 @@ impl App {
             View::ShellSessions => "shell_sessions",
             View::Chat => "chat",
         };
+        let projected_session_id = tab
+            .loading_target_session_id
+            .as_ref()
+            .or(tab.session_id.as_ref());
         let evt = serde_json::json!({
             "type": "event",
             "method": "agent_state_changed",
@@ -10067,6 +10073,7 @@ impl App {
                 "view":      view,
                 "pane_open": tab.pane_open,
                 "pane_position": tab.agent_pane_position,
+                "agent_session_id": projected_session_id,
             }
         });
         send_wt_protocol_event(evt.to_string());
@@ -11690,8 +11697,9 @@ mod tests {
     fn load_session_applied_when_target_tab_matches_owner() {
         let (mut app, mut load_session_rx) = make_app_with_load_session_channel();
         app.owner_tab_id = Some("OWNER-TAB".to_string());
-        app.tab_sessions
-            .insert("OWNER-TAB".to_string(), TabSession::default());
+        let mut tab = TabSession::default();
+        tab.current_view = View::ShellSessions;
+        app.tab_sessions.insert("OWNER-TAB".to_string(), tab);
 
         app.handle_event(AppEvent::WtEvent {
             method: "load_session".to_string(),
@@ -11710,6 +11718,11 @@ mod tests {
         assert_eq!(req.tab_id, "OWNER-TAB");
         assert_eq!(req.session_id, "sess-abc");
         assert_eq!(req.cwd.as_deref(), Some("C:/foo"));
+        assert_eq!(
+            app.tab_sessions["OWNER-TAB"].current_view,
+            View::ShellSessions,
+            "durable restore must preserve the saved view while session/load replays"
+        );
     }
 
     #[test]

@@ -64,6 +64,10 @@ private:
         CLI::Option* sessionIdOption;
         CLI::Option* agentSessionIdOption;
         CLI::Option* agentResumeCommandlineOption;
+        CLI::Option* agentPaneSessionIdOption;
+        CLI::Option* agentPaneViewOption;
+        CLI::Option* agentPaneOpenOption;
+        CLI::Option* agentPanePositionOption;
         CLI::Option* startingDirectoryOption;
         CLI::Option* titleOption;
         CLI::Option* tabColorOption;
@@ -102,6 +106,10 @@ private:
     std::string _sessionId;
     std::string _agentSessionId;
     std::string _agentResumeCommandline;
+    std::string _agentPaneSessionId;
+    std::string _agentPaneView;
+    bool _agentPaneOpen{ false };
+    std::string _agentPanePosition;
     std::string _startingDirectory;
     std::string _startingTitle;
     std::string _startingTabColor;

@@ -498,6 +498,18 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        struct _PendingDurableAgentPaneRestore
+        {
+            uint64_t startupActionBatchId{ 0 };
+            std::string sessionId;
+            std::string cwd;
+            std::string view;
+            bool paneOpen{ false };
+            winrt::hstring panePosition;
+        };
+        std::unordered_map<winrt::hstring, _PendingDurableAgentPaneRestore> _pendingDurableAgentPaneRestores;
+        uint64_t _nextStartupActionBatchId{ 0 };
+        uint64_t _currentStartupActionBatchId{ 0 };
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
         // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
@@ -564,7 +576,10 @@ namespace winrt::TerminalApp::implementation
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
                                               std::string_view initialLoadCwd = {},
-                                              std::wstring_view initialAuthAgent = {});
+                                              std::wstring_view initialAuthAgent = {},
+                                              std::string_view initialView = {},
+                                              std::wstring_view initialPanePosition = {});
+        void _RestorePendingDurableAgentPanes(uint64_t startupActionBatchId);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.

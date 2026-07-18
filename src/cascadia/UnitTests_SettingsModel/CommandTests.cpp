@@ -461,7 +461,11 @@ namespace SettingsModelUnitTests
                 "command": {
                     "action": "newWindow",
                     "agentSessionId": "agent-session-1",
-                    "agentResumeCommandline": "claude --resume agent-session-1"
+                    "agentResumeCommandline": "claude --resume agent-session-1",
+                    "agentPaneSessionId": "acp-session-2",
+                    "agentPaneView": "shell_sessions",
+                    "agentPaneOpen": true,
+                    "agentPanePosition": "right"
                 }
             }
         ])" };
@@ -616,6 +620,10 @@ namespace SettingsModelUnitTests
             const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
             VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-1" }, terminalArgs.AgentSessionId());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"claude --resume agent-session-1" }, terminalArgs.AgentResumeCommandline());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"acp-session-2" }, terminalArgs.AgentPaneSessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell_sessions" }, terminalArgs.AgentPaneView());
+            VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"right" }, terminalArgs.AgentPanePosition());
         }
     }
 }

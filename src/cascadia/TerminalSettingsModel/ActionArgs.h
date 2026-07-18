@@ -394,12 +394,20 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(int64_t, DurableShellSessionRevision, 0);
         ACTION_ARG(winrt::hstring, AgentSessionId, L"");
         ACTION_ARG(winrt::hstring, AgentResumeCommandline, L"");
+        ACTION_ARG(winrt::hstring, AgentPaneSessionId, L"");
+        ACTION_ARG(winrt::hstring, AgentPaneView, L"");
+        ACTION_ARG(bool, AgentPaneOpen, false);
+        ACTION_ARG(winrt::hstring, AgentPanePosition, L"");
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
 
         static constexpr std::string_view SessionIdKey{ "sessionId" };
         static constexpr std::string_view AgentSessionIdKey{ "agentSessionId" };
         static constexpr std::string_view AgentResumeCommandlineKey{ "agentResumeCommandline" };
+        static constexpr std::string_view AgentPaneSessionIdKey{ "agentPaneSessionId" };
+        static constexpr std::string_view AgentPaneViewKey{ "agentPaneView" };
+        static constexpr std::string_view AgentPaneOpenKey{ "agentPaneOpen" };
+        static constexpr std::string_view AgentPanePositionKey{ "agentPanePosition" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
@@ -428,6 +436,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
                        otherAsUs->_AgentSessionId == _AgentSessionId &&
                        otherAsUs->_AgentResumeCommandline == _AgentResumeCommandline &&
+                       otherAsUs->_AgentPaneSessionId == _AgentPaneSessionId &&
+                       otherAsUs->_AgentPaneView == _AgentPaneView &&
+                       otherAsUs->_AgentPaneOpen == _AgentPaneOpen &&
+                       otherAsUs->_AgentPanePosition == _AgentPanePosition &&
                        otherAsUs->_ContentId == _ContentId;
             }
             return false;
@@ -444,6 +456,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, SessionIdKey, args->_SessionId);
             JsonUtils::GetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
             JsonUtils::GetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
+            JsonUtils::GetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
+            JsonUtils::GetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
+            JsonUtils::GetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
+            JsonUtils::GetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
             JsonUtils::GetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::GetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -468,6 +484,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, SessionIdKey, args->_SessionId);
             JsonUtils::SetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
             JsonUtils::SetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
+            JsonUtils::SetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
+            JsonUtils::SetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
+            JsonUtils::SetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
+            JsonUtils::SetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
             JsonUtils::SetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::SetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -491,6 +511,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_DurableShellSessionRevision = _DurableShellSessionRevision;
             copy->_AgentSessionId = _AgentSessionId;
             copy->_AgentResumeCommandline = _AgentResumeCommandline;
+            copy->_AgentPaneSessionId = _AgentPaneSessionId;
+            copy->_AgentPaneView = _AgentPaneView;
+            copy->_AgentPaneOpen = _AgentPaneOpen;
+            copy->_AgentPanePosition = _AgentPanePosition;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
             copy->_ColorScheme = _ColorScheme;
             copy->_Elevate = _Elevate;
@@ -518,6 +542,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(ReloadEnvironmentVariables());
             h.write(AgentSessionId());
             h.write(AgentResumeCommandline());
+            h.write(AgentPaneSessionId());
+            h.write(AgentPaneView());
+            h.write(AgentPaneOpen());
+            h.write(AgentPanePosition());
             h.write(ContentId());
         }
     };
