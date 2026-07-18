@@ -390,6 +390,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(winrt::hstring, Type, L"");
         ACTION_ARG(winrt::guid, SessionId, winrt::guid{});
         ACTION_ARG(bool, UseShellSessionBuffer, false);
+        ACTION_ARG(bool, UseWorkspaceBuffer, false);
         ACTION_ARG(winrt::hstring, AgentSessionId, L"");
         ACTION_ARG(winrt::hstring, AgentResumeCommandline, L"");
         ACTION_ARG(winrt::hstring, AgentPaneSessionId, L"");
@@ -505,6 +506,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_Profile = _Profile;
             copy->_SessionId = _SessionId;
             copy->_UseShellSessionBuffer = _UseShellSessionBuffer;
+            copy->_UseWorkspaceBuffer = _UseWorkspaceBuffer;
             copy->_AgentSessionId = _AgentSessionId;
             copy->_AgentResumeCommandline = _AgentResumeCommandline;
             copy->_AgentPaneSessionId = _AgentPaneSessionId;

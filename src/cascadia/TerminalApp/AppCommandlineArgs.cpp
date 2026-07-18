@@ -622,6 +622,8 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
                                                                    RS_A(L"CmdSessionIdArgDesc"));
     subcommand.useShellSessionBufferOption = subcommand.subcommand->add_flag("--useShellSessionBuffer", _useShellSessionBuffer);
     subcommand.useShellSessionBufferOption->group("");
+    subcommand.useWorkspaceBufferOption = subcommand.subcommand->add_flag("--useWorkspaceBuffer", _useWorkspaceBuffer);
+    subcommand.useWorkspaceBufferOption->group("");
     subcommand.agentSessionIdOption = subcommand.subcommand->add_option("--agentSessionId", _agentSessionId);
     subcommand.agentSessionIdOption->group("");
     subcommand.agentResumeCommandlineOption = subcommand.subcommand->add_option("--agentResumeCommandline", _agentResumeCommandline);
@@ -722,6 +724,10 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     if (*subcommand.useShellSessionBufferOption)
     {
         args.UseShellSessionBuffer(true);
+    }
+    if (*subcommand.useWorkspaceBufferOption)
+    {
+        args.UseWorkspaceBuffer(true);
     }
     if (*subcommand.agentSessionIdOption)
     {
@@ -837,6 +843,7 @@ void AppCommandlineArgs::_resetStateToDefault()
     _profileName.clear();
     _sessionId.clear();
     _useShellSessionBuffer = false;
+    _useWorkspaceBuffer = false;
     _agentSessionId.clear();
     _agentResumeCommandline.clear();
     _agentPaneSessionId.clear();
