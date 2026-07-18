@@ -177,6 +177,8 @@ namespace Microsoft.Terminal.Settings.Model
         String ShellSessionRestorePath;
         String DurableShellSessionId;
         Int64 DurableShellSessionRevision;
+        String AgentSessionId;
+        String AgentResumeCommandline;
         Boolean AppendCommandLine;
 
         // We use IReference<> to treat some args as nullable where null means

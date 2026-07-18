@@ -620,6 +620,10 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
     subcommand.sessionIdOption = subcommand.subcommand->add_option("--sessionId",
                                                                    _sessionId,
                                                                    RS_A(L"CmdSessionIdArgDesc"));
+    subcommand.agentSessionIdOption = subcommand.subcommand->add_option("--agentSessionId", _agentSessionId);
+    subcommand.agentSessionIdOption->group("");
+    subcommand.agentResumeCommandlineOption = subcommand.subcommand->add_option("--agentResumeCommandline", _agentResumeCommandline);
+    subcommand.agentResumeCommandlineOption->group("");
     subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory",
                                                                            _startingDirectory,
                                                                            RS_A(L"CmdStartingDirArgDesc"));
@@ -704,6 +708,14 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
         const auto str = winrt::to_hstring(_sessionId);
         const auto id = ::Microsoft::Console::Utils::GuidFromString(str.c_str());
         args.SessionId(id);
+    }
+    if (*subcommand.agentSessionIdOption)
+    {
+        args.AgentSessionId(winrt::to_hstring(_agentSessionId));
+    }
+    if (*subcommand.agentResumeCommandlineOption)
+    {
+        args.AgentResumeCommandline(winrt::to_hstring(_agentResumeCommandline));
     }
 
     if (*subcommand.startingDirectoryOption)
@@ -803,6 +815,8 @@ void AppCommandlineArgs::_resetStateToDefault()
 {
     _profileName.clear();
     _sessionId.clear();
+    _agentSessionId.clear();
+    _agentResumeCommandline.clear();
     _startingDirectory.clear();
     _startingTitle.clear();
     _startingTabColor.clear();
