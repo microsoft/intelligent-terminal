@@ -190,6 +190,13 @@ namespace TerminalApp
         // tab's StableId so wta calls ACP `session/load` for that tab.
         void OnResumeInNewAgentTabRequested(String eventJson);
 
+        // Inbound event from a hookless WTA delegate carrying
+        // {method:"pane_agent_session_changed",
+        //  params:{pane_id,agent_session_id,resume_commandline}}.
+        // Records the known pane/agent binding so durable shell snapshots can
+        // resume the agent CLI even when no agent hook is installed.
+        void OnPaneAgentSessionChanged(String eventJson);
+
         // Inbound event from WTA carrying
         // {method:"set_agent_chip_target",params:{tab_id, pane_session_id?}}.
         // Helper override for which pane in the tab gets the blue "Agent"
