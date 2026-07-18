@@ -4140,7 +4140,9 @@ namespace winrt::TerminalApp::implementation
             // process until later, on another thread, after we've already
             // restored the CWD to its original value.
             auto newWorkingDirectory{ _evaluatePathForCwd(settings.StartingDirectory()) };
-            connection = TerminalConnection::ConptyConnection{};
+            connection = _settings.GlobalSettings().ContinueRunningCommands() ?
+                             TerminalConnection::PsmuxConnection{} :
+                             TerminalConnection::ConptyConnection{};
             valueSet = TerminalConnection::ConptyConnection::CreateSettings(settings.Commandline(),
                                                                             newWorkingDirectory,
                                                                             settings.StartingTitle(),

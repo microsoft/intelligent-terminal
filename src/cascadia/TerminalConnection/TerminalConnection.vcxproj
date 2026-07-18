@@ -30,6 +30,9 @@
     <ClInclude Include="ConptyConnection.h">
       <DependentUpon>ConptyConnection.idl</DependentUpon>
     </ClInclude>
+    <ClInclude Include="PsmuxConnection.h">
+      <DependentUpon>PsmuxConnection.idl</DependentUpon>
+    </ClInclude>
     <ClInclude Include="EchoConnection.h">
       <DependentUpon>EchoConnection.idl</DependentUpon>
     </ClInclude>
@@ -52,12 +55,16 @@
     <ClCompile Include="ConptyConnection.cpp">
       <DependentUpon>ConptyConnection.idl</DependentUpon>
     </ClCompile>
+    <ClCompile Include="PsmuxConnection.cpp">
+      <DependentUpon>PsmuxConnection.idl</DependentUpon>
+    </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="ConnectionInformation.idl" />
     <Midl Include="ITerminalConnection.idl" />
     <Midl Include="ConptyConnection.idl" />
+    <Midl Include="PsmuxConnection.idl" />
     <Midl Include="EchoConnection.idl" />
     <Midl Include="AzureConnection.idl" />
   </ItemGroup>

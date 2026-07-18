@@ -1398,7 +1398,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(false, settings->GlobalSettings().AlwaysOnTop());
         VERIFY_ARE_EQUAL(true, settings->GlobalSettings().RestoreShellSessions());
         VERIFY_ARE_EQUAL(true, settings->GlobalSettings().RestoreAgentSessions());
-        VERIFY_ARE_EQUAL(true, settings->GlobalSettings().ContinueRunningCommands());
+        VERIFY_ARE_EQUAL(false, settings->GlobalSettings().ContinueRunningCommands());
 
         // Modify global settings
         settings->GlobalSettings().InitialRows(50);
