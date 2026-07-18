@@ -174,13 +174,13 @@ fn validate_open_fields(
         return Err("direction is only valid when target is panel".to_string());
     }
     if let Some(cwd) = cwd {
-        validate_text("cwd", cwd, MAX_CWD_CHARS, false)?;
+        validate_single_line_text("cwd", cwd, MAX_CWD_CHARS, false)?;
     }
     if let Some(title) = title {
-        validate_text("title", title, MAX_TITLE_CHARS, false)?;
+        validate_single_line_text("title", title, MAX_TITLE_CHARS, false)?;
     }
     if let Some(profile) = profile {
-        validate_text("profile", profile, MAX_PROFILE_CHARS, false)?;
+        validate_single_line_text("profile", profile, MAX_PROFILE_CHARS, false)?;
     }
     Ok(())
 }
@@ -321,10 +321,25 @@ impl Tool for ProposeTerminalActions {
         });
         let common_open_properties = serde_json::json!({
             "target": target,
-            "cwd": { "type": "string", "minLength": 1, "maxLength": MAX_CWD_CHARS },
-            "title": { "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS },
+            "cwd": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_CWD_CHARS,
+                "pattern": "^[^\\r\\n]*$"
+            },
+            "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_TITLE_CHARS,
+                "pattern": "^[^\\r\\n]*$"
+            },
             "direction": direction,
-            "profile": { "type": "string", "minLength": 1, "maxLength": MAX_PROFILE_CHARS }
+            "profile": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_PROFILE_CHARS,
+                "pattern": "^[^\\r\\n]*$"
+            }
         });
         serde_json::json!({
             "type": "object",
@@ -532,7 +547,7 @@ mod tests {
 
     #[test]
     fn proposal_rejects_multiline_send_input() {
-        for input in ["echo first\necho second", "echo first\recho second"] {
+        for line_break in ['\n', '\r'] {
             let mut proposal = send_proposal();
             let ProposedTerminalAction::SendInput {
                 input: proposed_input,
@@ -541,10 +556,36 @@ mod tests {
             else {
                 unreachable!("send_proposal must contain send_input");
             };
-            *proposed_input = input.to_string();
+            *proposed_input = format!("echo first{line_break}echo second");
             assert_eq!(
                 proposal.validate(),
                 Err("input must be a single line".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn proposal_rejects_multiline_open_fields() {
+        let line_break = "\n";
+        for (name, cwd, title, profile) in [
+            ("cwd", Some(format!("C:\\repo{line_break}next")), None, None),
+            ("title", None, Some(format!("Build{line_break}output")), None),
+            (
+                "profile",
+                None,
+                None,
+                Some(format!("PowerShell{line_break}Admin")),
+            ),
+        ] {
+            assert_eq!(
+                validate_open_fields(
+                    ProposedOpenTarget::Tab,
+                    &cwd,
+                    &title,
+                    None,
+                    &profile
+                ),
+                Err(format!("{name} must be a single line"))
             );
         }
     }
