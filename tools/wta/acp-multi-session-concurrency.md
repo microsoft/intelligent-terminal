@@ -52,6 +52,11 @@ The prompt was deliberately model-bound work that streams gradually:
 
 ## Results
 
+The Codex row below records the deprecated `@zed-industries/codex-acp`
+adapter used when this experiment was run. The current runtime uses
+`@agentclientprotocol/codex-acp@1.1.2`; these historical timings have not been
+re-attributed to the replacement adapter.
+
 Each agent received the same prompt twice (one per session) at `t = 0` after
 `tokio::join!`. Times below are wall-clock relative to the moment both prompts
 were fired.
