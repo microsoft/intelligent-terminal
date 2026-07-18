@@ -2899,4 +2899,28 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>允許 智慧終端機 將錯誤傳送給您的代理程式以自動建議修正。</value>
   </data>
+  <data name="Globals_DurableSessionGroupHeader.Text" xml:space="preserve">
+    <value>持久工作階段</value>
+    <comment>Section header for durable terminal session settings.</comment>
+  </data>
+  <data name="Globals_DurableSession.Header" xml:space="preserve">
+    <value>還原工作階段</value>
+    <comment>Header for controls that configure which parts of a durable terminal session are restored.</comment>
+  </data>
+  <data name="Globals_DurableSession.HelpText" xml:space="preserve">
+    <value>連線恢復時，自動重新連線到使用中的終端機工作階段。</value>
+    <comment>Description of durable terminal session restoration.</comment>
+  </data>
+  <data name="Globals_RestoreShellSessions.Content" xml:space="preserve">
+    <value>Terminal 重新啟動時還原殼層工作階段</value>
+    <comment>Checkbox that restores shell layout, working directories, and terminal content after Terminal relaunches. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Globals_RestoreAgentSessions.Content" xml:space="preserve">
+    <value>Terminal 重新啟動時還原代理程式工作階段</value>
+    <comment>Checkbox that restores AI agent sessions after Terminal relaunches. Here "agent" means an AI intelligent agent. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
+    <value>Terminal 重新啟動時繼續執行命令</value>
+    <comment>Checkbox that keeps commands running across a Terminal relaunch. {Locked="Terminal"}</comment>
+  </data>
 </root>

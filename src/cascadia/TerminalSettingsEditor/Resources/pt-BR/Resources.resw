@@ -2942,4 +2942,28 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Permita que o Terminal Inteligente envie erros ao agente para sugerir correções automaticamente.</value>
   </data>
+  <data name="Globals_DurableSessionGroupHeader.Text" xml:space="preserve">
+    <value>Sessão durável</value>
+    <comment>Section header for durable terminal session settings.</comment>
+  </data>
+  <data name="Globals_DurableSession.Header" xml:space="preserve">
+    <value>Restaurar sessões</value>
+    <comment>Header for controls that configure which parts of a durable terminal session are restored.</comment>
+  </data>
+  <data name="Globals_DurableSession.HelpText" xml:space="preserve">
+    <value>Reconecta-se automaticamente à sessão ativa do terminal quando a conexão é restaurada.</value>
+    <comment>Description of durable terminal session restoration.</comment>
+  </data>
+  <data name="Globals_RestoreShellSessions.Content" xml:space="preserve">
+    <value>Restaurar sessões do shell quando o Terminal for reiniciado</value>
+    <comment>Checkbox that restores shell layout, working directories, and terminal content after Terminal relaunches. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Globals_RestoreAgentSessions.Content" xml:space="preserve">
+    <value>Restaurar a sessão do agente quando o Terminal for reiniciado</value>
+    <comment>Checkbox that restores AI agent sessions after Terminal relaunches. Here "agent" means an AI intelligent agent. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
+    <value>Continuar executando comandos quando o Terminal for reiniciado</value>
+    <comment>Checkbox that keeps commands running across a Terminal relaunch. {Locked="Terminal"}</comment>
+  </data>
 </root>

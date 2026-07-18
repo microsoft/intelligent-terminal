@@ -2957,4 +2957,28 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Дозволите да Интелигентни Терминал шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
   </data>
+  <data name="Globals_DurableSessionGroupHeader.Text" xml:space="preserve">
+    <value>Трајна сесија</value>
+    <comment>Section header for durable terminal session settings.</comment>
+  </data>
+  <data name="Globals_DurableSession.Header" xml:space="preserve">
+    <value>Врати сесије</value>
+    <comment>Header for controls that configure which parts of a durable terminal session are restored.</comment>
+  </data>
+  <data name="Globals_DurableSession.HelpText" xml:space="preserve">
+    <value>Аутоматски се поново повезује са активном сесијом терминала када се веза успостави.</value>
+    <comment>Description of durable terminal session restoration.</comment>
+  </data>
+  <data name="Globals_RestoreShellSessions.Content" xml:space="preserve">
+    <value>Врати сесије љуске када се Terminal поново покрене</value>
+    <comment>Checkbox that restores shell layout, working directories, and terminal content after Terminal relaunches. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Globals_RestoreAgentSessions.Content" xml:space="preserve">
+    <value>Врати сесију агента када се Terminal поново покрене</value>
+    <comment>Checkbox that restores AI agent sessions after Terminal relaunches. Here "agent" means an AI intelligent agent. {Locked="Terminal"}</comment>
+  </data>
+  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
+    <value>Настави извршавање команди када се Terminal поново покрене</value>
+    <comment>Checkbox that keeps commands running across a Terminal relaunch. {Locked="Terminal"}</comment>
+  </data>
 </root>
