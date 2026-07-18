@@ -81,7 +81,7 @@ Author(s):
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(bool, RestoreShellSessions, "restoreShellSessions", true)                                                                                                                                         \
     X(bool, RestoreAgentSessions, "restoreAgentSessions", true)                                                                                                                                         \
-    X(bool, ContinueRunningCommands, "continueRunningCommands", true)                                                                                                                                   \
+    X(bool, ContinueRunningCommands, "continueRunningCommands", false)                                                                                                                                  \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
     X(hstring, AgentPanePosition, "agentPanePosition", L"bottom")                                                                                                                                       \
