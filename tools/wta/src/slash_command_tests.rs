@@ -314,6 +314,19 @@ fn slash_move_changes_only_the_active_tab() {
 }
 
 #[test]
+fn slash_move_down_uses_bottom_pane_position() {
+    let mut app = test_app();
+
+    run_slash_args(&mut app, "move", "down");
+
+    assert_eq!(
+        app.current_tab().agent_pane_position,
+        Some("bottom"),
+        "/move down must map to the Terminal pane position named bottom"
+    );
+}
+
+#[test]
 fn slash_move_invalid_argument_reopens_position_completion() {
     let mut app = test_app();
 

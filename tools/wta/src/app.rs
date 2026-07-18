@@ -8110,7 +8110,7 @@ impl App {
     }
 
     /// `/move <position>` — move only this tab's agent pane. Positions accept
-    /// full names (`left`, `right`, `up`, `bottom`) or `l/r/u/b`. Bare or
+    /// full names (`left`, `right`, `up`, `down`) or `l/r/u/d`. Bare or
     /// invalid input reopens the position completion popup.
     fn cmd_move(&mut self, position: String) {
         let Some(position) = commands::lookup_move_position(&position) else {
@@ -8121,7 +8121,7 @@ impl App {
             return;
         };
 
-        self.current_tab_mut().agent_pane_position = Some(position.name);
+        self.current_tab_mut().agent_pane_position = Some(position.pane_position);
         self.project_active_tab_state();
     }
 
