@@ -5401,6 +5401,8 @@ impl App {
                 title,
                 status,
             } => {
+                let hide_from_chat =
+                    title == crate::mcp::terminal_actions::ACP_TOOL_CALL_TITLE;
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
                     return;
@@ -5415,6 +5417,15 @@ impl App {
                         let text = std::mem::take(&mut tab.pending_agent_response);
                         tab.messages.push(ChatMessage::Agent(text));
                     }
+                }
+                if hide_from_chat {
+                    tracing::debug!(
+                        target: "mcp",
+                        session_id = %session_id,
+                        tool_call_id = %id,
+                        "hiding terminal action proposal tool call from chat"
+                    );
+                    return;
                 }
                 tab.tool_calls
                     .insert(id.clone(), (title.clone(), status.clone()));
@@ -15078,6 +15089,33 @@ mod tests {
                 );
             })
             .await;
+    }
+
+    #[test]
+    fn terminal_action_proposal_tool_call_is_hidden_from_chat() {
+        let mut app = test_app();
+        submit_test_prompt(&mut app, "suggest a command");
+
+        app.handle_event(AppEvent::ToolCall {
+            session_id: "session-a".into(),
+            id: "proposal-tool-1".into(),
+            title: crate::mcp::terminal_actions::ACP_TOOL_CALL_TITLE.into(),
+            status: "InProgress".into(),
+        });
+        app.handle_event(AppEvent::ToolCallUpdate {
+            session_id: "session-a".into(),
+            id: "proposal-tool-1".into(),
+            status: "Completed".into(),
+        });
+
+        assert!(
+            app.current_tab()
+                .messages
+                .iter()
+                .all(|message| !matches!(message, ChatMessage::ToolCall { .. })),
+            "the proposal card replaces the redundant MCP tool-call row"
+        );
+        assert!(app.current_tab().tool_calls.is_empty());
     }
 
     /// Pump `AppEvent`s into a real `App` until `pred` matches (inclusive), with
