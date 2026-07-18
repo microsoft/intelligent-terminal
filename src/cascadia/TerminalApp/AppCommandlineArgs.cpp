@@ -626,6 +626,14 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
     subcommand.agentSessionIdOption->group("");
     subcommand.agentResumeCommandlineOption = subcommand.subcommand->add_option("--agentResumeCommandline", _agentResumeCommandline);
     subcommand.agentResumeCommandlineOption->group("");
+    subcommand.agentPaneSessionIdOption = subcommand.subcommand->add_option("--agentPaneSessionId", _agentPaneSessionId);
+    subcommand.agentPaneSessionIdOption->group("");
+    subcommand.agentPaneViewOption = subcommand.subcommand->add_option("--agentPaneView", _agentPaneView);
+    subcommand.agentPaneViewOption->group("");
+    subcommand.agentPaneOpenOption = subcommand.subcommand->add_flag("--agentPaneOpen", _agentPaneOpen);
+    subcommand.agentPaneOpenOption->group("");
+    subcommand.agentPanePositionOption = subcommand.subcommand->add_option("--agentPanePosition", _agentPanePosition);
+    subcommand.agentPanePositionOption->group("");
     subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory",
                                                                            _startingDirectory,
                                                                            RS_A(L"CmdStartingDirArgDesc"));
@@ -722,6 +730,13 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     if (*subcommand.agentResumeCommandlineOption)
     {
         args.AgentResumeCommandline(winrt::to_hstring(_agentResumeCommandline));
+    }
+    if (*subcommand.agentPaneSessionIdOption)
+    {
+        args.AgentPaneSessionId(winrt::to_hstring(_agentPaneSessionId));
+        args.AgentPaneView(winrt::to_hstring(_agentPaneView));
+        args.AgentPaneOpen(_agentPaneOpen);
+        args.AgentPanePosition(winrt::to_hstring(_agentPanePosition));
     }
 
     if (*subcommand.startingDirectoryOption)
@@ -824,6 +839,10 @@ void AppCommandlineArgs::_resetStateToDefault()
     _useShellSessionBuffer = false;
     _agentSessionId.clear();
     _agentResumeCommandline.clear();
+    _agentPaneSessionId.clear();
+    _agentPaneView.clear();
+    _agentPaneOpen = false;
+    _agentPanePosition.clear();
     _startingDirectory.clear();
     _startingTitle.clear();
     _startingTabColor.clear();

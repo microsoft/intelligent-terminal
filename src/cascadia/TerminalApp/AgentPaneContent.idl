@@ -28,6 +28,9 @@ namespace TerminalApp
         // True iff the pane is in sessions view (last value passed to
         // SetSessionsView). Used by the page to decide toggle direction.
         Boolean IsSessionsView { get; };
+        Boolean IsShellSessionsView { get; };
+        String AgentSessionId { get; };
+        void SetAgentSessionId(String sessionId);
 
         // Update the cached pane-position string (bottom vs right). Affects
         // the icon shown on the window-level bottom bar; the page queries

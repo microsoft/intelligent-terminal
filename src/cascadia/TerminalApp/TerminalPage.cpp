@@ -1845,7 +1845,9 @@ namespace winrt::TerminalApp::implementation
                                                         bool autoStash,
                                                         std::string_view initialLoadSessionId,
                                                         std::string_view initialLoadCwd,
-                                                        std::wstring_view initialAuthAgent)
+                                                        std::wstring_view initialAuthAgent,
+                                                        std::string_view initialView,
+                                                        std::wstring_view initialPanePosition)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -2039,9 +2041,17 @@ namespace winrt::TerminalApp::implementation
         {
             appendHelperFlagValue(L"--language", lang);
         }
-        if (intoSessionsView)
+        if (initialView == "shell_sessions")
+        {
+            helperCmd.append(L" --initial-view shell-sessions");
+        }
+        else if (intoSessionsView || initialView == "sessions")
         {
             helperCmd.append(L" --initial-view sessions");
+        }
+        if (!initialPanePosition.empty())
+        {
+            appendHelperFlagValue(L"--initial-pane-position", initialPanePosition);
         }
         if (autoStash)
         {
@@ -2148,7 +2158,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentContent = newPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
         {
             _WireAgentPaneEvents(agentContent, tab);
-            agentContent.SetAgentPanePosition(globals.AgentPanePosition());
+            agentContent.SetAgentPanePosition(initialPanePosition.empty() ? globals.AgentPanePosition() : winrt::hstring{ initialPanePosition });
         }
 
         {
@@ -2166,7 +2176,8 @@ namespace winrt::TerminalApp::implementation
         // scope_exit so a successful return doesn't double-release.
         sharedAcquired.release();
 
-        const auto splitDirection = _AgentPanePositionToSplitDirection(globals.AgentPanePosition());
+        const auto panePosition = initialPanePosition.empty() ? globals.AgentPanePosition() : winrt::hstring{ initialPanePosition };
+        const auto splitDirection = _AgentPanePositionToSplitDirection(panePosition);
         tab->SplitPaneAtRoot(splitDirection, newPane);
 
         if (autoStash)
@@ -3227,6 +3238,7 @@ namespace winrt::TerminalApp::implementation
         //
         // See GH#13136.
         auto suspend = _tabs.Size() > 0;
+        const auto startupActionBatchId = ++_nextStartupActionBatchId;
 
         for (size_t i = 0; i < actions.size(); ++i)
         {
@@ -3235,9 +3247,13 @@ namespace winrt::TerminalApp::implementation
                 co_await wil::resume_foreground(Dispatcher(), CoreDispatcherPriority::Low);
             }
 
+            _currentStartupActionBatchId = startupActionBatchId;
+            auto clearBatchId = wil::scope_exit([&]() noexcept { _currentStartupActionBatchId = 0; });
             _actionDispatch->DoAction(actions[i]);
             suspend = true;
         }
+
+        _RestorePendingDurableAgentPanes(startupActionBatchId);
 
         // GH#6586: now that we're done processing all startup commands,
         // focus the active control. This will work as expected for both
@@ -3248,6 +3264,45 @@ namespace winrt::TerminalApp::implementation
             {
                 content.Focus(FocusState::Programmatic);
             }
+        }
+    }
+
+    void TerminalPage::_RestorePendingDurableAgentPanes(const uint64_t startupActionBatchId)
+    {
+        for (auto it = _pendingDurableAgentPaneRestores.begin(); it != _pendingDurableAgentPaneRestores.end();)
+        {
+            if (it->second.startupActionBatchId != startupActionBatchId)
+            {
+                ++it;
+                continue;
+            }
+
+            winrt::com_ptr<Tab> targetTab;
+            for (const auto& tab : _tabs)
+            {
+                if (const auto tabImpl = _GetTabImpl(tab); tabImpl && tabImpl->StableId() == it->first)
+                {
+                    targetTab = tabImpl;
+                    break;
+                }
+            }
+
+            if (!targetTab)
+            {
+                ++it;
+                continue;
+            }
+
+            auto pending = std::move(it->second);
+            it = _pendingDurableAgentPaneRestores.erase(it);
+            _AutoCreateHiddenAgentPaneShared(targetTab,
+                                             pending.view == "sessions",
+                                             !pending.paneOpen,
+                                             pending.sessionId,
+                                             pending.cwd,
+                                             {},
+                                             pending.view,
+                                             pending.panePosition);
         }
     }
 
@@ -4597,6 +4652,14 @@ namespace winrt::TerminalApp::implementation
 
         std::string logSuffix = " tab_id=" + winrt::to_string(tabId);
 
+        std::optional<winrt::hstring> agentSessionId;
+        if (params.isMember("agent_session_id"))
+        {
+            agentSessionId = params["agent_session_id"].isString() ?
+                                 winrt::to_hstring(params["agent_session_id"].asString()) :
+                                 winrt::hstring{};
+        }
+
         std::optional<bool> wantOpen;
         if (params.isMember("pane_open") && params["pane_open"].isBool())
         {
@@ -4630,10 +4693,14 @@ namespace winrt::TerminalApp::implementation
         }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
-        // Apply view to the existing AgentPaneContent if any.
-        if (view.has_value())
+        // Apply projected identity and view to the existing AgentPaneContent.
+        if (const auto agentContent = targetTab->FindAgentPaneContent())
         {
-            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            if (agentSessionId.has_value())
+            {
+                agentContent.SetAgentSessionId(*agentSessionId);
+            }
+            if (view.has_value())
             {
                 agentContent.SetSessionsView(*view == "sessions");
                 agentContent.SetShellSessionsView(*view == "shell_sessions");

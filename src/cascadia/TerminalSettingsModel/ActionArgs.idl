@@ -177,6 +177,10 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean UseShellSessionBuffer;
         String AgentSessionId;
         String AgentResumeCommandline;
+        String AgentPaneSessionId;
+        String AgentPaneView;
+        Boolean AgentPaneOpen;
+        String AgentPanePosition;
         Boolean AppendCommandLine;
 
         // We use IReference<> to treat some args as nullable where null means
