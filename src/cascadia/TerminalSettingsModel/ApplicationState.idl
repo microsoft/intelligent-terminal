@@ -37,6 +37,7 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean BadgeDismissed(String badgeId);
 
         void SaveWorkspace(String name, WindowLayout layout);
+        Boolean SaveWorkspaceAndFlush(String name, WindowLayout layout);
         Boolean RemoveWorkspace(String name);
         Boolean RenameWorkspace(String oldName, String newName);
         WindowLayout TakeWorkspace(String name);

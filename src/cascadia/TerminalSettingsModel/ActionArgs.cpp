@@ -166,6 +166,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             const auto idStr = ::Microsoft::Console::Utils::GuidToString(id);
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--sessionId \"{}\" "), idStr);
         }
+        if (UseWorkspaceBuffer())
+        {
+            str.append(L"--useWorkspaceBuffer ");
+        }
         if (!AgentSessionId().empty())
         {
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionId {} "), QuoteAndEscapeCommandlineArg(AgentSessionId()));

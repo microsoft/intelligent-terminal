@@ -6232,6 +6232,11 @@ namespace winrt::TerminalApp::implementation
 
     WindowLayout TerminalPage::GetWindowLayout()
     {
+        return _GetWindowLayout(false);
+    }
+
+    WindowLayout TerminalPage::_GetWindowLayout(const bool includeDurableSessionMetadata)
+    {
         // This method may be called for a window even if it hasn't had a tab yet or lost all of them.
         // We shouldn't persist such windows.
         const auto tabCount = _tabs.Size();
@@ -6246,6 +6251,10 @@ namespace winrt::TerminalApp::implementation
         {
             auto t = winrt::get_self<implementation::Tab>(tab);
             auto tabActions = t->BuildStartupActions(BuildStartupKind::Persist);
+            if (includeDurableSessionMetadata)
+            {
+                _AddDurableSessionMetadata(t, tabActions);
+            }
             actions.insert(actions.end(), std::make_move_iterator(tabActions.begin()), std::make_move_iterator(tabActions.end()));
         }
 
@@ -6304,6 +6313,11 @@ namespace winrt::TerminalApp::implementation
         return layout;
     }
 
+    void TerminalPage::PersistWorkspace()
+    {
+        _SaveWorkspaceIfNeeded();
+    }
+
     void TerminalPage::PersistState()
     {
         // There are two persistence mechanisms in play here:
@@ -6318,13 +6332,13 @@ namespace winrt::TerminalApp::implementation
         // so the generic restore path re-opens the named window which in
         // turn claims its own workspace. Unnamed windows don't have a stable
         // key, so their full layout is stored directly in the vector.
-        if (const auto layout = GetWindowLayout())
+        const auto& windowName = _WindowProperties.WindowName();
+        if (const auto layout = _GetWindowLayout(!windowName.empty()))
         {
-            const auto& windowName = _WindowProperties.WindowName();
             if (!windowName.empty())
             {
                 // Persist the full layout into the workspace collection.
-                ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
+                _SaveWorkspaceSnapshot(windowName, layout);
 
                 // Build a minimal layout with just an openWorkspace action
                 // so the generic restore path re-opens this workspace by name.
@@ -7925,7 +7939,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         if (newTerminalArgs &&
-            !newTerminalArgs.ShellSessionRestorePath().empty() &&
+            (!newTerminalArgs.ShellSessionRestorePath().empty() || newTerminalArgs.UseWorkspaceBuffer()) &&
             !newTerminalArgs.AgentSessionId().empty() &&
             !newTerminalArgs.AgentResumeCommandline().empty())
         {
@@ -8008,8 +8022,17 @@ namespace winrt::TerminalApp::implementation
             const auto settingsDir = CascadiaSettings::SettingsDirectory();
             const auto admin = IsRunningElevated();
             const auto filenamePrefix = admin ? L"elevated_"sv : L"buffer_"sv;
+            const auto workspaceFilenamePrefix = admin ? L"workspace_elevated_"sv : L"workspace_buffer_"sv;
             auto path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
-            if (newTerminalArgs && !newTerminalArgs.ShellSessionRestorePath().empty())
+            if (newTerminalArgs && newTerminalArgs.UseWorkspaceBuffer())
+            {
+                const auto workspacePath = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, workspaceFilenamePrefix, sessionId);
+                if (std::filesystem::exists(workspacePath))
+                {
+                    path = workspacePath;
+                }
+            }
+            else if (newTerminalArgs && !newTerminalArgs.ShellSessionRestorePath().empty())
             {
                 path = newTerminalArgs.ShellSessionRestorePath();
             }
