@@ -53,6 +53,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), CenterOnLaunch);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), InitialRows);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), InitialCols);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), RestoreShellSessions);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), RestoreAgentSessions);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), ContinueRunningCommands);
 
         bool StartOnUserLoginAvailable();
         safe_void_coroutine PrepareStartOnUserLoginSettings();

@@ -842,6 +842,11 @@ namespace winrt::TerminalApp::implementation
     {
         co_await wil::resume_foreground(Dispatcher());
 
+        if (!_settings.GlobalSettings().RestoreShellSessions())
+        {
+            co_return false;
+        }
+
         const auto layout = ApplicationState::SharedInstance().TakeShellSession(name);
         if (!layout || !layout.TabLayout())
         {

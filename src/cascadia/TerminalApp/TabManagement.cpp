@@ -607,6 +607,11 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_PersistShellSession(const winrt::com_ptr<Tab>& tab)
     {
+        if (!_settings.GlobalSettings().RestoreShellSessions())
+        {
+            return;
+        }
+
         const auto sessionName = tab->Title();
         auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
         if (sessionName.empty() || actions.empty())

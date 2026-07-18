@@ -120,6 +120,9 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, DelegateModel);
         INHERITABLE_SETTING(Boolean, AutoErrorDetectionEnabled);
         INHERITABLE_SETTING(Boolean, AutoFixEnabled);
+        INHERITABLE_SETTING(Boolean, RestoreShellSessions);
+        INHERITABLE_SETTING(Boolean, RestoreAgentSessions);
+        INHERITABLE_SETTING(Boolean, ContinueRunningCommands);
         INHERITABLE_SETTING(String, AcpCustomCommand);
         INHERITABLE_SETTING(IVector<String>, SafeUriSchemes);
         INHERITABLE_SETTING(String, DelegateCustomCommand);
