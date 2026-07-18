@@ -214,6 +214,10 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = InitialView::Chat)]
     initial_view: InitialView,
 
+    /// Initial per-tab agent pane position restored by Windows Terminal.
+    #[arg(long)]
+    initial_pane_position: Option<String>,
+
     /// UI language override, passed by Windows Terminal from the
     /// `settings.json` `Language` field. When present, wta uses this
     /// directly for i18n instead of detecting the OS locale — ensuring
@@ -649,6 +653,7 @@ impl HooksCliFilter {
 enum InitialView {
     Chat,
     Sessions,
+    ShellSessions,
 }
 
 // ─── Entry Point ────────────────────────────────────────────────────────────
@@ -3473,6 +3478,13 @@ async fn run_acp_app(
                         .entry(owner_tab_id.clone())
                         .or_default();
                     tab.pane_open = !cli.start_stashed;
+                    tab.agent_pane_position = match cli.initial_pane_position.as_deref() {
+                        Some("left") => Some("left"),
+                        Some("right") => Some("right"),
+                        Some("top") | Some("up") => Some("up"),
+                        Some("bottom") => Some("bottom"),
+                        _ => None,
+                    };
                     app_state.tab_id = Some(owner_tab_id.clone());
                     app_state.owner_tab_id = Some(owner_tab_id.clone());
                 }
@@ -3588,16 +3600,22 @@ async fn run_acp_app(
             //
             // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if cli.setup.is_none()
-                && !start_in_initial_auth
-                && cli.initial_view == InitialView::Sessions
-            {
-                tracing::info!(target: "initial_view", "starting in agent session view");
+            if cli.setup.is_none() && !start_in_initial_auth {
                 let tab_id = app_state
                     .tab_id
                     .clone()
                     .unwrap_or_else(|| app::DEFAULT_TAB_ID.to_string());
-                app_state.open_agents_view_for_tab(tab_id);
+                match cli.initial_view {
+                    InitialView::Sessions => {
+                        tracing::info!(target: "initial_view", "starting in agent session view");
+                        app_state.open_agents_view_for_tab(tab_id);
+                    }
+                    InitialView::ShellSessions => {
+                        tracing::info!(target: "initial_view", "starting in shell sessions view");
+                        app_state.open_shell_sessions_view_for_tab(tab_id);
+                    }
+                    InitialView::Chat => {}
+                }
             }
 
             // Project the initial active-tab state to C++ once, after the

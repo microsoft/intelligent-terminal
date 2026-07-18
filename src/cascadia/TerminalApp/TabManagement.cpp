@@ -93,7 +93,23 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        const auto newTab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        if (const auto newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() };
+            newTerminalArgs && !newTerminalArgs.AgentPaneSessionId().empty())
+        {
+            if (const auto tabImpl = _GetTabImpl(newTab))
+            {
+                _pendingDurableAgentPaneRestores.insert_or_assign(
+                    tabImpl->StableId(),
+                    _PendingDurableAgentPaneRestore{
+                        _currentStartupActionBatchId,
+                        winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                        winrt::to_string(newTerminalArgs.StartingDirectory()),
+                        winrt::to_string(newTerminalArgs.AgentPaneView()),
+                        newTerminalArgs.AgentPaneOpen(),
+                        newTerminalArgs.AgentPanePosition() });
+            }
+        }
         return S_OK;
     }
     CATCH_RETURN();
@@ -364,7 +380,13 @@ namespace winrt::TerminalApp::implementation
                 // problem a global "is any drag in flight?" check would
                 // have (window-A-drag would erroneously block window-B's
                 // unrelated new-tab pre-warm).
-                if (agentLeavesSeen == 0)
+                if (self->_pendingDurableAgentPaneRestores.contains(newTabId))
+                {
+                    _agentPaneLog(
+                        std::string{ "_InitializeTab(deferred): durable agent pane restore pending for tab " } +
+                        winrt::to_string(newTabId));
+                }
+                else if (agentLeavesSeen == 0)
                 {
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
@@ -680,6 +702,31 @@ namespace winrt::TerminalApp::implementation
                 {
                     terminalArgs.AgentSessionId(binding->second.sessionId);
                     terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                }
+            }
+
+        }
+
+        if (const auto agentContent = tab->FindAgentPaneContent())
+        {
+            const auto agentSessionId = agentContent.AgentSessionId();
+            if (!agentSessionId.empty())
+            {
+                for (const auto& action : actions)
+                {
+                    if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                    {
+                        if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
+                        {
+                            terminalArgs.AgentPaneSessionId(agentSessionId);
+                            terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
+                                                       agentContent.IsSessionsView() ? L"sessions" :
+                                                                                       L"chat");
+                            terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
+                            terminalArgs.AgentPanePosition(agentContent.GetAgentPanePosition());
+                            break;
+                        }
+                    }
                 }
             }
         }
