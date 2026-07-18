@@ -170,6 +170,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             str.append(L"--useShellSessionBuffer ");
         }
+        if (!AgentSessionId().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionId {} "), QuoteAndEscapeCommandlineArg(AgentSessionId()));
+        }
+        if (!AgentResumeCommandline().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentResumeCommandline {} "), QuoteAndEscapeCommandlineArg(AgentResumeCommandline()));
+        }
 
         // The caller is always expected to provide the evaluated profile in the
         // NewTerminalArgs, not the index

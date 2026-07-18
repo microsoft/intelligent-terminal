@@ -1627,6 +1627,27 @@ async fn register_launched_session_with_master(
     }
 }
 
+fn publish_pane_agent_session_binding(
+    pane_session_id: &str,
+    agent_session_id: &str,
+    resume_commandline: &str,
+) {
+    let payload = serde_json::json!({
+        "type": "event",
+        "method": "pane_agent_session_changed",
+        "params": {
+            "pane_id": pane_session_id,
+            "agent_session_id": agent_session_id,
+            "resume_commandline": resume_commandline,
+        }
+    })
+    .to_string();
+    crate::shell::wt_channel::spawn_wtcli_async(&[
+        "publish".to_string(),
+        payload,
+    ]);
+}
+
 async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> {
     if let Some(pipe) = master_override.filter(|s| !s.trim().is_empty()) {
         return Ok(pipe);
@@ -2459,6 +2480,27 @@ async fn delegate_with_context(
                 "delegate WSL tab created",
             );
 
+            if let (Some(sid), Some(pane)) =
+                (pinned_session_id.as_deref(), pane_guid.as_deref())
+            {
+                if let Ok(inner_resume) =
+                    crate::coordinator::build_wsl_delegate_resume_commandline(runtime, sid)
+                {
+                    let escaped =
+                        crate::coordinator::quote_windows_commandline_arg(&inner_resume);
+                    let login_invocation = format!("bash -lc {escaped}");
+                    let distro_arg =
+                        crate::coordinator::quote_windows_commandline_arg(distro);
+                    let resume_commandline = match wsl_cwd {
+                        Some(cwd) => {
+                            format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
+                        }
+                        None => format!("wsl -d {distro_arg} -- {login_invocation}"),
+                    };
+                    publish_pane_agent_session_binding(pane, sid, &resume_commandline);
+                }
+            }
+
             // Born-bound registration for the WSL delegate session — but only
             // when WSL sessions are enabled. The whole WSL surface is gated on
             // `WTA_WSL_SESSIONS`; with it off we must not surface *any* WSL
@@ -2519,6 +2561,11 @@ async fn delegate_with_context(
     // bind them with no hooks (best-effort). Only when both are known —
     // i.e. a pinnable agent (Copilot/Claude/Gemini) whose tab was created.
     if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
+        if let Ok(resume_commandline) =
+            crate::coordinator::build_delegate_resume_commandline(runtime, sid)
+        {
+            publish_pane_agent_session_binding(pane, sid, &resume_commandline);
+        }
         register_launched_session_with_master(sid, pane, &runtime.id, cwd, None).await;
     }
 

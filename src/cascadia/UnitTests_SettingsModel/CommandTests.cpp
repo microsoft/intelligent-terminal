@@ -455,6 +455,14 @@ namespace SettingsModelUnitTests
             {
                 "name":"action8_tabTitleEscaping",
                 "command": { "action": "newWindow", "tabTitle":"\\\";foo\\" }
+            },
+            {
+                "name":"action9_agentSession",
+                "command": {
+                    "action": "newWindow",
+                    "agentSessionId": "agent-session-1",
+                    "agentResumeCommandline": "claude --resume agent-session-1"
+                }
             }
         ])" };
 
@@ -464,7 +472,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(0u, commands.Size());
         auto warnings = implementation::Command::LayerJson(commands, commands0Json, OriginTag::None);
         VERIFY_ARE_EQUAL(0u, warnings.size());
-        VERIFY_ARE_EQUAL(9u, commands.Size());
+        VERIFY_ARE_EQUAL(10u, commands.Size());
 
         {
             auto command = commands.Lookup(L"action0");
@@ -600,6 +608,14 @@ namespace SettingsModelUnitTests
             Log::Comment(NoThrowString().Format(
                 L"cmdline: \"%s\"", cmdline.c_str()));
             VERIFY_ARE_EQUAL(LR"-(--title "\\\"\;foo\\")-", terminalArgs.ToCommandline());
+        }
+
+        {
+            const auto command = commands.Lookup(L"action9_agentSession");
+            const auto realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
+            const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-1" }, terminalArgs.AgentSessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude --resume agent-session-1" }, terminalArgs.AgentResumeCommandline());
         }
     }
 }

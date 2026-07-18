@@ -139,6 +139,7 @@ private:
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
+    static void _dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson);

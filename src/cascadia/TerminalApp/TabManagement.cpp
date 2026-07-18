@@ -641,6 +641,28 @@ namespace winrt::TerminalApp::implementation
             sa.lpSecurityDescriptor = sd.get();
         }
 
+        for (const auto& action : actions)
+        {
+            INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            {
+                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
+                {
+                    terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                }
+            }
+        }
+
         tab->GetRootPane()->WalkTree([&](const auto& pane) {
             if (pane->IsAgentPane())
             {

@@ -1136,6 +1136,9 @@ try
         // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::PaneAgentSession:
+        _dispatchPaneAgentSessionToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentChipTarget:
         // Helper override for which pane gets the "Agent" chip; null
         // pane_session_id reverts the tab to source-flag-driven chip.
@@ -1451,6 +1454,39 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnPaneAgentSessionChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Page may have been torn down during dispatch.
                 }
             });
     }

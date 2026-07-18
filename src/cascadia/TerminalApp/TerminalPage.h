@@ -257,6 +257,7 @@ namespace winrt::TerminalApp::implementation
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        void OnPaneAgentSessionChanged(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentPaneRestartRequested(hstring eventJson);
@@ -667,6 +668,12 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
         void _PersistShellSession(const winrt::com_ptr<Tab>& tab);
+        struct _PaneAgentSession
+        {
+            winrt::hstring sessionId;
+            winrt::hstring resumeCommandline;
+        };
+        std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);

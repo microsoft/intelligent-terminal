@@ -622,6 +622,10 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
                                                                    RS_A(L"CmdSessionIdArgDesc"));
     subcommand.useShellSessionBufferOption = subcommand.subcommand->add_flag("--useShellSessionBuffer", _useShellSessionBuffer);
     subcommand.useShellSessionBufferOption->group("");
+    subcommand.agentSessionIdOption = subcommand.subcommand->add_option("--agentSessionId", _agentSessionId);
+    subcommand.agentSessionIdOption->group("");
+    subcommand.agentResumeCommandlineOption = subcommand.subcommand->add_option("--agentResumeCommandline", _agentResumeCommandline);
+    subcommand.agentResumeCommandlineOption->group("");
     subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory",
                                                                            _startingDirectory,
                                                                            RS_A(L"CmdStartingDirArgDesc"));
@@ -710,6 +714,14 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     if (*subcommand.useShellSessionBufferOption)
     {
         args.UseShellSessionBuffer(true);
+    }
+    if (*subcommand.agentSessionIdOption)
+    {
+        args.AgentSessionId(winrt::to_hstring(_agentSessionId));
+    }
+    if (*subcommand.agentResumeCommandlineOption)
+    {
+        args.AgentResumeCommandline(winrt::to_hstring(_agentResumeCommandline));
     }
 
     if (*subcommand.startingDirectoryOption)
@@ -810,6 +822,8 @@ void AppCommandlineArgs::_resetStateToDefault()
     _profileName.clear();
     _sessionId.clear();
     _useShellSessionBuffer = false;
+    _agentSessionId.clear();
+    _agentResumeCommandline.clear();
     _startingDirectory.clear();
     _startingTitle.clear();
     _startingTabColor.clear();

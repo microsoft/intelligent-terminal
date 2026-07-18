@@ -390,10 +390,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(winrt::hstring, Type, L"");
         ACTION_ARG(winrt::guid, SessionId, winrt::guid{});
         ACTION_ARG(bool, UseShellSessionBuffer, false);
+        ACTION_ARG(winrt::hstring, AgentSessionId, L"");
+        ACTION_ARG(winrt::hstring, AgentResumeCommandline, L"");
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
 
         static constexpr std::string_view SessionIdKey{ "sessionId" };
+        static constexpr std::string_view AgentSessionIdKey{ "agentSessionId" };
+        static constexpr std::string_view AgentResumeCommandlineKey{ "agentResumeCommandline" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
@@ -420,6 +424,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_ColorScheme == _ColorScheme &&
                        otherAsUs->_Elevate == _Elevate &&
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
+                       otherAsUs->_AgentSessionId == _AgentSessionId &&
+                       otherAsUs->_AgentResumeCommandline == _AgentResumeCommandline &&
                        otherAsUs->_ContentId == _ContentId;
             }
             return false;
@@ -434,6 +440,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::GetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::GetValueForKey(json, SessionIdKey, args->_SessionId);
+            JsonUtils::GetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
+            JsonUtils::GetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
             JsonUtils::GetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::GetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -456,6 +464,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::SetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::SetValueForKey(json, SessionIdKey, args->_SessionId);
+            JsonUtils::SetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
+            JsonUtils::SetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
             JsonUtils::SetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::SetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -475,6 +485,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_Profile = _Profile;
             copy->_SessionId = _SessionId;
             copy->_UseShellSessionBuffer = _UseShellSessionBuffer;
+            copy->_AgentSessionId = _AgentSessionId;
+            copy->_AgentResumeCommandline = _AgentResumeCommandline;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
             copy->_ColorScheme = _ColorScheme;
             copy->_Elevate = _Elevate;
@@ -500,6 +512,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(ColorScheme());
             h.write(Elevate());
             h.write(ReloadEnvironmentVariables());
+            h.write(AgentSessionId());
+            h.write(AgentResumeCommandline());
             h.write(ContentId());
         }
     };
