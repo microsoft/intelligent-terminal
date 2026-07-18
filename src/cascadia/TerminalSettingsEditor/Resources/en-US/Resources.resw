@@ -1679,6 +1679,30 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>The initial position of the terminal window upon startup. When launching as maximized, full screen, or with "Center on launch" enabled, this is used to target the monitor of interest.</value>
     <comment>A description for what the "X position" and "Y position" settings do. Presented near "Globals_LaunchPosition.Header".</comment>
   </data>
+  <data name="Globals_DurableSessionHeader.Text" xml:space="preserve">
+    <value>Durable session</value>
+    <comment>Section header for the group of settings that control saving and restoring terminal sessions across relaunches.</comment>
+  </data>
+  <data name="Globals_DurableRestoreSessions.Header" xml:space="preserve">
+    <value>Restore sessions</value>
+    <comment>Header for an expandable group of settings that control which parts of a terminal session are restored when the terminal relaunches.</comment>
+  </data>
+  <data name="Globals_DurableRestoreSessions.HelpText" xml:space="preserve">
+    <value>Automatically reconnects to your active terminal session when the connection is restored.</value>
+    <comment>A description for the "Restore sessions" group of settings. Presented near "Globals_DurableRestoreSessions.Header".</comment>
+  </data>
+  <data name="Globals_DurableRestoreShellSessions.Content" xml:space="preserve">
+    <value>Restore shell sessions when terminal relaunches</value>
+    <comment>A checkbox that, when enabled, saves a tab's shell session (layout, working directory, and scrollback) on close so it can be restored after the terminal relaunches.</comment>
+  </data>
+  <data name="Globals_DurableRestoreAgentSession.Content" xml:space="preserve">
+    <value>Restore agent session when terminal relaunches</value>
+    <comment>A checkbox that, when enabled, restores an AI agent conversation session (e.g. Copilot, Claude, Gemini) when the terminal relaunches. Here "agent" refers to an AI agent, not a human agent.</comment>
+  </data>
+  <data name="Globals_DurableKeepRunningCommands.Content" xml:space="preserve">
+    <value>Continue running commands when terminal relaunches</value>
+    <comment>A checkbox that, when enabled, keeps a session's running command alive in the background so it continues after the terminal relaunches.</comment>
+  </data>
   <data name="Profile_BellStyleAll.Content" xml:space="preserve">
     <value>All</value>
     <comment>An option to choose from for the "bell style" setting. When selected, a combination of the other bell styles is used to notify the user.</comment>

@@ -681,6 +681,14 @@ namespace winrt::TerminalApp::implementation
     //   session is handled separately in a later step).
     void TerminalPage::_SaveShellSessionForTab(const winrt::TerminalApp::Tab& tab)
     {
+        // Opt-out via Settings > Startup > Durable session > "Restore shell
+        // sessions when terminal relaunches". When disabled, closing a tab does
+        // not snapshot its layout/scrollback, and nothing is written to disk.
+        if (!_settings || !_settings.GlobalSettings().DurableRestoreShellSessions())
+        {
+            return;
+        }
+
         try
         {
             auto tabImpl = winrt::get_self<implementation::Tab>(tab)->get_strong();

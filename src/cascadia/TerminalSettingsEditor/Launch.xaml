@@ -316,6 +316,26 @@
                                   Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                 </Grid>
             </local:SettingContainer>
+
+            <!--  ═══ Durable session group ═══  -->
+            <TextBlock x:Uid="Globals_DurableSessionHeader"
+                       Style="{StaticResource TextBlockSubHeaderStyle}" />
+
+            <!--  Restore sessions: gates what is saved on tab close and restored
+                  when the terminal relaunches.  -->
+            <local:SettingContainer x:Name="DurableRestoreSessions"
+                                    x:Uid="Globals_DurableRestoreSessions"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <StackPanel Orientation="Vertical"
+                            Spacing="12">
+                    <CheckBox x:Uid="Globals_DurableRestoreShellSessions"
+                              IsChecked="{x:Bind ViewModel.DurableRestoreShellSessions, Mode=TwoWay}" />
+                    <CheckBox x:Uid="Globals_DurableRestoreAgentSession"
+                              IsChecked="{x:Bind ViewModel.DurableRestoreAgentSession, Mode=TwoWay}" />
+                    <CheckBox x:Uid="Globals_DurableKeepRunningCommands"
+                              IsChecked="{x:Bind ViewModel.DurableKeepRunningCommands, Mode=TwoWay}" />
+                </StackPanel>
+            </local:SettingContainer>
         </StackPanel>
     </StackPanel>
 </Page>

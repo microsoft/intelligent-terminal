@@ -5201,6 +5201,15 @@ namespace winrt::TerminalApp::implementation
     {
         _agentPaneLog("OnRestoreShellSessionRequested: received from wta");
 
+        // Honor Settings > Startup > Durable session > "Restore shell sessions
+        // when terminal relaunches". When disabled, ignore restore requests
+        // (the picker may still surface previously saved sessions).
+        if (!_settings || !_settings.GlobalSettings().DurableRestoreShellSessions())
+        {
+            _agentPaneLog("OnRestoreShellSessionRequested: durable shell-session restore disabled by setting - ignoring");
+            return;
+        }
+
         Json::Value evt;
         Json::CharReaderBuilder rb;
         std::string errs;

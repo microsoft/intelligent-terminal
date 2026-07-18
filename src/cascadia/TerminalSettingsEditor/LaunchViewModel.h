@@ -51,6 +51,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         GETSET_BINDABLE_ENUM_SETTING(WindowingBehavior, Model::WindowingMode, _Settings.GlobalSettings().WindowingBehavior);
 
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), CenterOnLaunch);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), DurableRestoreShellSessions);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), DurableRestoreAgentSession);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), DurableKeepRunningCommands);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), InitialRows);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_Settings.GlobalSettings(), InitialCols);
 
