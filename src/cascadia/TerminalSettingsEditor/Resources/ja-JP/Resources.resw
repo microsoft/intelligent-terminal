@@ -2899,28 +2899,4 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>インテリジェント ターミナルがエラーをエージェントに送信して、修正を自動的に提案することを許可します。</value>
   </data>
-  <data name="Globals_DurableSessionGroupHeader.Text" xml:space="preserve">
-    <value>永続セッション</value>
-    <comment>Section header for durable terminal session settings.</comment>
-  </data>
-  <data name="Globals_DurableSession.Header" xml:space="preserve">
-    <value>セッションの復元</value>
-    <comment>Header for controls that configure which parts of a durable terminal session are restored.</comment>
-  </data>
-  <data name="Globals_DurableSession.HelpText" xml:space="preserve">
-    <value>接続が復元されると、アクティブなターミナル セッションに自動的に再接続します。</value>
-    <comment>Description of durable terminal session restoration.</comment>
-  </data>
-  <data name="Globals_RestoreShellSessions.Content" xml:space="preserve">
-    <value>Terminal の再起動時にシェル セッションを復元する</value>
-    <comment>Checkbox that restores shell layout, working directories, and terminal content after Terminal relaunches. {Locked="Terminal"}</comment>
-  </data>
-  <data name="Globals_RestoreAgentSessions.Content" xml:space="preserve">
-    <value>Terminal の再起動時にエージェント セッションを復元する</value>
-    <comment>Checkbox that restores AI agent sessions after Terminal relaunches. Here "agent" means an AI intelligent agent. {Locked="Terminal"}</comment>
-  </data>
-  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
-    <value>Terminal の再起動時もコマンドの実行を続ける</value>
-    <comment>Checkbox that keeps commands running across a Terminal relaunch. {Locked="Terminal"}</comment>
-  </data>
 </root>

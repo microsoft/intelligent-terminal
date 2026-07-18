@@ -2959,28 +2959,4 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>允许智能终端将错误发送给你的代理以自动建议修复。</value>
   </data>
-  <data name="Globals_DurableSessionGroupHeader.Text" xml:space="preserve">
-    <value>持久会话</value>
-    <comment>Section header for durable terminal session settings.</comment>
-  </data>
-  <data name="Globals_DurableSession.Header" xml:space="preserve">
-    <value>恢复会话</value>
-    <comment>Header for controls that configure which parts of a durable terminal session are restored.</comment>
-  </data>
-  <data name="Globals_DurableSession.HelpText" xml:space="preserve">
-    <value>连接恢复时自动重新连接到活动的终端会话。</value>
-    <comment>Description of durable terminal session restoration.</comment>
-  </data>
-  <data name="Globals_RestoreShellSessions.Content" xml:space="preserve">
-    <value>Terminal 重新启动时恢复 shell 会话</value>
-    <comment>Checkbox that restores shell layout, working directories, and terminal content after Terminal relaunches. {Locked="Terminal"}</comment>
-  </data>
-  <data name="Globals_RestoreAgentSessions.Content" xml:space="preserve">
-    <value>Terminal 重新启动时恢复智能体会话</value>
-    <comment>Checkbox that restores AI agent sessions after Terminal relaunches. Here "agent" means an AI intelligent agent. {Locked="Terminal"}</comment>
-  </data>
-  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
-    <value>Terminal 重新启动时继续运行命令</value>
-    <comment>Checkbox that keeps commands running across a Terminal relaunch. {Locked="Terminal"}</comment>
-  </data>
 </root>
