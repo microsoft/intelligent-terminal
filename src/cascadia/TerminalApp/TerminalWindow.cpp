@@ -275,6 +275,14 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalWindow::PersistWorkspace()
+    {
+        if (_root)
+        {
+            _root->PersistWorkspace();
+        }
+    }
+
     winrt::Windows::UI::Xaml::ElementTheme TerminalWindow::GetRequestedTheme()
     {
         return Theme().RequestedTheme();
@@ -1250,7 +1258,7 @@ namespace winrt::TerminalApp::implementation
         _WindowProperties->WindowName(name);
         // If this window had a persisted workspace under the old name, rename
         // that entry too so we don't leave a stale copy behind.
-        if (!oldName.empty() && !name.empty() && oldName != name)
+        if (!oldName.empty() && oldName != name)
         {
             ApplicationState::SharedInstance().RenameWorkspace(oldName, name);
         }

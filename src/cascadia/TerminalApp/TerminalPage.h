@@ -181,6 +181,7 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine CloseWindow();
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout GetWindowLayout();
         void PersistState();
+        void PersistWorkspace();
         std::vector<IPaneContent> Panes() const;
 
         void ToggleFocusMode();
@@ -683,6 +684,7 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
+        void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void _PersistShellSession(Tab* tab);
         struct _PaneAgentSession
         {
@@ -696,6 +698,8 @@ namespace winrt::TerminalApp::implementation
         void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
         void _SaveWorkspaceIfNeeded();
+        void _SaveWorkspaceSnapshot(const winrt::hstring& name, const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout);
+        winrt::Microsoft::Terminal::Settings::Model::WindowLayout _GetWindowLayout(bool includeDurableSessionMetadata);
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);

@@ -373,6 +373,26 @@ void WindowEmperor::_createWindowMaybeRestoringWorkspace(uint64_t windowId, cons
     {
         if (const auto layout = ApplicationState::SharedInstance().TakeWorkspace(windowName))
         {
+            if (const auto actions = layout.TabLayout())
+            {
+                for (const auto& action : actions)
+                {
+                    INewContentArgs contentArgs{ nullptr };
+                    if (const auto args = action.Args().try_as<NewTabArgs>())
+                    {
+                        contentArgs = args.ContentArgs();
+                    }
+                    else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+                    {
+                        contentArgs = args.ContentArgs();
+                    }
+
+                    if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+                    {
+                        terminalArgs.UseWorkspaceBuffer(true);
+                    }
+                }
+            }
             request.PersistedLayout(layout);
         }
     }
@@ -1186,14 +1206,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // tab/buffer state as a workspace so it can be restored later.
                         try
                         {
-                            const auto windowName = strong->Logic().WindowProperties().WindowName();
-                            if (!windowName.empty())
-                            {
-                                if (const auto layout = strong->Logic().GetWindowLayout())
-                                {
-                                    ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
-                                }
-                            }
+                            strong->Logic().PersistWorkspace();
                         }
                         CATCH_LOG();
 

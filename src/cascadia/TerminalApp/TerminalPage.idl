@@ -88,6 +88,7 @@ namespace TerminalApp
 
         WindowProperties WindowProperties { get; };
         void IdentifyWindow();
+        void PersistWorkspace();
 
         String SavedActionName { get; };
         String SavedActionKeyChord { get; };

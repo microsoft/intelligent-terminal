@@ -118,7 +118,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     {
         // This will ensure that we not just cancel the last outstanding timer,
         // but instead force it to run as soon as possible and wait for it to complete.
+        const std::scoped_lock lock{ _throttlerMutex };
         _throttler.flush();
+    }
+
+    void ApplicationState::_scheduleWrite()
+    {
+        const std::scoped_lock lock{ _throttlerMutex };
+        _throttler();
     }
 
     // Method Description:
@@ -196,55 +203,57 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     // * _state->_writeScheduled is set to false, signaling our
     //   setters that _synchronize() needs to be called again.
     void ApplicationState::_write() const noexcept
-    try
     {
-        Json::StreamWriterBuilder wbuilder;
-
-        // When we're elevated, we've got to be tricky. We don't want to write
-        // our window state, allowed commandlines, and other Local properties
-        // into the shared `state.json`. But, if we only serialize the Shared
-        // properties to a json blob, then we'll omit windowState entirely,
-        // _removing_ the window state of the unelevated instance. Oh no!
-        //
-        // So, to be tricky, we'll first _load_ the shared state to a json blob.
-        // We'll then serialize our view of the shared properties on top of that
-        // blob. Then we'll write that blob back to the file. This will
-        // round-trip the Local properties for the unelevated instances
-        // untouched in state.json
-        //
-        // After that's done, we'll write our Local properties into
-        // elevated-state.json.
-        if (::Microsoft::Console::Utils::IsRunningElevated())
+        try
         {
-            std::string errs;
-            std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
-            Json::Value root;
+            Json::StreamWriterBuilder wbuilder;
 
-            // First load the contents of state.json into a json blob. This will
-            // contain the Shared properties and the unelevated instance's Local
-            // properties.
-            const auto sharedData = _readSharedContents();
-            if (!sharedData.empty())
+            // When we're elevated, we've got to be tricky. We don't want to write
+            // our window state, allowed commandlines, and other Local properties
+            // into the shared `state.json`. But, if we only serialize the Shared
+            // properties to a json blob, then we'll omit windowState entirely,
+            // _removing_ the window state of the unelevated instance. Oh no!
+            //
+            // So, to be tricky, we'll first _load_ the shared state to a json blob.
+            // We'll then serialize our view of the shared properties on top of that
+            // blob. Then we'll write that blob back to the file. This will
+            // round-trip the Local properties for the unelevated instances
+            // untouched in state.json
+            //
+            // After that's done, we'll write our Local properties into
+            // elevated-state.json.
+            if (::Microsoft::Console::Utils::IsRunningElevated())
             {
-                if (!reader->parse(sharedData.data(), sharedData.data() + sharedData.size(), &root, &errs))
-                {
-                    throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
-                }
-            }
-            // Layer our shared properties on top of the blob from state.json,
-            // and write it back out.
-            _writeSharedContents(Json::writeString(wbuilder, _toJsonWithBlob(root, FileSource::Shared)));
+                std::string errs;
+                std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
+                Json::Value root;
 
-            // Finally, write our Local properties back to elevated-state.json
-            _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local)));
+                // First load the contents of state.json into a json blob. This will
+                // contain the Shared properties and the unelevated instance's Local
+                // properties.
+                const auto sharedData = _readSharedContents();
+                if (!sharedData.empty())
+                {
+                    if (!reader->parse(sharedData.data(), sharedData.data() + sharedData.size(), &root, &errs))
+                    {
+                        throw winrt::hresult_error(WEB_E_INVALID_JSON_STRING, winrt::to_hstring(errs));
+                    }
+                }
+                _writeSharedContents(Json::writeString(wbuilder, _toJsonWithBlob(root, FileSource::Shared)));
+                _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local)));
+            }
+            else
+            {
+                _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local | FileSource::Shared)));
+            }
+            _lastWriteSucceeded.store(true, std::memory_order_release);
         }
-        else
+        catch (...)
         {
-            // We're unelevated, this is easy. Just write everything back out.
-            _writeLocalContents(Json::writeString(wbuilder, ToJson(FileSource::Local | FileSource::Shared)));
+            _lastWriteSucceeded.store(false, std::memory_order_release);
+            LOG_CAUGHT_EXCEPTION();
         }
     }
-    CATCH_LOG()
 
     // Returns the application-global ApplicationState object.
     Microsoft::Terminal::Settings::Model::ApplicationState ApplicationState::SharedInstance()
@@ -318,7 +327,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             state->PersistedWindowLayouts->Append(std::move(layout));
         }
 
-        _throttler();
+        _scheduleWrite();
     }
 
     bool ApplicationState::DismissBadge(const hstring& badgeId)
@@ -332,7 +341,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             }
             inserted = state->DismissedBadges->insert(badgeId).second;
         }
-        _throttler();
+        _scheduleWrite();
         return inserted;
     }
 
@@ -346,22 +355,137 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         return false;
     }
 
+    static std::unordered_set<std::wstring> _workspaceBufferFilenames(const Model::WindowLayout& layout)
+    {
+        std::unordered_set<std::wstring> filenames;
+        if (!layout || !layout.TabLayout())
+        {
+            return filenames;
+        }
+
+        for (const auto& action : layout.TabLayout())
+        {
+            Model::INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<Model::NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<Model::SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<Model::NewTerminalArgs>())
+            {
+                if (const auto sessionId = terminalArgs.SessionId(); sessionId != winrt::guid{})
+                {
+                    filenames.emplace(fmt::format(FMT_COMPILE(L"workspace_buffer_{}.txt"), sessionId));
+                    filenames.emplace(fmt::format(FMT_COMPILE(L"workspace_elevated_{}.txt"), sessionId));
+                }
+            }
+        }
+        return filenames;
+    }
+
+    static std::unordered_set<std::wstring> _allWorkspaceBufferFilenames(
+        const Windows::Foundation::Collections::IMap<hstring, Model::WindowLayout>& workspaces)
+    {
+        std::unordered_set<std::wstring> filenames;
+        if (workspaces)
+        {
+            for (const auto& pair : workspaces)
+            {
+                const auto layoutFilenames = _workspaceBufferFilenames(pair.Value());
+                filenames.insert(layoutFilenames.begin(), layoutFilenames.end());
+            }
+        }
+        return filenames;
+    }
+
+    static void _removeWorkspaceBuffers(const std::filesystem::path& stateRoot,
+                                        const Model::WindowLayout& layout,
+                                        const std::unordered_set<std::wstring>& keepFilenames = {})
+    {
+        const auto filenames = _workspaceBufferFilenames(layout);
+        for (const auto& filename : filenames)
+        {
+            if (!keepFilenames.contains(filename))
+            {
+                std::error_code error;
+                std::filesystem::remove(stateRoot / filename, error);
+            }
+        }
+    }
+
     void ApplicationState::SaveWorkspace(const hstring& name, const Model::WindowLayout& layout)
     {
+        LOG_IF_FAILED(SaveWorkspaceAndFlush(name, layout) ? S_OK : E_FAIL);
+    }
+
+    bool ApplicationState::SaveWorkspaceAndFlush(const hstring& name, const Model::WindowLayout& layout)
+    {
+        const std::scoped_lock throttlerLock{ _throttlerMutex };
+        Model::WindowLayout oldLayout{ nullptr };
+        bool hadOldLayout{ false };
         {
             const auto state = _state.lock();
             if (!state->PersistedWorkspaces || !*state->PersistedWorkspaces)
             {
                 state->PersistedWorkspaces = winrt::single_threaded_map<hstring, Model::WindowLayout>();
             }
-            (*state->PersistedWorkspaces).Insert(name, layout);
+            const auto map = *state->PersistedWorkspaces;
+            if (map.HasKey(name))
+            {
+                oldLayout = map.Lookup(name);
+                hadOldLayout = true;
+            }
+            map.Insert(name, layout);
         }
+
+        _lastWriteSucceeded.store(false, std::memory_order_release);
         _throttler();
+        _throttler.flush();
+        if (!_lastWriteSucceeded.load(std::memory_order_acquire))
+        {
+            {
+                const auto state = _state.lock();
+                const auto map = *state->PersistedWorkspaces;
+                if (map.HasKey(name) && map.Lookup(name) == layout)
+                {
+                    if (hadOldLayout)
+                    {
+                        map.Insert(name, oldLayout);
+                    }
+                    else
+                    {
+                        map.Remove(name);
+                    }
+                }
+            }
+            _lastWriteSucceeded.store(false, std::memory_order_release);
+            _throttler();
+            _throttler.flush();
+            return false;
+        }
+
+        std::unordered_set<std::wstring> keepFilenames;
+        {
+            const auto state = _state.lock_shared();
+            if (state->PersistedWorkspaces && *state->PersistedWorkspaces)
+            {
+                keepFilenames = _allWorkspaceBufferFilenames(*state->PersistedWorkspaces);
+            }
+        }
+        _removeWorkspaceBuffers(_sharedPath.parent_path(), oldLayout, keepFilenames);
+        return true;
     }
 
     bool ApplicationState::RemoveWorkspace(const hstring& name)
     {
+        const std::scoped_lock throttlerLock{ _throttlerMutex };
         bool removed{ false };
+        Model::WindowLayout removedLayout{ nullptr };
+        std::unordered_set<std::wstring> keepFilenames;
         {
             const auto state = _state.lock();
             if (state->PersistedWorkspaces && *state->PersistedWorkspaces)
@@ -369,14 +493,29 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 auto map = *state->PersistedWorkspaces;
                 if (map.HasKey(name))
                 {
+                    removedLayout = map.Lookup(name);
                     map.Remove(name);
+                    keepFilenames = _allWorkspaceBufferFilenames(map);
                     removed = true;
                 }
             }
         }
         if (removed)
         {
+            _lastWriteSucceeded.store(false, std::memory_order_release);
             _throttler();
+            _throttler.flush();
+            if (!_lastWriteSucceeded.load(std::memory_order_acquire))
+            {
+                {
+                    const auto state = _state.lock();
+                    (*state->PersistedWorkspaces).Insert(name, removedLayout);
+                }
+                _throttler();
+                _throttler.flush();
+                return false;
+            }
+            _removeWorkspaceBuffers(_sharedPath.parent_path(), removedLayout, keepFilenames);
         }
         return removed;
     }
@@ -397,7 +536,12 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             return false;
         }
 
+        const std::scoped_lock throttlerLock{ _throttlerMutex };
         bool changed{ false };
+        bool hadOverwrittenLayout{ false };
+        Model::WindowLayout removedLayout{ nullptr };
+        Model::WindowLayout overwrittenLayout{ nullptr };
+        std::unordered_set<std::wstring> keepFilenames;
         {
             const auto state = _state.lock();
             if (state->PersistedWorkspaces && *state->PersistedWorkspaces)
@@ -405,19 +549,58 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 auto map = *state->PersistedWorkspaces;
                 if (map.HasKey(oldName))
                 {
+                    removedLayout = map.Lookup(oldName);
                     if (!newName.empty())
                     {
-                        const auto layout = map.Lookup(oldName);
-                        map.Insert(newName, layout);
+                        if (map.HasKey(newName))
+                        {
+                            overwrittenLayout = map.Lookup(newName);
+                            hadOverwrittenLayout = true;
+                        }
+                        map.Insert(newName, removedLayout);
                     }
                     map.Remove(oldName);
+                    keepFilenames = _allWorkspaceBufferFilenames(map);
                     changed = true;
                 }
             }
         }
         if (changed)
         {
+            _lastWriteSucceeded.store(false, std::memory_order_release);
             _throttler();
+            _throttler.flush();
+            if (!_lastWriteSucceeded.load(std::memory_order_acquire))
+            {
+                {
+                    const auto state = _state.lock();
+                    const auto map = *state->PersistedWorkspaces;
+                    map.Insert(oldName, removedLayout);
+                    if (!newName.empty())
+                    {
+                        if (hadOverwrittenLayout)
+                        {
+                            map.Insert(newName, overwrittenLayout);
+                        }
+                        else if (map.HasKey(newName))
+                        {
+                            map.Remove(newName);
+                        }
+                    }
+                }
+                _throttler();
+                _throttler.flush();
+                return false;
+            }
+
+            if (newName.empty())
+            {
+                _removeWorkspaceBuffers(_sharedPath.parent_path(), removedLayout, keepFilenames);
+            }
+            else
+            {
+                _removeWorkspaceBuffers(_sharedPath.parent_path(), overwrittenLayout, keepFilenames);
+            }
         }
         return changed;
     }
@@ -445,7 +628,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         }
         if (result)
         {
-            _throttler();
+            _scheduleWrite();
         }
         return result;
     }
@@ -476,7 +659,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             state->name.emplace(value);                          \
         }                                                        \
                                                                  \
-        _throttler();                                            \
+        _scheduleWrite();                                        \
     }
 #define COMMA ,
     MTSM_APPLICATION_STATE_FIELDS(MTSM_APPLICATION_STATE_GEN)

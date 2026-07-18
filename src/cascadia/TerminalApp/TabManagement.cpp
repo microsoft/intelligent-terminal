@@ -611,18 +611,194 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
-    // Method Description:
-    // - If this window has a name, persist its current workspace layout to
-    //   ApplicationState. Intended to be called from the close-pane / close-tab
-    //   paths while tab/pane content is still alive (before it gets torn down).
+    void TerminalPage::_AddDurableSessionMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
+    {
+        for (const auto& action : actions)
+        {
+            INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            {
+                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
+                {
+                    terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                }
+            }
+        }
+
+        if (const auto agentContent = tab->FindAgentPaneContent())
+        {
+            const auto agentSessionId = agentContent.AgentSessionId();
+            if (!agentSessionId.empty())
+            {
+                for (const auto& action : actions)
+                {
+                    if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                    {
+                        if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
+                        {
+                            terminalArgs.AgentPaneSessionId(agentSessionId);
+                            terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
+                                                       agentContent.IsSessionsView() ? L"sessions" :
+                                                                                       L"chat");
+                            terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
+                            terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void TerminalPage::_SaveWorkspaceSnapshot(const winrt::hstring& name, const WindowLayout& layout)
+    {
+        using namespace std::string_view_literals;
+        const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        const auto elevated = IsRunningElevated();
+        const auto filenamePrefix = elevated ? L"workspace_elevated_"sv : L"workspace_buffer_"sv;
+        const auto snapshotId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto snapshotIdString = ::Microsoft::Console::Utils::GuidToPlainString(snapshotId);
+        struct PendingBufferWrite
+        {
+            std::filesystem::path destination;
+            std::filesystem::path temporary;
+            std::filesystem::path backup;
+            bool installed{ false };
+        };
+        std::vector<PendingBufferWrite> pendingWrites;
+        bool committed = false;
+        const auto cleanup = wil::scope_exit([&]() {
+            if (!committed)
+            {
+                for (auto it = pendingWrites.rbegin(); it != pendingWrites.rend(); ++it)
+                {
+                    std::error_code error;
+                    std::filesystem::remove(it->temporary, error);
+                    if (it->installed)
+                    {
+                        error.clear();
+                        std::filesystem::remove(it->destination, error);
+                    }
+                    if (!it->backup.empty())
+                    {
+                        MoveFileExW(it->backup.c_str(), it->destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+                    }
+                }
+            }
+        });
+
+        wil::unique_hlocal_security_descriptor sd;
+        SECURITY_ATTRIBUTES sa{};
+        if (elevated)
+        {
+            unsigned long size;
+            THROW_IF_WIN32_BOOL_FALSE(ConvertStringSecurityDescriptorToSecurityDescriptorW(L"S:(ML;;NRNW;;;HI)", SDDL_REVISION_1, wil::out_param_ptr<PSECURITY_DESCRIPTOR*>(sd), &size));
+            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+            sa.lpSecurityDescriptor = sd.get();
+        }
+
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                tabImpl->GetRootPane()->WalkTree([&](const auto& pane) {
+                    if (pane->IsAgentPane())
+                    {
+                        return;
+                    }
+
+                    std::filesystem::path temporaryPath;
+                    try
+                    {
+                        if (const auto control = pane->GetTerminalControl())
+                        {
+                            if (const auto connection = control.Connection())
+                            {
+                                const auto sessionId = connection.SessionId();
+                                if (sessionId != winrt::guid{})
+                                {
+                                    const auto filename = fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sessionId);
+                                    const auto destinationPath = settingsDirectory / filename;
+                                    temporaryPath = settingsDirectory / fmt::format(FMT_COMPILE(L"workspace_tmp_{}_{}.txt"), snapshotIdString, sessionId);
+                                    wil::unique_hfile file{ CreateFileW(temporaryPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                                    THROW_LAST_ERROR_IF(!file);
+                                    control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+
+                                    LARGE_INTEGER size;
+                                    THROW_IF_WIN32_BOOL_FALSE(GetFileSizeEx(file.get(), &size));
+                                    if (size.QuadPart > 0)
+                                    {
+                                        pendingWrites.emplace_back(PendingBufferWrite{ destinationPath, temporaryPath });
+                                        temporaryPath.clear();
+                                    }
+                                    else
+                                    {
+                                        file.reset();
+                                        std::error_code error;
+                                        std::filesystem::remove(temporaryPath, error);
+                                        temporaryPath.clear();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (...)
+                    {
+                        if (!temporaryPath.empty())
+                        {
+                            std::error_code error;
+                            std::filesystem::remove(temporaryPath, error);
+                        }
+                        throw;
+                    }
+                });
+            }
+        }
+
+        for (auto& write : pendingWrites)
+        {
+            if (std::filesystem::exists(write.destination))
+            {
+                write.backup = settingsDirectory / fmt::format(FMT_COMPILE(L"workspace_backup_{}_{}.txt"), snapshotIdString, write.destination.filename().wstring());
+                THROW_IF_WIN32_BOOL_FALSE(MoveFileExW(write.destination.c_str(), write.backup.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
+            }
+            THROW_IF_WIN32_BOOL_FALSE(MoveFileExW(write.temporary.c_str(), write.destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
+            write.installed = true;
+        }
+
+        const auto state = ApplicationState::SharedInstance();
+        THROW_HR_IF(E_FAIL, !state.SaveWorkspaceAndFlush(name, layout));
+        committed = true;
+        for (const auto& write : pendingWrites)
+        {
+            if (!write.backup.empty())
+            {
+                std::error_code error;
+                std::filesystem::remove(write.backup, error);
+            }
+        }
+    }
+
+    // Save while tab and pane content is still alive so scrollback and agent
+    // bindings are captured alongside the named workspace layout.
     void TerminalPage::_SaveWorkspaceIfNeeded()
     {
         const auto& windowName = _WindowProperties.WindowName();
         if (!windowName.empty())
         {
-            if (const auto layout = GetWindowLayout())
+            if (const auto layout = _GetWindowLayout(true))
             {
-                ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
+                _SaveWorkspaceSnapshot(windowName, layout);
             }
         }
     }
@@ -684,52 +860,7 @@ namespace winrt::TerminalApp::implementation
             sa.lpSecurityDescriptor = sd.get();
         }
 
-        for (const auto& action : actions)
-        {
-            INewContentArgs contentArgs{ nullptr };
-            if (const auto args = action.Args().try_as<NewTabArgs>())
-            {
-                contentArgs = args.ContentArgs();
-            }
-            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
-            {
-                contentArgs = args.ContentArgs();
-            }
-
-            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
-            {
-                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
-                {
-                    terminalArgs.AgentSessionId(binding->second.sessionId);
-                    terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
-                }
-            }
-
-        }
-
-        if (const auto agentContent = tab->FindAgentPaneContent())
-        {
-            const auto agentSessionId = agentContent.AgentSessionId();
-            if (!agentSessionId.empty())
-            {
-                for (const auto& action : actions)
-                {
-                    if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
-                    {
-                        if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
-                        {
-                            terminalArgs.AgentPaneSessionId(agentSessionId);
-                            terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
-                                                       agentContent.IsSessionsView() ? L"sessions" :
-                                                                                       L"chat");
-                            terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
-                            terminalArgs.AgentPanePosition(agentContent.GetAgentPanePosition());
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        _AddDurableSessionMetadata(tab, actions);
 
         tab->GetRootPane()->WalkTree([&](const auto& pane) {
             if (pane->IsAgentPane())
@@ -867,7 +998,11 @@ namespace winrt::TerminalApp::implementation
         // the pane content will be torn down by the time _RemoveTab runs.
         if (_tabs.Size() == 1)
         {
-            _SaveWorkspaceIfNeeded();
+            try
+            {
+                _SaveWorkspaceIfNeeded();
+            }
+            CATCH_LOG()
         }
 
         try
@@ -1309,7 +1444,11 @@ namespace winrt::TerminalApp::implementation
             {
                 if (activeTab->GetLeafPaneCount() == 1)
                 {
-                    _SaveWorkspaceIfNeeded();
+                    try
+                    {
+                        _SaveWorkspaceIfNeeded();
+                    }
+                    CATCH_LOG()
                 }
             }
         }
