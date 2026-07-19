@@ -1462,6 +1462,47 @@ void WindowEmperor::_finalizeSessionPersistence() const
     // Now remove the "buffer_{guid}.txt" files that shouldn't be there.
     if (_needsPersistenceCleanup)
     {
+        // Durable workspaces: keep the scrollback files referenced by any saved
+        // workspace, even though that workspace's window isn't currently open.
+        // Without this the cleanup below would delete a saved workspace's
+        // buffers, so reopening it later would lose its terminal contents.
+        if (const auto workspaces = ApplicationState::SharedInstance().AllPersistedWorkspaces())
+        {
+            const auto rememberSessionArgs = [&](const auto& contentArgs) {
+                if (const auto termArgs = contentArgs.try_as<NewTerminalArgs>())
+                {
+                    if (const auto sid = termArgs.SessionId(); sid != winrt::guid{})
+                    {
+                        bufferFilenames.emplace(fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sid));
+                    }
+                }
+            };
+            for (const auto& kv : workspaces)
+            {
+                const auto layout = kv.Value();
+                if (!layout)
+                {
+                    continue;
+                }
+                const auto tabLayout = layout.TabLayout();
+                if (!tabLayout)
+                {
+                    continue;
+                }
+                for (const auto& action : tabLayout)
+                {
+                    if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                    {
+                        rememberSessionArgs(newTabArgs.ContentArgs());
+                    }
+                    else if (const auto splitArgs = action.Args().try_as<SplitPaneArgs>())
+                    {
+                        rememberSessionArgs(splitArgs.ContentArgs());
+                    }
+                }
+            }
+        }
+
         const auto filter = fmt::format(FMT_COMPILE(L"{}\\{}*"), settingsDirectory.native(), filenamePrefix);
 
         // This could also use std::filesystem::directory_iterator.
