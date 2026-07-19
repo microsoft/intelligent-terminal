@@ -1357,6 +1357,12 @@ pub enum AppEvent {
         id: String,
         error: Option<String>,
     },
+    ShellSessionDeleted {
+        tab_id: String,
+        id: String,
+        deleted: bool,
+        error: Option<String>,
+    },
     MasterMutationCompleted {
         request_id: u64,
     },
@@ -1562,6 +1568,8 @@ pub struct TabSession {
     pub shell_sessions_list_state: ratatui::widgets::ListState,
     pub shell_sessions_loading: bool,
     pub shell_sessions_error: Option<String>,
+    pub shell_session_delete_confirmation: Option<String>,
+    pub shell_session_delete_in_flight: bool,
 
     // "Does this tab want the agent pane visible?" — per-tab user intent.
     // Independent of where the (single, shared) XAML pane physically lives:
@@ -3729,6 +3737,8 @@ impl App {
         tab.current_view = View::Chat;
         tab.shell_sessions_loading = false;
         tab.shell_sessions_error = None;
+        tab.shell_session_delete_confirmation = None;
+        tab.shell_session_delete_in_flight = false;
     }
 
     fn load_shell_sessions(&mut self, tab_id: String) {
@@ -3752,6 +3762,25 @@ impl App {
         };
         if self.master_request_tx.send(request).is_err() {
             self.tab_mut(&tab_id).shell_sessions_error =
+                Some("Shell-session master connection is unavailable".to_string());
+        }
+    }
+
+    fn delete_shell_session(&mut self, tab_id: String, id: String) {
+        {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_error = None;
+            tab.shell_session_delete_in_flight = true;
+        }
+        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+            tab_id: tab_id.clone(),
+            id,
+            elevated: crate::shell_session_store::current_process_is_elevated(),
+        };
+        if self.master_request_tx.send(request).is_err() {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_session_delete_in_flight = false;
+            tab.shell_sessions_error =
                 Some("Shell-session master connection is unavailable".to_string());
         }
     }
@@ -4613,6 +4642,7 @@ impl App {
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::ShellSessionsLoaded { .. } => "shell_sessions_loaded",
             AppEvent::ShellSessionRestored { .. } => "shell_session_restored",
+            AppEvent::ShellSessionDeleted { .. } => "shell_session_deleted",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
         }
@@ -5694,6 +5724,25 @@ impl App {
                 tracing::debug!(target: "shell_sessions", %id, restored = error.is_none(), "shell-session restore completed");
                 let tab = self.tab_mut(&tab_id);
                 tab.shell_sessions_error = error;
+            }
+            AppEvent::ShellSessionDeleted {
+                tab_id,
+                id,
+                deleted,
+                error,
+            } => {
+                tracing::debug!(target: "shell_sessions", %id, deleted, succeeded = error.is_none(), "shell-session delete completed");
+                let succeeded = error.is_none();
+                {
+                    let tab = self.tab_mut(&tab_id);
+                    tab.shell_session_delete_confirmation = None;
+                    tab.shell_session_delete_in_flight = false;
+                    tab.shell_sessions_error = error;
+                }
+                if succeeded {
+                    self.tab_mut(&tab_id).shell_sessions_loading = true;
+                    self.load_shell_sessions(tab_id);
+                }
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -7003,6 +7052,25 @@ impl App {
         if self.current_tab().current_view == View::ShellSessions {
             let tab_id = self.active_tab_key().to_string();
             let count = self.current_tab().shell_sessions.len();
+
+            if self.current_tab().shell_session_delete_in_flight {
+                return;
+            }
+            if let Some(id) = self
+                .current_tab()
+                .shell_session_delete_confirmation
+                .clone()
+            {
+                match key.code {
+                    KeyCode::Char('y' | 'Y') => self.delete_shell_session(tab_id, id),
+                    KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                        self.current_tab_mut().shell_session_delete_confirmation = None;
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
             match key.code {
                 KeyCode::Down => {
                     let current = self
@@ -7034,6 +7102,17 @@ impl App {
                         if let Some(session) = self.current_tab().shell_sessions.get(index).cloned() {
                             self.restore_shell_session(tab_id, session.id);
                         }
+                    }
+                }
+                KeyCode::Char('d' | 'D') => {
+                    let selected_id = self
+                        .current_tab()
+                        .shell_sessions_list_state
+                        .selected()
+                        .and_then(|index| self.current_tab().shell_sessions.get(index))
+                        .map(|session| session.id.clone());
+                    if let Some(id) = selected_id {
+                        self.current_tab_mut().shell_session_delete_confirmation = Some(id);
                     }
                 }
                 KeyCode::F(5) => {
@@ -11135,6 +11214,71 @@ mod tests {
             Arc::new(crate::shell::ShellManager::new()),
         );
         (app, master_rx)
+    }
+
+    fn shell_session_record(id: &str, name: &str) -> crate::shell_session_store::ShellSessionRecord {
+        crate::shell_session_store::ShellSessionRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            layout_json: "{}".to_string(),
+            elevated: false,
+            created_at: 1,
+            updated_at: 1,
+            last_used_at: 1,
+            revision: 1,
+        }
+    }
+
+    #[test]
+    fn shell_session_delete_requires_confirmation_and_dispatches_to_master() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+        {
+            let tab = app.current_tab_mut();
+            tab.current_view = View::ShellSessions;
+            tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
+            tab.shell_sessions_list_state.select(Some(0));
+        }
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
+        assert_eq!(
+            app.current_tab().shell_session_delete_confirmation.as_deref(),
+            Some(id)
+        );
+        assert!(master_rx.try_recv().is_err());
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT));
+        assert!(app.current_tab().shell_session_delete_in_flight);
+        assert!(matches!(
+            master_rx.try_recv(),
+            Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionDelete {
+                tab_id,
+                id: dispatched_id,
+                ..
+            }) if tab_id == DEFAULT_TAB_ID && dispatched_id == id
+        ));
+    }
+
+    #[test]
+    fn shell_session_delete_confirmation_can_be_cancelled() {
+        let mut app = test_app();
+        let id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+        {
+            let tab = app.current_tab_mut();
+            tab.current_view = View::ShellSessions;
+            tab.shell_sessions = vec![shell_session_record(id, "PowerShell")];
+            tab.shell_sessions_list_state.select(Some(0));
+        }
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.current_tab().current_view, View::ShellSessions);
+        assert!(app
+            .current_tab()
+            .shell_session_delete_confirmation
+            .is_none());
+        assert!(!app.current_tab().shell_session_delete_in_flight);
     }
 
     // ─── word boundary helpers ──────────────────────────────────────────────

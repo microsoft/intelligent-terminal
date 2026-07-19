@@ -13,6 +13,8 @@ pub fn render(
     list_state: &mut ListState,
     loading: bool,
     error: Option<&str>,
+    delete_confirmation: Option<&str>,
+    delete_in_flight: bool,
 ) {
     let inner = Rect {
         x: area.x.saturating_add(2),
@@ -82,10 +84,24 @@ pub fn render(
             width: area.width,
             height: 1,
         };
-        frame.render_widget(
-            Paragraph::new("Up/Down Navigate - Enter Restore - Esc Back - F5 Refresh")
-                .style(Style::default().fg(Color::DarkGray)),
-            hint_area,
-        );
+        let (hint, style) = if delete_in_flight {
+            ("Deleting shell session...".to_string(), Style::default().fg(Color::Yellow))
+        } else if let Some(id) = delete_confirmation {
+            let name = sessions
+                .iter()
+                .find(|session| session.id == id)
+                .map(|session| session.name.as_str())
+                .unwrap_or(id);
+            (
+                format!("Delete \"{name}\"? Y Confirm - N/Esc Cancel"),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )
+        } else {
+            (
+                "Up/Down Navigate - Enter Restore - D Delete - Esc Back - F5 Refresh".to_string(),
+                Style::default().fg(Color::DarkGray),
+            )
+        };
+        frame.render_widget(Paragraph::new(hint).style(style), hint_area);
     }
 }

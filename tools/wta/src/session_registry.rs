@@ -390,9 +390,25 @@ pub fn parse_shell_session_get_response(
     serde_json::from_str(raw.get())
 }
 
+pub fn build_shell_session_delete_request(
+    id: String,
+    elevated: bool,
+) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_SHELL_SESSION_DELETE,
+        &crate::shell_session_store::ShellSessionDeleteParams { id, elevated },
+    )
+}
+
 pub fn parse_shell_session_delete_params(
     raw: &serde_json::value::RawValue,
 ) -> Result<crate::shell_session_store::ShellSessionDeleteParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_shell_session_delete_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionDeleteResponse, serde_json::Error> {
     serde_json::from_str(raw.get())
 }
 
@@ -3032,7 +3048,10 @@ mod tests {
             WtaExtRequest::ShellSessionGet(_)
         ));
         assert!(matches!(
-            parse_ext_request(build_typed_ext_request(INTELLTERM_METHOD_SHELL_SESSION_DELETE, &delete)),
+            parse_ext_request(build_shell_session_delete_request(
+                delete.id,
+                delete.elevated
+            )),
             WtaExtRequest::ShellSessionDelete(_)
         ));
     }

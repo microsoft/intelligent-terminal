@@ -1470,6 +1470,55 @@ mod tests {
     }
 
     #[test]
+    fn delete_removes_database_rows_and_buffer_files() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
+        let saved = store.save(save_params(&directory, "delete-me", "delete.tmp")?, 100)?;
+        let (_, buffer_id) = stored_buffer_ids(&store, &saved.id)?;
+        let buffer_path =
+            StoreCore::resolve_existing_buffer_path(&store.buffer_root, &saved.id, &buffer_id)?;
+        let session_directory = buffer_path
+            .parent()
+            .context("saved buffer must have a session directory")?
+            .to_path_buf();
+        assert!(buffer_path.exists());
+
+        let response = store.delete(&ShellSessionDeleteParams {
+            id: saved.id.clone(),
+            elevated: false,
+        })?;
+        assert!(response.deleted);
+        assert_eq!(
+            store.connection.query_row(
+                "SELECT COUNT(*) FROM shell_sessions WHERE id = ?1",
+                params![&saved.id],
+                |row| row.get::<_, i64>(0),
+            )?,
+            0
+        );
+        assert_eq!(
+            store.connection.query_row(
+                "SELECT COUNT(*) FROM shell_session_buffers WHERE session_id = ?1",
+                params![&saved.id],
+                |row| row.get::<_, i64>(0),
+            )?,
+            0
+        );
+        assert!(!buffer_path.exists());
+        assert!(!session_directory.exists());
+
+        assert!(
+            !store
+                .delete(&ShellSessionDeleteParams {
+                    id: saved.id,
+                    elevated: false,
+                })?
+                .deleted
+        );
+        Ok(())
+    }
+
+    #[test]
     fn save_rejects_empty_names_and_invalid_layouts() -> Result<()> {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;

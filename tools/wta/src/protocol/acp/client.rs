@@ -195,6 +195,11 @@ pub enum MasterExtRequest {
         id: String,
         window_id: Option<String>,
     },
+    ShellSessionDelete {
+        tab_id: String,
+        id: String,
+        elevated: bool,
+    },
     /// Hot-swap the ACP model on this helper's live session(s) via
     /// `set_session_model`, without restarting anything. Two callers:
     /// * settings hot-reload (`acpModel` changed) and the per-pane `/model`
@@ -2993,6 +2998,33 @@ fn dispatch_master_ext_request(
                     tab_id,
                     id,
                     error: result.err().map(|error| error.to_string()),
+                });
+            }
+            MasterExtRequest::ShellSessionDelete {
+                tab_id,
+                id,
+                elevated,
+            } => {
+                let result = conn
+                    .ext_method(crate::session_registry::build_shell_session_delete_request(
+                        id.clone(),
+                        elevated,
+                    ))
+                    .await
+                    .map_err(|error| anyhow::anyhow!("{error:?}"))
+                    .and_then(|response| {
+                        crate::session_registry::parse_shell_session_delete_response(&response.0)
+                            .map_err(anyhow::Error::from)
+                    });
+                let (deleted, error) = match result {
+                    Ok(response) => (response.deleted, None),
+                    Err(error) => (false, Some(error.to_string())),
+                };
+                let _ = event_tx.send(AppEvent::ShellSessionDeleted {
+                    tab_id,
+                    id,
+                    deleted,
+                    error,
                 });
             }
             MasterExtRequest::SetSessionModel { session_id, model } => {
