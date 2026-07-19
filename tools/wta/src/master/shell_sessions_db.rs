@@ -86,12 +86,22 @@ fn init_schema(conn: &Connection) -> Result<()> {
 
 /// Insert or replace the row for `row.name`.
 ///
-/// Returns the buffer GUIDs of any **superseded** row with the same name, so
-/// the caller can unlink the now-orphaned scrollback files (each tab close
-/// mints fresh per-connection GUIDs, so an overwrite orphans the old files).
-/// Returns an empty vec when there was no prior row.
+/// Returns the buffer GUIDs orphaned by the overwrite — the previous row's
+/// GUIDs that the **new** row no longer references — so the caller can unlink
+/// only the now-dead scrollback files. Crucially this is a set difference
+/// (`old - new`), NOT all of the old GUIDs: a restored tab reuses its pane
+/// session GUIDs, so re-saving the same session writes the same
+/// `{guid}.txt` files C++ just refreshed; returning those as "orphaned" would
+/// delete the freshly-written buffers and leave the row pointing at nothing.
+/// Returns an empty vec when there was no prior row (or nothing was dropped).
 pub fn upsert(conn: &Connection, row: &ShellSessionRow) -> Result<Vec<String>> {
-    let orphaned = get_buffer_guids(conn, &row.name)?;
+    let previous = get_buffer_guids(conn, &row.name)?;
+    let kept: std::collections::HashSet<&str> =
+        row.buffer_guids.iter().map(String::as_str).collect();
+    let orphaned: Vec<String> = previous
+        .into_iter()
+        .filter(|g| !kept.contains(g.as_str()))
+        .collect();
 
     let guids_json = serde_json::to_string(&row.buffer_guids)
         .context("serializing buffer_guids")?;
@@ -298,7 +308,8 @@ mod tests {
         let conn = mem();
         upsert(&conn, &row("tab", 100, &["old-a", "old-b"])).unwrap();
 
-        // Re-close the same-named tab: fresh GUIDs, old ones orphaned.
+        // Re-close the same-named tab with entirely fresh GUIDs: both old ones
+        // are orphaned (not referenced by the new row).
         let orphaned = upsert(&conn, &row("tab", 200, &["new-a"])).unwrap();
         assert_eq!(orphaned, vec!["old-a".to_string(), "old-b".to_string()]);
 
@@ -306,6 +317,27 @@ mod tests {
         assert_eq!(all.len(), 1, "same name must not create a second row");
         assert_eq!(all[0].saved_at, 200);
         assert_eq!(all[0].buffer_guids, vec!["new-a".to_string()]);
+    }
+
+    #[test]
+    fn upsert_reusing_same_guids_orphans_nothing() {
+        // A restored tab reuses its pane session GUIDs, so re-saving the same
+        // session writes the same {guid}.txt files. Those must NOT be reported
+        // as orphaned (that would delete the freshly-written buffers).
+        let conn = mem();
+        upsert(&conn, &row("tab", 100, &["a", "b"])).unwrap();
+        let orphaned = upsert(&conn, &row("tab", 200, &["a", "b"])).unwrap();
+        assert!(orphaned.is_empty(), "re-saving identical guids must orphan nothing");
+        assert_eq!(list(&conn).unwrap()[0].buffer_guids, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn upsert_partial_overlap_orphans_only_dropped_guids() {
+        let conn = mem();
+        upsert(&conn, &row("tab", 100, &["a", "b"])).unwrap();
+        // New row keeps `a`, drops `b`, adds `c` → only `b` is orphaned.
+        let orphaned = upsert(&conn, &row("tab", 200, &["a", "c"])).unwrap();
+        assert_eq!(orphaned, vec!["b".to_string()]);
     }
 
     #[test]
