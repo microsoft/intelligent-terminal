@@ -166,10 +166,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             const auto idStr = ::Microsoft::Console::Utils::GuidToString(id);
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--sessionId \"{}\" "), idStr);
         }
-        if (UseShellSessionBuffer())
-        {
-            str.append(L"--useShellSessionBuffer ");
-        }
 
         // The caller is always expected to provide the evaluated profile in the
         // NewTerminalArgs, not the index

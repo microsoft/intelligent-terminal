@@ -9,7 +9,7 @@ use ratatui::{
 pub fn render(
     frame: &mut Frame,
     area: Rect,
-    sessions: &[String],
+    sessions: &[crate::shell_session_store::ShellSessionRecord],
     list_state: &mut ListState,
     loading: bool,
     error: Option<&str>,
@@ -51,7 +51,7 @@ pub fn render(
         );
     } else {
         let selected = list_state.selected();
-        let rows = sessions.iter().enumerate().map(|(index, name)| {
+        let rows = sessions.iter().enumerate().map(|(index, session)| {
             let is_selected = selected == Some(index);
             let marker = if is_selected { "> " } else { "  " };
             let style = if is_selected {
@@ -61,9 +61,14 @@ pub fn render(
             } else {
                 Style::default()
             };
+            let short_id = session.id.get(..8).unwrap_or(&session.id);
+            let label = format!(
+                "{}  [{} · {} · r{}]",
+                session.name, session.last_used_at, short_id, session.revision
+            );
             ListItem::new(Line::from(vec![
                 Span::styled(marker, style),
-                Span::styled(name.clone(), style),
+                Span::styled(label, style),
             ]))
         });
         frame.render_stateful_widget(List::new(rows), inner, list_state);

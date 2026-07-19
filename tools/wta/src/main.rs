@@ -29,6 +29,7 @@ mod runtime_paths;
 mod session_history;
 mod session_mgmt;
 mod session_registry;
+mod shell_session_store;
 mod session_watcher;
 mod shell;
 mod telemetry;

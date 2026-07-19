@@ -154,6 +154,12 @@ namespace winrt::TerminalApp::implementation
         /// `AcquirePane`. Format: `\\.\pipe\wta-master-<GUID>`.
         std::wstring_view MasterPipeName() const noexcept;
 
+        /// Sends one typed extension request to the running master and returns
+        /// the JSON-RPC result object. The caller supplies a JSON object for
+        /// `params`; SQLite and durable-session files remain master-owned.
+        std::optional<std::string> Request(std::string_view method,
+                                           std::string_view paramsJson) const;
+
     private:
         SharedWta() = default;
         ~SharedWta();

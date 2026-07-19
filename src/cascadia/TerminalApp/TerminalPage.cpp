@@ -7765,15 +7765,10 @@ namespace winrt::TerminalApp::implementation
             const auto settingsDir = CascadiaSettings::SettingsDirectory();
             const auto admin = IsRunningElevated();
             const auto filenamePrefix = admin ? L"elevated_"sv : L"buffer_"sv;
-            const auto shellFilenamePrefix = admin ? L"shell_elevated_"sv : L"shell_buffer_"sv;
             auto path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
-            if (newTerminalArgs && newTerminalArgs.UseShellSessionBuffer())
+            if (newTerminalArgs && !newTerminalArgs.ShellSessionRestorePath().empty())
             {
-                const auto shellPath = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, shellFilenamePrefix, sessionId);
-                if (std::filesystem::exists(shellPath))
-                {
-                    path = shellPath;
-                }
+                path = newTerminalArgs.ShellSessionRestorePath();
             }
             control.RestoreFromPath(path);
         }

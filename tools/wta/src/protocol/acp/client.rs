@@ -4,7 +4,7 @@ use super::prompt;
 use super::prompt_context::{self, ContextRequest};
 use super::soft_stop::SoftStopReason;
 use agent_client_protocol as acp;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -185,6 +185,15 @@ pub enum MasterExtRequest {
     SessionFocus {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
+    },
+    ShellSessionsList {
+        tab_id: String,
+        elevated: bool,
+    },
+    ShellSessionRestore {
+        tab_id: String,
+        id: String,
+        window_id: Option<String>,
     },
     /// Hot-swap the ACP model on this helper's live session(s) via
     /// `set_session_model`, without restarting anything. Two callers:
@@ -2950,6 +2959,41 @@ fn dispatch_master_ext_request(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::ShellSessionsList { tab_id, elevated } => {
+                let result = conn
+                    .ext_method(crate::session_registry::build_shell_sessions_list_request(elevated))
+                    .await
+                    .map_err(|error| anyhow::anyhow!("{error:?}"))
+                    .and_then(|response| {
+                        crate::session_registry::parse_shell_sessions_list_response(&response.0)
+                            .map_err(anyhow::Error::from)
+                    });
+                let (sessions, error) = match result {
+                    Ok(response) => (response.sessions, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                };
+                let _ = event_tx.send(AppEvent::ShellSessionsLoaded { tab_id, sessions, error });
+            }
+            MasterExtRequest::ShellSessionRestore { tab_id, id, window_id } => {
+                let result = async {
+                    use crate::shell::wt_channel::WtChannel;
+
+                    let channel = crate::shell::wt_channel::CliChannel::connect().await?;
+                    channel
+                        .request(
+                            "restore_shell_session",
+                            serde_json::json!({ "id": id, "window_id": window_id }),
+                        )
+                        .await?;
+                    anyhow::Ok(())
+                }
+                .await;
+                let _ = event_tx.send(AppEvent::ShellSessionRestored {
+                    tab_id,
+                    id,
+                    error: result.err().map(|error| error.to_string()),
+                });
             }
             MasterExtRequest::SetSessionModel { session_id, model } => {
                 // Apply to the targeted session, or to every live session

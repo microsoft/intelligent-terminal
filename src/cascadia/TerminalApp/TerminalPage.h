@@ -250,7 +250,8 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
-        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolShellSession(hstring name);
+        Windows::Foundation::IAsyncOperation<hstring> ListProtocolShellSessions();
+        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolShellSession(hstring id);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
@@ -666,7 +667,7 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
-        void _PersistShellSession(const winrt::com_ptr<Tab>& tab);
+        void _PersistShellSession(Tab* tab);
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);

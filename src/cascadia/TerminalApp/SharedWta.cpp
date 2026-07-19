@@ -4,6 +4,9 @@
 #include "pch.h"
 #include "SharedWta.h"
 
+#include <array>
+#include <json/json.h>
+#include <memory>
 #include <mutex>
 #include <string>
 
@@ -73,6 +76,162 @@ namespace winrt::TerminalApp::implementation
     {
         std::lock_guard lock{ _mtx };
         return _masterPipeName;
+    }
+
+    std::optional<std::string> SharedWta::Request(const std::string_view method,
+                                                  const std::string_view paramsJson) const
+    {
+        std::wstring pipeName;
+        {
+            std::lock_guard lock{ _mtx };
+            if (!_process.is_valid() || _masterPipeName.empty())
+            {
+                return std::nullopt;
+            }
+            pipeName = _masterPipeName;
+        }
+
+        wil::unique_hfile pipe;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{ 3 };
+        do
+        {
+            pipe.reset(CreateFileW(pipeName.c_str(),
+                                   GENERIC_READ | GENERIC_WRITE,
+                                   0,
+                                   nullptr,
+                                   OPEN_EXISTING,
+                                   FILE_FLAG_OVERLAPPED,
+                                   nullptr));
+            if (pipe)
+            {
+                break;
+            }
+
+            const auto error = GetLastError();
+            if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PIPE_BUSY)
+            {
+                return std::nullopt;
+            }
+            if (error == ERROR_PIPE_BUSY)
+            {
+                WaitNamedPipeW(pipeName.c_str(), 50);
+            }
+            else
+            {
+                Sleep(25);
+            }
+        } while (std::chrono::steady_clock::now() < deadline);
+
+        if (!pipe)
+        {
+            return std::nullopt;
+        }
+
+        static std::atomic<uint64_t> nextRequestId{ 1 };
+        const auto requestId = nextRequestId.fetch_add(1, std::memory_order_relaxed);
+
+        Json::Value params;
+        std::string errors;
+        const auto reader = std::unique_ptr<Json::CharReader>{ Json::CharReaderBuilder{}.newCharReader() };
+        if (!reader->parse(paramsJson.data(), paramsJson.data() + paramsJson.size(), &params, &errors) || !params.isObject())
+        {
+            return std::nullopt;
+        }
+
+        Json::Value request{ Json::objectValue };
+        request["jsonrpc"] = "2.0";
+        request["id"] = Json::UInt64{ requestId };
+        request["method"] = std::string{ method };
+        request["params"] = std::move(params);
+
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        auto payload = Json::writeString(writer, request);
+        payload.push_back('\n');
+
+        const auto transfer = [&](const bool write, void* data, const DWORD size, DWORD& transferred) {
+            wil::unique_handle event{ CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+            if (!event)
+            {
+                return false;
+            }
+
+            OVERLAPPED overlapped{};
+            overlapped.hEvent = event.get();
+            const auto started = write ?
+                                     WriteFile(pipe.get(), data, size, nullptr, &overlapped) :
+                                     ReadFile(pipe.get(), data, size, nullptr, &overlapped);
+            if (!started && GetLastError() != ERROR_IO_PENDING)
+            {
+                return false;
+            }
+
+            if (!started)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                if (now >= deadline)
+                {
+                    CancelIoEx(pipe.get(), &overlapped);
+                    GetOverlappedResult(pipe.get(), &overlapped, &transferred, TRUE);
+                    return false;
+                }
+                const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+                if (WaitForSingleObject(event.get(), gsl::narrow<DWORD>(remaining.count())) != WAIT_OBJECT_0)
+                {
+                    CancelIoEx(pipe.get(), &overlapped);
+                    GetOverlappedResult(pipe.get(), &overlapped, &transferred, TRUE);
+                    return false;
+                }
+            }
+            return GetOverlappedResult(pipe.get(), &overlapped, &transferred, FALSE) != FALSE;
+        };
+
+        DWORD written = 0;
+        const auto payloadSize = gsl::narrow<DWORD>(payload.size());
+        if (!transfer(true, payload.data(), payloadSize, written) || written != payloadSize)
+        {
+            return std::nullopt;
+        }
+
+        std::string pending;
+        std::array<char, 4096> buffer;
+        for (;;)
+        {
+            DWORD read = 0;
+            if (!transfer(false, buffer.data(), gsl::narrow<DWORD>(buffer.size()), read) || read == 0)
+            {
+                return std::nullopt;
+            }
+            pending.append(buffer.data(), read);
+
+            for (size_t newline; (newline = pending.find('\n')) != std::string::npos;)
+            {
+                auto line = pending.substr(0, newline);
+                pending.erase(0, newline + 1);
+
+                Json::Value response;
+                std::string responseErrors;
+                const auto responseReader = std::unique_ptr<Json::CharReader>{ Json::CharReaderBuilder{}.newCharReader() };
+                if (!responseReader->parse(line.data(), line.data() + line.size(), &response, &responseErrors))
+                {
+                    continue;
+                }
+                if (!response.isMember("id") || response["id"].asUInt64() != requestId)
+                {
+                    continue;
+                }
+                if (!response.isMember("result"))
+                {
+                    if (response.isMember("error"))
+                    {
+                        _agentPaneLog("wta-master request failed method=" + std::string{ method } +
+                                      " error=" + Json::writeString(writer, response["error"]));
+                    }
+                    return std::nullopt;
+                }
+                return Json::writeString(writer, response["result"]);
+            }
+        }
     }
 
     bool SharedWta::AcquirePane(const std::wstring_view wtaPath,

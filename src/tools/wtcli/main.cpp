@@ -417,15 +417,15 @@ int main()
         else
         {
             for (const auto& session : sessions)
-                printf("%s\n", session["name"].asCString());
+                printf("%s\t%s\n", session["id"].asCString(), session["name"].asCString());
         }
     });
 
     // ── restore-shell-session ──
-    std::string restoreShellSessionName;
+    std::string restoreShellSessionId;
     std::string restoreShellSessionWindowId;
     auto* restoreShellSessionCmd = app.add_subcommand("restore-shell-session", "Restore a saved shell session");
-    restoreShellSessionCmd->add_option("name", restoreShellSessionName, "Shell session name")->required();
+    restoreShellSessionCmd->add_option("id", restoreShellSessionId, "Durable shell session ID")->required();
     restoreShellSessionCmd->add_option("-w,--window-id", restoreShellSessionWindowId, "Target window ID");
     restoreShellSessionCmd->callback([&]() {
         auto server = connect();
@@ -439,14 +439,14 @@ int main()
             return;
         }
 
-        wil::unique_bstr name{ Bstr(restoreShellSessionName) };
-        const auto hr = server->RestoreShellSession(windowId, name.get());
+        wil::unique_bstr id{ Bstr(restoreShellSessionId) };
+        const auto hr = server->RestoreShellSession(windowId, id.get());
         if (FAILED(hr)) { fprintf(stderr, "RestoreShellSession failed: 0x%08X\n", static_cast<uint32_t>(hr)); exitCode = 1; return; }
         if (jsonMode)
         {
             Json::Value result(Json::objectValue);
             result["ok"] = true;
-            result["name"] = restoreShellSessionName;
+            result["id"] = restoreShellSessionId;
             PrintJson(result);
         }
     });

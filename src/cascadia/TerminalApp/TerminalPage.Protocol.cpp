@@ -13,10 +13,12 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "SharedWta.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <wil/resource.h>
+#include <json/json.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
@@ -838,22 +840,119 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
-    IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring name)
+    IAsyncOperation<hstring> TerminalPage::ListProtocolShellSessions()
     {
         co_await wil::resume_foreground(Dispatcher());
 
-        if (!_settings.GlobalSettings().RestoreShellSessions())
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        bool temporaryAcquire = false;
+        if (!sharedWta.IsRunning())
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+            if (!temporaryAcquire)
+            {
+                THROW_HR(E_FAIL);
+            }
+        }
+        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+            if (temporaryAcquire)
+            {
+                sharedWta.ReleasePane();
+            }
+        });
+
+        Json::Value params;
+        params["elevated"] = IsRunningElevated();
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto result = sharedWta.Request(
+            "_intellterm.wta/shell_sessions/list",
+            Json::writeString(writer, params));
+        if (!result)
+        {
+            THROW_HR(E_FAIL);
+        }
+
+        Json::Value response;
+        std::string errors;
+        std::istringstream stream{ *result };
+        if (!Json::parseFromStream(Json::CharReaderBuilder{}, stream, &response, &errors) ||
+            !response["sessions"].isArray())
+        {
+            THROW_HR(WEB_E_INVALID_JSON_STRING);
+        }
+        co_return winrt::to_hstring(Json::writeString(writer, response["sessions"]));
+    }
+
+    IAsyncOperation<bool> TerminalPage::RestoreProtocolShellSession(hstring id)
+    {
+        co_await wil::resume_foreground(Dispatcher());
+
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        bool temporaryAcquire = false;
+        if (!sharedWta.IsRunning())
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+            if (!temporaryAcquire)
+            {
+                co_return false;
+            }
+        }
+        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+            if (temporaryAcquire)
+            {
+                sharedWta.ReleasePane();
+            }
+        });
+
+        Json::Value params;
+        params["id"] = winrt::to_string(id);
+        params["elevated"] = IsRunningElevated();
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto result = sharedWta.Request(
+            "_intellterm.wta/shell_sessions/get",
+            Json::writeString(writer, params));
+        if (!result)
+        {
+            THROW_HR(E_FAIL);
+        }
+
+        Json::Value response;
+        std::string errors;
+        std::istringstream stream{ *result };
+        if (!Json::parseFromStream(Json::CharReaderBuilder{}, stream, &response, &errors))
+        {
+            THROW_HR(WEB_E_INVALID_JSON_STRING);
+        }
+
+        const auto& session = response["session"];
+        if (!session.isObject() || !session["layout_json"].isString())
         {
             co_return false;
         }
 
-        const auto layout = ApplicationState::SharedInstance().TakeShellSession(name);
+        std::unordered_map<std::string, hstring> restorePaths;
+        for (const auto& buffer : response["buffers"])
+        {
+            if (buffer["pane_key"].isString() && buffer["path"].isString())
+            {
+                restorePaths.emplace(buffer["pane_key"].asString(), winrt::to_hstring(buffer["path"].asString()));
+            }
+        }
+
+        const auto layout = WindowLayout::FromJson(winrt::to_hstring(session["layout_json"].asString()));
         if (!layout || !layout.TabLayout())
         {
             co_return false;
         }
 
         auto actions = wil::to_vector(layout.TabLayout());
+        bool firstTerminal = true;
         for (const auto& action : actions)
         {
             INewContentArgs contentArgs{ nullptr };
@@ -876,7 +975,18 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto sessionId = terminalArgs.SessionId(); sessionId != winrt::guid{})
                 {
-                    terminalArgs.UseShellSessionBuffer(true);
+                    const auto paneKey = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                    if (const auto path = restorePaths.find(paneKey); path != restorePaths.end())
+                    {
+                        terminalArgs.ShellSessionRestorePath(path->second);
+                    }
+                    terminalArgs.SessionId(::Microsoft::Console::Utils::CreateGuid());
+                    if (firstTerminal)
+                    {
+                        terminalArgs.DurableShellSessionId(id);
+                        terminalArgs.DurableShellSessionRevision(session["revision"].asInt64());
+                        firstTerminal = false;
+                    }
                 }
             }
         }

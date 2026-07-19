@@ -1349,12 +1349,12 @@ pub enum AppEvent {
     },
     ShellSessionsLoaded {
         tab_id: String,
-        sessions: Vec<String>,
+        sessions: Vec<crate::shell_session_store::ShellSessionRecord>,
         error: Option<String>,
     },
     ShellSessionRestored {
         tab_id: String,
-        name: String,
+        id: String,
         error: Option<String>,
     },
     MasterMutationCompleted {
@@ -1558,7 +1558,7 @@ pub struct TabSession {
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
-    pub shell_sessions: Vec<String>,
+    pub shell_sessions: Vec<crate::shell_session_store::ShellSessionRecord>,
     pub shell_sessions_list_state: ratatui::widgets::ListState,
     pub shell_sessions_loading: bool,
     pub shell_sessions_error: Option<String>,
@@ -3732,73 +3732,28 @@ impl App {
     }
 
     fn load_shell_sessions(&mut self, tab_id: String) {
-        let Some(event_tx) = self.event_tx.clone() else {
-            self.tab_mut(&tab_id).shell_sessions_loading = false;
-            return;
+        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionsList {
+            tab_id: tab_id.clone(),
+            elevated: crate::shell_session_store::current_process_is_elevated(),
         };
-
-        tokio::spawn(async move {
-            use crate::shell::wt_channel::WtChannel;
-
-            let result = async {
-                let channel = crate::shell::wt_channel::CliChannel::connect().await?;
-                let value = channel
-                    .request("list_shell_sessions", serde_json::json!({}))
-                    .await?;
-                let sessions = value
-                    .get("shell_sessions")
-                    .and_then(|v| v.as_array())
-                    .ok_or_else(|| anyhow::anyhow!("list_shell_sessions returned an invalid response"))?
-                    .iter()
-                    .filter_map(|entry| entry.get("name").and_then(|v| v.as_str()))
-                    .map(str::to_string)
-                    .collect();
-                anyhow::Ok(sessions)
-            }
-            .await;
-
-            let (sessions, error) = match result {
-                Ok(sessions) => (sessions, None),
-                Err(error) => (Vec::new(), Some(error.to_string())),
-            };
-            let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
-                tab_id,
-                sessions,
-                error,
-            });
-        });
+        if self.master_request_tx.send(request).is_err() {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_loading = false;
+            tab.shell_sessions_error = Some("Shell-session master connection is unavailable".to_string());
+        }
     }
 
-    fn restore_shell_session(&mut self, tab_id: String, name: String) {
-        let Some(event_tx) = self.event_tx.clone() else {
-            return;
-        };
-        let window_id = self.window_id.clone();
+    fn restore_shell_session(&mut self, tab_id: String, id: String) {
         self.tab_mut(&tab_id).shell_sessions_error = None;
-
-        tokio::spawn(async move {
-            use crate::shell::wt_channel::WtChannel;
-
-            let error = match crate::shell::wt_channel::CliChannel::connect().await {
-                Ok(channel) => channel
-                    .request(
-                        "restore_shell_session",
-                        serde_json::json!({
-                            "name": name,
-                            "window_id": window_id,
-                        }),
-                    )
-                    .await
-                    .err()
-                    .map(|error| error.to_string()),
-                Err(error) => Some(error.to_string()),
-            };
-            let _ = event_tx.send(AppEvent::ShellSessionRestored {
-                tab_id,
-                name,
-                error,
-            });
-        });
+        let request = crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+            tab_id: tab_id.clone(),
+            id,
+            window_id: self.window_id.clone(),
+        };
+        if self.master_request_tx.send(request).is_err() {
+            self.tab_mut(&tab_id).shell_sessions_error =
+                Some("Shell-session master connection is unavailable".to_string());
+        }
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
@@ -5733,23 +5688,11 @@ impl App {
             }
             AppEvent::ShellSessionRestored {
                 tab_id,
-                name,
+                id,
                 error,
             } => {
+                tracing::debug!(target: "shell_sessions", %id, restored = error.is_none(), "shell-session restore completed");
                 let tab = self.tab_mut(&tab_id);
-                if error.is_none() {
-                    tab.shell_sessions.retain(|session| session != &name);
-                    if tab.shell_sessions.is_empty() {
-                        tab.shell_sessions_list_state.select(None);
-                    } else {
-                        let selected = tab
-                            .shell_sessions_list_state
-                            .selected()
-                            .unwrap_or(0)
-                            .min(tab.shell_sessions.len() - 1);
-                        tab.shell_sessions_list_state.select(Some(selected));
-                    }
-                }
                 tab.shell_sessions_error = error;
             }
             AppEvent::MasterMutationCompleted { request_id } => {
@@ -7088,8 +7031,8 @@ impl App {
                 }
                 KeyCode::Enter => {
                     if let Some(index) = self.current_tab().shell_sessions_list_state.selected() {
-                        if let Some(name) = self.current_tab().shell_sessions.get(index).cloned() {
-                            self.restore_shell_session(tab_id, name);
+                        if let Some(session) = self.current_tab().shell_sessions.get(index).cloned() {
+                            self.restore_shell_session(tab_id, session.id);
                         }
                     }
                 }

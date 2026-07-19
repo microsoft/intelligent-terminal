@@ -605,25 +605,18 @@ try
     RETURN_HR_IF_NULL(E_POINTER, json);
     *json = nullptr;
 
-    std::vector<std::string> names;
-    if (const auto sessions = winrt::Microsoft::Terminal::Settings::Model::ApplicationState::SharedInstance().ShellSessionNames())
-    {
-        names.reserve(sessions.Size());
-        for (const auto& name : sessions)
-        {
-            names.emplace_back(winrt::to_string(name));
-        }
-    }
-    std::sort(names.begin(), names.end());
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    auto* host = s_emperor->GetMostRecentWindow();
+    RETURN_HR_IF(E_FAIL, !host);
+    const auto page = _getPage(host);
+    RETURN_HR_IF(E_FAIL, !page);
 
-    Json::Value arr(Json::arrayValue);
-    for (const auto& name : names)
-    {
-        Json::Value entry;
-        entry["name"] = name;
-        arr.append(std::move(entry));
-    }
-    *json = _bstrFromJson(arr);
+    const auto serialized = winrt::to_string(page.ListProtocolShellSessions().get());
+    Json::Value sessions;
+    std::string errors;
+    std::istringstream stream{ serialized };
+    RETURN_HR_IF(E_UNEXPECTED, !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &sessions, &errors));
+    *json = _bstrFromJson(sessions);
     return S_OK;
 }
 CATCH_RETURN()
@@ -975,19 +968,19 @@ try
 }
 CATCH_RETURN()
 
-STDMETHODIMP TerminalProtocolComServer::RestoreShellSession(unsigned __int64 windowId, BSTR name)
+STDMETHODIMP TerminalProtocolComServer::RestoreShellSession(unsigned __int64 windowId, BSTR id)
 try
 {
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
-    const auto nameH = _hstr(name);
-    RETURN_HR_IF(E_INVALIDARG, nameH.empty());
+    const auto idH = _hstr(id);
+    RETURN_HR_IF(E_INVALIDARG, idH.empty());
 
     auto* targetHost = windowId == 0 ? s_emperor->GetMostRecentWindow() : s_emperor->GetWindowById(windowId);
     RETURN_HR_IF(E_FAIL, !targetHost);
 
     const auto page = _getPage(targetHost);
     RETURN_HR_IF(E_FAIL, !page);
-    return page.RestoreProtocolShellSession(nameH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    return page.RestoreProtocolShellSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
 CATCH_RETURN()
 

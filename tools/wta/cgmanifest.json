@@ -644,6 +644,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "fallible-iterator",
+          "version": "0.3.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fallible-streaming-iterator",
+          "version": "0.1.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "fancy-regex",
           "version": "0.11.0"
         }
@@ -727,6 +745,15 @@
         "cargo": {
           "name": "fnv",
           "version": "1.0.7"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "foldhash",
+          "version": "0.1.5"
         }
       }
     },
@@ -906,7 +933,25 @@
         "type": "cargo",
         "cargo": {
           "name": "hashbrown",
+          "version": "0.15.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hashbrown",
           "version": "0.16.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hashlink",
+          "version": "0.10.0"
         }
       }
     },
@@ -1060,6 +1105,15 @@
         "cargo": {
           "name": "libc",
           "version": "0.2.183"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "libsqlite3-sys",
+          "version": "0.35.0"
         }
       }
     },
@@ -1591,6 +1645,15 @@
         "cargo": {
           "name": "regex-syntax",
           "version": "0.8.10"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rusqlite",
+          "version": "0.37.0"
         }
       }
     },
