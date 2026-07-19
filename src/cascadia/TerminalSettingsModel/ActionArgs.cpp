@@ -170,6 +170,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             str.append(L"--useShellSessionBuffer ");
         }
+        if (UseWorkspaceBuffer())
+        {
+            str.append(L"--useWorkspaceBuffer ");
+        }
         if (!AgentSessionId().empty())
         {
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionId {} "), QuoteAndEscapeCommandlineArg(AgentSessionId()));

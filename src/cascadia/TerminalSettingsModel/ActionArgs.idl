@@ -175,6 +175,7 @@ namespace Microsoft.Terminal.Settings.Model
         String Profile; // Either a GUID or a profile's name if the GUID isn't a match
         Guid SessionId;
         Boolean UseShellSessionBuffer;
+        Boolean UseWorkspaceBuffer;
         String AgentSessionId;
         String AgentResumeCommandline;
         String AgentPaneSessionId;

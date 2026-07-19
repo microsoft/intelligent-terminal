@@ -4,6 +4,7 @@
 #include "pch.h"
 
 #include "../TerminalSettingsModel/ApplicationState.h"
+#include <fstream>
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -29,6 +30,10 @@ namespace SettingsModelUnitTests
         TEST_METHOD(RenameWorkspaceNoOpForMissingEntry);
         TEST_METHOD(TakeWorkspaceRemovesAndReturns);
         TEST_METHOD(TakeWorkspaceReturnsNullWhenMissing);
+        TEST_METHOD(RemoveWorkspaceDeletesDurableBuffers);
+        TEST_METHOD(OverwriteWorkspaceDeletesReplacedDurableBuffers);
+        TEST_METHOD(TakeWorkspacePreservesDurableBuffers);
+        TEST_METHOD(SharedWorkspaceBufferSurvivesUntilLastReference);
         TEST_METHOD(SaveLookupAndTakeShellSession);
         TEST_METHOD(SaveShellSessionOverwritesSameName);
 
@@ -42,6 +47,13 @@ namespace SettingsModelUnitTests
             // tests see an empty starting point.
             std::filesystem::remove(root / L"state.json", ec);
             std::filesystem::remove(root / L"elevated-state.json", ec);
+            for (const auto& entry : std::filesystem::directory_iterator(root, ec))
+            {
+                if (entry.path().filename().wstring().starts_with(L"workspace_"))
+                {
+                    std::filesystem::remove(entry.path(), ec);
+                }
+            }
             return root;
         }
 
@@ -55,6 +67,33 @@ namespace SettingsModelUnitTests
             WindowLayout layout;
             layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>());
             return layout;
+        }
+
+        static WindowLayout _makeLayout(const winrt::guid& sessionId)
+        {
+            NewTerminalArgs terminalArgs;
+            terminalArgs.SessionId(sessionId);
+
+            ActionAndArgs action;
+            action.Action(ShortcutAction::NewTab);
+            action.Args(NewTabArgs{ terminalArgs });
+
+            WindowLayout layout;
+            layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>({ action }));
+            return layout;
+        }
+
+        static std::filesystem::path _bufferPath(const winrt::guid& sessionId, const bool elevated = false)
+        {
+            return _tempRoot() / (elevated ?
+                                      fmt::format(FMT_COMPILE(L"workspace_elevated_{}.txt"), sessionId) :
+                                      fmt::format(FMT_COMPILE(L"workspace_buffer_{}.txt"), sessionId));
+        }
+
+        static void _touch(const std::filesystem::path& path)
+        {
+            std::ofstream file{ path };
+            file << "buffer";
         }
     };
 
@@ -136,6 +175,66 @@ namespace SettingsModelUnitTests
     {
         auto state = _make();
         VERIFY_IS_NULL(state->TakeWorkspace(L"missing"));
+    }
+
+    void ApplicationStateTests::RemoveWorkspaceDeletesDurableBuffers()
+    {
+        auto state = _make();
+        const winrt::guid sessionId{ 0x11111111, 0x2222, 0x3333, { 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb } };
+        const auto normalPath = _bufferPath(sessionId);
+        const auto elevatedPath = _bufferPath(sessionId, true);
+        _touch(normalPath);
+        _touch(elevatedPath);
+        state->SaveWorkspace(L"win1", _makeLayout(sessionId));
+
+        VERIFY_IS_TRUE(state->RemoveWorkspace(L"win1"));
+        VERIFY_IS_FALSE(std::filesystem::exists(normalPath));
+        VERIFY_IS_FALSE(std::filesystem::exists(elevatedPath));
+    }
+
+    void ApplicationStateTests::OverwriteWorkspaceDeletesReplacedDurableBuffers()
+    {
+        auto state = _make();
+        const winrt::guid oldSessionId{ 0xaaaaaaaa, 0xbbbb, 0xcccc, { 0xdd, 0xee, 0xff, 0x00, 0x11, 0x22, 0x33, 0x44 } };
+        const winrt::guid newSessionId{ 0x12345678, 0x1234, 0x5678, { 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78 } };
+        const auto oldPath = _bufferPath(oldSessionId);
+        const auto newPath = _bufferPath(newSessionId);
+        _touch(oldPath);
+        _touch(newPath);
+
+        state->SaveWorkspace(L"win1", _makeLayout(oldSessionId));
+        state->SaveWorkspace(L"win1", _makeLayout(newSessionId));
+
+        VERIFY_IS_FALSE(std::filesystem::exists(oldPath));
+        VERIFY_IS_TRUE(std::filesystem::exists(newPath));
+    }
+
+    void ApplicationStateTests::TakeWorkspacePreservesDurableBuffers()
+    {
+        auto state = _make();
+        const winrt::guid sessionId{ 0x87654321, 0x4321, 0x8765, { 0x09, 0xba, 0xdc, 0xfe, 0x21, 0x43, 0x65, 0x87 } };
+        const auto path = _bufferPath(sessionId);
+        _touch(path);
+        state->SaveWorkspace(L"win1", _makeLayout(sessionId));
+
+        VERIFY_IS_NOT_NULL(state->TakeWorkspace(L"win1"));
+        VERIFY_IS_TRUE(std::filesystem::exists(path));
+    }
+
+    void ApplicationStateTests::SharedWorkspaceBufferSurvivesUntilLastReference()
+    {
+        auto state = _make();
+        const winrt::guid sessionId{ 0x13572468, 0x2468, 0x1357, { 0x24, 0x68, 0x13, 0x57, 0x9b, 0xdf, 0xac, 0xe0 } };
+        const auto path = _bufferPath(sessionId);
+        _touch(path);
+        const auto layout = _makeLayout(sessionId);
+        state->SaveWorkspace(L"win1", layout);
+        state->SaveWorkspace(L"win2", layout);
+
+        VERIFY_IS_TRUE(state->RemoveWorkspace(L"win1"));
+        VERIFY_IS_TRUE(std::filesystem::exists(path));
+        VERIFY_IS_TRUE(state->RemoveWorkspace(L"win2"));
+        VERIFY_IS_FALSE(std::filesystem::exists(path));
     }
 
     void ApplicationStateTests::SaveLookupAndTakeShellSession()
