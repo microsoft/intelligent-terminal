@@ -126,6 +126,16 @@ pub fn list(conn: &Connection) -> Result<Vec<ShellSessionRow>> {
     Ok(rows)
 }
 
+/// Delete the row named `name` and return its buffer GUIDs, so the caller can
+/// unlink the scrollback files for a clean removal. Returns an empty vec when
+/// no such row existed (idempotent).
+pub fn delete(conn: &Connection, name: &str) -> Result<Vec<String>> {
+    let orphaned = get_buffer_guids(conn, name)?;
+    conn.execute("DELETE FROM sessions WHERE name = ?1", [name])
+        .with_context(|| format!("deleting shell session {name}"))?;
+    Ok(orphaned)
+}
+
 /// Delete rows saved before `cutoff_unix_secs` and return the buffer GUIDs of
 /// every deleted row, so the caller can unlink their scrollback files.
 ///
@@ -319,6 +329,29 @@ mod tests {
         let conn = mem();
         upsert(&conn, &row("fresh", 500, &["f1"])).unwrap();
         assert!(ttl_sweep(&conn, 100).unwrap().is_empty());
+        assert_eq!(list(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn delete_removes_row_and_returns_its_guids() {
+        let conn = mem();
+        upsert(&conn, &row("keep", 200, &["k1"])).unwrap();
+        upsert(&conn, &row("drop", 100, &["d1", "d2"])).unwrap();
+
+        let mut guids = delete(&conn, "drop").unwrap();
+        guids.sort();
+        assert_eq!(guids, vec!["d1".to_string(), "d2".to_string()]);
+
+        let all = list(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].name, "keep");
+    }
+
+    #[test]
+    fn delete_missing_name_is_noop() {
+        let conn = mem();
+        upsert(&conn, &row("keep", 200, &["k1"])).unwrap();
+        assert!(delete(&conn, "nope").unwrap().is_empty());
         assert_eq!(list(&conn).unwrap().len(), 1);
     }
 

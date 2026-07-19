@@ -31,6 +31,9 @@ pub struct ShellSessionsViewState<'a> {
     pub sessions: &'a [ShellSessionInfo],
     /// Highlighted row, an index into `sessions`.
     pub selected: usize,
+    /// `Some(name)` while a delete confirmation is pending for the selected
+    /// row — the view renders a confirm prompt instead of the normal hint.
+    pub confirm_delete: Option<&'a str>,
 }
 
 /// Render the restore view flush against the top of `area`, mirroring the
@@ -79,12 +82,18 @@ pub fn render(frame: &mut Frame, state: ShellSessionsViewState<'_>, area: Rect) 
         .enumerate()
         .map(|(i, entry)| {
             let selected = i == state.selected;
+            // The row awaiting delete confirmation (always the selected one) is
+            // shown in red so the target is unmistakable.
+            let pending_delete = state.confirm_delete.is_some() && selected;
             let caret = if selected {
-                Span::styled("> ", Style::default().fg(ACCENT_CYAN))
+                let color = if pending_delete { Color::Red } else { ACCENT_CYAN };
+                Span::styled("> ", Style::default().fg(color))
             } else {
                 Span::raw("  ")
             };
-            let name_style = if selected {
+            let name_style = if pending_delete {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            } else if selected {
                 Style::default().fg(ACCENT_CYAN)
             } else {
                 theme::INPUT_TEXT
@@ -127,11 +136,17 @@ pub fn render(frame: &mut Frame, state: ShellSessionsViewState<'_>, area: Rect) 
 
     frame.render_widget(List::new(items), chunks[2]);
 
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "↑ ↓ move • Enter restore • Esc cancel",
+    // Footer: normally the key hints; while a delete is pending, a confirm
+    // prompt (in a warning color) replaces them.
+    let hint = match state.confirm_delete {
+        Some(name) => Line::from(Span::styled(
+            format!("Delete shell session '{}'? Enter = confirm • Esc = cancel", name),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )),
+        None => Line::from(Span::styled(
+            "↑ ↓ move • Enter restore • D delete • Esc cancel",
             theme::DIM,
-        ))),
-        chunks[4],
-    );
+        )),
+    };
+    frame.render_widget(Paragraph::new(hint), chunks[4]);
 }

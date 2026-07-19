@@ -1471,6 +1471,7 @@ impl HelperHandler {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
             Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
             Req::ShellSessionsList(_) => handle_shell_sessions_list().await,
+            Req::ShellSessionsDelete(p) => handle_shell_sessions_delete(&p.name).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -3366,6 +3367,39 @@ fn save_shell_session_from_event(params: &serde_json::Value) {
 async fn handle_shell_sessions_list() -> acp::Result<acp::schema::v1::ExtResponse> {
     let sessions = load_shell_sessions_for_list();
     let raw = crate::session_registry::build_shell_sessions_list_response(sessions);
+    Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+/// Serve the `shell_sessions/delete` ext request: remove the named row from the
+/// DB and unlink its scrollback files, for a clean delete. Best-effort — errors
+/// are logged; the ext response is always empty-success so the helper's
+/// optimistic UI removal stands.
+async fn handle_shell_sessions_delete(name: &str) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if let Some(db_path) = shell_sessions_db_path() {
+        match shell_sessions_db::open(&db_path)
+            .and_then(|conn| shell_sessions_db::delete(&conn, name))
+        {
+            Ok(guids) => {
+                tracing::info!(
+                    target: "shell_sessions",
+                    name = %name,
+                    buffers = guids.len(),
+                    "deleted durable shell session"
+                );
+                unlink_shell_session_buffers(&guids);
+            }
+            Err(e) => tracing::warn!(
+                target: "shell_sessions",
+                name = %name,
+                err = %e,
+                "failed to delete shell session"
+            ),
+        }
+    } else {
+        tracing::warn!(target: "shell_sessions", "no IT root; dropping shell_sessions/delete");
+    }
+    let raw = serde_json::value::to_raw_value(&serde_json::json!({}))
+        .expect("empty object serializes");
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 

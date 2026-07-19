@@ -1554,6 +1554,9 @@ pub struct TabSession {
     /// Highlighted row in `shell_sessions` below (the `/shell-sessions`
     /// restore picker, shown full-pane via `current_view == View::ShellSessions`).
     pub shell_sessions_picker_selected: usize,
+    /// `Some(index)` while a delete-confirmation prompt is up for that row in
+    /// the restore view (`D` pressed, awaiting Enter to confirm / Esc to cancel).
+    pub shell_sessions_pending_delete: Option<usize>,
     /// Durable shell sessions for the picker, fetched from master's SQLite
     /// store (via the `shell_sessions/list` ext method) when the picker is
     /// invoked. Empty otherwise.
@@ -3083,6 +3086,49 @@ impl App {
         tab.current_view = View::Chat;
         tab.shell_sessions.clear();
         tab.shell_sessions_picker_selected = 0;
+        tab.shell_sessions_pending_delete = None;
+    }
+
+    /// Confirm the pending delete: ask master to clean-delete the highlighted
+    /// session (DB row + its scrollback files), and optimistically remove the
+    /// row from the local list. When the list empties, fall back to chat.
+    fn confirm_shell_session_delete(&mut self) {
+        let name = {
+            let tab = self.current_tab();
+            let idx = match tab.shell_sessions_pending_delete {
+                Some(i) => i,
+                None => return,
+            };
+            tab.shell_sessions.get(idx).map(|e| e.name.clone())
+        };
+
+        // Clear the confirmation and optimistically drop the row locally; the
+        // authoritative delete (DB + files) happens master-side.
+        {
+            let tab = self.current_tab_mut();
+            if let Some(idx) = tab.shell_sessions_pending_delete.take() {
+                if idx < tab.shell_sessions.len() {
+                    tab.shell_sessions.remove(idx);
+                }
+                let len = tab.shell_sessions.len();
+                if len == 0 {
+                    tab.shell_sessions_picker_selected = 0;
+                } else if tab.shell_sessions_picker_selected >= len {
+                    tab.shell_sessions_picker_selected = len - 1;
+                }
+            }
+        }
+
+        if let Some(name) = name {
+            let _ = self.master_request_tx.send(
+                crate::protocol::acp::client::MasterExtRequest::ShellSessionsDelete { name },
+            );
+        }
+
+        // Nothing left to restore → return to chat.
+        if self.current_tab().shell_sessions.is_empty() {
+            self.close_shell_sessions_view();
+        }
     }
 
     fn shell_sessions_picker_up(&mut self) {
@@ -7243,13 +7289,32 @@ impl App {
         }
 
         // Shell-session restore view (`/shell-sessions`): full-pane list —
-        // arrows move, Enter restores the highlighted tab, Esc dismisses.
-        // Swallow everything else while it's up.
+        // arrows move, Enter restores the highlighted tab, D asks to delete it
+        // (Enter confirms, Esc cancels the confirmation), Esc dismisses the
+        // view. Swallow everything else while it's up.
         if self.current_tab().current_view == View::ShellSessions {
+            // Delete-confirmation sub-state takes priority: Enter confirms the
+            // clean delete, Esc cancels, anything else is ignored.
+            if self.current_tab().shell_sessions_pending_delete.is_some() {
+                match key.code {
+                    KeyCode::Enter => self.confirm_shell_session_delete(),
+                    KeyCode::Esc => {
+                        self.current_tab_mut().shell_sessions_pending_delete = None;
+                    }
+                    _ => {}
+                }
+                return;
+            }
             match key.code {
                 KeyCode::Up => self.shell_sessions_picker_up(),
                 KeyCode::Down => self.shell_sessions_picker_down(),
                 KeyCode::Enter => self.commit_shell_session_pick(),
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    let tab = self.current_tab_mut();
+                    if !tab.shell_sessions.is_empty() {
+                        tab.shell_sessions_pending_delete = Some(tab.shell_sessions_picker_selected);
+                    }
+                }
                 KeyCode::Esc => self.close_shell_sessions_view(),
                 _ => {}
             }
@@ -7937,9 +8002,16 @@ impl App {
         if tab.current_view != View::ShellSessions {
             return None;
         }
+        // When a delete confirmation is pending, surface the target row's name
+        // so the view can render the confirm prompt in place of the hint.
+        let confirm_delete = tab
+            .shell_sessions_pending_delete
+            .and_then(|i| tab.shell_sessions.get(i))
+            .map(|e| e.name.as_str());
         Some(crate::ui::ShellSessionsViewState {
             sessions: &tab.shell_sessions,
             selected: tab.shell_sessions_picker_selected,
+            confirm_delete,
         })
     }
 

@@ -184,6 +184,12 @@ pub enum MasterExtRequest {
     ShellSessionsList {
         request_id: u64,
     },
+    /// Clean-delete one durable shell session (DB row + its scrollback files),
+    /// by name. Fire-and-forget: the helper removes the row from its local list
+    /// optimistically, master does the authoritative delete.
+    ShellSessionsDelete {
+        name: String,
+    },
     SessionResumeDispatched {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
@@ -2973,6 +2979,25 @@ fn dispatch_master_ext_request(
                             sessions: Vec::new(),
                         });
                     }
+                }
+            }
+            MasterExtRequest::ShellSessionsDelete { name } => {
+                // Fire-and-forget clean delete: master removes the DB row and
+                // unlinks the scrollback files. The helper already removed the
+                // row from its local list optimistically, so we only log.
+                let wire = crate::session_registry::build_shell_sessions_delete_request(&name);
+                match conn.ext_method(wire).await {
+                    Ok(_) => tracing::info!(
+                        target: "shell_sessions",
+                        %name,
+                        "shell_sessions/delete acknowledged by master"
+                    ),
+                    Err(err) => tracing::warn!(
+                        target: "shell_sessions",
+                        %name,
+                        error = ?err,
+                        "shell_sessions/delete ext-request failed"
+                    ),
                 }
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
