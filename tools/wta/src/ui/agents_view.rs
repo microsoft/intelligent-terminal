@@ -509,7 +509,10 @@ fn origin_prefix_for(s: &AgentSession) -> Option<String> {
 /// support, so we pick `_singular` for n=1 and `_other` for n≠1; locales
 /// with no singular/plural distinction can map both keys to the same
 /// template.
-fn relative_age(t: SystemTime) -> String {
+///
+/// `pub(crate)` so the `/shell-sessions` restore view renders its "last
+/// update" column with the identical format.
+pub(crate) fn relative_age(t: SystemTime) -> String {
     let now = SystemTime::now();
     let secs = now.duration_since(t).map(|d| d.as_secs()).unwrap_or(0);
     if secs < 60 {

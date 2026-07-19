@@ -1551,9 +1551,8 @@ pub struct TabSession {
     /// Highlighted row in `App::available_agents`.
     pub agent_picker_selected: usize,
 
-    /// True while the `/shell-sessions` restore picker is open for this tab.
-    pub shell_sessions_picker_open: bool,
-    /// Highlighted row in `shell_sessions` below.
+    /// Highlighted row in `shell_sessions` below (the `/shell-sessions`
+    /// restore picker, shown full-pane via `current_view == View::ShellSessions`).
     pub shell_sessions_picker_selected: usize,
     /// Durable shell sessions for the picker, fetched from master's SQLite
     /// store (via the `shell_sessions/list` ext method) when the picker is
@@ -1621,7 +1620,7 @@ impl TabSession {
             && !self.paste_pending
             && !self.model_picker_open
             && !self.agent_picker_open
-            && !self.shell_sessions_picker_open
+            && self.current_view != View::ShellSessions
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -2216,6 +2215,10 @@ pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from
 pub enum View {
     Chat,
     Agents,
+    /// The `/shell-sessions` restore picker, rendered full-pane (like
+    /// `Agents`) rather than as a bottom popup, so chat / input / the
+    /// AI disclaimer are hidden while choosing a durable session to restore.
+    ShellSessions,
 }
 
 impl Default for View {
@@ -3017,18 +3020,14 @@ impl App {
         self.publish_agent_status();
     }
 
-    // ── /shell-sessions picker ──────────────────────────────────────────
+    // ── /shell-sessions restore view (full-pane, like /sessions) ─────────
 
-    /// True while the shell-session restore picker is up for the active tab.
-    fn shell_sessions_picker_visible(&self) -> bool {
-        self.current_tab().shell_sessions_picker_open
-    }
-
-    /// `/shell-sessions` — open a picker of durable shell sessions Windows
-    /// Terminal saved on tab close. The list lives in master's SQLite store, so
-    /// this fires an async `shell_sessions/list` request; the matching
-    /// [`AppEvent::ShellSessionsLoaded`] opens the picker (or reports "none
-    /// saved yet"). Enter then restores the highlighted tab.
+    /// `/shell-sessions` — show a full-pane picker of durable shell sessions
+    /// Windows Terminal saved on tab close. The list lives in master's SQLite
+    /// store, so this fires an async `shell_sessions/list` request; the matching
+    /// [`AppEvent::ShellSessionsLoaded`] switches the tab into
+    /// [`View::ShellSessions`] (or reports "none saved yet" and stays in chat).
+    /// Enter then restores the highlighted tab.
     fn cmd_shell_sessions(&mut self) {
         let tab_id = self.active_tab_key().to_string();
         let request_id = {
@@ -3045,8 +3044,10 @@ impl App {
     }
 
     /// Apply a `shell_sessions/list` response: if it matches the tab's pending
-    /// request, either open the picker (sessions present) or report that none
-    /// are saved yet. A stale response (superseded request id) is dropped.
+    /// request, either switch the tab into the full-pane restore view (sessions
+    /// present) or report that none are saved yet. A stale response (superseded
+    /// request id) is dropped. We wait for the response before switching views
+    /// so an empty result stays in chat instead of flashing an empty page.
     fn handle_shell_sessions_loaded(
         &mut self,
         request_id: u64,
@@ -3073,13 +3074,15 @@ impl App {
         tab.shell_sessions_pending_request = None;
         tab.shell_sessions = sessions;
         tab.shell_sessions_picker_selected = 0;
-        tab.shell_sessions_picker_open = true;
+        tab.current_view = View::ShellSessions;
     }
 
-    fn close_shell_sessions_picker(&mut self) {
+    /// Leave the restore view back to chat and drop the fetched list.
+    fn close_shell_sessions_view(&mut self) {
         let tab = self.current_tab_mut();
-        tab.shell_sessions_picker_open = false;
+        tab.current_view = View::Chat;
         tab.shell_sessions.clear();
+        tab.shell_sessions_picker_selected = 0;
     }
 
     fn shell_sessions_picker_up(&mut self) {
@@ -3109,7 +3112,7 @@ impl App {
                 .get(idx)
                 .map(|entry| (entry.name.clone(), entry.layout_json.clone()))
         };
-        self.close_shell_sessions_picker();
+        self.close_shell_sessions_view();
         let Some((name, layout_json)) = picked else {
             return;
         };
@@ -7239,15 +7242,15 @@ impl App {
             return;
         }
 
-        // Shell-session restore picker (`/shell-sessions`): same modal shape as
-        // the model picker — arrows move, Enter restores the highlighted tab,
-        // Esc dismisses. Swallow everything else.
-        if self.shell_sessions_picker_visible() {
+        // Shell-session restore view (`/shell-sessions`): full-pane list —
+        // arrows move, Enter restores the highlighted tab, Esc dismisses.
+        // Swallow everything else while it's up.
+        if self.current_tab().current_view == View::ShellSessions {
             match key.code {
                 KeyCode::Up => self.shell_sessions_picker_up(),
                 KeyCode::Down => self.shell_sessions_picker_down(),
                 KeyCode::Enter => self.commit_shell_session_pick(),
-                KeyCode::Esc => self.close_shell_sessions_picker(),
+                KeyCode::Esc => self.close_shell_sessions_view(),
                 _ => {}
             }
             return;
@@ -7927,14 +7930,14 @@ impl App {
         })
     }
 
-    /// Per-frame state for the `/shell-sessions` picker modal, or `None` when
-    /// it's not open on the active tab.
-    pub fn shell_sessions_popup_state(&self) -> Option<crate::ui::ShellSessionsPopupState<'_>> {
+    /// Full-pane render state for the `/shell-sessions` restore view, or `None`
+    /// when the active tab isn't in that view.
+    pub fn shell_sessions_view_state(&self) -> Option<crate::ui::ShellSessionsViewState<'_>> {
         let tab = self.current_tab();
-        if !tab.shell_sessions_picker_open || tab.shell_sessions.is_empty() {
+        if tab.current_view != View::ShellSessions {
             return None;
         }
-        Some(crate::ui::ShellSessionsPopupState {
+        Some(crate::ui::ShellSessionsViewState {
             sessions: &tab.shell_sessions,
             selected: tab.shell_sessions_picker_selected,
         })
@@ -9982,6 +9985,10 @@ impl App {
         let view = match tab.current_view {
             View::Agents => "sessions",
             View::Chat => "chat",
+            // The shell-session restore picker is a transient full-pane overlay
+            // entered from chat; to C++'s pane-chrome logic it is chat-like
+            // (not the dedicated agent-sessions management mode).
+            View::ShellSessions => "chat",
         };
         let evt = serde_json::json!({
             "type": "event",
