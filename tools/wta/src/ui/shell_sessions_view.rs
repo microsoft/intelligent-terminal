@@ -62,9 +62,10 @@ pub fn render(
                 Style::default()
             };
             let short_id = session.id.get(..8).unwrap_or(&session.id);
+            let last_used = crate::format_epoch_seconds_utc(session.last_used_at);
             let label = format!(
-                "{}  [{} · {} · r{}]",
-                session.name, session.last_used_at, short_id, session.revision
+                "{}  [last used {} UTC · {} · r{}]",
+                session.name, last_used, short_id, session.revision
             );
             ListItem::new(Line::from(vec![
                 Span::styled(marker, style),

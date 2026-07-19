@@ -122,6 +122,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         til::color ForegroundColor() const;
         til::color BackgroundColor() const;
 
+        bool HasUserInput() const noexcept;
         void SendInput(std::wstring_view wstr);
         void PasteText(const winrt::hstring& hstr);
         bool CopySelectionToClipboard(bool singleLine, bool withControlSequences, const CopyFormat formats);
@@ -427,6 +428,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         std::optional<til::point> _lastHoveredCell;
         uint16_t _lastHoveredId{ 0 };
         std::atomic<bool> _initializedTerminal{ false };
+        std::atomic<bool> _hasUserInput{ false };
         bool _isReadOnly{ false };
         bool _closing{ false };
 

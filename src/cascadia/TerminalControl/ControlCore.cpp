@@ -507,6 +507,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - wstr: the string of characters to write to the terminal connection.
     // Return Value:
     // - <none>
+    bool ControlCore::HasUserInput() const noexcept
+    {
+        return _hasUserInput.load(std::memory_order_relaxed);
+    }
+
     void ControlCore::SendInput(const std::wstring_view wstr)
     {
         if (wstr.empty())
@@ -522,8 +527,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         {
             _raiseReadOnlyWarning();
         }
-        else
+        else if (_connection)
         {
+            _hasUserInput.store(true, std::memory_order_relaxed);
             _sendInputToConnection(wstr);
         }
     }

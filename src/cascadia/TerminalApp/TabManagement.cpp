@@ -612,6 +612,21 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
+        bool hasUserInput = false;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (!pane->IsAgentPane())
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    hasUserInput = hasUserInput || control.HasUserInput();
+                }
+            }
+        });
+        if (!hasUserInput && tab->DurableShellSessionId().empty())
+        {
+            return;
+        }
+
         const auto sessionName = tab->Title();
         auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
         if (sessionName.empty() || actions.empty())

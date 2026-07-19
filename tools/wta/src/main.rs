@@ -1758,6 +1758,10 @@ fn updated_label(s: &session_registry::SessionInfo) -> String {
 /// date crate. Uses Howard Hinnant's `civil_from_days` algorithm.
 fn format_epoch_ms_utc(ms: u64) -> String {
     let secs = (ms / 1000) as i64;
+    format_epoch_seconds_utc(secs)
+}
+
+pub(crate) fn format_epoch_seconds_utc(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
     let tod = secs.rem_euclid(86_400);
     let (hour, min) = (tod / 3600, (tod % 3600) / 60);

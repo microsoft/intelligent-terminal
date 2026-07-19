@@ -169,5 +169,6 @@ namespace Microsoft.Terminal.Control
         void ClearQuickFix();
 
         void Detach();
+        Boolean HasUserInput { get; };
     }
 }

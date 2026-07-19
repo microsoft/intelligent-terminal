@@ -244,6 +244,16 @@ AppHost* WindowEmperor::GetWindowById(uint64_t id) const noexcept
     return nullptr;
 }
 
+std::shared_ptr<AppHost> WindowEmperor::GetWindowForProtocol(const uint64_t id) const noexcept
+{
+    ProtocolWindowRequest request{ id };
+    SendMessageW(_window.get(),
+                 WM_GET_WINDOW_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return std::move(request.Host);
+}
+
 AppHost* WindowEmperor::GetWindowByName(std::wstring_view name) const noexcept
 {
     _assertIsMainThread();
@@ -1223,6 +1233,22 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 {
                     const auto props = host->Logic().WindowProperties();
                     result->emplace_back(WindowListEntry{ props.WindowId(), std::wstring{ props.WindowName() } });
+                }
+            }
+            return 0;
+        }
+        case WM_GET_WINDOW_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<ProtocolWindowRequest*>(lParam);
+            if (request)
+            {
+                const auto target = request->Id == 0 ? _mostRecentWindow() : GetWindowById(request->Id);
+                const auto found = std::find_if(_windows.begin(), _windows.end(), [&](const auto& host) {
+                    return host.get() == target;
+                });
+                if (found != _windows.end())
+                {
+                    request->Host = *found;
                 }
             }
             return 0;

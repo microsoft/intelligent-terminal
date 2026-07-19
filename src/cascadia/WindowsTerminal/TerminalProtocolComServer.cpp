@@ -807,19 +807,10 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    // Find target window.
-    AppHost* targetHost = nullptr;
-    if (windowId != 0)
-    {
-        targetHost = s_emperor->GetWindowById(windowId);
-    }
-    else
-    {
-        targetHost = s_emperor->GetMostRecentWindow();
-    }
+    const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
     RETURN_HR_IF(E_FAIL, !targetHost);
 
-    const auto page = _getPage(targetHost);
+    const auto page = _getPage(targetHost.get());
     RETURN_HR_IF(E_FAIL, !page);
 
     // Build NewTerminalArgs.
@@ -975,10 +966,10 @@ try
     const auto idH = _hstr(id);
     RETURN_HR_IF(E_INVALIDARG, idH.empty());
 
-    auto* targetHost = windowId == 0 ? s_emperor->GetMostRecentWindow() : s_emperor->GetWindowById(windowId);
+    const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
     RETURN_HR_IF(E_FAIL, !targetHost);
 
-    const auto page = _getPage(targetHost);
+    const auto page = _getPage(targetHost.get());
     RETURN_HR_IF(E_FAIL, !page);
     return page.RestoreProtocolShellSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 }
