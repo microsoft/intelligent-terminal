@@ -9,9 +9,164 @@
 //! over the helper pipes; the probe attaches raw stdio, runs `initialize`
 //! + `new_session`, and exits.
 
+use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use tokio::io::{AsyncBufReadExt, BufReader};
+
+const STARTUP_STDERR_MAX_LINES: usize = 32;
+const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
+const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StderrPhase {
+    Startup,
+    Running,
+    Failed,
+}
+
+#[derive(Debug)]
+struct AgentStderrLogInner {
+    phase: StderrPhase,
+    startup_lines: VecDeque<String>,
+}
+
+/// Keeps routine agent stderr at debug level while preserving startup failures
+/// in release logs. Only the bounded pre-initialize buffer is promoted.
+#[derive(Clone)]
+pub(crate) struct AgentStderrLog {
+    agent: Arc<str>,
+    inner: Arc<Mutex<AgentStderrLogInner>>,
+}
+
+impl AgentStderrLog {
+    pub(crate) fn new(agent: impl Into<Arc<str>>) -> Self {
+        Self {
+            agent: agent.into(),
+            inner: Arc::new(Mutex::new(AgentStderrLogInner {
+                phase: StderrPhase::Startup,
+                startup_lines: VecDeque::with_capacity(STARTUP_STDERR_MAX_LINES),
+            })),
+        }
+    }
+
+    pub(crate) fn drain(&self, stderr: tokio::process::ChildStderr) -> tokio::task::JoinHandle<()> {
+        let log = self.clone();
+        tokio::task::spawn_local(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => log.log_line(&line),
+                    Ok(None) => break,
+                    Err(error) => {
+                        log.log_line(&format!("failed to read agent stderr: {error}"));
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    pub(crate) async fn finish_failed_startup(
+        &self,
+        child: &mut tokio::process::Child,
+        stderr_task: Option<tokio::task::JoinHandle<()>>,
+    ) {
+        self.mark_failed();
+        let _ = child.start_kill();
+        if let Some(stderr_task) = stderr_task {
+            let _ = tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, stderr_task).await;
+        }
+    }
+
+    pub(crate) fn mark_initialized(&self) {
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        inner.phase = StderrPhase::Running;
+        inner.startup_lines.clear();
+    }
+
+    pub(crate) fn mark_failed(&self) {
+        let startup_lines = {
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if inner.phase != StderrPhase::Startup {
+                return;
+            }
+            inner.phase = StderrPhase::Failed;
+            inner.startup_lines.drain(..).collect::<Vec<_>>()
+        };
+
+        if !startup_lines.is_empty() {
+            tracing::warn!(
+                target: "agent_stderr",
+                agent = %self.agent,
+                phase = "startup_failure",
+                captured_lines = startup_lines.len(),
+                "agent startup failed; promoting captured stderr"
+            );
+        }
+        for line in startup_lines {
+            tracing::warn!(
+                target: "agent_stderr",
+                agent = %self.agent,
+                phase = "startup_failure",
+                "{line}"
+            );
+        }
+    }
+
+    fn log_line(&self, line: &str) {
+        let warn = {
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match inner.phase {
+                StderrPhase::Startup => {
+                    if inner.startup_lines.len() == STARTUP_STDERR_MAX_LINES {
+                        inner.startup_lines.pop_front();
+                    }
+                    inner.startup_lines.push_back(truncate_stderr_line(line));
+                    false
+                }
+                StderrPhase::Running => false,
+                StderrPhase::Failed => true,
+            }
+        };
+
+        if warn {
+            let line = truncate_stderr_line(line);
+            tracing::warn!(
+                target: "agent_stderr",
+                agent = %self.agent,
+                phase = "startup_failure",
+                "{line}"
+            );
+        } else {
+            tracing::debug!(target: "agent_stderr", agent = %self.agent, "{line}");
+        }
+    }
+}
+
+fn truncate_stderr_line(line: &str) -> String {
+    let mut chars = line.chars();
+    let mut truncated = chars
+        .by_ref()
+        .take(STARTUP_STDERR_MAX_CHARS_PER_LINE)
+        .collect::<String>();
+    if chars.next().is_some() {
+        truncated.push_str("...");
+    }
+    truncated
+}
 
 pub(crate) struct AgentSpawn {
     pub child: tokio::process::Child,
@@ -196,6 +351,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stderr_log_promotes_only_failed_startup_lines() {
+        let log = AgentStderrLog::new("test-agent");
+        let clone = log.clone();
+
+        for index in 0..STARTUP_STDERR_MAX_LINES + 1 {
+            log.log_line(&format!("startup line {index}"));
+        }
+        {
+            let inner = log
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            assert_eq!(inner.phase, StderrPhase::Startup);
+            assert_eq!(inner.startup_lines.len(), STARTUP_STDERR_MAX_LINES);
+            assert_eq!(inner.startup_lines.front().unwrap(), "startup line 1");
+        }
+
+        clone.mark_failed();
+        let inner = log
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(inner.phase, StderrPhase::Failed);
+        assert!(inner.startup_lines.is_empty());
+    }
+
+    #[test]
+    fn stderr_log_discards_buffer_after_initialize() {
+        let log = AgentStderrLog::new("test-agent");
+        log.log_line("startup detail");
+        log.mark_initialized();
+
+        let inner = log
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(inner.phase, StderrPhase::Running);
+        assert!(inner.startup_lines.is_empty());
+    }
+
+    #[test]
     fn canonicalizes_simple_lang_region() {
         assert_eq!(canonicalize_posix_locale("zh-CN"), "zh_CN.UTF-8");
         assert_eq!(canonicalize_posix_locale("en-US"), "en_US.UTF-8");
@@ -218,4 +414,3 @@ mod tests {
         assert_eq!(canonicalize_posix_locale("en"), "en.UTF-8");
     }
 }
-
