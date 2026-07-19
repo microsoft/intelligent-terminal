@@ -6259,6 +6259,14 @@ namespace winrt::TerminalApp::implementation
                 // Persist the full layout into the workspace collection.
                 ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
 
+                // Durable sessions: also persist this workspace's scrollback so
+                // reopening it later restores terminal contents, not just the
+                // layout + working directories. The buffers use the standard
+                // `buffer_`/`elevated_` prefix (so the normal restore path picks
+                // them up on reopen) and are kept alive by the workspace-aware
+                // cleanup in `WindowEmperor::_finalizeSessionPersistence`.
+                _PersistWorkspaceBuffers();
+
                 // Build a minimal layout with just an openWorkspace action
                 // so the generic restore path re-opens this workspace by name.
                 std::vector<ActionAndArgs> actions;
@@ -6276,6 +6284,62 @@ namespace winrt::TerminalApp::implementation
             {
                 ApplicationState::SharedInstance().AppendPersistedWindowLayout(layout);
             }
+        }
+    }
+
+    // Persist every terminal pane's scrollback in this window to
+    // `buffer_{guid}.txt` (or `elevated_` when running as admin) next to
+    // state.json, so a saved workspace can restore its contents on reopen.
+    // Agent panes are skipped (excluded from the saved layout). Mirrors the
+    // per-pane persistence WindowEmperor does at app close, but runs when a
+    // workspace is saved so its buffers exist even if its window isn't live at
+    // the next shutdown — `_finalizeSessionPersistence` keeps the files it
+    // finds referenced by a saved workspace.
+    void TerminalPage::_PersistWorkspaceBuffers()
+    {
+        using namespace std::string_view_literals;
+
+        const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
+
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = winrt::get_self<implementation::Tab>(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+            const auto rootPane = tabImpl->GetRootPane();
+            if (!rootPane)
+            {
+                continue;
+            }
+            rootPane->WalkTree([&](const std::shared_ptr<Pane>& p) {
+                if (!p->GetContent() || p->IsAgentPane())
+                {
+                    return;
+                }
+                const auto control = p->GetTerminalControl();
+                if (!control)
+                {
+                    return;
+                }
+                const auto connection = control.Connection();
+                if (!connection)
+                {
+                    return;
+                }
+                const auto sessionId = connection.SessionId();
+                if (sessionId == winrt::guid{})
+                {
+                    return;
+                }
+                const auto path = settingsDirectory / fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sessionId);
+                if (wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) })
+                {
+                    control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                }
+            });
         }
     }
 
