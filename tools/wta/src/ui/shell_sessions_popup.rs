@@ -2,25 +2,26 @@
 //!
 //! Opened by the `/shell-sessions` slash command (`App::cmd_shell_sessions`),
 //! this overlay lists the durable shell sessions Windows Terminal saved on tab
-//! close (read from the `shell-sessions.json` sidecar — see
-//! `crate::shell_sessions`). Enter asks WT to restore the highlighted tab (its
-//! layout, working directory, and scrollback). Modeled on the `/model` picker
-//! (`model_popup.rs`): anchored above the input box, arrow keys move the
-//! highlight, Enter commits, Esc dismisses (all handled in `App::handle_key`).
+//! close (fetched from master's SQLite store via the `shell_sessions/list` ext
+//! method — see `master/shell_sessions_db.rs`). Enter asks WT to restore the
+//! highlighted tab (its layout, working directory, and scrollback). Modeled on
+//! the `/model` picker (`model_popup.rs`): anchored above the input box, arrow
+//! keys move the highlight, Enter commits, Esc dismisses (all handled in
+//! `App::handle_key`).
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Clear, List, ListItem, ListState};
 
 use super::popup;
-use crate::shell_sessions::ShellSessionEntry;
+use crate::session_registry::ShellSessionInfo;
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 8;
 
 /// Per-frame state captured from the [`App`](crate::app::App).
 pub struct ShellSessionsPopupState<'a> {
-    /// Saved sessions, newest first (sorted in `shell_sessions::load`).
-    pub sessions: &'a [ShellSessionEntry],
+    /// Saved sessions, newest first (sorted by master's `list`).
+    pub sessions: &'a [ShellSessionInfo],
     /// Highlighted row, an index into `sessions`.
     pub selected: usize,
 }

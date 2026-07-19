@@ -708,36 +708,78 @@ namespace winrt::TerminalApp::implementation
                 name = L"Shell session";
             }
 
-            ApplicationState::SharedInstance().SaveShellSession(name, layout);
-            _PersistShellSessionBuffers(tabImpl);
+            // Persist each terminal pane's scrollback to disk and collect the
+            // GUIDs, so master can reference (and later TTL-clean) those files.
+            const auto bufferGuids = _PersistShellSessionBuffers(tabImpl);
 
-            // Record the current working directory for the picker's display.
             winrt::hstring cwd;
             if (const auto activeControl = tabImpl->GetActiveTerminalControl())
             {
                 cwd = activeControl.WorkingDirectory();
             }
-            _WriteShellSessionsIndexEntry(name, cwd);
+
+            // wta-master is the SOLE owner of the durable shell-session store
+            // (SQLite). We do NOT persist into WT's state.json; instead we ship
+            // the whole snapshot as a `save_shell_session` event, which master's
+            // WT-event subscriber upserts. See the durable-sessions spec.
+            const auto layoutJson = WindowLayout::ToJson(layout);
+            const auto savedAt = std::chrono::duration_cast<std::chrono::seconds>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "save_shell_session";
+            Json::Value params;
+            params["name"] = winrt::to_string(name);
+            params["cwd"] = winrt::to_string(cwd);
+            params["layout_json"] = winrt::to_string(layoutJson);
+            params["saved_at"] = static_cast<Json::Int64>(savedAt);
+            Json::Value guidsArr{ Json::arrayValue };
+            for (const auto& guid : bufferGuids)
+            {
+                guidsArr.append(winrt::to_string(guid));
+            }
+            params["buffer_guids"] = std::move(guidsArr);
+            evt["params"] = std::move(params);
+
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
+            ProtocolVtSequenceReceived.raise(*this, payload);
         }
         CATCH_LOG();
     }
 
     // Method Description:
     // - Persist each terminal pane's scrollback to a durable
-    //   `shellsession_buffer_{guid}.txt` file next to `state.json`. The
-    //   dedicated prefix keeps these files clear of the window-close cleanup in
-    //   `WindowEmperor::_finalizeSessionPersistence`, which only sweeps
-    //   `buffer_*` / `elevated_*`. The GUID matches `NewTerminalArgs.SessionId`
-    //   in the saved layout, so restore reconnects each pane to its scrollback.
-    void TerminalPage::_PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl)
+    //   `{guid}.txt` file under `<StateDir>\shell-session-buffers\` — the
+    //   IntelligentTerminal LocalState dir that wta-master can also reach (so it
+    //   can TTL-clean expired files). The dedicated dir keeps these clear of the
+    //   window-close cleanup in `WindowEmperor::_finalizeSessionPersistence`,
+    //   which only sweeps `buffer_*` / `elevated_*` next to `state.json`.
+    // Return Value:
+    // - The session GUIDs whose scrollback was written, formatted identically to
+    //   the restore path (`_MakePane`), so master's `buffer_guids` reference and
+    //   the on-disk filenames agree.
+    std::vector<winrt::hstring> TerminalPage::_PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl)
     {
+        std::vector<winrt::hstring> guids;
+
         const auto rootPane = tabImpl->GetRootPane();
         if (!rootPane)
         {
-            return;
+            return guids;
         }
 
-        const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        const auto stateDir = ::IntelligentTerminal::StateDir();
+        if (stateDir.empty())
+        {
+            return guids;
+        }
+        const auto buffersDir = stateDir / L"shell-session-buffers";
+        std::error_code ec;
+        std::filesystem::create_directories(buffersDir, ec);
 
         rootPane->WalkTree([&](const std::shared_ptr<Pane>& p) {
             // Leaves only (GetContent() is null for splits); agent panes are
@@ -762,75 +804,16 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            const auto filename = fmt::format(FMT_COMPILE(L"shellsession_buffer_{}.txt"), sessionId);
-            const auto path = settingsDirectory / filename;
+            const auto guidStr = fmt::format(FMT_COMPILE(L"{}"), sessionId);
+            const auto path = buffersDir / (guidStr + L".txt");
             if (wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) })
             {
                 control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                guids.emplace_back(guidStr);
             }
         });
-    }
 
-    // Method Description:
-    // - Upsert one entry (by name) in the `shell-sessions.json` sidecar the
-    //   agent-pane `/shell-sessions` TUI reads to render the picker. The
-    //   authoritative layout lives in `state.json` (ApplicationState); this
-    //   lightweight index just carries display metadata (name, cwd, saved_at)
-    //   so the Rust side doesn't have to parse WT layouts. Written to the shared
-    //   IntelligentTerminal LocalState dir (same root as agent-pane-sessions.jsonl).
-    void TerminalPage::_WriteShellSessionsIndexEntry(const winrt::hstring& name, const winrt::hstring& cwd)
-    {
-        const auto stateDir = ::IntelligentTerminal::StateDir();
-        if (stateDir.empty())
-        {
-            return;
-        }
-
-        std::error_code ec;
-        std::filesystem::create_directories(stateDir, ec);
-        const auto indexPath = stateDir / L"shell-sessions.json";
-
-        Json::Value root{ Json::objectValue };
-        if (const auto existing = til::io::read_file_as_utf8_string_if_exists(indexPath); !existing.empty())
-        {
-            Json::CharReaderBuilder rb;
-            std::string errs;
-            std::istringstream is{ existing };
-            if (!Json::parseFromStream(rb, is, &root, &errs) || !root.isObject())
-            {
-                root = Json::Value{ Json::objectValue };
-            }
-        }
-
-        const auto nameUtf8 = winrt::to_string(name);
-        const auto savedAt = std::chrono::duration_cast<std::chrono::seconds>(
-                                 std::chrono::system_clock::now().time_since_epoch())
-                                 .count();
-
-        // Rebuild the array, dropping any prior entry with the same name so the
-        // freshest snapshot wins (tab names are the session key).
-        Json::Value updated{ Json::arrayValue };
-        if (root.isMember("sessions") && root["sessions"].isArray())
-        {
-            for (const auto& entry : root["sessions"])
-            {
-                if (entry.isObject() && entry.get("name", "").asString() != nameUtf8)
-                {
-                    updated.append(entry);
-                }
-            }
-        }
-
-        Json::Value entry{ Json::objectValue };
-        entry["name"] = nameUtf8;
-        entry["cwd"] = winrt::to_string(cwd);
-        entry["saved_at"] = static_cast<Json::Int64>(savedAt);
-        updated.append(std::move(entry));
-        root["sessions"] = std::move(updated);
-
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "  ";
-        til::io::write_utf8_string_to_file_atomic(indexPath, Json::writeString(wb, root));
+        return guids;
     }
 
     // Removes the tab (both TerminalControl and XAML).

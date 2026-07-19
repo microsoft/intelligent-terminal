@@ -5189,13 +5189,14 @@ namespace winrt::TerminalApp::implementation
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }
 
-    // Inbound event from WTA: {method:"restore_shell_session", params:{name}}.
-    // Sent by the agent-pane `/shell-sessions` picker's Enter handler. We look
-    // up the durable layout saved under `name` (on tab close, see
-    // `_SaveShellSessionForTab`) and replay its startup actions to rebuild the
-    // tab — working directory and pane splits. Each pane's scrollback is
-    // reconnected from its `shellsession_buffer_{guid}.txt` file: we pre-mark
-    // the layout's session GUIDs in `_pendingShellSessionBufferIds` so the
+    // Inbound event from WTA: {method:"restore_shell_session", params:{name, layout_json}}.
+    // Sent by the agent-pane `/shell-sessions` picker's Enter handler. The
+    // `layout_json` comes straight from master's SQLite store (the sole owner of
+    // durable shell sessions), so we deserialize it here and replay its startup
+    // actions to rebuild the tab — working directory and pane splits. Each
+    // pane's scrollback is reconnected from its
+    // `<StateDir>\shell-session-buffers\{guid}.txt` file: we pre-mark the
+    // layout's session GUIDs in `_pendingShellSessionBufferIds` so the
     // buffer-restore path (in `_MakePane`) reads the durable file.
     void TerminalPage::OnRestoreShellSessionRequested(hstring eventJson)
     {
@@ -5226,16 +5227,26 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         const auto nameStr = evt["params"].get("name", "").asString();
-        if (nameStr.empty())
+        const auto layoutJsonStr = evt["params"].get("layout_json", "").asString();
+        if (layoutJsonStr.empty())
         {
-            _agentPaneLog("OnRestoreShellSessionRequested: empty name — ignoring");
+            _agentPaneLog("OnRestoreShellSessionRequested: missing layout_json — ignoring");
             return;
         }
 
-        const auto layout = ApplicationState::SharedInstance().GetShellSession(winrt::to_hstring(nameStr));
+        WindowLayout layout{ nullptr };
+        try
+        {
+            layout = WindowLayout::FromJson(winrt::to_hstring(layoutJsonStr));
+        }
+        catch (...)
+        {
+            _agentPaneLog("OnRestoreShellSessionRequested: failed to parse layout_json for '" + nameStr + "'");
+            return;
+        }
         if (!layout)
         {
-            _agentPaneLog("OnRestoreShellSessionRequested: no saved session named '" + nameStr + "'");
+            _agentPaneLog("OnRestoreShellSessionRequested: null layout for '" + nameStr + "'");
             return;
         }
         const auto tabLayout = layout.TabLayout();
@@ -5246,7 +5257,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Pre-mark each pane's session GUID so the buffer-restore path pulls
-        // scrollback from the durable `shellsession_buffer_` file.
+        // scrollback from the durable `shell-session-buffers\{guid}.txt` file.
         std::vector<ActionAndArgs> actions;
         actions.reserve(tabLayout.Size());
         for (const auto& action : tabLayout)
@@ -7846,26 +7857,32 @@ namespace winrt::TerminalApp::implementation
         {
             using namespace std::string_view_literals;
 
-            const auto settingsDir = CascadiaSettings::SettingsDirectory();
-            const auto admin = IsRunningElevated();
-
-            // A durable shell-session restore reads scrollback from the
-            // dedicated `shellsession_buffer_` file (kept clear of the
-            // window-close cleanup that sweeps `buffer_*` / `elevated_*`).
+            // A durable shell-session restore reads scrollback from
+            // `<StateDir>\shell-session-buffers\{guid}.txt` (written by
+            // `_PersistShellSessionBuffers`, and TTL-cleaned by wta-master).
             // Each GUID is consumed exactly once. Everything else — normal
-            // window relaunch — uses the transient per-window buffer file.
-            std::wstring_view filenamePrefix;
+            // window relaunch — uses the transient per-window buffer file next
+            // to `state.json` (`buffer_*` / `elevated_*`).
+            std::wstring path;
             if (const auto it = _pendingShellSessionBufferIds.find(sessionId); it != _pendingShellSessionBufferIds.end())
             {
                 _pendingShellSessionBufferIds.erase(it);
-                filenamePrefix = L"shellsession_buffer_"sv;
+                const auto stateDir = ::IntelligentTerminal::StateDir();
+                if (!stateDir.empty())
+                {
+                    path = (stateDir / L"shell-session-buffers" / (fmt::format(FMT_COMPILE(L"{}"), sessionId) + L".txt")).wstring();
+                }
             }
             else
             {
-                filenamePrefix = admin ? L"elevated_"sv : L"buffer_"sv;
+                const auto settingsDir = CascadiaSettings::SettingsDirectory();
+                const auto filenamePrefix = IsRunningElevated() ? L"elevated_"sv : L"buffer_"sv;
+                path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
             }
-            const auto path = fmt::format(FMT_COMPILE(L"{}\\{}{}.txt"), settingsDir, filenamePrefix, sessionId);
-            control.RestoreFromPath(path);
+            if (!path.empty())
+            {
+                control.RestoreFromPath(path);
+            }
         }
 
         auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };

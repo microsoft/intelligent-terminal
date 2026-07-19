@@ -67,8 +67,9 @@ namespace IntelligentTerminal
     // both sides agree on the shared C++<->Rust state directory. Unlike `LogDir()`
     // (transient cache under LocalCache\Local), this is persistent state that must
     // survive — it backs the agent-pane session index (`agent-pane-sessions.jsonl`)
-    // and the durable-sessions sidecar index (`shell-sessions.json`) the agent-pane
-    // TUI reads. Returns an empty path when `%LOCALAPPDATA%` is unavailable.
+    // and the durable shell-session scrollback files
+    // (`shell-session-buffers\{guid}.txt`) that wta-master's SQLite store
+    // references. Returns an empty path when `%LOCALAPPDATA%` is unavailable.
     inline std::filesystem::path StateDir()
     {
         wchar_t localAppData[MAX_PATH];

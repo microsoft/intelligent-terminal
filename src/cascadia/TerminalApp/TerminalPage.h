@@ -499,10 +499,10 @@ namespace winrt::TerminalApp::implementation
 
         // Session GUIDs currently being restored as part of a durable shell
         // session. The terminal buffer-restore path (in `_MakePane`) consults
-        // this set to read the scrollback from the durable `shellsession_buffer_`
-        // file instead of the transient `buffer_` file (which the window-close
-        // cleanup sweeps). Each GUID is consumed (erased) exactly once, when its
-        // pane is created.
+        // this set to read the scrollback from the durable
+        // `<StateDir>\shell-session-buffers\{guid}.txt` file instead of the
+        // transient `buffer_` file (which the window-close cleanup sweeps). Each
+        // GUID is consumed (erased) exactly once, when its pane is created.
         std::unordered_set<winrt::guid> _pendingShellSessionBufferIds;
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
@@ -682,10 +682,11 @@ namespace winrt::TerminalApp::implementation
         void _SaveWorkspaceIfNeeded();
 
         // Durable shell sessions (step 1): snapshot a tab on close so it can be
-        // restored on demand from the agent-pane `/shell-sessions` picker.
+        // restored on demand from the agent-pane `/shell-sessions` picker. The
+        // snapshot is shipped to wta-master (the SQLite store owner) as a
+        // `save_shell_session` event; WT never persists it into state.json.
         void _SaveShellSessionForTab(const winrt::TerminalApp::Tab& tab);
-        void _PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl);
-        void _WriteShellSessionsIndexEntry(const winrt::hstring& name, const winrt::hstring& cwd);
+        std::vector<winrt::hstring> _PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl);
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);

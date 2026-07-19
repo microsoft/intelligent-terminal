@@ -44,7 +44,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     X(FileSource::Local, Windows::Foundation::Collections::IVector<hstring>, AllowedCommandlines, "allowedCommandlines")                                                  \
     X(FileSource::Local, std::unordered_set<hstring>, DismissedBadges, "dismissedBadges")                                                                                 \
     X(FileSource::Local, Windows::Foundation::Collections::IMap<hstring COMMA Model::WindowLayout>, PersistedWorkspaces, "persistedWorkspaces")                           \
-    X(FileSource::Local, Windows::Foundation::Collections::IMap<hstring COMMA Model::WindowLayout>, ShellSessions, "shellSessions")                                       \
     X(FileSource::Shared, bool, SSHFolderGenerated, "sshFolderGenerated", false)                                                                                          \
     X(FileSource::Shared, bool, AgentFreCompleted, "agentFreCompleted", false)                                                                                           \
     X(FileSource::Shared, bool, AgentWelcomeShown, "agentWelcomeShown", false)
@@ -87,14 +86,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool RenameWorkspace(const hstring& oldName, const hstring& newName);
         Model::WindowLayout TakeWorkspace(const hstring& name);
         Windows::Foundation::Collections::IMapView<hstring, Model::WindowLayout> AllPersistedWorkspaces();
-
-        // Durable shell sessions. Unlike workspaces/window-layouts, these are
-        // named, user-restorable-on-demand snapshots that are NOT cleared after
-        // restore, so a tab can be reopened repeatedly. Keyed by tab name.
-        void SaveShellSession(const hstring& name, const Model::WindowLayout& layout);
-        bool RemoveShellSession(const hstring& name);
-        Model::WindowLayout GetShellSession(const hstring& name);
-        Windows::Foundation::Collections::IMapView<hstring, Model::WindowLayout> AllShellSessions();
 
         // State getters/setters
 #define MTSM_APPLICATION_STATE_GEN(source, type, name, key, ...) \

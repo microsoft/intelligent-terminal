@@ -62,6 +62,9 @@ use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::spawn_agent_process;
 use crate::Cli;
 
+/// Durable shell-session SQLite store. Owned exclusively by wta-master.
+mod shell_sessions_db;
+
 /// Opaque identifier for a helper connection. Used in logs only;
 /// routing keys off `acp::schema::v1::SessionId`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1467,6 +1470,7 @@ impl HelperHandler {
         match crate::session_registry::parse_ext_request(args) {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
             Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
+            Req::ShellSessionsList(_) => handle_shell_sessions_list().await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
@@ -1536,6 +1540,11 @@ pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
             );
         }
     });
+
+    // Sweep expired durable shell sessions (15-day TTL) off the blocking pool
+    // so a large/slow DB or filesystem can't delay the pipe accept loop. master
+    // owns the DB, so this is the only sweeper — lock-free and fire-and-forget.
+    tokio::task::spawn_blocking(sweep_expired_shell_sessions);
 
     let local_set = LocalSet::new();
     let result = local_set
@@ -3238,6 +3247,203 @@ async fn handle_sessions_list(
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
+// ─── Durable shell sessions (SQLite, master-owned) ───────────────────────────
+//
+// master is the SOLE owner of the shell-session store: C++ ships each save as a
+// `save_shell_session` WT event (handled in `handle_master_wt_event`), and the
+// `/shell-sessions` picker reads via the `shell_sessions/list` ext method. All
+// DB access funnels through the tiny helpers below.
+
+/// Retention window for durable shell sessions. Rows untouched for longer than
+/// this — and their scrollback files — are swept once at master startup.
+const SHELL_SESSION_TTL_DAYS: i64 = 15;
+
+/// Path to the shell-session SQLite DB (`<it_root>\shell-sessions.db`), or
+/// `None` when the IT root can't be resolved (no package identity and no
+/// `LOCALAPPDATA`).
+fn shell_sessions_db_path() -> Option<std::path::PathBuf> {
+    crate::runtime_paths::intelligent_terminal_root().map(|r| r.join("shell-sessions.db"))
+}
+
+/// Directory holding per-pane scrollback files
+/// (`<it_root>\shell-session-buffers\{guid}.txt`). C++ writes them on tab
+/// close; master deletes them when their row is superseded or expires.
+fn shell_session_buffers_dir() -> Option<std::path::PathBuf> {
+    crate::runtime_paths::intelligent_terminal_root().map(|r| r.join("shell-session-buffers"))
+}
+
+/// Best-effort unlink of the scrollback files for `guids`. A missing file is
+/// fine (already gone); other errors are logged, never propagated — buffer
+/// cleanup must not fail a save or block startup.
+fn unlink_shell_session_buffers(guids: &[String]) {
+    let Some(dir) = shell_session_buffers_dir() else {
+        return;
+    };
+    for guid in guids {
+        let path = dir.join(format!("{guid}.txt"));
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::warn!(
+                target: "shell_sessions",
+                guid = %guid,
+                err = %e,
+                "failed to delete orphaned scrollback file"
+            ),
+        }
+    }
+}
+
+/// Handle a `save_shell_session` WT event: upsert the row and unlink any
+/// scrollback files orphaned by overwriting a same-named session.
+fn save_shell_session_from_event(params: &serde_json::Value) {
+    let Some(db_path) = shell_sessions_db_path() else {
+        tracing::warn!(target: "shell_sessions", "no IT root; dropping save_shell_session");
+        return;
+    };
+    let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let layout_json = params
+        .get("layout_json")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if name.is_empty() || layout_json.is_empty() {
+        tracing::warn!(
+            target: "shell_sessions",
+            has_name = !name.is_empty(),
+            has_layout = !layout_json.is_empty(),
+            "save_shell_session missing name/layout_json; ignoring"
+        );
+        return;
+    }
+    let cwd = params
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let saved_at = params
+        .get("saved_at")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_else(unix_now_secs);
+    let buffer_guids = params
+        .get("buffer_guids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let row = shell_sessions_db::ShellSessionRow {
+        name: name.to_string(),
+        cwd,
+        saved_at,
+        layout_json: layout_json.to_string(),
+        buffer_guids,
+    };
+
+    match shell_sessions_db::open(&db_path).and_then(|conn| shell_sessions_db::upsert(&conn, &row)) {
+        Ok(orphaned) => {
+            tracing::info!(
+                target: "shell_sessions",
+                name = %row.name,
+                buffers = row.buffer_guids.len(),
+                orphaned = orphaned.len(),
+                "saved durable shell session"
+            );
+            unlink_shell_session_buffers(&orphaned);
+        }
+        Err(e) => tracing::warn!(
+            target: "shell_sessions",
+            name = %row.name,
+            err = %e,
+            "failed to save shell session"
+        ),
+    }
+}
+
+/// Serve the `shell_sessions/list` ext request from the DB.
+async fn handle_shell_sessions_list() -> acp::Result<acp::schema::v1::ExtResponse> {
+    let sessions = load_shell_sessions_for_list();
+    let raw = crate::session_registry::build_shell_sessions_list_response(sessions);
+    Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+/// Read all durable shell sessions from the DB as wire rows (newest first).
+/// Returns empty on any error so the picker degrades to "no saved sessions".
+fn load_shell_sessions_for_list() -> Vec<crate::session_registry::ShellSessionInfo> {
+    let Some(db_path) = shell_sessions_db_path() else {
+        return Vec::new();
+    };
+    match shell_sessions_db::open(&db_path).and_then(|conn| shell_sessions_db::list(&conn)) {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|r| crate::session_registry::ShellSessionInfo {
+                name: r.name,
+                cwd: r.cwd,
+                saved_at: r.saved_at,
+                layout_json: r.layout_json,
+            })
+            .collect(),
+        Err(e) => {
+            tracing::warn!(target: "shell_sessions", err = %e, "failed to list shell sessions");
+            Vec::new()
+        }
+    }
+}
+
+/// Delete shell sessions older than [`SHELL_SESSION_TTL_DAYS`] plus their
+/// scrollback files, but at most once per day (see
+/// [`shell_sessions_db::TTL_SWEEP_MIN_INTERVAL_SECS`]). Invoked on every master
+/// startup, but the per-day gate in the DB means a user who relaunches WT
+/// repeatedly pays the scan only once a day. Best-effort: any error is logged,
+/// never fatal — durable sessions are a convenience, not core. No-op when the
+/// DB file doesn't exist yet (nothing was ever saved).
+fn sweep_expired_shell_sessions() {
+    let Some(db_path) = shell_sessions_db_path() else {
+        return;
+    };
+    if !db_path.exists() {
+        return;
+    }
+    let now = unix_now_secs();
+    let ttl_secs = SHELL_SESSION_TTL_DAYS * 24 * 60 * 60;
+    match shell_sessions_db::open(&db_path)
+        .and_then(|conn| shell_sessions_db::ttl_sweep_if_due(&conn, now, ttl_secs))
+    {
+        Ok(shell_sessions_db::TtlSweepOutcome::Swept(orphaned)) => {
+            if !orphaned.is_empty() {
+                tracing::info!(
+                    target: "shell_sessions",
+                    files = orphaned.len(),
+                    ttl_days = SHELL_SESSION_TTL_DAYS,
+                    "TTL-swept expired shell sessions"
+                );
+                unlink_shell_session_buffers(&orphaned);
+            }
+        }
+        Ok(shell_sessions_db::TtlSweepOutcome::Skipped) => {
+            tracing::debug!(
+                target: "shell_sessions",
+                "shell-session TTL sweep skipped (ran within the last 24h)"
+            );
+        }
+        Err(e) => tracing::warn!(
+            target: "shell_sessions",
+            err = %e,
+            "shell-session TTL sweep failed"
+        ),
+    }
+}
+
+/// Current Unix time in whole seconds (0 on the impossible pre-epoch clock).
+fn unix_now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// Pure async handler for the `intellterm.wta/session_hook` ExtRequest.
 ///
 /// Decodes the hook event, dispatches it to the master-side registry reducer
@@ -3462,6 +3668,17 @@ async fn handle_master_wt_event(
         .get("method")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    // Durable shell-session save: C++ raises this on tab close (see
+    // `TerminalPage::_SaveShellSessionForTab`). master is the sole DB owner, so
+    // the write happens here rather than C++-side.
+    if method == "save_shell_session" {
+        let params = event_json
+            .get("params")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        save_shell_session_from_event(&params);
+        return;
+    }
     if method != "connection_state" {
         return;
     }

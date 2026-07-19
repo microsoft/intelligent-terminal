@@ -228,6 +228,11 @@ pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/c
 /// ExtRequest method for fetching the master's full session registry snapshot.
 pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
 
+/// ExtRequest method for fetching the durable shell-session list (the
+/// `/shell-sessions` restore picker's data source). Served from master's
+/// SQLite store; see `master/shell_sessions_db.rs`.
+pub const INTELLTERM_METHOD_SHELL_SESSIONS_LIST: &str = "_intellterm.wta/shell_sessions/list";
+
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
 /// We only need the session id — helpers look the row up locally to
@@ -319,6 +324,63 @@ pub fn parse_sessions_list_response(
     raw: &serde_json::value::RawValue,
 ) -> Result<SessionsListResponse, serde_json::Error> {
     serde_json::from_str::<SessionsListResponse>(raw.get())
+}
+
+// ─── intellterm.wta/shell_sessions/list ──────────────────────────────────────
+
+/// Request params for the durable shell-session list. Empty today; a struct
+/// (rather than `()`) so future filters (e.g. cwd prefix) are additive.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsListParams {}
+
+/// One durable shell session as sent to the helper's `/shell-sessions` picker.
+///
+/// Carries `layout_json` so pressing Enter can forward it straight to WT in the
+/// `restore_shell_session` event — no second master round-trip.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionInfo {
+    pub name: String,
+    #[serde(default)]
+    pub cwd: String,
+    #[serde(default)]
+    pub saved_at: i64,
+    /// Opaque WT `WindowLayout` JSON, replayed verbatim by the C++ side.
+    #[serde(default)]
+    pub layout_json: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsListResponse {
+    pub sessions: Vec<ShellSessionInfo>,
+}
+
+/// Build an `ExtRequest` for `intellterm.wta/shell_sessions/list`.
+pub fn build_shell_sessions_list_request() -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&ShellSessionsListParams::default())
+        .expect("ShellSessionsListParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SHELL_SESSIONS_LIST, Arc::from(raw))
+}
+
+pub fn parse_shell_sessions_list_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsListParams, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsListParams>(raw.get())
+}
+
+pub fn build_shell_sessions_list_response(
+    sessions: Vec<ShellSessionInfo>,
+) -> Box<serde_json::value::RawValue> {
+    let response = ShellSessionsListResponse { sessions };
+    serde_json::value::to_raw_value(&response)
+        .expect("ShellSessionsListResponse serialization is infallible for owned data")
+}
+
+pub fn parse_shell_sessions_list_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsListResponse, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsListResponse>(raw.get())
 }
 
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
@@ -420,6 +482,9 @@ pub enum WtaExtRequest {
     FocusSession(FocusSessionParams),
     /// `_intellterm.wta/sessions/list` — full registry snapshot.
     SessionsList(SessionsListParams),
+    /// `_intellterm.wta/shell_sessions/list` — durable shell-session list for
+    /// the `/shell-sessions` restore picker (served from master's SQLite).
+    ShellSessionsList(ShellSessionsListParams),
     /// `_intellterm.wta/session_hook` — a real per-session hook event.
     SessionHook(crate::agent_sessions::SessionEvent),
     /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
@@ -466,6 +531,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(FocusSession, parse_focus_session_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
         decode!(SessionsList, parse_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_LIST) {
+        decode!(ShellSessionsList, parse_shell_sessions_list_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {

@@ -42,11 +42,6 @@ namespace Microsoft.Terminal.Settings.Model
         WindowLayout TakeWorkspace(String name);
         Windows.Foundation.Collections.IMapView<String, WindowLayout> AllPersistedWorkspaces();
 
-        void SaveShellSession(String name, WindowLayout layout);
-        Boolean RemoveShellSession(String name);
-        WindowLayout GetShellSession(String name);
-        Windows.Foundation.Collections.IMapView<String, WindowLayout> AllShellSessions();
-
         String SettingsHash;
         Windows.Foundation.Collections.IVector<WindowLayout> PersistedWindowLayouts;
         Windows.Foundation.Collections.IVector<String> RecentCommands;

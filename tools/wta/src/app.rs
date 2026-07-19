@@ -1328,6 +1328,14 @@ pub enum AppEvent {
         request_id: u64,
         sessions: Vec<crate::session_registry::SessionInfo>,
     },
+    /// `shell_sessions/list` response from master (the `/shell-sessions`
+    /// picker's data). Routed to the tab whose `shell_sessions_pending_request`
+    /// matches `request_id`; a stale response is dropped. Emitted by
+    /// `dispatch_master_ext_request`'s `ShellSessionsList` arm.
+    ShellSessionsLoaded {
+        request_id: u64,
+        sessions: Vec<crate::session_registry::ShellSessionInfo>,
+    },
     /// `sessions/list` RPC failed or timed out — unblock the tab's
     /// `refetch_in_flight` gate without overwriting the existing
     /// snapshot, so the 5s periodic tick / next `SessionsChanged`
@@ -1547,9 +1555,16 @@ pub struct TabSession {
     pub shell_sessions_picker_open: bool,
     /// Highlighted row in `shell_sessions` below.
     pub shell_sessions_picker_selected: usize,
-    /// Snapshot of the durable shell sessions, loaded from the C++-written
-    /// `shell-sessions.json` sidecar when the picker opens. Empty otherwise.
-    pub shell_sessions: Vec<crate::shell_sessions::ShellSessionEntry>,
+    /// Durable shell sessions for the picker, fetched from master's SQLite
+    /// store (via the `shell_sessions/list` ext method) when the picker is
+    /// invoked. Empty otherwise.
+    pub shell_sessions: Vec<crate::session_registry::ShellSessionInfo>,
+    /// Monotonic id for the in-flight `shell_sessions/list` request, so a stale
+    /// response for a superseded `/shell-sessions` invocation is ignored.
+    pub shell_sessions_next_request_id: u64,
+    /// `Some(id)` while a `/shell-sessions` fetch is outstanding for this tab;
+    /// the matching [`AppEvent::ShellSessionsLoaded`] opens the picker.
+    pub shell_sessions_pending_request: Option<u64>,
 
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
@@ -3010,12 +3025,42 @@ impl App {
     }
 
     /// `/shell-sessions` — open a picker of durable shell sessions Windows
-    /// Terminal saved on tab close. Enter restores the highlighted tab (its
-    /// layout, working directory, and scrollback) via a protocol event.
+    /// Terminal saved on tab close. The list lives in master's SQLite store, so
+    /// this fires an async `shell_sessions/list` request; the matching
+    /// [`AppEvent::ShellSessionsLoaded`] opens the picker (or reports "none
+    /// saved yet"). Enter then restores the highlighted tab.
     fn cmd_shell_sessions(&mut self) {
-        let sessions = crate::shell_sessions::load();
+        let tab_id = self.active_tab_key().to_string();
+        let request_id = {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_next_request_id =
+                tab.shell_sessions_next_request_id.wrapping_add(1);
+            let id = tab.shell_sessions_next_request_id;
+            tab.shell_sessions_pending_request = Some(id);
+            id
+        };
+        let _ = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ShellSessionsList { request_id },
+        );
+    }
+
+    /// Apply a `shell_sessions/list` response: if it matches the tab's pending
+    /// request, either open the picker (sessions present) or report that none
+    /// are saved yet. A stale response (superseded request id) is dropped.
+    fn handle_shell_sessions_loaded(
+        &mut self,
+        request_id: u64,
+        sessions: Vec<crate::session_registry::ShellSessionInfo>,
+    ) {
+        let tab_id = self.tab_sessions.iter().find_map(|(id, tab)| {
+            (tab.shell_sessions_pending_request == Some(request_id)).then(|| id.clone())
+        });
+        let Some(tab_id) = tab_id else {
+            return;
+        };
         if sessions.is_empty() {
-            let tab = self.current_tab_mut();
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_pending_request = None;
             tab.messages
                 // TODO(localize): extract to `system.no_shell_sessions`.
                 .push(ChatMessage::System(
@@ -3024,7 +3069,8 @@ impl App {
             tab.scroll_to_bottom();
             return;
         }
-        let tab = self.current_tab_mut();
+        let tab = self.tab_mut(&tab_id);
+        tab.shell_sessions_pending_request = None;
         tab.shell_sessions = sessions;
         tab.shell_sessions_picker_selected = 0;
         tab.shell_sessions_picker_open = true;
@@ -3052,23 +3098,25 @@ impl App {
     }
 
     /// Commit the highlighted row: ask Windows Terminal to restore the saved
-    /// tab by name via a one-way `restore_shell_session` protocol event. WT
-    /// owns the authoritative layout + scrollback, so the helper just names
-    /// the session and lets the C++ side rebuild the tab.
+    /// tab via a one-way `restore_shell_session` protocol event. The row
+    /// carries master's authoritative `layout_json`, so we forward it (plus the
+    /// name) and let the C++ side replay the layout and reconnect scrollback.
     fn commit_shell_session_pick(&mut self) {
-        let name = {
+        let picked = {
             let tab = self.current_tab();
             let idx = tab.shell_sessions_picker_selected;
-            tab.shell_sessions.get(idx).map(|entry| entry.name.clone())
+            tab.shell_sessions
+                .get(idx)
+                .map(|entry| (entry.name.clone(), entry.layout_json.clone()))
         };
         self.close_shell_sessions_picker();
-        let Some(name) = name else {
+        let Some((name, layout_json)) = picked else {
             return;
         };
         let evt = serde_json::json!({
             "type": "event",
             "method": "restore_shell_session",
-            "params": { "name": name },
+            "params": { "name": name, "layout_json": layout_json },
         });
         send_wt_protocol_event(evt.to_string());
         tracing::info!(target: "shell_sessions", %name, "restore_shell_session event published");
@@ -4641,6 +4689,7 @@ impl App {
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
+            AppEvent::ShellSessionsLoaded { .. } => "shell_sessions_loaded",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
         }
@@ -5693,6 +5742,12 @@ impl App {
             }
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
+            }
+            AppEvent::ShellSessionsLoaded {
+                request_id,
+                sessions,
+            } => {
+                self.handle_shell_sessions_loaded(request_id, sessions);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
