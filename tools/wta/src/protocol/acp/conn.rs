@@ -436,6 +436,11 @@ where
 /// This is the component equivalent of [`spawn_client`]. It is used when the
 /// immediate peer is a canonical ACP conductor rather than a byte transport.
 ///
+/// Its `main_fn` intentionally remains pending after publishing the link, so
+/// `handle_io` completes only when the connected component/conductor chain
+/// returns (normally surfacing peer shutdown). A component that swallows peer
+/// termination without returning can leave `handle_io` pending.
+///
 /// This function uses [`tokio::task::spawn_local`], so callers must run it
 /// within a [`tokio::task::LocalSet`].
 pub fn spawn_client_component<H, Run, C>(
