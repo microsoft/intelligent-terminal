@@ -1546,7 +1546,7 @@ mod tests {
     }
 
     #[test]
-    fn supplied_durable_ids_must_be_uuids() -> Result<()> {
+    fn supplied_durable_ids_must_be_uuid_values() -> Result<()> {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let mut save = save_params(&directory, "valid", "invalid-id.tmp")?;

@@ -208,6 +208,7 @@ rrx
 rtx
 rubyw
 runtimes
+rusqlite
 rustc
 rustflags
 rustup
