@@ -2319,7 +2319,7 @@ async fn spawn_one_agent(
             acp::on_receive_notification!(),
         );
     let final_agent = conn::byte_streams(stdin.compat_write(), stdout.compat());
-    let conductor = proxy_chain::transparent(final_agent);
+    let conductor = proxy_chain::traced(final_agent);
     let (conn, handle_io) = conn::spawn_client_component(builder, conductor);
 
     // I/O-loop driver + reaper. This task drives the ACP connection's
@@ -4523,8 +4523,8 @@ mod tests {
                     });
                 }
 
-                // Master's client side of hop 1: the zero-proxy canonical
-                // conductor sits between MasterClient and the final agent.
+                // Master's client side of hop 1: the canonical conductor and
+                // tracing proxy sit between MasterClient and the final agent.
                 // MasterClient routes the agent's reentrant request_permission
                 // back out to the owning helper.
                 let master_client = MasterClient {
@@ -4562,7 +4562,7 @@ mod tests {
                     let final_agent = conn::byte_streams(cw.compat_write(), cr.compat());
                     let (link, io) = conn::spawn_client_component(
                         builder,
-                        proxy_chain::transparent(final_agent),
+                        proxy_chain::traced(final_agent),
                     );
                     tokio::task::spawn_local(async move {
                         let _ = io.await;
@@ -4571,7 +4571,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ))
                     .await
-                    .expect("zero-proxy conductor should initialize the final agent");
+                    .expect("proxy conductor should initialize the final agent");
                     link
                 };
 

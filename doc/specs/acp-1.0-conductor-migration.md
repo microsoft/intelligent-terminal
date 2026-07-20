@@ -196,6 +196,7 @@ flowchart TB
     end
 
     subgraph proxies["composable transform proxies — lifted out of app.rs / session subsystem, chained via _proxy/*"]
+        TRACE["wire tracing proxy<br/>no-op · method metadata only"]
         AFX["autofix proxy<br/>off-wire WtEvent → inject session/prompt"]
         CTX["context / prompt-injection proxy<br/>rewrite session/prompt (persona + template)"]
         REC["delegate / recommendation proxy<br/>parse RecommendationSet from session/update"]
@@ -219,14 +220,15 @@ flowchart TB
     BR --> SC
     SC -->|"select owning slot"| PCR
     PCR --> C
-    C -.->|"_proxy/initialize"| AFX
+    C -->|"_proxy/initialize"| TRACE
+    TRACE -->|"current: plain initialize"| CLI
+    TRACE -.->|"_proxy/successor"| AFX
     AFX -.->|"_proxy/successor"| CTX
     CTX -.->|"_proxy/successor"| REC
     REC -.->|"_proxy/successor"| SLU
     SLU -.->|"_proxy/successor"| SLE
     SLE -.->|"_proxy/successor"| SLA
     SLA -.->|"_proxy/successor"| CLI
-    C -->|"zero proxies: plain ACP initialize<br/>configured proxies: successor routing"| CLI
     MOD -.->|"folds into"| CTX
     PERM -.->|"folds into"| CB
 
@@ -234,7 +236,7 @@ flowchart TB
     classDef plumbing fill:#dae8fc,stroke:#6c8ebf,color:#000;
     classDef library fill:#d5e8d4,stroke:#82b366,color:#000;
     classDef handrolled fill:#f8cecc,stroke:#b85450,color:#000;
-    class AFX,CTX,REC,SLU,SLE,SLA,MOD,PERM proxyable;
+    class TRACE,AFX,CTX,REC,SLU,SLE,SLA,MOD,PERM proxyable;
     class PLUMB plumbing;
     class C,PCR library;
     class SC,BR handrolled;
@@ -365,14 +367,14 @@ request/response/notification/reverse-request forwarding inside the slot.
   identical.
 - **Phase 3 — prove the proxy wire.** Add one no-op tracing proxy that receives
   `_proxy/initialize` and forwards every request, response, notification, and
-  reverse request through `_proxy/successor`.
+  reverse request through `_proxy/successor`. **Complete.**
 - **Phase 4 — extract transform proxies.** Move the three strong transform cores
   out of `app.rs` — **autofix**, **context/prompt injection**, and
   **delegate/recommendation** — into standalone proxies wired via
   `_proxy/initialize` / `_proxy/successor`. This is where `_proxy/*` first becomes
   relevant, and it needs no further master change. See
-  [Phase 2 detail: extracting the transform proxies](#phase-2-detail-extracting-the-transform-proxies).
-- **Phase 3 (optional) — WT control via MCP-over-ACP.** Expose `wtcli` operations
+  [Phase 4 detail: extracting the transform proxies](#phase-4-detail-extracting-the-transform-proxies).
+- **Phase 5 (optional) — WT control via MCP-over-ACP.** Expose `wtcli` operations
   through `with_mcp_server` instead of shelling out. Larger rethink; separate
   spec.
 
@@ -653,6 +655,25 @@ This phase deliberately uses the upstream implementation rather than copying
 its dispatch algorithm. Phase 3 adds an explicit no-op tracing proxy to prove
 the successor wire before any feature changes message contents.
 
+### Phase 3 detail: explicit tracing proxy
+
+Each `ProxyChainRuntime` now configures
+`ProxiesAndAgent::new(final_agent).proxy(TracingProxy)`. The proxy handles
+`_proxy/initialize`, forwards the enclosed ordinary `initialize` to its
+successor, and uses `send_proxied_message_to` for every remaining dispatch in
+both directions. Request cancellation remains hop-scoped and is remapped by the
+ACP SDK while forwarding.
+
+The proxy is intentionally behavior-free: it does not deserialize, rewrite, or
+retain message parameters, results, or `_meta`. At `trace` level, target
+`proxy_chain` records only `direction`, `kind`, and `method`. This provides
+wire-level evidence without placing prompts, paths, tool arguments, or agent
+responses in the log.
+
+The focused chain test asserts proxy initialization, final-agent ordinary
+initialization, request/response forwarding, agent notifications, reverse
+requests/responses, metadata preservation, and final-agent EOF propagation.
+
 ### Phase 4 detail: extracting the transform proxies
 
 `app.rs` is the central event-loop + state hub (`App` struct + the `AppEvent`
@@ -707,6 +728,7 @@ flowchart LR
         CB["SessionRouter<br/>N:M control plane"]
         C["ConductorImpl<br/>per-slot linear chain"]
     end
+    TRACE["wire tracing proxy<br/>no-op · method metadata only"]
     AFX["autofix proxy<br/>WtEvent → inject session/prompt"]
     CTX["context/prompt proxy<br/>rewrite session/prompt"]
     REC["delegate/recommendation proxy<br/>parse RecommendationSet"]
@@ -719,7 +741,8 @@ flowchart LR
 
     H -->|"ACP/pipe"| CB
     CB --> C
-    C -.->|"_proxy/initialize"| AFX
+    C -->|"_proxy/initialize"| TRACE
+    TRACE -.->|"_proxy/successor"| AFX
     AFX -.->|"_proxy/successor"| CTX
     CTX -.->|"_proxy/successor"| REC
     REC -.->|"_proxy/successor"| SLU
@@ -821,19 +844,19 @@ activity observer, leaving the residual non-proxy core (liveness + cross-window
 sync) in the conductor (the two caveats above); (3) model / permission as fold-in
 decisions made only after (1).
 
-### Phase 3 detail: WT control via MCP-over-ACP
+### Phase 5 detail: WT control via MCP-over-ACP
 
 Today the agent reaches Windows Terminal by **shelling out**: it spawns `wta` /
 `wtcli`, which call WT's COM `IProtocolServer` (`CliChannel`). Every WT operation
 (`list-panes`, `capture-pane`, `send-keys`, `split-pane`, …) is a fresh
-subprocess. Phase 3 replaces that subprocess transport with **MCP-over-ACP**: the
+subprocess. Phase 5 replaces that subprocess transport with **MCP-over-ACP**: the
 conductor injects an MCP server into each `session/new` via
 `SessionBuilder::with_mcp_server(...)`, exposing the WT operations as typed MCP
 tools the agent calls **in-band** over the ACP connection.
 
 **What changes:**
 - `session/new` carries a master-published MCP server (the same hook
-  `inject_wta_mcp_servers` already prepares for HTTP-capable agents — Phase 3
+  `inject_wta_mcp_servers` already prepares for HTTP-capable agents — Phase 5
   generalizes it to the ACP-native `with_mcp_server` path).
 - Each `wtcli` verb becomes an MCP tool with a JSON schema; the agent discovers
   them via the MCP tool list instead of being told to shell out.
@@ -995,7 +1018,7 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 - Phase 2 turns autofix/context-injection into composable proxies — reorderable
   and insertable by config rather than code.
 - MCP-over-ACP (`with_mcp_server`) could replace `wtcli` shell-outs for WT
-  control (Phase 3).
+  control (Phase 5).
 - The COM `IProtocolServer` surface could later retire the hand-written
   session-management reconciliation — out of scope here, tracked separately.
 
@@ -1044,5 +1067,10 @@ promotion. It is explicitly the outer control plane, not the proxy conductor.
 The final agent still receives plain `initialize`; WTA retains process launch,
 diagnostics, timeout, and exact-instance reap.
 
-**Next — Phase 3:** add a no-op tracing proxy and assert
-`_proxy/initialize`/`_proxy/successor` routing before migrating any feature.
+**Done — Phase 3:** each canonical conductor now owns an explicit no-op tracing
+proxy. It proves `_proxy/initialize`/`_proxy/successor` routing in both
+directions, preserves `_meta`, propagates final-agent EOF, and logs only
+direction/kind/method under target `proxy_chain`.
+
+**Next — Phase 4:** migrate one behavior at a time into standalone transform
+proxies, beginning with the clearest ACP method boundary.
