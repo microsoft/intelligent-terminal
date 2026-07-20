@@ -76,6 +76,20 @@ Describe 'Feature §9 Packaging + protocol' -Tag 'Feature' -Skip:(-not $script:R
         }
         finally { Stop-WtEventListener -Listener $listener }
     }
+    It 'Protocol events do not require the advisory Authenticate handshake' {
+        $eventType = "protocol.no_auth.$([guid]::NewGuid().ToString('N'))"
+        $listener = Start-WtEventListener -App $script:app -EventFilter $eventType -SkipAuthenticate
+        try {
+            Start-Sleep -Milliseconds 500
+            Invoke-WtCli -App $script:app -SkipAuthenticate -Arguments @('send-event', '-e', $eventType, '{}') | Out-Null
+            {
+                Wait-WtEvent -Listener $listener -TimeoutSec 10 -Predicate {
+                    $_.method -eq 'agent_event' -and $_.params.event -eq $eventType
+                }
+            } | Should -Not -Throw
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+    }
     It 'WTA master starts' {
         $cl = Get-CimInstance Win32_Process -Filter "Name='wta.exe'" | ForEach-Object { $_.CommandLine }
         ($cl -join "`n") | Should -Match '--master'

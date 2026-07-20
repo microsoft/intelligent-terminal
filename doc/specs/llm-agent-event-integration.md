@@ -144,8 +144,6 @@ interface IProtocolServer
 
 void TerminalProtocolComServer::SendEvent(winrt::hstring const& eventJson)
 {
-    THROW_HR_IF(E_ACCESSDENIED, !_authenticated);
-
     // Parse and validate — must have "event" field in params
     auto jsonStr = winrt::to_string(eventJson);
     Json::Value evt;

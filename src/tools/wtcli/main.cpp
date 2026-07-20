@@ -68,7 +68,9 @@ struct EventSink : ITerminalProtocolEventSink
 
 // ── Helpers ──
 
-static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr, std::string* outVersion = nullptr)
+static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
+                                                          std::string* outVersion = nullptr,
+                                                          bool skipAuthenticate = false)
 {
     wchar_t clsid[128]{};
     if (!GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)))
@@ -90,6 +92,10 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
     {
         fprintf(stderr, "[wtcli] Connection failed: 0x%08X\n", static_cast<uint32_t>(hr));
         return nullptr;
+    }
+    if (skipAuthenticate)
+    {
+        return server;
     }
 
     BSTR rawAuth = nullptr;
@@ -267,11 +273,13 @@ int main()
     app.require_subcommand(0, 1);
 
     bool jsonMode = false;
+    bool skipAuthenticate = false;
     int exitCode = 0;
     app.add_flag("--json", jsonMode, "Output raw JSON");
+    app.add_flag("--skip-authenticate", skipAuthenticate, "Skip the compatibility handshake (testing only)");
 
     auto connect = [&]() -> winrt::com_ptr<ITerminalProtocol> {
-        auto server = ConnectToTerminal();
+        auto server = ConnectToTerminal(nullptr, nullptr, skipAuthenticate);
         if (!server)
             exitCode = 1;
         return server;
@@ -595,7 +603,7 @@ int main()
         printf("Connecting to Windows Terminal...\n");
         auto server = connect();
         if (!server) { fprintf(stderr, "Connection failed.\n"); return; }
-        printf("Connected and authenticated!\n\n");
+        printf(skipAuthenticate ? "Connected without compatibility handshake!\n\n" : "Connected and authenticated!\n\n");
 
         Json::Value windows;
         if (SUCCEEDED(CallJson([&](BSTR* j) { return server->ListWindows(j); }, windows)))
@@ -622,7 +630,7 @@ int main()
         auto hasClsid = GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)) > 0;
 
         std::string version;
-        auto server = ConnectToTerminal(nullptr, &version);
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate);
 
         Json::Value methods(Json::arrayValue);
         if (server)
