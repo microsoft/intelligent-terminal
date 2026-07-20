@@ -4,7 +4,7 @@ This is the source repository for **Windows Terminal**, **Windows Console Host**
 
 ## Build
 
-Requires Visual Studio 2026 with "Desktop Development with C++" and "Universal Windows Platform Development" workloads, plus the Windows 11 SDK (10.0.22621.0). The solution uses the `.slnx` format (`OpenConsole.slnx`), which requires MSBuild 17.10 or later. If you get `"Invalid input 'OpenConsole.slnx'. The file type was not recognized."`, update Visual Studio.
+Requires Visual Studio (preferably Visual Studio 2026) with "Desktop Development with C++" and "Universal Windows Platform Development" workloads, plus the Windows 11 SDK (10.0.22621.0). The solution uses the `.slnx` format (`OpenConsole.slnx`), which requires MSBuild 17.10 or later. If you get `"Invalid input 'OpenConsole.slnx'. The file type was not recognized."`, update Visual Studio.
 
 Build uses MSBuild via the CMD razzle environment. Run `razzle.cmd` once per terminal session to set up the environment, then use the build commands. Since razzle sets env vars in CMD, chain commands with `&&` when calling from PowerShell (e.g., `cmd /c ".\tools\razzle.cmd && bz"`):
 
