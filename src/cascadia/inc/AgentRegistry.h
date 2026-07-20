@@ -35,7 +35,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     // ACP-capable agents. Either the CLI itself speaks the Agent Control
     // Protocol (copilot, gemini), or an npm-distributed adapter does
     // (claude via @agentclientprotocol/claude-agent-acp, codex via
-    // @zed-industries/codex-acp).
+    // @agentclientprotocol/codex-acp).
     // Only these agents can be hosted in an agent pane.
     inline constexpr std::array<BuiltinAgent, 4> BuiltinAcpAgents{ {
         { L"copilot", L"GitHub Copilot" },

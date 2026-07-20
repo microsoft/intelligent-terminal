@@ -2079,7 +2079,7 @@ mod tests {
             r#""C:\npm tools\codex.cmd" --search"#
         ));
         assert!(!is_direct_known_agent_command(
-            "npx -y @zed-industries/codex-acp"
+            "npx -y @agentclientprotocol/codex-acp@1.1.0"
         ));
     }
 

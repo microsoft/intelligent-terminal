@@ -16,10 +16,10 @@
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::protocol::acp::conn;
+use crate::protocol::acp::spawn::AgentStderrLog;
 
 /// The successful list outcome, or a human-readable reason it failed.
 ///
@@ -55,15 +55,8 @@ pub(crate) async fn fetch_session_list(
         .take()
         .ok_or_else(|| anyhow!("agent stdout not piped"))?
         .compat();
-    if let Some(stderr) = child.stderr.take() {
-        let label = client_label.to_string();
-        tokio::task::spawn_local(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(target: "acp_session_list", agent = %label, "agent stderr: {}", line);
-            }
-        });
-    }
+    let stderr_log = AgentStderrLog::new(client_label.to_string());
+    let stderr_task = child.stderr.take().map(|stderr| stderr_log.drain(stderr));
 
     let (conn, handle_io) =
         conn::spawn_client(acp::Client.builder().name("wta-session-list"), conn::byte_streams(outgoing, incoming));
@@ -80,8 +73,13 @@ pub(crate) async fn fetch_session_list(
             acp::schema::v1::Implementation::new("wta-session-list", env!("CARGO_PKG_VERSION"))
                 .title("WTA Session List"),
         );
-    let init_resp = tokio::time::timeout(init_timeout, conn.initialize(init_req))
-        .await
+    let init_result = tokio::time::timeout(init_timeout, conn.initialize(init_req)).await;
+    if matches!(init_result, Ok(Ok(_))) {
+        stderr_log.mark_initialized();
+    } else {
+        stderr_log.finish_failed_startup(child, stderr_task).await;
+    }
+    let init_resp = init_result
         .map_err(|_| {
             anyhow!(
                 "ACP initialize timed out after {:?} (agent={})",

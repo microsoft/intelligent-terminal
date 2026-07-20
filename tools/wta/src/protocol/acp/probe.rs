@@ -20,12 +20,11 @@ use agent_client_protocol as acp;
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app::AcpModelInfo;
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::spawn_agent_process;
+use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
 
 #[derive(Serialize)]
 pub struct ProbeResult {
@@ -47,16 +46,12 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
 
     let outgoing = spawned.child.stdin.take().expect("stdin piped").compat_write();
     let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
-    if let Some(stderr) = spawned.child.stderr.take() {
-        // Drain stderr so npx startup banners don't fill the pipe and
-        // block the adapter.
-        tokio::task::spawn_local(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!("agent stderr: {}", line);
-            }
-        });
-    }
+    let stderr_log = AgentStderrLog::new(spawned.label().to_string());
+    let stderr_task = spawned
+        .child
+        .stderr
+        .take()
+        .map(|stderr| stderr_log.drain(stderr));
 
     let (conn, handle_io) =
         conn::spawn_client(acp::Client.builder().name("wta-probe"), conn::byte_streams(outgoing, incoming));
@@ -80,9 +75,18 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
                 .title("WTA Model Probe"),
         );
     let init_started = std::time::Instant::now();
-    let init_result =
-        tokio::time::timeout(Duration::from_secs(init_timeout_secs), conn.initialize(init_req))
+    let init_result = tokio::time::timeout(
+        Duration::from_secs(init_timeout_secs),
+        conn.initialize(init_req),
+    )
+    .await;
+    if matches!(init_result, Ok(Ok(_))) {
+        stderr_log.mark_initialized();
+    } else {
+        stderr_log
+            .finish_failed_startup(&mut spawned.child, stderr_task)
             .await;
+    }
     crate::telemetry::log_acp_initialize_complete(
         init_started.elapsed().as_secs_f64() * 1000.0,
         matches!(init_result, Ok(Ok(_))),
@@ -195,16 +199,12 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
 
     let outgoing = spawned.child.stdin.take().expect("stdin piped").compat_write();
     let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
-    if let Some(stderr) = spawned.child.stderr.take() {
-        // Drain stderr so npx startup banners don't fill the pipe and
-        // block the adapter.
-        tokio::task::spawn_local(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!("agent stderr: {}", line);
-            }
-        });
-    }
+    let stderr_log = AgentStderrLog::new(spawned.label().to_string());
+    let stderr_task = spawned
+        .child
+        .stderr
+        .take()
+        .map(|stderr| stderr_log.drain(stderr));
 
     let (conn, handle_io) =
         conn::spawn_client(acp::Client.builder().name("wta-probe-sessions"), conn::byte_streams(outgoing, incoming));
@@ -221,19 +221,27 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
             acp::schema::v1::Implementation::new("wta-probe-sessions", env!("CARGO_PKG_VERSION"))
                 .title("WTA Session Probe"),
         );
-    let init_resp = tokio::time::timeout(
+    let init_result = tokio::time::timeout(
         Duration::from_secs(init_timeout_secs),
         conn.initialize(init_req),
     )
-    .await
-    .map_err(|_| {
-        anyhow!(
-            "ACP initialize timed out after {}s during session probe (agent={})",
-            init_timeout_secs,
-            spawned.label()
-        )
-    })?
-    .map_err(|e| anyhow!("initialize failed: {}", e))?;
+    .await;
+    if matches!(init_result, Ok(Ok(_))) {
+        stderr_log.mark_initialized();
+    } else {
+        stderr_log
+            .finish_failed_startup(&mut spawned.child, stderr_task)
+            .await;
+    }
+    let init_resp = init_result
+        .map_err(|_| {
+            anyhow!(
+                "ACP initialize timed out after {}s during session probe (agent={})",
+                init_timeout_secs,
+                spawned.label()
+            )
+        })?
+        .map_err(|e| anyhow!("initialize failed: {}", e))?;
 
     let initialize_dump = format!("{init_resp:#?}");
 

@@ -128,7 +128,7 @@ Claude and Codex are launched through ACP adapters:
 
 ```
 wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
-wta --agent "npx -y @zed-industries/codex-acp"
+wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.0"
 ```
 
 The Terminal settings layer resolves the built-in agent IDs to these adapter commands.

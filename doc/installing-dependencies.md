@@ -91,7 +91,7 @@ new `winget.exe` is picked up on `PATH`, then verify with
 distributed as npm packages. Intelligent Terminal also launches Claude and
 Codex through `npx` wrappers
 (`npx -y @agentclientprotocol/claude-agent-acp` and
-`npx -y @zed-industries/codex-acp`), which require a working Node.js +
+`npx -y @agentclientprotocol/codex-acp@1.1.0`), which require a working Node.js +
 `npm` + `npx` toolchain on `PATH`. You can skip this section if you only
 plan to use GitHub Copilot CLI.
 
@@ -237,7 +237,7 @@ The first launch may take a few seconds while `npx` downloads the wrapper.
 **Status:** Supported, but **not installed by Intelligent Terminal**. You
 must install OpenAI's Codex CLI yourself before selecting Codex in the FRE.
 Intelligent Terminal launches Codex through the
-`@zed-industries/codex-acp` npx wrapper.
+`@agentclientprotocol/codex-acp` npx wrapper.
 
 #### Step 3.3.1 — Install Node.js
 
@@ -262,11 +262,11 @@ codex --version
 
 Codex does not speak the Agent Control Protocol (ACP) directly, so
 Intelligent Terminal launches it through the
-[`@zed-industries/codex-acp`](https://www.npmjs.com/package/@zed-industries/codex-acp)
+[`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp)
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @zed-industries/codex-acp
+npx -y @agentclientprotocol/codex-acp@1.1.0
 ```
 
 You do **not** need to install anything for this — the only prerequisite
