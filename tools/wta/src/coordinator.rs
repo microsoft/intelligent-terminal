@@ -2744,8 +2744,8 @@ mod tests {
     fn wsl_delegate_resume_commandline_is_shell_quoted() {
         let runtime = base64_runtime("claude");
         let cmd =
-            build_wsl_delegate_resume_commandline(&runtime, "session'id").expect("resume cmd");
-        assert_eq!(cmd, r"exec 'claude' '--resume' 'session'\\''id'");
+            build_wsl_delegate_resume_commandline(&runtime, "session's id").expect("resume cmd");
+        assert_eq!(cmd, r"exec 'claude' '--resume' 'session'\\''s id'");
     }
 
     #[test]
