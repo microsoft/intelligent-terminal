@@ -137,5 +137,3 @@ set OpenConBuild=true
 :END
 echo The dev environment is ready to go!
 exit /b 0
-
-:EXIT

@@ -1,4 +1,5 @@
-# Quick start for local development
+# Quick start for local development
+
 
 The fast path for local development. Intelligent Terminal is a dual-stack project: the Rust
 **WTA** agent (`tools/wta/`) plus the C++ **Windows Terminal** app (`src/`). For command-line
