@@ -142,3 +142,4 @@ Resources/(?!en)
 ^\Qsrc/tools/lnkd/lnkd.bat\E$
 ^\Qsrc/tools/pixels/pixels.bat\E$
 ^test/e2e/
+^\.github/skills/store-listing-localizer/

@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "name": "store-listing-localizer-scripts",
+  "private": true,
+  "description": "Deterministic CSV helpers for the store-listing-localizer skill (no dependencies)."
+}
