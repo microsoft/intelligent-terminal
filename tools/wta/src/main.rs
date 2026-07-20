@@ -144,7 +144,7 @@ struct Cli {
     agent: String,
 
     /// Canonical agent identifier (`copilot` / `claude` / `codex` / `gemini`
-    /// / `custom:<name>`). When the host (Windows Terminal) launches wta it
+    /// / `opencode` / `custom:<name>`). When the host (Windows Terminal) launches wta it
     /// already knows which entry the user picked in settings, so it passes
     /// the original `acpAgent` value through here. wta uses this id as the
     /// authoritative identity for `current_agent_id` — driving the session-
@@ -185,7 +185,7 @@ struct Cli {
     /// Model override for the ACP agent. Sent via ACP setSessionModel after
     /// handshake. Used by adapter-style launches (claude, codex via npx)
     /// where the model can't be passed on the command line; native ACP
-    /// agents (copilot, gemini) use their own --model flag in `agent`.
+    /// agents may use their own --model flag in `agent`.
     #[arg(long)]
     acp_model: Option<String>,
 

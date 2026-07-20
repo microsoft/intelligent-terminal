@@ -2643,6 +2643,23 @@ mod tests {
     }
 
     #[test]
+    fn opencode_delegate_uses_run_subcommand() {
+        let runtime = base64_runtime("opencode");
+        let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
+        assert!(
+            cmd.contains("'opencode' 'run' \"\\$prompt\""),
+            "OpenCode delegate form: {cmd}"
+        );
+
+        let profile = crate::agent_registry::lookup_profile_by_id("opencode");
+        let cmd = build_pwsh_base64_launch("opencode", profile, None, None, "hi\nthere");
+        assert!(
+            cmd.contains("& 'opencode' 'run' $p; exit $LASTEXITCODE"),
+            "OpenCode PowerShell delegate form: {cmd}"
+        );
+    }
+
+    #[test]
     fn wsl_delegate_interactive_has_no_base64() {
         let runtime = base64_runtime("claude");
         let cmd = build_wsl_delegate_commandline(&runtime, None, None).expect("cmd");

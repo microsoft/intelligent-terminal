@@ -1991,7 +1991,7 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
         // custom agent IDs may contain user file paths or commands,
         // so we bucket those as "custom".
         static const auto sanitizeProviderId = [](const winrt::hstring& id) -> std::string {
-            if (id == L"copilot" || id == L"claude" || id == L"codex" || id == L"gemini")
+            if (id == L"copilot" || id == L"claude" || id == L"codex" || id == L"gemini" || id == L"opencode")
             {
                 return winrt::to_string(id);
             }
