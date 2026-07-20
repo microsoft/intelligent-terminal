@@ -72,6 +72,11 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
                                                           std::string* outVersion = nullptr,
                                                           bool skipAuthenticate = false)
 {
+    if (outAuthenticated)
+        *outAuthenticated = false;
+    if (outVersion)
+        outVersion->clear();
+
     wchar_t clsid[128]{};
     if (!GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid)))
     {
