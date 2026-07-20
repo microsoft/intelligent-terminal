@@ -228,6 +228,11 @@ pub const INTELLTERM_METHOD_SESSIONS_CHANGED: &str = "_intellterm.wta/sessions/c
 /// ExtRequest method for fetching the master's full session registry snapshot.
 pub const INTELLTERM_METHOD_SESSIONS_LIST: &str = "_intellterm.wta/sessions/list";
 
+/// ExtRequest method for fetching the durable shell-session list (the
+/// `/shell-sessions` restore picker's data source). Served from master's
+/// SQLite store; see `master/shell_sessions_db.rs`.
+pub const INTELLTERM_METHOD_SHELL_SESSIONS_LIST: &str = "_intellterm.wta/shell_sessions/list";
+
 /// Wire payload for [`INTELLTERM_METHOD_SESSION_REMOVED`].
 ///
 /// We only need the session id — helpers look the row up locally to
@@ -319,6 +324,134 @@ pub fn parse_sessions_list_response(
     raw: &serde_json::value::RawValue,
 ) -> Result<SessionsListResponse, serde_json::Error> {
     serde_json::from_str::<SessionsListResponse>(raw.get())
+}
+
+// ─── intellterm.wta/shell_sessions/list ──────────────────────────────────────
+
+/// Request params for the durable shell-session list. Empty today; a struct
+/// (rather than `()`) so future filters (e.g. cwd prefix) are additive.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsListParams {}
+
+/// One durable shell session as sent to the helper's `/shell-sessions` picker.
+///
+/// Carries `layout_json` so pressing Enter can forward it straight to WT in the
+/// `restore_shell_session` event — no second master round-trip.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionInfo {
+    /// Stable per-session key (anchor pane GUID). Used to delete/touch a
+    /// specific row — the title is no longer unique.
+    #[serde(default)]
+    pub session_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub cwd: String,
+    /// Unix seconds of the last save (content change). The list is ordered
+    /// newest-first by this, and the picker shows it as the "last update" time.
+    #[serde(default)]
+    pub updated_at: i64,
+    /// Opaque WT `WindowLayout` JSON, replayed verbatim by the C++ side.
+    #[serde(default)]
+    pub layout_json: String,
+    /// The agent pane's WT session GUID (`pane_session_id`) at save time, if the
+    /// saved tab had an open agent pane. `None`/absent when it didn't. Resolved
+    /// to an ACP session id (via `agent_pane_origin`) when restoring, so the
+    /// agent conversation is resumed into the rebuilt tab.
+    #[serde(default)]
+    pub agent_pane_session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsListResponse {
+    pub sessions: Vec<ShellSessionInfo>,
+}
+
+/// Build an `ExtRequest` for `intellterm.wta/shell_sessions/list`.
+pub fn build_shell_sessions_list_request() -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&ShellSessionsListParams::default())
+        .expect("ShellSessionsListParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SHELL_SESSIONS_LIST, Arc::from(raw))
+}
+
+pub fn parse_shell_sessions_list_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsListParams, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsListParams>(raw.get())
+}
+
+pub fn build_shell_sessions_list_response(
+    sessions: Vec<ShellSessionInfo>,
+) -> Box<serde_json::value::RawValue> {
+    let response = ShellSessionsListResponse { sessions };
+    serde_json::value::to_raw_value(&response)
+        .expect("ShellSessionsListResponse serialization is infallible for owned data")
+}
+
+pub fn parse_shell_sessions_list_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsListResponse, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsListResponse>(raw.get())
+}
+
+// ─── intellterm.wta/shell_sessions/delete ────────────────────────────────────
+
+/// ExtRequest method for deleting one durable shell session (row + its
+/// scrollback files). Served by master; see `handle_shell_sessions_delete`.
+pub const INTELLTERM_METHOD_SHELL_SESSIONS_DELETE: &str = "_intellterm.wta/shell_sessions/delete";
+
+/// Request params for deleting a durable shell session by its `session_id`.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsDeleteParams {
+    pub session_id: String,
+}
+
+/// Build an `ExtRequest` for `intellterm.wta/shell_sessions/delete`.
+pub fn build_shell_sessions_delete_request(session_id: &str) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&ShellSessionsDeleteParams {
+        session_id: session_id.to_string(),
+    })
+    .expect("ShellSessionsDeleteParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SHELL_SESSIONS_DELETE, Arc::from(raw))
+}
+
+pub fn parse_shell_sessions_delete_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsDeleteParams, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsDeleteParams>(raw.get())
+}
+
+// ─── intellterm.wta/shell_sessions/touch ─────────────────────────────────────
+
+/// ExtRequest method for marking a durable shell session as just used (on
+/// restore), so its `last_used_at` is bumped and the TTL doesn't reclaim a
+/// session the user keeps reopening. Served by master.
+pub const INTELLTERM_METHOD_SHELL_SESSIONS_TOUCH: &str = "_intellterm.wta/shell_sessions/touch";
+
+/// Request params for touching a durable shell session by its `session_id`.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsTouchParams {
+    pub session_id: String,
+}
+
+/// Build an `ExtRequest` for `intellterm.wta/shell_sessions/touch`.
+pub fn build_shell_sessions_touch_request(session_id: &str) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&ShellSessionsTouchParams {
+        session_id: session_id.to_string(),
+    })
+    .expect("ShellSessionsTouchParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SHELL_SESSIONS_TOUCH, Arc::from(raw))
+}
+
+pub fn parse_shell_sessions_touch_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsTouchParams, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsTouchParams>(raw.get())
 }
 
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
@@ -420,6 +553,15 @@ pub enum WtaExtRequest {
     FocusSession(FocusSessionParams),
     /// `_intellterm.wta/sessions/list` — full registry snapshot.
     SessionsList(SessionsListParams),
+    /// `_intellterm.wta/shell_sessions/list` — durable shell-session list for
+    /// the `/shell-sessions` restore picker (served from master's SQLite).
+    ShellSessionsList(ShellSessionsListParams),
+    /// `_intellterm.wta/shell_sessions/delete` — clean-delete one durable shell
+    /// session (row + its scrollback files).
+    ShellSessionsDelete(ShellSessionsDeleteParams),
+    /// `_intellterm.wta/shell_sessions/touch` — bump a session's `last_used_at`
+    /// on restore so the TTL doesn't reclaim a session the user keeps reopening.
+    ShellSessionsTouch(ShellSessionsTouchParams),
     /// `_intellterm.wta/session_hook` — a real per-session hook event.
     SessionHook(crate::agent_sessions::SessionEvent),
     /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
@@ -466,6 +608,12 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(FocusSession, parse_focus_session_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
         decode!(SessionsList, parse_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_LIST) {
+        decode!(ShellSessionsList, parse_shell_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_DELETE) {
+        decode!(ShellSessionsDelete, parse_shell_sessions_delete_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_TOUCH) {
+        decode!(ShellSessionsTouch, parse_shell_sessions_touch_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {

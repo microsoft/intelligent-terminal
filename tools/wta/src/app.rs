@@ -1328,6 +1328,14 @@ pub enum AppEvent {
         request_id: u64,
         sessions: Vec<crate::session_registry::SessionInfo>,
     },
+    /// `shell_sessions/list` response from master (the `/shell-sessions`
+    /// picker's data). Routed to the tab whose `shell_sessions_pending_request`
+    /// matches `request_id`; a stale response is dropped. Emitted by
+    /// `dispatch_master_ext_request`'s `ShellSessionsList` arm.
+    ShellSessionsLoaded {
+        request_id: u64,
+        sessions: Vec<crate::session_registry::ShellSessionInfo>,
+    },
     /// `sessions/list` RPC failed or timed out — unblock the tab's
     /// `refetch_in_flight` gate without overwriting the existing
     /// snapshot, so the 5s periodic tick / next `SessionsChanged`
@@ -1543,6 +1551,23 @@ pub struct TabSession {
     /// Highlighted row in `App::available_agents`.
     pub agent_picker_selected: usize,
 
+    /// Highlighted row in `shell_sessions` below (the `/shell-sessions`
+    /// restore picker, shown full-pane via `current_view == View::ShellSessions`).
+    pub shell_sessions_picker_selected: usize,
+    /// `Some(index)` while a delete-confirmation prompt is up for that row in
+    /// the restore view (`D` pressed, awaiting Enter to confirm / Esc to cancel).
+    pub shell_sessions_pending_delete: Option<usize>,
+    /// Durable shell sessions for the picker, fetched from master's SQLite
+    /// store (via the `shell_sessions/list` ext method) when the picker is
+    /// invoked. Empty otherwise.
+    pub shell_sessions: Vec<crate::session_registry::ShellSessionInfo>,
+    /// Monotonic id for the in-flight `shell_sessions/list` request, so a stale
+    /// response for a superseded `/shell-sessions` invocation is ignored.
+    pub shell_sessions_next_request_id: u64,
+    /// `Some(id)` while a `/shell-sessions` fetch is outstanding for this tab;
+    /// the matching [`AppEvent::ShellSessionsLoaded`] opens the picker.
+    pub shell_sessions_pending_request: Option<u64>,
+
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
     pub current_view: View,
@@ -1598,6 +1623,7 @@ impl TabSession {
             && !self.paste_pending
             && !self.model_picker_open
             && !self.agent_picker_open
+            && self.current_view != View::ShellSessions
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -2192,6 +2218,10 @@ pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from
 pub enum View {
     Chat,
     Agents,
+    /// The `/shell-sessions` restore picker, rendered full-pane (like
+    /// `Agents`) rather than as a bottom popup, so chat / input / the
+    /// AI disclaimer are hidden while choosing a durable session to restore.
+    ShellSessions,
 }
 
 impl Default for View {
@@ -2991,6 +3021,214 @@ impl App {
             self.send_session_model(Some(sid), model_id);
         }
         self.publish_agent_status();
+    }
+
+    // ── /shell-sessions restore view (full-pane, like /sessions) ─────────
+
+    /// `/shell-sessions` — show a full-pane picker of durable shell sessions
+    /// Windows Terminal saved on tab close. The list lives in master's SQLite
+    /// store, so this fires an async `shell_sessions/list` request; the matching
+    /// [`AppEvent::ShellSessionsLoaded`] switches the tab into
+    /// [`View::ShellSessions`] (or reports "none saved yet" and stays in chat).
+    /// Enter then restores the highlighted tab.
+    fn cmd_shell_sessions(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        let request_id = {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_next_request_id =
+                tab.shell_sessions_next_request_id.wrapping_add(1);
+            let id = tab.shell_sessions_next_request_id;
+            tab.shell_sessions_pending_request = Some(id);
+            id
+        };
+        let _ = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ShellSessionsList { request_id },
+        );
+    }
+
+    /// Apply a `shell_sessions/list` response: if it matches the tab's pending
+    /// request, either switch the tab into the full-pane restore view (sessions
+    /// present) or report that none are saved yet. A stale response (superseded
+    /// request id) is dropped. We wait for the response before switching views
+    /// so an empty result stays in chat instead of flashing an empty page.
+    fn handle_shell_sessions_loaded(
+        &mut self,
+        request_id: u64,
+        sessions: Vec<crate::session_registry::ShellSessionInfo>,
+    ) {
+        let tab_id = self.tab_sessions.iter().find_map(|(id, tab)| {
+            (tab.shell_sessions_pending_request == Some(request_id)).then(|| id.clone())
+        });
+        let Some(tab_id) = tab_id else {
+            return;
+        };
+        if sessions.is_empty() {
+            let tab = self.tab_mut(&tab_id);
+            tab.shell_sessions_pending_request = None;
+            tab.messages
+                // TODO(localize): extract to `system.no_shell_sessions`.
+                .push(ChatMessage::System(
+                    "No saved shell sessions yet — close a tab to save one.".to_string(),
+                ));
+            tab.scroll_to_bottom();
+            return;
+        }
+        let tab = self.tab_mut(&tab_id);
+        tab.shell_sessions_pending_request = None;
+        tab.shell_sessions = sessions;
+        tab.shell_sessions_picker_selected = 0;
+        tab.current_view = View::ShellSessions;
+    }
+
+    /// Leave the restore view back to chat and drop the fetched list.
+    fn close_shell_sessions_view(&mut self) {
+        let tab = self.current_tab_mut();
+        tab.current_view = View::Chat;
+        tab.shell_sessions.clear();
+        tab.shell_sessions_picker_selected = 0;
+        tab.shell_sessions_pending_delete = None;
+    }
+
+    /// Confirm the pending delete: ask master to clean-delete the highlighted
+    /// session (DB row + its scrollback files), and optimistically remove the
+    /// row from the local list. When the list empties, fall back to chat.
+    fn confirm_shell_session_delete(&mut self) {
+        let session_id = {
+            let tab = self.current_tab();
+            let idx = match tab.shell_sessions_pending_delete {
+                Some(i) => i,
+                None => return,
+            };
+            tab.shell_sessions.get(idx).map(|e| e.session_id.clone())
+        };
+
+        // Clear the confirmation and optimistically drop the row locally; the
+        // authoritative delete (DB + files) happens master-side.
+        {
+            let tab = self.current_tab_mut();
+            if let Some(idx) = tab.shell_sessions_pending_delete.take() {
+                if idx < tab.shell_sessions.len() {
+                    tab.shell_sessions.remove(idx);
+                }
+                let len = tab.shell_sessions.len();
+                if len == 0 {
+                    tab.shell_sessions_picker_selected = 0;
+                } else if tab.shell_sessions_picker_selected >= len {
+                    tab.shell_sessions_picker_selected = len - 1;
+                }
+            }
+        }
+
+        if let Some(session_id) = session_id.filter(|s| !s.is_empty()) {
+            let _ = self.master_request_tx.send(
+                crate::protocol::acp::client::MasterExtRequest::ShellSessionsDelete { session_id },
+            );
+        }
+
+        // Nothing left to restore → return to chat.
+        if self.current_tab().shell_sessions.is_empty() {
+            self.close_shell_sessions_view();
+        }
+    }
+
+    fn shell_sessions_picker_up(&mut self) {
+        let tab = self.current_tab_mut();
+        if tab.shell_sessions_picker_selected > 0 {
+            tab.shell_sessions_picker_selected -= 1;
+        }
+    }
+
+    fn shell_sessions_picker_down(&mut self) {
+        let tab = self.current_tab_mut();
+        let last = tab.shell_sessions.len().saturating_sub(1);
+        if tab.shell_sessions_picker_selected < last {
+            tab.shell_sessions_picker_selected += 1;
+        }
+    }
+
+    /// Commit the highlighted row: ask Windows Terminal to restore the saved
+    /// tab via a one-way `restore_shell_session` protocol event. The row
+    /// carries master's authoritative `layout_json`, so we forward it (plus the
+    /// name) and let the C++ side replay the layout and reconnect scrollback.
+    /// When the saved tab had an agent pane, resolve its WT pane GUID to the ACP
+    /// session id so WT can resume that conversation into the rebuilt tab.
+    fn commit_shell_session_pick(&mut self) {
+        let picked = {
+            let tab = self.current_tab();
+            let idx = tab.shell_sessions_picker_selected;
+            tab.shell_sessions.get(idx).cloned()
+        };
+        self.close_shell_sessions_view();
+        let Some(picked) = picked else {
+            return;
+        };
+        let name = picked.name.clone();
+
+        let mut params = serde_json::Map::new();
+        params.insert("name".to_string(), serde_json::Value::String(name.clone()));
+        // master's authoritative WT layout — forwarded verbatim so C++ replays
+        // it without a second round-trip.
+        params.insert(
+            "layout_json".to_string(),
+            serde_json::Value::String(picked.layout_json.clone()),
+        );
+
+        // Resolve the saved agent pane's WT pane GUID (pane_session_id) to the
+        // latest ACP session id created in that pane, from the persistent
+        // agent-pane-sessions.jsonl index (survives a Terminal restart). Skip
+        // silently when the tab had no agent pane or the session can't be
+        // resolved — the shell session still restores without an agent.
+        if let Some(pane_id) = picked
+            .agent_pane_session_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            if let Some(agent_session_id) =
+                crate::agent_pane_origin::resolve_latest_session_for_pane(pane_id)
+            {
+                params.insert(
+                    "agent_session_id".to_string(),
+                    serde_json::Value::String(agent_session_id),
+                );
+                if !picked.cwd.is_empty() {
+                    params.insert(
+                        "agent_cwd".to_string(),
+                        serde_json::Value::String(picked.cwd.clone()),
+                    );
+                }
+            } else {
+                tracing::info!(
+                    target: "shell_sessions",
+                    pane_id,
+                    "no ACP session found for saved agent pane; restoring shell only",
+                );
+            }
+        }
+
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "restore_shell_session",
+            "params": serde_json::Value::Object(params),
+        });
+        send_wt_protocol_event(evt.to_string());
+        tracing::info!(target: "shell_sessions", %name, "restore_shell_session event published");
+
+        // Mark the session as just used so master bumps its last_used_at and the
+        // TTL won't reclaim a session the user keeps reopening.
+        if !picked.session_id.is_empty() {
+            let _ = self.master_request_tx.send(
+                crate::protocol::acp::client::MasterExtRequest::ShellSessionsTouch {
+                    session_id: picked.session_id.clone(),
+                },
+            );
+        }
+
+        let tab = self.current_tab_mut();
+        tab.messages.push(ChatMessage::System(
+            // TODO(localize): extract to `system.shell_session_restoring`.
+            format!("Restoring shell session {}…", name),
+        ));
+        tab.scroll_to_bottom();
     }
 
     /// Rebuild the shared delegate runtime table from a settings change.
@@ -4554,6 +4792,7 @@ impl App {
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
+            AppEvent::ShellSessionsLoaded { .. } => "shell_sessions_loaded",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
         }
@@ -5606,6 +5845,12 @@ impl App {
             }
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
+            }
+            AppEvent::ShellSessionsLoaded {
+                request_id,
+                sessions,
+            } => {
+                self.handle_shell_sessions_loaded(request_id, sessions);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -7097,6 +7342,39 @@ impl App {
             return;
         }
 
+        // Shell-session restore view (`/shell-sessions`): full-pane list —
+        // arrows move, Enter restores the highlighted tab, D asks to delete it
+        // (Enter confirms, Esc cancels the confirmation), Esc dismisses the
+        // view. Swallow everything else while it's up.
+        if self.current_tab().current_view == View::ShellSessions {
+            // Delete-confirmation sub-state takes priority: Enter confirms the
+            // clean delete, Esc cancels, anything else is ignored.
+            if self.current_tab().shell_sessions_pending_delete.is_some() {
+                match key.code {
+                    KeyCode::Enter => self.confirm_shell_session_delete(),
+                    KeyCode::Esc => {
+                        self.current_tab_mut().shell_sessions_pending_delete = None;
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            match key.code {
+                KeyCode::Up => self.shell_sessions_picker_up(),
+                KeyCode::Down => self.shell_sessions_picker_down(),
+                KeyCode::Enter => self.commit_shell_session_pick(),
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    let tab = self.current_tab_mut();
+                    if !tab.shell_sessions.is_empty() {
+                        tab.shell_sessions_pending_delete = Some(tab.shell_sessions_picker_selected);
+                    }
+                }
+                KeyCode::Esc => self.close_shell_sessions_view(),
+                _ => {}
+            }
+            return;
+        }
+
         if self.current_tab().paste_pending {
             tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
             return;
@@ -7771,6 +8049,26 @@ impl App {
         })
     }
 
+    /// Full-pane render state for the `/shell-sessions` restore view, or `None`
+    /// when the active tab isn't in that view.
+    pub fn shell_sessions_view_state(&self) -> Option<crate::ui::ShellSessionsViewState<'_>> {
+        let tab = self.current_tab();
+        if tab.current_view != View::ShellSessions {
+            return None;
+        }
+        // When a delete confirmation is pending, surface the target row's name
+        // so the view can render the confirm prompt in place of the hint.
+        let confirm_delete = tab
+            .shell_sessions_pending_delete
+            .and_then(|i| tab.shell_sessions.get(i))
+            .map(|e| e.name.as_str());
+        Some(crate::ui::ShellSessionsViewState {
+            sessions: &tab.shell_sessions,
+            selected: tab.shell_sessions_picker_selected,
+            confirm_delete,
+        })
+    }
+
     /// Handle Enter for the slash-command system. Centralizes all three
     /// intents in one place so the giant `handle_key` match has a single
     /// guard instead of an inline block plus a separate popup arm:
@@ -7910,6 +8208,7 @@ impl App {
             CommandKind::Agent => self.cmd_agent(cmd.rest),
             CommandKind::Model => self.cmd_model(cmd.rest),
             CommandKind::Move => self.cmd_move(cmd.rest),
+            CommandKind::ShellSessions => self.cmd_shell_sessions(),
         }
     }
 
@@ -9812,6 +10111,10 @@ impl App {
         let view = match tab.current_view {
             View::Agents => "sessions",
             View::Chat => "chat",
+            // The shell-session restore picker is a transient full-pane overlay
+            // entered from chat; to C++'s pane-chrome logic it is chat-like
+            // (not the dedicated agent-sessions management mode).
+            View::ShellSessions => "chat",
         };
         let evt = serde_json::json!({
             "type": "event",

@@ -37,6 +37,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
         ResumeInNewAgentTab,  // Direct to TerminalPage, no broadcast
+        RestoreShellSession,  // Direct to TerminalPage, no broadcast — durable-sessions `/shell-sessions` restore
         AgentChipTarget,      // Direct to TerminalPage, no broadcast — "draw the Agent chip on this pane (or hide override)"
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
         RestartAgentPane,     // Direct to TerminalPage, no broadcast — master detected helper death; re-warm a fresh helper for this tab
@@ -92,6 +93,10 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "resume_in_new_agent_tab")
             {
                 return SendEventRoute::ResumeInNewAgentTab;
+            }
+            if (method == "restore_shell_session")
+            {
+                return SendEventRoute::RestoreShellSession;
             }
             if (method == "set_agent_chip_target")
             {

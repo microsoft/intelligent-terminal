@@ -41,6 +41,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "ahash",
+          "version": "0.8.12"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "aho-corasick",
           "version": "1.1.4"
         }
@@ -644,6 +653,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "fallible-iterator",
+          "version": "0.3.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "fallible-streaming-iterator",
+          "version": "0.1.9"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "fancy-regex",
           "version": "0.11.0"
         }
@@ -906,7 +933,25 @@
         "type": "cargo",
         "cargo": {
           "name": "hashbrown",
+          "version": "0.14.5"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hashbrown",
           "version": "0.16.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "hashlink",
+          "version": "0.9.1"
         }
       }
     },
@@ -1060,6 +1105,15 @@
         "cargo": {
           "name": "libc",
           "version": "0.2.183"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "libsqlite3-sys",
+          "version": "0.28.0"
         }
       }
     },
@@ -1591,6 +1645,15 @@
         "cargo": {
           "name": "regex-syntax",
           "version": "0.8.10"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "rusqlite",
+          "version": "0.31.0"
         }
       }
     },
@@ -2491,6 +2554,15 @@
         "cargo": {
           "name": "winsafe",
           "version": "0.0.19"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "zerocopy",
+          "version": "0.8.54"
         }
       }
     },

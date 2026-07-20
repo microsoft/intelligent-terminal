@@ -2725,6 +2725,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _core.BufferHeight();
     }
 
+    bool TermControl::InAltBuffer() const
+    {
+        return _core.InAltBuffer();
+    }
+
     // Function Description:
     // - Determines how much space (in pixels) an app would need to reserve to
     //   create a control with the settings stored in the settings param. This

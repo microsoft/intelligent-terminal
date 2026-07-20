@@ -662,7 +662,298 @@ namespace winrt::TerminalApp::implementation
             _SaveWorkspaceIfNeeded();
         }
 
+        // Durable shell sessions: snapshot this tab (layout, scrollback, cwd)
+        // before its pane content is torn down, so the user can reopen it later
+        // from the agent-pane `/shell-sessions` picker.
+        _SaveShellSessionForTab(tab);
+
         tab.Close();
+    }
+
+    // Method Description:
+    // - Persist a tab as a named, durable shell session keyed by its title.
+    //   Must run while the tab's pane content is still alive (before
+    //   `tab.Close()`), so the terminal buffers can be written to disk.
+    // - Reuses the same `BuildStartupKind::Persist` serialization as the
+    //   window-restore path: it captures each terminal pane's current working
+    //   directory + session GUID and intentionally excludes agent panes (their
+    //   command line points at a now-dead wta-master pipe — restoring the agent
+    //   session is handled separately in a later step).
+    void TerminalPage::_SaveShellSessionForTab(const winrt::TerminalApp::Tab& tab)
+    {
+        // Opt-out via Settings > Startup > Durable session > "Restore shell
+        // sessions when terminal relaunches". When disabled, closing a tab does
+        // not snapshot its layout/scrollback, and nothing is written to disk.
+        if (!_settings || !_settings.GlobalSettings().DurableRestoreShellSessions())
+        {
+            return;
+        }
+
+        try
+        {
+            auto tabImpl = winrt::get_self<implementation::Tab>(tab)->get_strong();
+
+            auto tabActions = tabImpl->BuildStartupActions(BuildStartupKind::Persist);
+            if (tabActions.empty())
+            {
+                return;
+            }
+
+            // Don't save a tab the user never did anything in: a brand-new tab
+            // that was opened and closed with no command run (and no scrollback)
+            // has nothing worth restoring, and — since sessions are keyed by tab
+            // title — an empty "PowerShell" snapshot would overwrite a real,
+            // same-named session. See `_TabHasSaveableContent`.
+            if (!_TabHasSaveableContent(tabImpl))
+            {
+                return;
+            }
+
+            WindowLayout layout;
+            layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(tabActions)));
+
+            auto name = tab.Title();
+            if (name.empty())
+            {
+                name = L"Shell session";
+            }
+
+            // Persist each terminal pane's scrollback to disk and collect the
+            // GUIDs, so master can reference (and later TTL-clean) those files.
+            const auto bufferGuids = _PersistShellSessionBuffers(tabImpl);
+
+            winrt::hstring cwd;
+            if (const auto activeControl = tabImpl->GetActiveTerminalControl())
+            {
+                cwd = activeControl.WorkingDirectory();
+            }
+
+            // If the tab has an agent pane the user actually opened, record its
+            // WT session GUID (pane_session_id) so restore can resolve it to the
+            // ACP session id (via wta's agent-pane-sessions.jsonl) and resume
+            // that conversation, faithfully re-showing it.
+            //
+            // We deliberately capture ONLY a visible (open) agent pane, not a
+            // stashed/hidden one: every tab pre-warms a stashed agent pane with
+            // a fresh, empty ACP session (see `_InitializeTab`). Capturing that
+            // would resurrect an agent the user never engaged with — showing an
+            // empty pane on restore. Requiring `!IsHidden()` scopes capture to
+            // an agent the user had open, matching the saved display.
+            winrt::hstring agentPaneSessionId;
+            if (const auto agentPane = tabImpl->FindAgentPane(); agentPane && !agentPane->IsHidden())
+            {
+                if (const auto sid = agentPane->GetSessionId(); sid != winrt::guid{})
+                {
+                    agentPaneSessionId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(sid) };
+                }
+            }
+
+            // The durable session's stable identity (SQLite primary key) is the
+            // anchor terminal pane's WT session GUID — the first pane in walk
+            // order, i.e. bufferGuids[0]. Keying the store on this instead of the
+            // tab title lets two tabs share a name, and — because a restored tab
+            // reuses its pane GUIDs — makes a re-save update the SAME row rather
+            // than duplicate it. It also matches how master derives session_id
+            // when migrating legacy title-keyed rows (`buffer_guids[0]`). Fall
+            // back to the agent pane's session id for an agent-only tab (no
+            // terminal panes with a live session), then to a fresh GUID.
+            winrt::hstring sessionId;
+            if (!bufferGuids.empty())
+            {
+                sessionId = bufferGuids.front();
+            }
+            else if (!agentPaneSessionId.empty())
+            {
+                sessionId = agentPaneSessionId;
+            }
+            else
+            {
+                sessionId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(::Microsoft::Console::Utils::CreateGuid()) };
+            }
+
+            // wta-master is the SOLE owner of the durable shell-session store
+            // (SQLite). We do NOT persist into WT's state.json; instead we ship
+            // the whole snapshot as a `save_shell_session` event, which master's
+            // WT-event subscriber upserts. See the durable-sessions spec.
+            const auto layoutJson = WindowLayout::ToJson(layout);
+            const auto savedAt = std::chrono::duration_cast<std::chrono::seconds>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+
+            Json::Value evt;
+            evt["type"] = "event";
+            evt["method"] = "save_shell_session";
+            Json::Value params;
+            params["session_id"] = winrt::to_string(sessionId);
+            params["name"] = winrt::to_string(name);
+            params["cwd"] = winrt::to_string(cwd);
+            params["layout_json"] = winrt::to_string(layoutJson);
+            params["saved_at"] = static_cast<Json::Int64>(savedAt);
+            Json::Value guidsArr{ Json::arrayValue };
+            for (const auto& guid : bufferGuids)
+            {
+                guidsArr.append(winrt::to_string(guid));
+            }
+            params["buffer_guids"] = std::move(guidsArr);
+            // When the tab had an agent pane, forward its WT session GUID so
+            // master can persist it and restore can resume that conversation.
+            if (!agentPaneSessionId.empty())
+            {
+                params["agent_pane_session_id"] = winrt::to_string(agentPaneSessionId);
+            }
+            evt["params"] = std::move(params);
+
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            const auto payload = winrt::to_hstring(Json::writeString(wb, evt));
+            ProtocolVtSequenceReceived.raise(*this, payload);
+        }
+        CATCH_LOG();
+    }
+
+    // Method Description:
+    // - True when a tab has content worth persisting as a durable shell session.
+    //   A brand-new tab that was opened and closed without doing anything has
+    //   none of these and is skipped, so the session list isn't polluted with
+    //   empty snapshots. A tab is saveable when any of its terminal panes:
+    //     * is showing the alternate screen buffer — a full-screen TUI (copilot,
+    //       vim, less, htop, …) is running, the clearest "in use" signal and the
+    //       one that catches a tab where the user launched an interactive CLI
+    //       (while alt-screen is active neither of the next two fire), or
+    //     * ran at least one command / has a command typed at the prompt
+    //       (shell-integration command history + current commandline — works for
+    //       PowerShell/pwsh with OSC 133 marks), or
+    //     * accumulated scrollback beyond the viewport (`BufferHeight >
+    //       ViewHeight`) — the fallback for shells with no shell integration,
+    //       whose command history is always empty.
+    //   An agent pane the user actually opened (with a live session) also counts,
+    //   so a tab used only for an agent conversation still saves.
+    bool TerminalPage::_TabHasSaveableContent(winrt::com_ptr<implementation::Tab> tabImpl)
+    {
+        const auto rootPane = tabImpl->GetRootPane();
+        if (!rootPane)
+        {
+            return false;
+        }
+
+        bool saveable = false;
+        rootPane->WalkTree([&](const std::shared_ptr<Pane>& p) {
+            if (saveable || !p->GetContent() || p->IsAgentPane())
+            {
+                return;
+            }
+            const auto control = p->GetTerminalControl();
+            if (!control)
+            {
+                return;
+            }
+            // A full-screen TUI (copilot, vim, less, htop, …) is running on the
+            // alternate screen buffer: while it's active the main buffer stops
+            // growing and command marks aren't recorded, so neither the history
+            // nor the scrollback check below fires — but the tab is clearly in
+            // use and worth saving. This is the primary signal for a tab where
+            // the user launched an interactive CLI (e.g. typed `copilot`).
+            if (control.InAltBuffer())
+            {
+                saveable = true;
+                return;
+            }
+            // Shell integration recorded at least one executed command, or the
+            // user has a command typed/running at the current prompt.
+            if (const auto history = control.CommandHistory())
+            {
+                if (history.History().Size() > 0 || !history.CurrentCommandline().empty())
+                {
+                    saveable = true;
+                    return;
+                }
+            }
+            // Fallback: any scrollback beyond the viewport means real output
+            // landed even without shell integration (whose history stays empty).
+            if (control.BufferHeight() > control.ViewHeight())
+            {
+                saveable = true;
+            }
+        });
+
+        // An open agent pane with a session is also meaningful work.
+        if (!saveable)
+        {
+            if (const auto agentPane = tabImpl->FindAgentPane(); agentPane && !agentPane->IsHidden())
+            {
+                if (agentPane->GetSessionId() != winrt::guid{})
+                {
+                    saveable = true;
+                }
+            }
+        }
+
+        return saveable;
+    }
+
+    // Method Description:
+    // - Persist each terminal pane's scrollback to a durable
+    //   `{guid}.txt` file under `<StateDir>\shell-session-buffers\` — the
+    //   IntelligentTerminal LocalState dir that wta-master can also reach (so it
+    //   can TTL-clean expired files). The dedicated dir keeps these clear of the
+    //   window-close cleanup in `WindowEmperor::_finalizeSessionPersistence`,
+    //   which only sweeps `buffer_*` / `elevated_*` next to `state.json`.
+    // Return Value:
+    // - The session GUIDs whose scrollback was written, formatted identically to
+    //   the restore path (`_MakePane`), so master's `buffer_guids` reference and
+    //   the on-disk filenames agree.
+    std::vector<winrt::hstring> TerminalPage::_PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl)
+    {
+        std::vector<winrt::hstring> guids;
+
+        const auto rootPane = tabImpl->GetRootPane();
+        if (!rootPane)
+        {
+            return guids;
+        }
+
+        const auto stateDir = ::IntelligentTerminal::StateDir();
+        if (stateDir.empty())
+        {
+            return guids;
+        }
+        const auto buffersDir = stateDir / L"shell-session-buffers";
+        std::error_code ec;
+        std::filesystem::create_directories(buffersDir, ec);
+
+        rootPane->WalkTree([&](const std::shared_ptr<Pane>& p) {
+            // Leaves only (GetContent() is null for splits); agent panes are
+            // excluded from the saved layout, so skip their buffers too.
+            if (!p->GetContent() || p->IsAgentPane())
+            {
+                return;
+            }
+            const auto control = p->GetTerminalControl();
+            if (!control)
+            {
+                return;
+            }
+            const auto connection = control.Connection();
+            if (!connection)
+            {
+                return;
+            }
+            const auto sessionId = connection.SessionId();
+            if (sessionId == winrt::guid{})
+            {
+                return;
+            }
+
+            const auto guidStr = fmt::format(FMT_COMPILE(L"{}"), sessionId);
+            const auto path = buffersDir / (guidStr + L".txt");
+            if (wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) })
+            {
+                control.PersistTo(reinterpret_cast<int64_t>(file.get()));
+                guids.emplace_back(guidStr);
+            }
+        });
+
+        return guids;
     }
 
     // Removes the tab (both TerminalControl and XAML).

@@ -130,6 +130,8 @@ public:
 
     std::wstring CurrentCommand() const;
 
+    bool IsInAltBuffer() const noexcept;
+
     void SerializeMainBuffer(HANDLE handle) const;
 
 #pragma region ITerminalApi

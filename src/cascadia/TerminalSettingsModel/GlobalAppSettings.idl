@@ -82,6 +82,13 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, TrimPaste);
         INHERITABLE_SETTING(LaunchPosition, InitialPosition);
         INHERITABLE_SETTING(Boolean, CenterOnLaunch);
+
+        // Durable sessions: control what is saved on tab close and restored
+        // when the terminal relaunches. See Settings > Startup > Durable session.
+        INHERITABLE_SETTING(Boolean, DurableRestoreShellSessions);
+        INHERITABLE_SETTING(Boolean, DurableRestoreAgentSession);
+        INHERITABLE_SETTING(Boolean, DurableKeepRunningCommands);
+
         INHERITABLE_SETTING(Microsoft.Terminal.Control.DefaultInputScope, DefaultInputScope);
         INHERITABLE_SETTING(FirstWindowPreference, FirstWindowPreference);
         INHERITABLE_SETTING(LaunchMode, LaunchMode);

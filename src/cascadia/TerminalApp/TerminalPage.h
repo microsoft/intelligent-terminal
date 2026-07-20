@@ -4,7 +4,7 @@
 #pragma once
 
 #include <ThrottledFunc.h>
-
+#include <unordered_set>
 #include "TerminalPage.g.h"
 #include "Tab.h"
 #include "AppKeyBindings.h"
@@ -256,6 +256,7 @@ namespace winrt::TerminalApp::implementation
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        void OnRestoreShellSessionRequested(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentPaneRestartRequested(hstring eventJson);
@@ -495,6 +496,14 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+
+        // Session GUIDs currently being restored as part of a durable shell
+        // session. The terminal buffer-restore path (in `_MakePane`) consults
+        // this set to read the scrollback from the durable
+        // `<StateDir>\shell-session-buffers\{guid}.txt` file instead of the
+        // transient `buffer_` file (which the window-close cleanup sweeps). Each
+        // GUID is consumed (erased) exactly once, when its pane is created.
+        std::unordered_set<winrt::guid> _pendingShellSessionBufferIds;
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
         // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
@@ -671,6 +680,16 @@ namespace winrt::TerminalApp::implementation
         void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
         void _SaveWorkspaceIfNeeded();
+
+        // Durable shell sessions (step 1): snapshot a tab on close so it can be
+        // restored on demand from the agent-pane `/shell-sessions` picker. The
+        // snapshot is shipped to wta-master (the SQLite store owner) as a
+        // `save_shell_session` event; WT never persists it into state.json.
+        void _SaveShellSessionForTab(const winrt::TerminalApp::Tab& tab);
+        bool _TabHasSaveableContent(winrt::com_ptr<implementation::Tab> tabImpl);
+        std::vector<winrt::hstring> _PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl);
+        safe_void_coroutine _RestoreShellSessionCoro(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions, std::string agentSessionId, std::string agentCwd);
+        void _PersistWorkspaceBuffers();
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);

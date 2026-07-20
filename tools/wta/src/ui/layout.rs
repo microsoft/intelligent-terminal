@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agent_popup, agents_view, auth, chat, command_popup, debug_panel, input, model_popup,
-    permission, recommendations, setup,
+    permission, recommendations, setup, shell_sessions_view,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -75,6 +75,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             origin_filter,
             show_loading,
         );
+        return;
+    }
+
+    // Shell-session restore view (`/shell-sessions`) also takes over the full
+    // pane area; chat / input / disclaimer are not drawn. Same early-return
+    // shape as the agent-session view above.
+    if let Some(shell_sessions_state) = app.shell_sessions_view_state() {
+        shell_sessions_view::render(frame, shell_sessions_state, area);
         return;
     }
 

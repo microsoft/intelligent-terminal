@@ -178,6 +178,23 @@ pub enum MasterExtRequest {
         /// returning the cached registry snapshot.
         rescan: bool,
     },
+    /// Fetch the durable shell-session list for the `/shell-sessions` restore
+    /// picker. Served from master's SQLite store; the response carries each
+    /// row's `layout_json` so committing a pick needs no second round-trip.
+    ShellSessionsList {
+        request_id: u64,
+    },
+    /// Clean-delete one durable shell session (DB row + its scrollback files),
+    /// by session_id. Fire-and-forget: the helper removes the row from its local
+    /// list optimistically, master does the authoritative delete.
+    ShellSessionsDelete {
+        session_id: String,
+    },
+    /// Mark a durable shell session as just used (on restore) so master bumps
+    /// its `last_used_at` and the TTL doesn't reclaim it. Fire-and-forget.
+    ShellSessionsTouch {
+        session_id: String,
+    },
     SessionResumeDispatched {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
@@ -2923,6 +2940,82 @@ fn dispatch_master_ext_request(
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }
+                }
+            }
+            MasterExtRequest::ShellSessionsList { request_id } => {
+                // Same 8s guardrail as `SessionsList` against the ACP-0.10
+                // cancellation-safety bug (see that arm). The picker degrades
+                // to an empty list on timeout / error.
+                const SHELL_SESSIONS_LIST_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(8);
+                let wire = crate::session_registry::build_shell_sessions_list_request();
+                match tokio::time::timeout(SHELL_SESSIONS_LIST_TIMEOUT, conn.ext_method(wire)).await
+                {
+                    Ok(Ok(resp)) => {
+                        let sessions =
+                            crate::session_registry::parse_shell_sessions_list_response(&resp.0)
+                                .map(|r| r.sessions)
+                                .unwrap_or_default();
+                        let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
+                            request_id,
+                            sessions,
+                        });
+                    }
+                    Ok(Err(err)) => {
+                        tracing::warn!(
+                            target: "shell_sessions",
+                            request_id,
+                            error = ?err,
+                            "shell_sessions/list ext-request failed"
+                        );
+                        let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
+                            request_id,
+                            sessions: Vec::new(),
+                        });
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            target: "shell_sessions",
+                            request_id,
+                            "shell_sessions/list timed out"
+                        );
+                        let _ = event_tx.send(AppEvent::ShellSessionsLoaded {
+                            request_id,
+                            sessions: Vec::new(),
+                        });
+                    }
+                }
+            }
+            MasterExtRequest::ShellSessionsDelete { session_id } => {
+                // Fire-and-forget clean delete: master removes the DB row and
+                // unlinks the scrollback files. The helper already removed the
+                // row from its local list optimistically, so we only log.
+                let wire = crate::session_registry::build_shell_sessions_delete_request(&session_id);
+                match conn.ext_method(wire).await {
+                    Ok(_) => tracing::info!(
+                        target: "shell_sessions",
+                        %session_id,
+                        "shell_sessions/delete acknowledged by master"
+                    ),
+                    Err(err) => tracing::warn!(
+                        target: "shell_sessions",
+                        %session_id,
+                        error = ?err,
+                        "shell_sessions/delete ext-request failed"
+                    ),
+                }
+            }
+            MasterExtRequest::ShellSessionsTouch { session_id } => {
+                // Fire-and-forget: master bumps last_used_at so the TTL keeps a
+                // session the user just restored.
+                let wire = crate::session_registry::build_shell_sessions_touch_request(&session_id);
+                if let Err(err) = conn.ext_method(wire).await {
+                    tracing::warn!(
+                        target: "shell_sessions",
+                        %session_id,
+                        error = ?err,
+                        "shell_sessions/touch ext-request failed"
+                    );
                 }
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {

@@ -61,3 +61,8 @@ sys-locale = "0.3"
 # (issue #287). Already in the lockfile as a transitive dep of clap, so
 # promoting it to a direct dep does not change the resolved graph.
 strsim = "0.11"
+# Embedded SQLite for the durable shell-session store. Owned exclusively by
+# wta-master (single writer/reader — no cross-process/cross-language locking),
+# so C++ and helpers never link it; they reach the DB via WT events / ACP ext
+# methods. `bundled` compiles sqlite3 from source (no system dependency).
+rusqlite = { version = "0.31", features = ["bundled"] }
