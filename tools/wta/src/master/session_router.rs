@@ -130,6 +130,7 @@ pub(super) enum NotificationRoute {
         notification: acp::schema::v1::SessionNotification,
     },
     Buffered,
+    DroppedOrphan,
     DroppedUnknown,
     DroppedOverflow,
 }
@@ -390,7 +391,7 @@ impl SessionRouter {
             };
         }
         if state.orphans.contains(&key) {
-            return NotificationRoute::DroppedUnknown;
+            return NotificationRoute::DroppedOrphan;
         }
 
         let Some(pending) = state.pending_new.get_mut(&agent) else {
@@ -1016,8 +1017,15 @@ mod tests {
             conductor
                 .route_notification(agent, notification("orphan"))
                 .await,
-            NotificationRoute::DroppedUnknown
+            NotificationRoute::DroppedOrphan
         ));
-        assert_eq!(conductor.finish_new_failure(&pending).await, 0);
+
+        assert!(matches!(
+            conductor
+                .route_notification(agent, notification("unknown"))
+                .await,
+            NotificationRoute::Buffered
+        ));
+        assert_eq!(conductor.finish_new_failure(&pending).await, 1);
     }
 }

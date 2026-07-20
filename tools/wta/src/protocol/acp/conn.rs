@@ -435,6 +435,9 @@ where
 ///
 /// This is the component equivalent of [`spawn_client`]. It is used when the
 /// immediate peer is a canonical ACP conductor rather than a byte transport.
+///
+/// This function uses [`tokio::task::spawn_local`], so callers must run it
+/// within a [`tokio::task::LocalSet`].
 pub fn spawn_client_component<H, Run, C>(
     builder: acp::Builder<acp::Client, H, Run>,
     component: C,

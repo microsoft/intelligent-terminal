@@ -487,35 +487,44 @@ impl MasterClient {
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
                         let removed = cleanup_closed_binding(&self.state, &token).await;
-                                tracing::warn!(
-                                    target: "master",
-                                    session_id = ?sid,
-                                    kind = %kind,
+                        tracing::warn!(
+                            target: "master",
+                            session_id = ?sid,
+                            kind = %kind,
                             helper_id = ?route.helper_id,
                             removed,
                             "helper notification channel closed — dropped update; exact binding cleanup attempted"
-                                );
-                            }
+                        );
+                    }
                 }
             }
             NotificationRoute::Buffered => {
                 tracing::debug!(
-                                    target: "master",
+                    target: "master",
                     agent_instance = ?self.agent_instance,
-                                    session_id = ?sid,
-                                    kind = %kind,
+                    session_id = ?sid,
+                    kind = %kind,
                     "buffered notification received before session/new response"
-                                );
-                            }
+                );
+            }
             NotificationRoute::DroppedOverflow => {
                 tracing::warn!(
-                                    target: "master",
+                    target: "master",
                     agent_instance = ?self.agent_instance,
-                                    session_id = ?sid,
-                                    kind = %kind,
+                    session_id = ?sid,
+                    kind = %kind,
                     "pending session/new notification buffer full — dropping update"
-                                );
-                            }
+                );
+            }
+            NotificationRoute::DroppedOrphan => {
+                tracing::debug!(
+                    target: "master",
+                    agent_instance = ?self.agent_instance,
+                    session_id = ?sid,
+                    kind = %kind,
+                    "agent CLI emitted session_notification for known orphan — no helper to route to"
+                );
+            }
             NotificationRoute::DroppedUnknown => {
                 tracing::warn!(
                     target: "master",
@@ -993,27 +1002,45 @@ impl HelperHandler {
             .duration_since(std::time::UNIX_EPOCH)
             .ok()
             .map(|d| d.as_millis() as u64);
-        if !binding.channel_closed
-            && self
-                .state
+        let publication = if binding.channel_closed {
+            PublishResult::Stale
+        } else {
+            self.state
                 .session_router
                 .publish(&binding.token, info.clone())
                 .await
-                == PublishResult::Published
-        {
-        self.state.registry.upsert(info.clone()).await;
-            crate::master::broadcast_ext_to_helpers(
-                &self.state,
-                crate::session_registry::build_session_added_notification(&info),
-            )
-            .await;
-            crate::master::broadcast_ext_to_helpers(
-                &self.state,
-                crate::session_registry::build_sessions_changed_notification(),
-            )
-            .await;
+        };
+        match publication {
+            PublishResult::Published => {
+                self.state.registry.upsert(info.clone()).await;
+                crate::master::broadcast_ext_to_helpers(
+                    &self.state,
+                    crate::session_registry::build_session_added_notification(&info),
+                )
+                .await;
+                crate::master::broadcast_ext_to_helpers(
+                    &self.state,
+                    crate::session_registry::build_sessions_changed_notification(),
+                )
+                .await;
+            }
+            PublishResult::Collision => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    session_id = ?resp.session_id,
+                    "new_session route is live but omitted from the raw-SessionId registry due to a collision"
+                );
+            }
+            PublishResult::Stale => {}
         }
         drop(_lifecycle);
+        if publication == PublishResult::Stale {
+            return Err(acp::Error::internal_error().data(serde_json::json!({
+                "message": "session creation completed after its binding became stale",
+                "session_id": resp.session_id.0.as_ref(),
+            })));
+        }
         // Stamp the row as a Live agent-pane session. Without this, the
         // row lands in master's registry with status=cli_source=origin=None,
         // and helper-side session management routing treats it as Historical (the default
