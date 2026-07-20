@@ -748,6 +748,29 @@ namespace winrt::TerminalApp::implementation
                 }
             }
 
+            // The durable session's stable identity (SQLite primary key) is the
+            // anchor terminal pane's WT session GUID — the first pane in walk
+            // order, i.e. bufferGuids[0]. Keying the store on this instead of the
+            // tab title lets two tabs share a name, and — because a restored tab
+            // reuses its pane GUIDs — makes a re-save update the SAME row rather
+            // than duplicate it. It also matches how master derives session_id
+            // when migrating legacy title-keyed rows (`buffer_guids[0]`). Fall
+            // back to the agent pane's session id for an agent-only tab (no
+            // terminal panes with a live session), then to a fresh GUID.
+            winrt::hstring sessionId;
+            if (!bufferGuids.empty())
+            {
+                sessionId = bufferGuids.front();
+            }
+            else if (!agentPaneSessionId.empty())
+            {
+                sessionId = agentPaneSessionId;
+            }
+            else
+            {
+                sessionId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(::Microsoft::Console::Utils::CreateGuid()) };
+            }
+
             // wta-master is the SOLE owner of the durable shell-session store
             // (SQLite). We do NOT persist into WT's state.json; instead we ship
             // the whole snapshot as a `save_shell_session` event, which master's
@@ -761,6 +784,7 @@ namespace winrt::TerminalApp::implementation
             evt["type"] = "event";
             evt["method"] = "save_shell_session";
             Json::Value params;
+            params["session_id"] = winrt::to_string(sessionId);
             params["name"] = winrt::to_string(name);
             params["cwd"] = winrt::to_string(cwd);
             params["layout_json"] = winrt::to_string(layoutJson);

@@ -339,11 +339,17 @@ pub struct ShellSessionsListParams {}
 /// `restore_shell_session` event — no second master round-trip.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ShellSessionInfo {
+    /// Stable per-session key (anchor pane GUID). Used to delete/touch a
+    /// specific row — the title is no longer unique.
+    #[serde(default)]
+    pub session_id: String,
     pub name: String,
     #[serde(default)]
     pub cwd: String,
+    /// Unix seconds of the last save (content change). The list is ordered
+    /// newest-first by this, and the picker shows it as the "last update" time.
     #[serde(default)]
-    pub saved_at: i64,
+    pub updated_at: i64,
     /// Opaque WT `WindowLayout` JSON, replayed verbatim by the C++ side.
     #[serde(default)]
     pub layout_json: String,
@@ -395,16 +401,16 @@ pub fn parse_shell_sessions_list_response(
 /// scrollback files). Served by master; see `handle_shell_sessions_delete`.
 pub const INTELLTERM_METHOD_SHELL_SESSIONS_DELETE: &str = "_intellterm.wta/shell_sessions/delete";
 
-/// Request params for deleting a durable shell session by name (its key).
+/// Request params for deleting a durable shell session by its `session_id`.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ShellSessionsDeleteParams {
-    pub name: String,
+    pub session_id: String,
 }
 
 /// Build an `ExtRequest` for `intellterm.wta/shell_sessions/delete`.
-pub fn build_shell_sessions_delete_request(name: &str) -> acp::schema::v1::ExtRequest {
+pub fn build_shell_sessions_delete_request(session_id: &str) -> acp::schema::v1::ExtRequest {
     let json = serde_json::to_string(&ShellSessionsDeleteParams {
-        name: name.to_string(),
+        session_id: session_id.to_string(),
     })
     .expect("ShellSessionsDeleteParams is trivially serializable");
     let raw = serde_json::value::RawValue::from_string(json)
@@ -416,6 +422,36 @@ pub fn parse_shell_sessions_delete_params(
     raw: &serde_json::value::RawValue,
 ) -> Result<ShellSessionsDeleteParams, serde_json::Error> {
     serde_json::from_str::<ShellSessionsDeleteParams>(raw.get())
+}
+
+// ─── intellterm.wta/shell_sessions/touch ─────────────────────────────────────
+
+/// ExtRequest method for marking a durable shell session as just used (on
+/// restore), so its `last_used_at` is bumped and the TTL doesn't reclaim a
+/// session the user keeps reopening. Served by master.
+pub const INTELLTERM_METHOD_SHELL_SESSIONS_TOUCH: &str = "_intellterm.wta/shell_sessions/touch";
+
+/// Request params for touching a durable shell session by its `session_id`.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct ShellSessionsTouchParams {
+    pub session_id: String,
+}
+
+/// Build an `ExtRequest` for `intellterm.wta/shell_sessions/touch`.
+pub fn build_shell_sessions_touch_request(session_id: &str) -> acp::schema::v1::ExtRequest {
+    let json = serde_json::to_string(&ShellSessionsTouchParams {
+        session_id: session_id.to_string(),
+    })
+    .expect("ShellSessionsTouchParams is trivially serializable");
+    let raw = serde_json::value::RawValue::from_string(json)
+        .expect("serde_json::to_string always produces valid JSON");
+    acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SHELL_SESSIONS_TOUCH, Arc::from(raw))
+}
+
+pub fn parse_shell_sessions_touch_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<ShellSessionsTouchParams, serde_json::Error> {
+    serde_json::from_str::<ShellSessionsTouchParams>(raw.get())
 }
 
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
@@ -523,6 +559,9 @@ pub enum WtaExtRequest {
     /// `_intellterm.wta/shell_sessions/delete` — clean-delete one durable shell
     /// session (row + its scrollback files).
     ShellSessionsDelete(ShellSessionsDeleteParams),
+    /// `_intellterm.wta/shell_sessions/touch` — bump a session's `last_used_at`
+    /// on restore so the TTL doesn't reclaim a session the user keeps reopening.
+    ShellSessionsTouch(ShellSessionsTouchParams),
     /// `_intellterm.wta/session_hook` — a real per-session hook event.
     SessionHook(crate::agent_sessions::SessionEvent),
     /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
@@ -573,6 +612,8 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(ShellSessionsList, parse_shell_sessions_list_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_DELETE) {
         decode!(ShellSessionsDelete, parse_shell_sessions_delete_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_TOUCH) {
+        decode!(ShellSessionsTouch, parse_shell_sessions_touch_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
         decode!(SessionHook, parse_session_hook_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {

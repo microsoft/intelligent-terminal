@@ -3093,13 +3093,13 @@ impl App {
     /// session (DB row + its scrollback files), and optimistically remove the
     /// row from the local list. When the list empties, fall back to chat.
     fn confirm_shell_session_delete(&mut self) {
-        let name = {
+        let session_id = {
             let tab = self.current_tab();
             let idx = match tab.shell_sessions_pending_delete {
                 Some(i) => i,
                 None => return,
             };
-            tab.shell_sessions.get(idx).map(|e| e.name.clone())
+            tab.shell_sessions.get(idx).map(|e| e.session_id.clone())
         };
 
         // Clear the confirmation and optimistically drop the row locally; the
@@ -3119,9 +3119,9 @@ impl App {
             }
         }
 
-        if let Some(name) = name {
+        if let Some(session_id) = session_id.filter(|s| !s.is_empty()) {
             let _ = self.master_request_tx.send(
-                crate::protocol::acp::client::MasterExtRequest::ShellSessionsDelete { name },
+                crate::protocol::acp::client::MasterExtRequest::ShellSessionsDelete { session_id },
             );
         }
 
@@ -3212,6 +3212,17 @@ impl App {
         });
         send_wt_protocol_event(evt.to_string());
         tracing::info!(target: "shell_sessions", %name, "restore_shell_session event published");
+
+        // Mark the session as just used so master bumps its last_used_at and the
+        // TTL won't reclaim a session the user keeps reopening.
+        if !picked.session_id.is_empty() {
+            let _ = self.master_request_tx.send(
+                crate::protocol::acp::client::MasterExtRequest::ShellSessionsTouch {
+                    session_id: picked.session_id.clone(),
+                },
+            );
+        }
+
         let tab = self.current_tab_mut();
         tab.messages.push(ChatMessage::System(
             // TODO(localize): extract to `system.shell_session_restoring`.

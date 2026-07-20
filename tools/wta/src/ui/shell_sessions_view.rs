@@ -74,7 +74,7 @@ pub fn render(frame: &mut Frame, state: ShellSessionsViewState<'_>, area: Rect) 
     // a cyan `>` caret + cyan name, exactly like the agent-session view — not a
     // filled highlight bar. A muted "last update" age is right-aligned at the
     // row's trailing edge, matching agents_view. Rows are already newest-first
-    // (master's `list` orders by `saved_at DESC`).
+    // (master's `list` orders by `updated_at DESC`).
     let row_width = chunks[2].width as usize;
     let items: Vec<ListItem> = state
         .sessions
@@ -99,9 +99,9 @@ pub fn render(frame: &mut Frame, state: ShellSessionsViewState<'_>, area: Rect) 
                 theme::INPUT_TEXT
             };
 
-            // "last update" age from the saved_at unix timestamp.
-            let age = if entry.saved_at > 0 {
-                relative_age(UNIX_EPOCH + Duration::from_secs(entry.saved_at as u64))
+            // "last update" age from the updated_at unix timestamp.
+            let age = if entry.updated_at > 0 {
+                relative_age(UNIX_EPOCH + Duration::from_secs(entry.updated_at as u64))
             } else {
                 String::new()
             };

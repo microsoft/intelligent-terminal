@@ -12,9 +12,11 @@
 // needed.
 //
 // What lives here vs. on disk:
-//   * SQLite row  = { name (PK), cwd, saved_at, layout_json, buffer_guids }.
-//     The authoritative index + WT layout JSON + the list of scrollback file
-//     GUIDs that belong to this session.
+//   * SQLite row  = { session_id (PK = anchor pane GUID), name, cwd,
+//     updated_at, last_used_at, layout_json, buffer_guids }. Keyed by
+//     session_id (NOT the title), so different tabs may share a name.
+//     `updated_at` (last save) drives list order; `last_used_at` (last save OR
+//     restore) drives the TTL.
 //   * Scrollback  = files on disk (`<it_root>\shell-session-buffers\{guid}.txt`),
 //     written/read by WT's terminal core via a file handle. Too large to ship
 //     base64 through JSON-RPC, so they stay as files; the row only references
@@ -28,12 +30,21 @@ use rusqlite::Connection;
 /// One durable shell session as stored in the DB.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellSessionRow {
-    /// The closed tab's title — the session key (upsert overwrites same-name).
+    /// Stable per-tab identity and the row's primary key — the anchor terminal
+    /// pane's WT session GUID (a restored tab reuses it, so re-saving updates
+    /// the same row instead of duplicating). NOT the title: two different tabs
+    /// may share a `name`, so the display name can't be the key.
+    pub session_id: String,
+    /// The tab's title — display label only (no longer unique across rows).
     pub name: String,
     /// Working directory captured at save time (display only; may be empty).
     pub cwd: String,
-    /// Unix seconds when saved. Used to sort newest-first and for TTL.
-    pub saved_at: i64,
+    /// Unix seconds of the last **save** (content change). Drives the
+    /// newest-first list ordering.
+    pub updated_at: i64,
+    /// Unix seconds of the last **use** — a save or a restore. Drives the TTL
+    /// (a session you keep restoring stays alive even if never re-saved).
+    pub last_used_at: i64,
     /// Opaque WT `WindowLayout` JSON. C++ replays this verbatim on restore.
     pub layout_json: String,
     /// Pane session GUIDs whose scrollback lives in
@@ -73,14 +84,15 @@ pub fn open(db_path: &std::path::Path) -> Result<Connection> {
 fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS sessions (
-             name         TEXT PRIMARY KEY,
+             session_id   TEXT PRIMARY KEY,
+             name         TEXT NOT NULL DEFAULT '',
              cwd          TEXT NOT NULL DEFAULT '',
-             saved_at     INTEGER NOT NULL DEFAULT 0,
+             updated_at   INTEGER NOT NULL DEFAULT 0,
+             last_used_at INTEGER NOT NULL DEFAULT 0,
              layout_json  TEXT NOT NULL,
              buffer_guids TEXT NOT NULL DEFAULT '[]',
              agent_pane_session_id TEXT
          );
-         CREATE INDEX IF NOT EXISTS idx_sessions_saved_at ON sessions(saved_at);
          CREATE TABLE IF NOT EXISTS meta (
              key   TEXT PRIMARY KEY,
              value INTEGER NOT NULL
@@ -91,6 +103,16 @@ fn init_schema(conn: &Connection) -> Result<()> {
     // added when durable agent-session resume landed). Idempotent: skipped once
     // the column is present.
     ensure_agent_pane_session_id_column(conn)?;
+    // Migrate DBs whose `sessions` table still keys on `name` (the pre-refactor
+    // shape) to the `session_id` primary key, so different tabs can share a name.
+    // Must run before the `updated_at` index below: a legacy table has no such
+    // column until the migration rebuilds it.
+    migrate_name_pk_to_session_id(conn)?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at)",
+        [],
+    )
+    .context("creating shell-session updated_at index")?;
     Ok(())
 }
 
@@ -108,7 +130,49 @@ fn ensure_agent_pane_session_id_column(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Insert or replace the row for `row.name`.
+/// Rebuild a legacy `sessions` table (title as PRIMARY KEY, single `saved_at`)
+/// into the current shape (`session_id` PRIMARY KEY, `name` a plain column,
+/// split `updated_at` / `last_used_at`), preserving rows. The old title becomes
+/// `name`; the new `session_id` is derived from the row's first buffer GUID (the
+/// anchor pane, matching how C++ now keys sessions), falling back to the title
+/// when a legacy row had no buffers; the old `saved_at` seeds both timestamps.
+/// No-op once the `session_id` column is present.
+fn migrate_name_pk_to_session_id(conn: &Connection) -> Result<()> {
+    let has_session_id = conn
+        .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'session_id'")
+        .and_then(|mut stmt| stmt.exists([]))
+        .context("checking for session_id column")?;
+    if has_session_id {
+        return Ok(());
+    }
+    conn.execute_batch(
+        "BEGIN;
+         ALTER TABLE sessions RENAME TO sessions_legacy;
+         CREATE TABLE sessions (
+             session_id   TEXT PRIMARY KEY,
+             name         TEXT NOT NULL DEFAULT '',
+             cwd          TEXT NOT NULL DEFAULT '',
+             updated_at   INTEGER NOT NULL DEFAULT 0,
+             last_used_at INTEGER NOT NULL DEFAULT 0,
+             layout_json  TEXT NOT NULL,
+             buffer_guids TEXT NOT NULL DEFAULT '[]',
+             agent_pane_session_id TEXT
+         );
+         INSERT OR IGNORE INTO sessions
+             (session_id, name, cwd, updated_at, last_used_at, layout_json, buffer_guids, agent_pane_session_id)
+         SELECT
+             COALESCE(NULLIF(json_extract(buffer_guids, '$[0]'), ''), name),
+             name, cwd, saved_at, saved_at, layout_json, buffer_guids, agent_pane_session_id
+         FROM sessions_legacy;
+         DROP TABLE sessions_legacy;
+         CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);
+         COMMIT;",
+    )
+    .context("migrating sessions table to session_id primary key")?;
+    Ok(())
+}
+
+/// Insert or replace the row for `row.session_id`.
 ///
 /// Returns the buffer GUIDs orphaned by the overwrite — the previous row's
 /// GUIDs that the **new** row no longer references — so the caller can unlink
@@ -118,8 +182,11 @@ fn ensure_agent_pane_session_id_column(conn: &Connection) -> Result<()> {
 /// `{guid}.txt` files C++ just refreshed; returning those as "orphaned" would
 /// delete the freshly-written buffers and leave the row pointing at nothing.
 /// Returns an empty vec when there was no prior row (or nothing was dropped).
+///
+/// Keyed by `session_id` (the anchor pane GUID), NOT the title — so two tabs
+/// that share a `name` are stored as distinct rows.
 pub fn upsert(conn: &Connection, row: &ShellSessionRow) -> Result<Vec<String>> {
-    let previous = get_buffer_guids(conn, &row.name)?;
+    let previous = get_buffer_guids(conn, &row.session_id)?;
     let kept: std::collections::HashSet<&str> =
         row.buffer_guids.iter().map(String::as_str).collect();
     let orphaned: Vec<String> = previous
@@ -130,34 +197,51 @@ pub fn upsert(conn: &Connection, row: &ShellSessionRow) -> Result<Vec<String>> {
     let guids_json = serde_json::to_string(&row.buffer_guids)
         .context("serializing buffer_guids")?;
     conn.execute(
-        "INSERT INTO sessions (name, cwd, saved_at, layout_json, buffer_guids, agent_pane_session_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(name) DO UPDATE SET
+        "INSERT INTO sessions
+             (session_id, name, cwd, updated_at, last_used_at, layout_json, buffer_guids, agent_pane_session_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(session_id) DO UPDATE SET
+             name         = excluded.name,
              cwd          = excluded.cwd,
-             saved_at     = excluded.saved_at,
+             updated_at   = excluded.updated_at,
+             last_used_at = excluded.last_used_at,
              layout_json  = excluded.layout_json,
              buffer_guids = excluded.buffer_guids,
              agent_pane_session_id = excluded.agent_pane_session_id",
         rusqlite::params![
+            row.session_id,
             row.name,
             row.cwd,
-            row.saved_at,
+            row.updated_at,
+            row.last_used_at,
             row.layout_json,
             guids_json,
             row.agent_pane_session_id
         ],
     )
-    .with_context(|| format!("upserting shell session {}", row.name))?;
+    .with_context(|| format!("upserting shell session {}", row.session_id))?;
 
     Ok(orphaned)
 }
 
-/// All saved sessions, newest first.
+/// Mark a session as used **now** without changing its content: bumps
+/// `last_used_at` only, so a restored-but-unmodified session survives the TTL.
+/// No-op when `session_id` is unknown.
+pub fn touch(conn: &Connection, session_id: &str, now: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET last_used_at = ?2 WHERE session_id = ?1",
+        rusqlite::params![session_id, now],
+    )
+    .with_context(|| format!("touching shell session {session_id}"))?;
+    Ok(())
+}
+
+/// All saved sessions, newest-updated first.
 pub fn list(conn: &Connection) -> Result<Vec<ShellSessionRow>> {
     let mut stmt = conn
         .prepare(
-            "SELECT name, cwd, saved_at, layout_json, buffer_guids, agent_pane_session_id
-             FROM sessions ORDER BY saved_at DESC",
+            "SELECT session_id, name, cwd, updated_at, last_used_at, layout_json, buffer_guids, agent_pane_session_id
+             FROM sessions ORDER BY updated_at DESC",
         )
         .context("preparing shell-session list query")?;
     let rows = stmt
@@ -168,25 +252,27 @@ pub fn list(conn: &Connection) -> Result<Vec<ShellSessionRow>> {
     Ok(rows)
 }
 
-/// Delete the row named `name` and return its buffer GUIDs, so the caller can
-/// unlink the scrollback files for a clean removal. Returns an empty vec when
-/// no such row existed (idempotent).
-pub fn delete(conn: &Connection, name: &str) -> Result<Vec<String>> {
-    let orphaned = get_buffer_guids(conn, name)?;
-    conn.execute("DELETE FROM sessions WHERE name = ?1", [name])
-        .with_context(|| format!("deleting shell session {name}"))?;
+/// Delete the row with `session_id` and return its buffer GUIDs, so the caller
+/// can unlink the scrollback files for a clean removal. Returns an empty vec
+/// when no such row existed (idempotent).
+pub fn delete(conn: &Connection, session_id: &str) -> Result<Vec<String>> {
+    let orphaned = get_buffer_guids(conn, session_id)?;
+    conn.execute("DELETE FROM sessions WHERE session_id = ?1", [session_id])
+        .with_context(|| format!("deleting shell session {session_id}"))?;
     Ok(orphaned)
 }
 
-/// Delete rows saved before `cutoff_unix_secs` and return the buffer GUIDs of
-/// every deleted row, so the caller can unlink their scrollback files.
+/// Delete rows whose last use predates `cutoff_unix_secs` and return the buffer
+/// GUIDs of every deleted row, so the caller can unlink their scrollback files.
 ///
+/// TTL is keyed on `last_used_at` (save OR restore), not on the save time — a
+/// session you keep restoring won't be swept just because its content is old.
 /// Lock-free and safe because master is the only writer: no other process can
 /// be mid-write on a row master is deleting.
 pub fn ttl_sweep(conn: &Connection, cutoff_unix_secs: i64) -> Result<Vec<String>> {
     let orphaned = {
         let mut stmt = conn
-            .prepare("SELECT buffer_guids FROM sessions WHERE saved_at < ?1")
+            .prepare("SELECT buffer_guids FROM sessions WHERE last_used_at < ?1")
             .context("preparing TTL select")?;
         let guid_lists = stmt
             .query_map([cutoff_unix_secs], |r| r.get::<_, String>(0))
@@ -199,7 +285,7 @@ pub fn ttl_sweep(conn: &Connection, cutoff_unix_secs: i64) -> Result<Vec<String>
             .collect::<Vec<_>>()
     };
 
-    conn.execute("DELETE FROM sessions WHERE saved_at < ?1", [cutoff_unix_secs])
+    conn.execute("DELETE FROM sessions WHERE last_used_at < ?1", [cutoff_unix_secs])
         .context("deleting expired shell sessions")?;
 
     Ok(orphaned)
@@ -267,19 +353,19 @@ fn record_ttl_sweep(conn: &Connection, now: i64) -> Result<()> {
     Ok(())
 }
 
-/// Look up the buffer GUIDs currently stored under `name` (empty when absent).
-fn get_buffer_guids(conn: &Connection, name: &str) -> Result<Vec<String>> {
+/// Look up the buffer GUIDs currently stored under `session_id` (empty when absent).
+fn get_buffer_guids(conn: &Connection, session_id: &str) -> Result<Vec<String>> {
     let json: Option<String> = conn
         .query_row(
-            "SELECT buffer_guids FROM sessions WHERE name = ?1",
-            [name],
+            "SELECT buffer_guids FROM sessions WHERE session_id = ?1",
+            [session_id],
             |r| r.get(0),
         )
         .or_else(|err| match err {
             rusqlite::Error::QueryReturnedNoRows => Ok(None),
             other => Err(other),
         })
-        .with_context(|| format!("looking up buffer guids for {name}"))?;
+        .with_context(|| format!("looking up buffer guids for {session_id}"))?;
     Ok(json.map(|j| parse_guids(&j)).unwrap_or_default())
 }
 
@@ -289,16 +375,19 @@ fn parse_guids(json: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(json).unwrap_or_default()
 }
 
-/// Map one SQLite row to a [`ShellSessionRow`].
+/// Map one SQLite row to a [`ShellSessionRow`]. Column order must match the
+/// SELECTs in [`list`].
 fn row_from_sqlite(r: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionRow> {
-    let buffer_guids: String = r.get(4)?;
+    let buffer_guids: String = r.get(6)?;
     Ok(ShellSessionRow {
-        name: r.get(0)?,
-        cwd: r.get(1)?,
-        saved_at: r.get(2)?,
-        layout_json: r.get(3)?,
+        session_id: r.get(0)?,
+        name: r.get(1)?,
+        cwd: r.get(2)?,
+        updated_at: r.get(3)?,
+        last_used_at: r.get(4)?,
+        layout_json: r.get(5)?,
         buffer_guids: parse_guids(&buffer_guids),
-        agent_pane_session_id: r.get(5)?,
+        agent_pane_session_id: r.get(7)?,
     })
 }
 
@@ -312,11 +401,25 @@ mod tests {
         conn
     }
 
-    fn row(name: &str, saved_at: i64, guids: &[&str]) -> ShellSessionRow {
+    // Build a row whose session_id is anchored to the first buffer guid (as C++
+    // does), or the name when no guids are given. `ts` seeds both timestamps.
+    fn row(name: &str, ts: i64, guids: &[&str]) -> ShellSessionRow {
+        let session_id = guids
+            .first()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| name.to_string());
+        row_with_id(&session_id, name, ts, guids)
+    }
+
+    // Build a row with an explicit session_id — for tests that re-save the same
+    // session with different buffer guids (where the guid can't be the key).
+    fn row_with_id(session_id: &str, name: &str, ts: i64, guids: &[&str]) -> ShellSessionRow {
         ShellSessionRow {
+            session_id: session_id.to_string(),
             name: name.to_string(),
             cwd: format!("C:\\{name}"),
-            saved_at,
+            updated_at: ts,
+            last_used_at: ts,
             layout_json: format!("{{\"tab\":\"{name}\"}}"),
             buffer_guids: guids.iter().map(|s| s.to_string()).collect(),
             agent_pane_session_id: None,
@@ -338,18 +441,29 @@ mod tests {
     }
 
     #[test]
-    fn upsert_same_name_overwrites_and_returns_orphaned_guids() {
+    fn different_tabs_can_share_a_name() {
+        // The point of keying on session_id: two tabs both titled "PowerShell"
+        // are distinct rows, not one overwriting the other.
         let conn = mem();
-        upsert(&conn, &row("tab", 100, &["old-a", "old-b"])).unwrap();
+        upsert(&conn, &row_with_id("s-1", "PowerShell", 100, &["a"])).unwrap();
+        upsert(&conn, &row_with_id("s-2", "PowerShell", 200, &["b"])).unwrap();
+        let all = list(&conn).unwrap();
+        assert_eq!(all.len(), 2, "same name, different session_id -> two rows");
+        assert!(all.iter().all(|r| r.name == "PowerShell"));
+    }
 
-        // Re-close the same-named tab with entirely fresh GUIDs: both old ones
-        // are orphaned (not referenced by the new row).
-        let orphaned = upsert(&conn, &row("tab", 200, &["new-a"])).unwrap();
+    #[test]
+    fn upsert_same_session_overwrites_and_returns_orphaned_guids() {
+        let conn = mem();
+        upsert(&conn, &row_with_id("s", "tab", 100, &["old-a", "old-b"])).unwrap();
+
+        // Same session_id, entirely fresh GUIDs: both old ones are orphaned.
+        let orphaned = upsert(&conn, &row_with_id("s", "tab", 200, &["new-a"])).unwrap();
         assert_eq!(orphaned, vec!["old-a".to_string(), "old-b".to_string()]);
 
         let all = list(&conn).unwrap();
-        assert_eq!(all.len(), 1, "same name must not create a second row");
-        assert_eq!(all[0].saved_at, 200);
+        assert_eq!(all.len(), 1, "same session_id must not create a second row");
+        assert_eq!(all[0].updated_at, 200);
         assert_eq!(all[0].buffer_guids, vec!["new-a".to_string()]);
     }
 
@@ -359,8 +473,8 @@ mod tests {
         // session writes the same {guid}.txt files. Those must NOT be reported
         // as orphaned (that would delete the freshly-written buffers).
         let conn = mem();
-        upsert(&conn, &row("tab", 100, &["a", "b"])).unwrap();
-        let orphaned = upsert(&conn, &row("tab", 200, &["a", "b"])).unwrap();
+        upsert(&conn, &row_with_id("s", "tab", 100, &["a", "b"])).unwrap();
+        let orphaned = upsert(&conn, &row_with_id("s", "tab", 200, &["a", "b"])).unwrap();
         assert!(orphaned.is_empty(), "re-saving identical guids must orphan nothing");
         assert_eq!(list(&conn).unwrap()[0].buffer_guids, vec!["a".to_string(), "b".to_string()]);
     }
@@ -368,10 +482,49 @@ mod tests {
     #[test]
     fn upsert_partial_overlap_orphans_only_dropped_guids() {
         let conn = mem();
-        upsert(&conn, &row("tab", 100, &["a", "b"])).unwrap();
+        upsert(&conn, &row_with_id("s", "tab", 100, &["a", "b"])).unwrap();
         // New row keeps `a`, drops `b`, adds `c` → only `b` is orphaned.
-        let orphaned = upsert(&conn, &row("tab", 200, &["a", "c"])).unwrap();
+        let orphaned = upsert(&conn, &row_with_id("s", "tab", 200, &["a", "c"])).unwrap();
         assert_eq!(orphaned, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn touch_bumps_last_used_at_only_and_list_orders_by_updated_at() {
+        let conn = mem();
+        upsert(&conn, &row("a", 100, &["ga"])).unwrap();
+        upsert(&conn, &row("b", 200, &["gb"])).unwrap();
+        // Touch `a` (bumps last_used_at) — updated_at and list order unchanged.
+        touch(&conn, "ga", 999).unwrap();
+        let all = list(&conn).unwrap();
+        assert_eq!(all[0].name, "b", "list sorts by updated_at, not last_used_at");
+        let a = all.iter().find(|r| r.name == "a").unwrap();
+        assert_eq!(a.updated_at, 100, "touch must not change updated_at");
+        assert_eq!(a.last_used_at, 999);
+    }
+
+    #[test]
+    fn touch_missing_session_is_noop() {
+        let conn = mem();
+        upsert(&conn, &row("tab", 100, &["g"])).unwrap();
+        touch(&conn, "nope", 500).unwrap();
+        assert_eq!(list(&conn).unwrap()[0].last_used_at, 100);
+    }
+
+    #[test]
+    fn ttl_sweep_keys_on_last_used_at() {
+        let conn = mem();
+        // stale: saved long ago AND never re-used → expired.
+        upsert(&conn, &row("stale", 100, &["s1", "s2"])).unwrap();
+        // kept: saved long ago but recently *used* (restored) → survives.
+        upsert(&conn, &row("kept", 100, &["k1"])).unwrap();
+        touch(&conn, "k1", 500).unwrap();
+
+        let mut orphaned = ttl_sweep(&conn, 300).unwrap();
+        orphaned.sort();
+        assert_eq!(orphaned, vec!["s1".to_string(), "s2".to_string()]);
+        let all = list(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].name, "kept", "recently-used session survives the TTL");
     }
 
     #[test]
@@ -401,10 +554,10 @@ mod tests {
     #[test]
     fn delete_removes_row_and_returns_its_guids() {
         let conn = mem();
-        upsert(&conn, &row("keep", 200, &["k1"])).unwrap();
-        upsert(&conn, &row("drop", 100, &["d1", "d2"])).unwrap();
+        upsert(&conn, &row_with_id("s-keep", "keep", 200, &["k1"])).unwrap();
+        upsert(&conn, &row_with_id("s-drop", "drop", 100, &["d1", "d2"])).unwrap();
 
-        let mut guids = delete(&conn, "drop").unwrap();
+        let mut guids = delete(&conn, "s-drop").unwrap();
         guids.sort();
         assert_eq!(guids, vec!["d1".to_string(), "d2".to_string()]);
 
@@ -414,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_missing_name_is_noop() {
+    fn delete_missing_session_is_noop() {
         let conn = mem();
         upsert(&conn, &row("keep", 200, &["k1"])).unwrap();
         assert!(delete(&conn, "nope").unwrap().is_empty());
@@ -471,8 +624,8 @@ mod tests {
     fn corrupt_buffer_guids_cell_yields_empty_not_panic() {
         let conn = mem();
         conn.execute(
-            "INSERT INTO sessions (name, cwd, saved_at, layout_json, buffer_guids)
-             VALUES ('bad', '', 1, '{}', 'not-json')",
+            "INSERT INTO sessions (session_id, name, cwd, updated_at, last_used_at, layout_json, buffer_guids)
+             VALUES ('s', 'bad', '', 1, 1, '{}', 'not-json')",
             [],
         )
         .unwrap();
@@ -500,9 +653,11 @@ mod tests {
     }
 
     #[test]
-    fn ensure_agent_pane_session_id_column_migrates_legacy_table() {
-        // Simulate a DB created before the column existed, then run the
-        // migration path (init_schema calls it) and confirm reads/writes work.
+    fn migrates_legacy_name_pk_table_to_session_id() {
+        // A DB created before the session_id refactor: `name` PRIMARY KEY, a
+        // single `saved_at`, no agent column. `init_schema` must rebuild it —
+        // deriving session_id from the first buffer guid and seeding both
+        // timestamps from `saved_at` — while preserving the row.
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE sessions (
@@ -517,26 +672,27 @@ mod tests {
         .unwrap();
         conn.execute(
             "INSERT INTO sessions (name, cwd, saved_at, layout_json, buffer_guids)
-             VALUES ('legacy', '', 1, '{}', '[]')",
+             VALUES ('legacy', 'C:\\x', 42, '{}', '[\"anchor-guid\"]')",
             [],
         )
         .unwrap();
 
-        // Idempotent: running the migration twice must not error.
-        ensure_agent_pane_session_id_column(&conn).unwrap();
-        ensure_agent_pane_session_id_column(&conn).unwrap();
+        // Run the full migration (idempotent — must survive a second call).
+        init_schema(&conn).unwrap();
+        init_schema(&conn).unwrap();
 
-        // The preexisting row reads back with a NULL (None) agent id.
         let all = list(&conn).unwrap();
         assert_eq!(all.len(), 1);
+        assert_eq!(all[0].session_id, "anchor-guid", "session_id from first buffer guid");
+        assert_eq!(all[0].name, "legacy");
+        assert_eq!(all[0].updated_at, 42);
+        assert_eq!(all[0].last_used_at, 42);
         assert_eq!(all[0].agent_pane_session_id, None);
 
-        // And new upserts can now store an agent id.
+        // New upserts work on the migrated table.
         let mut r = row("fresh", 200, &["g1"]);
         r.agent_pane_session_id = Some("pane-2".to_string());
         upsert(&conn, &r).unwrap();
-        let all = list(&conn).unwrap();
-        assert_eq!(all[0].name, "fresh");
-        assert_eq!(all[0].agent_pane_session_id.as_deref(), Some("pane-2"));
+        assert_eq!(list(&conn).unwrap()[0].name, "fresh");
     }
 }
