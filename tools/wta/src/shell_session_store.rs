@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
@@ -16,9 +16,10 @@ const DATABASE_FILE: &str = "shell-sessions.db";
 const BUFFER_DIRECTORY: &str = "shell-sessions";
 const STAGING_DIRECTORY: &str = "shell-session-staging";
 const RESTORE_CACHE_DIRECTORY: &str = "shell-session-restore-cache";
-const RETENTION_SECONDS: i64 = 15 * 24 * 60 * 60;
+const RETENTION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const TRANSIENT_RETENTION_SECONDS: i64 = 24 * 60 * 60;
-const MAINTENANCE_INTERVAL_SECONDS: i64 = 60 * 60;
+const MAINTENANCE_INTERVAL_SECONDS: i64 = 24 * 60 * 60;
+const LAST_MAINTENANCE_KEY: &str = "last_maintenance_at";
 const LEGACY_BUFFER_PREFIXES: [&str; 2] = ["shell_buffer_", "shell_elevated_"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -147,8 +148,14 @@ impl ShellSessionStore {
                 match store {
                     Ok(mut store) => {
                         let _ = ready_tx.send(Ok(()));
-                        while let Ok(command) = rx.recv() {
-                            store.handle(command);
+                        loop {
+                            match rx.recv_timeout(store.maintenance_due_in(unix_now())) {
+                                Ok(command) => store.handle(command),
+                                Err(RecvTimeoutError::Timeout) => {
+                                    store.run_maintenance_if_due(unix_now());
+                                }
+                                Err(RecvTimeoutError::Disconnected) => break,
+                            }
                         }
                     }
                     Err(error) => {
@@ -212,8 +219,7 @@ struct StoreCore {
     buffer_root: PathBuf,
     staging_root: PathBuf,
     restore_root: PathBuf,
-    last_durable_maintenance_at: i64,
-    last_transient_maintenance_at: i64,
+    last_maintenance_at: Option<i64>,
 }
 
 impl StoreCore {
@@ -295,26 +301,35 @@ impl StoreCore {
                 );
                 CREATE INDEX IF NOT EXISTS shell_sessions_last_used_idx
                     ON shell_sessions(last_used_at DESC);
+                CREATE TABLE IF NOT EXISTS shell_session_metadata (
+                    key   TEXT PRIMARY KEY NOT NULL,
+                    value INTEGER NOT NULL
+                );
                 ",
             )
             .context("failed to initialize shell-session database")?;
+        let last_maintenance_at = connection
+            .query_row(
+                "SELECT value FROM shell_session_metadata WHERE key = ?1",
+                params![LAST_MAINTENANCE_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("failed to read shell-session maintenance timestamp")?;
 
         let mut store = Self {
             connection,
             buffer_root,
             staging_root,
             restore_root,
-            last_durable_maintenance_at: now,
-            last_transient_maintenance_at: now,
+            last_maintenance_at,
         };
-        store.run_startup_maintenance(now);
+        store.run_maintenance_if_due(now);
         Ok(store)
     }
 
     fn handle(&mut self, command: StoreCommand) {
         let now = unix_now();
-        self.run_durable_maintenance_if_due(now);
-        self.run_transient_maintenance_if_due(now);
         match command {
             StoreCommand::List(params, response) => {
                 let _ = response.send(self.list(&params, now));
@@ -839,18 +854,22 @@ impl StoreCore {
         Ok(Some(canonical))
     }
 
-    fn run_startup_maintenance(&mut self, now: i64) {
-        self.run_durable_maintenance(now);
-        self.run_transient_maintenance(now);
+    fn maintenance_due_in(&self, now: i64) -> Duration {
+        let elapsed = self
+            .last_maintenance_at
+            .map_or(MAINTENANCE_INTERVAL_SECONDS, |last| {
+                now.saturating_sub(last).max(0)
+            });
+        Duration::from_secs(MAINTENANCE_INTERVAL_SECONDS.saturating_sub(elapsed).max(0) as u64)
     }
 
-    fn run_durable_maintenance_if_due(&mut self, now: i64) {
-        if now.saturating_sub(self.last_durable_maintenance_at) >= MAINTENANCE_INTERVAL_SECONDS {
-            self.run_durable_maintenance(now);
+    fn run_maintenance_if_due(&mut self, now: i64) {
+        if self.maintenance_due_in(now).is_zero() {
+            self.run_maintenance(now);
         }
     }
 
-    fn run_durable_maintenance(&mut self, now: i64) {
+    fn run_maintenance(&mut self, now: i64) {
         if let Err(error) = self.expire_sessions(now) {
             tracing::warn!(
                 target: "shell_sessions",
@@ -865,7 +884,21 @@ impl StoreCore {
                 "failed to collect orphan durable shell-session buffers"
             );
         }
-        self.last_durable_maintenance_at = now;
+        cleanup_stale_staging_files(&self.staging_root, now);
+        cleanup_stale_restore_snapshots(&self.restore_root, now);
+        self.last_maintenance_at = Some(now);
+        if let Err(error) = self.connection.execute(
+            "INSERT INTO shell_session_metadata(key, value)
+             VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![LAST_MAINTENANCE_KEY, now],
+        ) {
+            tracing::warn!(
+                target: "shell_sessions",
+                error = %error,
+                "failed to persist shell-session maintenance timestamp"
+            );
+        }
     }
 
     fn expire_sessions(&mut self, now: i64) -> Result<()> {
@@ -923,18 +956,6 @@ impl StoreCore {
         remove_files(expired_paths.iter());
         remove_empty_parent_directories(&buffer_root, &expired_paths);
         Ok(())
-    }
-
-    fn run_transient_maintenance_if_due(&mut self, now: i64) {
-        if now.saturating_sub(self.last_transient_maintenance_at) >= MAINTENANCE_INTERVAL_SECONDS {
-            self.run_transient_maintenance(now);
-        }
-    }
-
-    fn run_transient_maintenance(&mut self, now: i64) {
-        cleanup_stale_staging_files(&self.staging_root, now);
-        cleanup_stale_restore_snapshots(&self.restore_root, now);
-        self.last_transient_maintenance_at = now;
     }
 
     fn collect_orphan_buffers(&mut self) -> Result<()> {
@@ -1756,7 +1777,7 @@ mod tests {
             .to_string()
             .contains("corrupt shell-session buffer_id: expected UUID"));
 
-        store.run_durable_maintenance(100 + RETENTION_SECONDS + 1);
+        store.run_maintenance(100 + RETENTION_SECONDS + 1);
         assert!(store
             .list(
                 &ShellSessionsListParams { elevated: false },
@@ -1816,7 +1837,7 @@ mod tests {
             .is_err());
         assert_eq!(fs::read(&outside_buffer)?, b"outside");
 
-        store.run_durable_maintenance(100 + RETENTION_SECONDS + 1);
+        store.run_maintenance(100 + RETENTION_SECONDS + 1);
         assert_eq!(fs::read(&outside_buffer)?, b"outside");
         Ok(())
     }
@@ -1961,7 +1982,7 @@ mod tests {
     }
 
     #[test]
-    fn open_store_filters_then_periodically_expires_stale_session() -> Result<()> {
+    fn daily_maintenance_expires_stale_session_after_crud_filters_it() -> Result<()> {
         let directory = TestDirectory::new()?;
         let mut store = StoreCore::open(directory.0.clone(), 100, None)?;
         let saved = store.save(save_params(&directory, "old", "periodic.tmp")?, 100)?;
@@ -1990,7 +2011,7 @@ mod tests {
         )?;
         assert_eq!(last_used, 100);
 
-        store.run_durable_maintenance_if_due(expired_now);
+        store.run_maintenance_if_due(expired_now);
         assert!(!durable_path.exists());
         assert_eq!(
             store
@@ -2019,6 +2040,39 @@ mod tests {
     }
 
     #[test]
+    fn startup_honors_persisted_daily_maintenance_timestamp() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        let first_run = 100;
+        drop(StoreCore::open(directory.0.clone(), first_run, None)?);
+
+        let orphan = directory
+            .0
+            .join(BUFFER_DIRECTORY)
+            .join("orphan")
+            .join("buffer.bin");
+        fs::create_dir_all(orphan.parent().context("orphan had no parent")?)?;
+        fs::write(&orphan, b"orphan")?;
+
+        let before_due = first_run + MAINTENANCE_INTERVAL_SECONDS - 1;
+        drop(StoreCore::open(directory.0.clone(), before_due, None)?);
+        assert!(orphan.exists());
+
+        let due = first_run + MAINTENANCE_INTERVAL_SECONDS;
+        let store = StoreCore::open(directory.0.clone(), due, None)?;
+        assert!(!orphan.exists());
+        assert_eq!(store.last_maintenance_at, Some(due));
+        assert_eq!(
+            store.connection.query_row(
+                "SELECT value FROM shell_session_metadata WHERE key = ?1",
+                params![LAST_MAINTENANCE_KEY],
+                |row| row.get::<_, i64>(0),
+            )?,
+            due
+        );
+        Ok(())
+    }
+
+    #[test]
     fn startup_removes_stale_staging_and_preserves_fresh_files() -> Result<()> {
         let directory = TestDirectory::new()?;
         let stale = directory.staging_file("stale.tmp", b"stale")?;
@@ -2027,7 +2081,7 @@ mod tests {
         assert!(!stale.exists());
 
         let fresh = directory.staging_file("fresh.tmp", b"fresh")?;
-        store.run_startup_maintenance(unix_now());
+        store.run_maintenance_if_due(unix_now());
         assert!(fresh.exists());
         Ok(())
     }
