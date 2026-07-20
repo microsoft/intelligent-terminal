@@ -396,9 +396,6 @@ pub enum ConnectionState {
 pub enum ChatMessage {
     User(String),
     Agent(String),
-    /// App-generated agent-style text that should stay literal (for example
-    /// locally formatted recommendation summaries containing command strings).
-    AgentLiteral(String),
     System(String),
     ToolCall {
         id: String,
@@ -8204,7 +8201,7 @@ impl App {
     }
 
     /// `/move <position>` — move only this tab's agent pane. Positions accept
-    /// full names (`left`, `right`, `up`, `bottom`) or `l/r/u/b`. Bare or
+    /// full names (`left`, `right`, `up`, `down`) or `l/r/u/d`. Bare or
     /// invalid input reopens the position completion popup.
     fn cmd_move(&mut self, position: String) {
         let Some(position) = commands::lookup_move_position(&position) else {
@@ -8215,7 +8212,7 @@ impl App {
             return;
         };
 
-        self.current_tab_mut().agent_pane_position = Some(position.name);
+        self.current_tab_mut().agent_pane_position = Some(position.pane_position);
         self.project_active_tab_state();
     }
 
@@ -9581,7 +9578,7 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
-        details.push(ChatMessage::AgentLiteral(summary));
+        details.push(ChatMessage::Agent(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: prompt.text.clone(),
             details,
@@ -9663,7 +9660,7 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
-        details.push(ChatMessage::AgentLiteral(summary));
+        details.push(ChatMessage::Agent(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: turn_prompt_label,
             details,

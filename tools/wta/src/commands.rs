@@ -153,13 +153,30 @@ pub const REGISTRY: &[CommandSpec] = &[
 pub struct MovePositionSpec {
     pub name: &'static str,
     pub alias: &'static str,
+    pub pane_position: &'static str,
 }
 
 pub const MOVE_POSITIONS: &[MovePositionSpec] = &[
-    MovePositionSpec { name: "left", alias: "l" },
-    MovePositionSpec { name: "right", alias: "r" },
-    MovePositionSpec { name: "up", alias: "u" },
-    MovePositionSpec { name: "bottom", alias: "b" },
+    MovePositionSpec {
+        name: "left",
+        alias: "l",
+        pane_position: "left",
+    },
+    MovePositionSpec {
+        name: "right",
+        alias: "r",
+        pane_position: "right",
+    },
+    MovePositionSpec {
+        name: "up",
+        alias: "u",
+        pane_position: "up",
+    },
+    MovePositionSpec {
+        name: "down",
+        alias: "d",
+        pane_position: "bottom",
+    },
 ];
 
 #[derive(Debug, Clone)]
@@ -381,7 +398,12 @@ mod tests {
         assert_eq!(lookup_move_position(&direct.rest).unwrap().name, "left");
         assert_eq!(lookup_move_position("R").unwrap().name, "right");
         assert_eq!(lookup_move_position("up").unwrap().alias, "u");
-        assert_eq!(lookup_move_position("b").unwrap().name, "bottom");
+        assert_eq!(lookup_move_position("d").unwrap().name, "down");
+        assert_eq!(
+            lookup_move_position("down").unwrap().pane_position,
+            "bottom"
+        );
+        assert!(lookup_move_position("bottom").is_none());
         assert!(lookup_move_position("top").is_none());
     }
 
@@ -462,11 +484,12 @@ mod tests {
         assert_eq!(match_move_positions("l")[0].name, "left");
         assert_eq!(match_move_positions("ri")[0].name, "right");
         assert_eq!(match_move_positions("U")[0].name, "up");
+        assert_eq!(match_move_positions("do")[0].name, "down");
         assert!(match_move_positions("x").is_empty());
 
         assert_eq!(move_position_prefix("/move "), Some(""));
         assert_eq!(move_position_prefix("/MOVE r"), Some("r"));
-        assert_eq!(move_position_prefix("  /move bot"), Some("bot"));
+        assert_eq!(move_position_prefix("  /move dow"), Some("dow"));
         assert_eq!(move_position_prefix("/move"), None);
         assert_eq!(move_position_prefix("/move left extra"), None);
         assert_eq!(move_position_prefix("/model r"), None);
