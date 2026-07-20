@@ -75,11 +75,17 @@ impl AgentStderrLog {
         child: &mut tokio::process::Child,
         stderr_task: Option<tokio::task::JoinHandle<()>>,
     ) {
-        self.mark_failed();
         let _ = child.start_kill();
-        if let Some(stderr_task) = stderr_task {
-            let _ = tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, stderr_task).await;
+        if let Some(mut stderr_task) = stderr_task {
+            if tokio::time::timeout(STARTUP_STDERR_DRAIN_TIMEOUT, &mut stderr_task)
+                .await
+                .is_err()
+            {
+                stderr_task.abort();
+                let _ = stderr_task.await;
+            }
         }
+        self.mark_failed();
     }
 
     pub(crate) fn mark_initialized(&self) {
@@ -124,7 +130,7 @@ impl AgentStderrLog {
     }
 
     fn log_line(&self, line: &str) {
-        let warn = {
+        {
             let mut inner = self
                 .inner
                 .lock()
@@ -135,24 +141,12 @@ impl AgentStderrLog {
                         inner.startup_lines.pop_front();
                     }
                     inner.startup_lines.push_back(truncate_stderr_line(line));
-                    false
                 }
-                StderrPhase::Running => false,
-                StderrPhase::Failed => true,
+                StderrPhase::Running | StderrPhase::Failed => {}
             }
-        };
-
-        if warn {
-            let line = truncate_stderr_line(line);
-            tracing::warn!(
-                target: "agent_stderr",
-                agent = %self.agent,
-                phase = "startup_failure",
-                "{line}"
-            );
-        } else {
-            tracing::debug!(target: "agent_stderr", agent = %self.agent, "{line}");
         }
+
+        tracing::debug!(target: "agent_stderr", agent = %self.agent, "{line}");
     }
 }
 
@@ -369,6 +363,7 @@ mod tests {
         }
 
         clone.mark_failed();
+        log.log_line("late failure detail");
         let inner = log
             .inner
             .lock()

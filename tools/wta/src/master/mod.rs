@@ -2205,7 +2205,7 @@ async fn spawn_one_agent(
     // content. Pre-initialize stderr is buffered and promoted to warning only
     // if startup fails, so release logs retain package-manager diagnostics.
     let stderr_log = AgentStderrLog::new(key.to_string());
-    let _stderr_task = spawn_result
+    let stderr_task = spawn_result
         .child
         .stderr
         .take()
@@ -2376,13 +2376,15 @@ async fn spawn_one_agent(
             // Kill the child so its stdio closes → the I/O task above ends
             // → `reap_agent` clears the pool slot. `kill_on_drop` is a
             // backstop when `child` drops at return.
-            stderr_log.mark_failed();
-            let _ = child.start_kill();
+            stderr_log
+                .finish_failed_startup(&mut child, stderr_task)
+                .await;
             return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
         }
         Err(_) => {
-            stderr_log.mark_failed();
-            let _ = child.start_kill();
+            stderr_log
+                .finish_failed_startup(&mut child, stderr_task)
+                .await;
             return Err(anyhow!(
                 "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
             ));
