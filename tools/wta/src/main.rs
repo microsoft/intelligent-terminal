@@ -1636,6 +1636,7 @@ async fn register_launched_session_with_master(
 fn publish_pane_agent_session_binding(
     pane_session_id: &str,
     agent_session_id: &str,
+    agent: &str,
     resume_commandline: &str,
 ) {
     let payload = serde_json::json!({
@@ -1644,6 +1645,7 @@ fn publish_pane_agent_session_binding(
         "params": {
             "pane_id": pane_session_id,
             "agent_session_id": agent_session_id,
+            "agent": agent,
             "resume_commandline": resume_commandline,
         }
     })
@@ -2507,7 +2509,7 @@ async fn delegate_with_context(
                         }
                         None => format!("wsl -d {distro_arg} -- {login_invocation}"),
                     };
-                    publish_pane_agent_session_binding(pane, sid, &resume_commandline);
+                    publish_pane_agent_session_binding(pane, sid, &runtime.id, &resume_commandline);
                 }
             }
 
@@ -2574,7 +2576,7 @@ async fn delegate_with_context(
         if let Ok(resume_commandline) =
             crate::coordinator::build_delegate_resume_commandline(runtime, sid)
         {
-            publish_pane_agent_session_binding(pane, sid, &resume_commandline);
+            publish_pane_agent_session_binding(pane, sid, &runtime.id, &resume_commandline);
         }
         register_launched_session_with_master(sid, pane, &runtime.id, cwd, None).await;
     }

@@ -503,6 +503,7 @@ namespace winrt::TerminalApp::implementation
         {
             uint64_t startupActionBatchId{ 0 };
             std::string sessionId;
+            winrt::hstring agent;
             std::string cwd;
             std::string view;
             bool paneOpen{ false };
@@ -689,6 +690,7 @@ namespace winrt::TerminalApp::implementation
         struct _PaneAgentSession
         {
             winrt::hstring sessionId;
+            winrt::hstring agent;
             winrt::hstring resumeCommandline;
         };
         std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;

@@ -1145,7 +1145,12 @@ try
     {
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        s_NotifyEventToComClients(Json::writeString(wb, evt));
+        const auto normalized = Json::writeString(wb, evt);
+        // Hooks publish agent lifecycle events through the broadcast route.
+        // Mirror those events into TerminalPage so durable tab snapshots see
+        // the same pane/session binding as WTA's registry.
+        _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized));
+        s_NotifyEventToComClients(normalized);
         return S_OK;
     }
     default:

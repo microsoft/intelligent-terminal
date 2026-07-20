@@ -104,6 +104,7 @@ namespace winrt::TerminalApp::implementation
                     _PendingDurableAgentPaneRestore{
                         _currentStartupActionBatchId,
                         winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                        newTerminalArgs.AgentPaneAgent(),
                         winrt::to_string(newTerminalArgs.StartingDirectory()),
                         winrt::to_string(newTerminalArgs.AgentPaneView()),
                         newTerminalArgs.AgentPaneOpen(),
@@ -406,6 +407,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+
     // Method Description:
     // - Create a new tab using a specified pane as the root.
     // Arguments:
@@ -630,6 +632,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
                 {
                     terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentSessionAgent(binding->second.agent);
                     terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
                 }
             }
@@ -647,6 +650,9 @@ namespace winrt::TerminalApp::implementation
                         if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
                         {
                             terminalArgs.AgentPaneSessionId(agentSessionId);
+                            terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
+                                                            tab->AgentIdOverride() :
+                                                            _settings.GlobalSettings().EffectiveAcpAgent());
                             terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
                                                        agentContent.IsSessionsView() ? L"sessions" :
                                                                                        L"chat");
@@ -1183,7 +1189,6 @@ namespace winrt::TerminalApp::implementation
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
         }
-
     }
 
     // Method Description:

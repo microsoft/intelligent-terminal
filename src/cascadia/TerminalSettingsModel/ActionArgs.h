@@ -391,8 +391,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(winrt::guid, SessionId, winrt::guid{});
         ACTION_ARG(bool, UseWorkspaceBuffer, false);
         ACTION_ARG(winrt::hstring, AgentSessionId, L"");
+        ACTION_ARG(winrt::hstring, AgentSessionAgent, L"");
         ACTION_ARG(winrt::hstring, AgentResumeCommandline, L"");
         ACTION_ARG(winrt::hstring, AgentPaneSessionId, L"");
+        ACTION_ARG(winrt::hstring, AgentPaneAgent, L"");
         ACTION_ARG(winrt::hstring, AgentPaneView, L"");
         ACTION_ARG(bool, AgentPaneOpen, false);
         ACTION_ARG(winrt::hstring, AgentPanePosition, L"");
@@ -403,12 +405,19 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(uint64_t, ContentId);
 
         static constexpr std::string_view SessionIdKey{ "sessionId" };
+        static constexpr std::string_view AgentSessionKey{ "agentSession" };
+        static constexpr std::string_view PaneSessionIdKey{ "paneSessionId" };
         static constexpr std::string_view AgentSessionIdKey{ "agentSessionId" };
+        static constexpr std::string_view AgentKey{ "agent" };
         static constexpr std::string_view AgentResumeCommandlineKey{ "agentResumeCommandline" };
+        static constexpr std::string_view AgentPaneKey{ "agentPane" };
         static constexpr std::string_view AgentPaneSessionIdKey{ "agentPaneSessionId" };
         static constexpr std::string_view AgentPaneViewKey{ "agentPaneView" };
         static constexpr std::string_view AgentPaneOpenKey{ "agentPaneOpen" };
         static constexpr std::string_view AgentPanePositionKey{ "agentPanePosition" };
+        static constexpr std::string_view ViewKey{ "view" };
+        static constexpr std::string_view OpenKey{ "open" };
+        static constexpr std::string_view PositionKey{ "position" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
@@ -436,8 +445,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_Elevate == _Elevate &&
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
                        otherAsUs->_AgentSessionId == _AgentSessionId &&
+                       otherAsUs->_AgentSessionAgent == _AgentSessionAgent &&
                        otherAsUs->_AgentResumeCommandline == _AgentResumeCommandline &&
                        otherAsUs->_AgentPaneSessionId == _AgentPaneSessionId &&
+                       otherAsUs->_AgentPaneAgent == _AgentPaneAgent &&
                        otherAsUs->_AgentPaneView == _AgentPaneView &&
                        otherAsUs->_AgentPaneOpen == _AgentPaneOpen &&
                        otherAsUs->_AgentPanePosition == _AgentPanePosition &&
@@ -455,12 +466,34 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::GetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::GetValueForKey(json, SessionIdKey, args->_SessionId);
+            // Legacy flat fields remain readable so snapshots produced before
+            // durable agent metadata became structured still restore.
             JsonUtils::GetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
             JsonUtils::GetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
             JsonUtils::GetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
             JsonUtils::GetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
             JsonUtils::GetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
             JsonUtils::GetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
+            if (const auto& agentSession = json[AgentSessionKey.data()]; agentSession.isObject())
+            {
+                JsonUtils::GetValueForKey(agentSession, AgentSessionIdKey, args->_AgentSessionId);
+                JsonUtils::GetValueForKey(agentSession, AgentKey, args->_AgentSessionAgent);
+                if (args->_SessionId == winrt::guid{})
+                {
+                    JsonUtils::GetValueForKey(agentSession, PaneSessionIdKey, args->_SessionId);
+                }
+            }
+            if (const auto& agentPane = json[AgentPaneKey.data()]; agentPane.isObject())
+            {
+                if (const auto& agentSession = agentPane[AgentSessionKey.data()]; agentSession.isObject())
+                {
+                    JsonUtils::GetValueForKey(agentSession, AgentSessionIdKey, args->_AgentPaneSessionId);
+                    JsonUtils::GetValueForKey(agentSession, AgentKey, args->_AgentPaneAgent);
+                }
+                JsonUtils::GetValueForKey(agentPane, ViewKey, args->_AgentPaneView);
+                JsonUtils::GetValueForKey(agentPane, OpenKey, args->_AgentPaneOpen);
+                JsonUtils::GetValueForKey(agentPane, PositionKey, args->_AgentPanePosition);
+            }
             JsonUtils::GetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::GetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -483,12 +516,38 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::SetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::SetValueForKey(json, SessionIdKey, args->_SessionId);
-            JsonUtils::SetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
-            JsonUtils::SetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
-            JsonUtils::SetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
-            JsonUtils::SetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
-            JsonUtils::SetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
-            JsonUtils::SetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
+            if (!args->AgentSessionId().empty() && !args->AgentSessionAgent().empty())
+            {
+                Json::Value agentSession{ Json::ValueType::objectValue };
+                JsonUtils::SetValueForKey(agentSession, PaneSessionIdKey, args->_SessionId);
+                JsonUtils::SetValueForKey(agentSession, AgentSessionIdKey, args->_AgentSessionId);
+                JsonUtils::SetValueForKey(agentSession, AgentKey, args->_AgentSessionAgent);
+                json[AgentSessionKey.data()] = std::move(agentSession);
+            }
+            else
+            {
+                JsonUtils::SetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
+                JsonUtils::SetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
+            }
+            if (!args->AgentPaneSessionId().empty() && !args->AgentPaneAgent().empty())
+            {
+                Json::Value agentPaneSession{ Json::ValueType::objectValue };
+                JsonUtils::SetValueForKey(agentPaneSession, AgentSessionIdKey, args->_AgentPaneSessionId);
+                JsonUtils::SetValueForKey(agentPaneSession, AgentKey, args->_AgentPaneAgent);
+                Json::Value agentPane{ Json::ValueType::objectValue };
+                agentPane[AgentSessionKey.data()] = std::move(agentPaneSession);
+                JsonUtils::SetValueForKey(agentPane, ViewKey, args->_AgentPaneView);
+                JsonUtils::SetValueForKey(agentPane, OpenKey, args->_AgentPaneOpen);
+                JsonUtils::SetValueForKey(agentPane, PositionKey, args->_AgentPanePosition);
+                json[AgentPaneKey.data()] = std::move(agentPane);
+            }
+            else
+            {
+                JsonUtils::SetValueForKey(json, AgentPaneSessionIdKey, args->_AgentPaneSessionId);
+                JsonUtils::SetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
+                JsonUtils::SetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
+                JsonUtils::SetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
+            }
             JsonUtils::SetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::SetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -509,8 +568,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_SessionId = _SessionId;
             copy->_UseWorkspaceBuffer = _UseWorkspaceBuffer;
             copy->_AgentSessionId = _AgentSessionId;
+            copy->_AgentSessionAgent = _AgentSessionAgent;
             copy->_AgentResumeCommandline = _AgentResumeCommandline;
             copy->_AgentPaneSessionId = _AgentPaneSessionId;
+            copy->_AgentPaneAgent = _AgentPaneAgent;
             copy->_AgentPaneView = _AgentPaneView;
             copy->_AgentPaneOpen = _AgentPaneOpen;
             copy->_AgentPanePosition = _AgentPanePosition;
@@ -543,8 +604,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(Elevate());
             h.write(ReloadEnvironmentVariables());
             h.write(AgentSessionId());
+            h.write(AgentSessionAgent());
             h.write(AgentResumeCommandline());
             h.write(AgentPaneSessionId());
+            h.write(AgentPaneAgent());
             h.write(AgentPaneView());
             h.write(AgentPaneOpen());
             h.write(AgentPanePosition());

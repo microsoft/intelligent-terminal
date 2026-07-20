@@ -174,6 +174,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionId {} "), QuoteAndEscapeCommandlineArg(AgentSessionId()));
         }
+        if (!AgentSessionAgent().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionAgent {} "), QuoteAndEscapeCommandlineArg(AgentSessionAgent()));
+        }
         if (!AgentResumeCommandline().empty())
         {
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentResumeCommandline {} "), QuoteAndEscapeCommandlineArg(AgentResumeCommandline()));
@@ -181,6 +185,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         if (!AgentPaneSessionId().empty())
         {
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPaneSessionId {} "), QuoteAndEscapeCommandlineArg(AgentPaneSessionId()));
+            if (!AgentPaneAgent().empty())
+            {
+                fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPaneAgent {} "), QuoteAndEscapeCommandlineArg(AgentPaneAgent()));
+            }
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPaneView {} "), QuoteAndEscapeCommandlineArg(AgentPaneView()));
             if (AgentPaneOpen())
             {

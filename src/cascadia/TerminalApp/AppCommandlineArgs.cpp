@@ -624,10 +624,14 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
     subcommand.useWorkspaceBufferOption->group("");
     subcommand.agentSessionIdOption = subcommand.subcommand->add_option("--agentSessionId", _agentSessionId);
     subcommand.agentSessionIdOption->group("");
+    subcommand.agentSessionAgentOption = subcommand.subcommand->add_option("--agentSessionAgent", _agentSessionAgent);
+    subcommand.agentSessionAgentOption->group("");
     subcommand.agentResumeCommandlineOption = subcommand.subcommand->add_option("--agentResumeCommandline", _agentResumeCommandline);
     subcommand.agentResumeCommandlineOption->group("");
     subcommand.agentPaneSessionIdOption = subcommand.subcommand->add_option("--agentPaneSessionId", _agentPaneSessionId);
     subcommand.agentPaneSessionIdOption->group("");
+    subcommand.agentPaneAgentOption = subcommand.subcommand->add_option("--agentPaneAgent", _agentPaneAgent);
+    subcommand.agentPaneAgentOption->group("");
     subcommand.agentPaneViewOption = subcommand.subcommand->add_option("--agentPaneView", _agentPaneView);
     subcommand.agentPaneViewOption->group("");
     subcommand.agentPaneOpenOption = subcommand.subcommand->add_flag("--agentPaneOpen", _agentPaneOpen);
@@ -727,6 +731,10 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     {
         args.AgentSessionId(winrt::to_hstring(_agentSessionId));
     }
+    if (*subcommand.agentSessionAgentOption)
+    {
+        args.AgentSessionAgent(winrt::to_hstring(_agentSessionAgent));
+    }
     if (*subcommand.agentResumeCommandlineOption)
     {
         args.AgentResumeCommandline(winrt::to_hstring(_agentResumeCommandline));
@@ -734,6 +742,7 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
     if (*subcommand.agentPaneSessionIdOption)
     {
         args.AgentPaneSessionId(winrt::to_hstring(_agentPaneSessionId));
+        args.AgentPaneAgent(winrt::to_hstring(_agentPaneAgent));
         args.AgentPaneView(winrt::to_hstring(_agentPaneView));
         args.AgentPaneOpen(_agentPaneOpen);
         args.AgentPanePosition(winrt::to_hstring(_agentPanePosition));
@@ -838,8 +847,10 @@ void AppCommandlineArgs::_resetStateToDefault()
     _sessionId.clear();
     _useWorkspaceBuffer = false;
     _agentSessionId.clear();
+    _agentSessionAgent.clear();
     _agentResumeCommandline.clear();
     _agentPaneSessionId.clear();
+    _agentPaneAgent.clear();
     _agentPaneView.clear();
     _agentPaneOpen = false;
     _agentPanePosition.clear();

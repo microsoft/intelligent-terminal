@@ -205,6 +205,11 @@ namespace Microsoft.Terminal.Settings.Model
         UInt64 ContentId{ get; set; };
 
         String ToCommandline();
+
+        // Keep new members at the end to preserve the ABI slots of the
+        // existing durable-session properties.
+        String AgentSessionAgent;
+        String AgentPaneAgent;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs
