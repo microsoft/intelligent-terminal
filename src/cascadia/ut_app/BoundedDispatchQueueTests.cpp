@@ -49,8 +49,8 @@ namespace TerminalAppUnitTests
     };
 
     // A queue is inactive (closed gate) until set_active(true). This mirrors
-    // an instance that authenticated but never subscribed — it must not
-    // accumulate work nothing will deliver.
+    // a protocol client that has not subscribed — it must not accumulate work
+    // nothing will deliver.
     void BoundedDispatchQueueTests::InactiveByDefaultRejectsPush()
     {
         BoundedDispatchQueue<std::string> q{ 10 };

@@ -58,7 +58,7 @@ use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::spawn_agent_process;
+use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
 use crate::Cli;
 
 mod session_conductor;
@@ -2212,21 +2212,15 @@ async fn spawn_one_agent(
         .ok_or_else(|| anyhow!("agent CLI child has no stdout"))?;
     let is_npx = spawn_result.is_npx;
 
-    // Drain agent stderr to logs so failures are diagnosable. Logged at
-    // `debug`, NOT `warn`: agent stderr routinely carries prompt / file
-    // content and routine adapter chatter, so emitting it at `warn` would
-    // be noisy and an information-leak in release builds. The `agent` tag
-    // keeps multi-agent logs attributable.
-    if let Some(stderr) = spawn_result.child.stderr.take() {
-        let key_for_log = key.clone();
-        tokio::task::spawn_local(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(target: "agent_stderr", agent = %key_for_log, "{line}");
-            }
-        });
-    }
+    // Routine stderr stays at debug because it may contain prompt / file
+    // content. Pre-initialize stderr is buffered and promoted to warning only
+    // if startup fails, so release logs retain package-manager diagnostics.
+    let stderr_log = AgentStderrLog::new(key.to_string());
+    let stderr_task = spawn_result
+        .child
+        .stderr
+        .take()
+        .map(|stderr| stderr_log.drain(stderr));
 
     let client = MasterClient {
         state: Arc::clone(state),
@@ -2382,16 +2376,23 @@ async fn spawn_one_agent(
     .await;
 
     let init_resp = match init_outcome {
-        Ok(Ok(resp)) => resp,
+        Ok(Ok(resp)) => {
+            stderr_log.mark_initialized();
+            resp
+        }
         Ok(Err(e)) => {
             // Kill the child so its stdio closes → the I/O task above ends
             // → `reap_agent` clears the pool slot. `kill_on_drop` is a
             // backstop when `child` drops at return.
-            let _ = child.start_kill();
+            stderr_log
+                .finish_failed_startup(&mut child, stderr_task)
+                .await;
             return Err(anyhow!("ACP initialize failed for '{agent_cmd}': {e}"));
         }
         Err(_) => {
-            let _ = child.start_kill();
+            stderr_log
+                .finish_failed_startup(&mut child, stderr_task)
+                .await;
             return Err(anyhow!(
                 "ACP initialize timed out after {init_timeout_secs}s — agent CLI '{agent_cmd}' did not respond"
             ));

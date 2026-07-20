@@ -485,14 +485,10 @@ try
     *resultJson = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    // DEV BYPASS: always authenticate — credential plumbing not yet implemented.
-    _authenticated = true;
-
-    // Register for event delivery on successful authentication.
-    _addInstance();
-
+    // Compatibility handshake only. COM activation is the trust boundary; no
+    // ITerminalProtocol method is gated on this call.
     Json::Value v;
-    v["authenticated"] = _authenticated;
+    v["authenticated"] = true;
     // 2.2 — SendInput restored on the COM surface; pane identifiers remain GUIDs.
     v["protocol_version"] = "2.2";
     *resultJson = _bstrFromJson(v);
@@ -975,7 +971,6 @@ STDMETHODIMP TerminalProtocolComServer::Subscribe(ITerminalProtocolEventSink* si
 try
 {
     RETURN_HR_IF(E_INVALIDARG, !sink);
-    RETURN_HR_IF(E_ACCESSDENIED, !_authenticated);
 
     // Store the sink as an agile reference so it can be resolved + called from
     // any apartment (the VT-event fan-out runs on the UI/STA thread, while the
@@ -1015,6 +1010,10 @@ try
         }
     }
 
+    // Subscribe, rather than the advisory Authenticate call, makes this client
+    // eligible for global event fan-out.
+    _addInstance();
+
     // Ensure page events are wired up (one-time global init).
     _ensurePageEventsRegistered();
     return S_OK;
@@ -1053,8 +1052,6 @@ CATCH_RETURN()
 STDMETHODIMP TerminalProtocolComServer::SendEvent(BSTR eventJson)
 try
 {
-    RETURN_HR_IF(E_ACCESSDENIED, !_authenticated);
-
     const auto eventH = _hstr(eventJson);
     auto jsonStr = winrt::to_string(eventH);
     Json::Value evt;

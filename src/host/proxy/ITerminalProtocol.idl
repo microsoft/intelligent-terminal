@@ -38,6 +38,8 @@ import "unknwn.idl";
 ] interface ITerminalProtocol : IUnknown
 {
     // ── Meta ──
+    // Compatibility handshake. COM activation is the trust boundary; this call
+    // does not gate any protocol method.
     HRESULT Authenticate([in] BSTR token, [out, retval] BSTR* resultJson);
     HRESULT GetCapabilities([out, retval] BSTR* json);
 
