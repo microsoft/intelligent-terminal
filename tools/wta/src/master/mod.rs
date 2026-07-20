@@ -4,12 +4,10 @@
 // helper+master architecture (see doc/specs/Multi-window-agent-pane.md).
 //
 // Responsibilities:
-//   1. Spawn the agent CLI subprocess (claude / copilot / gemini)
-//      and wrap its stdio in a `ConnectionTo<Agent>` (master is the
-//      *client* of the agent CLI — same role that legacy wta plays
-//      today). Built via the `conn.rs` shim (`ClientLink` /
-//      `spawn_client`) so call sites keep the old `conn.method().await`
-//      shape.
+//   1. Spawn the agent CLI subprocess (claude / copilot / gemini), place its
+//      stdio at the end of a canonical ACP `ConductorImpl`, and expose the
+//      resulting `ProxyChainRuntime` through the `conn.rs` shim. Master is the
+//      client of the chain; call sites keep the `conn.method().await` shape.
 //   2. Listen on a named pipe (path supplied by the C++ side via
 //      `--master <pipe-name>`). Accept one wta-helper per connect.
 //   3. For each helper, run a `ConnectionTo<Client>` in which master
@@ -19,14 +17,14 @@
 //      helper that owns the session.
 //
 // Forwarding paths:
-//   * `helper → master → agent CLI`: every helper request runs
+//   * `helper → master → proxy chain → agent CLI`: every helper request runs
 //     through `HelperHandler`'s dispatch (inherent fns on the
-//     agent-side builder), a thin pass-through to the agent CLI's
-//     `ClientLink`.
+//     agent-side builder), then passes through the selected slot's canonical
+//     conductor.
 //   * `agent CLI → master → helper` (notifications): inbound
 //     `session_notification`s land in `MasterClient::session_notification`
 //     and are fanned out to the owning helper's notification channel
-//      via the specialized `SessionConductor`.
+//      via the instance-scoped `SessionRouter`.
 //   * `agent CLI → master → helper` (requests — request_permission,
 //     terminal/*, fs/*): same map carries each helper's `AgentLink`.
 //     `MasterClient` looks up the helper by `args.session_id` and calls
@@ -61,11 +59,12 @@ use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
 use crate::Cli;
 
-mod session_conductor;
+mod proxy_chain;
+mod session_router;
 
-use session_conductor::{
+use session_router::{
     AgentInstanceId, BindError, BindingToken, FinishNewError, HelperId, HelperRoute,
-    NotificationRoute, PublishResult, RegistryChange, SessionConductor, UnpublishResult,
+    NotificationRoute, PublishResult, RegistryChange, SessionRouter, UnpublishResult,
 };
 
 /// State shared between the master's `acp::Client` impl (receives
@@ -74,19 +73,19 @@ use session_conductor::{
 struct MasterStateInner {
     /// Instance-scoped routes, binding generations, orphan state, and
     /// response-before-notification buffering.
-    conductor: SessionConductor,
+    session_router: SessionRouter,
     /// Serializes route/registry/ext-notification commits. Never held across
     /// an upstream agent RPC; binding tokens validate the later commit.
     lifecycle_gate: Mutex<()>,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside the
-    /// conductor so the
+    /// session router so the
     /// per-row metadata that `SessionInfo` carries — cwd, future
     /// title/updated_at — has a typed home that isn't intertwined
     /// with notification-channel plumbing.
     /// Route/registry/broadcast mutations are serialized by
-    /// `lifecycle_gate`; conductor methods never await external work.
+    /// `lifecycle_gate`; router methods never await external work.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
@@ -95,7 +94,7 @@ struct MasterStateInner {
     /// broadcast are *about* SessionIds (added/removed) and every
     /// helper learns the full live set.
     ///
-    /// Independent lock from the conductor and registry: the
+    /// Independent lock from the session router and registry: the
     /// broadcast path (`broadcast_ext_to_helpers`) only takes this
     /// one, so it never blocks per-session routing or per-row reads
     /// of the registry.
@@ -126,7 +125,7 @@ struct MasterStateInner {
     ///
     /// Each value is an `Arc<OnceCell<…>>` so two helpers racing the
     /// *same* new agent serialize on that key's init (one spawns, the
-    /// other awaits the same `AgentCli`), while helpers for *different*
+    /// other awaits the same `ProxyChainRuntime`), while helpers for *different*
     /// agents spawn in parallel — we hold the outer `Mutex` only long
     /// enough to get/insert the `OnceCell`, never across the spawn.
     ///
@@ -139,7 +138,8 @@ struct MasterStateInner {
     /// lazily on the next helper request. Idle-timeout eviction would save
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
-    pub(crate) agents: Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    pub(crate) agents:
+        Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<ProxyChainRuntime>>>>>,
     agent_attempts: Mutex<HashMap<AgentCmdKey, AgentInstanceId>>,
     dead_agent_instances: Mutex<HashSet<AgentInstanceId>>,
     next_agent_instance: std::sync::atomic::AtomicU64,
@@ -195,7 +195,7 @@ struct MasterStateInner {
     /// the most recently created/loaded session, i.e. the one the user
     /// was last looking at, which is the right one to resume.
     ///
-    /// Independent lock from the conductor so the per-session
+    /// Independent lock from the session router so the per-session
     /// routing hot path never contends on it.
     pub(crate) helper_meta: Mutex<HashMap<HelperId, HelperRecoveryMeta>>,
     /// Session ids claimed by an *authoritative* producer — a PowerShell agent
@@ -253,16 +253,17 @@ struct MasterStateInner {
 /// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
 type AgentCmdKey = String;
 
-/// One spawned agent CLI subprocess and everything a helper needs to
-/// talk to it. Shared (`Arc`) across every helper currently bound to
-/// this agent.
-struct AgentCli {
+/// One canonical ACP proxy-chain runtime and everything a helper needs to
+/// talk through it. Shared (`Arc`) across every helper currently bound to the
+/// final agent process.
+struct ProxyChainRuntime {
     /// Stable for this process lifetime and never reused after respawn.
     instance_id: AgentInstanceId,
-    /// Master is the ACP *client* of this CLI. Every helper request for
-    /// a session owned by this agent forwards onto this connection.
+    /// Master is the ACP *client* of the chain's canonical conductor. Every
+    /// helper request for a session owned by the final agent forwards through
+    /// this connection and the ordered proxy chain.
     conn: conn::ClientLink,
-    /// This CLI's `initialize` response, replayed verbatim to every
+    /// The chain's final `initialize` response, replayed verbatim to every
     /// helper that binds to it (re-forwarding `initialize` to the CLI
     /// returns empty `agent_info` on most backends, which blanks the
     /// XAML agent bar). Per-agent so each tab's bar shows ITS agent.
@@ -300,7 +301,7 @@ pub(crate) struct HelperRecoveryMeta {
 /// notification channel. The request-shaped Client methods
 /// (`request_permission`, `create_terminal`, `terminal_*`,
 /// `read_text_file`, `write_text_file`) look up the owning helper by
-/// `(agent instance, args.session_id)` in the conductor and forward the call on
+/// `(agent instance, args.session_id)` in the session router and forward the call on
 /// that helper's `AgentSideConnection` — the helper's `WtaClient`
 /// then runs the same handler it ran pre-helper-split (TUI permission
 /// UI, `ShellManager`, etc.). The agent CLI sees the helper's
@@ -326,7 +327,7 @@ impl MasterClient {
     ) -> acp::Result<(HelperId, conn::AgentLink)> {
         let entry = self
             .state
-            .conductor
+            .session_router
             .route_for(self.agent_instance, sid)
             .await
             .map(|(_, route)| route);
@@ -438,7 +439,7 @@ impl MasterClient {
         let kind = notification_kind(&args);
         match self
             .state
-            .conductor
+            .session_router
             .route_notification(self.agent_instance, args)
             .await
         {
@@ -686,11 +687,11 @@ struct HelperHandler {
     /// until the helper's `initialize` arrives, but the ACP protocol
     /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
     /// `resolved_agent()` always finds it populated for those.
-    agent: Arc<OnceLock<Arc<AgentCli>>>,
+    agent: Arc<OnceLock<Arc<ProxyChainRuntime>>>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
-    /// `state.conductor` so future agent-CLI notifications
+    /// `state.session_router` so future agent-CLI notifications
     /// land here. The helper's serve loop drains the matching
     /// receiver and writes notifications back over the
     /// `AgentSideConnection`.
@@ -748,7 +749,7 @@ impl HelperHandler {
     /// `internal_error` if called before `initialize` resolved the
     /// binding — a protocol violation by the helper, never expected in
     /// the normal handshake order.
-    fn resolved_agent(&self, op: &'static str) -> acp::Result<Arc<AgentCli>> {
+    fn resolved_agent(&self, op: &'static str) -> acp::Result<Arc<ProxyChainRuntime>> {
         self.agent.get().cloned().ok_or_else(|| {
             tracing::error!(
                 target: "master",
@@ -911,7 +912,7 @@ impl HelperHandler {
         let forwarder = self.forwarder_for_route("new_session")?;
         let pending_token = self
             .state
-            .conductor
+            .session_router
             .begin_new(agent.instance_id, self.helper_id)
             .await
             .ok_or_else(|| acp::Error::internal_error().data("agent process exited"))?;
@@ -926,7 +927,7 @@ impl HelperHandler {
             Err(err) => {
                 let discarded = self
                     .state
-                    .conductor
+                    .session_router
                     .finish_new_failure(&pending_token)
                     .await;
                 if discarded > 0 {
@@ -951,7 +952,7 @@ impl HelperHandler {
         let _lifecycle = self.state.lifecycle_gate.lock().await;
         let binding = self
             .state
-            .conductor
+            .session_router
             .finish_new_success(&pending_token, resp.session_id.clone(), route)
             .await
             .map_err(|err| match err {
@@ -981,7 +982,7 @@ impl HelperHandler {
                 "session/new completed; discarded unmatched buffered notifications"
         );
         }
-        let registry_size = self.state.conductor.routed_session_ids().await.len();
+        let registry_size = self.state.session_router.routed_session_ids().await.len();
         let mut info =
             crate::session_registry::SessionInfo::new(resp.session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
@@ -995,7 +996,7 @@ impl HelperHandler {
         if !binding.channel_closed
             && self
                 .state
-                .conductor
+                .session_router
                 .publish(&binding.token, info.clone())
                 .await
                 == PublishResult::Published
@@ -1096,7 +1097,7 @@ impl HelperHandler {
         let binding = {
             let _lifecycle = self.state.lifecycle_gate.lock().await;
             self.state
-                .conductor
+                .session_router
                 .begin_load(
                     agent.instance_id,
                 session_id.clone(),
@@ -1161,7 +1162,7 @@ impl HelperHandler {
                 }
                 Err(err) => {
                     let _lifecycle = self.state.lifecycle_gate.lock().await;
-                    let rolled_back = self.state.conductor.rollback_load(&binding).await;
+                    let rolled_back = self.state.session_router.rollback_load(&binding).await;
                     tracing::warn!(
                         target: "master",
                         helper_id = ?self.helper_id,
@@ -1203,7 +1204,7 @@ impl HelperHandler {
         let _lifecycle = self.state.lifecycle_gate.lock().await;
         let publication = self
             .state
-            .conductor
+            .session_router
             .publish(&binding.token, info.clone())
             .await;
         if publication == PublishResult::Published {
@@ -1290,7 +1291,7 @@ impl HelperHandler {
         // (sub-µs hashmap snapshot, no awaits inside the critical
         // section). `drop_sessions_for_helper` mutates the registry
         // by calling `registry.remove(sid)` *after* releasing
-        // the conductor lifecycle gate. Both operations are
+        // the session-routing lifecycle gate. Both operations are
         // serialized by the registry's own internal mutex, so any
         // ordering between a concurrent helper-drop and this
         // snapshot is acceptable:
@@ -1813,7 +1814,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     );
 
     let inner = Arc::new(MasterStateInner {
-        conductor: SessionConductor::new(),
+        session_router: SessionRouter::new(),
         lifecycle_gate: Mutex::new(()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
@@ -2115,7 +2116,7 @@ async fn get_or_spawn_agent(
     state: &Arc<MasterStateInner>,
     agent_cmd: &str,
     agent_id: Option<&str>,
-) -> Result<Arc<AgentCli>> {
+) -> Result<Arc<ProxyChainRuntime>> {
     let key: AgentCmdKey = agent_cmd.to_string();
     let cell = {
         let mut agents = state.agents.lock().await;
@@ -2189,8 +2190,8 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
     instance_id: AgentInstanceId,
-    pool_slot: Arc<tokio::sync::OnceCell<Arc<AgentCli>>>,
-) -> Result<Arc<AgentCli>> {
+    pool_slot: Arc<tokio::sync::OnceCell<Arc<ProxyChainRuntime>>>,
+) -> Result<Arc<ProxyChainRuntime>> {
     let mut spawn_result = spawn_agent_process(agent_cmd, None)
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
@@ -2317,10 +2318,9 @@ async fn spawn_one_agent(
             },
             acp::on_receive_notification!(),
         );
-    let (conn, handle_io) = conn::spawn_client(
-        builder,
-        conn::byte_streams(stdin.compat_write(), stdout.compat()),
-    );
+    let final_agent = conn::byte_streams(stdin.compat_write(), stdout.compat());
+    let conductor = proxy_chain::transparent(final_agent);
+    let (conn, handle_io) = conn::spawn_client_component(builder, conductor);
 
     // I/O-loop driver + reaper. This task drives the ACP connection's
     // I/O, so it MUST run before `initialize` (below) — initialize can't
@@ -2436,7 +2436,7 @@ async fn spawn_one_agent(
     // Keep the current single-agent history bridge functional while the
     // registry aggregates lazily spawned agents. The first initialized agent
     // is the startup/default source; per-agent session rows are still stamped
-    // from the bound AgentCli below.
+    // from the bound proxy-chain runtime below.
     let _ = state.cached_init_resp.set(init_resp.clone());
     if state.agent_conn.set(conn.clone()).is_ok() {
         let state_for_history = Arc::clone(state);
@@ -2451,7 +2451,7 @@ async fn spawn_one_agent(
         });
     }
 
-    Ok(Arc::new(AgentCli {
+    Ok(Arc::new(ProxyChainRuntime {
         instance_id,
         conn,
         cached_init_resp: init_resp,
@@ -2461,15 +2461,15 @@ async fn spawn_one_agent(
 }
 
 /// Remove a dead agent CLI from the pool. Helpers still holding an
-/// `Arc<AgentCli>` for it will error on their next request (and the
+/// `Arc<ProxyChainRuntime>` for it will error on their next request (and the
 /// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
-/// re-runs `spawn_one_agent`. Exact-instance conductor and registry state
+/// re-runs `spawn_one_agent`. Exact-instance router and registry state
 /// is removed before a replacement process can publish sessions.
 async fn reap_agent(
     state: &Arc<MasterStateInner>,
     key: &AgentCmdKey,
     instance_id: AgentInstanceId,
-    expected_slot: &Arc<tokio::sync::OnceCell<Arc<AgentCli>>>,
+    expected_slot: &Arc<tokio::sync::OnceCell<Arc<ProxyChainRuntime>>>,
 ) {
     state.dead_agent_instances.lock().await.insert(instance_id);
     let removed = {
@@ -2488,7 +2488,7 @@ async fn reap_agent(
         exact && agents.remove(key).is_some()
     };
     let _lifecycle = state.lifecycle_gate.lock().await;
-    let reaped = state.conductor.reap_agent(instance_id).await;
+    let reaped = state.session_router.reap_agent(instance_id).await;
     let routes_removed = reaped.routes_removed;
     let notifications_discarded = reaped.discarded;
     for change in reaped.registry_changes {
@@ -2789,16 +2789,16 @@ async fn cleanup_closed_binding(state: &MasterStateInner, token: &BindingToken) 
                 .is_some_and(|agent| agent.instance_id == token.agent_instance())
         })
     };
-    if !state.conductor.remove_current(token, agent_is_live).await {
+    if !state.session_router.remove_current(token, agent_is_live).await {
         return false;
     }
-    if let UnpublishResult::OwnerRemoved(change) = state.conductor.unpublish(token).await {
+    if let UnpublishResult::OwnerRemoved(change) = state.session_router.unpublish(token).await {
         apply_registry_change(state, change).await;
     }
     true
 }
 
-/// Detach every conductor binding owned by `helper_id` and return
+/// Detach every session binding owned by `helper_id` and return
 /// the dropped `SessionId`s (used for the `sessions_dropped` disconnect
 /// log line). Factored out of `serve_helper` so the cleanup is
 /// unit-testable without a real named pipe.
@@ -2808,13 +2808,13 @@ async fn drop_sessions_for_helper(
     live_agent: Option<AgentInstanceId>,
 ) -> Vec<acp::schema::v1::SessionId> {
     let _lifecycle = state.lifecycle_gate.lock().await;
-    let tokens = state.conductor.detach_helper(helper_id, live_agent).await;
+    let tokens = state.session_router.detach_helper(helper_id, live_agent).await;
     let victims = tokens
             .iter()
         .map(|token| token.session_id().clone())
             .collect::<Vec<_>>();
     for token in &tokens {
-        if let UnpublishResult::OwnerRemoved(change) = state.conductor.unpublish(token).await {
+        if let UnpublishResult::OwnerRemoved(change) = state.session_router.unpublish(token).await {
             apply_registry_change(state, change).await;
         }
     }
@@ -2955,10 +2955,10 @@ async fn host_history_via_acp(
     // Class-A (agent-pane) exclusion. The on-disk index is written by the helper
     // *after* session/new lands, so a just-created pane session can be returned by
     // session/list before its index line exists, leaking a phantom historical row.
-    // Master routes every session/new, so the conductor's live keys are the
+    // Master routes every session/new, so the router's live keys are the
     // authoritative live-pane set — union them in to close that race.
     let mut idx = crate::agent_pane_origin::load_default_set();
-    for sid in state.conductor.routed_session_ids().await {
+    for sid in state.session_router.routed_session_ids().await {
         idx.insert(sid.0.to_string());
     }
     Some(crate::session_history::classify_and_map(
@@ -4233,7 +4233,7 @@ mod tests {
 
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
-            conductor: SessionConductor::new(),
+            session_router: SessionRouter::new(),
             lifecycle_gate: Mutex::new(()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
@@ -4323,7 +4323,7 @@ mod tests {
                 // `forward_new_session_to_agent` resolves it and exercises
                 // the timeout path.
                 let agent = Arc::new(OnceLock::new());
-                let _ = agent.set(Arc::new(AgentCli {
+                let _ = agent.set(Arc::new(ProxyChainRuntime {
                     instance_id: AgentInstanceId(1),
                     conn: client_connection_to_pending_new_session_agent(),
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
@@ -4472,6 +4472,14 @@ mod tests {
                                   responder,
                                   cx: acp::ConnectionTo<acp::Client>| async move {
                                 match req {
+                                    ClientRequest::InitializeRequest(a) => conn::respond_enum(
+                                        responder,
+                                        Ok(AgentResponse::InitializeResponse(
+                                            acp::schema::v1::InitializeResponse::new(
+                                                a.protocol_version,
+                                            ),
+                                        )),
+                                    ),
                                     ClientRequest::PromptRequest(a) => {
                                         let sid = a.session_id.clone();
                                         tokio::task::spawn_local(async move {
@@ -4515,8 +4523,10 @@ mod tests {
                     });
                 }
 
-                // master's client side of hop 1: MasterClient routes the agent's
-                // reentrant request_permission back out to the owning helper.
+                // Master's client side of hop 1: the zero-proxy canonical
+                // conductor sits between MasterClient and the final agent.
+                // MasterClient routes the agent's reentrant request_permission
+                // back out to the owning helper.
                 let master_client = MasterClient {
                     state: Arc::clone(&state),
                     agent_instance: AgentInstanceId(1),
@@ -4549,20 +4559,26 @@ mod tests {
                             },
                             acp::on_receive_request!(),
                         );
-                    let (link, io) = conn::spawn_client(
+                    let final_agent = conn::byte_streams(cw.compat_write(), cr.compat());
+                    let (link, io) = conn::spawn_client_component(
                         builder,
-                        conn::byte_streams(cw.compat_write(), cr.compat()),
+                        proxy_chain::transparent(final_agent),
                     );
                     tokio::task::spawn_local(async move {
                         let _ = io.await;
                     });
+                    link.initialize(acp::schema::v1::InitializeRequest::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ))
+                    .await
+                    .expect("zero-proxy conductor should initialize the final agent");
                     link
                 };
 
                 // ---- hop 2: master (helper-side agent) <-> mock helper client ----
                 let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
                 let agent = Arc::new(OnceLock::new());
-                let _ = agent.set(Arc::new(AgentCli {
+                let _ = agent.set(Arc::new(ProxyChainRuntime {
                     instance_id: AgentInstanceId(1),
                     conn: agent_conn,
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
@@ -4615,7 +4631,7 @@ mod tests {
                 // Route the session so the agent's reentrant request_permission
                 // reaches the mock helper.
                 state
-                    .conductor
+                    .session_router
                     .begin_load(
                         AgentInstanceId(1),
                     sid.clone(),
@@ -4727,7 +4743,7 @@ mod tests {
         route: HelperRoute,
     ) -> BindingToken {
         state
-            .conductor
+            .session_router
             .begin_load(AgentInstanceId(1), sid, route)
             .await
             .expect("test route binding")
@@ -4801,7 +4817,7 @@ mod tests {
 
         assert!(
             state
-                .conductor
+                .session_router
                 .route_for(AgentInstanceId(1), &sid)
                 .await
                 .is_none(),
@@ -4857,7 +4873,7 @@ mod tests {
         // cleanup-with-identity-check path.
         // Rebind to helper B (simulating the racing load_session
         // landing between snapshot and try_send).
-        assert!(state.conductor.remove_current(&stale_token, true).await);
+        assert!(state.session_router.remove_current(&stale_token, true).await);
         let (tx_b, _rx_b) = mpsc::channel::<SessionNotification>(NOTIF_CHANNEL_CAPACITY);
         bind_test_route(
             &state,
@@ -4879,9 +4895,9 @@ mod tests {
             Err(mpsc::error::TrySendError::Closed(_)) => {}
             other => panic!("expected Closed, got {other:?}"),
         }
-        assert!(!state.conductor.remove_current(&stale_token, true).await);
+        assert!(!state.session_router.remove_current(&stale_token, true).await);
         let (_, current) = state
-            .conductor
+            .session_router
             .route_for(AgentInstanceId(1), &sid)
             .await
             .expect("helper B's route must survive");
@@ -4922,7 +4938,7 @@ mod tests {
         // Routing entry survives Full (only Closed removes it).
         assert!(
             state
-                .conductor
+                .session_router
                 .route_for(AgentInstanceId(1), &sid)
                 .await
                 .is_some(),
@@ -4939,7 +4955,7 @@ mod tests {
         let sid = SessionId::new("never-registered");
         // Just ensure the call doesn't panic and returns Ok.
         route(&state, make_notif(&sid)).await;
-        assert!(state.conductor.routed_session_ids().await.is_empty());
+        assert!(state.session_router.routed_session_ids().await.is_empty());
     }
 
     /// `drop_sessions_for_helper` removes exactly the rows owned by
@@ -4975,7 +4991,7 @@ mod tests {
         assert!(dropped.contains(&SessionId::new("a1")));
         assert!(dropped.contains(&SessionId::new("a2")));
 
-        let routed = state.conductor.routed_session_ids().await;
+        let routed = state.session_router.routed_session_ids().await;
         assert!(!routed.contains(&SessionId::new("a1")));
         assert!(!routed.contains(&SessionId::new("a2")));
         assert!(routed.contains(&SessionId::new("b1")));
@@ -5032,14 +5048,14 @@ mod tests {
             .await;
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(&binding_a, state.registry.lookup(&sid_a).await.unwrap())
                 .await,
             PublishResult::Published
         );
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(&binding_b, state.registry.lookup(&sid_b).await.unwrap())
                 .await,
             PublishResult::Published
@@ -5061,7 +5077,7 @@ mod tests {
         assert_eq!(snapshot[0].session_id, sid_b);
     }
 
-    fn conductor_notif(sid: &SessionId) -> SessionNotification {
+    fn router_notif(sid: &SessionId) -> SessionNotification {
         SessionNotification::new(
             sid.clone(),
             SessionUpdate::AgentMessageChunk(ContentChunk::new("hi".into())),
@@ -5069,14 +5085,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn conductor_closed_channel_cleans_exact_route_and_registry() {
+    async fn router_closed_channel_cleans_exact_route_and_registry() {
         use crate::session_registry::SessionInfo;
 
         let state = make_state();
         let sid = SessionId::new("closed");
         let (tx, rx) = mpsc::channel(1);
         let binding = state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid.clone(),
@@ -5095,7 +5111,7 @@ mod tests {
             .await;
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(&binding.token, state.registry.lookup(&sid).await.unwrap())
                 .await,
             PublishResult::Published
@@ -5107,26 +5123,26 @@ mod tests {
             agent_instance: AgentInstanceId(1),
         };
         client
-            .session_notification(conductor_notif(&sid))
+            .session_notification(router_notif(&sid))
             .await
             .expect("closed delivery remains non-fatal");
 
         assert!(state.registry.lookup(&sid).await.is_none());
         assert!(state
-            .conductor
+            .session_router
             .route_for(AgentInstanceId(1), &sid)
             .await
             .is_none());
     }
 
     #[tokio::test]
-    async fn conductor_full_channel_drops_without_removing_route() {
+    async fn router_full_channel_drops_without_removing_route() {
         let state = make_state();
         let sid = SessionId::new("full");
         let (tx, _rx) = mpsc::channel(1);
-        tx.try_send(conductor_notif(&sid)).expect("fill channel");
+        tx.try_send(router_notif(&sid)).expect("fill channel");
         state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid.clone(),
@@ -5144,11 +5160,11 @@ mod tests {
             agent_instance: AgentInstanceId(1),
         };
         client
-            .session_notification(conductor_notif(&sid))
+            .session_notification(router_notif(&sid))
             .await
             .expect("full delivery remains non-fatal");
         assert!(state
-            .conductor
+            .session_router
             .route_for(AgentInstanceId(1), &sid)
             .await
             .is_some());
@@ -5162,7 +5178,7 @@ mod tests {
         let sid = SessionId::new("rebound");
         let (old_tx, _old_rx) = mpsc::channel(1);
         let old = state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid.clone(),
@@ -5177,7 +5193,7 @@ mod tests {
             .expect("old binding");
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(
                     &old.token,
                     SessionInfo::new(sid.clone(), PathBuf::from("C:\\old")),
@@ -5193,13 +5209,13 @@ mod tests {
             .await
             .insert(HelperId(3), ext_tx);
         let (new_tx, _new_rx) = mpsc::channel(1);
-        assert!(state.conductor.remove_current(&old.token, false).await);
+        assert!(state.session_router.remove_current(&old.token, false).await);
         assert!(matches!(
-            state.conductor.unpublish(&old.token).await,
+            state.session_router.unpublish(&old.token).await,
             UnpublishResult::OwnerRemoved(_)
         ));
         let replacement = state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid.clone(),
@@ -5216,7 +5232,7 @@ mod tests {
         info.pane_session_id = Some("replacement-pane".into());
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(&replacement.token, info.clone())
                 .await,
             PublishResult::Published
@@ -5326,7 +5342,7 @@ mod tests {
         let sid_a = SessionId::new("removed-a");
         let sid_b = SessionId::new("removed-b");
         let binding_a = state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid_a.clone(),
@@ -5340,7 +5356,7 @@ mod tests {
             .await
             .expect("route binding");
         let binding_b = state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid_b.clone(),
@@ -5363,14 +5379,14 @@ mod tests {
             .await;
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(&binding_a.token, state.registry.lookup(&sid_a).await.unwrap())
                 .await,
             PublishResult::Published
         );
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(&binding_b.token, state.registry.lookup(&sid_b).await.unwrap())
                 .await,
             PublishResult::Published
@@ -5428,7 +5444,7 @@ mod tests {
         let state = make_state();
         let (tx, _rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 SessionId::new("orphan"),
@@ -5511,7 +5527,7 @@ mod tests {
         let (ext_tx, mut ext_rx) = mpsc::unbounded_channel::<acp::schema::v1::ExtNotification>();
         let sid = SessionId::new("removed-a");
         let binding = state
-            .conductor
+            .session_router
             .begin_load(
                 AgentInstanceId(1),
                 sid.clone(),
@@ -5530,7 +5546,7 @@ mod tests {
             .await;
         assert_eq!(
             state
-                .conductor
+                .session_router
                 .publish(
                     &binding.token,
                     state.registry.lookup(&SessionId::new("removed-a")).await.unwrap(),
@@ -5717,7 +5733,7 @@ mod tests {
         wt: Arc<dyn crate::shell::wt_channel::WtChannel>,
     ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
-            conductor: SessionConductor::new(),
+            session_router: SessionRouter::new(),
             lifecycle_gate: Mutex::new(()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),

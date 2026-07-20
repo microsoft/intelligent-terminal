@@ -1,8 +1,8 @@
-//! WTA's specialized ACP session conductor.
+//! WTA's session-routing control plane.
 //!
-//! The public ACP conductor APIs model one client transport connected to one
-//! agent transport. WTA instead multiplexes many helper pipes onto a pool of
-//! shared agent processes, so routing and orphan/rebind lifetime live here.
+//! WTA multiplexes many helper pipes onto a pool of shared proxy-chain
+//! runtimes, so instance-scoped routing and orphan/rebind lifetime live outside
+//! the canonical ACP conductors.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::AtomicU64;
@@ -73,7 +73,7 @@ struct PendingNew {
 }
 
 #[derive(Default)]
-struct ConductorState {
+struct RouterState {
     routes: HashMap<SessionKey, Binding>,
     orphans: HashSet<SessionKey>,
     published: HashMap<acp::schema::v1::SessionId, BindingToken>,
@@ -153,16 +153,16 @@ pub(super) enum UnpublishResult {
 
 /// Routing, ownership, orphan, and pending-new state for all agent instances.
 #[derive(Default)]
-pub(super) struct SessionConductor {
-    state: Mutex<ConductorState>,
+pub(super) struct SessionRouter {
+    state: Mutex<RouterState>,
 }
 
-impl SessionConductor {
+impl SessionRouter {
     pub(super) fn new() -> Self {
         Self::default()
     }
 
-    fn next_token(state: &mut ConductorState, key: SessionKey) -> BindingToken {
+    fn next_token(state: &mut RouterState, key: SessionKey) -> BindingToken {
         state.next_generation = state.next_generation.wrapping_add(1);
         if state.next_generation == 0 {
             state.next_generation = 1;
@@ -174,7 +174,7 @@ impl SessionConductor {
     }
 
     fn install(
-        state: &mut ConductorState,
+        state: &mut RouterState,
         agent: AgentInstanceId,
         session_id: acp::schema::v1::SessionId,
         route: HelperRoute,
@@ -267,7 +267,7 @@ impl SessionConductor {
         let mut buffered_enqueued = 0;
         let mut buffered_dropped = 0;
         let mut channel_closed = notif_tx.is_closed();
-        // Keep the conductor lock until every early notification is enqueued.
+        // Keep the router lock until every early notification is enqueued.
         // A later notification therefore cannot observe the new route and
         // overtake a buffered one.
         for notification in buffered {
@@ -494,7 +494,7 @@ impl SessionConductor {
         }
     }
 
-    fn unpublish_locked(state: &mut ConductorState, token: &BindingToken) -> UnpublishResult {
+    fn unpublish_locked(state: &mut RouterState, token: &BindingToken) -> UnpublishResult {
         state.publication_candidates.remove(token);
         let owns = state
             .published
@@ -629,7 +629,7 @@ mod tests {
 
     #[tokio::test]
     async fn equal_session_ids_on_two_agents_route_independently() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let sid = acp::schema::v1::SessionId::new("same");
         let (route_a, _) = route(1);
         let (route_b, _) = route(2);
@@ -656,7 +656,7 @@ mod tests {
 
     #[tokio::test]
     async fn live_binding_cannot_be_stolen_by_another_helper() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let sid = acp::schema::v1::SessionId::new("sid");
         let (old, _) = route(1);
         let current = conductor
@@ -682,7 +682,7 @@ mod tests {
 
     #[tokio::test]
     async fn rollback_restores_claimed_orphan() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let sid = acp::schema::v1::SessionId::new("sid");
         let (original, _) = route(1);
         conductor
@@ -705,7 +705,7 @@ mod tests {
 
     #[tokio::test]
     async fn agent_reap_is_isolated_by_instance() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let sid = acp::schema::v1::SessionId::new("same");
         for (agent, helper) in [(AgentInstanceId(1), 1), (AgentInstanceId(2), 2)] {
             let (route, _) = route(helper);
@@ -724,7 +724,7 @@ mod tests {
 
     #[tokio::test]
     async fn early_new_notification_is_deliverable_before_response_completion() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let pending = conductor
             .begin_new(agent, HelperId(1))
@@ -760,7 +760,7 @@ mod tests {
 
     #[tokio::test]
     async fn pending_buffer_is_bounded_and_cleared_on_final_failure() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let pending = conductor
             .begin_new(agent, HelperId(1))
@@ -794,7 +794,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_channel_does_not_remove_binding() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let sid = acp::schema::v1::SessionId::new("sid");
         let (route, _receiver) = route(1);
@@ -830,7 +830,7 @@ mod tests {
 
     #[tokio::test]
     async fn closed_channel_cleanup_cannot_remove_rebound_binding() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let sid = acp::schema::v1::SessionId::new("sid");
         let (old_route, old_receiver) = route(1);
@@ -856,7 +856,7 @@ mod tests {
 
     #[tokio::test]
     async fn publication_collision_keeps_first_agent_owner() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let sid = acp::schema::v1::SessionId::new("same");
         let (route_a, _) = route(1);
         let binding_a = conductor
@@ -892,7 +892,7 @@ mod tests {
 
     #[tokio::test]
     async fn agent_reap_removes_routes_and_exact_publications() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let sid = acp::schema::v1::SessionId::new("sid");
         let (route, _) = route(1);
         let binding = conductor
@@ -917,7 +917,7 @@ mod tests {
 
     #[tokio::test]
     async fn agent_reap_blocks_late_new_and_load_commits() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let pending = conductor
             .begin_new(agent, HelperId(1))
@@ -946,7 +946,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_new_session_id_preserves_live_binding() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let sid = acp::schema::v1::SessionId::new("same");
         let (existing_route, _) = route(1);
@@ -975,7 +975,7 @@ mod tests {
 
     #[tokio::test]
     async fn helper_disconnect_cancels_pending_new_completion() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let pending = conductor
             .begin_new(agent, HelperId(1))
@@ -998,7 +998,7 @@ mod tests {
 
     #[tokio::test]
     async fn orphan_notifications_do_not_consume_pending_new_buffer() {
-        let conductor = SessionConductor::new();
+        let conductor = SessionRouter::new();
         let agent = AgentInstanceId(1);
         let orphan_sid = acp::schema::v1::SessionId::new("orphan");
         let (orphan_route, _) = route(1);
