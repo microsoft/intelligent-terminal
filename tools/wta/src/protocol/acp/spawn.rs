@@ -151,14 +151,17 @@ impl AgentStderrLog {
 }
 
 fn truncate_stderr_line(line: &str) -> String {
-    let mut chars = line.chars();
-    let mut truncated = chars
-        .by_ref()
-        .take(STARTUP_STDERR_MAX_CHARS_PER_LINE)
-        .collect::<String>();
-    if chars.next().is_some() {
-        truncated.push_str("...");
+    const ELLIPSIS: &str = "...";
+
+    if line.chars().count() <= STARTUP_STDERR_MAX_CHARS_PER_LINE {
+        return line.to_string();
     }
+
+    let mut truncated = line
+        .chars()
+        .take(STARTUP_STDERR_MAX_CHARS_PER_LINE - ELLIPSIS.chars().count())
+        .collect::<String>();
+    truncated.push_str(ELLIPSIS);
     truncated
 }
 
@@ -384,6 +387,50 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         assert_eq!(inner.phase, StderrPhase::Running);
         assert!(inner.startup_lines.is_empty());
+    }
+
+    #[test]
+    fn stderr_line_at_limit_is_unchanged() {
+        let line = "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE);
+
+        assert_eq!(truncate_stderr_line(&line), line);
+    }
+
+    #[test]
+    fn stderr_line_over_limit_includes_ellipsis_within_limit() {
+        let line = "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE + 1);
+        let truncated = truncate_stderr_line(&line);
+
+        assert_eq!(
+            truncated.chars().count(),
+            STARTUP_STDERR_MAX_CHARS_PER_LINE
+        );
+        assert!(truncated.ends_with("..."));
+        assert_eq!(
+            truncated,
+            format!(
+                "{}...",
+                "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3)
+            )
+        );
+    }
+
+    #[test]
+    fn stderr_line_truncation_preserves_unicode_characters() {
+        let line = "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE + 1);
+        let truncated = truncate_stderr_line(&line);
+
+        assert_eq!(
+            truncated.chars().count(),
+            STARTUP_STDERR_MAX_CHARS_PER_LINE
+        );
+        assert_eq!(
+            truncated,
+            format!(
+                "{}...",
+                "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3)
+            )
+        );
     }
 
     #[test]
