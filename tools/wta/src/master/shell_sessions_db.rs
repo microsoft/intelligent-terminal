@@ -94,7 +94,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Add the `agent_pane_session_id` column to a pre-existing `sessions` table
+/// Add the `agent_pane_session_id` column to a preexisting `sessions` table
 /// that was created before that column existed. No-op when it's already there.
 fn ensure_agent_pane_session_id_column(conn: &Connection) -> Result<()> {
     let has_column = conn
@@ -226,7 +226,7 @@ pub enum TtlSweepOutcome {
 ///
 /// Reads the last-sweep timestamp from the `meta` table; if the window hasn't
 /// elapsed, returns [`TtlSweepOutcome::Skipped`] without touching the sessions
-/// table. Otherwise deletes rows older than `now - ttl_secs`, records `now` as
+/// table. Otherwise, deletes rows older than `now - ttl_secs`, records `now` as
 /// the new last-sweep time, and returns their orphaned buffer GUIDs. Storing
 /// the timestamp in the DB (rather than a separate file) keeps the whole store
 /// in one master-owned place.
@@ -526,7 +526,7 @@ mod tests {
         ensure_agent_pane_session_id_column(&conn).unwrap();
         ensure_agent_pane_session_id_column(&conn).unwrap();
 
-        // The pre-existing row reads back with a NULL (None) agent id.
+        // The preexisting row reads back with a NULL (None) agent id.
         let all = list(&conn).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].agent_pane_session_id, None);
