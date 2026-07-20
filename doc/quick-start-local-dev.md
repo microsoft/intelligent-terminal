@@ -1,4 +1,4 @@
-# Quick Start
+# Quick Start the local development
 
 The fast path for local development. Intelligent Terminal is a dual-stack project: the Rust
 **WTA** agent (`tools/wta/`) plus the C++ **Windows Terminal** app (`src/`). For command-line
@@ -31,7 +31,7 @@ the setup needed.
 2. In Visual Studio:
    - Set startup project: **`CascadiaPackage`**
    - Select platform, **x64** for instance.
-   - Goto `CascadiaPackage` > Properties > Debug: set **Application process** and **Background task
+   - Go to `CascadiaPackage` > Properties > Debug: set **Application process** and **Background task
      process** to **Native Only**
    - Run (**F5**)
 
