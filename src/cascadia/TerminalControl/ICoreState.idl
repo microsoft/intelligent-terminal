@@ -47,6 +47,7 @@ namespace Microsoft.Terminal.Control
         Int32 ScrollOffset { get; };
         Int32 ViewHeight { get; };
         Int32 BufferHeight { get; };
+        Boolean InAltBuffer { get; };
 
         Boolean HasSelection { get; };
         Boolean HasMultiLineSelection { get; };

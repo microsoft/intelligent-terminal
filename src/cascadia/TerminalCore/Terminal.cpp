@@ -1554,6 +1554,16 @@ std::wstring Terminal::CurrentCommand() const
     return _activeBuffer().CurrentCommand();
 }
 
+// Whether the terminal is currently showing the alternate screen buffer, i.e. a
+// full-screen TUI application (copilot, vim, less, htop, …) has taken over. In
+// that state the main buffer stops growing and command marks aren't recorded,
+// so durable-session save uses this as a signal that meaningful work is
+// underway even when command history / scrollback look empty.
+bool Terminal::IsInAltBuffer() const noexcept
+{
+    return _inAltBuffer();
+}
+
 void Terminal::SerializeMainBuffer(HANDLE handle) const
 {
     _mainBuffer->SerializeTo(handle);

@@ -1627,6 +1627,13 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _terminal->GetBufferHeight();
     }
 
+    // Whether a full-screen TUI (alternate screen buffer) is currently active.
+    bool ControlCore::InAltBuffer() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->IsInAltBuffer();
+    }
+
     void ControlCore::_terminalWarningBell()
     {
         // Since this can only ever be triggered by output from the connection,

@@ -100,6 +100,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         int ScrollOffset() const;
         int ViewHeight() const;
         int BufferHeight() const;
+        bool InAltBuffer() const;
 
         bool HasSelection() const;
         bool HasMultiLineSelection() const;

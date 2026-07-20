@@ -814,11 +814,15 @@ namespace winrt::TerminalApp::implementation
     // Method Description:
     // - True when a tab has content worth persisting as a durable shell session.
     //   A brand-new tab that was opened and closed without doing anything has
-    //   none of these and is skipped, so the by-title session list isn't
-    //   polluted with (and real same-named sessions aren't overwritten by) empty
-    //   snapshots. A tab is saveable when any of its terminal panes:
-    //     * ran at least one command (shell-integration command history — the
-    //       primary signal, works for PowerShell/pwsh with OSC 133 marks), or
+    //   none of these and is skipped, so the session list isn't polluted with
+    //   empty snapshots. A tab is saveable when any of its terminal panes:
+    //     * is showing the alternate screen buffer — a full-screen TUI (copilot,
+    //       vim, less, htop, …) is running, the clearest "in use" signal and the
+    //       one that catches a tab where the user launched an interactive CLI
+    //       (while alt-screen is active neither of the next two fire), or
+    //     * ran at least one command / has a command typed at the prompt
+    //       (shell-integration command history + current commandline — works for
+    //       PowerShell/pwsh with OSC 133 marks), or
     //     * accumulated scrollback beyond the viewport (`BufferHeight >
     //       ViewHeight`) — the fallback for shells with no shell integration,
     //       whose command history is always empty.
@@ -843,11 +847,26 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
-            // Primary: shell integration recorded at least one executed command.
-            if (const auto history = control.CommandHistory(); history && history.History().Size() > 0)
+            // A full-screen TUI (copilot, vim, less, htop, …) is running on the
+            // alternate screen buffer: while it's active the main buffer stops
+            // growing and command marks aren't recorded, so neither the history
+            // nor the scrollback check below fires — but the tab is clearly in
+            // use and worth saving. This is the primary signal for a tab where
+            // the user launched an interactive CLI (e.g. typed `copilot`).
+            if (control.InAltBuffer())
             {
                 saveable = true;
                 return;
+            }
+            // Shell integration recorded at least one executed command, or the
+            // user has a command typed/running at the current prompt.
+            if (const auto history = control.CommandHistory())
+            {
+                if (history.History().Size() > 0 || !history.CurrentCommandline().empty())
+                {
+                    saveable = true;
+                    return;
+                }
             }
             // Fallback: any scrollback beyond the viewport means real output
             // landed even without shell integration (whose history stays empty).
