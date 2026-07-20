@@ -686,6 +686,7 @@ namespace winrt::TerminalApp::implementation
         // snapshot is shipped to wta-master (the SQLite store owner) as a
         // `save_shell_session` event; WT never persists it into state.json.
         void _SaveShellSessionForTab(const winrt::TerminalApp::Tab& tab);
+        bool _TabHasSaveableContent(winrt::com_ptr<implementation::Tab> tabImpl);
         std::vector<winrt::hstring> _PersistShellSessionBuffers(winrt::com_ptr<implementation::Tab> tabImpl);
         safe_void_coroutine _RestoreShellSessionCoro(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions, std::string agentSessionId, std::string agentCwd);
         void _PersistWorkspaceBuffers();

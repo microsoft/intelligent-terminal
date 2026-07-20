@@ -699,6 +699,16 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
+            // Don't save a tab the user never did anything in: a brand-new tab
+            // that was opened and closed with no command run (and no scrollback)
+            // has nothing worth restoring, and — since sessions are keyed by tab
+            // title — an empty "PowerShell" snapshot would overwrite a real,
+            // same-named session. See `_TabHasSaveableContent`.
+            if (!_TabHasSaveableContent(tabImpl))
+            {
+                return;
+            }
+
             WindowLayout layout;
             layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(tabActions)));
 
@@ -775,6 +785,67 @@ namespace winrt::TerminalApp::implementation
             ProtocolVtSequenceReceived.raise(*this, payload);
         }
         CATCH_LOG();
+    }
+
+    // Method Description:
+    // - True when a tab has content worth persisting as a durable shell session.
+    //   A brand-new tab that was opened and closed without doing anything has
+    //   none of these and is skipped, so the by-title session list isn't
+    //   polluted with (and real same-named sessions aren't overwritten by) empty
+    //   snapshots. A tab is saveable when any of its terminal panes:
+    //     * ran at least one command (shell-integration command history — the
+    //       primary signal, works for PowerShell/pwsh with OSC 133 marks), or
+    //     * accumulated scrollback beyond the viewport (`BufferHeight >
+    //       ViewHeight`) — the fallback for shells with no shell integration,
+    //       whose command history is always empty.
+    //   An agent pane the user actually opened (with a live session) also counts,
+    //   so a tab used only for an agent conversation still saves.
+    bool TerminalPage::_TabHasSaveableContent(winrt::com_ptr<implementation::Tab> tabImpl)
+    {
+        const auto rootPane = tabImpl->GetRootPane();
+        if (!rootPane)
+        {
+            return false;
+        }
+
+        bool saveable = false;
+        rootPane->WalkTree([&](const std::shared_ptr<Pane>& p) {
+            if (saveable || !p->GetContent() || p->IsAgentPane())
+            {
+                return;
+            }
+            const auto control = p->GetTerminalControl();
+            if (!control)
+            {
+                return;
+            }
+            // Primary: shell integration recorded at least one executed command.
+            if (const auto history = control.CommandHistory(); history && history.History().Size() > 0)
+            {
+                saveable = true;
+                return;
+            }
+            // Fallback: any scrollback beyond the viewport means real output
+            // landed even without shell integration (whose history stays empty).
+            if (control.BufferHeight() > control.ViewHeight())
+            {
+                saveable = true;
+            }
+        });
+
+        // An open agent pane with a session is also meaningful work.
+        if (!saveable)
+        {
+            if (const auto agentPane = tabImpl->FindAgentPane(); agentPane && !agentPane->IsHidden())
+            {
+                if (agentPane->GetSessionId() != winrt::guid{})
+                {
+                    saveable = true;
+                }
+            }
+        }
+
+        return saveable;
     }
 
     // Method Description:
