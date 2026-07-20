@@ -124,7 +124,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_flags: &[],
         // Codex CLI itself doesn't speak ACP. Use the ACP-project-maintained
         // adapter, pinned so a future npm release cannot silently break startup.
-        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.2",
+        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.0",
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
@@ -475,7 +475,7 @@ mod tests {
             "claude",
         );
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.2"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.0"),
             "codex",
         );
         // Adapter prefix with extra trailing args still resolves.

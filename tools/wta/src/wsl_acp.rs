@@ -273,7 +273,7 @@ mod tests {
         );
         assert_eq!(
             acp_command_for(&CliSource::Codex).as_deref(),
-            Some("npx -y @agentclientprotocol/codex-acp@1.1.2")
+            Some("npx -y @agentclientprotocol/codex-acp@1.1.0")
         );
         assert!(acp_command_for(&CliSource::Gemini).is_none());
         assert!(acp_command_for(&CliSource::Unknown("x".into())).is_none());

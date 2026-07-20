@@ -269,7 +269,7 @@ fallback is kept for it.
 
 The Codex results above were collected with the now-deprecated
 `@zed-industries/codex-acp`. The current runtime launch command is
-`npx -y @agentclientprotocol/codex-acp@1.1.2`; the original measurements and
+`npx -y @agentclientprotocol/codex-acp@1.1.0`; the original measurements and
 reproduction command below are retained as historical evidence.
 
 ### 2. `session/list` returns full on-disk history, not just live sessions — and only *real* sessions
