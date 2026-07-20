@@ -5,7 +5,7 @@
 WTA's agent plane is a hand-rolled ACP multiplexer: `wta-master` owns a pool of
 `ACP/stdio` agent CLI connections and fans per-helper sessions onto them
 (`session_to_helper` routing), while each `wta-helper` is an ACP client over a
-named pipe. All of this is built on the **0.10.x** `agent-client-protocol`
+named pipe. All of this was built on the **0.10.x** `agent-client-protocol`
 programming model (`impl acp::Agent/Client`, `ClientSideConnection` /
 `AgentSideConnection`, `LocalSet` + `spawn_local` + `handle_io`, trait-style
 `conn.method().await` calls).
