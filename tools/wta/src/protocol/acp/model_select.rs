@@ -133,7 +133,7 @@ pub(crate) async fn apply_session_model(
                 .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
                     session_id.clone(),
                     config_id,
-                    model_id.clone(),
+                    model_id.as_str(),
                 ))
                 .await
             {
