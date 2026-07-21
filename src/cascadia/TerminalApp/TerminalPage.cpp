@@ -5818,10 +5818,12 @@ namespace winrt::TerminalApp::implementation
                                 {
                                     const auto eventName = agentParams["event"].asString();
                                     const auto agentSessionId = agentParams.get("agent_session_id", "").asString();
+                                    // Without WT_SESSION, wtcli targets the focused pane rather than the hook's origin.
+                                    const auto paneBound = agentParams.get("pane_bound", false).asBool();
                                     if (const auto connection = term2.Connection())
                                     {
                                         const auto paneSessionId = connection.SessionId();
-                                        if (eventName == "agent.session.stopped" || eventName == "agent.session.end")
+                                        if (paneBound && (eventName == "agent.session.stopped" || eventName == "agent.session.end"))
                                         {
                                             const auto binding = page->_paneAgentSessions.find(paneSessionId);
                                             if (binding != page->_paneAgentSessions.end() &&
@@ -5830,7 +5832,8 @@ namespace winrt::TerminalApp::implementation
                                                 page->_paneAgentSessions.erase(binding);
                                             }
                                         }
-                                        else if ((eventName == "agent.session.started" || eventName == "agent.session.start") &&
+                                        else if (paneBound &&
+                                                 (eventName == "agent.session.started" || eventName == "agent.session.start") &&
                                                  !agentSessionId.empty() &&
                                                  !agentSessionId.starts_with("sidekick-"))
                                         {
