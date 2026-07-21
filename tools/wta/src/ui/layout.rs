@@ -258,7 +258,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 /// (not char-count) so localized hints containing wide CJK glyphs are clipped
 /// at the right column instead of overrunning the pane. The returned string is
 /// guaranteed to have a display width of at most `max`.
-fn truncate_to_width(s: &str, max: usize) -> String {
+pub(super) fn truncate_to_width(s: &str, max: usize) -> String {
     use unicode_width::UnicodeWidthChar;
 
     let total: usize = s

@@ -1357,7 +1357,7 @@ pub enum AppEvent {
     },
     ShellSessionsLoaded {
         tab_id: String,
-        sessions: Vec<crate::shell_session_store::ShellSessionRecord>,
+        sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
         error: Option<String>,
     },
     ShellSessionRestored {
@@ -1572,7 +1572,7 @@ pub struct TabSession {
     pub current_view: View,
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
-    pub shell_sessions: Vec<crate::shell_session_store::ShellSessionRecord>,
+    pub shell_sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
     pub shell_sessions_list_state: ratatui::widgets::ListState,
     pub shell_sessions_loading: bool,
     pub shell_sessions_error: Option<String>,
@@ -11241,16 +11241,15 @@ mod tests {
         (app, master_rx)
     }
 
-    fn shell_session_record(id: &str, name: &str) -> crate::shell_session_store::ShellSessionRecord {
-        crate::shell_session_store::ShellSessionRecord {
+    fn shell_session_record(
+        id: &str,
+        name: &str,
+    ) -> crate::shell_session_store::ShellSessionSummary {
+        crate::shell_session_store::ShellSessionSummary {
             id: id.to_string(),
             name: name.to_string(),
-            layout_json: "{}".to_string(),
-            elevated: false,
-            created_at: 1,
-            updated_at: 1,
+            active_pane_cwd: r"C:\repo".to_string(),
             last_used_at: 1,
-            revision: 1,
         }
     }
 

@@ -4493,6 +4493,7 @@ mod tests {
                 id: None,
                 expected_revision: None,
                 name: "name".to_string(),
+                active_pane_cwd: r"C:\repo".to_string(),
                 layout_json: "{}".to_string(),
                 elevated: false,
                 buffers: Vec::new(),

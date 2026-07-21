@@ -915,6 +915,14 @@ namespace winrt::TerminalApp::implementation
 
         Json::Value params;
         params["name"] = winrt::to_string(sessionName);
+        if (const auto activeControl = tab->GetActiveTerminalControl())
+        {
+            params["active_pane_cwd"] = winrt::to_string(activeControl.WorkingDirectory());
+        }
+        else
+        {
+            params["active_pane_cwd"] = "";
+        }
         params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
         params["elevated"] = elevated;
         params["buffers"] = std::move(buffers);

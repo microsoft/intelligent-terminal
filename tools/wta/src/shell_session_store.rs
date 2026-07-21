@@ -35,6 +35,14 @@ pub struct ShellSessionRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShellSessionSummary {
+    pub id: String,
+    pub name: String,
+    pub active_pane_cwd: String,
+    pub last_used_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ShellSessionBufferInput {
     pub pane_key: String,
     pub staging_path: PathBuf,
@@ -53,7 +61,7 @@ pub struct ShellSessionsListParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ShellSessionsListResponse {
-    pub sessions: Vec<ShellSessionRecord>,
+    pub sessions: Vec<ShellSessionSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,6 +71,8 @@ pub struct ShellSessionSaveParams {
     #[serde(default)]
     pub expected_revision: Option<i64>,
     pub name: String,
+    #[serde(default)]
+    pub active_pane_cwd: String,
     pub layout_json: String,
     pub elevated: bool,
     pub buffers: Vec<ShellSessionBufferInput>,
@@ -271,7 +281,7 @@ impl StoreCore {
             )
         })?;
 
-        let connection = Connection::open(root.join(DATABASE_FILE))
+        let mut connection = Connection::open(root.join(DATABASE_FILE))
             .context("failed to open shell-session database")?;
         connection
             .busy_timeout(std::time::Duration::from_secs(5))
@@ -284,6 +294,7 @@ impl StoreCore {
                 CREATE TABLE IF NOT EXISTS shell_sessions (
                     id            TEXT PRIMARY KEY NOT NULL,
                     name          TEXT NOT NULL,
+                    active_pane_cwd TEXT NOT NULL DEFAULT '',
                     layout_json   TEXT NOT NULL,
                     elevated      INTEGER NOT NULL CHECK (elevated IN (0, 1)),
                     created_at    INTEGER NOT NULL,
@@ -308,6 +319,7 @@ impl StoreCore {
                 ",
             )
             .context("failed to initialize shell-session database")?;
+        ensure_active_pane_cwd_column(&mut connection)?;
         let last_maintenance_at = connection
             .query_row(
                 "SELECT value FROM shell_session_metadata WHERE key = ?1",
@@ -354,8 +366,7 @@ impl StoreCore {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT id, name, layout_json, elevated, created_at, updated_at,
-                        last_used_at, revision
+                "SELECT id, name, active_pane_cwd, last_used_at
                    FROM shell_sessions
                   WHERE elevated = ?1 AND last_used_at >= ?2
                   ORDER BY last_used_at DESC, updated_at DESC, id ASC",
@@ -364,7 +375,7 @@ impl StoreCore {
         let sessions = statement
             .query_map(
                 params![params.elevated, now - RETENTION_SECONDS],
-                record_from_row,
+                summary_from_row,
             )
             .context("failed to query shell sessions")?
             .collect::<rusqlite::Result<Vec<_>>>()
@@ -450,11 +461,12 @@ impl StoreCore {
                 let changed = transaction
                     .execute(
                         "UPDATE shell_sessions
-                            SET name = ?1, layout_json = ?2, updated_at = ?3,
-                                last_used_at = ?3, revision = ?4
-                          WHERE id = ?5 AND elevated = ?6 AND revision = ?7",
+                            SET name = ?1, active_pane_cwd = ?2, layout_json = ?3,
+                                updated_at = ?4, last_used_at = ?4, revision = ?5
+                          WHERE id = ?6 AND elevated = ?7 AND revision = ?8",
                         params![
                             params.name,
+                            params.active_pane_cwd,
                             params.layout_json,
                             now,
                             revision,
@@ -479,12 +491,13 @@ impl StoreCore {
                 transaction
                     .execute(
                         "INSERT INTO shell_sessions
-                            (id, name, layout_json, elevated, created_at, updated_at,
-                             last_used_at, revision)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5, ?6)",
+                            (id, name, active_pane_cwd, layout_json, elevated, created_at,
+                             updated_at, last_used_at, revision)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?7)",
                         params![
                             id,
                             params.name,
+                            params.active_pane_cwd,
                             params.layout_json,
                             params.elevated,
                             now,
@@ -1030,6 +1043,44 @@ fn canonical_db_uuid(id: &str, column: &str) -> Result<String> {
         .with_context(|| format!("corrupt shell-session {column}: expected UUID"))
 }
 
+fn ensure_active_pane_cwd_column(connection: &mut Connection) -> Result<()> {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .context("failed to begin shell-session schema migration")?;
+    let has_column = {
+        let mut statement = transaction
+            .prepare("PRAGMA table_info(shell_sessions)")
+            .context("failed to inspect shell-session schema")?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .context("failed to query shell-session schema")?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("failed to decode shell-session schema")?;
+        columns.iter().any(|name| name == "active_pane_cwd")
+    };
+    if !has_column {
+        transaction
+            .execute(
+                "ALTER TABLE shell_sessions
+                 ADD COLUMN active_pane_cwd TEXT NOT NULL DEFAULT ''",
+                [],
+            )
+            .context("failed to add active pane CWD to shell-session schema")?;
+    }
+    transaction
+        .commit()
+        .context("failed to commit shell-session schema migration")
+}
+
+fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionSummary> {
+    Ok(ShellSessionSummary {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        active_pane_cwd: row.get(2)?,
+        last_used_at: row.get(3)?,
+    })
+}
+
 fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShellSessionRecord> {
     Ok(ShellSessionRecord {
         id: row.get(0)?,
@@ -1453,6 +1504,7 @@ mod tests {
             id: None,
             expected_revision: None,
             name: name.to_string(),
+            active_pane_cwd: r"C:\repo".to_string(),
             layout_json: r#"{"actions":[]}"#.to_string(),
             elevated: false,
             buffers: vec![ShellSessionBufferInput {
@@ -1486,7 +1538,37 @@ mod tests {
         assert_eq!(list.sessions.len(), 2);
         assert_ne!(first.id, second.id);
         assert_eq!(list.sessions[0].name, "same");
+        assert_eq!(list.sessions[0].active_pane_cwd, r"C:\repo");
         assert_eq!(list.sessions[1].name, "same");
+        Ok(())
+    }
+
+    #[test]
+    fn opening_legacy_database_adds_active_pane_cwd_column() -> Result<()> {
+        let directory = TestDirectory::new()?;
+        fs::create_dir_all(&directory.0)?;
+        let connection = Connection::open(directory.0.join(DATABASE_FILE))?;
+        connection.execute_batch(
+            "CREATE TABLE shell_sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                layout_json TEXT NOT NULL,
+                elevated INTEGER NOT NULL CHECK (elevated IN (0, 1)),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_used_at INTEGER NOT NULL,
+                revision INTEGER NOT NULL CHECK (revision > 0)
+            );",
+        )?;
+        drop(connection);
+
+        let store = StoreCore::open(directory.0.clone(), 100, None)?;
+        let columns = store
+            .connection
+            .prepare("PRAGMA table_info(shell_sessions)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        assert!(columns.iter().any(|name| name == "active_pane_cwd"));
         Ok(())
     }
 
