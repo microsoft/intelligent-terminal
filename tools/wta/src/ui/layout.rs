@@ -84,6 +84,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             &tab.shell_sessions,
+            &tab.shell_sessions_query,
+            tab.shell_sessions_search_focused,
             &mut tab.shell_sessions_list_state,
             tab.shell_sessions_loading,
             tab.shell_sessions_error.as_deref(),

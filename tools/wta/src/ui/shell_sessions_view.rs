@@ -12,6 +12,8 @@ pub fn render(
     frame: &mut Frame,
     area: Rect,
     sessions: &[crate::shell_session_store::ShellSessionSummary],
+    query: &str,
+    search_focused: bool,
     list_state: &mut ListState,
     loading: bool,
     error: Option<&str>,
@@ -23,6 +25,15 @@ pub fn render(
         y: area.y,
         width: area.width.saturating_sub(2),
         height: area.height.saturating_sub(2),
+    };
+    let search_area = Rect {
+        height: inner.height.min(1),
+        ..inner
+    };
+    let list_area = Rect {
+        y: inner.y.saturating_add(2),
+        height: inner.height.saturating_sub(2),
+        ..inner
     };
 
     for y in inner.y..inner.y.saturating_add(inner.height) {
@@ -40,26 +51,68 @@ pub fn render(
         );
     }
 
+    let search_value = if query.is_empty() {
+        Span::styled(
+            if search_focused {
+                "Search title or CWD"
+            } else {
+                "Press / to search title or CWD"
+            },
+            Style::default().fg(Color::DarkGray),
+        )
+    } else {
+        Span::raw(query.to_string())
+    };
+    let search_label_style = if search_focused {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let mut search_spans = vec![
+        Span::styled("Search: ", search_label_style),
+        search_value,
+    ];
+    if search_focused {
+        search_spans.push(Span::styled("▏", Style::default().fg(Color::Cyan)));
+    }
+    frame.render_widget(
+        Paragraph::new(Line::from(search_spans)),
+        search_area,
+    );
+
+    let visible_sessions = sessions
+        .iter()
+        .filter(|session| matches_query(session, query))
+        .collect::<Vec<_>>();
     if loading {
-        frame.render_widget(Paragraph::new("Loading shell sessions..."), inner);
+        frame.render_widget(Paragraph::new("Loading shell sessions..."), list_area);
     } else if let Some(error) = error {
         frame.render_widget(
             Paragraph::new(error.to_string()).style(Style::default().fg(Color::Red)),
-            inner,
+            list_area,
         );
     } else if sessions.is_empty() {
         frame.render_widget(
             Paragraph::new("No saved shell sessions")
                 .style(Style::default().fg(Color::DarkGray)),
-            inner,
+            list_area,
+        );
+    } else if visible_sessions.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No matching shell sessions")
+                .style(Style::default().fg(Color::DarkGray)),
+            list_area,
         );
     } else {
         let selected = list_state.selected();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs() as i64);
-        let row_width = inner.width.saturating_sub(2) as usize;
-        let rows = sessions.iter().enumerate().map(|(index, session)| {
+        let row_width = list_area.width.saturating_sub(2) as usize;
+        let rows = visible_sessions
+            .into_iter()
+            .enumerate()
+            .map(|(index, session)| {
             let is_selected = selected == Some(index);
             let marker = if is_selected { "> " } else { "  " };
             let style = if is_selected {
@@ -84,8 +137,8 @@ pub fn render(
             spans.push(Span::raw(row.padding));
             spans.push(Span::styled(row.age, style));
             ListItem::new(Line::from(spans))
-        });
-        frame.render_stateful_widget(List::new(rows), inner, list_state);
+            });
+        frame.render_stateful_widget(List::new(rows), list_area, list_state);
     }
 
     if area.height > 0 {
@@ -109,12 +162,25 @@ pub fn render(
             )
         } else {
             (
-                "Up/Down Navigate - Enter Restore - D Delete - Esc Back - F5 Refresh".to_string(),
+                "(↑ ↓ Navigate • Enter Restore • Esc Back • D Delete • F5 Refresh)"
+                    .to_string(),
                 Style::default().fg(Color::DarkGray),
             )
         };
         frame.render_widget(Paragraph::new(hint).style(style), hint_area);
     }
+}
+
+pub(crate) fn matches_query(
+    session: &crate::shell_session_store::ShellSessionSummary,
+    query: &str,
+) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let query = query.to_lowercase();
+    session.name.to_lowercase().contains(&query)
+        || session.active_pane_cwd.to_lowercase().contains(&query)
 }
 
 struct FormattedRow {
@@ -201,6 +267,19 @@ mod tests {
         assert_eq!(format_relative_age(100, 160), "1 minute ago");
         assert_eq!(format_relative_age(100, 7_300), "2 hours ago");
         assert_eq!(format_relative_age(100, 86_500), "1 day ago");
+    }
+
+    #[test]
+    fn search_matches_title_and_cwd_case_insensitively() {
+        let mut item = summary();
+        item.name = "PowerShell".to_string();
+        assert!(matches_query(&item, "po"));
+        assert!(matches_query(&item, "POWER"));
+
+        item.name = "cmd".to_string();
+        item.active_pane_cwd = r"C:\repos\portal".to_string();
+        assert!(matches_query(&item, "PO"));
+        assert!(!matches_query(&item, "bash"));
     }
 
     #[test]

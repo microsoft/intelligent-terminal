@@ -1573,6 +1573,8 @@ pub struct TabSession {
     pub agents_list_state: ratatui::widgets::ListState,
     pub agents_view: AgentsViewState,
     pub shell_sessions: Vec<crate::shell_session_store::ShellSessionSummary>,
+    pub shell_sessions_query: String,
+    pub shell_sessions_search_focused: bool,
     pub shell_sessions_list_state: ratatui::widgets::ListState,
     pub shell_sessions_loading: bool,
     pub shell_sessions_error: Option<String>,
@@ -1611,6 +1613,44 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    fn shell_session_matches(
+        &self,
+        session: &crate::shell_session_store::ShellSessionSummary,
+    ) -> bool {
+        crate::ui::shell_sessions_view::matches_query(session, &self.shell_sessions_query)
+    }
+
+    fn matching_shell_session_count(&self) -> usize {
+        self.shell_sessions
+            .iter()
+            .filter(|session| self.shell_session_matches(session))
+            .count()
+    }
+
+    fn matching_shell_session(&self, index: usize) -> Option<&crate::shell_session_store::ShellSessionSummary> {
+        self.shell_sessions
+            .iter()
+            .filter(|session| self.shell_session_matches(session))
+            .nth(index)
+    }
+
+    fn reset_shell_session_selection(&mut self) {
+        let has_matches = self.matching_shell_session_count() > 0;
+        self.shell_sessions_list_state
+            .select(has_matches.then_some(0));
+    }
+
+    fn begin_selected_shell_session_delete(&mut self) {
+        let selected_id = self
+            .shell_sessions_list_state
+            .selected()
+            .and_then(|index| self.matching_shell_session(index))
+            .map(|session| session.id.clone());
+        if let Some(id) = selected_id {
+            self.shell_session_delete_confirmation = Some(id);
+        }
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
     }
@@ -3754,6 +3794,7 @@ impl App {
         tab.shell_sessions_error = None;
         tab.shell_session_delete_confirmation = None;
         tab.shell_session_delete_in_flight = false;
+        tab.shell_sessions_search_focused = false;
     }
 
     fn load_shell_sessions(&mut self, tab_id: String) {
@@ -5726,14 +5767,15 @@ impl App {
                 tab.shell_sessions = sessions;
                 tab.shell_sessions_loading = false;
                 tab.shell_sessions_error = error;
-                if tab.shell_sessions.is_empty() {
+                let matching_count = tab.matching_shell_session_count();
+                if matching_count == 0 {
                     tab.shell_sessions_list_state.select(None);
                 } else {
                     let selected = tab
                         .shell_sessions_list_state
                         .selected()
                         .unwrap_or(0)
-                        .min(tab.shell_sessions.len() - 1);
+                        .min(matching_count - 1);
                     tab.shell_sessions_list_state.select(Some(selected));
                 }
             }
@@ -7071,7 +7113,7 @@ impl App {
 
         if self.current_tab().current_view == View::ShellSessions {
             let tab_id = self.active_tab_key().to_string();
-            let count = self.current_tab().shell_sessions.len();
+            let count = self.current_tab().matching_shell_session_count();
 
             if self.current_tab().shell_session_delete_in_flight {
                 return;
@@ -7085,6 +7127,28 @@ impl App {
                     KeyCode::Char('y' | 'Y') => self.delete_shell_session(tab_id, id),
                     KeyCode::Char('n' | 'N') | KeyCode::Esc => {
                         self.current_tab_mut().shell_session_delete_confirmation = None;
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
+            if self.current_tab().shell_sessions_search_focused {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Enter => {
+                        self.current_tab_mut().shell_sessions_search_focused = false;
+                    }
+                    KeyCode::Backspace => {
+                        self.current_tab_mut().shell_sessions_query.pop();
+                        self.current_tab_mut().reset_shell_session_selection();
+                    }
+                    KeyCode::Char(character)
+                        if !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        self.current_tab_mut().shell_sessions_query.push(character);
+                        self.current_tab_mut().reset_shell_session_selection();
                     }
                     _ => {}
                 }
@@ -7119,21 +7183,23 @@ impl App {
                 }
                 KeyCode::Enter => {
                     if let Some(index) = self.current_tab().shell_sessions_list_state.selected() {
-                        if let Some(session) = self.current_tab().shell_sessions.get(index).cloned() {
+                        if let Some(session) =
+                            self.current_tab().matching_shell_session(index).cloned()
+                        {
                             self.restore_shell_session(tab_id, session.id);
                         }
                     }
                 }
-                KeyCode::Char('d' | 'D') => {
-                    let selected_id = self
-                        .current_tab()
-                        .shell_sessions_list_state
-                        .selected()
-                        .and_then(|index| self.current_tab().shell_sessions.get(index))
-                        .map(|session| session.id.clone());
-                    if let Some(id) = selected_id {
-                        self.current_tab_mut().shell_session_delete_confirmation = Some(id);
-                    }
+                KeyCode::Delete | KeyCode::Char('d' | 'D') => {
+                    self.current_tab_mut().begin_selected_shell_session_delete();
+                }
+                KeyCode::Char('/') => {
+                    self.current_tab_mut().shell_sessions_search_focused = true;
+                }
+                KeyCode::Char('f' | 'F')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.current_tab_mut().shell_sessions_search_focused = true;
                 }
                 KeyCode::F(5) => {
                     self.current_tab_mut().shell_sessions_loading = true;
@@ -11264,7 +11330,7 @@ mod tests {
             tab.shell_sessions_list_state.select(Some(0));
         }
 
-        app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
+        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
         assert_eq!(
             app.current_tab().shell_session_delete_confirmation.as_deref(),
             Some(id)
@@ -11294,7 +11360,7 @@ mod tests {
             tab.shell_sessions_list_state.select(Some(0));
         }
 
-        app.handle_key(KeyEvent::new(KeyCode::Char('D'), KeyModifiers::SHIFT));
+        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
         assert_eq!(app.current_tab().current_view, View::ShellSessions);
@@ -11303,6 +11369,65 @@ mod tests {
             .shell_session_delete_confirmation
             .is_none());
         assert!(!app.current_tab().shell_session_delete_in_flight);
+    }
+
+    #[test]
+    fn shell_session_search_filters_navigation_and_restore() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let powershell_id = "7fc8e6f5-6128-46cb-8917-ec3886566b27";
+        let empower_id = "b5671763-0c71-46bb-9374-d966751c9a00";
+        let cwd_id = "ef8e974d-ff11-407c-8372-a4742a2f6fa3";
+        {
+            let tab = app.current_tab_mut();
+            tab.current_view = View::ShellSessions;
+            let mut powershell = shell_session_record(powershell_id, "PowerShell");
+            powershell.active_pane_cwd = r"C:\Windows".to_string();
+            let mut empower = shell_session_record(empower_id, "empower");
+            empower.active_pane_cwd = r"C:\Windows".to_string();
+            let mut unrelated = shell_session_record(
+                "1ee9352a-bd66-4353-bf88-cdf67d6089ce",
+                "unrelated",
+            );
+            unrelated.active_pane_cwd = r"C:\Windows".to_string();
+            tab.shell_sessions = vec![
+                powershell,
+                empower,
+                crate::shell_session_store::ShellSessionSummary {
+                    id: cwd_id.to_string(),
+                    name: "cmd".to_string(),
+                    active_pane_cwd: r"C:\repos\portal".to_string(),
+                    last_used_at: 1,
+                },
+                unrelated,
+            ];
+            tab.shell_sessions_list_state.select(Some(0));
+        }
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+        assert_eq!(app.current_tab().shell_sessions_query, "po");
+        assert_eq!(app.current_tab().matching_shell_session_count(), 3);
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(
+            master_rx.try_recv(),
+            Ok(crate::protocol::acp::client::MasterExtRequest::ShellSessionRestore {
+                id,
+                ..
+            }) if id == cwd_id
+        ));
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().shell_sessions_query, "p");
+        assert_eq!(
+            app.current_tab().shell_sessions_list_state.selected(),
+            Some(0)
+        );
     }
 
     // ─── word boundary helpers ──────────────────────────────────────────────
