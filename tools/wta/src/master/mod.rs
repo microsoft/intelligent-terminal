@@ -39,6 +39,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
@@ -50,6 +51,7 @@ use std::sync::{Arc, OnceLock};
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
+static NEXT_AGENT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
@@ -88,6 +90,7 @@ pub(crate) struct HelperId(u64);
 #[derive(Clone)]
 struct HelperRoute {
     helper_id: HelperId,
+    agent_generation: u64,
     notif_tx: mpsc::Sender<acp::schema::v1::SessionNotification>,
     forwarder: Option<conn::AgentLink>,
     /// Per-route counter for back-pressure log rate-limiting.
@@ -139,6 +142,10 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    /// Sessions currently inside an ACP `session/load` replay. Their
+    /// notifications must be forwarded synchronously so they reach the helper
+    /// before the load response closes its replay window.
+    ordered_replay_sessions: Mutex<HashSet<acp::schema::v1::SessionId>>,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside
@@ -281,21 +288,14 @@ struct MasterStateInner {
     hook_owned: Mutex<HashSet<acp::schema::v1::SessionId>>,
     /// Sessions loaded on a shared agent CLI whose owning helper has
     /// disconnected (its tab/pane closed) — the CLI keeps them loaded as
-    /// "orphans". Keyed by `AgentCmdKey` so orphans belong to a specific
-    /// agent CLI, never a global pool: a window can run Copilot in one tab
-    /// and Gemini in another, and reaping one must not affect the other.
+    /// "orphans". Keyed by command and process generation so a replacement
+    /// process never mistakes an older process's resident session for its own.
     ///
     /// When a helper resumes such a session (`--initial-load-session-id`
-    /// re-warm or `/restart`), `load_session` re-binds routing to the new
-    /// helper *directly* — no fresh `session/load` — because the CLI already
-    /// has it (a re-load would be rejected "already loaded", or, if the
-    /// orphan turn is still running, wedge behind it and hang the pane on
-    /// "Resuming…"). Only recorded while the owning CLI *instance* is still
-    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
-    /// drops just that agent's set on CLI death, so a crashed-and-respawned
-    /// CLI under the same command line never re-binds to a session it never
-    /// had — such a resume falls back to a real `session/load` from disk.
-    orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
+    /// re-warm or `/restart`), `load_session` rotates to a fresh process and
+    /// performs a real ACP load so history is replayed to the new helper.
+    /// `reap_agent` drops only the exiting generation's records.
+    orphaned_sessions: Mutex<HashMap<(AgentCmdKey, u64), HashSet<acp::schema::v1::SessionId>>>,
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
     /// still supply STATUS for these when no real hook is installed
@@ -359,6 +359,12 @@ struct AgentCli {
     /// crashed-and-respawned CLI under the same command line never inherits
     /// another instance's stale orphan sessions.
     cmd_key: AgentCmdKey,
+    /// Distinguishes successive pooled processes for the same command line.
+    generation: u64,
+    /// Helpers currently bound to this exact process generation.
+    helper_bindings: AtomicU64,
+    /// Wakes the child task when a superseded process loses its last helper.
+    shutdown: Arc<tokio::sync::Notify>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -388,6 +394,7 @@ pub(crate) struct HelperRecoveryMeta {
 #[derive(Clone)]
 struct MasterClient {
     state: Arc<MasterStateInner>,
+    agent_generation: u64,
 }
 
 impl MasterClient {
@@ -410,23 +417,33 @@ impl MasterClient {
         match entry {
             Some(HelperRoute {
                 helper_id,
-                forwarder: Some(forwarder),
-                ..
-            }) => Ok((helper_id, forwarder)),
-            Some(HelperRoute {
-                forwarder: None,
-                helper_id,
+                agent_generation,
+                forwarder,
                 ..
             }) => {
-                tracing::error!(
-                    target: "master",
-                    op = op,
-                    session_id = ?sid,
-                    helper_id = ?helper_id,
-                    "routing entry has no forwarder — bug; routing entry should always carry the helper's AgentSideConnection",
-                );
-                Err(acp::Error::internal_error()
-                    .data(serde_json::json!("master routing entry missing forwarder")))
+                if agent_generation != self.agent_generation {
+                    tracing::warn!(
+                        target: "master",
+                        op = op,
+                        session_id = ?sid,
+                        route_generation = agent_generation,
+                        caller_generation = self.agent_generation,
+                        "stale agent CLI sent request for a session owned by another generation"
+                    );
+                    return Err(acp::Error::internal_error()
+                        .data(serde_json::json!("stale agent generation for session_id")));
+                }
+                forwarder.map(|forwarder| (helper_id, forwarder)).ok_or_else(|| {
+                    tracing::error!(
+                        target: "master",
+                        op = op,
+                        session_id = ?sid,
+                        helper_id = ?helper_id,
+                        "routing entry has no forwarder — bug; routing entry should always carry the helper's AgentSideConnection",
+                    );
+                    acp::Error::internal_error()
+                        .data(serde_json::json!("master routing entry missing forwarder"))
+                })
             }
             None => {
                 tracing::warn!(
@@ -536,20 +553,65 @@ impl MasterClient {
             map.get(&sid).map(|r| {
                 (
                     r.helper_id,
-                    r.notif_tx.clone(),
+                    r.agent_generation,
                     Arc::clone(&r.consecutive_drops),
                 )
             })
         };
         match route {
-            Some((snap_helper_id, tx, drops)) => {
+            Some((snap_helper_id, agent_generation, drops)) => {
+                if agent_generation != self.agent_generation {
+                    tracing::debug!(
+                        target: "master",
+                        session_id = ?sid,
+                        route_generation = agent_generation,
+                        caller_generation = self.agent_generation,
+                        "dropping notification from stale agent generation"
+                    );
+                    return Ok(());
+                }
+                let ordered_replay = self
+                    .state
+                    .ordered_replay_sessions
+                    .lock()
+                    .await
+                    .contains(&sid);
+                let map = self.state.session_to_helper.lock().await;
+                let current = match map.get(&sid) {
+                    Some(current)
+                        if current.helper_id == snap_helper_id
+                            && current.agent_generation == self.agent_generation =>
+                    {
+                        current
+                    }
+                    _ => {
+                        tracing::debug!(
+                            target: "master",
+                            session_id = ?sid,
+                            caller_generation = self.agent_generation,
+                            "route changed while dispatching notification; dropping stale update"
+                        );
+                        return Ok(());
+                    }
+                };
+                if ordered_replay {
+                    let forwarder = current.forwarder.as_ref().ok_or_else(|| {
+                        acp::Error::internal_error()
+                            .data(serde_json::json!("master replay route missing forwarder"))
+                    })?;
+                    forwarder.session_notification(args).await?;
+                    drop(map);
+                    return Ok(());
+                }
+                let send_result = current.notif_tx.try_send(args);
+                drop(map);
                 use std::sync::atomic::Ordering;
                 // `try_send` rather than `send().await`: a slow helper
                 // pipe must not back-pressure this trait method, which
                 // is driven by the agent CLI's I/O loop and is shared
                 // across every helper. Blocking here would freeze
                 // notification delivery for everyone.
-                match tx.try_send(args) {
+                match send_result {
                     Ok(()) => {
                         // First successful send after one or more drops
                         // is the recovery point — summarize and reset.
@@ -826,6 +888,11 @@ struct HelperHandler {
     /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
     /// `resolved_agent()` always finds it populated for those.
     agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// Fresh ACP process selected when the shared process reports that a
+    /// durable-resume target is already loaded.
+    replacement_agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// Serializes replacement binding and route quarantine for this helper.
+    rotation_lock: Arc<Mutex<()>>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -888,17 +955,85 @@ impl HelperHandler {
     /// binding — a protocol violation by the helper, never expected in
     /// the normal handshake order.
     fn resolved_agent(&self, op: &'static str) -> acp::Result<Arc<AgentCli>> {
-        self.agent.get().cloned().ok_or_else(|| {
-            tracing::error!(
-                target: "master",
-                op = op,
-                helper_id = ?self.helper_id,
-                "helper request arrived before initialize bound an agent — protocol violation"
-            );
-            acp::Error::internal_error().data(serde_json::json!(
-                "no agent bound; initialize must come first"
-            ))
-        })
+        self.replacement_agent
+            .get()
+            .or_else(|| self.agent.get())
+            .cloned()
+            .ok_or_else(|| {
+                tracing::error!(
+                    target: "master",
+                    op = op,
+                    helper_id = ?self.helper_id,
+                    "helper request arrived before initialize bound an agent — protocol violation"
+                );
+                acp::Error::internal_error().data(serde_json::json!(
+                    "no agent bound; initialize must come first"
+                ))
+            })
+    }
+
+    async fn rotate_agent_for_load(
+        &self,
+        previous: &Arc<AgentCli>,
+        session_id: &acp::schema::v1::SessionId,
+    ) -> acp::Result<Arc<AgentCli>> {
+        let _rotation_guard = self.rotation_lock.lock().await;
+        {
+            let mut routes = self.state.session_to_helper.lock().await;
+            let route = routes.get_mut(session_id).ok_or_else(|| {
+                acp::Error::internal_error().data(serde_json::json!(
+                    "session route disappeared before rotation"
+                ))
+            })?;
+            if route.helper_id != self.helper_id || route.agent_generation != previous.generation {
+                return Err(acp::Error::internal_error()
+                    .data(serde_json::json!("session route changed before rotation")));
+            }
+            // Quarantine traffic from the old process while the replacement
+            // initializes. Generation zero is never assigned to an AgentCli.
+            route.agent_generation = 0;
+        }
+        let replacement = rotate_agent(&self.state, previous).await.map_err(|err| {
+            acp::Error::internal_error().data(serde_json::json!(format!(
+                "failed to rotate agent CLI for session load: {err}"
+            )))
+        })?;
+        let newly_bound = {
+            let mut routes = self.state.session_to_helper.lock().await;
+            let route = routes.get_mut(session_id).ok_or_else(|| {
+                acp::Error::internal_error().data(serde_json::json!(
+                    "session route disappeared during rotation"
+                ))
+            })?;
+            if route.helper_id != self.helper_id || route.agent_generation != 0 {
+                return Err(acp::Error::internal_error().data(serde_json::json!(
+                    "session route was rebound during rotation"
+                )));
+            }
+            let newly_bound = match self.replacement_agent.set(Arc::clone(&replacement)) {
+                Ok(()) => true,
+                Err(_)
+                    if self
+                        .replacement_agent
+                        .get()
+                        .is_some_and(|bound| bound.generation == replacement.generation) =>
+                {
+                    false
+                }
+                Err(_) => {
+                    return Err(acp::Error::internal_error().data(serde_json::json!(
+                        "helper already has a different replacement agent binding"
+                    )));
+                }
+            };
+            route.agent_generation = replacement.generation;
+            newly_bound
+        };
+        if newly_bound {
+            replacement.helper_bindings.fetch_add(1, Ordering::Relaxed);
+            release_agent_binding(&self.state, previous).await;
+        }
+        Ok(replacement)
     }
 
     /// Forward `session/new` to this helper's bound agent CLI with a
@@ -1001,7 +1136,9 @@ impl HelperHandler {
             })?;
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.
-        let _ = self.agent.set(Arc::clone(&agent));
+        if self.agent.set(Arc::clone(&agent)).is_ok() {
+            agent.helper_bindings.fetch_add(1, Ordering::Relaxed);
+        }
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar).
@@ -1068,6 +1205,7 @@ impl HelperHandler {
                 resp.session_id.clone(),
                 HelperRoute {
                     helper_id: self.helper_id,
+                    agent_generation: agent.generation,
                     notif_tx: self.notif_tx.clone(),
                     forwarder: Some(forwarder),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -1191,82 +1329,94 @@ impl HelperHandler {
                 session_id.clone(),
                 HelperRoute {
                     helper_id: self.helper_id,
+                    agent_generation: agent.generation,
                     notif_tx: self.notif_tx.clone(),
                     forwarder: Some(forwarder),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
-        // Orphan re-bind fast path: this session's previous helper
-        // disconnected but the shared CLI still has it loaded (tracked in
-        // `orphaned_sessions` under this agent's key). Re-attach onto the
-        // routing pre-registered above WITHOUT a `session/load` round-trip —
-        // the CLI already has the session, and forwarding a load would be
-        // rejected "already loaded", or (if the orphan turn is still running)
-        // wedge behind it and hang the pane on "Resuming…". Any in-flight
-        // turn now streams its `session/update`s to this new helper. Scoped
-        // to `agent.cmd_key` so we only re-bind sessions this exact CLI still
-        // holds (a crashed+respawned CLI's set was dropped by `reap_agent`).
-        let is_orphan_rebind = {
+        // Remove the stale owner marker, but still ask the agent to load the
+        // session. A replacement helper needs the ACP history replay to rebuild
+        // its conversation UI; routing alone only reconnects future updates.
+        let is_orphan = {
             let mut orphans = self.state.orphaned_sessions.lock().await;
             orphans
-                .get_mut(&agent.cmd_key)
+                .get_mut(&(agent.cmd_key.clone(), agent.generation))
                 .is_some_and(|set| set.remove(&session_id))
         };
 
-        // Both a re-bind and a real `session/load` resume the session; only a
-        // genuine load failure rolls back. Resolve the response, then register
-        // the resumed row once for either success path.
-        let resp = if is_orphan_rebind {
+        self.state
+            .ordered_replay_sessions
+            .lock()
+            .await
+            .insert(session_id.clone());
+        let mut active_agent = Arc::clone(&agent);
+        let mut load_result = if is_orphan {
+            match self.rotate_agent_for_load(&agent, &session_id).await {
+                Ok(replacement) => {
+                    active_agent = replacement;
+                    active_agent.conn.load_session(args.clone()).await
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            agent.conn.load_session(args.clone()).await
+        };
+        if active_agent.generation == agent.generation
+            && load_result.as_ref().is_err_and(is_already_loaded_error)
+        {
             tracing::info!(
                 target: "master",
                 step = "helper→agent",
                 op = "load_session",
                 helper_id = ?self.helper_id,
                 session_id = ?session_id,
-                "re-binding orphan session without a session/load round-trip"
+                generation = agent.generation,
+                "session is already loaded; rotating ACP process for a real history replay"
             );
-            acp::schema::v1::LoadSessionResponse::new()
-        } else {
-            match agent.conn.load_session(args).await {
-                Ok(resp) => resp,
-                // Fallback for an orphan we didn't track (e.g. it predates
-                // this master): the CLI reports "already loaded", so re-bind
-                // onto the pre-registered routing just like the fast path.
-                Err(err) if is_already_loaded_error(&err) => {
-                    tracing::info!(
-                        target: "master",
-                        step = "helper→agent",
-                        op = "load_session",
-                        helper_id = ?self.helper_id,
-                        session_id = ?session_id,
-                        "re-binding session already loaded in the shared CLI"
-                    );
-                    acp::schema::v1::LoadSessionResponse::new()
+            load_result = match self.rotate_agent_for_load(&agent, &session_id).await {
+                Ok(replacement) => {
+                    active_agent = replacement;
+                    active_agent.conn.load_session(args).await
                 }
-                Err(err) => {
-                    // Roll back the pre-registration. Only `session_to_helper`
-                    // needs touching — we never wrote to `registry` and we
-                    // never broadcast `session_added`, so peers never saw
-                    // this row.
+                Err(err) => Err(err),
+            };
+        }
+        self.state
+            .ordered_replay_sessions
+            .lock()
+            .await
+            .remove(&session_id);
+
+        let resp = match load_result {
+            Ok(resp) => resp,
+            Err(err) => {
+                // Roll back the pre-registration. Only `session_to_helper`
+                // needs touching — we never wrote to `registry` and we
+                // never broadcast `session_added`, so peers never saw
+                // this row.
+                {
+                    let mut map = self.state.session_to_helper.lock().await;
+                    if map
+                        .get(&session_id)
+                        .is_some_and(|route| route.helper_id == self.helper_id)
                     {
-                        let mut map = self.state.session_to_helper.lock().await;
                         map.remove(&session_id);
                     }
-                    tracing::warn!(
-                        target: "master",
-                        helper_id = ?self.helper_id,
-                        session_id = ?session_id,
-                        error = %err,
-                        "load_session failed; rolled back routing entry"
-                    );
-                    return Err(err);
                 }
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    session_id = ?session_id,
+                    error = %err,
+                    "load_session failed; rolled back routing entry"
+                );
+                return Err(err);
             }
         };
 
-        // Register the resumed row (Live + tagged) — shared by the real-load
-        // and orphan-re-bind paths.
+        // Register the resumed row (Live + tagged).
         let mut info =
             crate::session_registry::SessionInfo::new(session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
@@ -2007,6 +2157,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        ordered_replay_sessions: Mutex::new(HashSet::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
@@ -2370,9 +2521,57 @@ async fn get_or_spawn_agent(
     // helper requesting the same agent gets a fresh cell and retries
     // cleanly (no lingering dead slot, no leaked subprocess).
     let agent = cell
-        .get_or_try_init(|| async { spawn_one_agent(state, &key, agent_cmd, agent_id).await })
+        .get_or_try_init(|| async {
+            spawn_one_agent(state, &key, agent_cmd, agent_id, Arc::clone(&cell)).await
+        })
         .await?;
     Ok(Arc::clone(agent))
+}
+
+/// Replace the pooled process for an agent command while existing helpers keep
+/// their `Arc<AgentCli>` bindings to the previous process. This is required
+/// when an ACP implementation refuses to load a session that is still resident
+/// in its current process: the replacement process can perform a real
+/// `session/load` and replay the conversation to the restoring helper.
+async fn rotate_agent(
+    state: &Arc<MasterStateInner>,
+    previous: &Arc<AgentCli>,
+) -> Result<Arc<AgentCli>> {
+    let key = previous.cmd_key.clone();
+    let cell = {
+        let mut agents = state.agents.lock().await;
+        if let Some(cell) = agents.get(&key) {
+            match cell.get() {
+                Some(current) if current.generation != previous.generation => {
+                    return Ok(Arc::clone(current));
+                }
+                None => Arc::clone(cell),
+                Some(_) => {
+                    let replacement = Arc::new(tokio::sync::OnceCell::new());
+                    agents.insert(key.clone(), Arc::clone(&replacement));
+                    replacement
+                }
+            }
+        } else {
+            let replacement = Arc::new(tokio::sync::OnceCell::new());
+            agents.insert(key.clone(), Arc::clone(&replacement));
+            replacement
+        }
+    };
+    let replacement = cell
+        .get_or_try_init(|| async {
+            spawn_one_agent(state, &key, &key, None, Arc::clone(&cell)).await
+        })
+        .await
+        .map(Arc::clone)?;
+    tracing::info!(
+        target: "master",
+        agent = %key,
+        old_generation = previous.generation,
+        new_generation = replacement.generation,
+        "rotated pooled agent CLI for ACP session reload"
+    );
+    Ok(replacement)
 }
 
 /// Spawn one agent CLI subprocess, wire master as its ACP client, run
@@ -2385,7 +2584,9 @@ async fn spawn_one_agent(
     key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
+    pool_cell: Arc<tokio::sync::OnceCell<Arc<AgentCli>>>,
 ) -> Result<Arc<AgentCli>> {
+    let generation = NEXT_AGENT_GENERATION.fetch_add(1, Ordering::Relaxed);
     let mut spawn_result = spawn_agent_process(agent_cmd, None)
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
@@ -2425,6 +2626,7 @@ async fn spawn_one_agent(
 
     let client = MasterClient {
         state: Arc::clone(state),
+        agent_generation: generation,
     };
     let builder = acp::Client
         .builder()
@@ -2532,6 +2734,7 @@ async fn spawn_one_agent(
     {
         let state = Arc::clone(state);
         let key = key.clone();
+        let pool_cell = Arc::clone(&pool_cell);
         tokio::task::spawn_local(async move {
             match handle_io.await {
                 Ok(()) => tracing::info!(
@@ -2546,7 +2749,7 @@ async fn spawn_one_agent(
                     "agent CLI ACP I/O loop ended with error — removing from pool"
                 ),
             }
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, generation, &pool_cell).await;
         });
     }
 
@@ -2591,21 +2794,37 @@ async fn spawn_one_agent(
         }
     };
 
+    let shutdown = Arc::new(tokio::sync::Notify::new());
+
     // Init succeeded — install the child reaper now (takes ownership of
     // `child`). A later CLI exit drops just this agent from the pool so
     // the next helper respawns it; the master stays up for other agents.
     {
         let state = Arc::clone(state);
         let key = key.clone();
+        let pool_cell = Arc::clone(&pool_cell);
+        let shutdown_waiter = Arc::clone(&shutdown);
         tokio::task::spawn_local(async move {
-            let status = child.wait().await;
+            let status = tokio::select! {
+                status = child.wait() => status,
+                () = shutdown_waiter.notified() => {
+                    tracing::info!(
+                        target: "master",
+                        agent = %key,
+                        generation,
+                        "stopping superseded agent CLI with no bound helpers"
+                    );
+                    let _ = child.start_kill();
+                    child.wait().await
+                }
+            };
             tracing::error!(
                 target: "master",
                 agent = %key,
                 ?status,
                 "agent CLI exited — removing from pool (master stays up for other agents)"
             );
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, generation, &pool_cell).await;
         });
     }
 
@@ -2647,6 +2866,9 @@ async fn spawn_one_agent(
         cached_init_resp: init_resp,
         cli_source,
         cmd_key: key.clone(),
+        generation,
+        helper_bindings: AtomicU64::new(0),
+        shutdown,
     }))
 }
 
@@ -2655,19 +2877,53 @@ async fn spawn_one_agent(
 /// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
 /// re-runs `spawn_one_agent`. Sessions owned by the dead agent are left
 /// for the owning helper's disconnect cleanup (`drop_sessions_for_helper`).
-async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
-    let removed = { state.agents.lock().await.remove(key).is_some() };
+async fn reap_agent(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    expected_generation: u64,
+    expected_cell: &Arc<tokio::sync::OnceCell<Arc<AgentCli>>>,
+) {
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        let matches_process = agents
+            .get(key)
+            .is_some_and(|cell| Arc::ptr_eq(cell, expected_cell));
+        matches_process && agents.remove(key).is_some()
+    };
+    state
+        .orphaned_sessions
+        .lock()
+        .await
+        .remove(&(key.clone(), expected_generation));
     if removed {
-        // Every session THIS CLI held died with it, so drop only this
-        // agent's orphan set — a post-respawn resume then forwards a real
-        // `session/load` (reloading from disk) instead of re-binding to a
-        // session the new CLI never had. Other agents' orphans are untouched.
-        state.orphaned_sessions.lock().await.remove(key);
         tracing::info!(
             target: "master",
             agent = %key,
             "dead agent removed from pool; next pane for this agent will respawn it"
         );
+    }
+}
+
+async fn release_agent_binding(state: &Arc<MasterStateInner>, agent: &Arc<AgentCli>) {
+    let was_last = agent
+        .helper_bindings
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            count.checked_sub(1)
+        })
+        .is_ok_and(|previous| previous == 1);
+    if !was_last {
+        return;
+    }
+
+    let is_pooled = {
+        let agents = state.agents.lock().await;
+        agents
+            .get(&agent.cmd_key)
+            .and_then(|cell| cell.get())
+            .is_some_and(|current| Arc::ptr_eq(current, agent))
+    };
+    if !is_pooled {
+        agent.shutdown.notify_one();
     }
 }
 
@@ -2716,6 +2972,8 @@ async fn serve_helper(
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
         agent: Arc::new(OnceLock::new()),
+        replacement_agent: Arc::new(OnceLock::new()),
+        rotation_lock: Arc::new(Mutex::new(())),
         state: Arc::clone(&state),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
@@ -2876,16 +3134,17 @@ async fn serve_helper(
     let victims = drop_sessions_for_helper(&state, helper_id).await;
 
     // The dropped sessions are still loaded on the shared CLI — they're now
-    // orphans. Record them under the owning agent's key so a later resume
-    // re-binds directly instead of forwarding a `session/load` that the CLI
-    // rejects "already loaded" (or, mid-turn, wedges behind the running
-    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
-    // is STILL the live pool instance for its key. If that CLI already died
-    // (reaped, possibly respawned under the same command line), these
-    // sessions are gone — recording them would make a later resume skip the
-    // `session/load` the new CLI needs, binding to a session it never had.
+    // Orphans. Record them under the exact owning process generation so a
+    // later resume knows it must rotate before performing a real ACP load.
+    // Guard on `Arc::ptr_eq`: only the current pooled process can create
+    // actionable orphan metadata.
+    let active_agent = handler
+        .replacement_agent
+        .get()
+        .or_else(|| handler.agent.get())
+        .cloned();
     if !victims.is_empty() {
-        if let Some(agent) = handler.agent.get() {
+        if let Some(agent) = active_agent.as_ref() {
             let key = agent.cmd_key.clone();
             let still_live = {
                 let agents = state.agents.lock().await;
@@ -2896,11 +3155,14 @@ async fn serve_helper(
             };
             if still_live {
                 let mut orphans = state.orphaned_sessions.lock().await;
-                let set = orphans.entry(key).or_default();
+                let set = orphans.entry((key, agent.generation)).or_default();
                 for sid in &victims {
                     set.insert(sid.clone());
                 }
             }
+        }
+        if let Some(agent) = active_agent {
+            release_agent_binding(&state, &agent).await;
         }
     }
 
@@ -4524,6 +4786,7 @@ mod tests {
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            ordered_replay_sessions: Mutex::new(HashSet::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
@@ -4618,11 +4881,16 @@ mod tests {
                     ),
                     cli_source: None,
                     cmd_key: "copilot --acp --stdio".to_string(),
+                    generation: 1,
+                    helper_bindings: AtomicU64::new(0),
+                    shutdown: Arc::new(tokio::sync::Notify::new()),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
                     client_elevated: false,
                     agent,
+                    replacement_agent: Arc::new(OnceLock::new()),
+                    rotation_lock: Arc::new(Mutex::new(())),
                     state: make_state(),
                     notif_tx,
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -4652,6 +4920,8 @@ mod tests {
             helper_id: HelperId(1),
             client_elevated: false,
             agent: Arc::new(OnceLock::new()),
+            replacement_agent: Arc::new(OnceLock::new()),
+            rotation_lock: Arc::new(Mutex::new(())),
             state: make_state(),
             notif_tx,
             agent_side_slot: Arc::new(OnceLock::new()),
@@ -4676,6 +4946,7 @@ mod tests {
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         // No routing entry for this session — it's orphaned.
         let req = RequestPermissionRequest::new(
@@ -4714,6 +4985,26 @@ mod tests {
         assert!(!is_already_loaded_error(&unrelated));
     }
 
+    #[tokio::test]
+    async fn agent_reaper_does_not_remove_a_replacement_cell() {
+        let state = make_state();
+        let key = "copilot --acp --stdio".to_string();
+        let old_cell = Arc::new(tokio::sync::OnceCell::new());
+        let replacement_cell = Arc::new(tokio::sync::OnceCell::new());
+        state
+            .agents
+            .lock()
+            .await
+            .insert(key.clone(), Arc::clone(&replacement_cell));
+
+        reap_agent(&state, &key, 1, &old_cell).await;
+
+        let agents = state.agents.lock().await;
+        assert!(agents
+            .get(&key)
+            .is_some_and(|cell| Arc::ptr_eq(cell, &replacement_cell)));
+    }
+
     /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
     /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
     #[tokio::test]
@@ -4724,28 +5015,30 @@ mod tests {
         {
             let mut orphans = state.orphaned_sessions.lock().await;
             orphans
-                .entry(key_a.clone())
+                .entry((key_a.clone(), 1))
                 .or_default()
                 .insert(SessionId::new("a-sess"));
             orphans
-                .entry(key_b.clone())
+                .entry((key_b.clone(), 1))
                 .or_default()
                 .insert(SessionId::new("b-sess"));
         }
         // reap only acts when the key is a live pool entry.
-        {
+        let cell = {
             let mut agents = state.agents.lock().await;
-            agents.insert(key_a.clone(), Arc::new(tokio::sync::OnceCell::new()));
-        }
-        reap_agent(&state, &key_a).await;
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            agents.insert(key_a.clone(), Arc::clone(&cell));
+            cell
+        };
+        reap_agent(&state, &key_a, 1, &cell).await;
         let orphans = state.orphaned_sessions.lock().await;
         assert!(
-            !orphans.contains_key(&key_a),
+            !orphans.contains_key(&(key_a.clone(), 1)),
             "reaped agent's orphan set must be dropped"
         );
         assert!(
             orphans
-                .get(&key_b)
+                .get(&(key_b, 1))
                 .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
             "a co-resident agent's orphans must be untouched"
         );
@@ -4844,6 +5137,7 @@ mod tests {
                 // reentrant request_permission back out to the owning helper.
                 let master_client = MasterClient {
                     state: Arc::clone(&state),
+                    agent_generation: 1,
                 };
                 let agent_conn = {
                     let (cr, cw) = tokio::io::split(master_agent_pipe);
@@ -4893,11 +5187,16 @@ mod tests {
                     ),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                     cmd_key: "copilot --acp --stdio".to_string(),
+                    generation: 1,
+                    helper_bindings: AtomicU64::new(0),
+                    shutdown: Arc::new(tokio::sync::Notify::new()),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
                     client_elevated: false,
                     agent,
+                    replacement_agent: Arc::new(OnceLock::new()),
+                    rotation_lock: Arc::new(Mutex::new(())),
                     state: Arc::clone(&state),
                     notif_tx: notif_tx.clone(),
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -4942,6 +5241,7 @@ mod tests {
                     sid.clone(),
                     HelperRoute {
                         helper_id: HelperId(1),
+                        agent_generation: 1,
                         notif_tx,
                         forwarder: Some(master_to_helper),
                         consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5035,8 +5335,37 @@ mod tests {
     async fn route(state: &Arc<MasterStateInner>, notif: SessionNotification) {
         let client = MasterClient {
             state: Arc::clone(state),
+            agent_generation: 1,
         };
         client.session_notification(notif).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stale_agent_generation_cannot_notify_replacement_helper() {
+        let state = make_state();
+        let sid = SessionId::new("rotated-session");
+        let (tx, mut rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        state.session_to_helper.lock().await.insert(
+            sid.clone(),
+            HelperRoute {
+                helper_id: HelperId(1),
+                agent_generation: 2,
+                notif_tx: tx,
+                forwarder: None,
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        );
+        let stale_client = MasterClient {
+            state,
+            agent_generation: 1,
+        };
+
+        stale_client
+            .session_notification(make_notif(&sid))
+            .await
+            .unwrap();
+
+        assert!(rx.try_recv().is_err());
     }
 
     /// New `session_notification`s for a registered SessionId reach
@@ -5056,6 +5385,7 @@ mod tests {
                 sid1.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx1,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5065,6 +5395,7 @@ mod tests {
                 sid2.clone(),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx2,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5094,6 +5425,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(7),
+                    agent_generation: 1,
                     notif_tx: tx,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5144,6 +5476,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5169,6 +5502,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx_b,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5220,6 +5554,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(9),
+                    agent_generation: 1,
                     notif_tx: tx.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5267,6 +5602,7 @@ mod tests {
                 SessionId::new("a1"),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5276,6 +5612,7 @@ mod tests {
                 SessionId::new("a2"),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5285,6 +5622,7 @@ mod tests {
                 SessionId::new("b1"),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx_b,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5294,6 +5632,7 @@ mod tests {
                 SessionId::new("c1"),
                 HelperRoute {
                     helper_id: HelperId(3),
+                    agent_generation: 1,
                     notif_tx: tx_c,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5337,6 +5676,7 @@ mod tests {
                 sid_a.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5346,6 +5686,7 @@ mod tests {
                 sid_b.clone(),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx_b,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5461,6 +5802,7 @@ mod tests {
                 sid_a.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: notif_tx1.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5470,6 +5812,7 @@ mod tests {
                 sid_b.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: notif_tx1,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5517,6 +5860,7 @@ mod tests {
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         let err = client
             .route_for(&SessionId::new("ghost"), "request_permission")
@@ -5541,6 +5885,7 @@ mod tests {
                 SessionId::new("orphan"),
                 HelperRoute {
                     helper_id: HelperId(42),
+                    agent_generation: 1,
                     notif_tx: tx,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5549,6 +5894,7 @@ mod tests {
         }
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         let err = client
             .route_for(&SessionId::new("orphan"), "create_terminal")
@@ -5567,6 +5913,7 @@ mod tests {
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         let req = acp::schema::v1::CreateTerminalRequest::new(
             SessionId::new("nobody-home"),
@@ -5618,6 +5965,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5808,6 +6156,7 @@ mod tests {
     ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            ordered_replay_sessions: Mutex::new(HashSet::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),

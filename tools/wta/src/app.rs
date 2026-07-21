@@ -473,6 +473,14 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
     out
 }
 
+fn replay_user_request(text: &str) -> &str {
+    const DELIMITER: &str = "## User Request\n";
+    text.rsplit_once(DELIMITER)
+        .map(|(_, request)| request.trim())
+        .filter(|request| !request.is_empty())
+        .unwrap_or_else(|| text.trim())
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanEntry {
     pub content: String,
@@ -1714,11 +1722,10 @@ impl TabSession {
     /// from the `SessionAttached` handler.
     ///
     /// Algorithm: walk `self.messages` left-to-right; each `User` opens a
-    /// new turn. The turn's `prompt` is a SHORT single-line preview of
-    /// the user text (so the collapsed `▶ > <preview>` row stays at one
-    /// visual line even for huge system-prompt-as-user dumps); the full
-    /// original `User(text)` is stored as the first entry of `details`,
-    /// followed by subsequent non-User messages. Messages that come
+    /// new turn. ACP persists the fully composed planner prompt, so recover
+    /// the text after WTA's `## User Request` delimiter before building the
+    /// turn header. Agent recommendation JSON is parsed and formatted through
+    /// the same `RecommendationSet` display path used by live turns. Messages that come
     /// BEFORE the first User (e.g. the `System("Resuming session …")`
     /// marker, or a stray Agent dump) stay in `messages` as-is — only
     /// User-anchored turns get packed. Each packed turn has `expanded:
@@ -1730,39 +1737,47 @@ impl TabSession {
         }
         let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
         let mut kept: Vec<ChatMessage> = Vec::new();
-        // `details` always opens with the full original ChatMessage::User
-        // so expanding the turn shows the entire prompt text. `prompt`
-        // is the short preview used in the collapsed header row.
-        let mut current: Option<(String, Vec<ChatMessage>)> = None;
+        let mut current: Option<(String, Vec<ChatMessage>, bool)> = None;
         for msg in drained {
             match msg {
                 ChatMessage::User(text) => {
-                    if let Some((prompt, details)) = current.take() {
+                    if let Some((prompt, details, expanded)) = current.take() {
                         self.completed_turns.push(CompletedTurn {
                             prompt,
                             details,
-                            expanded: false,
+                            expanded,
                             trailing_marker: None,
                         });
                     }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
-                    current = Some((preview, details));
+                    let prompt = replay_user_request(&text);
+                    current = Some((collapsed_prompt_preview(prompt), Vec::new(), false));
                 }
                 other => {
-                    if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
+                    if let Some((_, details, expanded)) = current.as_mut() {
+                        match other {
+                            ChatMessage::Agent(text) => {
+                                if let Ok(recommendations) = parse_recommendation_set(&text) {
+                                    details.push(ChatMessage::AgentLiteral(
+                                        format_recommendations_for_chat(&recommendations),
+                                    ));
+                                    *expanded = true;
+                                } else {
+                                    details.push(ChatMessage::Agent(text));
+                                }
+                            }
+                            other => details.push(other),
+                        }
                     } else {
                         kept.push(other);
                     }
                 }
             }
         }
-        if let Some((prompt, details)) = current.take() {
+        if let Some((prompt, details, expanded)) = current.take() {
             self.completed_turns.push(CompletedTurn {
                 prompt,
                 details,
-                expanded: false,
+                expanded,
                 trailing_marker: None,
             });
         }
@@ -11885,19 +11900,17 @@ mod tests {
             .is_none());
     }
 
-    /// Replayed history must be packed into collapsed CompletedTurn rows
-    /// after session/load completes. Each User message opens a new turn;
-    /// the prompt header is a short preview (the full original User text
-    /// is kept as the first details entry so expanding shows everything).
-    /// Subsequent non-User messages become later details. Default
-    /// `expanded: false` so the resumed transcript doesn't dump as one
-    /// long wall.
+    /// Replayed history must be packed into CompletedTurn rows after
+    /// session/load completes. Each User message opens a new turn and WTA's
+    /// composed prompt is reduced back to the original user request.
     #[test]
     fn pack_replayed_messages_groups_into_collapsed_turns() {
         let mut tab = TabSession::default();
         tab.messages = vec![
             ChatMessage::System("Resuming session abc...".to_string()),
-            ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
+            ChatMessage::User(
+                "# Terminal Agent\nYou are...\n\n## User Request\nget time".to_string(),
+            ),
             ChatMessage::Agent("Hello, I am ready.".to_string()),
             ChatMessage::User("list files".to_string()),
             ChatMessage::ToolCall {
@@ -11918,24 +11931,60 @@ mod tests {
         assert_eq!(tab.completed_turns.len(), 2);
 
         let t0 = &tab.completed_turns[0];
-        // Preview shows first non-empty line + ellipsis (extra lines below).
-        assert_eq!(t0.prompt, "# Terminal Agent…");
-        // details = [original full User, Agent reply].
-        assert_eq!(t0.details.len(), 2);
-        assert!(matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are")));
-        assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
+        assert_eq!(t0.prompt, "get time");
+        assert_eq!(t0.details.len(), 1);
+        assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
         assert!(!t0.expanded, "replayed turn must default to collapsed");
         assert!(t0.trailing_marker.is_none());
 
         let t1 = &tab.completed_turns[1];
         // Short single-line prompt — no ellipsis.
         assert_eq!(t1.prompt, "list files");
-        // details = [original User, ToolCall, Agent].
-        assert_eq!(t1.details.len(), 3);
-        assert!(matches!(&t1.details[0], ChatMessage::User(s) if s == "list files"));
-        assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
-        assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
+        assert_eq!(t1.details.len(), 2);
+        assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
+        assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
         assert!(!t1.expanded);
+    }
+
+    #[test]
+    fn pack_replayed_recommendation_reuses_live_turn_formatting() {
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::User(
+                "# Terminal Agent\n...\n\n## User Request\nget time".to_string(),
+            ),
+            ChatMessage::Agent(
+                r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [{
+    "choice": 1,
+    "title": "Get the current time",
+    "rationale": "Displays the current time.",
+    "actions": [{
+      "type": "send",
+      "parent": "old-pane-id",
+      "input": "Get-Date -Format 'HH:mm:ss'"
+    }]
+  }]
+}
+```"#
+                    .to_string(),
+            ),
+        ];
+
+        tab.pack_replayed_messages_into_turns();
+
+        assert_eq!(tab.completed_turns.len(), 1);
+        let turn = &tab.completed_turns[0];
+        assert_eq!(turn.prompt, "get time");
+        assert!(turn.expanded);
+        assert_eq!(
+            turn.details,
+            vec![ChatMessage::AgentLiteral(
+                "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+            )]
+        );
     }
 
     /// Preview logic: huge single-line prompt must clip to the cap with
