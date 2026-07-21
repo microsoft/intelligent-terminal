@@ -5037,6 +5037,7 @@ impl App {
                         .iter()
                         .any(|m| !matches!(m, ChatMessage::Disclaimer));
                 if !has_real_content
+                    && !tab.loading_session
                     && !tab
                         .messages
                         .iter()
@@ -5073,6 +5074,8 @@ impl App {
                     .map(|t| t == session_id.as_str())
                     .unwrap_or(false);
                 if tab.loading_session && is_load_target {
+                    tab.messages
+                        .retain(|message| !matches!(message, ChatMessage::Disclaimer));
                     tab.flush_load_replay_pending();
                     tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
@@ -11868,6 +11871,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn agent_connected_does_not_add_disclaimer_while_resuming() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-target",
+                "cwd": "",
+            }),
+        });
+
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Copilot".to_string(),
+            model: None,
+            version: None,
+            session_id: "sess-target".to_string(),
+            available_models: Vec::new(),
+            current_model_id: None,
+            load_session_supported: true,
+            image_supported: true,
+        });
+
+        assert!(!app.tab_sessions["OWNER-TAB"]
+            .messages
+            .iter()
+            .any(|message| matches!(message, ChatMessage::Disclaimer)));
+    }
+
     /// TabError must clear both flags so a subsequent load can re-open
     /// the window cleanly.
     #[test]
@@ -12056,6 +12093,7 @@ mod tests {
         });
         // Simulate replay chunks landing in messages.
         let tab = app.tab_sessions.get_mut("OWNER-TAB").unwrap();
+        tab.messages.push(ChatMessage::Disclaimer);
         tab.messages.push(ChatMessage::User("first prompt".to_string()));
         tab.messages.push(ChatMessage::Agent("first reply".to_string()));
         tab.messages.push(ChatMessage::User("second prompt".to_string()));
@@ -12083,7 +12121,7 @@ mod tests {
         // `messages`.
         assert!(
             tab.messages.is_empty(),
-            "resume must not leave any loose chat messages, got {:?}",
+            "resume must not leave a disclaimer or loose chat messages, got {:?}",
             tab.messages
         );
     }
@@ -16391,6 +16429,22 @@ mod tests {
         assert!(
             !probe.trim().is_empty() && text.contains(&probe),
             "chat must paint the connecting activity line ({label:?}); rendered:\n{text}"
+        );
+    }
+
+    #[test]
+    fn render_chat_resuming_activity_line() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        let tab = app.current_tab_mut();
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("12345678-rest".to_string());
+
+        let text = render_to_text(&mut app, 80, 24);
+        let label = t!("system.resuming_session", session_id = "12345678").into_owned();
+        assert!(
+            text.contains(&label),
+            "chat must paint the resuming activity line ({label:?}); rendered:\n{text}"
         );
     }
 
