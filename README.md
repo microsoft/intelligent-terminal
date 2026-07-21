@@ -81,8 +81,8 @@ winget install --id Microsoft.IntelligentTerminal -e
 ## Get Started
 
 1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs on your machine (Copilot/Claude/Codex/Gemini/OpenCode). If none are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
-3. If you aren't already authenticated, the agent pane walks you through sign-in.
-4. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
+2. If you aren't already authenticated, the agent pane walks you through sign-in.
+3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed.
 
 > [!TIP]
 > If you see "running scripts is disabled on this system" or an `UnauthorizedAccess` error in PowerShell, your execution policy is blocking your profile and Intelligent Terminal can't initialize shell integration. Run:

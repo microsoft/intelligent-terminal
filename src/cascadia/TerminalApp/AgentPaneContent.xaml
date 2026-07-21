@@ -83,9 +83,9 @@
                                  Visibility="Collapsed">
                             <Grid Width="512"
                                   Height="512">
-                                <Rectangle Fill="#131010" />
                                 <Path Data="M320 224V352H192V224H320Z"
-                                     Fill="#5A5858"
+                                     Fill="{Binding Foreground, ElementName=AgentLabelText}"
+                                     Opacity="0.45"
                                      Stretch="Uniform" />
                                 <Path Data="F0 M384 416H128V96H384V416ZM320 160H192V352H320V160Z"
                                      Fill="{Binding Foreground, ElementName=AgentLabelText}"

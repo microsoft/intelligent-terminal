@@ -719,15 +719,26 @@ fn build_delegate_launch_commandline(
         commandline,
     ));
 
+    // Subcommands must immediately follow the executable, before model/session flags.
+    let with_subcommand = match profile.delegate_prompt_flag {
+        PromptFlag::Subcommand(subcommand) => {
+            let mut tokens = split_windows_commandline(&resolved);
+            tokens.insert(1, subcommand.to_string());
+            let args = tokens.iter().map(String::as_str).collect::<Vec<_>>();
+            join_windows_commandline(&args)
+        }
+        _ => resolved.clone(),
+    };
+
     // If a model is configured, append --model <value> using the agent's model flags.
     let with_model = if let Some(ref model) = runtime.model {
         if let Some(flag) = profile.model_flags.first() {
-            format!("{} {} {}", resolved, flag, model)
+            format!("{} {} {}", with_subcommand, flag, model)
         } else {
-            resolved.clone()
+            with_subcommand
         }
     } else {
-        resolved.clone()
+        with_subcommand
     };
 
     // Pin a caller-chosen session id when the agent supports it, so the launched
@@ -860,6 +871,10 @@ fn build_pwsh_base64_launch(
         }
         call.push_str(&ps_single_quote(tok));
     }
+    if let PromptFlag::Subcommand(subcommand) = profile.delegate_prompt_flag {
+        call.push(' ');
+        call.push_str(&ps_single_quote(subcommand));
+    }
     if let (Some(model), Some(flag)) = (model, profile.model_flags.first()) {
         call.push(' ');
         call.push_str(&ps_single_quote(flag));
@@ -924,6 +939,10 @@ fn build_windows_powershell_base64_launch(
             call.push(' ');
         }
         call.push_str(&ps_single_quote(token));
+    }
+    if let PromptFlag::Subcommand(subcommand) = profile.delegate_prompt_flag {
+        call.push(' ');
+        call.push_str(&ps_single_quote(subcommand));
     }
     if let (Some(model), Some(flag)) = (model, profile.model_flags.first()) {
         call.push(' ');
@@ -1222,6 +1241,9 @@ pub(crate) fn build_wsl_delegate_commandline(
     if parts.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
+    if let PromptFlag::Subcommand(subcommand) = profile.delegate_prompt_flag {
+        parts.push(sh_quote(subcommand));
+    }
     if let Some(ref model) = runtime.model {
         if let Some(flag) = profile.model_flags.first() {
             parts.push(sh_quote(flag));
@@ -1253,7 +1275,7 @@ pub(crate) fn build_wsl_delegate_commandline(
             let b64 = crate::osc52::base64_encode(input.as_bytes());
             let prompt_arg = match profile.delegate_prompt_flag {
                 PromptFlag::Flag(flag) => format!("{} \"$prompt\"", sh_quote(flag)),
-                PromptFlag::Positional => "\"$prompt\"".to_string(),
+                PromptFlag::Positional | PromptFlag::Subcommand(_) => "\"$prompt\"".to_string(),
             };
             format!("prompt=$(base64 -d <<< '{b64}'); exec {agent_invocation} {prompt_arg}")
         }
@@ -2644,18 +2666,51 @@ mod tests {
 
     #[test]
     fn opencode_delegate_uses_run_subcommand() {
-        let runtime = base64_runtime("opencode");
+        let mut runtime = base64_runtime("opencode");
+        runtime.model = Some("anthropic/claude-sonnet-4-5".to_string());
         let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
         assert!(
-            cmd.contains("'opencode' 'run' \"\\$prompt\""),
+            cmd.contains(
+                "'opencode' 'run' '--model' 'anthropic/claude-sonnet-4-5' \"\\$prompt\""
+            ),
             "OpenCode delegate form: {cmd}"
         );
 
         let profile = crate::agent_registry::lookup_profile_by_id("opencode");
-        let cmd = build_pwsh_base64_launch("opencode", profile, None, None, "hi\nthere");
+        let cmd = build_pwsh_base64_launch(
+            "opencode",
+            profile,
+            Some("anthropic/claude-sonnet-4-5"),
+            None,
+            "hi\nthere",
+        );
         assert!(
-            cmd.contains("& 'opencode' 'run' $p; exit $LASTEXITCODE"),
+            cmd.contains(
+                "& 'opencode' 'run' '--model' 'anthropic/claude-sonnet-4-5' $p; exit $LASTEXITCODE"
+            ),
             "OpenCode PowerShell delegate form: {cmd}"
+        );
+
+        let cmd = build_windows_powershell_base64_launch(
+            "opencode",
+            profile,
+            Some("anthropic/claude-sonnet-4-5"),
+            None,
+            "hi\nthere",
+        );
+        assert!(
+            cmd.contains(
+                "& 'opencode' 'run' '--model' 'anthropic/claude-sonnet-4-5' $p;exit $LASTEXITCODE"
+            ),
+            "OpenCode Windows PowerShell delegate form: {cmd}"
+        );
+
+        runtime.commandline = r"C:\tools\opencode.exe".to_string();
+        let cmd = build_delegate_launch_commandline(&runtime, Some("hi there"), None)
+            .expect("OpenCode direct command");
+        assert_eq!(
+            cmd,
+            r#"C:\tools\opencode.exe run --model anthropic/claude-sonnet-4-5 "hi there""#
         );
     }
 
