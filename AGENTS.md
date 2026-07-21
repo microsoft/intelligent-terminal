@@ -112,7 +112,15 @@ or `Ctrl+C×2` in the TUI. See spec §8.
 
 Detects command failures in other panes and auto-suggests fixes via the agent.
 
-**Pipeline**: Shell emits `OSC 133;D;<exit_code>` → `TerminalPage` raises `ProtocolVtSequenceReceived` → COM server forwards to clients → WTA (via `wtcli listen --json`) classifies → `maybe_trigger_autofix()`.
+**Pipeline**: Shell emits `OSC 133;D;<exit_code>` → `TerminalPage` raises
+`ProtocolVtSequenceReceived` → COM server forwards to clients → the per-tab WTA
+helper classifies and builds the prompt → `_intellterm.wta/autofix` crosses the
+helper/master ACP hop → the pooled slot's `AutofixProxy` transforms it to ordinary
+`session/prompt` → the tracing proxy and agent CLI.
+
+WT/tab/UI policy remains helper-side: enablement, connected/busy and generation
+gates, source-pane context, template construction, and bottom-bar state do not
+belong to a per-agent 1:1 proxy.
 
 **Requirements**: PowerShell shell integration (OSC 133 marks), a helper
 whose ACP session has reached `Connected`, `wtcli` on PATH. The pane does

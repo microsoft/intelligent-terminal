@@ -42,6 +42,8 @@ use acp::schema::v1::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::autofix::AutofixPromptRequest;
+
 /// Legacy `session/set_model` request, removed from schema 1.1 but still spoken
 /// by Copilot/Gemini. Re-declared locally as a typed JSON-RPC request so the
 /// model-switch path keeps the exact wire shape (`sessionId` / `modelId`).
@@ -134,6 +136,13 @@ impl ClientLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
+    pub async fn autofix_prompt(
+        &self,
+        req: AutofixPromptRequest,
+    ) -> acp::Result<PromptResponse> {
+        self.cx().await?.send_request(req).block_task().await
+    }
+
     /// Non-blocking counterpart of [`ClientLink::prompt`], for use **from
     /// inside an ACP `on_receive_request` dispatch handler**.
     ///
@@ -148,6 +157,20 @@ impl ClientLink {
     pub async fn prompt_forwarding<Fut>(
         &self,
         req: PromptRequest,
+        on_response: impl FnOnce(acp::Result<PromptResponse>) -> Fut + 'static + Send,
+    ) -> acp::Result<()>
+    where
+        Fut: Future<Output = acp::Result<()>> + 'static + Send,
+    {
+        self.cx()
+            .await?
+            .send_request(req)
+            .on_receiving_result(on_response)
+    }
+
+    pub async fn autofix_prompt_forwarding<Fut>(
+        &self,
+        req: AutofixPromptRequest,
         on_response: impl FnOnce(acp::Result<PromptResponse>) -> Fut + 'static + Send,
     ) -> acp::Result<()>
     where

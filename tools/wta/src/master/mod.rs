@@ -1390,6 +1390,67 @@ impl HelperHandler {
             .await
     }
 
+    async fn autofix_prompt(
+        &self,
+        args: crate::protocol::acp::autofix::AutofixPromptRequest,
+        responder: acp::Responder<acp::schema::v1::PromptResponse>,
+    ) -> acp::Result<()> {
+        let helper_id = self.helper_id;
+        let session_id = args.prompt().session_id.clone();
+        let started = std::time::Instant::now();
+        tracing::info!(
+            target: "master",
+            step = "helper→proxy",
+            op = "autofix",
+            helper_id = ?helper_id,
+            session_id = ?session_id,
+            "forwarding autofix request to proxy chain (non-blocking)"
+        );
+        self.resolved_agent("autofix")?
+            .conn
+            .autofix_prompt_forwarding(args, move |resp| async move {
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                match &resp {
+                    Ok(ok) => tracing::info!(
+                        target: "master",
+                        step = "helper→proxy",
+                        op = "autofix",
+                        helper_id = ?helper_id,
+                        session_id = ?session_id,
+                        stop_reason = ?ok.stop_reason,
+                        elapsed_ms,
+                        "autofix completed"
+                    ),
+                    Err(err) => tracing::warn!(
+                        target: "master",
+                        step = "helper→proxy",
+                        op = "autofix",
+                        helper_id = ?helper_id,
+                        session_id = ?session_id,
+                        error = %err,
+                        elapsed_ms,
+                        "autofix failed"
+                    ),
+                }
+                let result = match resp {
+                    Ok(response) => responder.respond(response),
+                    Err(err) => responder.respond_with_error(err),
+                };
+                if let Err(err) = result {
+                    tracing::info!(
+                        target: "master",
+                        op = "autofix",
+                        helper_id = ?helper_id,
+                        session_id = ?session_id,
+                        error = %err,
+                        "dropping orphan autofix result (helper gone)"
+                    );
+                }
+                Ok(())
+            })
+            .await
+    }
+
     async fn cancel(&self, args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
         tracing::info!(
             target: "master",
@@ -2560,6 +2621,18 @@ async fn serve_helper(
     let builder = acp::Agent
         .builder()
         .name("wta-master-helper")
+        .on_receive_request(
+            {
+                let h = handler.clone();
+                move |req: crate::protocol::acp::autofix::AutofixPromptRequest,
+                      responder,
+                      _cx| {
+                    let h = h.clone();
+                    async move { h.autofix_prompt(req, responder).await }
+                }
+            },
+            acp::on_receive_request!(),
+        )
         .on_receive_request(
             {
                 let h = handler.clone();
