@@ -13,8 +13,6 @@ pub enum PromptFlag {
     Flag(&'static str),
     /// Prompt is a bare positional argument, e.g. `codex "prompt"`.
     Positional,
-    /// Subcommand immediately after the executable, e.g. `opencode run "prompt"`.
-    Subcommand(&'static str),
 }
 
 /// How the agent handles authentication in ACP mode.
@@ -169,11 +167,11 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["acp"],
         acp_launch_command: "",
-        // `opencode acp` accepts model changes through ACP, while delegate
-        // mode accepts `--model` on `opencode run`.
+        // `opencode acp` accepts model changes through ACP, while the
+        // interactive TUI accepts `--model` and an initial `--prompt`.
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
-        delegate_prompt_flag: PromptFlag::Subcommand("run"),
+        delegate_prompt_flag: PromptFlag::Flag("--prompt"),
         model_flags: &["--model", "-m"],
         install_hint: "npm install -g opencode-ai",
         install_url: "https://opencode.ai/docs/",
@@ -593,10 +591,7 @@ mod tests {
             Some("opencode".to_string())
         );
         let profile = lookup_profile_by_id("opencode");
-        assert_eq!(
-            profile.delegate_prompt_flag,
-            PromptFlag::Subcommand("run")
-        );
+        assert_eq!(profile.delegate_prompt_flag, PromptFlag::Flag("--prompt"));
         assert_eq!(profile.model_flags, &["--model", "-m"]);
         assert_eq!(profile.resume_flag, "--session");
     }
