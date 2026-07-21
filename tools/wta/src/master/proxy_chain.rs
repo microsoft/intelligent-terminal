@@ -3,6 +3,8 @@
 use agent_client_protocol as acp;
 use agent_client_protocol_conductor::{ConductorImpl, ProxiesAndAgent};
 
+use crate::protocol::acp::autofix::AutofixPromptRequest;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Direction {
     ClientToAgent,
@@ -88,6 +90,69 @@ impl<O: DispatchObserver> acp::ConnectTo<acp::Conductor> for TracingProxy<O> {
             })
             .connect_to(client)
             .await
+    }
+}
+
+struct AutofixProxy;
+
+impl acp::ConnectTo<acp::Conductor> for AutofixProxy {
+    async fn connect_to(self, client: impl acp::ConnectTo<acp::Proxy>) -> Result<(), acp::Error> {
+        acp::Proxy
+            .builder()
+            .name("wta-autofix-proxy")
+            .on_receive_request_from(
+                acp::Client,
+                async |request: acp::schema::InitializeProxyRequest, responder, cx| {
+                    cx.send_request_to(acp::Agent, request.initialize)
+                        .forward_response_to(responder)
+                },
+                acp::on_receive_request!(),
+            )
+            .on_receive_request_from(
+                acp::Client,
+                async |request: AutofixPromptRequest, responder, cx| {
+                    tracing::debug!(
+                        target: "autofix_proxy",
+                        session_id = %request.prompt().session_id,
+                        "transforming autofix request into session/prompt"
+                    );
+                    cx.send_request_to(acp::Agent, request.into_prompt())
+                        .forward_response_to(responder)
+                },
+                acp::on_receive_request!(),
+            )
+            .with_handler(ForwardAll)
+            .connect_to(client)
+            .await
+    }
+}
+
+struct ForwardAll;
+
+impl acp::HandleDispatchFrom<acp::Conductor> for ForwardAll {
+    async fn handle_dispatch_from(
+        &mut self,
+        message: acp::Dispatch,
+        connection: acp::ConnectionTo<acp::Conductor>,
+    ) -> Result<acp::Handled<acp::Dispatch>, acp::Error> {
+        use acp::util::MatchDispatchFrom;
+
+        MatchDispatchFrom::new(message, &connection)
+            .if_message_from(acp::Client, async |message: acp::Dispatch| {
+                connection.send_proxied_message_to(acp::Agent, message)?;
+                Ok(acp::Handled::Yes)
+            })
+            .await
+            .if_message_from(acp::Agent, async |message: acp::Dispatch| {
+                connection.send_proxied_message_to(acp::Client, message)?;
+                Ok(acp::Handled::Yes)
+            })
+            .await
+            .done()
+    }
+
+    fn describe_chain(&self) -> impl std::fmt::Debug {
+        "ForwardAll"
     }
 }
 
@@ -220,7 +285,9 @@ fn with_observer(
     };
     let conductor = ConductorImpl::new_agent(
         "wta-master",
-        ProxiesAndAgent::new(final_agent).proxy(TracingProxy::new(observer)),
+        ProxiesAndAgent::new(final_agent)
+            .proxy(AutofixProxy)
+            .proxy(TracingProxy::new(observer)),
     );
     ProxyChain {
         conductor,
@@ -236,9 +303,10 @@ mod tests {
     use acp::schema::v1::{
         AgentCapabilities, ContentChunk, InitializeRequest, InitializeResponse, Meta,
         NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionId,
-        PermissionOptionKind, RequestPermissionOutcome, RequestPermissionRequest,
-        RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
-        SessionUpdate, ToolCallId, ToolCallUpdate, ToolCallUpdateFields,
+        PermissionOptionKind, PromptRequest, PromptResponse, RequestPermissionOutcome,
+        RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
+        SessionNotification, SessionUpdate, StopReason, ToolCallId, ToolCallUpdate,
+        ToolCallUpdateFields,
     };
     use serde_json::Value;
 
@@ -268,6 +336,7 @@ mod tests {
     struct RecordingAgent {
         new_session_meta: Arc<Mutex<Option<Meta>>>,
         permission_selected: Arc<Mutex<bool>>,
+        prompts: Arc<Mutex<Vec<PromptRequest>>>,
     }
 
     impl acp::ConnectTo<acp::Client> for RecordingAgent {
@@ -277,6 +346,7 @@ mod tests {
         ) -> Result<(), acp::Error> {
             let new_session_meta = self.new_session_meta;
             let permission_selected = self.permission_selected;
+            let prompts = self.prompts;
 
             acp::Agent
                 .builder()
@@ -334,6 +404,18 @@ mod tests {
                     },
                     acp::on_receive_request!(),
                 )
+                .on_receive_request(
+                    move |request: PromptRequest,
+                          responder: acp::Responder<PromptResponse>,
+                          _cx| {
+                        let prompts = Arc::clone(&prompts);
+                        async move {
+                            prompts.lock().unwrap().push(request);
+                            responder.respond(PromptResponse::new(StopReason::EndTurn))
+                        }
+                    },
+                    acp::on_receive_request!(),
+                )
                 .connect_to(client)
                 .await
         }
@@ -351,10 +433,12 @@ mod tests {
             let events = Arc::clone(&observer.0);
             let new_session_meta = Arc::new(Mutex::new(None));
             let permission_selected = Arc::new(Mutex::new(false));
+            let prompts = Arc::new(Mutex::new(Vec::new()));
             let notification_seen = Arc::new(Mutex::new(false));
             let final_agent = RecordingAgent {
                 new_session_meta: Arc::clone(&new_session_meta),
                 permission_selected: Arc::clone(&permission_selected),
+                prompts: Arc::clone(&prompts),
             };
             let conductor = with_observer(final_agent, observer);
 
@@ -400,9 +484,32 @@ mod tests {
                 .await
                 .expect("session/new should cross the proxy");
 
+            link.prompt(PromptRequest::new(
+                SessionId::new("proxy-test-session"),
+                vec!["normal".into()],
+            ))
+            .await
+            .expect("normal prompt should pass through unchanged");
+
+            let mut autofix_meta = Meta::new();
+            autofix_meta.insert("wta-test".into(), Value::String("preserved".into()));
+            link.autofix_prompt(AutofixPromptRequest::new(
+                PromptRequest::new(SessionId::new("proxy-test-session"), vec!["autofix".into()])
+                    .meta(autofix_meta.clone()),
+            ))
+            .await
+            .expect("autofix proxy should transform the request");
+
             assert_eq!(*new_session_meta.lock().unwrap(), Some(expected_meta));
             assert!(*notification_seen.lock().unwrap());
             assert!(*permission_selected.lock().unwrap());
+            let prompts = prompts.lock().unwrap();
+            assert_eq!(prompts.len(), 2);
+            assert_eq!(prompts[0].prompt, vec!["normal".into()]);
+            assert_eq!(prompts[1].session_id, SessionId::new("proxy-test-session"));
+            assert_eq!(prompts[1].prompt, vec!["autofix".into()]);
+            assert_eq!(prompts[1].meta, Some(autofix_meta));
+            drop(prompts);
 
             let events = events.lock().unwrap();
             for expected in [
@@ -441,6 +548,16 @@ mod tests {
                     MessageKind::Response,
                     "session/new",
                 ),
+                (
+                    Direction::ClientToAgent,
+                    MessageKind::Request,
+                    "session/prompt",
+                ),
+                (
+                    Direction::AgentToClient,
+                    MessageKind::Response,
+                    "session/prompt",
+                ),
             ] {
                 assert!(
                     events.iter().any(|event| {
@@ -451,6 +568,12 @@ mod tests {
                     "missing trace event {expected:?}; observed {events:?}"
                 );
             }
+            assert!(
+                events
+                    .iter()
+                    .all(|event| event.method != "_intellterm.wta/autofix"),
+                "tracing proxy should observe the transformed successor wire: {events:?}"
+            );
 
             io_task.abort();
         });

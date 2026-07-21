@@ -360,6 +360,20 @@ fn spawn_mock_pair(
     let agent_builder = acp::Agent
         .builder()
         .name("mock-agent")
+        .on_receive_request({
+            let m = mock.clone();
+            move |req: crate::protocol::acp::autofix::AutofixPromptRequest,
+                  responder: acp::Responder<acp::schema::v1::PromptResponse>,
+                  _cx| {
+                let m = m.clone();
+                async move {
+                    match m.prompt(req.into_prompt()).await {
+                        Ok(response) => responder.respond(response),
+                        Err(err) => responder.respond_with_error(err),
+                    }
+                }
+            }
+        }, acp::on_receive_request!())
         .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
             use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
             match req {
@@ -1844,6 +1858,5 @@ async fn request_permission_cancelled_when_responder_dropped() {
         })
         .await;
 }
-
 
 

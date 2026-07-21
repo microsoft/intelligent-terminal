@@ -3670,10 +3670,22 @@ async fn dispatch_prompt_body(
     // through master → agent CLI verbatim; the agent only receives them if it
     // advertised `promptCapabilities.image` (the UI gates Alt+V on that flag).
     let content = build_prompt_content(&text, &prompt.images);
-    let prompt_fut = conn_task.prompt(acp::schema::v1::PromptRequest::new(
+    let prompt_request = acp::schema::v1::PromptRequest::new(
         prompt_session_id.clone(),
         content,
-    ));
+    );
+    let is_autofix = prompt.is_autofix;
+    let prompt_fut = async {
+        if is_autofix {
+            conn_task
+                .autofix_prompt(crate::protocol::acp::autofix::AutofixPromptRequest::new(
+                    prompt_request,
+                ))
+                .await
+        } else {
+            conn_task.prompt(prompt_request).await
+        }
+    };
     tokio::pin!(prompt_fut);
 
     let cancelled = tokio::select! {

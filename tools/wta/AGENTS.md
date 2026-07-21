@@ -14,8 +14,8 @@ with an error.
   `ProxyChainRuntime`s (Copilot, Claude, Gemini, Codex, or custom), listens on a
   named pipe, and fans per-helper ACP sessions onto the selected runtime.
   Instance-scoped route/orphan lifetime lives in `src/master/session_router.rs`;
-  each runtime embeds the canonical ACP `ConductorImpl` and an explicit
-  pass-through tracing proxy from `src/master/proxy_chain.rs`.
+  each runtime embeds the canonical ACP `ConductorImpl`, an autofix transform
+  proxy, and a pass-through tracing proxy from `src/master/proxy_chain.rs`.
 - **`wta-helper`** (`--connect-master <pipe>`, spawned once per agent pane by
   Windows Terminal) -- the per-pane **TUI**. Drives the ratatui chat UI (`app.rs`)
   but, instead of spawning its own agent CLI, speaks ACP/JSON-RPC to master over
@@ -73,9 +73,10 @@ because of the helper+master split:
 
 - **master ↔ proxy chain ↔ agent CLI**: master is the ACP **client** of each
   pooled canonical conductor, which owns an ordered linear proxy chain ending
-  at the agent CLI's stdio transport. The first proxy is a no-op wire tracer:
-  it forwards all dispatches unchanged and records only direction, message kind,
-  and method under tracing target `proxy_chain`.
+  at the agent CLI's stdio transport. `AutofixProxy` transforms the helper's
+  `_intellterm.wta/autofix` request into ordinary `session/prompt`; the following
+  no-op tracing proxy records only successor-wire direction, message kind, and
+  method under tracing target `proxy_chain`.
 - **helper ↔ master** (named pipe): master is an ACP **agent** (server) to each
   helper, and the helper is the ACP **client**. Master forwards helper requests
   to the agent CLI and routes inbound `session_notification`s back to the helper

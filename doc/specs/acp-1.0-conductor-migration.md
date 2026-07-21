@@ -694,7 +694,7 @@ it is TUI/state/connection/tab plumbing that stays in the helper.
 | Auth / connection / lifecycle | `auth\|login\|preflight\|setup` 529; ConnectionState; AgentConnected/Error/Busy/SoftStop | ❌ conductor/helper plumbing | — | — |
 | TUI view / input / state | render, chip, scroll, help/debug overlay, Key/Resize/Focus, RevealTick (heavy render lives in `ui/`) | ❌ stays in helper UI | — | — |
 | Multi-tab routing | `tab_session\|tab_changed\|renamed` 161; owner_tab_id/window_id; session_to_tab | ❌ helper's N-tab fan-out | — | — |
-| **Autofix** | `classify_*` (10), `classify_wt_event`, `submit_autofix_prompt`, `fix_target_pane`, `AutofixTargetResolved`, WtEvent (303) | ✅ proxy | off-wire `WtEvent` → inject `session/prompt`: classify an actionable failure (OSC 133;D exit / connection state) and inject a fix prompt | `app/autofix.rs` |
+| **Autofix** | `classify_*` (10), `classify_wt_event`, `submit_autofix_prompt`, `fix_target_pane`, `AutofixTargetResolved`, WtEvent (303) | ✅ split helper + proxy | helper classifies the off-wire `WtEvent`, resolves tab/pane context, and sends `_intellterm.wta/autofix`; proxy transforms that request into ordinary `session/prompt` | `app/autofix.rs` + `protocol/acp/autofix.rs` |
 | **Context / prompt injection** | `prompt\|persona\|planner` 355; PromptTemplateLoaded; `turn_submit_prompt`; `turn_close_finalize_planner` | ✅ proxy | `session/new` (build) + `session/prompt` (rewrite): prepend persona / template / context | `protocol/acp/prompt.rs` |
 | **Delegate / recommendation** | `delegate\|recommend\|coordinator` 252; recommendation_tx; ChoiceExecution; DispatchedCommand; `turn_surface_recommendation` | ✅ proxy | `session/update` (response): parse a `RecommendationSet`, surface Run/Insert cards | `coordinator.rs` |
 | Model pinning / override | `model` 282; `apply_global_acp_model`; `send_session_model`; SessionAttached re-apply; acp_model | 🟡 shim | `session/new` (request): rewrite the model field — folds into **context** | `apply_global_acp_model` |
@@ -712,9 +712,9 @@ cards / pickers / TUI stay in the helper. Feature-proxy extraction is **Phase
 
 #### Structure after Phase 4 (conductor + chained transform proxies)
 
-The conductor from Phase 2 is unchanged; the three `app.rs` transform cores
-(autofix / context / delegate) become standalone proxies chained between it and
-the agent via `_proxy/initialize` / `_proxy/successor` — and the session-proxy family
+The conductor from Phase 2 is unchanged; the ACP-transform portions of the three
+`app.rs` concerns (autofix / context / delegate) become standalone proxies chained
+between it and the agent via `_proxy/initialize` / `_proxy/successor` — and the session-proxy family
 + the model / permission shims chain in the same way. The full chain below carries
 the **same proxy set as the *Target* diagram** (this is just the LR chain view). Each
 proxy is reorderable/insertable by config rather than by editing `app.rs`. The helper
@@ -728,8 +728,8 @@ flowchart LR
         CB["SessionRouter<br/>N:M control plane"]
         C["ConductorImpl<br/>per-slot linear chain"]
     end
-    TRACE["wire tracing proxy<br/>no-op · method metadata only"]
-    AFX["autofix proxy<br/>WtEvent → inject session/prompt"]
+    AFX["autofix proxy<br/>_intellterm.wta/autofix → session/prompt"]
+    TRACE["wire tracing proxy<br/>successor method metadata only"]
     CTX["context/prompt proxy<br/>rewrite session/prompt"]
     REC["delegate/recommendation proxy<br/>parse RecommendationSet"]
     SLU["session: list-union proxy<br/>host + WSL history (session/list)"]
@@ -741,9 +741,9 @@ flowchart LR
 
     H -->|"ACP/pipe"| CB
     CB --> C
-    C -->|"_proxy/initialize"| TRACE
-    TRACE -.->|"_proxy/successor"| AFX
-    AFX -.->|"_proxy/successor"| CTX
+    C -->|"_proxy/initialize"| AFX
+    AFX -.->|"_proxy/successor"| TRACE
+    TRACE -.->|"_proxy/successor"| CTX
     CTX -.->|"_proxy/successor"| REC
     REC -.->|"_proxy/successor"| SLU
     SLU -.->|"_proxy/successor"| SLE
@@ -757,9 +757,31 @@ flowchart LR
 > Only the dashed `_proxy/*` chain is new vs Phase 1. The WTA conductor still owns
 > the N:M bridge and session lifecycle; proxies are optional pure 1:1 transforms in the
 > chain. `app.rs` keeps the cards/pickers + TUI/tab/connection plumbing; only each
-> proxy's decision/transform core moved out. Landing order within Phase 2: the three
+> proxy's ACP transform core moves out. Landing order within Phase 4: the three
 > `app.rs` cores (autofix / context / delegate) first, then the `session:` family
 > (from the session subsystem), with model / permission as optional fold-in shims.
+
+#### Autofix first extraction: split control-plane and transform responsibilities
+
+The per-agent proxy chain cannot consume WT events directly. OSC/COM events arrive
+at a per-tab helper, while a pooled proxy knows only ACP sessions and has no
+independent authority to select a window, tab, or helper. Therefore the first
+functional proxy deliberately keeps these responsibilities in the helper:
+
+- WT failure classification, enablement policy, connected/busy gating, and
+  generation/stale-response handling;
+- tab and source-pane resolution, prompt template/context construction, and
+  bottom-bar `Detected` / `Pending` / `Review` projection;
+- lazy ACP session creation and the existing `session/cancel` path.
+
+After resolving the `SessionId` and complete `PromptRequest`, the helper sends the
+typed ACP extension `_intellterm.wta/autofix`. `SessionRouter` selects the already
+bound agent slot, `AutofixProxy` intercepts that request, and forwards its unchanged
+payload to the successor as ordinary `session/prompt`. The response type is
+`PromptResponse`, so stop reasons, errors, cancellation, notifications, and reverse
+requests retain the existing end-to-end behavior. `TracingProxy` follows
+`AutofixProxy` in the ordered chain and therefore observes the transformed
+`session/prompt`, never the WTA-only extension method.
 
 ### Proxy criterion & count (how many proxies, and why)
 
@@ -778,7 +800,7 @@ core` row is the counter-example — no ACP seam, so it stays in the conductor/h
 
 | Concern | ACP method intercepted | Transform | Standalone viability | Likely outcome |
 |---|---|---|---|---|
-| autofix | off-wire `WtEvent` → inject `session/prompt` | inject a fix prompt | existing `app/autofix.rs` (566) + tests; clear boundary | ✅ standalone |
+| autofix | `_intellterm.wta/autofix` request | transform a helper-resolved prompt into `session/prompt` | helper retains off-wire WT/tab/UI control plane; `AutofixProxy` owns the ACP method transform | ✅ standalone |
 | context / prompt injection | `session/prompt` (request) | prepend template / persona | existing `prompt.rs` (347); clear transform pipeline | ✅ standalone |
 | delegate / recommendation | `session/update` (response) | parse `RecommendationSet`, surface cards | existing `coordinator.rs` (1861); clear boundary | ✅ standalone |
 | session: list-union (discovery) | `session/list` (response) | union host + WSL history from the agent's `session/list` (already master-fetched), subtract Class-A index | host+WSL history **already** routes through `session/list`, so the seam exists | ✅ standalone (1 of 1–2) |
