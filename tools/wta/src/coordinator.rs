@@ -701,6 +701,9 @@ fn build_delegate_launch_commandline(
     if commandline.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
+    if split_windows_commandline(commandline).is_empty() {
+        bail!("delegate agent runtime commandline has no executable");
+    }
     // Resolve bare names (e.g. "claude" → "claude.exe") at launch time so we
     // always see the current PATH, not a stale snapshot from process startup.
     let resolved = resolve_commandline_executable(commandline);
@@ -2711,6 +2714,19 @@ mod tests {
         assert_eq!(
             cmd,
             r#"C:\tools\opencode.exe run --model anthropic/claude-sonnet-4-5 "hi there""#
+        );
+    }
+
+    #[test]
+    fn delegate_launch_rejects_commandline_without_executable() {
+        let mut runtime = base64_runtime("opencode");
+        runtime.commandline = "\"\"".to_string();
+
+        let error = build_delegate_launch_commandline(&runtime, Some("hi"), None)
+            .expect_err("quote-only commandline should be rejected");
+        assert!(
+            error.to_string().contains("has no executable"),
+            "unexpected error: {error:#}"
         );
     }
 
