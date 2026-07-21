@@ -75,8 +75,6 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     static void s_NotifyEventToComClients(const std::string& eventJson);
 
 private:
-    bool _authenticated = false;
-
     // ── Per-subscriber asynchronous event delivery (issue #239) ──
     //
     // Each connected client (= one instance) owns a bounded FIFO queue drained

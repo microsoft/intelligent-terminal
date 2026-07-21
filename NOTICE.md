@@ -557,9 +557,9 @@ requirements are met without embedding any single crate's license body as
 if it were canonical for the whole group.
 
 - **adler2** v2.0.1 -- [https://github.com/oyvindln/adler2](https://github.com/oyvindln/adler2) -- `0BSD OR Apache-2.0 OR MIT`
-- **agent-client-protocol** v1.0.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
-- **agent-client-protocol-derive** v1.0.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
-- **agent-client-protocol-schema** v1.1.0 -- [https://github.com/agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) -- `Apache-2.0`
+- **agent-client-protocol** v1.2.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
+- **agent-client-protocol-derive** v1.2.0 -- [https://github.com/agentclientprotocol/rust-sdk](https://github.com/agentclientprotocol/rust-sdk) -- `Apache-2.0`
+- **agent-client-protocol-schema** v1.4.0 -- [https://github.com/agentclientprotocol/agent-client-protocol](https://github.com/agentclientprotocol/agent-client-protocol) -- `Apache-2.0`
 - **aho-corasick** v1.1.4 -- [https://github.com/BurntSushi/aho-corasick](https://github.com/BurntSushi/aho-corasick) -- `MIT OR Unlicense`
 - **allocator-api2** v0.2.21 -- [https://github.com/zakarumych/allocator-api2](https://github.com/zakarumych/allocator-api2) -- `Apache-2.0 OR MIT`
 - **anstream** v0.6.21 -- [https://github.com/rust-cli/anstyle.git](https://github.com/rust-cli/anstyle.git) -- `Apache-2.0 OR MIT`
@@ -856,7 +856,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 190 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.0.0, agent-client-protocol-derive v1.0.0, agent-client-protocol-schema v1.1.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+182 more)
+Applies to 190 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.2.0, agent-client-protocol-derive v1.2.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+182 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 

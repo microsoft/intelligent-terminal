@@ -1081,6 +1081,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return L"npx -y @agentclientprotocol/codex-acp@1.1.0";
         }
+        if (lower == "opencode")
+        {
+            return L"opencode acp";
+        }
 
         std::wstring cmd{ acpAgent };
         if (lower == "copilot")

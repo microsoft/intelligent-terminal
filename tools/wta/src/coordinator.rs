@@ -432,6 +432,9 @@ fn build_delegate_launch_commandline(
     if commandline.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
+    if split_windows_commandline(commandline).is_empty() {
+        bail!("delegate agent runtime commandline has no executable");
+    }
     // Resolve bare names (e.g. "claude" → "claude.exe") at launch time so we
     // always see the current PATH, not a stale snapshot from process startup.
     let resolved = resolve_commandline_executable(commandline);
@@ -948,7 +951,7 @@ pub(crate) fn build_wsl_delegate_commandline(
     // single-quoted for the inner bash.
     let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
         .into_iter()
-        .map(|t| sh_quote(&t))
+        .map(|token| sh_quote(&token))
         .collect();
     if parts.is_empty() {
         bail!("delegate agent runtime commandline is empty");
@@ -1736,6 +1739,69 @@ mod tests {
         let runtime = base64_runtime("copilot"); // -i flag agent
         let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
         assert!(cmd.contains("'-i' \"\\$prompt\""), "flag prompt form: {cmd}");
+    }
+
+    #[test]
+    fn opencode_delegate_uses_interactive_prompt_flag() {
+        let mut runtime = base64_runtime("opencode");
+        runtime.model = Some("anthropic/claude-sonnet-4-5".to_string());
+        let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
+        assert!(
+            cmd.contains(
+                "'opencode' '--model' 'anthropic/claude-sonnet-4-5' '--prompt' \"\\$prompt\""
+            ),
+            "OpenCode delegate form: {cmd}"
+        );
+
+        let profile = crate::agent_registry::lookup_profile_by_id("opencode");
+        let cmd = build_pwsh_base64_launch(
+            "opencode",
+            profile,
+            Some("anthropic/claude-sonnet-4-5"),
+            None,
+            "hi\nthere",
+        );
+        assert!(
+            cmd.contains(
+                "& 'opencode' '--model' 'anthropic/claude-sonnet-4-5' '--prompt' $p; exit $LASTEXITCODE"
+            ),
+            "OpenCode PowerShell delegate form: {cmd}"
+        );
+
+        let cmd = build_windows_powershell_base64_launch(
+            "opencode",
+            profile,
+            Some("anthropic/claude-sonnet-4-5"),
+            None,
+            "hi\nthere",
+        );
+        assert!(
+            cmd.contains(
+                "& 'opencode' '--model' 'anthropic/claude-sonnet-4-5' '--prompt' $p;exit $LASTEXITCODE"
+            ),
+            "OpenCode Windows PowerShell delegate form: {cmd}"
+        );
+
+        runtime.commandline = r"C:\tools\opencode.exe".to_string();
+        let cmd = build_delegate_launch_commandline(&runtime, Some("hi there"), None)
+            .expect("OpenCode direct command");
+        assert_eq!(
+            cmd,
+            r#"C:\tools\opencode.exe --model anthropic/claude-sonnet-4-5 --prompt "hi there""#
+        );
+    }
+
+    #[test]
+    fn delegate_launch_rejects_commandline_without_executable() {
+        let mut runtime = base64_runtime("opencode");
+        runtime.commandline = "\"\"".to_string();
+
+        let error = build_delegate_launch_commandline(&runtime, Some("hi"), None)
+            .expect_err("quote-only commandline should be rejected");
+        assert!(
+            error.to_string().contains("has no executable"),
+            "unexpected error: {error:#}"
+        );
     }
 
     #[test]

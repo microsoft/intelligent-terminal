@@ -26,6 +26,7 @@ namespace winrt::TerminalApp::implementation
             Claude,
             Gemini,
             Codex,
+            OpenCode,
         };
 
         // Map the agent's display name (case-insensitive substring) to its
@@ -40,6 +41,7 @@ namespace winrt::TerminalApp::implementation
             if (lower.find(L"openai") != std::wstring::npos) return AgentLogoKind::Codex;
             if (lower.find(L"gpt") != std::wstring::npos) return AgentLogoKind::Codex;
             if (lower.find(L"gemini") != std::wstring::npos) return AgentLogoKind::Gemini;
+            if (lower.find(L"opencode") != std::wstring::npos) return AgentLogoKind::OpenCode;
             return AgentLogoKind::Copilot;
         }
 
@@ -262,6 +264,7 @@ namespace winrt::TerminalApp::implementation
         ClaudeLogo().Visibility(logo == AgentLogoKind::Claude ? Visibility::Visible : Visibility::Collapsed);
         GeminiLogo().Visibility(logo == AgentLogoKind::Gemini ? Visibility::Visible : Visibility::Collapsed);
         CodexLogo().Visibility(logo == AgentLogoKind::Codex ? Visibility::Visible : Visibility::Collapsed);
+        OpenCodeLogo().Visibility(logo == AgentLogoKind::OpenCode ? Visibility::Visible : Visibility::Collapsed);
         AgentLogo().Visibility(Visibility::Visible);
     }
 

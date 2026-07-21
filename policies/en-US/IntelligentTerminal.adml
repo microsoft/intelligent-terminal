@@ -28,10 +28,11 @@ Valid agent identifiers:
   claude    — Claude (Anthropic)
   codex     — Codex (OpenAI)
   gemini    — Gemini (Google)
+  opencode  — OpenCode
 
 These are the only recognized values. Identifiers are case-insensitive.
 
-If this policy is configured, only the listed agents will be available. Agents not in the list are hidden from the UI and blocked at runtime. Unrecognized identifiers (e.g. typos) are silently ignored — if all entries are invalid, the user will see no available agents. If not configured (default), all four agents are available.
+If this policy is configured, only the listed agents will be available. Agents not in the list are hidden from the UI and blocked at runtime. Unrecognized identifiers (e.g. typos) are silently ignored — if all entries are invalid, the user will see no available agents. If not configured (default), all five agents are available.
 
 To control custom agent commands (custom:&lt;command&gt;), use the "Allow Custom AI Agents" policy instead.</string>
       <string id="AllowCustomAgents">Allow Custom AI Agents</string>
@@ -52,7 +53,7 @@ If you enable this policy or do not configure it, users can install and manage a
         <multiTextBox refId="DisabledProfileSources">List of disabled sources (one per line)</multiTextBox>
       </presentation>
       <presentation id="AllowedAgents">
-        <multiTextBox refId="AllowedAgents">Allowed agent identifiers, one per line (copilot, claude, codex, gemini)</multiTextBox>
+        <multiTextBox refId="AllowedAgents">Allowed agent identifiers, one per line (copilot, claude, codex, gemini, opencode)</multiTextBox>
       </presentation>
     </presentationTable>
   </resources>

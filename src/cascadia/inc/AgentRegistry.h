@@ -33,26 +33,28 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     };
 
     // ACP-capable agents. Either the CLI itself speaks the Agent Control
-    // Protocol (copilot, gemini), or an npm-distributed adapter does
+    // Protocol (copilot, gemini, opencode), or an npm-distributed adapter does
     // (claude via @agentclientprotocol/claude-agent-acp, codex via
     // @agentclientprotocol/codex-acp).
     // Only these agents can be hosted in an agent pane.
-    inline constexpr std::array<BuiltinAgent, 4> BuiltinAcpAgents{ {
+    inline constexpr std::array<BuiltinAgent, 5> BuiltinAcpAgents{ {
         { L"copilot", L"GitHub Copilot" },
         { L"claude", L"Claude" },
         { L"codex", L"Codex" },
         { L"gemini", L"Gemini" },
+        { L"opencode", L"OpenCode" },
     } };
 
     // Delegate agents. Invoked for `?<prompt>` background delegation and
     // similar flows. The set is broader than ACP because delegation doesn't
     // require an ACP-speaking agent — any CLI agent that accepts a prompt
     // as input works.
-    inline constexpr std::array<BuiltinAgent, 4> BuiltinDelegateAgents{ {
+    inline constexpr std::array<BuiltinAgent, 5> BuiltinDelegateAgents{ {
         { L"copilot", L"GitHub Copilot" },
         { L"claude", L"Claude" },
         { L"codex", L"Codex" },
         { L"gemini", L"Gemini" },
+        { L"opencode", L"OpenCode" },
     } };
 
     // Return only agents whose IDs are permitted by GPO policy.

@@ -48,6 +48,9 @@ pub struct AgentProfile {
     /// `"npx -y @agentclientprotocol/claude-agent-acp"` for an adapter package).
     /// When empty, `build_acp_command` falls back to `id + acp_flags`.
     pub acp_launch_command: &'static str,
+    /// Model flags accepted by the ACP server command. This may differ from
+    /// `model_flags` when ACP model selection is protocol-only.
+    pub acp_model_flags: &'static [&'static str],
     /// Authentication flow required for ACP sessions.
     pub acp_auth_flow: AcpAuthFlow,
 
@@ -86,6 +89,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--acp", "--stdio"],
         acp_launch_command: "",
+        acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Flag("-i"),
         model_flags: &["--model", "-m"],
@@ -107,6 +111,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // delegate mode does. (Renamed from the deprecated
         // `@zed-industries/claude-code-acp`; see issue #257.)
         acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp",
+        acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
@@ -125,6 +130,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // Codex CLI itself doesn't speak ACP. Use the ACP-project-maintained
         // adapter, pinned so a future npm release cannot silently break startup.
         acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.0",
+        acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
@@ -144,6 +150,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--experimental-acp"],
         acp_launch_command: "",
+        acp_model_flags: &["--model", "-m"],
         acp_auth_flow: AcpAuthFlow::InProtocol,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &["--model", "-m"],
@@ -154,6 +161,25 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         resume_flag: "--resume",
         new_session_id_flag: Some("--session-id"),
     },
+    AgentProfile {
+        id: "opencode",
+        display_name: "OpenCode",
+        exe_search_order: &[".exe", ".cmd"],
+        acp_flags: &["acp"],
+        acp_launch_command: "",
+        // `opencode acp` accepts model changes through ACP, while the
+        // interactive TUI accepts `--model` and an initial `--prompt`.
+        acp_model_flags: &[],
+        acp_auth_flow: AcpAuthFlow::External,
+        delegate_prompt_flag: PromptFlag::Flag("--prompt"),
+        model_flags: &["--model", "-m"],
+        install_hint: "npm install -g opencode-ai",
+        install_url: "https://opencode.ai/docs/",
+        auth_check_command: "",
+        auth_hint: "Run: opencode auth login",
+        resume_flag: "--session",
+        new_session_id_flag: None,
+    },
 ];
 
 pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
@@ -162,6 +188,7 @@ pub const DEFAULT_PROFILE: AgentProfile = AgentProfile {
     exe_search_order: &[".exe", ".cmd"],
     acp_flags: &[],
     acp_launch_command: "",
+    acp_model_flags: &[],
     acp_auth_flow: AcpAuthFlow::None,
     delegate_prompt_flag: PromptFlag::Flag("-i"),
     model_flags: &["--model", "-m"],
@@ -232,7 +259,8 @@ fn adapter_profile_from_tokens(tokens: &[String]) -> Option<&'static AgentProfil
 }
 
 /// Returns `true` iff `id` is a real, selectable agent id present in
-/// [`KNOWN_AGENTS`] (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`).
+/// [`KNOWN_AGENTS`] (`"copilot"`, `"claude"`, `"codex"`, `"gemini"`,
+/// `"opencode"`).
 ///
 /// Prefer this over `lookup_profile_by_id(id).id != DEFAULT_PROFILE.id` when
 /// distinguishing a known agent from the unknown/custom fallback: this checks
@@ -246,7 +274,7 @@ pub fn is_known_id(id: &str) -> bool {
 
 /// Resolve a full agent command line (e.g. the value of `--agent`) into the
 /// canonical agent id known to [`KNOWN_AGENTS`] — `"copilot"`, `"claude"`,
-/// `"codex"`, `"gemini"` — or `"unknown"` if nothing matches.
+/// `"codex"`, `"gemini"`, `"opencode"` — or `"unknown"` if nothing matches.
 ///
 /// This is the right thing to use whenever we need to *identify* the agent
 /// from a launch command rather than execute it. It handles three input
@@ -306,7 +334,7 @@ pub fn build_acp_command(agent_id: &str, model: Option<&str>) -> String {
         parts.push(flag.to_string());
     }
     if let Some(model) = model {
-        if let Some(flag) = profile.model_flags.first() {
+        if let Some(flag) = profile.acp_model_flags.first() {
             parts.push(flag.to_string());
             parts.push(model.to_string());
         }
@@ -464,6 +492,7 @@ mod tests {
     fn resolve_agent_id_from_cmd_recognises_bare_names_with_flags() {
         assert_eq!(resolve_agent_id_from_cmd("copilot --acp --stdio"), "copilot");
         assert_eq!(resolve_agent_id_from_cmd("gemini --experimental-acp"), "gemini");
+        assert_eq!(resolve_agent_id_from_cmd("opencode acp"), "opencode");
         assert_eq!(resolve_agent_id_from_cmd("claude --resume foo"), "claude");
     }
 
@@ -530,6 +559,24 @@ mod tests {
             build_acp_command("codex", None),
             "npx -y @agentclientprotocol/codex-acp@1.1.0",
         );
+    }
+
+    #[test]
+    fn opencode_builds_native_acp_and_delegate_commands() {
+        assert_eq!(build_acp_command("opencode", None), "opencode acp");
+        assert_eq!(
+            build_acp_command("opencode", Some("anthropic/claude-sonnet-4-5")),
+            "opencode acp",
+            "OpenCode model selection is sent through ACP"
+        );
+        assert_eq!(
+            strip_acp_flags_for_delegate("opencode acp"),
+            Some("opencode".to_string())
+        );
+        let profile = lookup_profile_by_id("opencode");
+        assert_eq!(profile.delegate_prompt_flag, PromptFlag::Flag("--prompt"));
+        assert_eq!(profile.model_flags, &["--model", "-m"]);
+        assert_eq!(profile.resume_flag, "--session");
     }
 
     #[test]
