@@ -64,21 +64,17 @@ pub fn render(
         Span::raw(query.to_string())
     };
     let search_label_style = if search_focused {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
     };
-    let mut search_spans = vec![
-        Span::styled("Search: ", search_label_style),
-        search_value,
-    ];
+    let mut search_spans = vec![Span::styled("Search: ", search_label_style), search_value];
     if search_focused {
         search_spans.push(Span::styled("▏", Style::default().fg(Color::Cyan)));
     }
-    frame.render_widget(
-        Paragraph::new(Line::from(search_spans)),
-        search_area,
-    );
+    frame.render_widget(Paragraph::new(Line::from(search_spans)), search_area);
 
     let visible_sessions = sessions
         .iter()
@@ -93,8 +89,7 @@ pub fn render(
         );
     } else if sessions.is_empty() {
         frame.render_widget(
-            Paragraph::new("No saved shell sessions")
-                .style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("No saved shell sessions").style(Style::default().fg(Color::DarkGray)),
             list_area,
         );
     } else if visible_sessions.is_empty() {
@@ -113,30 +108,29 @@ pub fn render(
             .into_iter()
             .enumerate()
             .map(|(index, session)| {
-            let is_selected = selected == Some(index);
-            let marker = if is_selected { "> " } else { "  " };
-            let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            let row = format_row(session, row_width, now);
-            let mut spans = vec![
-                Span::styled(marker, style),
-                Span::styled(row.name, style),
-            ];
-            if !row.cwd.is_empty() {
-                spans.push(Span::raw("  "));
-                spans.push(Span::styled(
-                    row.cwd,
-                    Style::default().fg(Color::DarkGray),
-                ));
-            }
-            spans.push(Span::raw(row.padding));
-            spans.push(Span::styled(row.age, style));
-            ListItem::new(Line::from(spans))
+                let is_selected = selected == Some(index);
+                let marker = if is_selected { "> " } else { "  " };
+                let style = if is_selected {
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                let row = format_row(session, row_width, now);
+                let mut spans = vec![Span::styled(marker, style)];
+                spans.extend(highlight_matches(&row.name, query, style));
+                if !row.cwd.is_empty() {
+                    spans.push(Span::raw("  "));
+                    spans.extend(highlight_matches(
+                        &row.cwd,
+                        query,
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+                spans.push(Span::raw(row.padding));
+                spans.push(Span::styled(row.age, style));
+                ListItem::new(Line::from(spans))
             });
         frame.render_stateful_widget(List::new(rows), list_area, list_state);
     }
@@ -149,7 +143,10 @@ pub fn render(
             height: 1,
         };
         let (hint, style) = if delete_in_flight {
-            ("Deleting shell session...".to_string(), Style::default().fg(Color::Yellow))
+            (
+                "Deleting shell session...".to_string(),
+                Style::default().fg(Color::Yellow),
+            )
         } else if let Some(id) = delete_confirmation {
             let name = sessions
                 .iter()
@@ -158,12 +155,13 @@ pub fn render(
                 .unwrap_or(id);
             (
                 format!("Delete \"{name}\"? Y Confirm - N/Esc Cancel"),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )
         } else {
             (
-                "(↑ ↓ Navigate • Enter Restore • Esc Back • D Delete • F5 Refresh)"
-                    .to_string(),
+                "(↑ ↓ Navigate • Enter Restore • Esc Back • D Delete • F5 Refresh)".to_string(),
                 Style::default().fg(Color::DarkGray),
             )
         };
@@ -178,9 +176,59 @@ pub(crate) fn matches_query(
     if query.is_empty() {
         return true;
     }
-    let query = query.to_lowercase();
-    session.name.to_lowercase().contains(&query)
-        || session.active_pane_cwd.to_lowercase().contains(&query)
+    !case_insensitive_match_ranges(&session.name, query).is_empty()
+        || !case_insensitive_match_ranges(&session.active_pane_cwd, query).is_empty()
+}
+
+fn highlight_matches(text: &str, query: &str, base_style: Style) -> Vec<Span<'static>> {
+    let ranges = case_insensitive_match_ranges(text, query);
+    if ranges.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    let highlight_style = base_style
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+    let mut spans = Vec::with_capacity(ranges.len() * 2 + 1);
+    let mut cursor = 0;
+    for (start, end) in ranges {
+        if cursor < start {
+            spans.push(Span::styled(text[cursor..start].to_string(), base_style));
+        }
+        spans.push(Span::styled(text[start..end].to_string(), highlight_style));
+        cursor = end;
+    }
+    if cursor < text.len() {
+        spans.push(Span::styled(text[cursor..].to_string(), base_style));
+    }
+    spans
+}
+
+fn case_insensitive_match_ranges(text: &str, query: &str) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let mut normalized = String::new();
+    let mut original_ranges = Vec::new();
+    for (start, character) in text.char_indices() {
+        let end = start + character.len_utf8();
+        let folded = character.to_lowercase().to_string();
+        original_ranges.extend(std::iter::repeat_n((start, end), folded.len()));
+        normalized.push_str(&folded);
+    }
+
+    let folded_query = query.to_lowercase();
+    normalized
+        .match_indices(&folded_query)
+        .filter_map(|(start, matched)| {
+            let end = start + matched.len();
+            Some((
+                original_ranges.get(start)?.0,
+                original_ranges.get(end - 1)?.1,
+            ))
+        })
+        .collect()
 }
 
 struct FormattedRow {
@@ -212,10 +260,7 @@ fn format_row(
     let cwd = if session.active_pane_cwd.is_empty() || name_width + 2 >= left_width {
         String::new()
     } else {
-        super::layout::truncate_to_width(
-            &session.active_pane_cwd,
-            left_width - name_width - 2,
-        )
+        super::layout::truncate_to_width(&session.active_pane_cwd, left_width - name_width - 2)
     };
     let separator_width = usize::from(!cwd.is_empty()) * 2;
     let content_width = name_width + separator_width + UnicodeWidthStr::width(cwd.as_str());
@@ -280,6 +325,50 @@ mod tests {
         item.active_pane_cwd = r"C:\repos\portal".to_string();
         assert!(matches_query(&item, "PO"));
         assert!(!matches_query(&item, "bash"));
+    }
+
+    #[test]
+    fn search_highlights_each_matching_title_and_cwd_segment() {
+        let title = highlight_matches("PowerShell empower", "po", Style::default());
+        let highlighted = title
+            .iter()
+            .filter(|span| span.style.fg == Some(Color::Yellow))
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(highlighted, vec!["Po", "po"]);
+
+        let cwd = highlight_matches(
+            r"C:\repos\Portal",
+            "po",
+            Style::default().fg(Color::DarkGray),
+        );
+        let highlighted = cwd
+            .iter()
+            .filter(|span| span.style.fg == Some(Color::Yellow))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            highlighted
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["po", "Po"]
+        );
+        assert!(highlighted
+            .iter()
+            .all(|span| span.style.add_modifier.contains(Modifier::UNDERLINED)));
+    }
+
+    #[test]
+    fn search_highlighting_preserves_unicode_boundaries() {
+        let spans = highlight_matches("İstanbul", "i\u{307}", Style::default());
+        assert_eq!(
+            spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            "İstanbul"
+        );
+        assert_eq!(spans[0].content.as_ref(), "İ");
     }
 
     #[test]
