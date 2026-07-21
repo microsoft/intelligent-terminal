@@ -34,7 +34,7 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
 
 ## 4. Can I use a custom ACP-compatible agent (Qwen, Cline, Goose, Cursor, …)?
 
-Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents) — the [linked list](https://agentclientprotocol.com/get-started/agents) on that page covers Qwen Code, Cline, Goose, Cursor, Kimi CLI, Kiro CLI, OpenHands, and many more, in addition to the ones Intelligent Terminal sets up for you (Copilot, Claude, Codex, Gemini).
+Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents) — the [linked list](https://agentclientprotocol.com/get-started/agents) on that page covers Qwen Code, Cline, Goose, Cursor, Kimi CLI, Kiro CLI, OpenHands, and many more, in addition to the ones Intelligent Terminal sets up for you (Copilot, Claude, Codex, Gemini, OpenCode).
 
 **How to wire one up:** open **Settings → Agent**, then in either the **Agent** (agent pane) or **Delegate agent** dropdown, pick **+ Add new…** and enter the command that launches your CLI:
 
@@ -43,7 +43,7 @@ Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Cli
 
 You must install and authenticate the agent CLI yourself first (Intelligent Terminal does not install bring-your-own agents — see [`installing-dependencies.md`](./installing-dependencies.md) for the pattern).
 
-**Limitation:** **Agent session management does not yet work for custom agents.** The session-tracking hooks ship only for the four built-in agents (Copilot, Claude, Codex, Gemini), so custom-agent sessions will not appear in the agent session management panel even after you install hooks. The agent pane and delegate flows themselves work normally.
+**Limitation:** **Agent session management does not yet work for custom agents or OpenCode.** The session-tracking hooks currently ship for Copilot, Claude, Codex, and Gemini, so other agent sessions will not appear in the agent session management panel even after you install hooks. The agent pane and delegate flows themselves work normally.
 
 ## 5. Why does the Model dropdown stay greyed out / show "default" after I change agents?
 

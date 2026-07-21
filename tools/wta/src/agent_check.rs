@@ -81,7 +81,7 @@ pub fn build_login_cmd(agent_id: &str, enterprise_host: Option<&str>) -> String 
     // Agent-specific login subcommand
     let subcommand = match agent_id {
         "codex" => "auth",
-        "gemini" => "auth login",
+        "gemini" | "opencode" => "auth login",
         _ => "login",
     };
 
@@ -540,5 +540,15 @@ mod tests {
         let codex = build_login_cmd("codex", Some("mycompany.ghe.com"));
         assert!(codex.contains("auth"), "codex auth: {codex}");
         assert!(!codex.contains("--host"), "codex must ignore host: {codex}");
+
+        let opencode = build_login_cmd("opencode", Some("mycompany.ghe.com"));
+        assert!(
+            opencode.contains("auth login"),
+            "OpenCode login: {opencode}"
+        );
+        assert!(
+            !opencode.contains("--host"),
+            "OpenCode must ignore host: {opencode}"
+        );
     }
 }

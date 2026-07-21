@@ -1074,6 +1074,10 @@ namespace winrt::TerminalApp::implementation
         {
             return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.4" };
         }
+        if (lower == "opencode")
+        {
+            return winrt::hstring{ L"opencode acp" };
+        }
 
         std::wstring cmd{ agentId };
         if (lower == "copilot")
