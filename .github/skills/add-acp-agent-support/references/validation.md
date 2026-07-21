@@ -13,7 +13,9 @@ binary and the live logs prove the intended agent command and ACP behavior.
 5. Confirm telemetry accepts only the canonical ID, not arbitrary commands.
 6. Confirm ADML prose, built-in count, and textbox hint are current.
 7. Confirm documentation does not claim unsupported hooks/history features.
-8. Inspect `git diff --check` and the full diff for unrelated changes. Account
+8. When session listing or resume is supported, confirm the canonical ID has a
+   typed `CliSource` and survives helper/master wire round-trips.
+9. Inspect `git diff --check` and the full diff for unrelated changes. Account
    for this repository's existing CRLF files before treating every reported
    line as newly introduced trailing whitespace.
 
@@ -26,6 +28,8 @@ Add or update tests for:
 - ACP model flags versus delegate model flags;
 - auth command generation and host-argument handling;
 - resume/new-session metadata when supported;
+- session source parsing, filtering, wire round-trips, labels, and exact resume
+  dispatch when session management is supported;
 - direct Windows delegate command shape;
 - PowerShell 7 and Windows PowerShell 5.1 delegate quoting;
 - WSL delegate quoting and multiline prompts;
@@ -92,6 +96,10 @@ reports `ManifestChanged`, retry once and require a successful clean reinstall.
 7. Exercise unauthenticated startup, the advertised login flow, and credential
    refresh. Verify logout returns the agent to the expected unauthenticated
    state.
+8. If session management is supported, open `/sessions`, select a historical
+   row from the new agent, and verify Enter chooses the intended CLI/ACP resume
+   path rather than `UnknownCli`. Confirm the resumed tab starts with the stored
+   session title and the helper log records the typed source.
 
 Packaged logs live under the app package's
 `LocalCache\Local\IntelligentTerminal\logs\<package-version>` directory.

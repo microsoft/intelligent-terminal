@@ -44,15 +44,17 @@ policy, tests, and live verification must stay synchronized.
    numbers or assume the Rust registry is the only source of truth.
 4. **Implement the WTA profile and command behavior.** Add the profile,
    ACP launch command, auth flow, model behavior, install guidance, and
-   resume metadata. Add delegate support only when the agent has a true
-   interactive initial-prompt invocation.
+   resume metadata. Wire the canonical ID through the session subsystem when
+   session listing or resume is supported. Add delegate support only when the
+   agent has a true interactive initial-prompt invocation.
 5. **Wire Terminal surfaces.** Keep C++ built-in registries, ACP command
    resolution, settings/model probing, telemetry sanitization, branding, and
    policy-facing lists consistent. Use the detailed file map in
    [integration-map.md](./references/integration-map.md).
 6. **Add focused tests.** Cover profile lookup, ACP command construction,
-   identification, auth command generation, and every delegate shell path that
-   applies: direct Windows, PowerShell 7, Windows PowerShell 5.1, and WSL.
+   identification, session source round-trips and resume dispatch, auth command
+   generation, and every delegate shell path that applies: direct Windows,
+   PowerShell 7, Windows PowerShell 5.1, and WSL.
 7. **Update user and administrator documentation.** Document support,
    installation/auth requirements, limitations, delegate behavior, and the
    `AllowedAgents` identifier. Do not advertise hooks or history integration
@@ -74,7 +76,7 @@ policy, tests, and live verification must stay synchronized.
 | Authentication | Use `InProtocol` only when ACP advertises and completes authentication. Use `External` when a separate CLI/provider login is required, then verify the running ACP process can refresh credentials. |
 | Models | Distinguish flags accepted by the ACP server process from flags accepted by the interactive delegate CLI. Prefer ACP model APIs when the server supports them. |
 | Delegation | Use an interactive TUI invocation with an initial prompt. If the only interface is one-shot, omit first-class delegate support or explicitly ask the user to accept an auto-closing tab. |
-| Resume | Configure resume/new-session metadata only after proving the exact CLI syntax and identifier semantics. |
+| Resume | Configure resume/new-session metadata only after proving the exact CLI syntax and identifier semantics. Also add the agent to the session source type and every conversion boundary; profile metadata alone does not make a session resumable. |
 | Hooks/history | Treat these as separate integrations. ACP compatibility alone does not imply shell hooks or historical session support. |
 
 ## Gotchas
@@ -90,6 +92,12 @@ policy, tests, and live verification must stay synchronized.
   WSL launches.
 - **Keep both registries synchronized.** Update Rust execution metadata and
   C++ discoverability/GPO arrays together, including compile-time array sizes.
+- **Do not stop at `AgentProfile` for session support.** Add the canonical agent
+  to `CliSource`, parsing/filtering, wire conversions, labels, resume command
+  synthesis, and ACP/WSL session discovery where supported. Otherwise
+  `session/list` rows can appear as `Unknown("custom")` and Enter fails with
+  "source agent is unknown to this build" even though the agent profile has a
+  valid resume flag.
 - **Separate ACP and delegate model flags.** Passing a TUI-only model flag to
   the ACP server can prevent startup even when delegation works.
 - **Treat agent IDs as telemetry-sensitive.** Add only the canonical built-in
@@ -108,4 +116,3 @@ policy, tests, and live verification must stay synchronized.
 
 - [Integration surface map](./references/integration-map.md)
 - [Validation and live verification](./references/validation.md)
-

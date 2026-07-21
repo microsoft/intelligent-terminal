@@ -52,6 +52,40 @@ Add the exact external login command only when external auth is real. Check
 whether enterprise-host arguments are agent-specific and must be ignored.
 Test login command generation.
 
+### Session management
+
+If the agent supports ACP `session/list`, ACP `session/load`, or an interactive
+CLI resume command, wire its canonical ID through the complete session
+subsystem. Updating `AgentProfile.resume_flag` alone is insufficient.
+
+Search for every exhaustive `CliSource` match and update the applicable
+surfaces:
+
+- `agent_sessions.rs`: add the typed variant plus `parse` and `from_agent_id`;
+- `app.rs`: map the typed source back to the canonical ID so resume capability
+  checks and `<cli> <resume flag> <session id>` synthesis work;
+- `session_registry.rs`: preserve the source through helper/master wire
+  serialization instead of degrading it to `Unknown`;
+- `session_history.rs`, `main.rs`, and `ui/agents_view.rs`: keep diagnostic and
+  UI labels exhaustive;
+- `wsl_acp.rs`: add ACP session discovery only when the agent's ACP server
+  actually supports `session/list`.
+
+Add regression tests for ID parsing, wire round-trips, current-agent filtering,
+resume dispatch, and the exact CLI resume command. For CLI resume tabs, pass the
+stored session title to `wtcli new-tab`; do not force suppression of later
+application-title updates unless the product explicitly requires a fixed title.
+
+The characteristic missed-mapping failure is:
+
+```text
+Cannot resume session <id>: its source agent is unknown to this build.
+```
+
+When this appears, inspect the helper log's
+`activate_agent_session_with_shift` entry. A known built-in showing
+`cli=Unknown("custom")` means a session conversion boundary is missing.
+
 ### `tools/wta/src/coordinator.rs`
 
 Delegate support must preserve:
@@ -143,10 +177,10 @@ Run narrow searches from the repository root:
 rg 'BuiltinAcpAgents|BuiltinDelegateAgents' src\cascadia
 rg 'copilot|claude|codex|gemini' tools\wta\src src\cascadia policies README.md doc\faq.md
 rg 'sanitizeProviderId|probe-models|build_login_cmd|delegate_prompt' tools\wta\src src\cascadia
+rg 'enum CliSource|known_cli_id|SessionHookCliSource|clis_to_scan' tools\wta\src
 rg 'AgentLogoKind|AgentName_' src\cascadia
 rg 'AllowedAgents|built-in AI agents' policies
 ```
 
 Replace the exemplar agent-ID expression with the current built-in set when
 the repository evolves.
-
