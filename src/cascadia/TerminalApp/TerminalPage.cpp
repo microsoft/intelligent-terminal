@@ -1072,7 +1072,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (lower == "codex")
         {
-            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.2" };
+            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.4" };
         }
 
         std::wstring cmd{ agentId };
