@@ -2234,6 +2234,7 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
         CliSource::Codex   => Some("codex"),
         CliSource::Copilot => Some("copilot"),
         CliSource::Gemini  => Some("gemini"),
+        CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
 }
@@ -3038,9 +3039,9 @@ impl App {
     /// Filter to apply to the session management view based on which
     /// agent CLI the WTA agent pane is currently driving. Returns
     /// `Some(CliSource::*)` when `current_agent_id` resolves to a tracked
-    /// CLI (copilot / claude / gemini) so only matching rows are listed.
-    /// Returns `None` when no agent has been selected yet or the agent is
-    /// not one the session registry tracks (codex / unknown) — in that
+    /// CLI so only matching rows are listed. Returns `None` when no agent
+    /// has been selected yet or the agent is not one the session registry
+    /// tracks (custom / unknown) — in that
     /// case the view falls back to showing every row so the user can still
     /// see and resume their history.
     pub fn current_cli_filter(&self) -> Option<crate::agent_sessions::CliSource> {
@@ -3118,7 +3119,7 @@ impl App {
         let shift = shift && !s.location.is_wsl();
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
-        // Claude / Codex / Copilot / Gemini (all four CLIs accept some
+        // Claude / Codex / Copilot / Gemini / OpenCode (all five CLIs accept some
         // form of `--resume`/`resume <id>` re-attach surface).
         let cli_supports_resume_flag = match known_cli_id(&s.cli_source) {
             Some(id) => !crate::agent_registry::lookup_profile_by_id(id)
@@ -3431,6 +3432,10 @@ impl App {
             "-c".to_string(),
             launch_commandline.clone(),
         ];
+        if !s.title.is_empty() {
+            argv.push("--title".to_string());
+            argv.push(s.title.clone());
+        }
         if let Some(ref cwd) = valid_cwd {
             argv.push("-d".to_string());
             argv.push(cwd.clone());
@@ -12869,7 +12874,7 @@ mod tests {
             cli_source: CliSource::Claude,
             pane_session_id: "p".into(),
             cwd: real_cwd.clone(),
-            title: "t".into(),
+            title: "Fix the build".into(),
         });
         app.agent_sessions.apply(SessionEvent::SessionStopped {
             key: "abc-123".into(),
@@ -12893,6 +12898,11 @@ mod tests {
             !argv.contains("split-pane"),
             "argv must NOT use split-pane: {}",
             argv
+        );
+        assert!(
+            cmd.argv.windows(2).any(|args| args == ["--title", "Fix the build"]),
+            "resume tab must use the session title: {:?}",
+            cmd.argv
         );
         // The CLI invocation is still wrapped in `cmd /c` so .cmd shims
         // resolve via PATHEXT, but the legacy `cd /d` prefix is gone —
@@ -17036,6 +17046,7 @@ mod tests {
         assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
         assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
         assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+        assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
     }
 
     #[test]

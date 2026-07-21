@@ -631,6 +631,7 @@ impl From<&crate::agent_sessions::CliSource> for SessionHookCliSource {
             crate::agent_sessions::CliSource::Codex => Self::Known("Codex".to_string()),
             crate::agent_sessions::CliSource::Copilot => Self::Known("Copilot".to_string()),
             crate::agent_sessions::CliSource::Gemini => Self::Known("Gemini".to_string()),
+            crate::agent_sessions::CliSource::OpenCode => Self::Known("OpenCode".to_string()),
             crate::agent_sessions::CliSource::Unknown(value) => Self::Unknown {
                 value: value.clone(),
             },
@@ -646,6 +647,7 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
                 "Codex"  | "codex"  => Self::Codex,
                 "Copilot" | "copilot" => Self::Copilot,
                 "Gemini" | "gemini" => Self::Gemini,
+                "OpenCode" | "opencode" => Self::OpenCode,
                 other => Self::Unknown(other.to_string()),
             },
             SessionHookCliSource::Unknown { value } => Self::Unknown(value),
@@ -3225,6 +3227,15 @@ mod tests {
         let wire = SessionHookCliSource::Known("codex".to_string());
         let typed: CliSource = wire.into();
         assert_eq!(typed, CliSource::Codex);
+    }
+
+    #[test]
+    fn session_hook_cli_source_round_trips_opencode() {
+        use crate::agent_sessions::CliSource;
+        let wire: SessionHookCliSource = (&CliSource::OpenCode).into();
+        assert!(matches!(wire, SessionHookCliSource::Known(ref s) if s == "OpenCode"));
+        let typed: CliSource = wire.into();
+        assert_eq!(typed, CliSource::OpenCode);
     }
 
     #[test]

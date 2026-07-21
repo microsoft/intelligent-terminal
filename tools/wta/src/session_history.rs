@@ -65,6 +65,7 @@ pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
         CliSource::Claude => "claude",
         CliSource::Codex => "codex",
         CliSource::Gemini => "gemini",
+        CliSource::OpenCode => "opencode",
         CliSource::Unknown(_) => "agent",
     }
 }

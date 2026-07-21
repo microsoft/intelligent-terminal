@@ -446,7 +446,7 @@ fn badge_style(s: &AgentSession) -> Style {
     }
 }
 
-/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`) only on the
+/// Show the CLI provider (`claude`, `codex`, `copilot`, `gemini`, `opencode`) only on the
 /// active row or the keyboard-selected row — matches the Figma where the
 /// agent icon appears only on the currently-engaged session and avoids
 /// cluttering the historical list.
@@ -460,6 +460,7 @@ fn cli_suffix_for(s: &AgentSession, selected: bool) -> String {
         CliSource::Codex => "codex",
         CliSource::Copilot => "copilot",
         CliSource::Gemini => "gemini",
+        CliSource::OpenCode => "opencode",
         CliSource::Unknown(_) => return String::new(),
     };
     format!("· {}", label)

@@ -37,6 +37,7 @@ pub enum CliSource {
     Codex,
     Copilot,
     Gemini,
+    OpenCode,
     Unknown(String),
 }
 
@@ -47,6 +48,7 @@ impl CliSource {
             "codex"   => Self::Codex,
             "copilot" => Self::Copilot,
             "gemini"  => Self::Gemini,
+            "opencode" => Self::OpenCode,
             ""        => Self::Unknown(String::new()),
             other     => Self::Unknown(other.to_string()),
         }
@@ -63,6 +65,7 @@ impl CliSource {
             "codex"   => Some(Self::Codex),
             "copilot" => Some(Self::Copilot),
             "gemini"  => Some(Self::Gemini),
+            "opencode" => Some(Self::OpenCode),
             _ => None,
         }
     }
@@ -2188,6 +2191,7 @@ mod tests {
         assert_eq!(CliSource::from_agent_id("copilot"), Some(CliSource::Copilot));
         assert_eq!(CliSource::from_agent_id("claude"),  Some(CliSource::Claude));
         assert_eq!(CliSource::from_agent_id("gemini"),  Some(CliSource::Gemini));
+        assert_eq!(CliSource::from_agent_id("opencode"), Some(CliSource::OpenCode));
         // Case-insensitive — `current_agent_id` is conventionally lowercase
         // but mixed-case must not silently drop the filter.
         assert_eq!(CliSource::from_agent_id("Copilot"), Some(CliSource::Copilot));
@@ -2218,6 +2222,12 @@ mod tests {
         // Note: CliSource has `pub fn parse(Option<&str>) -> Self` (not FromStr).
         assert_eq!(CliSource::parse(Some("Codex")), CliSource::Codex);
         assert_eq!(CliSource::parse(Some("codex")), CliSource::Codex);
+    }
+
+    #[test]
+    fn cli_source_parse_round_trips_opencode() {
+        assert_eq!(CliSource::parse(Some("OpenCode")), CliSource::OpenCode);
+        assert_eq!(CliSource::parse(Some("opencode")), CliSource::OpenCode);
     }
 
     #[test]
