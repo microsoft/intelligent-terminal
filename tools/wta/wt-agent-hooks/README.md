@@ -136,7 +136,7 @@ Agent CLI ─── hook fires ──▶ send-event.ps1 ──▶ wtcli send-eve
 ```
 
 `send-event.ps1` reads the hook JSON from stdin, wraps it as
-`{cli_source: <claude|copilot|gemini|opencode>, agent_session_id: <sid>, payload: <hook_data>}`,
+`{cli_source: <claude|codex|copilot|gemini|opencode>, agent_session_id: <sid>, payload: <hook_data>}`,
 and calls `wtcli send-event -e <event_type> <json>`. The `cli_source` field
 is hard-coded per-CLI via the `-CliSource <name>` argument in each
 `hooks.json` — env-var heuristics are unreliable because Copilot CLI

@@ -4759,6 +4759,8 @@ mod tests {
         include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/send-event.ps1");
     const COPILOT_SEND_EVENT_PS1: &str =
         include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1");
+    const CODEX_SEND_EVENT_PS1: &str =
+        include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/send-event.ps1");
     const GEMINI_SEND_EVENT_PS1: &str =
         include_str!("../wt-agent-hooks/gemini-extension/hooks/send-event.ps1");
     const OPENCODE_SEND_EVENT_PS1: &str = include_str!("../wt-agent-hooks/opencode/send-event.ps1");
@@ -4890,10 +4892,11 @@ mod tests {
     }
 
     /// `send-event.ps1` is single-source-of-truth across all supported CLIs.
-    /// (Claude/Copilot byte-equality is covered above; this also pins
-    /// Gemini to the same content.)
+    /// (Claude/Copilot byte-equality is covered above; this also pins Codex,
+    /// Gemini, and OpenCode to the same content.)
     #[test]
     fn all_cli_send_event_scripts_are_identical() {
+        assert_eq!(CLAUDE_SEND_EVENT_PS1, CODEX_SEND_EVENT_PS1);
         assert_eq!(CLAUDE_SEND_EVENT_PS1, GEMINI_SEND_EVENT_PS1);
         assert_eq!(CLAUDE_SEND_EVENT_PS1, OPENCODE_SEND_EVENT_PS1);
     }
