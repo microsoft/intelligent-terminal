@@ -811,7 +811,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         if (!cli->marketplaceRegistered && !cli->pluginInstalled)
         {
-            return cli->binaryOnPath ? winrt::hstring{ L"hooks not installed" } : winrt::hstring{};
+            return {};
         }
         if (_IsHooksFullyInstalled(cli))
         {
@@ -1002,12 +1002,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         if (_installingAgentHooks) return;
         _installingAgentHooks = true;
-        std::wstring summary{ RS_(L"AIAgents_HooksRemovingCopilotSummary") };
-        if (const auto pos = summary.find(L"Copilot"); pos != std::wstring::npos)
-        {
-            summary.replace(pos, std::wstring_view{ L"Copilot" }.size(), L"OpenCode");
-        }
-        _agentHooksInstallSummary = winrt::hstring{ summary };
+        _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingOpenCodeSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
         _RunHooksWtaAsync(L"hooks uninstall --cli opencode");
     }

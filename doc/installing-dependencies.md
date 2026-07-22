@@ -394,7 +394,7 @@ Intelligent Terminal package:
 | Claude Code    | `claude plugin marketplace add <bundle>\claude` then `claude plugin install wt-agent-hooks@wt-local`                        |
 | OpenAI Codex   | `codex plugin marketplace add <bundle>\codex` then `codex plugin add wt-agent-hooks@wt-local` *(note: `add`, not `install`)* |
 | Gemini CLI     | `gemini extensions install <bundle>\gemini-extension --consent --skip-settings` *(with `GEMINI_CLI_TRUST_WORKSPACE=true` to bypass Gemini's folder-trust prompt)* |
-| OpenCode       | Copies the bundled plugin to `%XDG_CONFIG_HOME%\opencode\plugins\wt-agent-hooks.js` when `XDG_CONFIG_HOME` is set, otherwise `%USERPROFILE%\.config\opencode\plugins\wt-agent-hooks.js`, without modifying `opencode.json` |
+| OpenCode       | Copies the bundled plugin to `%XDG_CONFIG_HOME%\opencode\plugins\wt-agent-hooks.js` when `XDG_CONFIG_HOME` is set; otherwise it uses `%USERPROFILE%\.config\opencode\plugins\wt-agent-hooks.js`, without modifying `opencode.json` |
 
 For OpenCode, the plugin is globally discoverable but emits events only from
 interactive sessions running inside Intelligent Terminal. OpenCode ACP

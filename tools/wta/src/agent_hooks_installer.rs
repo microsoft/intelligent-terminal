@@ -138,6 +138,7 @@ const OPENCODE_BRIDGE_PS1: &str = "send-event.ps1";
 const OPENCODE_MANIFEST: &str = "plugin.json";
 const OPENCODE_SUPPORT_DIR: &str = "wt-agent-hooks";
 const OPENCODE_MANAGED_MARKER: &str = "Managed by Intelligent Terminal: wt-agent-hooks";
+const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks";
 
 /// Schema version of the JSON returned by [`status`]. Bumped when the shape
 /// or the set of possible string-enum values changes.
@@ -214,13 +215,11 @@ fn opencode_manifest_is_managed(path: &Path) -> bool {
     fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|manifest| {
-            manifest
-                .get("name")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
+        .is_some_and(|manifest| {
+            manifest.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
+                && manifest.get("managed_by").and_then(Value::as_str)
+                    == Some(OPENCODE_MANIFEST_MANAGED_BY)
         })
-        .is_some_and(|name| name == PLUGIN_NAME)
 }
 
 impl CliKind {
@@ -4417,7 +4416,7 @@ mod tests {
         fs::write(root.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
         fs::write(
             root.join(OPENCODE_MANIFEST),
-            r#"{"name":"wt-agent-hooks","version":"0.1.3"}"#,
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
         )
         .unwrap();
     }
@@ -4503,7 +4502,7 @@ mod tests {
         fs::write(source.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
         fs::write(
             source.join(OPENCODE_MANIFEST),
-            r#"{"name":"wt-agent-hooks","version":"0.1.3"}"#,
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
         )
         .unwrap();
 
@@ -4561,7 +4560,7 @@ mod tests {
         fs::write(support_dir.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
         fs::write(
             support_dir.join(OPENCODE_MANIFEST),
-            r#"{"name":"wt-agent-hooks","version":"0.1.3"}"#,
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
         )
         .unwrap();
         let complete = opencode_status(true, Some("opencode.exe".into()), Some(&home));
@@ -4574,6 +4573,27 @@ mod tests {
         assert!(support_only.marketplace_registered);
         assert!(!support_only.marketplace_path_valid);
         assert!(!support_only.plugin_installed);
+    }
+
+    #[test]
+    fn opencode_same_name_manifest_without_marker_is_not_managed() {
+        let home = unique_dir("opencode-unmanaged-manifest");
+        let support = opencode_support_dir(&home);
+        fs::create_dir_all(&support).unwrap();
+        fs::write(
+            support.join(OPENCODE_MANIFEST),
+            r#"{"name":"wt-agent-hooks","version":"9.9.9"}"#,
+        )
+        .unwrap();
+
+        let status = opencode_status(true, Some("opencode.exe".into()), Some(&home));
+        assert!(!status.marketplace_registered);
+        assert!(!status.plugin_installed);
+        assert!(read_installed_opencode(&home).unwrap().is_none());
+
+        let uninstall = opencode_uninstall(Some(&home));
+        assert_eq!(uninstall.plugin_uninstalled, Some(false));
+        assert!(support.join(OPENCODE_MANIFEST).is_file());
     }
 
     #[test]
@@ -4615,7 +4635,7 @@ mod tests {
         fs::write(support.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
         fs::write(
             support.join(OPENCODE_MANIFEST),
-            r#"{"name":"wt-agent-hooks","version":"0.1.3"}"#,
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
         )
         .unwrap();
 
@@ -4744,6 +4764,8 @@ mod tests {
     const OPENCODE_SEND_EVENT_PS1: &str = include_str!("../wt-agent-hooks/opencode/send-event.ps1");
     const OPENCODE_PLUGIN_JS_CONTENT: &str =
         include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
+    const OPENCODE_PLUGIN_JSON: &str =
+        include_str!("../wt-agent-hooks/opencode/plugin.json");
 
     /// `hooks.json` files must reference `${CLAUDE_PLUGIN_ROOT}` (Claude/
     /// Copilot) or `${extensionPath}` (Gemini), and `send-event.ps1` must
@@ -4889,6 +4911,19 @@ mod tests {
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("value.data?.message"));
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("info.title !== previous.title"));
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("rootSessions.get(input.sessionID).cwd"));
+    }
+
+    #[test]
+    fn opencode_manifest_has_explicit_ownership_marker() {
+        let manifest: Value = serde_json::from_str(OPENCODE_PLUGIN_JSON).unwrap();
+        assert_eq!(
+            manifest.get("name").and_then(Value::as_str),
+            Some(PLUGIN_NAME)
+        );
+        assert_eq!(
+            manifest.get("managed_by").and_then(Value::as_str),
+            Some(OPENCODE_MANIFEST_MANAGED_BY)
+        );
     }
 
     /// `marketplace.json` must declare the `wt-local` marketplace name and

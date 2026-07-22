@@ -2920,6 +2920,10 @@
     <value>Codex hooks 제거 중...</value>
     <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
   </data>
+  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
+    <value>OpenCode hooks 제거 중...</value>
+    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
+  </data>
   <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
     <value>설치 후 Codex에서 /hooks를 실행하고 승인하여 새 이벤트 처리기를 신뢰하세요.</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
