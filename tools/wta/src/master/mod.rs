@@ -1791,13 +1791,6 @@ fn create_master_pipe_instance(
 }
 
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
-    // Publish the shared MCP endpoint before any lazily spawned agent creates
-    // a session. Failure is non-fatal; helpers simply omit MCP tools.
-    match crate::mcp::start_and_publish().await {
-        Some(ep) => tracing::info!(target: "master", mcp_url = %ep.url, "MCP server started"),
-        None => tracing::warn!(target: "master", "MCP server not started (bind failed)"),
-    }
-
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
     // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
     // to Ended on pane-close even when no helper publishes a `PaneClosed`

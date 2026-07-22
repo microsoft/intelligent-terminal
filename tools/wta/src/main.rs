@@ -20,10 +20,10 @@ mod logging;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
-mod mcp;
 mod osc52;
 mod pane_context;
 mod protocol;
+mod resolve_command;
 mod rtl;
 mod runtime_paths;
 mod session_history;
@@ -345,6 +345,21 @@ enum Command {
         /// Window ID (used with tab_id)
         #[arg(short = 'w', long)]
         window_id: Option<String>,
+    },
+
+    /// Identify a command using the user's PowerShell profile
+    ResolveCommand {
+        /// Command name to identify (without arguments or a path)
+        #[arg(value_parser = resolve_command::parse_non_empty)]
+        token: String,
+
+        /// PowerShell executable to use
+        #[arg(
+            long,
+            default_value = "pwsh.exe",
+            value_parser = resolve_command::parse_non_empty
+        )]
+        shell: String,
     },
 
     /// Create a new tab
@@ -756,6 +771,17 @@ async fn main() -> Result<()> {
                 .request("list_panes", json!({ "tab_id": tid }))
                 .await?;
             print_output(&result, json_mode, format_panes_human);
+            Ok(())
+        }
+
+        // ── Profile-aware command resolution ──
+        Some(Command::ResolveCommand { token, shell }) => {
+            let result = resolve_command::resolve(&token, &shell).await;
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("{result}");
+            }
             Ok(())
         }
 

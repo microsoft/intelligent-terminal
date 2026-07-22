@@ -1937,21 +1937,6 @@ fn elapsed_ms_since(start: std::time::Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
-/// Inject WTA's shared MCP server (resolve_command, …) into a `session/new`
-/// request so the agent can pull tools. Only when the agent advertises HTTP MCP
-/// support and master published an endpoint; otherwise the agent gets no MCP
-/// server and autofix's in-process path is unaffected.
-fn inject_wta_mcp_servers(req: &mut acp::schema::v1::NewSessionRequest, http_supported: bool) {
-    if !http_supported {
-        return;
-    }
-    if let Some(url) = crate::mcp::published_url() {
-        req.mcp_servers
-            .push(acp::schema::v1::McpServer::Http(acp::schema::v1::McpServerHttp::new("wta", url)));
-        tracing::info!(target: "acp", "injected wta MCP http server into session/new");
-    }
-}
-
 fn acp_result_failure_fields<T>(result: &acp::Result<T>) -> (&'static str, i32) {
     match result {
         Ok(_) => ("", 0),
@@ -2542,10 +2527,6 @@ pub async fn run_acp_client_over_pipe(
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta);
-            inject_wta_mcp_servers(
-                &mut new_session_req,
-                init_resp.agent_capabilities.mcp_capabilities.http,
-            );
             let new_session_started = std::time::Instant::now();
             let new_session_result = conn.new_session(new_session_req).await;
             log_acp_new_session_result(

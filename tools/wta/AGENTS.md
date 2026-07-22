@@ -19,7 +19,8 @@ with an error.
   but, instead of spawning its own agent CLI, speaks ACP/JSON-RPC to master over
   the pipe. *From the helper's perspective, master is the agent.* Entry:
   `src/helper/mod.rs` → `run_default_tui_over_pipe`.
-- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`,
+- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta resolve-command`,
+  `wta new-tab`,
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
@@ -154,6 +155,11 @@ Agents that can shell out, and humans debugging WTA, can use WTA as a small WT h
 | `wait-for` | -- | delegated to `wtcli wait-for` |
 | `pane-status` | -- | `get_process_status` |
 | `listen` | `mon` | COM event subscribe |
+
+`wta resolve-command <token> [--shell pwsh.exe] --json` is a local,
+profile-aware PowerShell command resolver. It does not call the WT protocol.
+It reports `exists`, `not_found`, `indeterminate`, or `unsupported`, replacing
+the former localhost MCP tool with the same machine-readable result shape.
 
 ## Connection Discovery
 
