@@ -14,12 +14,61 @@ pub fn parse_non_empty(value: &str) -> Result<String, String> {
     }
 }
 
+pub fn format_human(value: &serde_json::Value) -> String {
+    let field = |name: &str| value.get(name).and_then(|v| v.as_str()).unwrap_or("-");
+    let mut lines = vec![
+        format!("TOKEN    {}", field("token")),
+        format!("STATUS   {}", field("status")),
+    ];
+
+    if let Some(resolutions) = value.get("resolutions").and_then(|v| v.as_array()) {
+        for resolution in resolutions {
+            lines.push(format!(
+                "COMMAND  {} {}",
+                resolution
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-"),
+                resolution
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+            ));
+            if let Some(target) = resolution
+                .get("target")
+                .and_then(|v| v.as_str())
+                .filter(|target| !target.is_empty())
+            {
+                lines.push(format!("TARGET   {target}"));
+            }
+        }
+    }
+
+    if let Some(matches) = value.get("matches").and_then(|v| v.as_array()) {
+        let matches = matches
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "MATCHES  {}",
+            if matches.is_empty() { "-" } else { &matches }
+        ));
+    }
+
+    if let Some(note) = value.get("note").and_then(|v| v.as_str()) {
+        lines.push(format!("NOTE     {note}"));
+    }
+
+    lines.join("\n")
+}
+
 pub async fn resolve(token: &str, shell: &str) -> serde_json::Value {
     if !crate::command_recall::is_powershell(shell) {
         return serde_json::json!({
             "token": token,
             "status": "unsupported",
-            "note": "non-PowerShell shells unsupported in v1",
+            "note": "non-PowerShell shells are unsupported in v1",
         });
     }
 
@@ -73,11 +122,39 @@ mod tests {
         assert!(parse_non_empty(" \t ").is_err());
     }
 
+    #[test]
+    fn human_format_summarizes_resolutions_and_matches() {
+        let exists = serde_json::json!({
+            "token": "greetme",
+            "status": "exists",
+            "resolutions": [{
+                "type": "Alias",
+                "name": "greetme",
+                "target": "Invoke-ProfileGreeting"
+            }]
+        });
+        assert_eq!(
+            format_human(&exists),
+            "TOKEN    greetme\nSTATUS   exists\nCOMMAND  Alias greetme\nTARGET   Invoke-ProfileGreeting"
+        );
+
+        let not_found = serde_json::json!({
+            "token": "gti",
+            "status": "not_found",
+            "matches": ["git", "gci"]
+        });
+        assert_eq!(
+            format_human(&not_found),
+            "TOKEN    gti\nSTATUS   not_found\nMATCHES  git, gci"
+        );
+    }
+
     #[tokio::test]
     async fn non_powershell_returns_unsupported() {
         let value = resolve("gti", "bash").await;
         assert_eq!(value["token"], "gti");
         assert_eq!(value["status"], "unsupported");
+        assert_eq!(value["note"], "non-PowerShell shells are unsupported in v1");
     }
 
     #[cfg(windows)]

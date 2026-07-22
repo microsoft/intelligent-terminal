@@ -780,7 +780,7 @@ async fn main() -> Result<()> {
             if json_mode {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {
-                println!("{result}");
+                println!("{}", resolve_command::format_human(&result));
             }
             Ok(())
         }
