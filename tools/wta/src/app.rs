@@ -1344,6 +1344,9 @@ pub enum AppEvent {
     AgentsSnapshotFailed {
         request_id: u64,
     },
+    RegisterBornBoundSession {
+        event: crate::agent_sessions::SessionEvent,
+    },
     MasterMutationCompleted {
         request_id: u64,
     },
@@ -4556,6 +4559,7 @@ impl App {
             AppEvent::SessionsChanged => "sessions_changed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
+            AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
             AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
         }
@@ -5608,6 +5612,22 @@ impl App {
             }
             AppEvent::AgentsSnapshotFailed { request_id } => {
                 self.handle_agents_snapshot_failed(request_id);
+            }
+            AppEvent::RegisterBornBoundSession { event } => {
+                if self
+                    .master_request_tx
+                    .send(
+                        crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                            event,
+                        },
+                    )
+                    .is_err()
+                {
+                    tracing::warn!(
+                        target: "coordinator",
+                        "born-bound registration queue is unavailable",
+                    );
+                }
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -12048,6 +12068,35 @@ mod tests {
         }
         assert!(app.current_tab().agents_view.snapshot.is_some());
         assert!(app.current_tab().agents_view.refetch_in_flight);
+    }
+
+    #[test]
+    fn born_bound_registration_uses_current_master_request_sender() {
+        let (mut app, mut old_master_rx) = test_app_with_master_rx();
+        let (new_master_tx, mut new_master_rx) = tokio::sync::mpsc::unbounded_channel();
+        app.master_request_tx = new_master_tx;
+        let event = crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid".to_string(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane".to_string(),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: String::new(),
+        };
+
+        app.handle_event(AppEvent::RegisterBornBoundSession {
+            event: event.clone(),
+        });
+
+        assert!(old_master_rx.try_recv().is_err());
+        match new_master_rx
+            .try_recv()
+            .expect("registration should use the replacement sender")
+        {
+            crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                event: actual,
+            } => assert_eq!(actual, event),
+            other => panic!("expected SessionBornBound, got {other:?}"),
+        }
     }
 
     #[test]
