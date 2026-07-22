@@ -34,13 +34,11 @@
 
 namespace Microsoft::Terminal::ShellIntegration::Bash
 {
-    // v2: added OSC 9001;ShellType emission (bash/WSL self-reports identity
-    // each prompt). Bumped from v1 so existing users — whose ~/.bashrc
-    // already references the v1 script byte-for-byte — get the new script
-    // rewritten in; without the bump the orchestrator's block-match early-
-    // out would leave the stale v1 script (no ShellType) in place. WSL
-    // inherits this version via WslBashFlavor.
-    inline constexpr int kVersion = 2;
+    // v3: gate emission on the Intelligent Terminal host marker and repair the
+    // OSC 133;A/B pair after the user's PROMPT_COMMAND rebuilds PS1. The
+    // version bump rewrites existing v2 profile blocks; WSL inherits this
+    // version via WslBashFlavor.
+    inline constexpr int kVersion = 3;
 
     inline std::wstring ScriptFileName()
     {
@@ -97,11 +95,13 @@ namespace Microsoft::Terminal::ShellIntegration::Bash
 # WITHOUT altering the visual appearance of the user's prompt.
 #
 # Compatible with bash 3.2+. Safe to source multiple times.
-# Silently no-ops in non-interactive shells and non-bash shells.
+# Silently no-ops outside Intelligent Terminal, in non-interactive shells,
+# and in non-bash shells.
 # Every variable read uses ${VAR:-} defaulting so the script is safe
 # even when the user has `set -u` earlier in their .bashrc.
 
-# Guard: bash only, interactive only, idempotent.
+# Guard: Intelligent Terminal host, bash only, interactive only, idempotent.
+[ "${INTELLIGENT_TERMINAL:-}" = "1" ] || return 0 2>/dev/null
 [ -z "${BASH_VERSION:-}" ] && return 0 2>/dev/null
 case "${-:-}" in *i*) ;; *) return 0 2>/dev/null ;; esac
 [ -n "${__IT_SHELLINTEG_INSTALLED:-}" ] && return 0 2>/dev/null
@@ -139,16 +139,41 @@ unset __it_pc_entry
 
 __it_shellinteg_prompt() {
     local __ec=$?
-    # OSC 133;D;<ec>  — previous command finished
-    # OSC 133;A       — prompt start
-    # OSC 9;9;"cwd"   — current working directory
+    local __it_b=$'\033]133;B\007'
+    local __it_suffix="\[${__it_b}\]"
+
+    # Finish the previous command before running prompt hooks.
+    printf '\033]133;D;%s\007' "$__ec"
+
+    # Remove our previous suffix before the user's hook sees PS1. Prompt
+    # frameworks may then freely rebuild PS1 before we append a fresh suffix.
+    case "${PS1:-}" in
+        *"$__it_suffix") PS1="${PS1%"$__it_suffix"}" ;;
+    esac
+
+    if [ -n "$__IT_SHELLINTEG_USER_PC" ]; then
+        # Restore $? for the user's PROMPT_COMMAND so hooks like
+        # `local ec=$?` at its top still see the real exit code
+        # instead of printf's success status.
+        (exit "$__ec"); eval "$__IT_SHELLINTEG_USER_PC"
+    fi
+
+    # Append OSC 133;B (command-input start) to the final PS1. The \[ \]
+    # brackets tell readline these bytes are zero-width. Re-check PS1 below
+    # before emitting OSC 133;A so a failed assignment cannot open an
+    # unterminated semantic-prompt region.
+    case "${PS1:-}" in
+        *"$__it_suffix") ;;
+        *) PS1="${PS1:-}${__it_suffix}" ;;
+    esac
+
     # OSC 9;9 unquoted form (no surrounding double quotes around the
     # path). Linux paths can contain `"` (only `/` and NUL are
     # forbidden), and Terminal's 9;9 parser rejects the quoted form
     # when the payload contains embedded quotes — silently dropping
     # CWD reporting for those directories. The unquoted form parses
     # cleanly regardless of path contents.
-    printf '\033]133;D;%s\007\033]133;A\007\033]9;9;%s\007' "$__ec" "${PWD:-}"
+    printf '\033]9;9;%s\007' "${PWD:-}"
     # OSC 9001;ShellType — report shell identity each prompt so the terminal
     # always knows which shell owns the pane, even after a nested shell exits.
     # Under WSL, $WSL_DISTRO_NAME is set so we report "wsl:<distro>"; plain
@@ -158,25 +183,14 @@ __it_shellinteg_prompt() {
     else
         printf '\033]9001;ShellType;bash;%s\007' "${BASH_VERSION:-}"
     fi
-    if [ -n "$__IT_SHELLINTEG_USER_PC" ]; then
-        # Restore $? for the user's PROMPT_COMMAND so hooks like
-        # `local ec=$?` at its top still see the real exit code
-        # instead of printf's success status.
-        (exit "$__ec"); eval "$__IT_SHELLINTEG_USER_PC"
-    fi
+
+    # Open a prompt region only when Bash is guaranteed to close it by
+    # expanding the OSC 133;B suffix from PS1 immediately after this hook.
+    case "${PS1:-}" in
+        *"$__it_suffix") printf '\033]133;A\007' ;;
+    esac
 }
 PROMPT_COMMAND=__it_shellinteg_prompt
-
-# Append OSC 133;B (command-input start) to PS1, AFTER the user prompt
-# expands. The \[ \] brackets tell readline these bytes are zero-width
-# so line-wrap math stays correct. The case guard makes re-sourcing
-# idempotent. ${PS1:-} defaulting handles the rare `set -u` case.
-__it_shellinteg_b=$'\033]133;B\007'
-case "${PS1:-}" in
-    *"$__it_shellinteg_b"*) ;;
-    *) PS1="${PS1:-}\[${__it_shellinteg_b}\]" ;;
-esac
-unset __it_shellinteg_b
 )"
         };
     }

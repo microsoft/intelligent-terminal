@@ -112,6 +112,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Bash_BuildBlock_IsLfOnly);
     TEST_METHOD(Bash_BuildBlock_UsesHomeAndGuardsOnBashVersion);
     TEST_METHOD(Bash_ScriptContent_HasIdempotencyGuardAndOscSequences);
+    TEST_METHOD(Bash_ScriptContent_GatesAndRepairsPromptMarks);
 
     // InstallBash / UninstallBash scenarios.
     TEST_METHOD(Bash_Install_EmptyProfilePath_Fails);
@@ -1163,6 +1164,35 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     VERIFY_IS_TRUE(_Contains(script, "${PWD:-}"));
     VERIFY_IS_FALSE(_Contains(script, "\"$PWD\""),
                     L"Script must use ${PWD:-} not bare $PWD (set -u safety)");
+}
+
+void ShellIntegrationTests::Bash_ScriptContent_GatesAndRepairsPromptMarks()
+{
+    const auto& script = ShellIntegrationBashScriptContent();
+
+    const auto gate = script.find("[ \"${INTELLIGENT_TERMINAL:-}\" = \"1\" ]");
+    const auto installed = script.find("__IT_SHELLINTEG_INSTALLED=1");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, gate);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, installed);
+    VERIFY_IS_TRUE(gate < installed, L"The host gate must run before installing shell hooks");
+
+    const auto stripMark = script.find("PS1=\"${PS1%\"$__it_suffix\"}\"");
+    const auto userPrompt = script.find("eval \"$__IT_SHELLINTEG_USER_PC\"");
+    const auto appendMark = script.find("PS1=\"${PS1:-}${__it_suffix}\"");
+    const auto promptStart = script.find("printf '\\033]133;A\\007'");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, stripMark);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, userPrompt);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, appendMark);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, promptStart);
+    VERIFY_IS_TRUE(stripMark < userPrompt,
+                   L"The previous OSC 133;B suffix must be removed before the user's prompt hook runs");
+    VERIFY_IS_TRUE(userPrompt < appendMark,
+                   L"The user's PROMPT_COMMAND must finish rebuilding PS1 before OSC 133;B is appended");
+    VERIFY_IS_TRUE(appendMark < promptStart,
+                   L"OSC 133;A must not be emitted until PS1 contains the matching OSC 133;B");
+
+    VERIFY_IS_TRUE(_Contains(script, "*\"$__it_suffix\") printf '\\033]133;A\\007'"),
+                   L"OSC 133;A must be guarded by a check for the matching PS1 suffix");
 }
 
 // ─── InstallBash ──────────────────────────────────────────────────────────────
