@@ -3309,7 +3309,7 @@ mod tests {
         // fields, including `model` (which used to ride inside
         // `agent_cmd` and now travels on its own).
         let original = WtaMeta {
-            agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp".to_string()),
+            agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp@0.59.0".to_string()),
             agent_id: Some("gemini".to_string()),
             model: Some("gemini-2.5-pro".to_string()),
             ..Default::default()

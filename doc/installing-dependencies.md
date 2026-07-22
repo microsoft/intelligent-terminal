@@ -90,8 +90,8 @@ new `winget.exe` is picked up on `PATH`, then verify with
 **Why you need it:** Claude Code, OpenAI Codex, and Gemini CLI are all
 distributed as npm packages. Intelligent Terminal also launches Claude and
 Codex through `npx` wrappers
-(`npx -y @agentclientprotocol/claude-agent-acp` and
-`npx -y @agentclientprotocol/codex-acp@1.1.0`), which require a working Node.js +
+(`npx -y @agentclientprotocol/claude-agent-acp@0.59.0` and
+`npx -y @agentclientprotocol/codex-acp@1.1.2`), which require a working Node.js +
 `npm` + `npx` toolchain on `PATH`. You can skip this section if you only
 plan to use GitHub Copilot CLI.
 
@@ -219,7 +219,7 @@ Intelligent Terminal launches it through the
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @agentclientprotocol/claude-agent-acp
+npx -y @agentclientprotocol/claude-agent-acp@0.59.0
 ```
 
 You do **not** need to install anything for this — the only prerequisite
@@ -266,7 +266,7 @@ Intelligent Terminal launches it through the
 wrapper. The wrapper is fetched on demand at run time with:
 
 ```powershell
-npx -y @agentclientprotocol/codex-acp@1.1.0
+npx -y @agentclientprotocol/codex-acp@1.1.2
 ```
 
 You do **not** need to install anything for this — the only prerequisite
