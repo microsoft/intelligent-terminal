@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{List, ListItem, ListState, Paragraph},
     Frame,
@@ -46,6 +46,8 @@ pub fn render(
     // even when the list already has rows. Caller (ui::layout) computes it from
     // `refetch_in_flight && (snapshot.is_empty() || rescan_in_flight)`.
     show_loading: bool,
+    search_query: &str,
+    search_focused: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -73,7 +75,7 @@ pub fn render(
     // `inner.x`) so it reads as chrome that lives *outside* the vertical
     // bar, matching the Figma where the bar terminates at the bottom of
     // the list and the hint sits below it flush with the left edge.
-    let (list_area, hint_area) = if inner.height >= 3 {
+    let (content_area, hint_area) = if inner.height >= 3 {
         let hint = Rect {
             x: area.x,
             y: area.y + area.height - 1,
@@ -101,38 +103,59 @@ pub fn render(
         (inner, None)
     };
 
+    let search_visible = search_focused || !search_query.is_empty();
+    let (search_area, list_area) = if search_visible && content_area.height > 0 {
+        let search = Rect {
+            height: 1,
+            ..content_area
+        };
+        let list = Rect {
+            y: content_area.y.saturating_add(1),
+            height: content_area.height.saturating_sub(1),
+            ..content_area
+        };
+        (Some(search), list)
+    } else {
+        (None, content_area)
+    };
+    if let Some(search_area) = search_area {
+        render_search(f, search_area, search_query, search_focused);
+    }
+
     let using_snapshot = snapshot.is_some();
     let filter_start = std::time::Instant::now();
-    let (sorted, pre_filter_total): (Vec<AgentSession>, usize) = if let Some(snapshot) = snapshot {
-        let mut rows: Vec<_> = snapshot
-            .iter()
-            .map(crate::app::session_info_to_agent_session)
-            .collect();
-        rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-        let total = rows.len();
-        if let Some(want) = cli_filter {
-            rows.retain(|s| {
-                &s.cli_source == want
-                    || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
-            });
-        }
-        // MVP origin filter. Stays in sync with the same retain inside
-        // `App::agents_rows_for_tab` (which feeds the cursor / Enter
-        // dispatch); both call sites read `app.sessions_origin_filter`.
-        // `session_info_to_agent_session` collapses None origin to
-        // SessionOrigin::Unknown so `matches(&s.origin)` is correct
-        // for the snapshot path too.
-        rows.retain(|s| origin_filter.matches(&s.origin));
-        (rows, total)
-    } else {
-        let total = reg.iter_sorted().len();
-        let rows: Vec<AgentSession> = reg
-            .iter_sorted_with_filters(cli_filter, origin_filter)
-            .into_iter()
-            .cloned()
-            .collect();
-        (rows, total)
-    };
+    let (mut sorted, pre_filter_total): (Vec<AgentSession>, usize) =
+        if let Some(snapshot) = snapshot {
+            let mut rows: Vec<_> = snapshot
+                .iter()
+                .map(crate::app::session_info_to_agent_session)
+                .collect();
+            rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+            let total = rows.len();
+            if let Some(want) = cli_filter {
+                rows.retain(|s| {
+                    &s.cli_source == want
+                        || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
+                });
+            }
+            // MVP origin filter. Stays in sync with the same retain inside
+            // `App::agents_rows_for_tab` (which feeds the cursor / Enter
+            // dispatch); both call sites read `app.sessions_origin_filter`.
+            // `session_info_to_agent_session` collapses None origin to
+            // SessionOrigin::Unknown so `matches(&s.origin)` is correct
+            // for the snapshot path too.
+            rows.retain(|s| origin_filter.matches(&s.origin));
+            (rows, total)
+        } else {
+            let total = reg.iter_sorted().len();
+            let rows: Vec<AgentSession> = reg
+                .iter_sorted_with_filters(cli_filter, origin_filter)
+                .into_iter()
+                .cloned()
+                .collect();
+            (rows, total)
+        };
+    sorted.retain(|session| matches_query(session, search_query));
     let filter_elapsed_us = filter_start.elapsed().as_micros() as u64;
     // These three fire on every render frame while the F2 view is open (the TUI
     // redraws continuously), so they're trace-only — at info/debug a single
@@ -143,6 +166,7 @@ pub fn render(
         kept       = sorted.len(),
         cli_filter = ?cli_filter,
         origin     = ?origin_filter,
+        search_active = search_visible,
         elapsed_us = filter_elapsed_us,
         source     = if using_snapshot { "snapshot" } else { "registry" },
         "f2 origin/cli filter applied"
@@ -151,6 +175,7 @@ pub fn render(
         target: "agents_view_filter",
         filter = ?cli_filter,
         origin = ?origin_filter,
+        search_active = search_visible,
         visible = sorted.len(),
         total = pre_filter_total,
         "rendering agent sessions list"
@@ -160,6 +185,7 @@ pub fn render(
         total = sorted.len(),
         filter = ?cli_filter,
         origin = ?origin_filter,
+        search_active = search_visible,
         // Session titles are agent-generated from conversation content — log
         // only key + status here, not the title.
         first_three = ?sorted.iter().take(3).map(|s| (
@@ -195,7 +221,7 @@ pub fn render(
     let rows: Vec<ListItem> = sorted
         .iter()
         .enumerate()
-        .map(|(i, s)| row_for(s, Some(i) == selected, row_width))
+        .map(|(i, s)| row_for(s, Some(i) == selected, row_width, search_query))
         .collect();
 
     // No `highlight_style` — selection is conveyed by the `>` prefix and
@@ -217,6 +243,30 @@ pub fn render(
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
     }
+}
+
+fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool) {
+    if area.width == 0 {
+        return;
+    }
+    let label_style = if focused {
+        Style::default()
+            .fg(ACCENT_CYAN)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(MUTED_WHITE)
+    };
+    let mut spans = vec![
+        Span::styled("/ ", label_style),
+        Span::raw(trunc(query, area.width.saturating_sub(3) as usize)),
+    ];
+    if focused {
+        spans.push(Span::styled("▏", Style::default().fg(ACCENT_CYAN)));
+    }
+    f.render_widget(
+        Paragraph::new(Line::from(spans)).alignment(crate::rtl::text_alignment()),
+        area,
+    );
 }
 
 /// Draw the leftmost vertical separator. Spans only `list_area`'s row
@@ -267,7 +317,12 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
     );
 }
 
-fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'static> {
+fn row_for(
+    s: &AgentSession,
+    selected: bool,
+    row_width: usize,
+    search_query: &str,
+) -> ListItem<'static> {
     let origin_prefix = origin_prefix_for(s);
     let prefix_w = origin_prefix
         .as_deref()
@@ -369,7 +424,7 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
         // rows fall through to the terminal's default foreground.
         spans.push(Span::styled(prefix, title_style));
     }
-    spans.push(Span::styled(title_text, title_style));
+    spans.extend(highlight_matches(&title_text, search_query, title_style));
     if keep_badge && !badge.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(badge, badge_style));
@@ -385,6 +440,73 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     spans.push(Span::styled(age, Style::default().fg(MUTED_WHITE)));
 
     ListItem::new(Line::from(spans))
+}
+
+pub(crate) fn matches_query(session: &AgentSession, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let folded_query = query.to_lowercase();
+    session.title.to_lowercase().contains(&folded_query)
+        || session
+            .cwd
+            .to_string_lossy()
+            .to_lowercase()
+            .contains(&folded_query)
+}
+
+fn highlight_matches(text: &str, query: &str, base_style: Style) -> Vec<Span<'static>> {
+    let ranges = case_insensitive_match_ranges(text, query);
+    if ranges.is_empty() {
+        return vec![Span::styled(text.to_string(), base_style)];
+    }
+
+    let highlight_style = base_style
+        .fg(ACCENT_YELLOW)
+        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+    let mut spans = Vec::with_capacity(ranges.len() * 2 + 1);
+    let mut cursor = 0;
+    for (start, end) in ranges {
+        if cursor < start {
+            spans.push(Span::styled(text[cursor..start].to_string(), base_style));
+        }
+        spans.push(Span::styled(
+            text[start..end].to_string(),
+            highlight_style,
+        ));
+        cursor = end;
+    }
+    if cursor < text.len() {
+        spans.push(Span::styled(text[cursor..].to_string(), base_style));
+    }
+    spans
+}
+
+fn case_insensitive_match_ranges(text: &str, query: &str) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let mut normalized = String::new();
+    let mut original_ranges = Vec::new();
+    for (start, character) in text.char_indices() {
+        let end = start + character.len_utf8();
+        let folded = character.to_lowercase().to_string();
+        original_ranges.extend(std::iter::repeat_n((start, end), folded.len()));
+        normalized.push_str(&folded);
+    }
+
+    let folded_query = query.to_lowercase();
+    normalized
+        .match_indices(&folded_query)
+        .filter_map(|(start, matched)| {
+            let end = start + matched.len();
+            Some((
+                original_ranges.get(start)?.0,
+                original_ranges.get(end - 1)?.1,
+            ))
+        })
+        .collect()
 }
 
 /// Clean session title for display. Falls back to the working-directory
@@ -650,6 +772,27 @@ mod tests {
         rust_i18n::set_locale("en-US");
     }
 
+    fn sample_session() -> AgentSession {
+        AgentSession {
+            key: "sample".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: None,
+            window_id: None,
+            tab_id: None,
+            title: "sample".into(),
+            cwd: std::path::PathBuf::from("."),
+            started_at: SystemTime::UNIX_EPOCH,
+            last_activity_at: SystemTime::UNIX_EPOCH,
+            status: AgentStatus::Historical,
+            last_error: None,
+            current_tool: None,
+            attention_reason: None,
+            log_path: None,
+            origin: SessionOrigin::Unknown,
+            location: crate::agent_sessions::SessionLocation::Host,
+        }
+    }
+
     #[test]
     fn relative_age_just_now_under_a_minute() {
         let _g = crate::test_support::lock_locale();
@@ -685,6 +828,45 @@ mod tests {
         let s = relative_age(t);
         assert!(!s.is_empty(), "expected calendar date, got empty");
         assert!(!s.ends_with("ago"), "expected calendar date, got {:?}", s);
+    }
+
+    #[test]
+    fn search_matches_title_and_cwd_case_insensitively() {
+        let mut session = sample_session();
+        session.title = "PowerShell".into();
+        session.cwd = std::path::PathBuf::from(r"C:\Windows");
+        assert!(matches_query(&session, "po"));
+        assert!(matches_query(&session, "POWER"));
+
+        session.title = "review changes".into();
+        session.cwd = std::path::PathBuf::from(r"C:\repos\Portal");
+        assert!(matches_query(&session, "PORTAL"));
+        assert!(!matches_query(&session, "bash"));
+    }
+
+    #[test]
+    fn search_highlights_each_match_without_breaking_unicode() {
+        let spans = highlight_matches("PowerShell empower", "po", Style::default());
+        let highlighted = spans
+            .iter()
+            .filter(|span| span.style.fg == Some(ACCENT_YELLOW))
+            .map(|span| span.content.as_ref())
+            .collect::<Vec<_>>();
+        assert_eq!(highlighted, vec!["Po", "po"]);
+        assert!(spans
+            .iter()
+            .filter(|span| span.style.fg == Some(ACCENT_YELLOW))
+            .all(|span| span.style.add_modifier.contains(Modifier::UNDERLINED)));
+
+        let unicode = highlight_matches("İstanbul", "i\u{307}", Style::default());
+        assert_eq!(
+            unicode
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            "İstanbul"
+        );
+        assert_eq!(unicode[0].content.as_ref(), "İ");
     }
 
     /// Locale coverage smoke-test: walk a representative set of locales

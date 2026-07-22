@@ -74,6 +74,8 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             cli_filter.as_ref(),
             origin_filter,
             show_loading,
+            &tab.agents_view.search_query,
+            tab.agents_view.search_focused,
         );
         return;
     }
