@@ -1,6 +1,6 @@
 ---
 name: add-acp-agent-support
-description: 'Add first-class support for an ACP-compatible agent CLI to Intelligent Terminal. Use when integrating a new built-in AI agent, ACP server command, authentication flow, model selection, interactive delegation, branding, GPO policy, documentation, tests, build, deployment, or live ACP log verification.'
+description: 'Add first-class support for an ACP-compatible agent CLI to Intelligent Terminal. Use when integrating a new built-in AI agent, ACP server command, authentication flow, model selection, interactive delegation, session hooks, onboarding, Settings, branding, GPO policy, documentation, tests, build, deployment, or live ACP and hook log verification.'
 ---
 
 # Add ACP Agent Support
@@ -16,6 +16,8 @@ behavior inconsistent between layers.
 - Promote a custom ACP command into a first-class built-in agent.
 - Add or repair ACP authentication, model probing, delegate, icon, or policy
   support for an existing agent.
+- Add or repair session-tracking hooks, hook onboarding, Settings status, or
+  hook runtime behavior for a built-in agent.
 
 ## Prerequisites
 
@@ -51,22 +53,30 @@ policy, tests, and live verification must stay synchronized.
    resolution, settings/model probing, telemetry sanitization, branding, and
    policy-facing lists consistent. Use the detailed file map in
    [integration-map.md](./references/integration-map.md).
-6. **Add focused tests.** Cover profile lookup, ACP command construction,
+6. **Decide and implement session hooks.** Treat hooks as a separate capability:
+   verify the CLI's official hook/plugin API, map lifecycle events to WTA,
+   suppress hook emission from the ACP process to avoid duplicate sessions,
+   and wire safe install/status/uninstall/upgrade behavior through onboarding
+   and Settings. If the CLI has no suitable hook API, document session tracking
+   as unsupported instead of inferring it from ACP support.
+7. **Add focused tests.** Cover profile lookup, ACP command construction,
    identification, session source round-trips and resume dispatch, auth command
-   generation, and every delegate shell path that applies: direct Windows,
-   PowerShell 7, Windows PowerShell 5.1, and WSL.
-7. **Update user and administrator documentation.** Document support,
+   generation, hook lifecycle and ownership behavior when implemented, and
+   every delegate shell path that applies: direct Windows, PowerShell 7,
+   Windows PowerShell 5.1, and WSL.
+8. **Update user and administrator documentation.** Document support,
    installation/auth requirements, limitations, delegate behavior, and the
    `AllowedAgents` identifier. Do not advertise hooks or history integration
    unless they were implemented and tested.
-8. **Validate end to end.** Follow
+9. **Validate end to end.** Follow
    [validation.md](./references/validation.md), including the WTA test suite,
    explicit-target WTA build, Terminal build, package deployment, live ACP
-   prompt, auth path, model selection, delegate behavior, GPO filtering, and
-   log inspection.
-9. **Prepare the PR.** Keep the diff scoped, cite the tested agent version and
-   ACP command, describe native-vs-adapter status, list unsupported features,
-   and link the tracking issue with a closing keyword when appropriate.
+   prompt, auth path, model selection, hook-backed session tracking when
+   supported, delegate behavior, GPO filtering, and log inspection.
+10. **Prepare the PR.** Keep the diff scoped, cite the tested agent version and
+    ACP command, describe native-vs-adapter and hook support, list unsupported
+    features, and link the tracking issue with a closing keyword when
+    appropriate.
 
 ## Decision Rules
 
@@ -77,7 +87,7 @@ policy, tests, and live verification must stay synchronized.
 | Models | Distinguish flags accepted by the ACP server process from flags accepted by the interactive delegate CLI. Prefer ACP model APIs when the server supports them. |
 | Delegation | Use an interactive TUI invocation with an initial prompt. If the only interface is one-shot, omit first-class delegate support or explicitly ask the user to accept an auto-closing tab. |
 | Resume | Configure resume/new-session metadata only after proving the exact CLI syntax and identifier semantics. Also add the agent to the session source type and every conversion boundary; profile metadata alone does not make a session resumable. |
-| Hooks/history | Treat these as separate integrations. ACP compatibility alone does not imply shell hooks or historical session support. |
+| Hooks/history | Treat these as separate integrations. ACP compatibility alone does not imply shell hooks or historical session support. Use only the CLI's documented hook/plugin API, define ownership-safe install semantics, and suppress duplicate tracking from ACP-mode processes. |
 
 ## Gotchas
 
@@ -98,6 +108,16 @@ policy, tests, and live verification must stay synchronized.
   `session/list` rows can appear as `Unknown("custom")` and Enter fails with
   "source agent is unknown to this build" even though the agent profile has a
   valid resume flag.
+- **Do not run session hooks inside the shared ACP process.** ACP sessions are
+  already tracked by the helper/master path; hook emission there creates
+  duplicate session rows. Gate the plugin using a reliable ACP-mode signal and
+  verify normal interactive sessions still emit.
+- **Never overwrite user-owned hook files.** Use a managed-file marker or
+  manifest, commit ownership metadata last, preserve it until uninstall
+  cleanup succeeds, and make partial installs repairable.
+- **Keep the hook lifecycle complete.** Adding a runtime script is insufficient:
+  update install, status, uninstall, startup auto-upgrade, onboarding, Settings,
+  packaged bundle contents, tests, documentation, and diagnostics together.
 - **Separate ACP and delegate model flags.** Passing a TUI-only model flag to
   the ACP server can prevent startup even when delegation works.
 - **Treat agent IDs as telemetry-sensitive.** Add only the canonical built-in

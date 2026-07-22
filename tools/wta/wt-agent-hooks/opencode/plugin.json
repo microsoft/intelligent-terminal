@@ -1,0 +1,5 @@
+{
+  "name": "wt-agent-hooks",
+  "version": "0.1.4",
+  "description": "Forward OpenCode lifecycle events to Intelligent Terminal"
+}

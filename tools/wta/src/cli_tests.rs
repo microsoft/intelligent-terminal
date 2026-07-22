@@ -348,6 +348,10 @@ fn hooks_cli_filter_into_scope_maps_each_variant() {
         HooksCliFilter::Codex.into_scope(),
         CliScope::One(CliKind::Codex)
     ));
+    assert!(matches!(
+        HooksCliFilter::OpenCode.into_scope(),
+        CliScope::One(CliKind::OpenCode)
+    ));
 }
 
 // ── json_str_or_num: tolerant scalar extraction for human table rows ─────────

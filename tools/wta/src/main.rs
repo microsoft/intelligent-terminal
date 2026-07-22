@@ -642,6 +642,8 @@ enum HooksCliFilter {
     Claude,
     Gemini,
     Codex,
+    #[value(name = "opencode")]
+    OpenCode,
 }
 
 impl HooksCliFilter {
@@ -653,6 +655,7 @@ impl HooksCliFilter {
             HooksCliFilter::Claude => CliScope::One(CliKind::Claude),
             HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
             HooksCliFilter::Codex => CliScope::One(CliKind::Codex),
+            HooksCliFilter::OpenCode => CliScope::One(CliKind::OpenCode),
         }
     }
 }
@@ -1344,7 +1347,11 @@ fn run_hooks_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     } else {
         format_hooks_uninstall_human(&report);
     }
-    Ok(())
+    if report.succeeded() {
+        Ok(())
+    } else {
+        anyhow::bail!("one or more hook uninstall steps failed")
+    }
 }
 
 fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {

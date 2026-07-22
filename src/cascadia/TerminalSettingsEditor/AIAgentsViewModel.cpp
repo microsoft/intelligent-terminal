@@ -801,9 +801,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     }
 
     // Build the descriptor text for the row's subtitle: the post-em-dash
-    // portion of FormatCliStatusLine. Returns empty when the CLI has no
-    // hook state on disk (row is hidden) OR when it's fully installed
-    // (row is shown without a subtitle).
+    // portion of FormatCliStatusLine. Returns empty when hooks are fully
+    // installed or the CLI is absent with no hook state.
     static winrt::hstring _ComputeHooksSubtitle(const ::Microsoft::Terminal::AgentHooks::CliStatus* cli)
     {
         if (!cli)
@@ -812,7 +811,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         if (!cli->marketplaceRegistered && !cli->pluginInstalled)
         {
-            return {};
+            return cli->binaryOnPath ? winrt::hstring{ L"hooks not installed" } : winrt::hstring{};
         }
         if (_IsHooksFullyInstalled(cli))
         {
@@ -861,14 +860,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _claudeCliDetected = false;
             _geminiCliDetected = false;
             _codexCliDetected = false;
+            _openCodeCliDetected = false;
             _showCopilotHookRow = false;
             _showClaudeHookRow = false;
             _showGeminiHookRow = false;
             _showCodexHookRow = false;
+            _showOpenCodeHookRow = false;
+            _openCodeHooksPresent = false;
             _copilotHooksSubtitle = {};
             _claudeHooksSubtitle = {};
             _geminiHooksSubtitle = {};
             _codexHooksSubtitle = {};
+            _openCodeHooksSubtitle = {};
         }
         else
         {
@@ -876,44 +879,51 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             const auto* claude = FindCli(*report, "claude");
             const auto* gemini = FindCli(*report, "gemini");
             const auto* codex = FindCli(*report, "codex");
+            const auto* openCode = FindCli(*report, "opencode");
 
             _copilotCliDetected = copilot && copilot->binaryOnPath;
             _claudeCliDetected = claude && claude->binaryOnPath;
             _geminiCliDetected = gemini && gemini->binaryOnPath;
             _codexCliDetected = codex && codex->binaryOnPath;
+            _openCodeCliDetected = openCode && openCode->binaryOnPath;
 
-            const auto hasState = [](const CliStatus* cli) {
-                return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
-            };
-            _showCopilotHookRow = hasState(copilot);
-            _showClaudeHookRow = hasState(claude);
-            _showGeminiHookRow = hasState(gemini);
-            _showCodexHookRow = hasState(codex);
+            _showCopilotHookRow = AgentHooks::HasHookState(copilot);
+            _showClaudeHookRow = AgentHooks::HasHookState(claude);
+            _showGeminiHookRow = AgentHooks::HasHookState(gemini);
+            _showCodexHookRow = AgentHooks::HasHookState(codex);
+            _openCodeHooksPresent = AgentHooks::HasHookState(openCode);
+            _showOpenCodeHookRow = AgentHooks::ShouldShowDetectedOrConfiguredHookRow(openCode);
 
             _copilotHooksSubtitle = _ComputeHooksSubtitle(copilot);
             _claudeHooksSubtitle = _ComputeHooksSubtitle(claude);
             _geminiHooksSubtitle = _ComputeHooksSubtitle(gemini);
             _codexHooksSubtitle = _ComputeHooksSubtitle(codex);
+            _openCodeHooksSubtitle = _ComputeHooksSubtitle(openCode);
         }
 
         _NotifyChanges(L"IsCopilotCliDetected",
                        L"IsClaudeCliDetected",
                        L"IsGeminiCliDetected",
                        L"IsCodexCliDetected",
+                       L"IsOpenCodeCliDetected",
                        L"IsAnyAgentCliDetected",
                        L"CanInstallAgentHooks",
+                       L"CanRemoveOpenCodeHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",
                        L"ShowGeminiHookRow",
                        L"ShowCodexHookRow",
+                       L"ShowOpenCodeHookRow",
                        L"CopilotHooksSubtitle",
                        L"ClaudeHooksSubtitle",
                        L"GeminiHooksSubtitle",
                        L"CodexHooksSubtitle",
+                       L"OpenCodeHooksSubtitle",
                        L"ShowCopilotHooksSubtitle",
                        L"ShowClaudeHooksSubtitle",
                        L"ShowGeminiHooksSubtitle",
-                       L"ShowCodexHooksSubtitle");
+                       L"ShowCodexHooksSubtitle",
+                       L"ShowOpenCodeHooksSubtitle");
     }
 
     void AIAgentsViewModel::RefreshAgentHooksStatus()
@@ -986,6 +996,20 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _agentHooksInstallSummary = RS_(L"AIAgents_HooksRemovingCodexSummary");
         _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
         _RunHooksWtaAsync(L"hooks uninstall --cli codex");
+    }
+
+    void AIAgentsViewModel::RemoveOpenCodeHooks()
+    {
+        if (_installingAgentHooks) return;
+        _installingAgentHooks = true;
+        std::wstring summary{ RS_(L"AIAgents_HooksRemovingCopilotSummary") };
+        if (const auto pos = summary.find(L"Copilot"); pos != std::wstring::npos)
+        {
+            summary.replace(pos, std::wstring_view{ L"Copilot" }.size(), L"OpenCode");
+        }
+        _agentHooksInstallSummary = winrt::hstring{ summary };
+        _NotifyChanges(L"IsInstallingAgentHooks", L"AgentHooksInstallSummary", L"HasAgentHooksInstallSummary");
+        _RunHooksWtaAsync(L"hooks uninstall --cli opencode");
     }
 
     winrt::fire_and_forget AIAgentsViewModel::_RunHooksWtaAsync(std::wstring wtaArgs)

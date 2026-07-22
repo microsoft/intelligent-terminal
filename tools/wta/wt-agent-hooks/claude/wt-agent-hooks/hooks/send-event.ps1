@@ -117,6 +117,7 @@ try {
     # May be empty for events that don't carry a payload, e.g. some CLIs'
     # AfterTool / SessionEnd. We still want those to reach WTA so the
     # state can transition out of Working back to Idle.
+    [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
     $hookData = [Console]::In.ReadToEnd()
     if (-not $hookData) { $hookData = "" }
 
