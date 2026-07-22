@@ -500,15 +500,13 @@ reconciliation, `intellterm.wta/session_added|removed`, and
 render in the picker and aren't reachable by the cursor.
 
 The gate is a single constant — `app.rs::MVP_SESSIONS_ORIGIN_FILTER` —
-threaded through `App::sessions_origin_filter` so that the three places
+threaded through `App::sessions_origin_filter` so that the two places
 that have to stay in sync read the same value:
 
 1. `App::agents_rows_for_tab` (cursor / Enter dispatch source of
    truth) — applies the filter to both the snapshot path and the
    registry-fallback path.
-2. The post-history-scan auto-select and the Delete clamp (same
-   file) — `iter_sorted_with_filters(cli, self.sessions_origin_filter)`.
-3. `ui/agents_view::render` — applies the same retain to keep the
+2. `ui/agents_view::render` — applies the same retain to keep the
    rendered rows lined up with the cursor model.
 
 `agent_sessions::OriginFilter` (`ShellOnly | AgentPaneOnly | All`)

@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} oʻrnatilganligiga va PATH-da ekanligiga ishonc
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Yuklanmoqda..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ navigatsiya uchun • Enter seansni ochish uchun • Esc chiqish uchun • F5 yangilash uchun)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ navigatsiya uchun • Enter seansni ochish uchun • Esc chiqish uchun • F5 yangilash uchun • / qidirish uchun)"
 agents.status.active: "Faol"
 agents.status.waiting_for_input: "Kiritish kutilmoqda"
 agents.status.error: "Xatolik"
