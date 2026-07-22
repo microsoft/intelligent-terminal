@@ -1557,6 +1557,20 @@ fn notif(sid: &str, update: acp::schema::v1::SessionUpdate) -> acp::schema::v1::
     acp::schema::v1::SessionNotification::new(acp::schema::v1::SessionId::new(sid), update)
 }
 
+#[derive(Clone)]
+struct SharedLogWriter(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for SharedLogWriter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// An `AgentThoughtChunk` update becomes an `AgentThoughtChunk` event carrying
 /// the session id and the chunk text.
 #[tokio::test]
@@ -1640,6 +1654,67 @@ async fn session_notification_rejects_malformed_usage_update() {
 
     assert!(result.is_err(), "recognized malformed usage must fail fast");
     assert!(rx.try_recv().is_err(), "malformed usage must not reach app state");
+}
+
+#[tokio::test]
+async fn notification_dispatch_contains_malformed_usage_and_keeps_chat_flow() {
+    let (client, mut rx) = bare_client();
+    client
+        .dispatch_session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(1, 0)),
+        ))
+        .await;
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::UsageCleared { session_id }) if session_id == "s1"
+    ));
+
+    client
+        .dispatch_session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
+                "still connected".into(),
+            )),
+        ))
+        .await;
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::AgentMessageChunk { session_id, text })
+            if session_id == "s1" && text == "still connected"
+    ));
+}
+
+#[tokio::test]
+async fn usage_containment_log_excludes_reported_values() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let writer = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::TRACE)
+        .with_writer(move || SharedLogWriter(writer.clone()))
+        .finish();
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+    let (client, mut rx) = bare_client();
+    client
+        .dispatch_session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(
+                987_654_321,
+                123_456_789,
+            )),
+        ))
+        .await;
+    assert!(matches!(rx.try_recv(), Ok(AppEvent::UsageCleared { .. })));
+
+    let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+    assert!(logs.contains("acp.v1.session_usage"));
+    assert!(!logs.contains("987654321"));
+    assert!(!logs.contains("123456789"));
 }
 
 /// A `ToolCall` update becomes a `ToolCall` event with the tool id and title.

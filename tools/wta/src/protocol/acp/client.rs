@@ -18,6 +18,7 @@ use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
+const ACP_SESSION_USAGE_SCHEMA: &str = "acp.v1.session_usage";
 // Normal helper startup can race a slow wta-master cold start: master opens its
 // pipe only after spawning and initializing the agent CLI (up to 60s for npx
 // adapters), so keep a long budget there.
@@ -1531,6 +1532,30 @@ fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str 
 }
 
 impl WtaClient {
+    async fn dispatch_session_notification(&self, args: acp::schema::v1::SessionNotification) {
+        let usage_session_id = matches!(
+            &args.update,
+            acp::schema::v1::SessionUpdate::UsageUpdate(_)
+        )
+        .then(|| args.session_id.0.to_string());
+
+        if self.session_notification(args).await.is_err() {
+            if let Some(session_id) = usage_session_id {
+                tracing::warn!(
+                    target: "usage",
+                    schema = ACP_SESSION_USAGE_SCHEMA,
+                    source = "acp_standard",
+                    outcome = "rejected",
+                    "usage update rejected"
+                );
+                let _ = self
+                    .state
+                    .event_tx
+                    .send(AppEvent::UsageCleared { session_id });
+            }
+        }
+    }
+
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
@@ -1702,14 +1727,11 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::UsageUpdate(update) => {
                 let snapshot = crate::usage::normalize_standard_usage(&update).map_err(|error| {
-                    tracing::error!(
-                        target: "usage",
-                        schema = "acp.v1.session_usage",
-                        error = %error,
-                        "usage normalization failed"
-                    );
                     acp::Error::invalid_params()
-                        .data(serde_json::json!({ "message": error.to_string() }))
+                        .data(serde_json::json!({
+                            "schema": ACP_SESSION_USAGE_SCHEMA,
+                            "error_class": error.class(),
+                        }))
                 })?;
                 let _ = self.state.event_tx.send(AppEvent::UsageReported {
                     session_id: sid,
@@ -2253,7 +2275,7 @@ pub async fn run_acp_client_over_pipe(
         .on_receive_notification({ let c = client.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
             use acp::schema::v1::AgentNotification as N;
             match notif {
-                N::SessionNotification(n) => { let _ = c.session_notification(n).await; }
+                N::SessionNotification(n) => c.dispatch_session_notification(n).await,
                 N::ExtNotification(n) => { let _ = c.ext_notification(n).await; }
                 _ => {}
             }

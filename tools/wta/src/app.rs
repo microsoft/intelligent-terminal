@@ -1110,6 +1110,9 @@ pub enum AppEvent {
         session_id: String,
         snapshot: crate::usage::UsageSnapshot,
     },
+    UsageCleared {
+        session_id: String,
+    },
     /// Error scoped to a specific tab. Used by paths that know the tab
     /// (e.g. ACP `session/load` failure) but have no session_id yet
     /// because the session never came up. Routes into that tab's chat as
@@ -4557,6 +4560,7 @@ impl App {
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::UsageReported { .. } => "usage_reported",
+            AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
@@ -5048,6 +5052,9 @@ impl App {
                 snapshot,
             } => {
                 self.session_tab_mut(&session_id).usage = Some(snapshot);
+            }
+            AppEvent::UsageCleared { session_id } => {
+                self.session_tab_mut(&session_id).usage = None;
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -11827,6 +11834,42 @@ mod tests {
 
         assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
         assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
+    }
+
+    #[test]
+    fn usage_cleared_removes_only_owner_snapshot_without_changing_chat() {
+        let mut app = test_app();
+        let snapshot = lifecycle_usage_snapshot();
+        app.state = ConnectionState::Connected;
+        app.tab_sessions.insert(
+            "OWNER-TAB".to_string(),
+            TabSession {
+                messages: vec![ChatMessage::System("keep this message".to_string())],
+                usage: Some(snapshot.clone()),
+                ..Default::default()
+            },
+        );
+        app.tab_sessions.insert(
+            "OTHER-TAB".to_string(),
+            TabSession {
+                usage: Some(snapshot.clone()),
+                ..Default::default()
+            },
+        );
+        app.session_to_tab
+            .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+
+        app.handle_event(AppEvent::UsageCleared {
+            session_id: "usage-session".to_string(),
+        });
+
+        assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+        assert_eq!(
+            app.tab_sessions["OWNER-TAB"].messages,
+            vec![ChatMessage::System("keep this message".to_string())]
+        );
+        assert_eq!(app.tab_sessions["OTHER-TAB"].usage, Some(snapshot));
+        assert_eq!(app.state, ConnectionState::Connected);
     }
 
     fn lifecycle_usage_snapshot() -> crate::usage::UsageSnapshot {

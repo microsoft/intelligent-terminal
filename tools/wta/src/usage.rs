@@ -64,6 +64,17 @@ pub enum UsageError {
     InvalidCurrency,
 }
 
+impl UsageError {
+    pub const fn class(&self) -> &'static str {
+        match self {
+            Self::ZeroContextSize => "zero_context_size",
+            Self::ContextUsedExceedsSize { .. } => "context_used_exceeds_size",
+            Self::InvalidCostAmount => "invalid_cost_amount",
+            Self::InvalidCurrency => "invalid_currency",
+        }
+    }
+}
+
 impl std::fmt::Display for UsageError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

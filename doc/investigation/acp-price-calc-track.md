@@ -29,7 +29,7 @@ code it describes.
 | 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Complete |
 | 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Complete |
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Complete |
-| 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Pending |
+| 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Complete |
 | 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Pending |
 
 ## Completed Steps
@@ -228,6 +228,56 @@ code it describes.
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
 - No local E2E script or screenshot files.
+
+### Step 8 - Outer Containment and Privacy
+
+**RED**
+
+- Added a production-boundary test before defining `dispatch_session_notification` or
+  `AppEvent::UsageCleared`; the focused build failed with E0599 for both missing symbols.
+- The boundary test requires malformed Usage to emit a clear event and the following agent text
+  chunk to keep flowing on the same session.
+- Added a captured-tracing test with two sentinel token values and an App state test requiring
+  only the owner tab's Usage to clear while its chat, another tab's Usage, and `Connected` state
+  remain unchanged.
+
+**GREEN**
+
+- Kept `session_notification` and `normalize_standard_usage` as fail-fast inner functions. Their
+  direct malformed-input test still returns `Err` and emits no state event.
+- Added one `dispatch_session_notification` boundary at the production ACP notification entry.
+  Only errors from a recognized Usage update are contained; the boundary emits
+  `AppEvent::UsageCleared` and returns to the notification stream.
+- `App::handle_event` resolves `UsageCleared` through the existing SessionId-to-tab map and clears
+  only that tab's snapshot. The next state projection emits `usage: null` through the existing
+  route, so C++ hides `UsageGroup` without a new COM/IDL path.
+- Removed value-bearing normalizer error text from tracing and ACP error data. The outer warning
+  records only fixed `schema=acp.v1.session_usage`, `source=acp_standard`, and
+  `outcome=rejected` fields. Usage trace continues to suppress the full update payload.
+
+**Validation**
+
+- RED build reported missing `AppEvent::UsageCleared` and
+  `WtaClient::dispatch_session_notification`.
+- Containment/chat-continuity test: 1 passed, 0 failed.
+- Inner fail-fast test: 1 passed, 0 failed.
+- Captured-log privacy test: 1 passed, 0 failed; schema was present and both sentinel values were
+  absent.
+- Owner-tab clear/isolation test: 1 passed, 0 failed.
+- Usage normalizer tests: 5 passed, 0 failed.
+- ACP mock-agent/client tests: 31 passed, 0 failed.
+- Full WTA Rust suite: 1138 passed, 0 failed.
+- No rustfmt differences overlap Step 8 production or test lines; broader crate formatting drift
+  remains outside this change.
+
+**Committed files**
+
+- `tools/wta/src/usage.rs`
+- `tools/wta/src/protocol/acp/client.rs`
+- `tools/wta/src/protocol/acp/mock_agent_tests.rs`
+- `tools/wta/src/app.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
 
 ### Step 4 - Session Usage Lifecycle
 
