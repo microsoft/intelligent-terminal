@@ -1599,6 +1599,49 @@ async fn session_notification_routes_user_message_replay_chunk() {
     }
 }
 
+#[tokio::test]
+async fn session_notification_routes_usage_update() {
+    let (client, mut rx) = bare_client();
+    let usage = acp::schema::v1::UsageUpdate::new(1_024, 8_192)
+        .cost(acp::schema::v1::Cost::new(0.004, "USD"));
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(usage),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::UsageReported {
+            session_id,
+            snapshot,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(snapshot.used, 1_024);
+            assert_eq!(snapshot.size, 8_192);
+            assert_eq!(snapshot.cost.expect("cost").currency, "USD");
+        }
+        _ => panic!("expected UsageReported"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_rejects_malformed_usage_update() {
+    let (client, mut rx) = bare_client();
+    let result = client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::UsageUpdate(
+                acp::schema::v1::UsageUpdate::new(1, 0),
+            ),
+        ))
+        .await;
+
+    assert!(result.is_err(), "recognized malformed usage must fail fast");
+    assert!(rx.try_recv().is_err(), "malformed usage must not reach app state");
+}
+
 /// A `ToolCall` update becomes a `ToolCall` event with the tool id and title.
 #[tokio::test]
 async fn session_notification_routes_tool_call() {

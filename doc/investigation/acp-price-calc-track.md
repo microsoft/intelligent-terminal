@@ -24,8 +24,8 @@ code it describes.
 | 0. Provider/build baseline | Existing registry, coordinator, WSL ACP, ItE2E, and live provider gates | Pin verified adapters and preserve historical command identification | Complete |
 | 1. Reliable master delivery | Saturated helper queue must retain only the latest `UsageUpdate` | Per-session latest-value state and helper wake/drain path | Complete |
 | 2. Standard normalizer | Valid ACP usage normalizes; zero size, non-finite/negative cost, and invalid currency fail | Provider-neutral domain types and stable ACP normalizer | Complete |
-| 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel | Pending |
-| 4. Per-tab state | Cumulative session usage replaces prior values and resets on session lifecycle boundaries | Store `UsageSnapshot` in `TabSession` | Pending |
+| 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel and store it on the owner tab | Complete |
+| 4. Session lifecycle | Cumulative session usage replaces prior values and clears on new/load/agent identity boundaries | Apply explicit reset and stale-generation rules to per-tab state | Pending |
 | 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Pending |
 | 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Pending |
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Pending |
@@ -103,6 +103,45 @@ code it describes.
 **Committed files**
 
 - `tools/wta/src/master/mod.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
+
+### Step 3 - Helper Dispatch and Owner-Tab Storage
+
+**RED**
+
+- Added existing-framework ACP client tests for a valid `UsageUpdate` and a malformed zero-size
+  update before adding the event variant.
+- Added an App state test that binds a session to a non-active tab and requires usage to update
+  only that owner.
+- RED failures showed the missing `AppEvent::UsageReported` variant and `TabSession.usage` field.
+
+**GREEN**
+
+- `WtaClient::session_notification` now recognizes typed ACP v1 `UsageUpdate`, runs the standard
+  normalizer, and emits `AppEvent::UsageReported`.
+- Recognized malformed usage returns ACP `invalid_params`; it never reaches App state.
+- `App::handle_event` resolves the event's SessionId through the existing `session_to_tab` map and
+  stores the latest snapshot only on the owner `TabSession`.
+- Raw Usage values are no longer formatted into the trace-level full-notification log. Normalizer
+  failures log only schema ID and error class/message, not amount/token values.
+- No new transport, COM route, provider branch, dependency, or UI behavior was added.
+
+**Validation**
+
+- RED client test failed because `AppEvent::UsageReported` did not exist.
+- RED App test failed because `AppEvent::UsageReported` and `TabSession.usage` did not exist.
+- Valid client dispatch: 1 passed, 0 failed.
+- Malformed client dispatch: 1 passed, 0 failed.
+- Owner-tab state routing: 1 passed, 0 failed.
+- Full WTA Rust suite: 1128 passed, 0 failed, 0 warnings.
+- No rustfmt differences overlap Step 3 changed lines.
+
+**Committed files**
+
+- `tools/wta/src/protocol/acp/client.rs`
+- `tools/wta/src/protocol/acp/mock_agent_tests.rs`
+- `tools/wta/src/app.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
 

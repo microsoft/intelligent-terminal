@@ -1106,6 +1106,10 @@ pub enum AppEvent {
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
     },
+    UsageReported {
+        session_id: String,
+        snapshot: crate::usage::UsageSnapshot,
+    },
     /// Error scoped to a specific tab. Used by paths that know the tab
     /// (e.g. ACP `session/load` failure) but have no session_id yet
     /// because the session never came up. Routes into that tab's chat as
@@ -1410,6 +1414,7 @@ impl Scroll {
 pub struct TabSession {
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
+    pub usage: Option<crate::usage::UsageSnapshot>,
 
     // Conversation history
     pub messages: Vec<ChatMessage>,
@@ -4550,6 +4555,7 @@ impl App {
             AppEvent::ProgressStatus { .. } => "progress_status",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
+            AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
@@ -5032,6 +5038,12 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+            }
+            AppEvent::UsageReported {
+                session_id,
+                snapshot,
+            } => {
+                self.session_tab_mut(&session_id).usage = Some(snapshot);
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -11777,6 +11789,31 @@ mod tests {
             "resume must not leave any loose chat messages, got {:?}",
             tab.messages
         );
+    }
+
+    #[test]
+    fn usage_reported_updates_only_the_session_owner_tab() {
+        let mut app = test_app();
+        app.tab_id = Some("ACTIVE-TAB".to_string());
+        app.tab_sessions
+            .insert("ACTIVE-TAB".to_string(), TabSession::default());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+        app.session_to_tab
+            .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+        let snapshot = crate::usage::UsageSnapshot {
+            used: 20,
+            size: 100,
+            cost: None,
+        };
+
+        app.handle_event(AppEvent::UsageReported {
+            session_id: "usage-session".to_string(),
+            snapshot: snapshot.clone(),
+        });
+
+        assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
+        assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────
