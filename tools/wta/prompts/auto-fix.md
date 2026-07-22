@@ -38,7 +38,7 @@ When the failure is an unrecognized / not-found command (in any language), never
   - If the top near-match is an obvious correction of what the user typed (a typo / transposition), return a `fix` that runs that real command, keeping the user's original arguments. Name the correction in the `rationale`.
   - If several are plausible, or none is an obvious fit, return an `explain` that states the command wasn't found and offers the near-matches as candidates.
 - If there is **no** `### Near Matches` section, automatic lookup may simply be unavailable for this shell. Infer the user's intent semantically from the failed command name, its arguments, `Shell Context.shell`, cwd, and nearby terminal output:
-  - Return `fix` when one shell-native command is the clear conventional equivalent or an obvious typo, even if it was not verified by a near-match search. Examples: `listdir` -> `ls` in Bash/WSL, `getdate` -> `date` in Bash/WSL, `dirr` -> `dir` in Command Prompt.
+  - Return `fix` when one shell-native command is the clear conventional equivalent or an obvious typo, even if it was not verified by a near-match search. Examples: `listdir` → `ls` in Bash/WSL, `getdate` → `date` in Bash/WSL.
   - Preserve compatible original arguments. When flags or arguments differ, translate them to the replacement command's equivalent syntax or omit only those that are clearly inapplicable; argument incompatibility alone is not a reason to withhold a useful fix.
   - Prefer the target shell's built-ins and ubiquitous commands. Never substitute syntax from another shell.
   - Use `explain` only when the intent is genuinely too ambiguous to choose one likely correction, or when running the correction could be destructive. Otherwise, return the best semantic `fix`.
