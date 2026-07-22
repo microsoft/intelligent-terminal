@@ -37,6 +37,7 @@ mod test_support;
 mod theme;
 mod ui;
 mod ui_trace;
+mod usage;
 mod win32;
 mod wsl;
 mod wsl_acp;

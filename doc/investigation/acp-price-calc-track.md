@@ -23,7 +23,7 @@ code it describes.
 |---|---|---|---|
 | 0. Provider/build baseline | Existing registry, coordinator, WSL ACP, ItE2E, and live provider gates | Pin verified adapters and preserve historical command identification | Complete |
 | 1. Reliable master delivery | Saturated helper queue must retain only the latest `UsageUpdate` | Per-session latest-value state and helper wake/drain path | Complete |
-| 2. Standard normalizer | Valid ACP usage normalizes; zero size, non-finite/negative cost, and invalid currency fail | Provider-neutral domain types and stable ACP normalizer | Pending |
+| 2. Standard normalizer | Valid ACP usage normalizes; zero size, non-finite/negative cost, and invalid currency fail | Provider-neutral domain types and stable ACP normalizer | Complete |
 | 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel | Pending |
 | 4. Per-tab state | Cumulative session usage replaces prior values and resets on session lifecycle boundaries | Store `UsageSnapshot` in `TabSession` | Pending |
 | 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Pending |
@@ -103,5 +103,38 @@ code it describes.
 **Committed files**
 
 - `tools/wta/src/master/mod.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
+
+### Step 2 - Standard ACP Usage Normalizer
+
+**RED**
+
+- Added five contract tests before defining any Usage production types or normalizer.
+- The focused build failed with 11 missing-symbol errors for `UsageCost`, `UsageError`, and
+  `normalize_standard_usage`.
+
+**GREEN**
+
+- Added a provider-neutral `UsageSnapshot` containing context `used` / `size` and optional
+  cumulative `UsageCost`.
+- Validates non-zero context size, `used <= size`, finite non-negative cost, and a canonical
+  three-uppercase-ASCII-letter currency shape.
+- Converts the ACP wire `f64` amount to decimal display text once. The text does not recover wire
+  precision and is never used for arithmetic or local price conversion.
+- Ignores ACP `_meta`; no provider-specific schema or private adapter is introduced.
+- Added no dependency, so Component Governance and third-party notices are unchanged.
+
+**Validation**
+
+- RED command: focused build failed with 11 expected missing-symbol errors.
+- GREEN focused tests: 5 passed, 0 failed.
+- `rustfmt --check` passes for `usage.rs` and the `main.rs` module registration.
+- Full WTA Rust suite: 1125 passed, 0 failed.
+
+**Committed files**
+
+- `tools/wta/src/usage.rs`
+- `tools/wta/src/main.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
