@@ -91,8 +91,8 @@ fixture/记录并重新跑 Claude/Codex E2E mock。
 | Command ownership | C++ `_BuildAgentCommandLine()` 构造 host/default command；Rust `AgentProfile` 为 per-tab built-in selection 重建 command，因此目前确有两份映射 | 建立可生成/共享的 launch metadata；完成前用测试强制两处完全一致 |
 | Custom selection | Settings 将 `npx ...` 保存为 `custom:npx`；master 对未知 helper ID 回退到 host 已信任的 default command，从不执行 pipe 上传来的 command | 分离 instance/family/reporter；custom 可识别 compatible family，但首版不能启用私有 usage extension |
 | Usage receive | master 已可靠 coalesce/定向 latest value；helper 已通过 provider-neutral normalizer fail-fast校验 typed `UsageUpdate` 并发出 `AppEvent::UsageReported` | 增加明确的session lifecycle/reset规则和projection |
-| Usage state/UI | Rust `TabSession` 已按SessionId保存owner tab的latest `UsageSnapshot`；clear/new/load与新connection session会清旧值，model变化保留累计值；`AgentPaneContent`与XAML仍无usage字段/控件 | 通过现有state snapshot投影到C++，由Bottom Bar Column 2渲染`UsageGroup` |
-| C++ event route | `agent_state_changed` 已按 `tab_id` 经 COM server 定向到 `TerminalPage::OnAgentStateChanged()`；`project_tab_state()` 已发送统一 per-tab snapshot | 在现有 snapshot 增加可选 `usage`，不新增 COM/IDL route |
+| Usage state/UI | Rust `TabSession` 已保存、重置并通过typed items投影owner tab的latest `UsageSnapshot`；`AgentPaneContent`与XAML仍无usage字段/控件 | C++解析并缓存现有snapshot，由Bottom Bar Column 2渲染`UsageGroup` |
+| C++ event route | `agent_state_changed` 已按 `tab_id` 经 COM server 定向到 `TerminalPage::OnAgentStateChanged()`；Rust snapshot 已包含可选`usage`或null | 在现有C++ handler消费该字段，不新增COM/IDL route |
 | Rust codegen | [tools/wta/build.rs](../../tools/wta/build.rs) 当前只生成 ETW telemetry metadata | 增加 Agent registry codegen，但保留现有 ETW 生成 |
 | Gemini / Antigravity | Gemini 仍是当前仓库的内置 ACP agent；Antigravity 尚无 registry/profile/usage 集成 | Usage feature 不做 Gemini-specific provider；迁移到 Antigravity 前另行调查协议与 identity，不预先复用 `gemini` family ID |
 
@@ -1142,8 +1142,10 @@ XAML TerminalPage.BottomBar.UsageGroup
         {
           "metric_id": "acp.context.window",
           "value_decimal_text": "20",
+          "limit_decimal_text": "100",
           "unit_id": "token",
-          "unit_display_name": "Tokens",
+          "scope": "session",
+          "source": "acp_standard",
           "stale": false
         }
       ]
@@ -1152,7 +1154,7 @@ XAML TerminalPage.BottomBar.UsageGroup
 }
 ```
 
-这里的 payload 是**暂定 transport shape**，不代表最终展示内容已经确定。数据/单位仍在讨论，
+Step 5 已在 Rust projection 中实现该 transport shape；它不代表最终展示内容已经确定。数据/单位仍在讨论，
 所以 XAML 不应硬编码“恰好两个字段（tokens + cost）”。`UsageGroup` 应是可显示 0–N 个
 normalized item 的数据驱动容器，并设一个小的产品上限（例如主栏最多 2 个，其余放 tooltip
 或未来详情页）。`usage: null` 或空 items 明确清除并隐藏旧数据。

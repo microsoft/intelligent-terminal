@@ -13,6 +13,49 @@ pub struct UsageCost {
     pub currency: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct UsageProjection {
+    pub items: Vec<UsageProjectionItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct UsageProjectionItem {
+    pub metric_id: &'static str,
+    pub value_decimal_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit_decimal_text: Option<String>,
+    pub unit_id: String,
+    pub scope: &'static str,
+    pub source: &'static str,
+    pub stale: bool,
+}
+
+impl From<&UsageSnapshot> for UsageProjection {
+    fn from(snapshot: &UsageSnapshot) -> Self {
+        let mut items = vec![UsageProjectionItem {
+            metric_id: "acp.context.window",
+            value_decimal_text: snapshot.used.to_string(),
+            limit_decimal_text: Some(snapshot.size.to_string()),
+            unit_id: "token".to_string(),
+            scope: "session",
+            source: "acp_standard",
+            stale: false,
+        }];
+        if let Some(cost) = &snapshot.cost {
+            items.push(UsageProjectionItem {
+                metric_id: "acp.billing.cost",
+                value_decimal_text: cost.amount_decimal_text.clone(),
+                limit_decimal_text: None,
+                unit_id: cost.currency.clone(),
+                scope: "session",
+                source: "acp_standard",
+                stale: false,
+            });
+        }
+        Self { items }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageError {
     ZeroContextSize,

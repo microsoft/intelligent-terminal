@@ -9889,20 +9889,7 @@ impl App {
             );
             return;
         };
-        let view = match tab.current_view {
-            View::Agents => "sessions",
-            View::Chat => "chat",
-        };
-        let evt = serde_json::json!({
-            "type": "event",
-            "method": "agent_state_changed",
-            "params": {
-                "tab_id":    target_tab,
-                "view":      view,
-                "pane_open": tab.pane_open,
-                "pane_position": tab.agent_pane_position,
-            }
-        });
+        let evt = build_agent_state_changed_event(target_tab, tab);
         send_wt_protocol_event(evt.to_string());
 
         // Autofix bar is window-level (single bottom bar reflecting the
@@ -9912,6 +9899,28 @@ impl App {
             send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
         }
     }
+}
+
+fn build_agent_state_changed_event(target_tab: &str, tab: &TabSession) -> serde_json::Value {
+    let view = match tab.current_view {
+        View::Agents => "sessions",
+        View::Chat => "chat",
+    };
+    let usage = tab
+        .usage
+        .as_ref()
+        .map(crate::usage::UsageProjection::from);
+    serde_json::json!({
+        "type": "event",
+        "method": "agent_state_changed",
+        "params": {
+            "tab_id": target_tab,
+            "view": view,
+            "pane_open": tab.pane_open,
+            "pane_position": tab.agent_pane_position,
+            "usage": usage,
+        }
+    })
 }
 
 /// Publish a raw JSON event via `wtcli publish`. The event flows through
@@ -11905,6 +11914,49 @@ mod tests {
         });
 
         assert!(app.current_tab().usage.is_none());
+    }
+
+    #[test]
+    fn usage_projection_adds_context_and_cost_to_agent_state_snapshot() {
+        let tab = TabSession {
+            usage: Some(crate::usage::UsageSnapshot {
+                used: 1_024,
+                size: 8_192,
+                cost: Some(crate::usage::UsageCost {
+                    amount_decimal_text: "0.004".to_string(),
+                    currency: "USD".to_string(),
+                }),
+            }),
+            ..Default::default()
+        };
+
+        let event = build_agent_state_changed_event("TAB-1", &tab);
+        let items = event["params"]["usage"]["items"]
+            .as_array()
+            .expect("usage items");
+
+        assert_eq!(event["method"], "agent_state_changed");
+        assert_eq!(event["params"]["tab_id"], "TAB-1");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["metric_id"], "acp.context.window");
+        assert_eq!(items[0]["value_decimal_text"], "1024");
+        assert_eq!(items[0]["limit_decimal_text"], "8192");
+        assert_eq!(items[0]["unit_id"], "token");
+        assert_eq!(items[1]["metric_id"], "acp.billing.cost");
+        assert_eq!(items[1]["value_decimal_text"], "0.004");
+        assert_eq!(items[1]["unit_id"], "USD");
+        for item in items {
+            assert_eq!(item["scope"], "session");
+            assert_eq!(item["source"], "acp_standard");
+            assert_eq!(item["stale"], false);
+        }
+    }
+
+    #[test]
+    fn usage_projection_emits_null_to_clear_cached_usage() {
+        let event = build_agent_state_changed_event("TAB-1", &TabSession::default());
+
+        assert!(event["params"]["usage"].is_null());
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────

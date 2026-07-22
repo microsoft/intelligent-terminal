@@ -26,7 +26,7 @@ code it describes.
 | 2. Standard normalizer | Valid ACP usage normalizes; zero size, non-finite/negative cost, and invalid currency fail | Provider-neutral domain types and stable ACP normalizer | Complete |
 | 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel and store it on the owner tab | Complete |
 | 4. Session lifecycle | Cumulative session usage replaces prior values and clears on new/load/agent identity boundaries | Apply explicit reset rules while model changes preserve usage | Complete |
-| 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Pending |
+| 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Complete |
 | 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Pending |
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Pending |
 | 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Pending |
@@ -105,6 +105,40 @@ code it describes.
 - `tools/wta/src/master/mod.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
+
+### Step 5 - Existing State Projection
+
+**RED**
+
+- Added pure event-builder tests before the builder existed.
+- The focused build failed with two missing `build_agent_state_changed_event` errors.
+- Tests require context and optional cost items, stable metric/unit/source/scope fields, and
+  explicit `usage: null` when no snapshot exists.
+
+**GREEN**
+
+- Added typed `UsageProjection` / `UsageProjectionItem` structures.
+- Context projects first as `acp.context.window` with decimal used/limit text and unit `token`.
+- Optional cumulative cost projects as `acp.billing.cost` with the validated ISO currency code as
+  its unit. No amount conversion or arithmetic occurs.
+- Both items identify `scope=session`, `source=acp_standard`, and `stale=false`.
+- Extracted a pure `build_agent_state_changed_event`; production `project_tab_state` reuses it and
+  continues through the existing `agent_state_changed` route.
+- Missing usage serializes as null so C++ can clear stale cached UI state.
+
+**Validation**
+
+- RED command failed with two missing-builder compiler errors.
+- GREEN projection tests: 2 passed, 0 failed.
+- Full WTA Rust suite: 1135 passed, 0 failed, 0 warnings.
+- `usage.rs` passes rustfmt; no App rustfmt differences overlap Step 5 lines.
+
+**Committed files**
+
+- `tools/wta/src/usage.rs`
+- `tools/wta/src/app.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state/transport update in `doc/investigation/acp-price-calc.md`
 
 ### Step 4 - Session Usage Lifecycle
 
