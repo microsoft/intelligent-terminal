@@ -25,7 +25,7 @@ code it describes.
 | 1. Reliable master delivery | Saturated helper queue must retain only the latest `UsageUpdate` | Per-session latest-value state and helper wake/drain path | Complete |
 | 2. Standard normalizer | Valid ACP usage normalizes; zero size, non-finite/negative cost, and invalid currency fail | Provider-neutral domain types and stable ACP normalizer | Complete |
 | 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel and store it on the owner tab | Complete |
-| 4. Session lifecycle | Cumulative session usage replaces prior values and clears on new/load/agent identity boundaries | Apply explicit reset and stale-generation rules to per-tab state | Pending |
+| 4. Session lifecycle | Cumulative session usage replaces prior values and clears on new/load/agent identity boundaries | Apply explicit reset rules while model changes preserve usage | Complete |
 | 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Pending |
 | 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Pending |
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Pending |
@@ -103,6 +103,39 @@ code it describes.
 **Committed files**
 
 - `tools/wta/src/master/mod.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
+
+### Step 4 - Session Usage Lifecycle
+
+**RED**
+
+- Added four lifecycle tests before changing reset behavior. `/clear`, `/new`, and
+  `load_session` retained stale usage and failed; global model change already preserved usage and
+  passed.
+- Added a second RED test showing that a reconnect binding a new ACP SessionId retained the old
+  session's usage snapshot.
+
+**GREEN**
+
+- Added usage reset to the existing `TabSession::clear_chat_history` owner reused by `/clear`,
+  `/new`, and `load_session`; no duplicate reset logic was added at call sites.
+- `AgentConnected` clears usage only when the bound SessionId changes. Repeated connected events
+  for the same session do not erase its usage.
+- Global and per-tab model changes do not clear session-cumulative usage.
+- Tab close and app restart already drop their in-memory `TabSession`; no persistence was added.
+
+**Validation**
+
+- Initial RED run: 1 passed (model preservation), 3 failed (clear/new/load stale usage).
+- Connection RED run: 1 failed because the old snapshot survived a new SessionId.
+- GREEN lifecycle tests: 5 passed, 0 failed.
+- Full WTA Rust suite: 1133 passed, 0 failed.
+- No rustfmt differences overlap Step 4 changed lines.
+
+**Committed files**
+
+- `tools/wta/src/app.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
 

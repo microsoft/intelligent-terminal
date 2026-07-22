@@ -1657,6 +1657,7 @@ impl TabSession {
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
         self.tool_calls.clear();
+        self.usage = None;
         // Dropping pending responders signals `Cancelled` back to the
         // agent — appropriate when the user wipes chat history mid-turn.
         self.permission.clear();
@@ -4966,6 +4967,9 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
+                if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    tab.usage = None;
+                }
                 tab.session_id = Some(session_id);
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
@@ -11814,6 +11818,93 @@ mod tests {
 
         assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
         assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
+    }
+
+    fn lifecycle_usage_snapshot() -> crate::usage::UsageSnapshot {
+        crate::usage::UsageSnapshot {
+            used: 20,
+            size: 100,
+            cost: None,
+        }
+    }
+
+    #[test]
+    fn usage_lifecycle_clear_history_clears_snapshot() {
+        let mut tab = TabSession {
+            usage: Some(lifecycle_usage_snapshot()),
+            ..Default::default()
+        };
+
+        tab.clear_chat_history();
+
+        assert!(tab.usage.is_none());
+    }
+
+    #[test]
+    fn usage_lifecycle_new_session_command_clears_snapshot() {
+        let mut app = test_app();
+        app.current_tab_mut().usage = Some(lifecycle_usage_snapshot());
+
+        app.cmd_new(false);
+
+        assert!(app.current_tab().usage.is_none());
+    }
+
+    #[test]
+    fn usage_lifecycle_load_session_clears_snapshot() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions.insert(
+            "OWNER-TAB".to_string(),
+            TabSession {
+                usage: Some(lifecycle_usage_snapshot()),
+                ..Default::default()
+            },
+        );
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "loaded-session",
+                "cwd": "",
+            }),
+        });
+
+        assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+    }
+
+    #[test]
+    fn usage_lifecycle_model_change_preserves_snapshot() {
+        let mut app = test_app();
+        let snapshot = lifecycle_usage_snapshot();
+        app.current_tab_mut().usage = Some(snapshot.clone());
+
+        app.apply_global_acp_model(Some("new-model".to_string()));
+
+        assert_eq!(app.current_tab().usage, Some(snapshot));
+    }
+
+    #[test]
+    fn usage_lifecycle_new_connection_session_clears_snapshot() {
+        let mut app = test_app();
+        app.current_tab_mut().session_id = Some("old-session".to_string());
+        app.current_tab_mut().usage = Some(lifecycle_usage_snapshot());
+
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Agent".to_string(),
+            model: None,
+            version: None,
+            session_id: "new-session".to_string(),
+            available_models: Vec::new(),
+            current_model_id: None,
+            load_session_supported: false,
+            image_supported: false,
+        });
+
+        assert!(app.current_tab().usage.is_none());
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────
