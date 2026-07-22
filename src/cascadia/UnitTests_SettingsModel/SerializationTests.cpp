@@ -128,6 +128,9 @@ namespace SettingsModelUnitTests
                 "theme": "system",
                 "snapToGridOnResize": true,
                 "disableAnimations": false,
+                "restoreShellSessions": true,
+                "restoreAgentSessions": true,
+                "continueRunningCommands": true,
 
                 "trimPaste": true,
 
@@ -1393,19 +1396,31 @@ namespace SettingsModelUnitTests
         // Verify initial values
         VERIFY_ARE_EQUAL(30, settings->GlobalSettings().InitialRows());
         VERIFY_ARE_EQUAL(false, settings->GlobalSettings().AlwaysOnTop());
+        VERIFY_ARE_EQUAL(true, settings->GlobalSettings().RestoreShellSessions());
+        VERIFY_ARE_EQUAL(true, settings->GlobalSettings().RestoreAgentSessions());
+        VERIFY_ARE_EQUAL(true, settings->GlobalSettings().ContinueRunningCommands());
 
         // Modify global settings
         settings->GlobalSettings().InitialRows(50);
         settings->GlobalSettings().AlwaysOnTop(true);
+        settings->GlobalSettings().RestoreShellSessions(false);
+        settings->GlobalSettings().RestoreAgentSessions(false);
+        settings->GlobalSettings().ContinueRunningCommands(false);
 
         // Verify in-memory changes
         VERIFY_ARE_EQUAL(50, settings->GlobalSettings().InitialRows());
         VERIFY_ARE_EQUAL(true, settings->GlobalSettings().AlwaysOnTop());
+        VERIFY_ARE_EQUAL(false, settings->GlobalSettings().RestoreShellSessions());
+        VERIFY_ARE_EQUAL(false, settings->GlobalSettings().RestoreAgentSessions());
+        VERIFY_ARE_EQUAL(false, settings->GlobalSettings().ContinueRunningCommands());
 
         // Serialize and verify
         const auto result{ settings->ToJson() };
         VERIFY_ARE_EQUAL(50, result["initialRows"].asInt());
         VERIFY_ARE_EQUAL(true, result["alwaysOnTop"].asBool());
+        VERIFY_ARE_EQUAL(false, result["restoreShellSessions"].asBool());
+        VERIFY_ARE_EQUAL(false, result["restoreAgentSessions"].asBool());
+        VERIFY_ARE_EQUAL(false, result["continueRunningCommands"].asBool());
     }
 
     void SerializationTests::ModifyColorSchemeAndRoundtrip()

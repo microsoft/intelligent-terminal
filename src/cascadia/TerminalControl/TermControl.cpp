@@ -914,6 +914,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - wstr: the string of characters to write to the terminal connection.
     // Return Value:
     // - <none>
+    bool TermControl::HasUserInput() const noexcept
+    {
+        return _core.HasUserInput();
+    }
+
     void TermControl::SendInput(const winrt::hstring& wstr)
     {
         // Dismiss any previewed input.

@@ -203,6 +203,7 @@ fn format_epoch_ms_utc_known_values() {
     assert_eq!(format_epoch_ms_utc(1_609_459_200_000), "2021-01-01 00:00");
     // 2021-03-01 (just past a non-leap February) sanity-checks the month math.
     assert_eq!(format_epoch_ms_utc(1_614_556_800_000), "2021-03-01 00:00");
+    assert_eq!(format_epoch_seconds_utc(1_609_459_200), "2021-01-01 00:00");
 }
 
 #[test]

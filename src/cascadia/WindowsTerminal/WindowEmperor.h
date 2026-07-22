@@ -31,6 +31,7 @@ public:
         WM_IDENTIFY_ALL_WINDOWS,
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
         WM_GET_WINDOW_LIST,
+        WM_GET_WINDOW_FOR_PROTOCOL,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -40,6 +41,12 @@ public:
     {
         uint64_t Id;
         std::wstring Name;
+    };
+
+    struct ProtocolWindowRequest
+    {
+        uint64_t Id;
+        std::shared_ptr<AppHost> Host;
     };
 
     WindowEmperor();
@@ -59,6 +66,7 @@ public:
     const std::wstring& GetComClsid() const noexcept { return _comClsid; }
     const std::vector<std::shared_ptr<::AppHost>>& GetWindows() const noexcept { return _windows; }
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
+    std::shared_ptr<AppHost> GetWindowForProtocol(uint64_t id) const noexcept;
 
 private:
     struct SummonWindowSelectionArgs

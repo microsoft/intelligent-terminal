@@ -40,6 +40,9 @@ namespace Microsoft.Terminal.Settings.Editor
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, CenterOnLaunch);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Int32, InitialRows);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Int32, InitialCols);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, RestoreShellSessions);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, RestoreAgentSessions);
+        PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, ContinueRunningCommands);
 
         Boolean StartOnUserLogin { get; set; };
         Boolean StartOnUserLoginAvailable { get; };

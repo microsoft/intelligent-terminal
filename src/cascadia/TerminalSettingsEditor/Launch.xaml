@@ -316,6 +316,24 @@
                                   Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                 </Grid>
             </local:SettingContainer>
+
+            <!--  Durable Session  -->
+            <TextBlock x:Uid="Globals_DurableSessionGroupHeader"
+                       Style="{StaticResource TextBlockSubHeaderStyle}" />
+
+            <local:SettingContainer x:Name="DurableSession"
+                                    x:Uid="Globals_DurableSession"
+                                    StartExpanded="True"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <StackPanel>
+                    <CheckBox x:Uid="Globals_RestoreShellSessions"
+                              IsChecked="{x:Bind ViewModel.RestoreShellSessions, Mode=TwoWay}" />
+                    <CheckBox x:Uid="Globals_RestoreAgentSessions"
+                              IsChecked="{x:Bind ViewModel.RestoreAgentSessions, Mode=TwoWay}" />
+                    <CheckBox x:Uid="Globals_ContinueRunningCommands"
+                              IsChecked="{x:Bind ViewModel.ContinueRunningCommands, Mode=TwoWay}" />
+                </StackPanel>
+            </local:SettingContainer>
         </StackPanel>
     </StackPanel>
 </Page>

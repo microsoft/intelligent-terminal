@@ -321,6 +321,105 @@ pub fn parse_sessions_list_response(
     serde_json::from_str::<SessionsListResponse>(raw.get())
 }
 
+// =============================================================
+// Durable shell-session extension protocol.
+// =============================================================
+
+pub const INTELLTERM_METHOD_SHELL_SESSIONS_LIST: &str =
+    "_intellterm.wta/shell_sessions/list";
+pub const INTELLTERM_METHOD_SHELL_SESSION_SAVE: &str =
+    "_intellterm.wta/shell_sessions/save";
+pub const INTELLTERM_METHOD_SHELL_SESSION_GET: &str =
+    "_intellterm.wta/shell_sessions/get";
+pub const INTELLTERM_METHOD_SHELL_SESSION_DELETE: &str =
+    "_intellterm.wta/shell_sessions/delete";
+
+fn build_typed_ext_request<T: serde::Serialize>(
+    method: &'static str,
+    params: &T,
+) -> acp::schema::v1::ExtRequest {
+    let raw = serde_json::value::to_raw_value(params)
+        .expect("typed WTA extension parameters are serializable");
+    acp::schema::v1::ExtRequest::new(method, Arc::from(raw))
+}
+
+pub fn build_shell_sessions_list_request(elevated: bool) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_SHELL_SESSIONS_LIST,
+        &crate::shell_session_store::ShellSessionsListParams { elevated },
+    )
+}
+
+pub fn parse_shell_sessions_list_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionsListParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_shell_sessions_list_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionsListResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_shell_session_save_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionSaveParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn build_shell_session_get_request(
+    id: String,
+    elevated: bool,
+) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_SHELL_SESSION_GET,
+        &crate::shell_session_store::ShellSessionGetParams { id, elevated },
+    )
+}
+
+pub fn parse_shell_session_get_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionGetParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_shell_session_get_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionGetResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn build_shell_session_delete_request(
+    id: String,
+    elevated: bool,
+) -> acp::schema::v1::ExtRequest {
+    build_typed_ext_request(
+        INTELLTERM_METHOD_SHELL_SESSION_DELETE,
+        &crate::shell_session_store::ShellSessionDeleteParams { id, elevated },
+    )
+}
+
+pub fn parse_shell_session_delete_params(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionDeleteParams, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn parse_shell_session_delete_response(
+    raw: &serde_json::value::RawValue,
+) -> Result<crate::shell_session_store::ShellSessionDeleteResponse, serde_json::Error> {
+    serde_json::from_str(raw.get())
+}
+
+pub fn build_shell_session_ext_response<T: serde::Serialize>(
+    response: &T,
+) -> acp::schema::v1::ExtResponse {
+    let raw = serde_json::value::to_raw_value(response)
+        .expect("typed WTA extension response is serializable");
+    acp::schema::v1::ExtResponse::new(raw.into())
+}
+
 /// Parsed view of an inbound ACP `ExtNotification` from master, as
 /// recognized by the helper's live-set mirror.
 ///
@@ -432,6 +531,10 @@ pub enum WtaExtRequest {
     SessionResumeDispatched(SessionResumeDispatchedParams),
     /// `_intellterm.wta/session_focus` — focus + typed focus result.
     SessionFocus(SessionFocusParams),
+    ShellSessionsList(crate::shell_session_store::ShellSessionsListParams),
+    ShellSessionSave(crate::shell_session_store::ShellSessionSaveParams),
+    ShellSessionGet(crate::shell_session_store::ShellSessionGetParams),
+    ShellSessionDelete(crate::shell_session_store::ShellSessionDeleteParams),
     /// Not one of ours (or a future agent-native extension); forward it
     /// verbatim to the agent CLI so unknown extension methods still work.
     ForwardToAgent(acp::schema::v1::ExtRequest),
@@ -480,6 +583,14 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
         decode!(SessionResumeDispatched, parse_session_resume_dispatched_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_FOCUS) {
         decode!(SessionFocus, parse_session_focus_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSIONS_LIST) {
+        decode!(ShellSessionsList, parse_shell_sessions_list_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSION_SAVE) {
+        decode!(ShellSessionSave, parse_shell_session_save_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSION_GET) {
+        decode!(ShellSessionGet, parse_shell_session_get_params)
+    } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SHELL_SESSION_DELETE) {
+        decode!(ShellSessionDelete, parse_shell_session_delete_params)
     } else {
         WtaExtRequest::ForwardToAgent(req)
     }
@@ -2901,6 +3012,49 @@ mod tests {
         assert!(matches!(parse_ext_request(build_born_bound_request(&ev)), WtaExtRequest::SessionBornBound(..)));
         assert!(matches!(parse_ext_request(build_session_resume_dispatched_request(&sid)), WtaExtRequest::SessionResumeDispatched(_)));
         assert!(matches!(parse_ext_request(build_session_focus_request(&sid)), WtaExtRequest::SessionFocus(_)));
+    }
+
+    #[test]
+    fn parse_ext_request_decodes_typed_shell_session_methods() {
+        use crate::shell_session_store::{
+            ShellSessionBufferInput, ShellSessionDeleteParams, ShellSessionSaveParams,
+        };
+
+        let save = ShellSessionSaveParams {
+            id: None,
+            expected_revision: None,
+            name: "duplicate names are valid".to_string(),
+            active_pane_cwd: r"C:\repo".to_string(),
+            layout_json: "{}".to_string(),
+            elevated: false,
+            buffers: vec![ShellSessionBufferInput {
+                pane_key: "pane".to_string(),
+                staging_path: PathBuf::from("staging"),
+            }],
+        };
+        let delete = ShellSessionDeleteParams {
+            id: "id".to_string(),
+            elevated: true,
+        };
+        assert!(matches!(
+            parse_ext_request(build_shell_sessions_list_request(false)),
+            WtaExtRequest::ShellSessionsList(_)
+        ));
+        assert!(matches!(
+            parse_ext_request(build_typed_ext_request(INTELLTERM_METHOD_SHELL_SESSION_SAVE, &save)),
+            WtaExtRequest::ShellSessionSave(_)
+        ));
+        assert!(matches!(
+            parse_ext_request(build_shell_session_get_request("id".to_string(), false)),
+            WtaExtRequest::ShellSessionGet(_)
+        ));
+        assert!(matches!(
+            parse_ext_request(build_shell_session_delete_request(
+                delete.id,
+                delete.elevated
+            )),
+            WtaExtRequest::ShellSessionDelete(_)
+        ));
     }
 
     /// Regression: ACP 1.0 delivers the method name with the leading `_`

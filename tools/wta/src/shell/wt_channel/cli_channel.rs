@@ -449,6 +449,22 @@ impl WtChannel for CliChannel {
     ) -> anyhow::Result<serde_json::Value> {
         // Map protocol method names to wtcli subcommands + args.
         match method {
+            "list_shell_sessions" => self.run_wtcli(&["list-shell-sessions"]).await,
+            "restore_shell_session" => {
+                let id = params
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow!("restore_shell_session: missing 'id' parameter"))?;
+                let window_id = params
+                    .get("window_id")
+                    .and_then(json_id_as_str)
+                    .unwrap_or_default();
+                let mut args = vec!["restore-shell-session", id];
+                if !window_id.is_empty() {
+                    args.extend(["-w", &window_id]);
+                }
+                self.run_wtcli(&args).await
+            }
             "list_windows" => self.run_wtcli(&["list-windows"]).await,
             "list_tabs" => {
                 let mut args = vec!["list-tabs"];

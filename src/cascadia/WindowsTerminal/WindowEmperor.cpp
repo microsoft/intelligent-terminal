@@ -244,6 +244,16 @@ AppHost* WindowEmperor::GetWindowById(uint64_t id) const noexcept
     return nullptr;
 }
 
+std::shared_ptr<AppHost> WindowEmperor::GetWindowForProtocol(const uint64_t id) const noexcept
+{
+    ProtocolWindowRequest request{ id };
+    SendMessageW(_window.get(),
+                 WM_GET_WINDOW_FOR_PROTOCOL,
+                 0,
+                 reinterpret_cast<LPARAM>(&request));
+    return std::move(request.Host);
+}
+
 AppHost* WindowEmperor::GetWindowByName(std::wstring_view name) const noexcept
 {
     _assertIsMainThread();
@@ -363,6 +373,26 @@ void WindowEmperor::_createWindowMaybeRestoringWorkspace(uint64_t windowId, cons
     {
         if (const auto layout = ApplicationState::SharedInstance().TakeWorkspace(windowName))
         {
+            if (const auto actions = layout.TabLayout())
+            {
+                for (const auto& action : actions)
+                {
+                    INewContentArgs contentArgs{ nullptr };
+                    if (const auto args = action.Args().try_as<NewTabArgs>())
+                    {
+                        contentArgs = args.ContentArgs();
+                    }
+                    else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+                    {
+                        contentArgs = args.ContentArgs();
+                    }
+
+                    if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+                    {
+                        terminalArgs.UseWorkspaceBuffer(true);
+                    }
+                }
+            }
             request.PersistedLayout(layout);
         }
     }
@@ -1176,14 +1206,7 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                         // tab/buffer state as a workspace so it can be restored later.
                         try
                         {
-                            const auto windowName = strong->Logic().WindowProperties().WindowName();
-                            if (!windowName.empty())
-                            {
-                                if (const auto layout = strong->Logic().GetWindowLayout())
-                                {
-                                    ApplicationState::SharedInstance().SaveWorkspace(windowName, layout);
-                                }
-                            }
+                            strong->Logic().PersistWorkspace();
                         }
                         CATCH_LOG();
 
@@ -1223,6 +1246,22 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 {
                     const auto props = host->Logic().WindowProperties();
                     result->emplace_back(WindowListEntry{ props.WindowId(), std::wstring{ props.WindowName() } });
+                }
+            }
+            return 0;
+        }
+        case WM_GET_WINDOW_FOR_PROTOCOL:
+        {
+            auto* request = reinterpret_cast<ProtocolWindowRequest*>(lParam);
+            if (request)
+            {
+                const auto target = request->Id == 0 ? _mostRecentWindow() : GetWindowById(request->Id);
+                const auto found = std::find_if(_windows.begin(), _windows.end(), [&](const auto& host) {
+                    return host.get() == target;
+                });
+                if (found != _windows.end())
+                {
+                    request->Host = *found;
                 }
             }
             return 0;

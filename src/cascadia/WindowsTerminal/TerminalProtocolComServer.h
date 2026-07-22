@@ -52,12 +52,14 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP GetProcessStatus(GUID sessionId, BSTR* json) override;
     STDMETHODIMP GetSessionVariable(GUID sessionId, BSTR name, BSTR* json) override;
     STDMETHODIMP GetSettings(BSTR* json) override;
+    STDMETHODIMP ListShellSessions(BSTR* json) override;
     STDMETHODIMP CreateTab(unsigned __int64 windowId, BSTR profile, BSTR commandline, BSTR title, BSTR startingDirectory, boolean suppressAppTitle, boolean background, BSTR* json) override;
     STDMETHODIMP SplitPane(GUID sessionId, BSTR direction, float size, BSTR profile, BSTR commandline, boolean background, BSTR* json) override;
     STDMETHODIMP ClosePane(GUID sessionId) override;
     STDMETHODIMP SendInput(GUID sessionId, BSTR text) override;
     STDMETHODIMP FocusPane(GUID sessionId) override;
     STDMETHODIMP SetSessionVariable(GUID sessionId, BSTR name, BSTR value) override;
+    STDMETHODIMP RestoreShellSession(unsigned __int64 windowId, BSTR id) override;
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
@@ -137,6 +139,7 @@ private:
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStateChangedToPage(const winrt::hstring& eventJson);
     static void _dispatchResumeInNewAgentTabToPage(const winrt::hstring& eventJson);
+    static void _dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentChipTargetToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentStackToPage(const winrt::hstring& eventJson);
     static void _dispatchRestartAgentPaneToPage(const winrt::hstring& eventJson);

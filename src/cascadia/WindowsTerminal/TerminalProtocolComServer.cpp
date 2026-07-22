@@ -517,12 +517,14 @@ try
         "get_process_status",
         "get_session_variable",
         "get_settings",
+        "list_shell_sessions",
         "create_tab",
         "split_pane",
         "close_pane",
         "send_input",
         "focus_pane",
         "set_session_variable",
+        "restore_shell_session",
         "subscribe",
         "unsubscribe",
         "send_event",
@@ -593,6 +595,28 @@ try
     }
 
     *json = _bstrFromJson(arr);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::ListShellSessions(BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    auto* host = s_emperor->GetMostRecentWindow();
+    RETURN_HR_IF(E_FAIL, !host);
+    const auto page = _getPage(host);
+    RETURN_HR_IF(E_FAIL, !page);
+
+    const auto serialized = winrt::to_string(page.ListProtocolShellSessions().get());
+    Json::Value sessions;
+    std::string errors;
+    std::istringstream stream{ serialized };
+    RETURN_HR_IF(E_UNEXPECTED, !Json::parseFromStream(Json::CharReaderBuilder{}, stream, &sessions, &errors));
+    *json = _bstrFromJson(sessions);
     return S_OK;
 }
 CATCH_RETURN()
@@ -783,19 +807,10 @@ try
     *json = nullptr;
     RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
-    // Find target window.
-    AppHost* targetHost = nullptr;
-    if (windowId != 0)
-    {
-        targetHost = s_emperor->GetWindowById(windowId);
-    }
-    else
-    {
-        targetHost = s_emperor->GetMostRecentWindow();
-    }
+    const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
     RETURN_HR_IF(E_FAIL, !targetHost);
 
-    const auto page = _getPage(targetHost);
+    const auto page = _getPage(targetHost.get());
     RETURN_HR_IF(E_FAIL, !page);
 
     // Build NewTerminalArgs.
@@ -944,6 +959,22 @@ try
 }
 CATCH_RETURN()
 
+STDMETHODIMP TerminalProtocolComServer::RestoreShellSession(unsigned __int64 windowId, BSTR id)
+try
+{
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    const auto idH = _hstr(id);
+    RETURN_HR_IF(E_INVALIDARG, idH.empty());
+
+    const auto targetHost = s_emperor->GetWindowForProtocol(windowId);
+    RETURN_HR_IF(E_FAIL, !targetHost);
+
+    const auto page = _getPage(targetHost.get());
+    RETURN_HR_IF(E_FAIL, !page);
+    return page.RestoreProtocolShellSession(idH).get() ? S_OK : HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+}
+CATCH_RETURN()
+
 STDMETHODIMP TerminalProtocolComServer::SetSessionVariable(GUID sessionId, BSTR name, BSTR value)
 try
 {
@@ -1089,6 +1120,9 @@ try
         // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::PaneAgentSession:
+        _dispatchPaneAgentSessionToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentChipTarget:
         // Helper override for which pane gets the "Agent" chip; null
         // pane_session_id reverts the tab to source-flag-driven chip.
@@ -1111,7 +1145,12 @@ try
     {
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        s_NotifyEventToComClients(Json::writeString(wb, evt));
+        const auto normalized = Json::writeString(wb, evt);
+        // Hooks publish agent lifecycle events through the broadcast route.
+        // Mirror those events into TerminalPage so durable tab snapshots see
+        // the same pane/session binding as WTA's registry.
+        _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized));
+        s_NotifyEventToComClients(normalized);
         return S_OK;
     }
     default:
@@ -1404,6 +1443,39 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnPaneAgentSessionChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Page may have been torn down during dispatch.
                 }
             });
     }

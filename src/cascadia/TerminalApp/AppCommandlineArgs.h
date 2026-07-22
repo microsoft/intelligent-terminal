@@ -62,6 +62,15 @@ private:
         CLI::Option* commandlineOption;
         CLI::Option* profileNameOption;
         CLI::Option* sessionIdOption;
+        CLI::Option* useWorkspaceBufferOption;
+        CLI::Option* agentSessionIdOption;
+        CLI::Option* agentSessionAgentOption;
+        CLI::Option* agentResumeCommandlineOption;
+        CLI::Option* agentPaneSessionIdOption;
+        CLI::Option* agentPaneAgentOption;
+        CLI::Option* agentPaneViewOption;
+        CLI::Option* agentPaneOpenOption;
+        CLI::Option* agentPanePositionOption;
         CLI::Option* startingDirectoryOption;
         CLI::Option* titleOption;
         CLI::Option* tabColorOption;
@@ -98,6 +107,15 @@ private:
 
     std::string _profileName;
     std::string _sessionId;
+    bool _useWorkspaceBuffer{ false };
+    std::string _agentSessionId;
+    std::string _agentSessionAgent;
+    std::string _agentResumeCommandline;
+    std::string _agentPaneSessionId;
+    std::string _agentPaneAgent;
+    std::string _agentPaneView;
+    bool _agentPaneOpen{ false };
+    std::string _agentPanePosition;
     std::string _startingDirectory;
     std::string _startingTitle;
     std::string _startingTabColor;

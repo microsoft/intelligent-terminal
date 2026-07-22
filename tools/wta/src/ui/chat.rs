@@ -33,7 +33,10 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let reveal_catching_up = pending_text
         .as_deref()
         .is_some_and(|text| tab.reveal_chars < text.chars().count());
-    let activity = if tab.turn.spinner_label().is_some() && !reveal_catching_up {
+    let has_activity = matches!(app.state, crate::app::ConnectionState::Connecting(_))
+        || tab.loading_session
+        || tab.turn.spinner_label().is_some();
+    let activity = if has_activity && !reveal_catching_up {
         1usize
     } else {
         0
@@ -307,6 +310,20 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
     }
     let tab = app.current_tab();
+    if tab.loading_session {
+        let short_id: String = tab
+            .loading_target_session_id
+            .as_deref()
+            .unwrap_or_default()
+            .chars()
+            .take(8)
+            .collect();
+        let label = t!("system.resuming_session", session_id = short_id).into_owned();
+        return Some(Line::from(shimmer::shimmer_spans(
+            &label,
+            tab.activity_frame,
+        )));
+    }
     if tab.turn.spinner_label().is_none() {
         return None;
     }

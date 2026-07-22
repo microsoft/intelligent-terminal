@@ -620,6 +620,24 @@ void AppCommandlineArgs::_addNewTerminalArgs(AppCommandlineArgs::NewTerminalSubc
     subcommand.sessionIdOption = subcommand.subcommand->add_option("--sessionId",
                                                                    _sessionId,
                                                                    RS_A(L"CmdSessionIdArgDesc"));
+    subcommand.useWorkspaceBufferOption = subcommand.subcommand->add_flag("--useWorkspaceBuffer", _useWorkspaceBuffer);
+    subcommand.useWorkspaceBufferOption->group("");
+    subcommand.agentSessionIdOption = subcommand.subcommand->add_option("--agentSessionId", _agentSessionId);
+    subcommand.agentSessionIdOption->group("");
+    subcommand.agentSessionAgentOption = subcommand.subcommand->add_option("--agentSessionAgent", _agentSessionAgent);
+    subcommand.agentSessionAgentOption->group("");
+    subcommand.agentResumeCommandlineOption = subcommand.subcommand->add_option("--agentResumeCommandline", _agentResumeCommandline);
+    subcommand.agentResumeCommandlineOption->group("");
+    subcommand.agentPaneSessionIdOption = subcommand.subcommand->add_option("--agentPaneSessionId", _agentPaneSessionId);
+    subcommand.agentPaneSessionIdOption->group("");
+    subcommand.agentPaneAgentOption = subcommand.subcommand->add_option("--agentPaneAgent", _agentPaneAgent);
+    subcommand.agentPaneAgentOption->group("");
+    subcommand.agentPaneViewOption = subcommand.subcommand->add_option("--agentPaneView", _agentPaneView);
+    subcommand.agentPaneViewOption->group("");
+    subcommand.agentPaneOpenOption = subcommand.subcommand->add_flag("--agentPaneOpen", _agentPaneOpen);
+    subcommand.agentPaneOpenOption->group("");
+    subcommand.agentPanePositionOption = subcommand.subcommand->add_option("--agentPanePosition", _agentPanePosition);
+    subcommand.agentPanePositionOption->group("");
     subcommand.startingDirectoryOption = subcommand.subcommand->add_option("-d,--startingDirectory",
                                                                            _startingDirectory,
                                                                            RS_A(L"CmdStartingDirArgDesc"));
@@ -704,6 +722,30 @@ NewTerminalArgs AppCommandlineArgs::_getNewTerminalArgs(AppCommandlineArgs::NewT
         const auto str = winrt::to_hstring(_sessionId);
         const auto id = ::Microsoft::Console::Utils::GuidFromString(str.c_str());
         args.SessionId(id);
+    }
+    if (*subcommand.useWorkspaceBufferOption)
+    {
+        args.UseWorkspaceBuffer(true);
+    }
+    if (*subcommand.agentSessionIdOption)
+    {
+        args.AgentSessionId(winrt::to_hstring(_agentSessionId));
+    }
+    if (*subcommand.agentSessionAgentOption)
+    {
+        args.AgentSessionAgent(winrt::to_hstring(_agentSessionAgent));
+    }
+    if (*subcommand.agentResumeCommandlineOption)
+    {
+        args.AgentResumeCommandline(winrt::to_hstring(_agentResumeCommandline));
+    }
+    if (*subcommand.agentPaneSessionIdOption)
+    {
+        args.AgentPaneSessionId(winrt::to_hstring(_agentPaneSessionId));
+        args.AgentPaneAgent(winrt::to_hstring(_agentPaneAgent));
+        args.AgentPaneView(winrt::to_hstring(_agentPaneView));
+        args.AgentPaneOpen(_agentPaneOpen);
+        args.AgentPanePosition(winrt::to_hstring(_agentPanePosition));
     }
 
     if (*subcommand.startingDirectoryOption)
@@ -803,6 +845,15 @@ void AppCommandlineArgs::_resetStateToDefault()
 {
     _profileName.clear();
     _sessionId.clear();
+    _useWorkspaceBuffer = false;
+    _agentSessionId.clear();
+    _agentSessionAgent.clear();
+    _agentResumeCommandline.clear();
+    _agentPaneSessionId.clear();
+    _agentPaneAgent.clear();
+    _agentPaneView.clear();
+    _agentPaneOpen = false;
+    _agentPanePosition.clear();
     _startingDirectory.clear();
     _startingTitle.clear();
     _startingTabColor.clear();

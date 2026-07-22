@@ -28,6 +28,7 @@ namespace ControlUnitTests
         TEST_METHOD(InstantiateCore);
         TEST_METHOD(TestInitialize);
         TEST_METHOD(TestAdjustAcrylic);
+        TEST_METHOD(TestUserInputTracking);
 
         TEST_METHOD(TestFreeAfterClose);
 
@@ -129,6 +130,21 @@ namespace ControlUnitTests
 #endif
         VERIFY_IS_TRUE(core->_initializedTerminal);
         VERIFY_ARE_EQUAL(30, core->_terminal->GetViewport().Width());
+    }
+
+    void ControlCoreTests::TestUserInputTracking()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        _standardInit(core);
+
+        VERIFY_IS_FALSE(core->HasUserInput());
+
+        conn->WriteInput(winrt_wstring_to_array_view(L"PS C:\\> "));
+        VERIFY_IS_FALSE(core->HasUserInput());
+
+        core->SendInput(L"echo hello");
+        VERIFY_IS_TRUE(core->HasUserInput());
     }
 
     void ControlCoreTests::TestAdjustAcrylic()

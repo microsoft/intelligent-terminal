@@ -181,6 +181,7 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine CloseWindow();
         winrt::Microsoft::Terminal::Settings::Model::WindowLayout GetWindowLayout();
         void PersistState();
+        void PersistWorkspace();
         std::vector<IPaneContent> Panes() const;
 
         void ToggleFocusMode();
@@ -250,12 +251,15 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
+        Windows::Foundation::IAsyncOperation<hstring> ListProtocolShellSessions();
+        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolShellSession(hstring id);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        void OnPaneAgentSessionChanged(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentPaneRestartRequested(hstring eventJson);
@@ -495,6 +499,19 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        struct _PendingDurableAgentPaneRestore
+        {
+            uint64_t startupActionBatchId{ 0 };
+            std::string sessionId;
+            winrt::hstring agent;
+            std::string cwd;
+            std::string view;
+            bool paneOpen{ false };
+            winrt::hstring panePosition;
+        };
+        std::unordered_map<winrt::hstring, _PendingDurableAgentPaneRestore> _pendingDurableAgentPaneRestores;
+        uint64_t _nextStartupActionBatchId{ 0 };
+        uint64_t _currentStartupActionBatchId{ 0 };
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
         // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
@@ -561,7 +578,10 @@ namespace winrt::TerminalApp::implementation
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
                                               std::string_view initialLoadCwd = {},
-                                              std::wstring_view initialAuthAgent = {});
+                                              std::wstring_view initialAuthAgent = {},
+                                              std::string_view initialView = {},
+                                              std::wstring_view initialPanePosition = {});
+        void _RestorePendingDurableAgentPanes(uint64_t startupActionBatchId);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.
@@ -665,12 +685,23 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
+        void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        void _PersistShellSession(Tab* tab);
+        struct _PaneAgentSession
+        {
+            winrt::hstring sessionId;
+            winrt::hstring agent;
+            winrt::hstring resumeCommandline;
+        };
+        std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
         void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
         void _SaveWorkspaceIfNeeded();
+        void _SaveWorkspaceSnapshot(const winrt::hstring& name, const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout);
+        winrt::Microsoft::Terminal::Settings::Model::WindowLayout _GetWindowLayout(bool includeDurableSessionMetadata);
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);

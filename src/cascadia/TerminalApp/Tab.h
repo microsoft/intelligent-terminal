@@ -160,6 +160,14 @@ namespace winrt::TerminalApp::implementation
         // wta's per-tab TabSession routing.
         const winrt::hstring& StableId() const noexcept { return _stableId; }
 
+        const winrt::hstring& DurableShellSessionId() const noexcept { return _durableShellSessionId; }
+        int64_t DurableShellSessionRevision() const noexcept { return _durableShellSessionRevision; }
+        void SetDurableShellSession(const winrt::hstring& id, const int64_t revision)
+        {
+            _durableShellSessionId = id;
+            _durableShellSessionRevision = revision;
+        }
+
         winrt::TerminalApp::TerminalTabStatus TabStatus()
         {
             return _tabStatus;
@@ -285,6 +293,8 @@ namespace winrt::TerminalApp::implementation
         bool _changingActivePane{ false };
 
         winrt::hstring _stableId{};
+        winrt::hstring _durableShellSessionId{};
+        int64_t _durableShellSessionRevision{ 0 };
 
         winrt::hstring _runtimeTabText{};
         bool _inRename{ false };

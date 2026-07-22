@@ -166,6 +166,39 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             const auto idStr = ::Microsoft::Console::Utils::GuidToString(id);
             fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--sessionId \"{}\" "), idStr);
         }
+        if (UseWorkspaceBuffer())
+        {
+            str.append(L"--useWorkspaceBuffer ");
+        }
+        if (!AgentSessionId().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionId {} "), QuoteAndEscapeCommandlineArg(AgentSessionId()));
+        }
+        if (!AgentSessionAgent().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentSessionAgent {} "), QuoteAndEscapeCommandlineArg(AgentSessionAgent()));
+        }
+        if (!AgentResumeCommandline().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentResumeCommandline {} "), QuoteAndEscapeCommandlineArg(AgentResumeCommandline()));
+        }
+        if (!AgentPaneSessionId().empty())
+        {
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPaneSessionId {} "), QuoteAndEscapeCommandlineArg(AgentPaneSessionId()));
+            if (!AgentPaneAgent().empty())
+            {
+                fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPaneAgent {} "), QuoteAndEscapeCommandlineArg(AgentPaneAgent()));
+            }
+            fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPaneView {} "), QuoteAndEscapeCommandlineArg(AgentPaneView()));
+            if (AgentPaneOpen())
+            {
+                str.append(L"--agentPaneOpen ");
+            }
+            if (!AgentPanePosition().empty())
+            {
+                fmt::format_to(std::back_inserter(str), FMT_COMPILE(L"--agentPanePosition {} "), QuoteAndEscapeCommandlineArg(AgentPanePosition()));
+            }
+        }
 
         // The caller is always expected to provide the evaluated profile in the
         // NewTerminalArgs, not the index

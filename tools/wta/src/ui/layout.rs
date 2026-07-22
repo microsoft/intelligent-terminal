@@ -3,7 +3,7 @@ use ratatui::prelude::*;
 
 use super::{
     agent_popup, agents_view, auth, chat, command_popup, debug_panel, input, model_popup,
-    permission, recommendations, setup,
+    permission, recommendations, setup, shell_sessions_view,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -74,6 +74,23 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             cli_filter.as_ref(),
             origin_filter,
             show_loading,
+        );
+        return;
+    }
+
+    if app.current_tab().current_view == View::ShellSessions {
+        let tab = app.current_tab_mut();
+        shell_sessions_view::render(
+            frame,
+            area,
+            &tab.shell_sessions,
+            &tab.shell_sessions_query,
+            tab.shell_sessions_search_focused,
+            &mut tab.shell_sessions_list_state,
+            tab.shell_sessions_loading,
+            tab.shell_sessions_error.as_deref(),
+            tab.shell_session_delete_confirmation.as_deref(),
+            tab.shell_session_delete_in_flight,
         );
         return;
     }
@@ -243,7 +260,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 /// (not char-count) so localized hints containing wide CJK glyphs are clipped
 /// at the right column instead of overrunning the pane. The returned string is
 /// guaranteed to have a display width of at most `max`.
-fn truncate_to_width(s: &str, max: usize) -> String {
+pub(super) fn truncate_to_width(s: &str, max: usize) -> String {
     use unicode_width::UnicodeWidthChar;
 
     let total: usize = s

@@ -29,6 +29,7 @@ mod runtime_paths;
 mod session_history;
 mod session_mgmt;
 mod session_registry;
+mod shell_session_store;
 mod session_watcher;
 mod shell;
 mod telemetry;
@@ -212,6 +213,10 @@ struct Cli {
     /// Wired to WT's Ctrl+Shift+/ binding via TerminalPage.
     #[arg(long, value_enum, default_value_t = InitialView::Chat)]
     initial_view: InitialView,
+
+    /// Initial per-tab agent pane position restored by Windows Terminal.
+    #[arg(long)]
+    initial_pane_position: Option<String>,
 
     /// UI language override, passed by Windows Terminal from the
     /// `settings.json` `Language` field. When present, wta uses this
@@ -648,6 +653,7 @@ impl HooksCliFilter {
 enum InitialView {
     Chat,
     Sessions,
+    ShellSessions,
 }
 
 // ─── Entry Point ────────────────────────────────────────────────────────────
@@ -1627,6 +1633,29 @@ async fn register_launched_session_with_master(
     }
 }
 
+fn publish_pane_agent_session_binding(
+    pane_session_id: &str,
+    agent_session_id: &str,
+    agent: &str,
+    resume_commandline: &str,
+) {
+    let payload = serde_json::json!({
+        "type": "event",
+        "method": "pane_agent_session_changed",
+        "params": {
+            "pane_id": pane_session_id,
+            "agent_session_id": agent_session_id,
+            "agent": agent,
+            "resume_commandline": resume_commandline,
+        }
+    })
+    .to_string();
+    crate::shell::wt_channel::spawn_wtcli_async(&[
+        "publish".to_string(),
+        payload,
+    ]);
+}
+
 async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> {
     if let Some(pipe) = master_override.filter(|s| !s.trim().is_empty()) {
         return Ok(pipe);
@@ -1757,6 +1786,10 @@ fn updated_label(s: &session_registry::SessionInfo) -> String {
 /// date crate. Uses Howard Hinnant's `civil_from_days` algorithm.
 fn format_epoch_ms_utc(ms: u64) -> String {
     let secs = (ms / 1000) as i64;
+    format_epoch_seconds_utc(secs)
+}
+
+pub(crate) fn format_epoch_seconds_utc(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
     let tod = secs.rem_euclid(86_400);
     let (hour, min) = (tod / 3600, (tod % 3600) / 60);
@@ -2459,6 +2492,27 @@ async fn delegate_with_context(
                 "delegate WSL tab created",
             );
 
+            if let (Some(sid), Some(pane)) =
+                (pinned_session_id.as_deref(), pane_guid.as_deref())
+            {
+                if let Ok(inner_resume) =
+                    crate::coordinator::build_wsl_delegate_resume_commandline(runtime, sid)
+                {
+                    let escaped =
+                        crate::coordinator::quote_windows_commandline_arg(&inner_resume);
+                    let login_invocation = format!("bash -lc {escaped}");
+                    let distro_arg =
+                        crate::coordinator::quote_windows_commandline_arg(distro);
+                    let resume_commandline = match wsl_cwd {
+                        Some(cwd) => {
+                            format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
+                        }
+                        None => format!("wsl -d {distro_arg} -- {login_invocation}"),
+                    };
+                    publish_pane_agent_session_binding(pane, sid, &runtime.id, &resume_commandline);
+                }
+            }
+
             // Born-bound registration for the WSL delegate session — but only
             // when WSL sessions are enabled. The whole WSL surface is gated on
             // `WTA_WSL_SESSIONS`; with it off we must not surface *any* WSL
@@ -2519,6 +2573,11 @@ async fn delegate_with_context(
     // bind them with no hooks (best-effort). Only when both are known —
     // i.e. a pinnable agent (Copilot/Claude/Gemini) whose tab was created.
     if let (Some(sid), Some(pane)) = (pinned_session_id.as_deref(), pane_guid.as_deref()) {
+        if let Ok(resume_commandline) =
+            crate::coordinator::build_delegate_resume_commandline(runtime, sid)
+        {
+            publish_pane_agent_session_binding(pane, sid, &runtime.id, &resume_commandline);
+        }
         register_launched_session_with_master(sid, pane, &runtime.id, cwd, None).await;
     }
 
@@ -3421,6 +3480,13 @@ async fn run_acp_app(
                         .entry(owner_tab_id.clone())
                         .or_default();
                     tab.pane_open = !cli.start_stashed;
+                    tab.agent_pane_position = match cli.initial_pane_position.as_deref() {
+                        Some("left") => Some("left"),
+                        Some("right") => Some("right"),
+                        Some("top") | Some("up") => Some("up"),
+                        Some("bottom") => Some("bottom"),
+                        _ => None,
+                    };
                     app_state.tab_id = Some(owner_tab_id.clone());
                     app_state.owner_tab_id = Some(owner_tab_id.clone());
                 }
@@ -3536,16 +3602,22 @@ async fn run_acp_app(
             //
             // Skip in setup mode: --setup takes the diagnostic path and the user
             // shouldn't be dropped into an empty session list.
-            if cli.setup.is_none()
-                && !start_in_initial_auth
-                && cli.initial_view == InitialView::Sessions
-            {
-                tracing::info!(target: "initial_view", "starting in agent session view");
+            if cli.setup.is_none() && !start_in_initial_auth {
                 let tab_id = app_state
                     .tab_id
                     .clone()
                     .unwrap_or_else(|| app::DEFAULT_TAB_ID.to_string());
-                app_state.open_agents_view_for_tab(tab_id);
+                match cli.initial_view {
+                    InitialView::Sessions => {
+                        tracing::info!(target: "initial_view", "starting in agent session view");
+                        app_state.open_agents_view_for_tab(tab_id);
+                    }
+                    InitialView::ShellSessions => {
+                        tracing::info!(target: "initial_view", "starting in shell sessions view");
+                        app_state.open_shell_sessions_view_for_tab(tab_id);
+                    }
+                    InitialView::Chat => {}
+                }
             }
 
             // Project the initial active-tab state to C++ once, after the

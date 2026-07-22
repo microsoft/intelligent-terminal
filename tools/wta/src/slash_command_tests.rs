@@ -148,6 +148,19 @@ fn slash_sessions_opens_agents_view() {
 }
 
 #[test]
+fn slash_shell_sessions_opens_shell_sessions_view() {
+    let mut app = test_app();
+
+    run_slash(&mut app, "shell-sessions");
+
+    assert_eq!(
+        app.current_tab().current_view,
+        View::ShellSessions,
+        "/shell-sessions must switch to the saved shell-session view"
+    );
+}
+
+#[test]
 fn slash_restart_resets_connection_and_clears_sessions() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
