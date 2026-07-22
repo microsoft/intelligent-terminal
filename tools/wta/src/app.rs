@@ -7684,6 +7684,7 @@ impl App {
         Some(crate::ui::PopupState {
             candidates,
             selected: tab.command_popup_selected,
+            pane_focused: self.pane_focused,
             current_model: self.current_model_display(),
         })
     }
@@ -7757,6 +7758,7 @@ impl App {
         Some(crate::ui::ModelPopupState {
             models: &self.available_models,
             selected: tab.model_picker_selected,
+            pane_focused: self.pane_focused,
             current_id,
         })
     }
@@ -7769,6 +7771,7 @@ impl App {
         Some(crate::ui::AgentPopupState {
             agents: &self.available_agents,
             selected: tab.agent_picker_selected,
+            pane_focused: self.pane_focused,
             current_id: &self.current_agent_id,
         })
     }

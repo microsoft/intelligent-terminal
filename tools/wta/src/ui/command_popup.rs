@@ -22,6 +22,7 @@ const POPUP_MAX_VISIBLE: usize = 6;
 pub struct PopupState<'a> {
     pub candidates: PopupCandidates<'a>,
     pub selected: usize,
+    pub pane_focused: bool,
     /// Effective model for the active pane (per-pane `/model` override, else
     /// the global one). Appended to the `/model` row so the user sees what
     /// they're currently on while typing the command. `None` when no model
@@ -85,9 +86,14 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
             .collect(),
     };
 
+    let selected_style = if state.pane_focused {
+        theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
     let list = List::new(items)
         .block(popup::block(t!("commands.popup_title").into_owned()))
-        .highlight_style(theme::SELECTED)
+        .highlight_style(selected_style)
         .highlight_symbol("> ");
 
     let mut list_state = ListState::default();

@@ -22,7 +22,9 @@ pub const DIM: Style = Style::new().fg(Color::DarkGray);
 pub const SELECTED: Style = Style::new().fg(Color::Cyan);
 // Preserve the selection when the pane loses focus without presenting it as
 // the active keyboard target.
-pub const SELECTED_INACTIVE: Style = Style::new().fg(Color::DarkGray);
+pub const SELECTED_INACTIVE: Style = Style::new()
+    .fg(Color::Cyan)
+    .add_modifier(Modifier::DIM);
 pub const DEBUG_SENT: Style = Style::new().fg(Color::Green);
 pub const DEBUG_RECEIVED: Style = Style::new().fg(Color::Cyan);
 pub const RECOMMENDATION_TITLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
