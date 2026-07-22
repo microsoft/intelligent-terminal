@@ -107,11 +107,19 @@ async fn await_ready<T: Clone>(ready: &Ready<T>) -> acp::Result<T> {
 #[derive(Clone, Debug)]
 pub struct ClientLink {
     cell: std::sync::Arc<Ready<acp::ConnectionTo<acp::Agent>>>,
+    death: std::sync::Arc<TransportDeath>,
 }
 
 impl ClientLink {
     async fn cx(&self) -> acp::Result<acp::ConnectionTo<acp::Agent>> {
         await_ready(&self.cell).await
+    }
+
+    /// Close the ACP transport after in-flight dispatch completes. This is
+    /// preferable to killing a launcher process because wrappers such as
+    /// `cmd.exe` may otherwise leave their agent child running.
+    pub fn shutdown(&self) {
+        self.death.signal();
     }
 
     pub async fn initialize(&self, req: InitializeRequest) -> acp::Result<InitializeResponse> {
@@ -381,6 +389,7 @@ where
     let WatchedTransport { inner, death } = transport;
     let cell = std::sync::Arc::new(Ready::default());
     let fill = cell.clone();
+    let shutdown = death.clone();
     let (done_tx, done_rx) = tokio::sync::oneshot::channel();
     tokio::task::spawn_local(async move {
         let result = builder
@@ -416,7 +425,13 @@ where
             r
         }
     };
-    (ClientLink { cell }, handle_io)
+    (
+        ClientLink {
+            cell,
+            death: shutdown,
+        },
+        handle_io,
+    )
 }
 
 /// Drive a pre-wired agent builder over `transport`, returning an [`AgentLink`]

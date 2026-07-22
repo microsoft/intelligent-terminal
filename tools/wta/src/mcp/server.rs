@@ -153,6 +153,23 @@ async fn dispatch(
 ) -> Option<serde_json::Value> {
     let id = req.get("id").cloned();
     let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+    if matches!(
+        method,
+        "initialize" | "notifications/initialized" | "tools/list" | "tools/call"
+    ) {
+        let tool = req
+            .get("params")
+            .and_then(|params| params.get("name"))
+            .and_then(serde_json::Value::as_str);
+        tracing::info!(
+            target: "mcp",
+            method,
+            route_id = route_id.unwrap_or("<base>"),
+            request_id = ?id,
+            tool = ?tool,
+            "MCP request received"
+        );
+    }
     // Cancellation is a notification — abort the in-flight tool call, ack only.
     if method == "notifications/cancelled" {
         if let Some(rid) = req.get("params").and_then(|p| p.get("requestId")) {
@@ -187,13 +204,22 @@ async fn dispatch(
             })
         }
         "ping" => serde_json::json!({}),
-        "tools/list" => serde_json::json!({
-            "tools": tools.iter().map(|t| serde_json::json!({
-                "name": t.name(),
-                "description": t.description(),
-                "inputSchema": t.input_schema(),
-            })).collect::<Vec<_>>()
-        }),
+        "tools/list" => {
+            tracing::info!(
+                target: "mcp",
+                route_id = route_id.unwrap_or("<base>"),
+                tool_count = tools.len(),
+                tools = %tools.iter().map(|tool| tool.name()).collect::<Vec<_>>().join(","),
+                "MCP tools listed"
+            );
+            serde_json::json!({
+                "tools": tools.iter().map(|t| serde_json::json!({
+                    "name": t.name(),
+                    "description": t.description(),
+                    "inputSchema": t.input_schema(),
+                })).collect::<Vec<_>>()
+            })
+        }
         "tools/call" => {
             let name = req
                 .get("params")
@@ -206,12 +232,21 @@ async fn dispatch(
                 .cloned()
                 .unwrap_or_else(|| serde_json::json!({}));
             match tools.iter().find(|t| t.name() == name) {
-                None => return Some(error_obj(id, -32602, &format!("unknown tool: {name}"))),
+                None => {
+                    tracing::warn!(
+                        target: "mcp",
+                        route_id = route_id.unwrap_or("<base>"),
+                        tool = name,
+                        "MCP tool call rejected: unknown tool"
+                    );
+                    return Some(error_obj(id, -32602, &format!("unknown tool: {name}")));
+                }
                 Some(tool) => {
                     // Run abortable so notifications/cancelled can stop it.
                     let key = cancellation_key(route_id, &id);
                     let tool = tool.clone();
                     let route_id = route_id.map(str::to_string);
+                    let route_label = route_id.clone().unwrap_or_else(|| "<base>".to_string());
                     let jh = tokio::spawn(async move {
                         tool.call(
                             &ToolContext {
@@ -229,12 +264,36 @@ async fn dispatch(
                     cancels().lock().unwrap().remove(&key);
                     match r {
                         Ok(Ok(text)) => {
+                            tracing::info!(
+                                target: "mcp",
+                                route_id = route_label,
+                                tool = name,
+                                outcome = "success",
+                                "MCP tool call completed"
+                            );
                             serde_json::json!({ "content": [{ "type": "text", "text": text }], "isError": false })
                         }
                         Ok(Err(msg)) => {
+                            tracing::warn!(
+                                target: "mcp",
+                                route_id = route_label,
+                                tool = name,
+                                outcome = "tool_error",
+                                error = %msg,
+                                "MCP tool call completed"
+                            );
                             serde_json::json!({ "content": [{ "type": "text", "text": msg }], "isError": true })
                         }
-                        Err(_) => return None, // cancelled — client already moved on
+                        Err(_) => {
+                            tracing::info!(
+                                target: "mcp",
+                                route_id = route_label,
+                                tool = name,
+                                outcome = "cancelled",
+                                "MCP tool call completed"
+                            );
+                            return None; // cancelled — client already moved on
+                        }
                     }
                 }
             }

@@ -39,6 +39,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
@@ -148,6 +149,11 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    /// WTA proposal MCP calls waiting for the agent runtime's one-time
+    /// approval request. The proposal tool only creates a Run/Insert
+    /// confirmation card; it never executes terminal input.
+    pending_proposal_permissions:
+        Mutex<HashSet<(acp::schema::v1::SessionId, String)>>,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside
@@ -194,9 +200,10 @@ struct MasterStateInner {
     /// populated: a helper declares its agent *id* in the `initialize`
     /// handshake (`_meta.wta.agent_id`), the master reconstructs the
     /// command from that id (`agent_registry::build_acp_command`), and
-    /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
-    /// every later helper that resolves to the same command line. The key
-    /// is always a master-derived command, never a string off the pipe.
+    /// `get_or_spawn_agent` spawns the CLI on first use and normally reuses it
+    /// for every later helper that resolves to the same command line. OpenCode
+    /// is keyed per helper because its MCP registry is process-global. The key
+    /// is always master-derived, never a string off the pipe.
     /// This is what lets one tab run Gemini while another runs Claude in
     /// the same window.
     ///
@@ -209,8 +216,9 @@ struct MasterStateInner {
     /// **Pool eviction policy:** agents are kept warm for the lifetime of
     /// the master process (no idle-timeout eviction). The expected pool
     /// cardinality is small — one entry per distinct agent-id selected by
-    /// any tab in the window — so the memory/process overhead is bounded
-    /// by the number of GPO-allowed agents (typically 1–3). An agent that
+    /// any tab in the window, plus one per OpenCode helper — so the
+    /// memory/process overhead is bounded by the number of selected agents and
+    /// OpenCode tabs. An agent that
     /// crashes is reaped and removed by `reap_agent`; its slot is refilled
     /// lazily on the next helper request. Idle-timeout eviction would save
     /// a background process at the cost of cold-start latency for the next
@@ -357,13 +365,27 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
-    /// The pool key (agent command line) this CLI was spawned under —
-    /// the same `AgentCmdKey` used in [`MasterStateInner::agents`]. Lets
+    /// The pool key this CLI was spawned under — normally the agent command
+    /// line, with a helper suffix for OpenCode. It is the same `AgentCmdKey`
+    /// used in [`MasterStateInner::agents`]. Lets
     /// helper-disconnect cleanup and `load_session` scope orphan tracking
     /// to THIS agent (and this exact instance, via `Arc::ptr_eq`), so a
     /// crashed-and-respawned CLI under the same command line never inherits
     /// another instance's stale orphan sessions.
     cmd_key: AgentCmdKey,
+    /// Signal used to terminate agents whose lifetime is scoped to one helper.
+    /// Shared agents remain warm until the master or agent process exits.
+    shutdown: mpsc::UnboundedSender<()>,
+    connection_scoped: bool,
+}
+
+fn session_mcp_server_name(agent_cmd: &str, route_id: &str) -> String {
+    if crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd) == "opencode" {
+        // OpenCode persists MCP entries by name across processes.
+        format!("{}-{route_id}", crate::mcp::SERVER_NAME)
+    } else {
+        crate::mcp::SERVER_NAME.to_string()
+    }
 }
 
 /// Per-helper recovery metadata stashed in
@@ -464,6 +486,169 @@ fn is_already_loaded_error(err: &acp::Error) -> bool {
         .unwrap_or(false)
 }
 
+fn is_true_meta(meta: Option<&acp::schema::v1::Meta>, key: &str) -> bool {
+    meta.and_then(|meta| meta.get(key))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+}
+
+fn is_wta_proposal_mcp_identity(
+    title: Option<&str>,
+    raw_input: Option<&serde_json::Value>,
+    meta: Option<&acp::schema::v1::Meta>,
+) -> bool {
+    title == Some(crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE)
+        && is_true_meta(meta, "is_mcp_tool_call")
+        && raw_input
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|input| {
+                input.get("server").and_then(serde_json::Value::as_str)
+                    == Some(crate::mcp::SERVER_NAME)
+                    && input.get("tool").and_then(serde_json::Value::as_str)
+                        == Some(crate::mcp::terminal_actions::TOOL_NAME)
+            })
+}
+
+fn is_terminal_tool_call_status(status: acp::schema::v1::ToolCallStatus) -> bool {
+    matches!(
+        status,
+        acp::schema::v1::ToolCallStatus::Completed
+            | acp::schema::v1::ToolCallStatus::Failed
+    )
+}
+
+enum ProposalPermissionChange {
+    Insert(String),
+    Remove(String),
+}
+
+fn proposal_permission_change(
+    update: &acp::schema::v1::SessionUpdate,
+) -> Option<ProposalPermissionChange> {
+    match update {
+        acp::schema::v1::SessionUpdate::ToolCall(call) => {
+            let id = call.tool_call_id.to_string();
+            if is_terminal_tool_call_status(call.status) {
+                Some(ProposalPermissionChange::Remove(id))
+            } else if is_wta_proposal_mcp_identity(
+                Some(&call.title),
+                call.raw_input.as_ref(),
+                call.meta.as_ref(),
+            ) {
+                Some(ProposalPermissionChange::Insert(id))
+            } else {
+                None
+            }
+        }
+        acp::schema::v1::SessionUpdate::ToolCallUpdate(call) => {
+            let id = call.tool_call_id.to_string();
+            if call
+                .fields
+                .status
+                .is_some_and(is_terminal_tool_call_status)
+            {
+                Some(ProposalPermissionChange::Remove(id))
+            } else if is_wta_proposal_mcp_identity(
+                call.fields.title.as_deref(),
+                call.fields.raw_input.as_ref(),
+                call.meta.as_ref(),
+            ) {
+                Some(ProposalPermissionChange::Insert(id))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+async fn apply_proposal_permission_change(
+    state: &MasterStateInner,
+    session_id: &acp::schema::v1::SessionId,
+    change: ProposalPermissionChange,
+) {
+    let mut pending = state.pending_proposal_permissions.lock().await;
+    match change {
+        ProposalPermissionChange::Insert(tool_call_id) => {
+            pending.insert((session_id.clone(), tool_call_id));
+        }
+        ProposalPermissionChange::Remove(tool_call_id) => {
+            pending.remove(&(session_id.clone(), tool_call_id));
+        }
+    }
+}
+
+async fn clear_proposal_permissions_for_sessions(
+    state: &MasterStateInner,
+    session_ids: &[acp::schema::v1::SessionId],
+) {
+    if session_ids.is_empty() {
+        return;
+    }
+    let session_ids = session_ids.iter().cloned().collect::<HashSet<_>>();
+    state
+        .pending_proposal_permissions
+        .lock()
+        .await
+        .retain(|(sid, _)| !session_ids.contains(sid));
+}
+
+async fn take_autoapproved_proposal_option(
+    state: &MasterStateInner,
+    args: &acp::schema::v1::RequestPermissionRequest,
+) -> Option<acp::schema::v1::PermissionOptionId> {
+    if !is_true_meta(args.meta.as_ref(), "is_mcp_tool_approval") {
+        return None;
+    }
+    if args.tool_call.fields.kind != Some(acp::schema::v1::ToolKind::Execute) {
+        tracing::debug!(
+            target: "mcp",
+            session_id = ?args.session_id,
+            tool_call_id = %args.tool_call.tool_call_id,
+            kind = ?args.tool_call.fields.kind,
+            "MCP approval did not qualify for proposal auto-approval"
+        );
+        return None;
+    }
+
+    let Some(allow_once) = args
+        .options
+        .iter()
+        .find(|option| option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce)
+        .map(|option| option.option_id.clone())
+    else {
+        tracing::debug!(
+            target: "mcp",
+            session_id = ?args.session_id,
+            tool_call_id = %args.tool_call.tool_call_id,
+            "MCP proposal approval offered no allow-once option"
+        );
+        return None;
+    };
+    let key = (
+        args.session_id.clone(),
+        args.tool_call.tool_call_id.to_string(),
+    );
+    if state.pending_proposal_permissions.lock().await.remove(&key) {
+        return Some(allow_once);
+    }
+
+    // ACP dispatch can begin the correlated request while the preceding
+    // tool-call notification is still being routed. Yield briefly once so
+    // that notification can register the exact session/tool-call pair.
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    let matched = state.pending_proposal_permissions.lock().await.remove(&key);
+    if !matched {
+        tracing::debug!(
+            target: "mcp",
+            session_id = ?args.session_id,
+            tool_call_id = %args.tool_call.tool_call_id,
+            "MCP approval had no matching WTA proposal tool call"
+        );
+    }
+    matched.then_some(allow_once)
+}
+
 impl MasterClient {
     async fn request_permission(
         &self,
@@ -490,6 +675,19 @@ impl MasterClient {
                 ));
             }
         };
+        if let Some(option_id) = take_autoapproved_proposal_option(&self.state, &args).await {
+            tracing::info!(
+                target: "mcp",
+                session_id = ?sid,
+                tool_call_id = %args.tool_call.tool_call_id,
+                "auto-approved WTA terminal-action proposal MCP call once"
+            );
+            return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                acp::schema::v1::RequestPermissionOutcome::Selected(
+                    acp::schema::v1::SelectedPermissionOutcome::new(option_id),
+                ),
+            ));
+        }
         tracing::info!(
             target: "master",
             step = "agent→helper",
@@ -514,6 +712,15 @@ impl MasterClient {
 
     async fn session_notification(&self, args: acp::schema::v1::SessionNotification) -> acp::Result<()> {
         let sid = args.session_id.clone();
+        if let Some((server, error)) = mcp_startup_failure(&args.update) {
+            tracing::warn!(
+                target: "mcp",
+                session_id = ?sid,
+                server = %server,
+                error = %error,
+                "agent reported MCP server startup failure"
+            );
+        }
         // Discriminator for "what KIND of notification this is" — useful
         // when scrolling logs to see prompt/turn lifecycle without
         // tracing the full payload.
@@ -546,6 +753,7 @@ impl MasterClient {
         match route {
             Some((snap_helper_id, tx, drops)) => {
                 use std::sync::atomic::Ordering;
+                let proposal_change = proposal_permission_change(&args.update);
                 // `try_send` rather than `send().await`: a slow helper
                 // pipe must not back-pressure this trait method, which
                 // is driven by the agent CLI's I/O loop and is shared
@@ -553,6 +761,9 @@ impl MasterClient {
                 // notification delivery for everyone.
                 match tx.try_send(args) {
                     Ok(()) => {
+                        if let Some(change) = proposal_change {
+                            apply_proposal_permission_change(&self.state, &sid, change).await;
+                        }
                         // First successful send after one or more drops
                         // is the recovery point — summarize and reset.
                         let dropped = drops.swap(0, Ordering::SeqCst);
@@ -578,6 +789,9 @@ impl MasterClient {
                         );
                     }
                     Err(mpsc::error::TrySendError::Full(_)) => {
+                        if let Some(change) = proposal_change {
+                            apply_proposal_permission_change(&self.state, &sid, change).await;
+                        }
                         // The helper isn't draining fast enough. Drop
                         // this update rather than queue forever — the
                         // user will see a chunk gap, which is the
@@ -809,6 +1023,57 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
     }
 }
 
+fn mcp_startup_failure(update: &acp::schema::v1::SessionUpdate) -> Option<(String, String)> {
+    use acp::schema::v1::{ContentBlock, SessionUpdate, ToolCallContent, ToolCallStatus};
+
+    let (tool_call_id, status, content, raw_output) = match update {
+        SessionUpdate::ToolCall(tool_call) => (
+            tool_call.tool_call_id.to_string(),
+            Some(tool_call.status),
+            Some(tool_call.content.as_slice()),
+            tool_call.raw_output.as_ref(),
+        ),
+        SessionUpdate::ToolCallUpdate(update) => (
+            update.tool_call_id.to_string(),
+            update.fields.status,
+            update.fields.content.as_deref(),
+            update.fields.raw_output.as_ref(),
+        ),
+        _ => return None,
+    };
+    let server = tool_call_id.strip_prefix("mcp_startup.")?.trim();
+    if server.is_empty() || status != Some(ToolCallStatus::Failed) {
+        return None;
+    }
+
+    let content_error = content.and_then(|items| {
+        items.iter().find_map(|item| match item {
+            ToolCallContent::Content(content) => match &content.content {
+                ContentBlock::Text(text) => nonempty(text.text.as_str()),
+                _ => None,
+            },
+            _ => None,
+        })
+    });
+    let raw_error = raw_output.and_then(|value| {
+        value
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| value.as_str())
+            .and_then(nonempty)
+    });
+    let error = content_error
+        .or(raw_error)
+        .unwrap_or("MCP server startup failed without an error detail");
+
+    Some((server.to_string(), error.to_string()))
+}
+
+fn nonempty(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
 /// `acp::Agent` impl wired into one helper's `AgentSideConnection`.
 /// Each helper gets its own `HelperHandler` instance.
 #[derive(Clone)]
@@ -825,6 +1090,10 @@ struct HelperHandler {
     /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
     /// `resolved_agent()` always finds it populated for those.
     agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// Shared cancellation state for initialize requests that outlive their
+    /// helper pipe. Without it, a helper-scoped OpenCode process could finish
+    /// initialization after teardown and remain unreachable in the pool.
+    connection_closed: Arc<AtomicBool>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -948,6 +1217,18 @@ impl HelperHandler {
 }
 
 impl HelperHandler {
+    async fn bind_initialized_agent(&self, agent: Arc<AgentCli>) -> acp::Result<()> {
+        if self.connection_closed.load(Ordering::Acquire) && agent.connection_scoped {
+            retire_connection_scoped_agent(&self.state, &agent).await;
+            return Err(acp::Error::internal_error()
+                .data(serde_json::json!("helper disconnected during agent initialization")));
+        }
+        // `set` is idempotent-by-error; a helper that (incorrectly) sent
+        // initialize twice keeps its first binding.
+        let _ = self.agent.set(agent);
+        Ok(())
+    }
+
     async fn initialize(
         &self,
         mut args: acp::schema::v1::InitializeRequest,
@@ -983,7 +1264,12 @@ impl HelperHandler {
 
         // Lazily spawn (or reuse) the agent CLI for THIS tab's agent,
         // then bind it to this helper for the rest of the connection.
-        let agent = get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref())
+        let agent = get_or_spawn_agent(
+            &self.state,
+            &agent_cmd,
+            agent_id.as_deref(),
+            self.helper_id,
+        )
             .await
             .map_err(|e| {
                 tracing::error!(
@@ -997,9 +1283,7 @@ impl HelperHandler {
                 acp::Error::internal_error()
                     .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
             })?;
-        // `set` is idempotent-by-error; a helper that (incorrectly) sent
-        // initialize twice keeps its first binding, which is fine.
-        let _ = self.agent.set(Arc::clone(&agent));
+        self.bind_initialized_agent(Arc::clone(&agent)).await?;
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar).
@@ -1044,9 +1328,10 @@ impl HelperHandler {
                     .routes
                     .register(self.helper_id, forwarder.clone())
                     .await;
+                let server_name = session_mcp_server_name(&agent.cmd_key, &route_id);
                 args.mcp_servers.push(acp::schema::v1::McpServer::Http(
                     acp::schema::v1::McpServerHttp::new(
-                        crate::mcp::SERVER_NAME,
+                        server_name,
                         host.route_url(&route_id),
                     ),
                 ));
@@ -1209,9 +1494,10 @@ impl HelperHandler {
                         rebound_mcp_route = Some(route_id);
                     }
                     crate::mcp::LoadSessionRoute::Registered(route_id) => {
+                        let server_name = session_mcp_server_name(&agent.cmd_key, &route_id);
                         args.mcp_servers.push(acp::schema::v1::McpServer::Http(
                             acp::schema::v1::McpServerHttp::new(
-                                crate::mcp::SERVER_NAME,
+                                server_name,
                                 host.route_url(&route_id),
                             ),
                         ));
@@ -1937,6 +2223,7 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let inner = Arc::new(MasterStateInner {
         mcp,
         session_to_helper: Mutex::new(HashMap::new()),
+        pending_proposal_permissions: Mutex::new(HashSet::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
@@ -2256,17 +2543,41 @@ fn with_agent_pane_tool_permissions(mut command: String, agent_id: &str) -> Stri
     command
 }
 
+fn agent_pool_key(
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    helper_id: HelperId,
+) -> AgentCmdKey {
+    let resolved_agent_id = agent_id
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    if agent_process_is_connection_scoped(resolved_agent_id) {
+        // OpenCode keeps MCP servers in one process-global registry instead of
+        // scoping them to ACP sessions. Sharing that process lets one tab call
+        // another tab's session-bound WTA endpoint, so isolate it per helper.
+        format!("{agent_cmd}#helper-{}", helper_id.0)
+    } else {
+        agent_cmd.to_string()
+    }
+}
+
+fn agent_process_is_connection_scoped(agent_id: &str) -> bool {
+    agent_id.eq_ignore_ascii_case("opencode")
+}
+
 /// Get the agent CLI for `agent_cmd`, spawning + initializing it on
 /// first use and reusing it thereafter. Two helpers racing the same
 /// new agent serialize on the per-key `OnceCell`; helpers for different
 /// agents spawn in parallel because the outer map lock is held only
-/// long enough to get/insert the cell, never across the spawn.
+/// long enough to get/insert the cell, never across the spawn. OpenCode is
+/// intentionally keyed per helper because its MCP registry is process-global.
 async fn get_or_spawn_agent(
     state: &Arc<MasterStateInner>,
     agent_cmd: &str,
     agent_id: Option<&str>,
+    helper_id: HelperId,
 ) -> Result<Arc<AgentCli>> {
-    let key: AgentCmdKey = agent_cmd.to_string();
+    let key = agent_pool_key(agent_cmd, agent_id, helper_id);
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -2297,7 +2608,15 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
 ) -> Result<Arc<AgentCli>> {
-    let mut spawn_result = spawn_agent_process(agent_cmd, None)
+    let resolved_agent_id = match agent_id {
+        Some(id) if !id.trim().is_empty() => id.to_string(),
+        _ => crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string(),
+    };
+    let mut spawn_result = spawn_agent_process(
+        agent_cmd,
+        None,
+        agent_process_is_connection_scoped(&resolved_agent_id),
+    )
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
         target: "master",
@@ -2461,6 +2780,7 @@ async fn spawn_one_agent(
     // detached task left holding a live subprocess — previously the reaper
     // was spawned first, so a failed init leaked the agent process, its
     // I/O task, and (via the empty `OnceCell`) triggered repeated respawns.
+    let process_job = spawn_result.process_job.take();
     let mut child = spawn_result.child;
 
     // Initialize this CLI. npx adapter cold starts can be slow, so keep
@@ -2511,27 +2831,58 @@ async fn spawn_one_agent(
     // Init succeeded — install the child reaper now (takes ownership of
     // `child`). A later CLI exit drops just this agent from the pool so
     // the next helper respawns it; the master stays up for other agents.
+    // Connection-scoped agents also listen for helper teardown so their
+    // otherwise-unreusable process does not remain alive indefinitely.
+    let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
     {
         let state = Arc::clone(state);
         let key = key.clone();
         tokio::task::spawn_local(async move {
-            let status = child.wait().await;
-            tracing::error!(
-                target: "master",
-                agent = %key,
-                ?status,
-                "agent CLI exited — removing from pool (master stays up for other agents)"
-            );
+            let _process_job = process_job;
+            let (status, requested, forced) = tokio::select! {
+                status = child.wait() => (status, false, false),
+                _ = shutdown_rx.recv() => {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        child.wait(),
+                    ).await {
+                        Ok(status) => (status, true, false),
+                        Err(_) => {
+                            if let Err(error) = child.start_kill() {
+                                tracing::warn!(
+                                    target: "master",
+                                    agent = %key,
+                                    %error,
+                                    "failed to terminate connection-scoped agent CLI"
+                                );
+                            }
+                            (child.wait().await, true, true)
+                        }
+                    }
+                }
+            };
+            if requested {
+                tracing::info!(
+                    target: "master",
+                    agent = %key,
+                    ?status,
+                    forced,
+                    "connection-scoped agent CLI stopped after helper disconnect"
+                );
+            } else {
+                tracing::error!(
+                    target: "master",
+                    agent = %key,
+                    ?status,
+                    "agent CLI exited — removing from pool (master stays up for other agents)"
+                );
+            }
             reap_agent(&state, &key).await;
         });
     }
 
     // Prefer the host-supplied agent id (authoritative); fall back to
     // parsing the command line. Stamps each session's `cli_source`.
-    let resolved_agent_id = match agent_id {
-        Some(id) if !id.trim().is_empty() => id.to_string(),
-        _ => crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string(),
-    };
     let cli_source = crate::agent_sessions::CliSource::from_agent_id(&resolved_agent_id);
     tracing::info!(
         target: "master",
@@ -2564,6 +2915,8 @@ async fn spawn_one_agent(
         cached_init_resp: init_resp,
         cli_source,
         cmd_key: key.clone(),
+        shutdown: shutdown_tx,
+        connection_scoped: agent_process_is_connection_scoped(&resolved_agent_id),
     }))
 }
 
@@ -2595,6 +2948,50 @@ async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
             "dead agent removed from pool; next pane for this agent will respawn it"
         );
     }
+}
+
+/// Remove and terminate a helper-scoped agent if `agent` is still the pool's
+/// current instance. The pointer check prevents stale disconnect cleanup from
+/// evicting a replacement process.
+async fn retire_connection_scoped_agent(
+    state: &Arc<MasterStateInner>,
+    agent: &Arc<AgentCli>,
+) -> bool {
+    if !agent.connection_scoped {
+        return false;
+    }
+
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        let is_current = agents
+            .get(&agent.cmd_key)
+            .and_then(|cell| cell.get())
+            .is_some_and(|current| Arc::ptr_eq(current, agent));
+        if is_current {
+            agents.remove(&agent.cmd_key);
+        }
+        is_current
+    };
+
+    if removed {
+        // End the ACP main loop first so the launcher and its child see EOF and
+        // can exit together. The child reaper waits briefly before force-killing
+        // the launcher as a backstop.
+        agent.conn.shutdown();
+        if agent.shutdown.send(()).is_err() {
+            tracing::debug!(
+                target: "master",
+                agent = %agent.cmd_key,
+                "connection-scoped agent CLI had already stopped"
+            );
+        }
+        tracing::info!(
+            target: "master",
+            agent = %agent.cmd_key,
+            "connection-scoped agent removed from pool after helper disconnect"
+        );
+    }
+    removed
 }
 
 /// Per-helper-connection task. Wraps the named pipe in an
@@ -2639,6 +3036,7 @@ async fn serve_helper(
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
         agent: Arc::new(OnceLock::new()),
+        connection_closed: Arc::new(AtomicBool::new(false)),
         state: Arc::clone(&state),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
@@ -2734,6 +3132,7 @@ async fn serve_helper(
             }
         }
     };
+    handler.connection_closed.store(true, Ordering::Release);
 
     // Unregister BEFORE dropping sessions: prevents a race where
     // `drop_sessions_for_helper` would broadcast `session_removed`
@@ -2748,12 +3147,19 @@ async fn serve_helper(
     // unboundedly across the master's lifetime, and so the agent
     // CLI's notifications for already-detached sessions don't keep
     // lighting up "unknown SessionId" warnings. Master intentionally
-    // sends nothing to the shared CLI here: a closed tab's orphan turn
+    // sends nothing to a shared CLI here: a closed tab's orphan turn
     // routes nowhere and the CLI keeps serving every surviving tab.
     if let Some(host) = &state.mcp {
         host.routes.deactivate_helper(helper_id).await;
     }
     let victims = drop_sessions_for_helper(&state, helper_id).await;
+
+    // OpenCode is isolated per helper, so this pool key can never be reused
+    // after disconnect. Remove it before orphan handling and terminate the
+    // process; normal shared agents remain warm and retain their sessions.
+    if let Some(agent) = handler.agent.get() {
+        retire_connection_scoped_agent(&state, agent).await;
+    }
 
     // The dropped sessions are still loaded on the shared CLI — they're now
     // orphans. Record them under the owning agent's key so a later resume
@@ -2874,6 +3280,7 @@ async fn drop_sessions_for_helper(
         map.retain(|_, route| route.helper_id != helper_id);
         victims
     };
+    clear_proposal_permissions_for_sessions(state, &victims).await;
     for sid in &victims {
         state.registry.remove(sid).await;
         // Broadcast removal so every still-attached helper drops the
@@ -4012,6 +4419,122 @@ mod tests {
         ids.iter().map(|s| s.to_string()).collect()
     }
 
+    #[test]
+    fn opencode_agent_pool_keys_are_isolated_per_helper() {
+        assert_eq!(
+            agent_pool_key("opencode acp", Some("opencode"), HelperId(1)),
+            "opencode acp#helper-1"
+        );
+        assert_ne!(
+            agent_pool_key("opencode acp", Some("opencode"), HelperId(1)),
+            agent_pool_key("opencode acp", Some("opencode"), HelperId(2))
+        );
+    }
+
+    #[test]
+    fn opencode_mcp_server_names_are_unique_per_session_route() {
+        assert_eq!(
+            session_mcp_server_name("opencode acp", "route-a"),
+            "wta-route-a"
+        );
+        assert_eq!(
+            session_mcp_server_name("copilot --acp --stdio", "route-a"),
+            "wta"
+        );
+    }
+
+    #[test]
+    fn other_agents_keep_shared_agent_pool_keys() {
+        for (id, command) in [
+            ("copilot", "copilot --acp --stdio"),
+            ("gemini", "gemini --experimental-acp"),
+            ("codex", "npx -y @agentclientprotocol/codex-acp@1.1.0"),
+        ] {
+            assert_eq!(
+                agent_pool_key(command, Some(id), HelperId(1)),
+                agent_pool_key(command, Some(id), HelperId(2))
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn connection_scoped_agent_is_removed_and_signalled_on_retirement() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let state = make_state();
+                let (shutdown, mut shutdown_rx) = mpsc::unbounded_channel();
+                let agent = Arc::new(AgentCli {
+                    conn: client_connection_to_pending_new_session_agent(),
+                    cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ),
+                    cli_source: None,
+                    cmd_key: "opencode acp#helper-1".to_string(),
+                    shutdown,
+                    connection_scoped: true,
+                });
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                assert!(cell.set(Arc::clone(&agent)).is_ok());
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .insert(agent.cmd_key.clone(), cell);
+
+                assert!(retire_connection_scoped_agent(&state, &agent).await);
+                assert!(!state.agents.lock().await.contains_key(&agent.cmd_key));
+                assert_eq!(shutdown_rx.try_recv(), Ok(()));
+                assert!(!retire_connection_scoped_agent(&state, &agent).await);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn disconnected_helper_retires_agent_that_finishes_initializing_late() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let state = make_state();
+                let (shutdown, mut shutdown_rx) = mpsc::unbounded_channel();
+                let agent = Arc::new(AgentCli {
+                    conn: client_connection_to_pending_new_session_agent(),
+                    cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                        acp::schema::ProtocolVersion::V1,
+                    ),
+                    cli_source: None,
+                    cmd_key: "opencode acp#helper-1".to_string(),
+                    shutdown,
+                    connection_scoped: true,
+                });
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                assert!(cell.set(Arc::clone(&agent)).is_ok());
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .insert(agent.cmd_key.clone(), cell);
+                let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+                let handler = HelperHandler {
+                    helper_id: HelperId(1),
+                    agent: Arc::new(OnceLock::new()),
+                    connection_closed: Arc::new(AtomicBool::new(true)),
+                    state: Arc::clone(&state),
+                    notif_tx,
+                    agent_side_slot: Arc::new(OnceLock::new()),
+                };
+
+                assert!(
+                    handler
+                        .bind_initialized_agent(Arc::clone(&agent))
+                        .await
+                        .is_err()
+                );
+                assert!(handler.agent.get().is_none());
+                assert!(!state.agents.lock().await.contains_key(&agent.cmd_key));
+                assert_eq!(shutdown_rx.try_recv(), Ok(()));
+            })
+            .await;
+    }
+
     /// Run the resolver the way `HelperHandler::initialize` does.
     fn resolve(
         allowed: Option<&std::collections::HashSet<String>>,
@@ -4305,6 +4828,7 @@ mod tests {
         Arc::new(MasterStateInner {
             mcp: None,
             session_to_helper: Mutex::new(HashMap::new()),
+            pending_proposal_permissions: Mutex::new(HashSet::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
@@ -4374,10 +4898,13 @@ mod tests {
                     ),
                     cli_source: None,
                     cmd_key: "copilot --acp --stdio".to_string(),
+                    shutdown: mpsc::unbounded_channel().0,
+                    connection_scoped: false,
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
                     agent,
+                    connection_closed: Arc::new(AtomicBool::new(false)),
                     state: make_state(),
                     notif_tx,
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -4406,6 +4933,7 @@ mod tests {
         let handler = HelperHandler {
             helper_id: HelperId(1),
             agent: Arc::new(OnceLock::new()),
+            connection_closed: Arc::new(AtomicBool::new(false)),
             state: make_state(),
             notif_tx,
             agent_side_slot: Arc::new(OnceLock::new()),
@@ -4415,6 +4943,13 @@ mod tests {
         assert!(
             Arc::ptr_eq(&handler.agent, &request_handler.agent),
             "all request handler clones must share initialize's binding slot"
+        );
+        assert!(
+            Arc::ptr_eq(
+                &handler.connection_closed,
+                &request_handler.connection_closed
+            ),
+            "all request handler clones must share disconnect state"
         );
     }
 
@@ -4648,10 +5183,13 @@ mod tests {
                     ),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                     cmd_key: "copilot --acp --stdio".to_string(),
+                    shutdown: mpsc::unbounded_channel().0,
+                    connection_scoped: false,
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
                     agent,
+                    connection_closed: Arc::new(AtomicBool::new(false)),
                     state: Arc::clone(&state),
                     notif_tx: notif_tx.clone(),
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -4784,6 +5322,289 @@ mod tests {
             sid.clone(),
             SessionUpdate::AgentMessageChunk(ContentChunk::new("hi".into())),
         )
+    }
+
+    #[test]
+    fn extracts_codex_mcp_startup_failure() {
+        let update = serde_json::from_value(serde_json::json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "mcp_startup.wta",
+            "kind": "other",
+            "title": "mcp__wta__startup",
+            "status": "failed",
+            "content": [{
+                "type": "content",
+                "content": {
+                    "type": "text",
+                    "text": "[codex-acp forwarded startup error] MCP server `wta` failed to start: connection refused"
+                }
+            }]
+        }))
+        .expect("Codex MCP startup update should deserialize");
+
+        let failure = mcp_startup_failure(&update).expect("startup failure should be recognized");
+        assert_eq!(failure.0, "wta");
+        assert_eq!(
+            failure.1,
+            "[codex-acp forwarded startup error] MCP server `wta` failed to start: connection refused"
+        );
+    }
+
+    #[test]
+    fn mcp_startup_failure_ignores_regular_failed_tool_call() {
+        let update = SessionUpdate::ToolCall(
+            acp::schema::v1::ToolCall::new("tool-1", "Run command")
+                .status(acp::schema::v1::ToolCallStatus::Failed),
+        );
+
+        assert!(mcp_startup_failure(&update).is_none());
+    }
+
+    fn codex_proposal_tool_call(
+        title: &str,
+        server: &str,
+        tool: &str,
+        is_mcp: bool,
+    ) -> SessionUpdate {
+        SessionUpdate::ToolCall(
+            acp::schema::v1::ToolCall::new("proposal-call", title)
+                .kind(acp::schema::v1::ToolKind::Execute)
+                .status(acp::schema::v1::ToolCallStatus::InProgress)
+                .raw_input(serde_json::json!({
+                    "server": server,
+                    "tool": tool,
+                    "arguments": {}
+                }))
+                .meta(
+                    serde_json::from_value::<acp::schema::v1::Meta>(serde_json::json!({
+                        "is_mcp_tool_call": is_mcp
+                    }))
+                    .expect("meta object"),
+                ),
+        )
+    }
+
+    fn codex_proposal_permission(
+        is_mcp_approval: bool,
+        options: Vec<acp::schema::v1::PermissionOption>,
+    ) -> acp::schema::v1::RequestPermissionRequest {
+        acp::schema::v1::RequestPermissionRequest::new(
+            SessionId::new("proposal-session"),
+            acp::schema::v1::ToolCallUpdate::new(
+                "proposal-call",
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .kind(acp::schema::v1::ToolKind::Execute),
+            ),
+            options,
+        )
+        .meta(
+            serde_json::from_value::<acp::schema::v1::Meta>(serde_json::json!({
+                "is_mcp_tool_approval": is_mcp_approval
+            }))
+            .expect("meta object"),
+        )
+    }
+
+    #[tokio::test]
+    async fn codex_wta_proposal_permission_selects_allow_once_and_is_consumed() {
+        let state = make_state();
+        let sid = SessionId::new("proposal-session");
+        let update = codex_proposal_tool_call(
+            crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+            crate::mcp::SERVER_NAME,
+            crate::mcp::terminal_actions::TOOL_NAME,
+            true,
+        );
+        apply_proposal_permission_change(
+            &state,
+            &sid,
+            proposal_permission_change(&update).expect("proposal should be recognized"),
+        )
+        .await;
+        let request = codex_proposal_permission(
+            true,
+            vec![
+                acp::schema::v1::PermissionOption::new(
+                    "allow-always",
+                    "Allow always",
+                    acp::schema::v1::PermissionOptionKind::AllowAlways,
+                ),
+                acp::schema::v1::PermissionOption::new(
+                    "allow-once",
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                ),
+            ],
+        );
+
+        let selected = take_autoapproved_proposal_option(&state, &request)
+            .await
+            .expect("verified proposal should be auto-approved");
+        assert_eq!(selected.to_string(), "allow-once");
+        assert!(
+            take_autoapproved_proposal_option(&state, &request)
+                .await
+                .is_none(),
+            "one approval must consume the correlation marker"
+        );
+    }
+
+    #[tokio::test]
+    async fn codex_proposal_title_without_structured_identity_is_not_approved() {
+        let cases = [
+            codex_proposal_tool_call(
+                crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+                "other-server",
+                crate::mcp::terminal_actions::TOOL_NAME,
+                true,
+            ),
+            codex_proposal_tool_call(
+                crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+                crate::mcp::SERVER_NAME,
+                "other-tool",
+                true,
+            ),
+            codex_proposal_tool_call(
+                crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+                crate::mcp::SERVER_NAME,
+                crate::mcp::terminal_actions::TOOL_NAME,
+                false,
+            ),
+        ];
+
+        for update in cases {
+            let state = make_state();
+            assert!(
+                proposal_permission_change(&update).is_none(),
+                "a title alone must not establish a trusted proposal"
+            );
+            let request = codex_proposal_permission(
+                true,
+                vec![acp::schema::v1::PermissionOption::new(
+                    "allow-once",
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            assert!(
+                take_autoapproved_proposal_option(&state, &request)
+                    .await
+                    .is_none()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn codex_proposal_requires_mcp_approval_meta_and_allow_once_option() {
+        for (is_mcp_approval, kind) in [
+            (false, acp::schema::v1::PermissionOptionKind::AllowOnce),
+            (true, acp::schema::v1::PermissionOptionKind::AllowAlways),
+        ] {
+            let state = make_state();
+            let update = codex_proposal_tool_call(
+                crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+                crate::mcp::SERVER_NAME,
+                crate::mcp::terminal_actions::TOOL_NAME,
+                true,
+            );
+            apply_proposal_permission_change(
+                &state,
+                &SessionId::new("proposal-session"),
+                proposal_permission_change(&update).expect("proposal should be recognized"),
+            )
+            .await;
+            let request = codex_proposal_permission(
+                is_mcp_approval,
+                vec![acp::schema::v1::PermissionOption::new(
+                    "option", "Option", kind,
+                )],
+            );
+            assert!(
+                take_autoapproved_proposal_option(&state, &request)
+                    .await
+                    .is_none()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn completed_codex_proposal_cannot_be_autoapproved() {
+        let state = make_state();
+        let sid = SessionId::new("proposal-session");
+        let update = codex_proposal_tool_call(
+            crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+            crate::mcp::SERVER_NAME,
+            crate::mcp::terminal_actions::TOOL_NAME,
+            true,
+        );
+        apply_proposal_permission_change(
+            &state,
+            &sid,
+            proposal_permission_change(&update).expect("proposal should be recognized"),
+        )
+        .await;
+        let completed = SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+            "proposal-call",
+            acp::schema::v1::ToolCallUpdateFields::new()
+                .status(acp::schema::v1::ToolCallStatus::Completed),
+        ));
+        apply_proposal_permission_change(
+            &state,
+            &sid,
+            proposal_permission_change(&completed).expect("completion should be recognized"),
+        )
+        .await;
+
+        let request = codex_proposal_permission(
+            true,
+            vec![acp::schema::v1::PermissionOption::new(
+                "allow-once",
+                "Allow once",
+                acp::schema::v1::PermissionOptionKind::AllowOnce,
+            )],
+        );
+        assert!(
+            take_autoapproved_proposal_option(&state, &request)
+                .await
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn codex_proposal_permission_tolerates_notification_dispatch_race() {
+        let state = make_state();
+        let sid = SessionId::new("proposal-session");
+        let update = codex_proposal_tool_call(
+            crate::mcp::CODEX_PROPOSAL_TOOL_CALL_TITLE,
+            crate::mcp::SERVER_NAME,
+            crate::mcp::terminal_actions::TOOL_NAME,
+            true,
+        );
+        let request = codex_proposal_permission(
+            true,
+            vec![acp::schema::v1::PermissionOption::new(
+                "allow-once",
+                "Allow once",
+                acp::schema::v1::PermissionOptionKind::AllowOnce,
+            )],
+        );
+
+        let register = async {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            apply_proposal_permission_change(
+                &state,
+                &sid,
+                proposal_permission_change(&update).expect("proposal should be recognized"),
+            )
+            .await;
+        };
+        let approve = take_autoapproved_proposal_option(&state, &request);
+        let ((), selected) = tokio::join!(register, approve);
+
+        assert_eq!(
+            selected.expect("late notification should still correlate").to_string(),
+            "allow-once"
+        );
     }
 
     async fn route(state: &Arc<MasterStateInner>, notif: SessionNotification) {
@@ -5550,6 +6371,7 @@ mod tests {
         Arc::new(MasterStateInner {
             mcp: None,
             session_to_helper: Mutex::new(HashMap::new()),
+            pending_proposal_permissions: Mutex::new(HashSet::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),

@@ -17,6 +17,14 @@ mod server;
 pub(crate) mod terminal_actions;
 
 pub const SERVER_NAME: &str = "wta";
+pub const CODEX_PROPOSAL_TOOL_CALL_TITLE: &str = "mcp.wta.propose_terminal_actions";
+
+pub fn is_proposal_tool_call_title(title: &str) -> bool {
+    matches!(
+        title,
+        terminal_actions::ACP_TOOL_CALL_TITLE | CODEX_PROPOSAL_TOOL_CALL_TITLE
+    )
+}
 
 use server::serve;
 pub use terminal_actions::{
