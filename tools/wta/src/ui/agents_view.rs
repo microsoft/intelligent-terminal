@@ -318,7 +318,12 @@ fn row_for(
     // Leftmost column: `>` cursor for the selected row, blank otherwise.
     // Two cells (caret + space) so titles line up regardless of selection.
     let caret = if selected {
-        Span::styled("> ", title_style.add_modifier(Modifier::BOLD))
+        let caret_style = if pane_focused {
+            title_style.add_modifier(Modifier::BOLD)
+        } else {
+            title_style
+        };
+        Span::styled("> ", caret_style)
     } else {
         Span::raw("  ")
     };
