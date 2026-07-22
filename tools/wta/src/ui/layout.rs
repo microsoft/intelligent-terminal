@@ -50,6 +50,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
         let origin_filter = app.sessions_origin_filter;
+        let pane_focused = app.pane_focused;
         let tab = app.tab_sessions.entry(tab_id).or_default();
         // Show the loading shimmer while waiting on the very first
         // `session/list` response from master (empty placeholder snapshot +
@@ -74,6 +75,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             cli_filter.as_ref(),
             origin_filter,
             show_loading,
+            pane_focused,
         );
         return;
     }

@@ -12,12 +12,12 @@ use crate::agent_sessions::{
     AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
 };
 use crate::session_registry::SessionInfo;
+use crate::theme;
 use crate::ui::shimmer;
 
 // Status accents use named ANSI colors (not fixed RGB from Figma) so they map
 // through the active color scheme and stay readable on light schemes too — a
 // hardcoded bright yellow/cyan washed out on a light background (#234).
-const ACCENT_CYAN: Color = Color::Cyan; // Selected-row title / cursor
 const ACCENT_GREEN: Color = Color::Green; // Active status badge
 const ACCENT_YELLOW: Color = Color::Yellow; // Waiting for input
 const ACCENT_RED: Color = Color::Red; // Error
@@ -46,6 +46,7 @@ pub fn render(
     // even when the list already has rows. Caller (ui::layout) computes it from
     // `refetch_in_flight && (snapshot.is_empty() || rescan_in_flight)`.
     show_loading: bool,
+    pane_focused: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -178,7 +179,7 @@ pub fn render(
     // list also gives F5 an unmistakable "refreshing now" signal even when rows
     // are already present.
     if show_loading {
-        render_left_bar(f, area.x, list_area, None);
+        render_left_bar(f, area.x, list_area, None, pane_focused);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
         spans.extend(shimmer::shimmer_spans(&loading_label, activity_frame));
@@ -195,7 +196,7 @@ pub fn render(
     let rows: Vec<ListItem> = sorted
         .iter()
         .enumerate()
-        .map(|(i, s)| row_for(s, Some(i) == selected, row_width))
+        .map(|(i, s)| row_for(s, Some(i) == selected, pane_focused, row_width))
         .collect();
 
     // No `highlight_style` — selection is conveyed by the `>` prefix and
@@ -212,7 +213,7 @@ pub fn render(
     let selected_visible_row = selected
         .and_then(|s| s.checked_sub(offset))
         .filter(|v| (*v as u16) < list_area.height);
-    render_left_bar(f, area.x, list_area, selected_visible_row);
+    render_left_bar(f, area.x, list_area, selected_visible_row, pane_focused);
 
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
@@ -224,14 +225,24 @@ pub fn render(
 /// `selected_row`, when set, is the list-relative row index whose bar
 /// segment paints cyan instead of muted, mirroring the selection cursor
 /// in the row itself.
-fn render_left_bar(f: &mut Frame, bar_x: u16, list_area: Rect, selected_row: Option<usize>) {
+fn render_left_bar(
+    f: &mut Frame,
+    bar_x: u16,
+    list_area: Rect,
+    selected_row: Option<usize>,
+    pane_focused: bool,
+) {
     if list_area.height == 0 {
         return;
     }
     let bar_lines: Vec<Line<'static>> = (0..list_area.height)
         .map(|i| {
             let style = if Some(i as usize) == selected_row {
-                Style::default().fg(ACCENT_CYAN)
+                if pane_focused {
+                    theme::SELECTED
+                } else {
+                    theme::SELECTED_INACTIVE
+                }
             } else {
                 Style::default().fg(MUTED_WHITE)
             };
@@ -267,7 +278,12 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
     );
 }
 
-fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'static> {
+fn row_for(
+    s: &AgentSession,
+    selected: bool,
+    pane_focused: bool,
+    row_width: usize,
+) -> ListItem<'static> {
     let origin_prefix = origin_prefix_for(s);
     let prefix_w = origin_prefix
         .as_deref()
@@ -290,7 +306,11 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     // an unselected Working session still gets a cyan "Active" badge but
     // its title stays the default foreground.
     let title_style = if selected {
-        Style::default().fg(ACCENT_CYAN)
+        if pane_focused {
+            theme::SELECTED
+        } else {
+            theme::SELECTED_INACTIVE
+        }
     } else {
         Style::default()
     };
@@ -298,12 +318,7 @@ fn row_for(s: &AgentSession, selected: bool, row_width: usize) -> ListItem<'stat
     // Leftmost column: `>` cursor for the selected row, blank otherwise.
     // Two cells (caret + space) so titles line up regardless of selection.
     let caret = if selected {
-        Span::styled(
-            "> ",
-            Style::default()
-                .fg(ACCENT_CYAN)
-                .add_modifier(Modifier::BOLD),
-        )
+        Span::styled("> ", title_style.add_modifier(Modifier::BOLD))
     } else {
         Span::raw("  ")
     };
