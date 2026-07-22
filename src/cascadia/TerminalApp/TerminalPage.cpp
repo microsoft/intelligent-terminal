@@ -7989,9 +7989,10 @@ namespace winrt::TerminalApp::implementation
             return resultPane;
         }
 
-        if (newTerminalArgs &&
-            (!newTerminalArgs.ShellSessionRestorePath().empty() || newTerminalArgs.UseWorkspaceBuffer()) &&
-            !newTerminalArgs.AgentSessionId().empty())
+        const auto restoringAgentSession = newTerminalArgs &&
+                                           (!newTerminalArgs.ShellSessionRestorePath().empty() || newTerminalArgs.UseWorkspaceBuffer()) &&
+                                           !newTerminalArgs.AgentSessionId().empty();
+        if (restoringAgentSession)
         {
             const auto resumeCommandline = !newTerminalArgs.AgentSessionAgent().empty() ?
                                                _BuildAgentResumeCommandline(
@@ -8120,6 +8121,16 @@ namespace winrt::TerminalApp::implementation
             // Set the non-debug pane as active
             resultPane->ClearActive();
             original->SetActive();
+        }
+
+        if (restoringAgentSession && hasSessionId)
+        {
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+            params["agent_session_id"] = winrt::to_string(newTerminalArgs.AgentSessionId());
+            params["agent"] = winrt::to_string(newTerminalArgs.AgentSessionAgent());
+            params["cwd"] = winrt::to_string(newTerminalArgs.StartingDirectory());
+            _RaiseProtocolEvent("session_born_bound", params);
         }
 
         return resultPane;

@@ -186,6 +186,9 @@ pub enum MasterExtRequest {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
     },
+    SessionBornBound {
+        event: crate::agent_sessions::SessionEvent,
+    },
     ShellSessionsList {
         tab_id: String,
         elevated: bool,
@@ -2952,6 +2955,17 @@ fn dispatch_master_ext_request(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::SessionBornBound { event } => {
+                let wire = crate::session_registry::build_born_bound_request(&event);
+                if let Err(err) = conn.ext_method(wire).await {
+                    tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        error = ?err,
+                        "restored session born-bound registration failed"
+                    );
+                }
             }
             MasterExtRequest::SessionFocus { request_id, sid } => {
                 let wire = crate::session_registry::build_session_focus_request(&sid);

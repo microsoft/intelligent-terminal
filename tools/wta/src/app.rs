@@ -5850,6 +5850,49 @@ impl App {
                     return;
                 }
 
+                if method == "session_born_bound" {
+                    let agent_session_id = params
+                        .get("agent_session_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let agent = params
+                        .get("agent")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if agent_session_id.is_empty() || pane_id.is_empty() || agent.is_empty() {
+                        tracing::warn!(
+                            target: "session_hook",
+                            agent_session_id,
+                            pane_id,
+                            agent,
+                            "ignoring incomplete restored session born-bound event"
+                        );
+                        return;
+                    }
+
+                    let event = crate::agent_sessions::SessionEvent::SessionStarted {
+                        key: agent_session_id.to_string(),
+                        cli_source: crate::session_registry::SessionHookCliSource::Known(
+                            agent.to_string(),
+                        )
+                        .into(),
+                        pane_session_id: pane_id,
+                        cwd: params
+                            .get("cwd")
+                            .and_then(|value| value.as_str())
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_default(),
+                        title: String::new(),
+                    };
+                    self.agent_sessions.apply(event.clone());
+                    let _ = self.master_request_tx.send(
+                        crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                            event,
+                        },
+                    );
+                    return;
+                }
+
                 // autofix_execute is an inbound UI action ("run the armed
                 // fix now") from TerminalPage. pane_id is the failing
                 // pane — NOT our own — so this check must run before the
@@ -11428,6 +11471,46 @@ mod tests {
             app.current_tab().shell_sessions_list_state.selected(),
             Some(0)
         );
+    }
+
+    #[test]
+    fn restored_shell_agent_session_registers_as_born_bound() {
+        let (mut app, mut master_rx) = test_app_with_master_rx();
+        let agent_session_id = "8f924227-22df-4e54-aa18-3471107b567b";
+        let pane_id = "F6BAB379-8942-4F5F-9E7F-078EA1AB9463";
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "session_born_bound".to_string(),
+            pane_id: pane_id.to_string(),
+            tab_id: None,
+            params: serde_json::json!({
+                "agent_session_id": agent_session_id,
+                "agent": "copilot",
+                "cwd": r"C:\repo",
+            }),
+        });
+
+        let session = app
+            .agent_sessions
+            .get(&agent_session_id.to_string())
+            .expect("restored session should be live locally");
+        assert_eq!(session.status, crate::agent_sessions::AgentStatus::Idle);
+        assert_eq!(
+            session.pane_session_id.as_deref(),
+            Some("f6bab379-8942-4f5f-9e7f-078ea1ab9463")
+        );
+        assert_eq!(session.cli_source, crate::agent_sessions::CliSource::Copilot);
+
+        assert!(matches!(
+            master_rx.try_recv(),
+            Ok(crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+                event: crate::agent_sessions::SessionEvent::SessionStarted {
+                    key,
+                    pane_session_id,
+                    ..
+                },
+            }) if key == agent_session_id && pane_session_id == pane_id
+        ));
     }
 
     // ─── word boundary helpers ──────────────────────────────────────────────
