@@ -22,7 +22,7 @@ code it describes.
 | Step | RED test | Smallest GREEN implementation | Status |
 |---|---|---|---|
 | 0. Provider/build baseline | Existing registry, coordinator, WSL ACP, ItE2E, and live provider gates | Pin verified adapters and preserve historical command identification | Complete |
-| 1. Reliable master delivery | Saturated helper queue must retain only the latest `UsageUpdate` | Per-session latest-value state and helper wake/drain path | Pending |
+| 1. Reliable master delivery | Saturated helper queue must retain only the latest `UsageUpdate` | Per-session latest-value state and helper wake/drain path | Complete |
 | 2. Standard normalizer | Valid ACP usage normalizes; zero size, non-finite/negative cost, and invalid currency fail | Provider-neutral domain types and stable ACP normalizer | Pending |
 | 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel | Pending |
 | 4. Per-tab state | Cumulative session usage replaces prior values and resets on session lifecycle boundaries | Store `UsageSnapshot` in `TabSession` | Pending |
@@ -71,3 +71,37 @@ code it describes.
 - Adapter pin and compatibility changes in existing product/registry code.
 - Dependency setup documentation.
 - No local E2E harness, screenshot, provider config, credential, or wire-log files.
+
+### Step 1 - Reliable Master Usage Delivery
+
+**RED**
+
+- Added `rebinding_session_clears_previous_helpers_pending_usage` before adding the shared route
+  binding boundary.
+- Focused test failed to compile with `E0425` because `bind_session_route` did not exist. This
+  exposed that a SessionId rebound from helper A to helper B could retain A's pending usage and
+  later deliver it to the wrong helper.
+
+**GREEN**
+
+- Added one `bind_session_route` boundary reused by both `session/new` and `session/load`.
+- The boundary holds the documented `session_to_helper -> pending_usage` lock order, clears the
+  previous owner's pending usage, installs the new route, and returns the route count.
+- Standard ACP `UsageUpdate` notifications bypass the ordinary bounded chunk queue, replace the
+  previous value by SessionId, wake helpers through a watch generation, and are drained only by
+  their owning helper.
+- Disconnect cleanup removes pending usage for sessions owned by the departing helper.
+- Usage values remain unlogged; only routing identifiers and schema-level event kinds are traced.
+
+**Validation**
+
+- RED command: focused test failed with two `cannot find function bind_session_route` errors.
+- GREEN focused test: 1 passed, 0 failed.
+- `master::tests`: 63 passed, 0 failed.
+- Full WTA Rust suite: 1120 passed, 0 failed.
+
+**Committed files**
+
+- `tools/wta/src/master/mod.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`

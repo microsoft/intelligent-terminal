@@ -90,7 +90,7 @@ fixture/记录并重新跑 Claude/Codex E2E mock。
 | Codex launch | C++ 与 Rust 都固定为官方 `npx -y @agentclientprotocol/codex-acp@1.1.2` | 消除 launch metadata 重复并保留历史识别 alias |
 | Command ownership | C++ `_BuildAgentCommandLine()` 构造 host/default command；Rust `AgentProfile` 为 per-tab built-in selection 重建 command，因此目前确有两份映射 | 建立可生成/共享的 launch metadata；完成前用测试强制两处完全一致 |
 | Custom selection | Settings 将 `npx ...` 保存为 `custom:npx`；master 对未知 helper ID 回退到 host 已信任的 default command，从不执行 pipe 上传来的 command | 分离 instance/family/reporter；custom 可识别 compatible family，但首版不能启用私有 usage extension |
-| Usage receive | master 原样按 session 路由 `SessionNotification`；helper 的 `WtaClient::session_notification()` 目前把 `UsageUpdate` 落入 `_ => {}` | 在 helper 增加 standard normalizer、可靠 latest-value state 和 projection |
+| Usage receive | master 已按 SessionId coalesce `UsageUpdate` latest value，并通过独立 wake/drain path 可靠定向到 owner helper；helper 的 `WtaClient::session_notification()` 目前仍把它落入 `_ => {}` | 在 helper 增加 standard normalizer、typed event、per-tab state 和 projection |
 | Usage state/UI | `AppEvent`、`TabSession`、`AgentPaneContent` 与 XAML 当前均无 usage 字段/控件 | 增加 provider-neutral state；由 C++ Bottom Bar Column 2 渲染 `UsageGroup` |
 | C++ event route | `agent_state_changed` 已按 `tab_id` 经 COM server 定向到 `TerminalPage::OnAgentStateChanged()`；`project_tab_state()` 已发送统一 per-tab snapshot | 在现有 snapshot 增加可选 `usage`，不新增 COM/IDL route |
 | Rust codegen | [tools/wta/build.rs](../../tools/wta/build.rs) 当前只生成 ETW telemetry metadata | 增加 Agent registry codegen，但保留现有 ETW 生成 |
