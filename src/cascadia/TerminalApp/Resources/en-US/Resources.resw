@@ -1317,6 +1317,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Switch agent</value>
     <comment>Accessibility (screen reader) name for the agent-bar button that opens a menu to pick which AI agent runs in this tab. In this context, agent refers to an AI agent, not a human representative.</comment>
   </data>
+  <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve">
+    <value>Usage</value>
+    <comment>Accessibility name for the session usage summary in the bottom bar.</comment>
+  </data>
+  <data name="Usage_TokensUnit" xml:space="preserve">
+    <value>Tokens</value>
+    <comment>Unit label for token counts reported by an AI agent. {Locked="Tokens"}</comment>
+  </data>
   <data name="TerminalProtocolTeachingTipTitle" xml:space="preserve">
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>

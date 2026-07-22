@@ -203,6 +203,16 @@
                 </Button>
             </StackPanel>
 
+            <StackPanel x:Name="UsageGroup"
+                        x:Uid="UsageGroup"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Spacing="12"
+                        Margin="12,0"
+                        Visibility="Collapsed" />
+
             <!-- Button 3: Session list toggle — opens the agent pane (if needed)
                  and switches wta into the Agents/sessions view. Mirrors the
                  Ctrl+Shift+/ keybinding. Anchored to the right edge of the

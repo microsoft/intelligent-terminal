@@ -7,11 +7,13 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace TerminalApp::AgentUsage
 {
     inline constexpr size_t MaxItems = 8;
+    inline constexpr size_t MaxPrimaryItems = 2;
 
     struct Item
     {
@@ -28,4 +30,7 @@ namespace TerminalApp::AgentUsage
 
     std::vector<Item> Parse(const Json::Value& usage);
     void UpdateCache(std::vector<Item>& cache, const Json::Value& usage);
+    std::vector<std::wstring> BuildPrimaryDisplayTexts(
+        const std::vector<Item>& items,
+        std::wstring_view tokensUnit);
 }

@@ -41,6 +41,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(ParseRejectsExcessiveItems);
         TEST_METHOD(UpdateCacheReplacesAndClears);
         TEST_METHOD(UpdateCachePreservesPreviousOnMalformedInput);
+        TEST_METHOD(BuildPrimaryDisplayTextsFormatsContextAndCost);
+        TEST_METHOD(BuildPrimaryDisplayTextsCapsMainBarItems);
     };
 
     void AgentUsageTests::ParseValidItems()
@@ -147,5 +149,40 @@ namespace TerminalAppUnitTests
             std::invalid_argument,
             [](const std::invalid_argument&) { return true; });
         VERIFY_IS_TRUE(cache == before);
+    }
+
+    void AgentUsageTests::BuildPrimaryDisplayTextsFormatsContextAndCost()
+    {
+        Json::Value usage{ Json::objectValue };
+        usage["items"] = Json::Value{ Json::arrayValue };
+        usage["items"].append(makeUsageItem("acp.context.window", "1024", "token", "8192"));
+        usage["items"].append(makeUsageItem("acp.billing.cost", "0.004", "USD"));
+
+        const auto texts = TerminalApp::AgentUsage::BuildPrimaryDisplayTexts(
+            TerminalApp::AgentUsage::Parse(usage),
+            L"Tokens");
+
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), texts.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"1024 / 8192 Tokens" }, texts[0]);
+        VERIFY_ARE_EQUAL(std::wstring{ L"0.004 USD" }, texts[1]);
+    }
+
+    void AgentUsageTests::BuildPrimaryDisplayTextsCapsMainBarItems()
+    {
+        std::vector<TerminalApp::AgentUsage::Item> items;
+        for (size_t i = 0; i < 3; ++i)
+        {
+            items.push_back(TerminalApp::AgentUsage::Item{
+                .metricId = "metric." + std::to_string(i),
+                .valueDecimalText = std::to_string(i),
+                .unitId = "unit",
+                .scope = "session",
+                .source = "acp_standard",
+            });
+        }
+
+        const auto texts = TerminalApp::AgentUsage::BuildPrimaryDisplayTexts(items, L"Tokens");
+
+        VERIFY_ARE_EQUAL(TerminalApp::AgentUsage::MaxPrimaryItems, texts.size());
     }
 }

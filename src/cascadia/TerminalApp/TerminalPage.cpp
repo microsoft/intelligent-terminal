@@ -2596,6 +2596,30 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        if (const auto usageGroup = UsageGroup())
+        {
+            usageGroup.Children().Clear();
+            if (activeAgent)
+            {
+                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(activeAgent);
+                const auto texts = ::TerminalApp::AgentUsage::BuildPrimaryDisplayTexts(
+                    impl->GetAgentUsage(),
+                    RS_(L"Usage_TokensUnit"));
+                for (const auto& text : texts)
+                {
+                    TextBlock block;
+                    block.Text(text);
+                    block.FontSize(12);
+                    block.VerticalAlignment(VerticalAlignment::Center);
+                    block.TextTrimming(TextTrimming::CharacterEllipsis);
+                    block.MaxWidth(180);
+                    usageGroup.Children().Append(block);
+                }
+            }
+            usageGroup.Visibility(
+                usageGroup.Children().Size() == 0 ? Visibility::Collapsed : Visibility::Visible);
+        }
+
         if (auto diagBtn = DiagnosticsButton())
         {
             // Show gate — the diagnostics group appears only when BOTH:

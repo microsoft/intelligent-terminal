@@ -130,4 +130,35 @@ namespace TerminalApp::AgentUsage
         auto parsed = Parse(usage);
         cache = std::move(parsed);
     }
+
+    std::vector<std::wstring> BuildPrimaryDisplayTexts(
+        const std::vector<Item>& items,
+        const std::wstring_view tokensUnit)
+    {
+        std::vector<std::wstring> texts;
+        texts.reserve(std::min(items.size(), MaxPrimaryItems));
+        for (const auto& item : items)
+        {
+            if (texts.size() == MaxPrimaryItems)
+            {
+                break;
+            }
+
+            auto text = til::u8u16(item.valueDecimalText);
+            if (item.metricId == "acp.context.window" && item.limitDecimalText)
+            {
+                text += L" / ";
+                text += til::u8u16(*item.limitDecimalText);
+                text += L" ";
+                text += tokensUnit;
+            }
+            else
+            {
+                text += L" ";
+                text += til::u8u16(item.unitId);
+            }
+            texts.emplace_back(std::move(text));
+        }
+        return texts;
+    }
 }
