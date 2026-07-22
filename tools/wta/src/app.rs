@@ -2105,8 +2105,7 @@ pub struct App {
     /// `App::new` time via [`resolve_sessions_origin_filter`] so the value is
     /// stable for the lifetime of this helper process. Read by
     /// [`Self::agents_rows_for_tab`] (the cursor / Enter source of
-    /// truth), the post-history-scan auto-select, the Delete clamp,
-    /// and the `agents_view::render` call in `ui/layout.rs`. See
+    /// truth) and the `agents_view::render` call in `ui/layout.rs`. See
     /// [`MVP_SESSIONS_ORIGIN_FILTER`] for the gate to flip when un-MVP.
     pub sessions_origin_filter: crate::agent_sessions::OriginFilter,
     // Onboarding: signals main.rs to install agent hook plugins on demand.
@@ -6950,11 +6949,10 @@ impl App {
             return;
         }
 
-        // agent session view: list navigation + Enter to focus pane + Delete
-        // to evict an Ended/Historical row. Captures all input while open
-        // — including Esc which closes the view. View open-state and the
-        // selection cursor are per-tab on `TabSession` so each WT tab
-        // keeps its own picker state across switches.
+        // Agent session view: list navigation, Enter activation, search,
+        // refresh, and Esc handling. Captures all input while open. View
+        // open-state and the selection cursor are per-tab on `TabSession`
+        // so each WT tab keeps its own picker state across switches.
         if self.current_tab().current_view == View::Agents {
             let tab_id = self.active_tab_key().to_string();
 
@@ -12752,12 +12750,7 @@ mod tests {
         info
     }
 
-    // ─── agent session view: Enter / Delete dispatch ───────────────────────────
-    //
-    // Originally added in commit `e4723510e` ("Enter/Delete actions on Agents
-    // view (M4.4-M4.6)") and lost in the post-#29 merge that stubbed out
-    // dispatch_resume. Re-added on top of the new
-    // `spawn_wtcli_split_then_focus_with_callback` helper.
+    // ─── agent session view: Enter dispatch ────────────────────────────────────
 
     #[test]
     fn enter_on_live_row_dispatches_focus_command() {
