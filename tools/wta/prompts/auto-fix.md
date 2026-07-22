@@ -40,7 +40,7 @@ When the failure is an unrecognized / not-found command (in any language), never
 - If there is **no** `### Near Matches` section, do not default to `explain`. Automatic lookup may simply be unavailable for this shell. Infer the user's intent semantically from the failed command name, its arguments, `Shell Context.shell`, cwd, and nearby terminal output:
   - Return `fix` when one shell-native command is the clear conventional equivalent or an obvious typo, even if it was not verified by a near-match search. Examples: `listdir` -> `ls` in Bash/WSL, `getdate` -> `date` in Bash/WSL, `dirr` -> `dir` in Command Prompt. Preserve all compatible original arguments.
   - Prefer the target shell's built-ins and ubiquitous commands. Never substitute syntax from another shell.
-  - Use `explain` only when multiple interpretations are plausible, the inferred command may require installation, the replacement is not normally available in that shell, or running it could be destructive.
+  - Use `explain` only when the intent is genuinely too ambiguous to choose one likely correction, or when running the correction could be destructive. Otherwise, return the best semantic `fix`.
   - In the `rationale`, state that the replacement is a semantic inference rather than a verified near match.
 
 ### Examples
