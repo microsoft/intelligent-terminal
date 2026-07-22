@@ -8,6 +8,7 @@ use tokio::process::Command;
 use super::wt_channel::WtChannel;
 
 /// Configuration for creating a new terminal.
+#[derive(Debug)]
 pub struct TerminalConfig {
     pub command: String,
     pub args: Vec<String>,
@@ -48,6 +49,7 @@ pub struct ShellManager {
     terminals: Mutex<HashMap<String, Terminal>>,
     next_id: Mutex<u64>,
     wt_channel: Option<Arc<dyn WtChannel>>,
+    agent_source: crate::agent_source::AgentSource,
 }
 
 impl ShellManager {
@@ -56,11 +58,17 @@ impl ShellManager {
             terminals: Mutex::new(HashMap::new()),
             next_id: Mutex::new(1),
             wt_channel: None,
+            agent_source: crate::agent_source::AgentSource::Host,
         }
     }
 
     pub fn with_wt_channel(mut self, channel: Arc<dyn WtChannel>) -> Self {
         self.wt_channel = Some(channel);
+        self
+    }
+
+    pub fn with_agent_source(mut self, source: crate::agent_source::AgentSource) -> Self {
+        self.agent_source = source;
         self
     }
 
@@ -88,6 +96,7 @@ impl ShellManager {
         if self.should_force_local(&config) {
             return self.create_terminal_local(config).await;
         }
+        let config = self.prepare_terminal_config(config)?;
 
         if self.has_wt_channel() {
             match self.create_terminal_wt(&config).await {
@@ -99,6 +108,35 @@ impl ShellManager {
             }
         }
         self.create_terminal_local(config).await
+    }
+
+    fn prepare_terminal_config(&self, config: TerminalConfig) -> anyhow::Result<TerminalConfig> {
+        let crate::agent_source::AgentSource::Wsl { distro } = &self.agent_source else {
+            return Ok(config);
+        };
+
+        let mut args = vec!["-d".to_string(), distro.clone()];
+        if let Some(cwd) = config.cwd.as_deref().filter(|cwd| !cwd.trim().is_empty()) {
+            anyhow::ensure!(
+                cwd.starts_with('/'),
+                "WSL agent requested a non-Linux terminal cwd: {cwd}"
+            );
+            args.extend(["--cd".to_string(), cwd.to_string()]);
+        }
+        args.push("--".to_string());
+        if !config.env.is_empty() {
+            args.push("env".to_string());
+            args.extend(config.env.iter().map(|(name, value)| format!("{name}={value}")));
+        }
+        args.push(config.command);
+        args.extend(config.args);
+
+        Ok(TerminalConfig {
+            command: "wsl.exe".to_string(),
+            args,
+            cwd: None,
+            env: Vec::new(),
+        })
     }
 
     fn should_force_local(&self, config: &TerminalConfig) -> bool {
@@ -116,17 +154,10 @@ impl ShellManager {
         let wt = self.wt()?;
 
         // Build the commandline string: "command arg1 arg2 ..."
-        let mut cmdline = config.command.clone();
+        let mut cmdline = crate::coordinator::quote_windows_commandline_arg(&config.command);
         for arg in &config.args {
             cmdline.push(' ');
-            // Quote args containing spaces
-            if arg.contains(' ') {
-                cmdline.push('"');
-                cmdline.push_str(arg);
-                cmdline.push('"');
-            } else {
-                cmdline.push_str(arg);
-            }
+            cmdline.push_str(&crate::coordinator::quote_windows_commandline_arg(arg));
         }
 
         // Create a new tab in WT with the command
@@ -592,5 +623,64 @@ impl ShellManager {
         self.wt()?
             .request("get_active_pane", serde_json::json!({}))
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wsl_source_wraps_terminal_command_cwd_and_environment() {
+        let manager = ShellManager::new().with_agent_source(
+            crate::agent_source::AgentSource::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+        );
+        let wrapped = manager
+            .prepare_terminal_config(TerminalConfig {
+                command: "bash".to_string(),
+                args: vec!["-lc".to_string(), "printf hello".to_string()],
+                cwd: Some("/home/user/project".to_string()),
+                env: vec![("TOKEN".to_string(), "value with space".to_string())],
+            })
+            .expect("valid Linux terminal request");
+
+        assert_eq!(wrapped.command, "wsl.exe");
+        assert_eq!(
+            wrapped.args,
+            vec![
+                "-d",
+                "Ubuntu",
+                "--cd",
+                "/home/user/project",
+                "--",
+                "env",
+                "TOKEN=value with space",
+                "bash",
+                "-lc",
+                "printf hello",
+            ]
+        );
+        assert!(wrapped.cwd.is_none());
+        assert!(wrapped.env.is_empty());
+    }
+
+    #[test]
+    fn wsl_source_rejects_windows_terminal_cwd() {
+        let manager = ShellManager::new().with_agent_source(
+            crate::agent_source::AgentSource::Wsl {
+                distro: "Ubuntu".to_string(),
+            },
+        );
+        let error = manager
+            .prepare_terminal_config(TerminalConfig {
+                command: "bash".to_string(),
+                args: Vec::new(),
+                cwd: Some(r"C:\repo".to_string()),
+                env: Vec::new(),
+            })
+            .expect_err("Windows cwd must not leak into a WSL tool request");
+        assert!(error.to_string().contains("non-Linux terminal cwd"));
     }
 }

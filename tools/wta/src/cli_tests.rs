@@ -29,6 +29,26 @@ fn cli_initial_load_session_id_defaults_to_none() {
 }
 
 #[test]
+fn cli_parses_per_tab_wsl_agent_source() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "--agent-source",
+        "wsl",
+        "--agent-wsl-distro",
+        "Ubuntu",
+        "--agent-source-cwd",
+        "/home/user/project",
+    ])
+    .expect("WSL source flags must parse");
+    assert_eq!(cli.agent_source.as_deref(), Some("wsl"));
+    assert_eq!(cli.agent_wsl_distro.as_deref(), Some("Ubuntu"));
+    assert_eq!(
+        cli.agent_source_cwd.as_deref(),
+        Some("/home/user/project")
+    );
+}
+
+#[test]
 fn cli_initial_load_session_id_without_cwd_is_allowed() {
     // cwd is optional — the helper falls back to its process cwd when
     // omitted (matches the runtime `load_session` arm's behavior).
@@ -383,11 +403,11 @@ fn pane_with_shell(shell: &str) -> serde_json::Value {
 fn active_pane_wsl_distro_extracts_distro_name() {
     // `wsl:<distro>` → the distro name (drives `wsl -d <distro>`).
     assert_eq!(
-        active_pane_wsl_distro(Some(&pane_with_shell("wsl:Ubuntu"))),
+        crate::agent_source::active_pane_wsl_distro(Some(&pane_with_shell("wsl:Ubuntu"))),
         Some("Ubuntu")
     );
     assert_eq!(
-        active_pane_wsl_distro(Some(&pane_with_shell("wsl:Ubuntu-22.04"))),
+        crate::agent_source::active_pane_wsl_distro(Some(&pane_with_shell("wsl:Ubuntu-22.04"))),
         Some("Ubuntu-22.04")
     );
 }
@@ -395,22 +415,40 @@ fn active_pane_wsl_distro_extracts_distro_name() {
 #[test]
 fn active_pane_wsl_distro_rejects_non_wsl_shells() {
     // Non-WSL shells → None (host path).
-    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("pwsh"))), None);
-    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("cmd"))), None);
+    assert_eq!(
+        crate::agent_source::active_pane_wsl_distro(Some(&pane_with_shell("pwsh"))),
+        None
+    );
+    assert_eq!(
+        crate::agent_source::active_pane_wsl_distro(Some(&pane_with_shell("cmd"))),
+        None
+    );
     // A pane name that merely contains "wsl" is not the `wsl:` prefix.
-    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("my-wsl"))), None);
+    assert_eq!(
+        crate::agent_source::active_pane_wsl_distro(Some(&pane_with_shell("my-wsl"))),
+        None
+    );
     // Bare `wsl:` with an empty distro name is not a valid WSL pane — shell
     // integration only emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set —
     // and would otherwise build an invalid `wsl -d "" …` command.
-    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("wsl:"))), None);
+    assert_eq!(
+        crate::agent_source::active_pane_wsl_distro(Some(&pane_with_shell("wsl:"))),
+        None
+    );
     // `shell` field absent.
     let no_shell = serde_json::json!({ "cwd": "/home/u" });
-    assert_eq!(active_pane_wsl_distro(Some(&no_shell)), None);
+    assert_eq!(
+        crate::agent_source::active_pane_wsl_distro(Some(&no_shell)),
+        None
+    );
     // `shell` present but not a string.
     let numeric_shell = serde_json::json!({ "shell": 42 });
-    assert_eq!(active_pane_wsl_distro(Some(&numeric_shell)), None);
+    assert_eq!(
+        crate::agent_source::active_pane_wsl_distro(Some(&numeric_shell)),
+        None
+    );
     // No active pane at all.
-    assert_eq!(active_pane_wsl_distro(None), None);
+    assert_eq!(crate::agent_source::active_pane_wsl_distro(None), None);
 }
 
 #[test]
@@ -419,13 +457,15 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
     // rejects empty or /mnt results). Deliberately NOT wrapped in `$(…)`, which
     // returns empty for snap apps. sh_quote single-quotes the exe.
     assert_eq!(
-        wsl_agent_probe_script("copilot"),
-        "command -v 'copilot' 2>/dev/null"
+        crate::agent_check::wsl_agent_probe_script("copilot"),
+        "printf '__WTA_PROBE_BEGIN__\\n'; command -v 'copilot' 2>/dev/null; \
+         printf '__WTA_PROBE_END__\\n'"
     );
     // An agent identity with shell metacharacters stays contained in the quotes.
     assert_eq!(
-        wsl_agent_probe_script("my agent; rm -rf /"),
-        "command -v 'my agent; rm -rf /' 2>/dev/null"
+        crate::agent_check::wsl_agent_probe_script("my agent; rm -rf /"),
+        "printf '__WTA_PROBE_BEGIN__\\n'; command -v 'my agent; rm -rf /' 2>/dev/null; \
+         printf '__WTA_PROBE_END__\\n'"
     );
 }
 

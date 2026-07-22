@@ -5,6 +5,7 @@ mod agent_check;
 mod agent_hooks_installer;
 mod agent_pane_origin;
 mod agent_registry;
+mod agent_source;
 mod agent_sessions;
 mod app;
 mod clipboard_image;
@@ -158,6 +159,19 @@ struct Cli {
     /// `--agent-id` explicitly.
     #[arg(long)]
     agent_id: Option<String>,
+
+    /// Per-tab ACP execution source (`host` or `wsl`). Hidden because
+    /// TerminalPage owns source compatibility checks.
+    #[arg(long, hide = true, value_parser = ["host", "wsl"])]
+    agent_source: Option<String>,
+
+    /// WSL distro paired with `--agent-source wsl`.
+    #[arg(long, hide = true)]
+    agent_wsl_distro: Option<String>,
+
+    /// Working-pane cwd captured when this helper was created.
+    #[arg(long, hide = true)]
+    agent_source_cwd: Option<String>,
 
     /// Master-only allowlist of agent ids a helper may request over the
     /// pipe (the GPO-filtered set; built by TerminalPage::
@@ -2107,41 +2121,6 @@ async fn run_delegate(
 /// keeps us from ever building a `wsl -d "" …` command. Returns `None` when the
 /// pane is missing, has no `shell` field, or the shell is anything else
 /// (PowerShell, cmd, …).
-fn active_pane_wsl_distro(active: Option<&serde_json::Value>) -> Option<&str> {
-    active
-        .and_then(|p| p.get("shell"))
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.strip_prefix("wsl:"))
-        .filter(|distro| !distro.is_empty())
-}
-
-/// The in-distro probe script used by [`wsl_delegate_agent_available`].
-///
-/// Prints the PATH resolution of `<exe>` (`command -v`, whose stdout the caller
-/// captures) or nothing when it is absent. The caller inspects the result:
-/// empty = absent; a path under `/mnt/` = a Windows CLI leaking in via WSL's
-/// `appendWindowsPath` interop (`/mnt/<drive>/…`), which is *not* a native
-/// install and fails when run under Linux (e.g. codex's "Missing optional
-/// dependency @openai/codex-linux-x64"); anything else = a native Linux install.
-///
-/// The resolution is emitted **directly to stdout — never wrapped in a `$(…)`
-/// command substitution.** On snap-provisioned distros `command -v <snap-app>`
-/// resolves the app (e.g. `/snap/bin/copilot`) on the shell's own stdout but
-/// yields an *empty* string inside `$(…)`, which would misreport a
-/// natively-installed CLI as absent and wrongly fall back to the host. Letting
-/// `command -v` write straight to the process stdout (captured by
-/// `Command::output`) sidesteps that. `sh_quote` guards against an agent
-/// identity with shell metacharacters.
-///
-/// Note: assumes the default DrvFs mount root `/mnt`; a distro configured to
-/// mount Windows drives under a different root would resolve them elsewhere.
-fn wsl_agent_probe_script(agent_exe: &str) -> String {
-    format!(
-        "command -v {} 2>/dev/null",
-        crate::coordinator::sh_quote(agent_exe)
-    )
-}
-
 /// Whether the delegate agent CLI is actually available inside `distro`.
 ///
 /// PR375 routes a `?<prompt>` from a WSL pane into the distro
@@ -2158,55 +2137,9 @@ fn wsl_agent_probe_script(agent_exe: &str) -> String {
 /// Windows host CLI instead of launching a doomed in-distro command that would
 /// silently drop the prompt.
 async fn wsl_delegate_agent_available(distro: &str, agent_exe: &str) -> bool {
-    if distro.is_empty() || agent_exe.is_empty() {
-        return false;
-    }
-    let mut cmd = tokio::process::Command::new("wsl.exe");
-    cmd.arg("-d")
-        .arg(distro)
-        .arg("--")
-        .arg("bash")
-        .arg("-lc")
-        .arg(wsl_agent_probe_script(agent_exe))
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true);
-    let output = match tokio::time::timeout(std::time::Duration::from_secs(5), cmd.output()).await {
-        Ok(Ok(output)) => output,
-        Ok(Err(err)) => {
-            tracing::warn!(
-                target: "delegate",
-                distro,
-                agent = %agent_exe,
-                error = %err,
-                "WSL agent availability probe failed to spawn; falling back to host CLI",
-            );
-            return false;
-        }
-        Err(_elapsed) => {
-            tracing::warn!(
-                target: "delegate",
-                distro,
-                agent = %agent_exe,
-                "WSL agent availability probe timed out; falling back to host CLI",
-            );
-            return false;
-        }
-    };
-    let resolved = String::from_utf8_lossy(&output.stdout);
-    let resolved = resolved.trim();
-    // Accept only a native Linux install: a non-empty path that does not resolve
-    // under the `/mnt/<drive>` interop mount (a Windows binary whose Linux exec
-    // would fail).
-    let available = !resolved.is_empty() && !resolved.starts_with("/mnt/");
-    tracing::info!(
-        target: "delegate",
-        distro,
-        agent = %agent_exe,
-        resolved_path = %resolved,
-        available,
-        "WSL agent availability probe",
-    );
-    available
+    crate::agent_check::find_wsl_exe(distro, agent_exe)
+        .await
+        .is_some()
 }
 
 /// Whether the delegate agent should be treated as launchable for the active
@@ -2307,7 +2240,8 @@ async fn delegate_with_context(
     // installed): an in-distro launch would just print "<agent>: command not
     // found" and drop the prompt. Probe the distro once, up front, so the
     // launchable gate, the WSL branch, and the host fallback all agree.
-    let wsl_distro: Option<String> = active_pane_wsl_distro(active.as_ref()).map(str::to_string);
+    let wsl_distro: Option<String> =
+        crate::agent_source::active_pane_wsl_distro(active.as_ref()).map(str::to_string);
     let wsl_agent_available = match wsl_distro.as_deref() {
         Some(distro) => {
             let agent_exe =
@@ -2560,11 +2494,15 @@ async fn delegate_with_context(
 /// named pipe and forwards ACP traffic over it.
 pub(crate) async fn run_default_tui_over_pipe(cli: Cli, pipe_name: String) -> Result<()> {
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
+    let agent_source = crate::agent_source::AgentSource::from_wire(
+        cli.agent_source.as_deref(),
+        cli.agent_wsl_distro.as_deref(),
+    );
 
     // Debug channel for the helper TUI.
     let (debug_tx, debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
 
-    let mut shell_mgr = ShellManager::new();
+    let mut shell_mgr = ShellManager::new().with_agent_source(agent_source);
     let mut wt_event_rx = None;
     let mut wt_protocol_channel: Option<Arc<CliChannel>> = None;
     let wt_connected = match connect_to_wt_protocol(debug_tx.clone()).await {
@@ -2902,6 +2840,10 @@ async fn run_acp_app(
     connect_master_pipe: String,
 ) -> Result<()> {
     let agent_cmd = cli.agent.clone();
+    let agent_source = crate::agent_source::AgentSource::from_wire(
+        cli.agent_source.as_deref(),
+        cli.agent_wsl_distro.as_deref(),
+    );
 
     let local_set = tokio::task::LocalSet::new();
     local_set
@@ -3232,6 +3174,8 @@ async fn run_acp_app(
                 // this on its `Cli` all along; pre-multi-agent it dropped
                 // it (master owned the single agent CLI).
                 let agent_id = cli.agent_id.clone();
+                let agent_source_for_client = agent_source.clone();
+                let source_cwd = cli.agent_source_cwd.clone();
                 let owner_tab = cli.owner_tab_id.clone();
                 let initial_load_sid = cli.initial_load_session_id.clone();
                 tokio::task::spawn_local(async move {
@@ -3239,6 +3183,8 @@ async fn run_acp_app(
                         pipe_name,
                         acp_model,
                         agent_id,
+                        agent_source_for_client,
+                        source_cwd,
                         owner_tab,
                         initial_load_sid,
                         event_tx_for_pipe.clone(),
@@ -3339,6 +3285,8 @@ async fn run_acp_app(
                 connect_master_pipe.clone(),
                 agent_cmd.clone(),
                 cli.acp_model.clone(),
+                agent_source.clone(),
+                cli.agent_source_cwd.clone(),
                 cli.owner_tab_id.clone(),
                 Arc::clone(&shell_mgr),
                 wt_connected,
@@ -3346,6 +3294,7 @@ async fn run_acp_app(
 
             if cli.setup.is_none() {
                 app_state.current_agent_id = canonical_agent_id.clone();
+                app_state.current_agent_source = agent_source.clone();
                 tracing::info!(
                     target: "agents_view_filter",
                     agent_id = %canonical_agent_id,
@@ -3371,7 +3320,8 @@ async fn run_acp_app(
                     // the authoritative error via `ConnectionFailed`, so skip preflight.
                     app::PreflightResult::passed_for_custom_agent(&canonical_agent_id)
                 } else {
-                    let status = agent_check::check_agent(agent_id);
+                    let status =
+                        agent_check::check_agent_in_source(agent_id, &agent_source).await;
                     app::PreflightResult {
                         agent_id: canonical_agent_id.clone(),
                         display_name: status.display_name.clone(),
@@ -3718,7 +3668,8 @@ async fn run_acp_app(
                 .filter(|s| !s.is_empty());
             app_state.source_cwd = std::env::var("WTA_SOURCE_CWD")
                 .ok()
-                .filter(|s| !s.is_empty());
+                .filter(|s| !s.is_empty())
+                .or_else(|| cli.agent_source_cwd.clone());
 
             // ── env-gated raw agent_event chat logging (diagnostics) ──────
             app_state.log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")

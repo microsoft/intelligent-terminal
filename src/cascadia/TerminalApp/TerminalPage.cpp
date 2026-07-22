@@ -1878,11 +1878,15 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring effectiveAgentId;
         winrt::hstring effectiveModel;
         winrt::hstring agentCliPath;
+        winrt::hstring effectiveAgentSource{ L"host" };
+        winrt::hstring effectiveAgentWslDistro;
         const bool hasAgentOverride = tab->HasAgentOverride();
         if (hasAgentOverride)
         {
             effectiveAgentId = tab->AgentIdOverride();
             effectiveModel = tab->AgentModelOverride();
+            effectiveAgentSource = tab->AgentSourceOverride();
+            effectiveAgentWslDistro = tab->AgentWslDistroOverride();
             agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, tab->AgentCustomCommandOverride());
         }
         // `_ResolveAgentCliPathForId` returns empty to signal "fall back"
@@ -1898,6 +1902,8 @@ namespace winrt::TerminalApp::implementation
         {
             effectiveAgentId = globals.EffectiveAcpAgent();
             effectiveModel = globals.AcpModel();
+            effectiveAgentSource = L"host";
+            effectiveAgentWslDistro = {};
             agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this]() { return _DetectAgentCli(); });
             // When the global selection is absent/blocked,
             // _ResolveEffectiveAgentCliPath falls back to auto-detection and
@@ -2006,6 +2012,8 @@ namespace winrt::TerminalApp::implementation
         // master spawns/reuses the right agent CLI for THIS tab.
         appendHelperFlagValue(L"--agent", agentCliPath);
         appendHelperFlagValue(L"--agent-id", effectiveAgentId);
+        appendHelperFlagValue(L"--agent-source", effectiveAgentSource);
+        appendHelperFlagValue(L"--agent-wsl-distro", effectiveAgentWslDistro);
         {
             namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
             std::wstring allowedIds;
@@ -2125,6 +2133,10 @@ namespace winrt::TerminalApp::implementation
             {
                 startingDirectory = winrt::hstring{ homePath };
             }
+        }
+        if (!startingDirectory.empty())
+        {
+            appendHelperFlagValue(L"--agent-source-cwd", startingDirectory);
         }
 
         NewTerminalArgs args;
@@ -4829,9 +4841,54 @@ namespace winrt::TerminalApp::implementation
 
         const auto tab = _FindTabByStableId(winrt::to_hstring(params["tab_id"].asString()));
         const auto agentId = winrt::to_hstring(params["agent_id"].asString());
+        const auto source = params.isMember("agent_source") && params["agent_source"].isString() ?
+                                winrt::to_hstring(params["agent_source"].asString()) :
+                                winrt::hstring{ L"host" };
+        const auto wslDistro = params.isMember("wsl_distro") && params["wsl_distro"].isString() ?
+                                   winrt::to_hstring(params["wsl_distro"].asString()) :
+                                   winrt::hstring{};
         if (!tab || agentId.empty())
         {
             return;
+        }
+        if (source != L"host" && source != L"wsl")
+        {
+            _agentPaneLog("OnAgentSwitchRequested: unknown agent source");
+            return;
+        }
+        if (source == L"wsl")
+        {
+            if (wslDistro.empty())
+            {
+                _agentPaneLog("OnAgentSwitchRequested: WSL source missing distro");
+                return;
+            }
+
+            auto effectivePane = tab->GetActivePane();
+            if (effectivePane && effectivePane->IsAgentPane())
+            {
+                if (const auto rootPane = tab->GetRootPane())
+                {
+                    rootPane->WalkTree([&](const auto& pane) {
+                        if (pane->IsSourceOfAgentPane())
+                        {
+                            effectivePane = pane;
+                        }
+                    });
+                }
+            }
+            winrt::Microsoft::Terminal::Control::TermControl control{ nullptr };
+            if (effectivePane)
+            {
+                control = effectivePane->GetTerminalControl();
+            }
+            std::wstring expectedShell{ L"wsl:" };
+            expectedShell.append(std::wstring_view{ wslDistro });
+            if (!control || control.ShellName() != expectedShell)
+            {
+                _agentPaneLog("OnAgentSwitchRequested: WSL source does not match the tab working pane");
+                return;
+            }
         }
 
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
@@ -4853,12 +4910,18 @@ namespace winrt::TerminalApp::implementation
         const auto currentId = tab->HasAgentOverride() ?
                                    tab->AgentIdOverride() :
                                    _settings.GlobalSettings().EffectiveAcpAgent();
-        if (currentId == agentId)
+        const auto currentSource = tab->HasAgentOverride() ?
+                                       tab->AgentSourceOverride() :
+                                       winrt::hstring{ L"host" };
+        const auto currentWslDistro = tab->HasAgentOverride() ?
+                                          tab->AgentWslDistroOverride() :
+                                          winrt::hstring{};
+        if (currentId == agentId && currentSource == source && currentWslDistro == wslDistro)
         {
             return;
         }
 
-        tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{});
+        tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{}, source, wslDistro);
         _RebuildAgentPaneForTab(tab);
     }
 

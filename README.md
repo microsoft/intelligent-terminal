@@ -159,7 +159,13 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 | `/restart` | Restart the agent with a clean session |
 | `/stop` | Cancel the in-flight prompt |
 | `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |
+| `/agent [id]` | Pick the agent source for this tab. In a WSL pane, the picker includes agents installed on Windows and in that pane's WSL distro; it never offers other distros. |
 | `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
+
+When a WSL agent source is selected, its ACP server and terminal tools run
+inside that distro. The selection is scoped to the current tab. If the default
+Windows agent is unavailable, use **Select agent** on the agent-pane setup
+screen to choose an agent installed in the current WSL distro.
 
 ### Agent Management
 
