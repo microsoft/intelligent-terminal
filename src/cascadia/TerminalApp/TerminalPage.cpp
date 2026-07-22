@@ -4630,6 +4630,17 @@ namespace winrt::TerminalApp::implementation
                 logSuffix += " pane_position=global";
             }
         }
+        std::optional<Json::Value> usage;
+        if (params.isMember("usage"))
+        {
+            const auto& value = params["usage"];
+            if (!value.isNull() && !value.isObject())
+            {
+                throw std::invalid_argument{ "agent_state_changed usage must be null or object" };
+            }
+            usage = value;
+            logSuffix += value.isNull() ? " usage=null" : " usage=present";
+        }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
         // Apply view to the existing AgentPaneContent if any.
@@ -4745,6 +4756,14 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+            }
+        }
+
+        if (usage.has_value())
+        {
+            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            {
+                winrt::get_self<implementation::AgentPaneContent>(agentContent)->ApplyAgentUsage(*usage);
             }
         }
 

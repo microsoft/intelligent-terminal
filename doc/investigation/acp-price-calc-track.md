@@ -27,7 +27,7 @@ code it describes.
 | 3. Helper dispatch | `SessionNotification::UsageUpdate` emits a typed app event; malformed input returns `Err` | Route normalizer output through existing `AppEvent` channel and store it on the owner tab | Complete |
 | 4. Session lifecycle | Cumulative session usage replaces prior values and clears on new/load/agent identity boundaries | Apply explicit reset rules while model changes preserve usage | Complete |
 | 5. Existing state projection | `agent_state_changed` contains normalized usage or explicit null | Extend `project_tab_state`; no new COM/IDL route | Complete |
-| 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Pending |
+| 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Complete |
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Pending |
 | 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Pending |
 | 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Pending |
@@ -139,6 +139,48 @@ code it describes.
 - `tools/wta/src/app.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state/transport update in `doc/investigation/acp-price-calc.md`
+
+### Step 6 - C++ Parser and Per-Pane Cache
+
+**RED**
+
+- Added five TerminalApp TAEF parser tests before creating `AgentUsage.h`; the focused project
+  build failed with C1083 (missing header).
+- After the parser passed, added two atomic cache tests before `UpdateCache` existed; the build
+  failed with C2039 (missing member).
+
+**GREEN**
+
+- Added a pure `AgentUsage` parser independent of XAML/WinRT construction.
+- Accepts null/empty as explicit clear and validates the complete item array atomically before
+  replacing the cache. Malformed input throws and preserves the previous cache.
+- Bounds item count and string lengths, validates decimal/scientific text, and requires typed
+  metric/value/unit/scope/source/stale fields. No provider calculation or raw provider JSON is
+  stored.
+- `AgentPaneContent` caches only parsed items and raises its existing `StateChanged` event after a
+  successful replace/clear. No IDL or new COM event route was added.
+- `TerminalPage::OnAgentStateChanged` consumes the optional `usage` member for the routed tab.
+  Missing means no change; null clears; object updates; another JSON type fails fast.
+
+**Validation**
+
+- Parser RED: focused C++ build failed because `AgentUsage.h` did not exist.
+- Cache RED: focused C++ build failed because `AgentUsage::UpdateCache` did not exist.
+- `AgentUsageTests`: 7 passed, 0 failed, 0 skipped.
+- TerminalApp unit-test project build: succeeded with 0 errors.
+- Full x64 Debug incremental solution build: succeeded with 0 errors (existing XAML/PRI warnings).
+- clang-format reports no violations on new files or changed lines.
+
+**Committed files**
+
+- `src/cascadia/TerminalApp/AgentUsage.h/.cpp`
+- `src/cascadia/TerminalApp/AgentPaneContent.h/.cpp`
+- `src/cascadia/TerminalApp/TerminalPage.cpp`
+- `src/cascadia/TerminalApp/TerminalAppLib.vcxproj`
+- `src/cascadia/ut_app/AgentUsageTests.cpp`
+- `src/cascadia/ut_app/TerminalApp.UnitTests.vcxproj`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
 
 ### Step 4 - Session Usage Lifecycle
 

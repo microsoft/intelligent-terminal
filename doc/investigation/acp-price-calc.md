@@ -91,8 +91,8 @@ fixture/记录并重新跑 Claude/Codex E2E mock。
 | Command ownership | C++ `_BuildAgentCommandLine()` 构造 host/default command；Rust `AgentProfile` 为 per-tab built-in selection 重建 command，因此目前确有两份映射 | 建立可生成/共享的 launch metadata；完成前用测试强制两处完全一致 |
 | Custom selection | Settings 将 `npx ...` 保存为 `custom:npx`；master 对未知 helper ID 回退到 host 已信任的 default command，从不执行 pipe 上传来的 command | 分离 instance/family/reporter；custom 可识别 compatible family，但首版不能启用私有 usage extension |
 | Usage receive | master 已可靠 coalesce/定向 latest value；helper 已通过 provider-neutral normalizer fail-fast校验 typed `UsageUpdate` 并发出 `AppEvent::UsageReported` | 增加明确的session lifecycle/reset规则和projection |
-| Usage state/UI | Rust `TabSession` 已保存、重置并通过typed items投影owner tab的latest `UsageSnapshot`；`AgentPaneContent`与XAML仍无usage字段/控件 | C++解析并缓存现有snapshot，由Bottom Bar Column 2渲染`UsageGroup` |
-| C++ event route | `agent_state_changed` 已按 `tab_id` 经 COM server 定向到 `TerminalPage::OnAgentStateChanged()`；Rust snapshot 已包含可选`usage`或null | 在现有C++ handler消费该字段，不新增COM/IDL route |
+| Usage state/UI | Rust `TabSession` 已保存、重置并投影latest snapshot；C++已原子校验并缓存到owner tab的`AgentPaneContent`；XAML仍无usage控件 | 由Bottom Bar Column 2渲染缓存的`UsageGroup` |
+| C++ event route | 现有`agent_state_changed`已按`tab_id`路由并消费可选`usage`/null；missing保持、null清除、malformed fail-fast | 不新增COM/IDL route；Step 7只增加Bottom Bar rendering |
 | Rust codegen | [tools/wta/build.rs](../../tools/wta/build.rs) 当前只生成 ETW telemetry metadata | 增加 Agent registry codegen，但保留现有 ETW 生成 |
 | Gemini / Antigravity | Gemini 仍是当前仓库的内置 ACP agent；Antigravity 尚无 registry/profile/usage 集成 | Usage feature 不做 Gemini-specific provider；迁移到 Antigravity 前另行调查协议与 identity，不预先复用 `gemini` family ID |
 
