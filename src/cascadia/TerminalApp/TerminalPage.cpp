@@ -7992,6 +7992,7 @@ namespace winrt::TerminalApp::implementation
         const auto restoringAgentSession = newTerminalArgs &&
                                            (!newTerminalArgs.ShellSessionRestorePath().empty() || newTerminalArgs.UseWorkspaceBuffer()) &&
                                            !newTerminalArgs.AgentSessionId().empty();
+        auto resumingAgentSession = false;
         if (restoringAgentSession)
         {
             const auto resumeCommandline = !newTerminalArgs.AgentSessionAgent().empty() ?
@@ -8002,6 +8003,7 @@ namespace winrt::TerminalApp::implementation
             if (!resumeCommandline.empty())
             {
                 newTerminalArgs.Commandline(resumeCommandline);
+                resumingAgentSession = true;
             }
         }
 
@@ -8076,7 +8078,9 @@ namespace winrt::TerminalApp::implementation
 
         const auto control = _CreateNewControlAndContent(controlSettings, connection);
 
-        if (hasSessionId)
+        // The agent CLI replays its own transcript. Restoring the terminal buffer too
+        // duplicates that conversation and compounds it on every save/restore cycle.
+        if (hasSessionId && !resumingAgentSession)
         {
             using namespace std::string_view_literals;
 
@@ -8123,7 +8127,7 @@ namespace winrt::TerminalApp::implementation
             original->SetActive();
         }
 
-        if (restoringAgentSession && hasSessionId)
+        if (resumingAgentSession && hasSessionId)
         {
             Json::Value params;
             params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
