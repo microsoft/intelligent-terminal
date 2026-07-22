@@ -915,9 +915,33 @@ namespace winrt::TerminalApp::implementation
 
         Json::Value params;
         params["name"] = winrt::to_string(sessionName);
-        if (const auto activeControl = tab->GetActiveTerminalControl())
+
+        TermControl activeShellControl{ nullptr };
+        for (const auto paneId : tab->GetMruPanes())
         {
-            params["active_pane_cwd"] = winrt::to_string(activeControl.WorkingDirectory());
+            if (const auto pane = tab->GetRootPane()->FindPane(paneId);
+                pane && !pane->IsAgentPane())
+            {
+                activeShellControl = pane->GetTerminalControl();
+                if (activeShellControl)
+                {
+                    break;
+                }
+            }
+        }
+        if (!activeShellControl)
+        {
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (!activeShellControl && !pane->IsAgentPane())
+                {
+                    activeShellControl = pane->GetTerminalControl();
+                }
+            });
+        }
+
+        if (activeShellControl)
+        {
+            params["active_pane_cwd"] = winrt::to_string(activeShellControl.WorkingDirectory());
         }
         else
         {
