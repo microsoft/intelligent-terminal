@@ -23,7 +23,7 @@
 #
 # ── CLI-source identification ───────────────────────────────────────────
 # The installer hard-codes which CLI invokes this script via the
-# `-CliSource` parameter (claude / codex / copilot / gemini). That is the
+# `-CliSource` parameter (claude / codex / copilot / gemini / opencode). That is the
 # ONLY reliable signal — env-var heuristics are unreliable because
 # Copilot CLI inherits Claude's plugin shape and sets CLAUDE_PLUGIN_ROOT,
 # making it indistinguishable from a real Claude run by env vars alone.

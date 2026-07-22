@@ -340,7 +340,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveCopilotHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -364,7 +364,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveClaudeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -388,7 +388,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveGeminiHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -424,7 +424,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveCodexHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>

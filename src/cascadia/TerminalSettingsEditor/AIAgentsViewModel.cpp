@@ -908,6 +908,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                        L"IsOpenCodeCliDetected",
                        L"IsAnyAgentCliDetected",
                        L"CanInstallAgentHooks",
+                       L"CanRemoveAgentHooks",
                        L"CanRemoveOpenCodeHooks",
                        L"ShowCopilotHookRow",
                        L"ShowClaudeHookRow",

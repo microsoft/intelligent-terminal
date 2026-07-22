@@ -156,6 +156,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return IsAnyAgentCliDetected() && !IsAgentSessionHooksPolicyLocked();
         }
+        bool CanRemoveAgentHooks() const noexcept
+        {
+            return !IsAgentSessionHooksPolicyLocked();
+        }
         bool CanRemoveOpenCodeHooks() const noexcept
         {
             return _openCodeHooksPresent && !IsAgentSessionHooksPolicyLocked();

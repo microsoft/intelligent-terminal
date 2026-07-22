@@ -74,10 +74,11 @@ claude/         copilot/        gemini-extension/
 ```
 
 OpenCode has no separate hook marketplace. `wta hooks install --cli opencode`
-copies `wt-agent-hooks.js` into `%USERPROFILE%\.config\opencode\plugins\`
-and keeps its manifest and bridge in a dedicated `wt-agent-hooks\` support
-subdirectory. It refuses to overwrite a same-name JavaScript plugin that
-does not contain Intelligent Terminal's managed-file marker.
+copies `wt-agent-hooks.js` into `%XDG_CONFIG_HOME%\opencode\plugins\` when
+`XDG_CONFIG_HOME` is set, or `%USERPROFILE%\.config\opencode\plugins\`
+otherwise. It keeps its manifest and bridge in a dedicated `wt-agent-hooks\`
+support subdirectory and refuses to overwrite a same-name JavaScript plugin
+that does not contain Intelligent Terminal's managed-file marker.
 
 Bundle resolution chain (first hit wins, see
 `agent_hooks_installer::bundle::candidate_roots`):
