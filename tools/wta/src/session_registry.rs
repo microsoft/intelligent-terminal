@@ -1104,6 +1104,17 @@ pub trait SessionRegistry: Send + Sync {
         sid: &acp::schema::v1::SessionId,
         candidate: &str,
     ) -> bool;
+
+    /// Atomically replace `title` for `sid` with the non-empty title currently
+    /// reported by the owning CLI's `session/list`. Unlike
+    /// [`upgrade_title_if_synthetic`](Self::upgrade_title_if_synthetic), this
+    /// treats `session/list` as authoritative even when the registry already
+    /// contains an earlier non-synthetic title.
+    async fn update_title_from_session_list(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        candidate: &str,
+    ) -> bool;
 }
 
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
@@ -1280,6 +1291,25 @@ impl SessionRegistry for InMemoryRegistry {
         if !title_is_synthetic(entry) {
             return false;
         }
+        if entry.title.as_deref() == Some(candidate) {
+            return false;
+        }
+        entry.title = Some(candidate.to_string());
+        true
+    }
+
+    async fn update_title_from_session_list(
+        &self,
+        sid: &acp::schema::v1::SessionId,
+        candidate: &str,
+    ) -> bool {
+        if candidate.is_empty() {
+            return false;
+        }
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(sid) else {
+            return false;
+        };
         if entry.title.as_deref() == Some(candidate) {
             return false;
         }
@@ -2070,6 +2100,43 @@ mod tests {
         let found = reg.lookup(&sid).await.unwrap();
         assert_eq!(found.title.as_deref(), Some("Real Title"));
         // Everything else is preserved.
+        assert_eq!(found.pane_session_id.as_deref(), Some("pane-abc"));
+        assert_eq!(found.status, Some(AgentStatus::Working));
+        assert_eq!(found.cli_source, Some(CliSource::Copilot));
+        assert_eq!(found.current_tool.as_deref(), Some("write"));
+        assert_eq!(found.last_activity_at_ms, Some(123_456_789));
+        assert_eq!(found.origin, Some(SessionOrigin::Unknown));
+        assert_eq!(found.cwd, PathBuf::from("C:\\Users\\alice"));
+    }
+
+    #[tokio::test]
+    async fn session_list_title_replaces_initial_prompt_and_preserves_other_fields() {
+        let reg = InMemoryRegistry::new();
+        let mut row = info_with(
+            "s1",
+            "C:\\Users\\alice",
+            Some("Can session management add search"),
+        );
+        row.pane_session_id = Some("pane-abc".to_string());
+        row.status = Some(AgentStatus::Working);
+        row.cli_source = Some(CliSource::Copilot);
+        row.current_tool = Some("write".to_string());
+        row.last_activity_at_ms = Some(123_456_789);
+        row.origin = Some(SessionOrigin::Unknown);
+        reg.upsert(row).await;
+
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
+        assert!(
+            reg.update_title_from_session_list(&sid, "Add Search to Session Management")
+                .await
+        );
+        assert!(!reg.update_title_from_session_list(&sid, "").await);
+
+        let found = reg.lookup(&sid).await.unwrap();
+        assert_eq!(
+            found.title.as_deref(),
+            Some("Add Search to Session Management")
+        );
         assert_eq!(found.pane_session_id.as_deref(), Some("pane-abc"));
         assert_eq!(found.status, Some(AgentStatus::Working));
         assert_eq!(found.cli_source, Some(CliSource::Copilot));
