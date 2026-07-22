@@ -1074,9 +1074,23 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     let destination = opencode_plugins_dir(home);
     let support_dir = opencode_support_dir(home);
     let installed_js = destination.join(OPENCODE_PLUGIN_JS);
-    let installed_js_existed = installed_js.exists();
+    let installed_js_metadata = match fs::symlink_metadata(&installed_js) {
+        Ok(metadata) => Some(metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let installed_js_existed = installed_js_metadata.is_some();
     let support_dir_existed = support_dir.exists();
-    let installed_js_managed = if installed_js.is_file() {
+    let installed_js_managed = if let Some(metadata) = installed_js_metadata {
+        if !metadata.file_type().is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "{} exists but is not a regular managed file",
+                    installed_js.display()
+                ),
+            ));
+        }
         let text = fs::read_to_string(&installed_js)?;
         if !text.contains(OPENCODE_MANAGED_MARKER) {
             return Err(std::io::Error::new(
@@ -4473,6 +4487,22 @@ mod tests {
             fs::read_to_string(installed.join(OPENCODE_PLUGIN_JS)).unwrap(),
             "user plugin"
         );
+        assert!(!opencode_support_dir(&home).exists());
+    }
+
+    #[test]
+    fn copy_opencode_bundle_rejects_non_file_plugin_collision() {
+        let source = unique_dir("opencode-directory-collision-source");
+        let home = unique_dir("opencode-directory-collision-home");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        let installed_js = opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS);
+        fs::create_dir_all(&installed_js).unwrap();
+
+        let error = copy_opencode_bundle(&source, &home).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(error.to_string().contains("not a regular managed file"));
+        assert!(installed_js.is_dir());
         assert!(!opencode_support_dir(&home).exists());
     }
 
