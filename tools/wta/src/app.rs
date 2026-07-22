@@ -3871,6 +3871,7 @@ impl App {
             .get(tab_id)
             .map(|tab| tab.agents_view.search_query.as_str())
             .unwrap_or_default();
+        let folded_query = query.to_lowercase();
         if let Some(snapshot) = self
             .tab_sessions
             .get(tab_id)
@@ -3888,7 +3889,7 @@ impl App {
             // `matches(&s.origin)` is sufficient and stays consistent
             // with the registry branch below.
             rows.retain(|s| origin.matches(&s.origin));
-            rows.retain(|s| crate::ui::agents_view::matches_query(s, query));
+            rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         } else {
             let mut rows: Vec<_> = self
@@ -3897,7 +3898,7 @@ impl App {
                 .into_iter()
                 .cloned()
                 .collect();
-            rows.retain(|s| crate::ui::agents_view::matches_query(s, query));
+            rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         }
     }
@@ -6960,7 +6961,11 @@ impl App {
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Up | KeyCode::Down | KeyCode::Enter => {}
+                    KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::Enter
+                    | KeyCode::F(5)
+                    | KeyCode::Delete => {}
                     _ => return,
                 }
             }
@@ -12774,6 +12779,8 @@ mod tests {
         }
         // Clear the in-flight flag so the F5 refetch dispatches fresh.
         app.current_tab_mut().agents_view.refetch_in_flight = false;
+        app.current_tab_mut().agents_view.search_query = "active search".into();
+        app.current_tab_mut().agents_view.search_focused = true;
 
         app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
 
@@ -12783,6 +12790,8 @@ mod tests {
             }
             other => panic!("expected SessionsList, got {other:?}"),
         }
+        assert_eq!(app.current_tab().agents_view.search_query, "active search");
+        assert!(app.current_tab().agents_view.search_focused);
     }
 
     #[test]
@@ -12910,6 +12919,7 @@ mod tests {
         }
         app.current_tab_mut().current_view = View::Agents;
         app.current_tab_mut().agents_view.search_query = "match".into();
+        app.current_tab_mut().agents_view.search_focused = true;
         app.current_tab_mut().agents_list_state.select(Some(1));
 
         let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
@@ -12921,6 +12931,8 @@ mod tests {
         assert!(!app.agent_sessions.has_session(&deleted_key));
         assert_eq!(app.agents_rows_for_tab(DEFAULT_TAB_ID).len(), 1);
         assert_eq!(app.current_tab().agents_list_state.selected(), Some(0));
+        assert_eq!(app.current_tab().agents_view.search_query, "match");
+        assert!(app.current_tab().agents_view.search_focused);
     }
 
     // Esc out of the session-management (Agents) view restores the pane

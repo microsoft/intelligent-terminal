@@ -122,6 +122,7 @@ pub fn render(
         render_search(f, search_area, search_query, search_focused);
     }
 
+    let folded_query = search_query.to_lowercase();
     let using_snapshot = snapshot.is_some();
     let filter_start = std::time::Instant::now();
     let (mut sorted, pre_filter_total): (Vec<AgentSession>, usize) =
@@ -155,7 +156,7 @@ pub fn render(
                 .collect();
             (rows, total)
         };
-    sorted.retain(|session| matches_query(session, search_query));
+    sorted.retain(|session| matches_folded_query(session, &folded_query));
     let filter_elapsed_us = filter_start.elapsed().as_micros() as u64;
     // These three fire on every render frame while the F2 view is open (the TUI
     // redraws continuously), so they're trace-only — at info/debug a single
@@ -221,7 +222,7 @@ pub fn render(
     let rows: Vec<ListItem> = sorted
         .iter()
         .enumerate()
-        .map(|(i, s)| row_for(s, Some(i) == selected, row_width, search_query))
+        .map(|(i, s)| row_for(s, Some(i) == selected, row_width, &folded_query))
         .collect();
 
     // No `highlight_style` — selection is conveyed by the `>` prefix and
@@ -321,7 +322,7 @@ fn row_for(
     s: &AgentSession,
     selected: bool,
     row_width: usize,
-    search_query: &str,
+    folded_query: &str,
 ) -> ListItem<'static> {
     let origin_prefix = origin_prefix_for(s);
     let prefix_w = origin_prefix
@@ -424,7 +425,7 @@ fn row_for(
         // rows fall through to the terminal's default foreground.
         spans.push(Span::styled(prefix, title_style));
     }
-    spans.extend(highlight_matches(&title_text, search_query, title_style));
+    spans.extend(highlight_matches(&title_text, folded_query, title_style));
     if keep_badge && !badge.is_empty() {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(badge, badge_style));
@@ -442,21 +443,20 @@ fn row_for(
     ListItem::new(Line::from(spans))
 }
 
-pub(crate) fn matches_query(session: &AgentSession, query: &str) -> bool {
-    if query.is_empty() {
+pub(crate) fn matches_folded_query(session: &AgentSession, folded_query: &str) -> bool {
+    if folded_query.is_empty() {
         return true;
     }
-    let folded_query = query.to_lowercase();
-    session.title.to_lowercase().contains(&folded_query)
+    session.title.to_lowercase().contains(folded_query)
         || session
             .cwd
             .to_string_lossy()
             .to_lowercase()
-            .contains(&folded_query)
+            .contains(folded_query)
 }
 
-fn highlight_matches(text: &str, query: &str, base_style: Style) -> Vec<Span<'static>> {
-    let ranges = case_insensitive_match_ranges(text, query);
+fn highlight_matches(text: &str, folded_query: &str, base_style: Style) -> Vec<Span<'static>> {
+    let ranges = case_insensitive_match_ranges(text, folded_query);
     if ranges.is_empty() {
         return vec![Span::styled(text.to_string(), base_style)];
     }
@@ -482,8 +482,8 @@ fn highlight_matches(text: &str, query: &str, base_style: Style) -> Vec<Span<'st
     spans
 }
 
-fn case_insensitive_match_ranges(text: &str, query: &str) -> Vec<(usize, usize)> {
-    if query.is_empty() {
+fn case_insensitive_match_ranges(text: &str, folded_query: &str) -> Vec<(usize, usize)> {
+    if folded_query.is_empty() {
         return Vec::new();
     }
 
@@ -496,9 +496,8 @@ fn case_insensitive_match_ranges(text: &str, query: &str) -> Vec<(usize, usize)>
         normalized.push_str(&folded);
     }
 
-    let folded_query = query.to_lowercase();
     normalized
-        .match_indices(&folded_query)
+        .match_indices(folded_query)
         .filter_map(|(start, matched)| {
             let end = start + matched.len();
             Some((
@@ -831,22 +830,23 @@ mod tests {
     }
 
     #[test]
-    fn search_matches_title_and_cwd_case_insensitively() {
+    fn folded_search_matches_title_and_cwd_case_insensitively() {
         let mut session = sample_session();
         session.title = "PowerShell".into();
         session.cwd = std::path::PathBuf::from(r"C:\Windows");
-        assert!(matches_query(&session, "po"));
-        assert!(matches_query(&session, "POWER"));
+        assert!(matches_folded_query(&session, &"po".to_lowercase()));
+        assert!(matches_folded_query(&session, &"POWER".to_lowercase()));
 
         session.title = "review changes".into();
         session.cwd = std::path::PathBuf::from(r"C:\repos\Portal");
-        assert!(matches_query(&session, "PORTAL"));
-        assert!(!matches_query(&session, "bash"));
+        assert!(matches_folded_query(&session, &"PORTAL".to_lowercase()));
+        assert!(!matches_folded_query(&session, &"bash".to_lowercase()));
     }
 
     #[test]
     fn search_highlights_each_match_without_breaking_unicode() {
-        let spans = highlight_matches("PowerShell empower", "po", Style::default());
+        let folded_query = "PO".to_lowercase();
+        let spans = highlight_matches("PowerShell empower", &folded_query, Style::default());
         let highlighted = spans
             .iter()
             .filter(|span| span.style.fg == Some(ACCENT_YELLOW))
@@ -858,13 +858,15 @@ mod tests {
             .filter(|span| span.style.fg == Some(ACCENT_YELLOW))
             .all(|span| span.style.add_modifier.contains(Modifier::UNDERLINED)));
 
-        let unicode = highlight_matches("İstanbul", "i\u{307}", Style::default());
+        let folded_query = "İ".to_lowercase();
+        assert_eq!(folded_query, "i\u{307}");
+        let unicode = highlight_matches("İ!", &folded_query, Style::default());
         assert_eq!(
             unicode
                 .iter()
                 .map(|span| span.content.as_ref())
                 .collect::<String>(),
-            "İstanbul"
+            "İ!"
         );
         assert_eq!(unicode[0].content.as_ref(), "İ");
     }

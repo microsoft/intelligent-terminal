@@ -102,7 +102,7 @@ agent.custom.auth_hint: "Pārliecinieties, ka %{name} ir instalēts un atrodas j
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Ielādē..."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju • Esc lai izietu • F5 lai atsvaidzinātu • / meklēt)"
+agents.footer_hint: "(↑ ↓ lai pārvietotos • Enter lai sāktu sesiju • Esc lai izietu • F5 lai atsvaidzinātu • / lai meklētu)"
 agents.status.active: "Aktīvs"
 agents.status.waiting_for_input: "Gaida ievadi"
 agents.status.error: "Kļūda"
