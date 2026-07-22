@@ -125,17 +125,17 @@ mod tests {
     #[test]
     fn human_format_summarizes_resolutions_and_matches() {
         let exists = serde_json::json!({
-            "token": "greetme",
+            "token": "profile-greeting",
             "status": "exists",
             "resolutions": [{
                 "type": "Alias",
-                "name": "greetme",
+                "name": "profile-greeting",
                 "target": "Invoke-ProfileGreeting"
             }]
         });
         assert_eq!(
             format_human(&exists),
-            "TOKEN    greetme\nSTATUS   exists\nCOMMAND  Alias greetme\nTARGET   Invoke-ProfileGreeting"
+            "TOKEN    profile-greeting\nSTATUS   exists\nCOMMAND  Alias profile-greeting\nTARGET   Invoke-ProfileGreeting"
         );
 
         let not_found = serde_json::json!({
