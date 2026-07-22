@@ -2150,6 +2150,8 @@ pub struct App {
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
+    #[cfg(test)]
+    projected_test_events: std::sync::Mutex<Vec<serde_json::Value>>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
     /// launching pane). Used by autofix to attribute which pane originated
     /// the failing command we're about to fix.
@@ -2368,6 +2370,8 @@ impl App {
             acp_model: None,
             #[cfg(test)]
             last_dispatched_command: None,
+            #[cfg(test)]
+            projected_test_events: std::sync::Mutex::new(Vec::new()),
             source_session_id: None,
             source_cwd: None,
             log_agent_events: false,
@@ -5051,10 +5055,14 @@ impl App {
                 session_id,
                 snapshot,
             } => {
-                self.session_tab_mut(&session_id).usage = Some(snapshot);
+                let target_tab = self.tab_for_session(&session_id);
+                self.tab_mut(&target_tab).usage = Some(snapshot);
+                self.project_tab_state(&target_tab);
             }
             AppEvent::UsageCleared { session_id } => {
-                self.session_tab_mut(&session_id).usage = None;
+                let target_tab = self.tab_for_session(&session_id);
+                self.tab_mut(&target_tab).usage = None;
+                self.project_tab_state(&target_tab);
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -9897,6 +9905,11 @@ impl App {
             return;
         };
         let evt = build_agent_state_changed_event(target_tab, tab);
+        #[cfg(test)]
+        self.projected_test_events
+            .lock()
+            .unwrap()
+            .push(evt.clone());
         send_wt_protocol_event(evt.to_string());
 
         // Autofix bar is window-level (single bottom bar reflecting the
@@ -9905,6 +9918,11 @@ impl App {
         if target_tab == self.active_tab_key() {
             send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
         }
+    }
+
+    #[cfg(test)]
+    fn take_projected_test_events(&self) -> Vec<serde_json::Value> {
+        std::mem::take(&mut *self.projected_test_events.lock().unwrap())
     }
 }
 
@@ -11834,6 +11852,36 @@ mod tests {
 
         assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
         assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
+    }
+
+    #[test]
+    fn usage_events_immediately_project_owner_tab_state() {
+        let mut app = test_app();
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+        app.session_to_tab
+            .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+
+        app.handle_event(AppEvent::UsageReported {
+            session_id: "usage-session".to_string(),
+            snapshot: lifecycle_usage_snapshot(),
+        });
+
+        let reported = app.take_projected_test_events();
+        assert_eq!(reported.len(), 1);
+        assert_eq!(reported[0]["method"], "agent_state_changed");
+        assert_eq!(reported[0]["params"]["tab_id"], "OWNER-TAB");
+        assert!(reported[0]["params"]["usage"].is_object());
+
+        app.handle_event(AppEvent::UsageCleared {
+            session_id: "usage-session".to_string(),
+        });
+
+        let cleared = app.take_projected_test_events();
+        assert_eq!(cleared.len(), 1);
+        assert_eq!(cleared[0]["method"], "agent_state_changed");
+        assert_eq!(cleared[0]["params"]["tab_id"], "OWNER-TAB");
+        assert!(cleared[0]["params"]["usage"].is_null());
     }
 
     #[test]

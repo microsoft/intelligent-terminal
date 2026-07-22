@@ -1,6 +1,6 @@
 # ACP Usage / Cost 调查与统一展示设计
 
-- **状态**：分步实现中；TDD Step 0-8 已完成，final integration 待完成
+- **状态**：首版实现完成；TDD Step 0-9 与本地完整pipeline验证已完成
 - **首次调查**：2026-07-17
 - **最后核验**：2026-07-22
 - **协议基线**：ACP protocol version 1
@@ -90,8 +90,8 @@ fixture/记录并重新跑 Claude/Codex E2E mock。
 | Codex launch | C++ 与 Rust 都固定为官方 `npx -y @agentclientprotocol/codex-acp@1.1.2` | 消除 launch metadata 重复并保留历史识别 alias |
 | Command ownership | C++ `_BuildAgentCommandLine()` 构造 host/default command；Rust `AgentProfile` 为 per-tab built-in selection 重建 command，因此目前确有两份映射 | 建立可生成/共享的 launch metadata；完成前用测试强制两处完全一致 |
 | Custom selection | Settings 将 `npx ...` 保存为 `custom:npx`；master 对未知 helper ID 回退到 host 已信任的 default command，从不执行 pipe 上传来的 command | 分离 instance/family/reporter；custom 可识别 compatible family，但首版不能启用私有 usage extension |
-| Usage receive | master已可靠coalesce/定向latest value；helper内层normalizer保持fail-fast；production notification入口用单一outer boundary隔离malformed Usage并发出owner-session clear | Step 9完成最终integration matrix |
-| Usage state/UI | Rust `TabSession` 已保存、重置并投影latest snapshot；C++已原子校验并缓存到owner tab的`AgentPaneContent`；Bottom Bar Column 2的`UsageGroup`最多渲染两个normalized items，无值时隐藏 | Step 9完成最终integration matrix，不增加平行UI/state route |
+| Usage receive | master已可靠coalesce/定向latest value；helper内层normalizer保持fail-fast；production notification入口用单一outer boundary隔离malformed Usage并发出owner-session clear | 保持provider-neutral；按实际agent版本继续维护structured Usage兼容矩阵 |
+| Usage state/UI | Rust `TabSession`保存、重置并立即投影latest snapshot；C++原子校验并缓存到owner tab的`AgentPaneContent`；Bottom Bar Column 2的`UsageGroup`最多渲染两个normalized items，无值时隐藏 | 首版已完成；不增加平行UI/state route |
 | C++ event route | 现有`agent_state_changed`按`tab_id`路由并消费可选`usage`/null；missing保持、null清除、malformed fail-fast；Rust clear沿同一projection发送null；`_UpdateBottomBarState`从active tab cache渲染 | 不新增COM/IDL route或第二个业务异常层 |
 | Rust codegen | [tools/wta/build.rs](../../tools/wta/build.rs) 当前只生成 ETW telemetry metadata | 增加 Agent registry codegen，但保留现有 ETW 生成 |
 | Gemini / Antigravity | Gemini 仍是当前仓库的内置 ACP agent；Antigravity 尚无 registry/profile/usage 集成 | Usage feature 不做 Gemini-specific provider；迁移到 Antigravity 前另行调查协议与 identity，不预先复用 `gemini` family ID |
@@ -1298,9 +1298,9 @@ direct Web API。
 - Gemini 不进入本功能 compatibility matrix；Antigravity 在独立调查并进入 registry 后再决定
   是否加入，不能把 Gemini 测试结果沿用到 Antigravity。
 
-### 9.12 推荐的首版最小范围
+### 9.12 已实现的首版最小范围
 
-为了避免第一版同时解决账户 API、持久化和跨窗口 quota，建议只实现：
+为了避免第一版同时解决账户API、持久化和跨窗口quota，当前首版已实现：
 
 1. 标准 ACP `UsageUpdate` 的 `used / size / cost`；
 2. 仅 `Session` scope；

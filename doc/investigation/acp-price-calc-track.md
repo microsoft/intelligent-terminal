@@ -30,7 +30,7 @@ code it describes.
 | 6. C++ cache/parser | Routed normalized JSON updates or clears the correct tab cache | Extend `OnAgentStateChanged` and `AgentPaneContent` | Complete |
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Complete |
 | 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Complete |
-| 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Pending |
+| 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Complete |
 
 ## Completed Steps
 
@@ -278,6 +278,54 @@ code it describes.
 - `tools/wta/src/app.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
+
+### Step 9 - Final Integration
+
+**RED**
+
+- Added a local ignored standalone ACP agent that emits a valid standard `usage_update` followed
+  by an agent text chunk. The first full desktop run proved master delivery and helper
+  normalization (`first_event=usage_update`) but the Bottom Bar stayed hidden: updating App state
+  did not immediately project `agent_state_changed` to C++.
+- Added an existing-framework App test requiring `UsageReported` to project an owner-tab usage
+  object immediately and `UsageCleared` to project null. Before the projection capture and refresh
+  existed, the focused build failed with E0599 for `take_projected_test_events`.
+
+**GREEN**
+
+- Both Usage event branches now resolve the owner tab through the existing SessionId map, mutate
+  that tab, and immediately reuse `project_tab_state`. No new transport or C++ route was added.
+- Added test-only capture at the existing projection boundary so the focused test verifies the
+  exact production event builder and owner-tab ID without replacing the production publisher.
+- Kept the local desktop harness ignored. Its standalone agent returns a unique SessionId for
+  every `session/new`, and the verifier pins the agent pane to the same foreground window/tab as
+  UI Automation so multi-window restore state cannot cross-wire the proof.
+
+**Validation**
+
+- Projection RED: focused build failed because `take_projected_test_events` did not exist.
+- Projection GREEN: 1 passed, 0 failed.
+- All usage-filtered Rust tests: 15 passed, 0 failed.
+- Full WTA Rust suite: 1139 passed, 0 failed.
+- Final full x64 Debug solution build: succeeded with 0 errors (170 existing warnings).
+- Rebuilt WTA, refreshed the deployed loose Dev 0.8.0.2 package, and verified its WTA hash matches
+  the current build.
+- Existing ACP probe verified the ignored standalone agent's protocol-v1 initialize, unique
+  session, valid `usage_update`, `FINAL_USAGE_CHAT_OK` chunk, and `end_turn` response.
+- Full desktop pipeline passed through agent -> master -> helper -> App ->
+  `agent_state_changed` -> C++: UIA read `1024 / 8192 Tokens` and `0.004 USD`; the visible
+  screenshot is 62,486 bytes.
+- A second prompt emitted malformed Usage and then `FINAL_CONTAINMENT_CHAT_OK`. Both chat replies
+  remained visible, Usage collapsed, and the contained screenshot is 64,222 bytes.
+- Deployed-run logs contained the fixed schema/source/outcome rejection warning and neither
+  malformed sentinel value. Visual inspection confirmed no overlap with the Session button.
+
+**Committed files**
+
+- `tools/wta/src/app.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
+- No local standalone agent, E2E verifier, log, or screenshot files.
 
 ### Step 4 - Session Usage Lifecycle
 
