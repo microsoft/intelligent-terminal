@@ -24,6 +24,7 @@ const CURRENT_PAD: &str = "  ";
 pub struct ModelPopupState<'a> {
     pub models: &'a [AcpModelInfo],
     pub selected: usize,
+    pub pane_focused: bool,
     /// Id of the model the pane is currently effectively on, if any — drawn
     /// with a leading marker so the user can see "where we are".
     pub current_id: Option<&'a str>,
@@ -62,9 +63,14 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
         })
         .collect();
 
+    let selected_style = if state.pane_focused {
+        theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
     let list = List::new(items)
         .block(popup::block(t!("model_picker.title").into_owned()))
-        .highlight_style(theme::SELECTED)
+        .highlight_style(selected_style)
         .highlight_symbol("> ");
 
     let mut list_state = ListState::default();

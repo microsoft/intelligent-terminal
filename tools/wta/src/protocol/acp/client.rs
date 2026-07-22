@@ -178,6 +178,9 @@ pub enum MasterExtRequest {
         /// returning the cached registry snapshot.
         rescan: bool,
     },
+    SessionBornBound {
+        event: crate::agent_sessions::SessionEvent,
+    },
     SessionResumeDispatched {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
@@ -2904,6 +2907,31 @@ fn dispatch_master_ext_request(
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }
+                }
+            }
+            MasterExtRequest::SessionBornBound { event } => {
+                const BORN_BOUND_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(8);
+                let wire = crate::session_registry::build_born_bound_request(&event);
+                match tokio::time::timeout(BORN_BOUND_TIMEOUT, conn.ext_method(wire)).await {
+                    Ok(Ok(response)) => tracing::debug!(
+                        target: "session_hook",
+                        event = ?event,
+                        response = %response.0.get(),
+                        "born-bound registration sent to master"
+                    ),
+                    Ok(Err(err)) => tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        error = ?err,
+                        "born-bound registration ext-request failed"
+                    ),
+                    Err(_) => tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        timeout_secs = BORN_BOUND_TIMEOUT.as_secs(),
+                        "born-bound registration timed out"
+                    ),
                 }
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {

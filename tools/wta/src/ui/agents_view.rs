@@ -12,12 +12,12 @@ use crate::agent_sessions::{
     AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionOrigin,
 };
 use crate::session_registry::SessionInfo;
+use crate::theme;
 use crate::ui::shimmer;
 
 // Status accents use named ANSI colors (not fixed RGB from Figma) so they map
 // through the active color scheme and stay readable on light schemes too — a
 // hardcoded bright yellow/cyan washed out on a light background (#234).
-const ACCENT_CYAN: Color = Color::Cyan; // Selected-row title / cursor
 const ACCENT_GREEN: Color = Color::Green; // Active status badge
 const ACCENT_YELLOW: Color = Color::Yellow; // Waiting for input
 const ACCENT_RED: Color = Color::Red; // Error
@@ -48,6 +48,7 @@ pub fn render(
     show_loading: bool,
     search_query: &str,
     search_focused: bool,
+    pane_focused: bool,
 ) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView), so we render
@@ -119,7 +120,13 @@ pub fn render(
         (None, content_area)
     };
     if let Some(search_area) = search_area {
-        render_search(f, search_area, search_query, search_focused);
+        render_search(
+            f,
+            search_area,
+            search_query,
+            search_focused,
+            pane_focused,
+        );
     }
 
     let folded_query = search_query.to_lowercase();
@@ -205,7 +212,7 @@ pub fn render(
     // list also gives F5 an unmistakable "refreshing now" signal even when rows
     // are already present.
     if show_loading {
-        render_left_bar(f, area.x, list_area, None);
+        render_left_bar(f, area.x, list_area, None, pane_focused);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
         spans.extend(shimmer::shimmer_spans(&loading_label, activity_frame));
@@ -222,7 +229,15 @@ pub fn render(
     let rows: Vec<ListItem> = sorted
         .iter()
         .enumerate()
-        .map(|(i, s)| row_for(s, Some(i) == selected, row_width, &folded_query))
+        .map(|(i, s)| {
+            row_for(
+                s,
+                Some(i) == selected,
+                pane_focused,
+                row_width,
+                &folded_query,
+            )
+        })
         .collect();
 
     // No `highlight_style` — selection is conveyed by the `>` prefix and
@@ -239,21 +254,24 @@ pub fn render(
     let selected_visible_row = selected
         .and_then(|s| s.checked_sub(offset))
         .filter(|v| (*v as u16) < list_area.height);
-    render_left_bar(f, area.x, list_area, selected_visible_row);
+    render_left_bar(f, area.x, list_area, selected_visible_row, pane_focused);
 
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
     }
 }
 
-fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool) {
+fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool, pane_focused: bool) {
     if area.width == 0 {
         return;
     }
+    let selected_style = if pane_focused {
+        theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
     let label_style = if focused {
-        Style::default()
-            .fg(ACCENT_CYAN)
-            .add_modifier(Modifier::BOLD)
+        selected_style.add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(MUTED_WHITE)
     };
@@ -262,7 +280,7 @@ fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool) {
         Span::raw(trunc(query, area.width.saturating_sub(3) as usize)),
     ];
     if focused {
-        spans.push(Span::styled("▏", Style::default().fg(ACCENT_CYAN)));
+        spans.push(Span::styled("▏", selected_style));
     }
     f.render_widget(
         Paragraph::new(Line::from(spans)).alignment(crate::rtl::text_alignment()),
@@ -275,14 +293,24 @@ fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool) {
 /// `selected_row`, when set, is the list-relative row index whose bar
 /// segment paints cyan instead of muted, mirroring the selection cursor
 /// in the row itself.
-fn render_left_bar(f: &mut Frame, bar_x: u16, list_area: Rect, selected_row: Option<usize>) {
+fn render_left_bar(
+    f: &mut Frame,
+    bar_x: u16,
+    list_area: Rect,
+    selected_row: Option<usize>,
+    pane_focused: bool,
+) {
     if list_area.height == 0 {
         return;
     }
     let bar_lines: Vec<Line<'static>> = (0..list_area.height)
         .map(|i| {
             let style = if Some(i as usize) == selected_row {
-                Style::default().fg(ACCENT_CYAN)
+                if pane_focused {
+                    theme::SELECTED
+                } else {
+                    theme::SELECTED_INACTIVE
+                }
             } else {
                 Style::default().fg(MUTED_WHITE)
             };
@@ -321,6 +349,7 @@ fn render_footer_hint(f: &mut Frame, area: Rect) {
 fn row_for(
     s: &AgentSession,
     selected: bool,
+    pane_focused: bool,
     row_width: usize,
     folded_query: &str,
 ) -> ListItem<'static> {
@@ -346,7 +375,11 @@ fn row_for(
     // an unselected Working session still gets a cyan "Active" badge but
     // its title stays the default foreground.
     let title_style = if selected {
-        Style::default().fg(ACCENT_CYAN)
+        if pane_focused {
+            theme::SELECTED
+        } else {
+            theme::SELECTED_INACTIVE
+        }
     } else {
         Style::default()
     };
@@ -354,12 +387,12 @@ fn row_for(
     // Leftmost column: `>` cursor for the selected row, blank otherwise.
     // Two cells (caret + space) so titles line up regardless of selection.
     let caret = if selected {
-        Span::styled(
-            "> ",
-            Style::default()
-                .fg(ACCENT_CYAN)
-                .add_modifier(Modifier::BOLD),
-        )
+        let caret_style = if pane_focused {
+            title_style.add_modifier(Modifier::BOLD)
+        } else {
+            title_style
+        };
+        Span::styled("> ", caret_style)
     } else {
         Span::raw("  ")
     };

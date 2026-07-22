@@ -335,7 +335,15 @@ pub async fn run_recommendation_executor(
 ) {
     while let Some(exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
-        match execute_choice(&exec.choice, exec.insert_only, &shell_mgr, &delegate_agents, &event_tx).await {
+        match execute_choice(
+            &exec.choice,
+            exec.insert_only,
+            &shell_mgr,
+            &delegate_agents,
+            &event_tx,
+        )
+        .await
+        {
             Ok(()) => {}
             Err(err) => {
                 let err_str = format!("{:#}", err);
@@ -448,8 +456,24 @@ async fn execute_choice(
                     Some(name) => format!("Opening {} for {}.", target_label, name),
                     None => format!("Opening {}.", target_label),
                 }));
+                let pinned_session_id = runtime.and_then(|runtime| {
+                    pinned_session_id_for_runtime(
+                        runtime,
+                        delegate_command_launchable(&runtime.commandline),
+                    )
+                });
+                coordinator_log(&format!(
+                    "open_and_send pin decision agent={:?} pinned_session_id={:?}",
+                    agent, pinned_session_id
+                ));
                 let commandline = runtime
-                    .map(|runtime| build_delegate_launch_commandline(runtime, Some(input), None))
+                    .map(|runtime| {
+                        build_delegate_launch_commandline(
+                            runtime,
+                            Some(input),
+                            pinned_session_id.as_deref(),
+                        )
+                    })
                     .transpose()?;
                 let pane_id = match target {
                     OpenTarget::Tab => {
@@ -499,6 +523,37 @@ async fn execute_choice(
                     "Opened {} pane {}.",
                     target_label, pane_id
                 )));
+                if let (Some(session_id), Some(runtime)) =
+                    (pinned_session_id.as_deref(), runtime)
+                {
+                    let event = crate::agent_sessions::SessionEvent::SessionStarted {
+                        key: session_id.to_string(),
+                        cli_source: crate::agent_sessions::CliSource::from(
+                            crate::session_registry::SessionHookCliSource::Known(
+                                runtime.id.clone(),
+                            ),
+                        ),
+                        pane_session_id: pane_id.clone(),
+                        cwd: cwd
+                            .as_deref()
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_default(),
+                        title: String::new(),
+                    };
+                    coordinator_log(&format!(
+                        "open_and_send born-bound registering session_id={} pane={} cli={}",
+                        session_id, pane_id, runtime.id
+                    ));
+                    if event_tx
+                        .send(AppEvent::RegisterBornBoundSession { event })
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            target: "coordinator",
+                            "born-bound registration event queue is unavailable",
+                        );
+                    }
+                }
                 if matches!(delivery_mode, DelegatePromptDelivery::LaunchThenSend) {
                     send_input_to_new_pane(shell_mgr, &pane_id, input, event_tx).await?;
                 } else {
@@ -678,6 +733,21 @@ fn lookup_delegate_agent<'a>(
         .find(|agent| agent.id == id)
         .or_else(|| delegate_agents.first())
         .ok_or_else(|| anyhow!("no delegate agent configured"))
+}
+
+fn pinned_session_id_for_runtime(
+    runtime: &DelegateAgentRuntime,
+    launchable: bool,
+) -> Option<String> {
+    if !launchable {
+        return None;
+    }
+
+    agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
+        &runtime.commandline,
+    ))
+    .new_session_id_flag
+    .map(|_| uuid::Uuid::new_v4().to_string())
 }
 
 /// Build the delegate launch command line, optionally pinning a session id.
@@ -1591,9 +1661,10 @@ mod tests {
         build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
         default_delegate_agent_runtimes, escape_for_intermediate_shell,
         is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
-        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
-        validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
-        DelegatePromptDelivery, OpenTarget, RecommendedAction,
+        pinned_session_id_for_runtime, pwsh_available, resolve_agent_profile,
+        resolve_created_pane_id, sanitize_windows_agent_cwd,
+        validate_recommendation_set_for_coordinator_target, AutofixDecision,
+        DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
     use serde_json::json;
     use std::os::windows::process::CommandExt;
@@ -1848,6 +1919,64 @@ mod tests {
             build_delegate_launch_commandline_with_session(&runtime, Some("hi"), None).unwrap();
 
         assert!(!commandline.contains("--session-id"));
+    }
+
+    #[test]
+    fn recommendation_launch_generates_session_id_for_copilot() {
+        let runtime = DelegateAgentRuntime {
+            id: "copilot".to_string(),
+            name: "Copilot".to_string(),
+            description: String::new(),
+            commandline: "copilot".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        let session_id = pinned_session_id_for_runtime(&runtime, true)
+            .expect("copilot should support pinning");
+        assert!(uuid::Uuid::parse_str(&session_id).is_ok());
+    }
+
+    #[test]
+    fn recommendation_launch_skips_session_id_for_codex() {
+        let runtime = DelegateAgentRuntime {
+            id: "codex".to_string(),
+            name: "Codex".to_string(),
+            description: String::new(),
+            commandline: "codex".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        assert!(pinned_session_id_for_runtime(&runtime, true).is_none());
+    }
+
+    #[test]
+    fn recommendation_launch_resolves_adapter_before_pinning() {
+        let runtime = DelegateAgentRuntime {
+            id: "claude".to_string(),
+            name: "Claude".to_string(),
+            description: String::new(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        assert!(pinned_session_id_for_runtime(&runtime, true).is_some());
+    }
+
+    #[test]
+    fn recommendation_launch_skips_session_id_when_agent_is_unavailable() {
+        let runtime = DelegateAgentRuntime {
+            id: "copilot".to_string(),
+            name: "Copilot".to_string(),
+            description: String::new(),
+            commandline: "copilot".to_string(),
+            prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
+            model: None,
+        };
+
+        assert!(pinned_session_id_for_runtime(&runtime, false).is_none());
     }
 
     #[test]
