@@ -481,11 +481,6 @@ pub(crate) fn matches_folded_query(session: &AgentSession, folded_query: &str) -
         return true;
     }
     session.title.to_lowercase().contains(folded_query)
-        || session
-            .cwd
-            .to_string_lossy()
-            .to_lowercase()
-            .contains(folded_query)
 }
 
 fn highlight_matches(text: &str, folded_query: &str, base_style: Style) -> Vec<Span<'static>> {
@@ -863,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn folded_search_matches_title_and_cwd_case_insensitively() {
+    fn folded_search_matches_title_only_case_insensitively() {
         let mut session = sample_session();
         session.title = "PowerShell".into();
         session.cwd = std::path::PathBuf::from(r"C:\Windows");
@@ -872,7 +867,7 @@ mod tests {
 
         session.title = "review changes".into();
         session.cwd = std::path::PathBuf::from(r"C:\repos\Portal");
-        assert!(matches_folded_query(&session, &"PORTAL".to_lowercase()));
+        assert!(!matches_folded_query(&session, &"PORTAL".to_lowercase()));
         assert!(!matches_folded_query(&session, &"bash".to_lowercase()));
     }
 

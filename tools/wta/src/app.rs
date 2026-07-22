@@ -6984,8 +6984,7 @@ impl App {
                     KeyCode::Up
                     | KeyCode::Down
                     | KeyCode::Enter
-                    | KeyCode::F(5)
-                    | KeyCode::Delete => {}
+                    | KeyCode::F(5) => {}
                     _ => return,
                 }
             }
@@ -7023,34 +7022,6 @@ impl App {
                             // resume style.
                             let shift = key.modifiers.contains(KeyModifiers::SHIFT);
                             self.activate_agent_session_with_shift(&s, shift);
-                        }
-                    }
-                }
-                KeyCode::Delete => {
-                    if self.current_tab().agents_view.snapshot.is_some() {
-                        return;
-                    }
-                    if let Some(idx) = self.current_tab().agents_list_state.selected() {
-                        let target = rows.get(idx).map(|s| (s.key.clone(), s.status.clone()));
-                        if let Some((key, status)) = target {
-                            use crate::agent_sessions::AgentStatus::*;
-                            // Evicting a live session would orphan its pane,
-                            // so restrict Delete to terminal states. Live
-                            // rows transition to Ended via SessionStopped.
-                            if matches!(status, Ended | Historical) {
-                                self.agent_sessions.remove(&key);
-                                // Keep the cursor in-bounds after eviction.
-                                // Re-query through the same filters so the
-                                // selection clamp matches the rendered list
-                                // (cli + MVP origin + search query).
-                                let new_count = self.agents_rows_for_tab(&tab_id).len();
-                                let tab = self.current_tab_mut();
-                                if new_count == 0 {
-                                    tab.agents_list_state.select(None);
-                                } else if idx >= new_count {
-                                    tab.agents_list_state.select(Some(new_count - 1));
-                                }
-                            }
                         }
                     }
                 }
@@ -12870,16 +12841,16 @@ mod tests {
         unrelated.origin = Some(SessionOrigin::Unknown);
         unrelated.last_activity_at_ms = Some(200);
 
-        let mut cwd_match = session_info_for_test("cwd-match");
-        cwd_match.title = Some("review changes".into());
-        cwd_match.cwd = std::path::PathBuf::from(r"C:\repos\portal");
-        cwd_match.pane_session_id =
+        let mut second_title_match = session_info_for_test("second-title-match");
+        second_title_match.title = Some("portal review".into());
+        second_title_match.cwd = std::path::PathBuf::from(r"C:\repos\portal");
+        second_title_match.pane_session_id =
             Some("00000000-0000-0000-0000-0000000000c3".into());
-        cwd_match.origin = Some(SessionOrigin::Unknown);
-        cwd_match.last_activity_at_ms = Some(100);
+        second_title_match.origin = Some(SessionOrigin::Unknown);
+        second_title_match.last_activity_at_ms = Some(100);
 
         app.current_tab_mut().agents_view.snapshot =
-            Some(vec![title_match, unrelated, cwd_match]);
+            Some(vec![title_match, unrelated, second_title_match]);
         app.current_tab_mut().agents_list_state.select(Some(0));
 
         app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
@@ -12893,7 +12864,7 @@ mod tests {
                 .iter()
                 .map(|row| row.key.as_str())
                 .collect::<Vec<_>>(),
-            vec!["title-match", "cwd-match"]
+            vec!["title-match", "second-title-match"]
         );
 
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -12908,7 +12879,7 @@ mod tests {
             .last_dispatched_command_for_test()
             .expect("the selected filtered row must dispatch");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
-        assert_eq!(cmd.session_id.as_deref(), Some("cwd-match"));
+        assert_eq!(cmd.session_id.as_deref(), Some("second-title-match"));
     }
 
     #[test]
@@ -12943,48 +12914,6 @@ mod tests {
             "the first Esc dismisses search instead of closing session management"
         );
 
-    }
-
-    #[test]
-    fn delete_clamps_selection_against_filtered_rows() {
-        use crate::agent_sessions::{CliSource, SessionEvent};
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        use std::path::PathBuf;
-
-        let mut app = test_app();
-        for (key, title) in [
-            ("match-a", "search match alpha"),
-            ("other", "unrelated"),
-            ("match-b", "search match beta"),
-        ] {
-            app.agent_sessions.apply(SessionEvent::SessionStarted {
-                key: key.into(),
-                cli_source: CliSource::Claude,
-                pane_session_id: format!("pane-{key}"),
-                cwd: PathBuf::from("/repo"),
-                title: title.into(),
-            });
-            app.agent_sessions.apply(SessionEvent::SessionStopped {
-                key: key.into(),
-                reason: String::new(),
-            });
-        }
-        app.current_tab_mut().current_view = View::Agents;
-        app.current_tab_mut().agents_view.search_query = "match".into();
-        app.current_tab_mut().agents_view.search_focused = true;
-        app.current_tab_mut().agents_list_state.select(Some(1));
-
-        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
-        assert_eq!(rows.len(), 2);
-        let deleted_key = rows[1].key.clone();
-
-        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
-
-        assert!(!app.agent_sessions.has_session(&deleted_key));
-        assert_eq!(app.agents_rows_for_tab(DEFAULT_TAB_ID).len(), 1);
-        assert_eq!(app.current_tab().agents_list_state.selected(), Some(0));
-        assert_eq!(app.current_tab().agents_view.search_query, "match");
-        assert!(app.current_tab().agents_view.search_focused);
     }
 
     // Esc out of the session-management (Agents) view restores the pane
@@ -13614,50 +13543,6 @@ mod tests {
             .last_dispatched_command_for_test()
             .expect("a command was dispatched");
         assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
-    }
-
-    #[test]
-    fn delete_on_history_row_removes_session_from_registry() {
-        use crate::agent_sessions::{CliSource, SessionEvent};
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        use std::path::PathBuf;
-        let mut app = test_app();
-        app.agent_sessions.apply(SessionEvent::SessionStarted {
-            key: "k".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        app.agent_sessions.apply(SessionEvent::SessionStopped {
-            key: "k".into(),
-            reason: "".into(),
-        });
-        app.current_tab_mut().current_view = View::Agents;
-        app.current_tab_mut().agents_list_state.select(Some(0));
-
-        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
-        assert!(!app.agent_sessions.has_session(&"k".to_string()));
-    }
-
-    #[test]
-    fn delete_on_live_row_is_noop() {
-        use crate::agent_sessions::{CliSource, SessionEvent};
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        use std::path::PathBuf;
-        let mut app = test_app();
-        app.agent_sessions.apply(SessionEvent::SessionStarted {
-            key: "k".into(),
-            cli_source: CliSource::Claude,
-            pane_session_id: "p".into(),
-            cwd: PathBuf::from("/x"),
-            title: "t".into(),
-        });
-        app.current_tab_mut().current_view = View::Agents;
-        app.current_tab_mut().agents_list_state.select(Some(0));
-
-        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
-        assert!(app.agent_sessions.has_session(&"k".to_string()));
     }
 
     // ─── Phantom-session prune ───────────────────────────────────────
