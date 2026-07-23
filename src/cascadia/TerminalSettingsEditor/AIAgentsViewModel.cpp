@@ -1491,7 +1491,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (parseOk)
         {
             auto view = winrt::single_threaded_vector(std::move(parsed)).GetView();
-            Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId);
+            if (!Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId))
+            {
+                _RebuildAcpModelListFromCache();
+            }
         }
         else
         {

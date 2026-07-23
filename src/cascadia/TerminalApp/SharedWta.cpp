@@ -20,9 +20,29 @@ namespace
             return {};
         }
 
+        std::vector<const std::pair<std::wstring, std::wstring>*> validOverrides;
+        validOverrides.reserve(overrides.size());
+        for (const auto& override : overrides)
+        {
+            if (winrt::TerminalApp::implementation::details::IsValidEnvironmentOverride(override.first, override.second))
+            {
+                validOverrides.emplace_back(&override);
+            }
+            else
+            {
+                winrt::TerminalApp::implementation::_agentPaneLog(
+                    "skipping invalid wta-master environment override name_length=" + std::to_string(override.first.size()));
+            }
+        }
+
+        if (validOverrides.empty())
+        {
+            return {};
+        }
+
         const auto isOverridden = [&](const std::wstring_view name) {
-            return std::ranges::any_of(overrides, [&](const auto& item) {
-                return _wcsicmp(std::wstring{ name }.c_str(), item.first.c_str()) == 0;
+            return std::ranges::any_of(validOverrides, [&](const auto* item) {
+                return _wcsicmp(std::wstring{ name }.c_str(), item->first.c_str()) == 0;
             });
         };
 
@@ -43,8 +63,9 @@ namespace
             current += entry.size() + 1;
         }
 
-        for (const auto& [name, value] : overrides)
+        for (const auto* override : validOverrides)
         {
+            const auto& [name, value] = *override;
             entries.emplace_back(name + L'=' + value);
         }
         std::ranges::sort(entries, [](const auto& left, const auto& right) {

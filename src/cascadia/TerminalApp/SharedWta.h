@@ -37,6 +37,17 @@
 
 namespace winrt::TerminalApp::implementation
 {
+    namespace details
+    {
+        constexpr bool IsValidEnvironmentOverride(const std::wstring_view name, const std::wstring_view value) noexcept
+        {
+            return !name.empty() &&
+                   name.find(L'=') == std::wstring_view::npos &&
+                   name.find(L'\0') == std::wstring_view::npos &&
+                   value.find(L'\0') == std::wstring_view::npos;
+        }
+    }
+
     class SharedWta
     {
     public:
