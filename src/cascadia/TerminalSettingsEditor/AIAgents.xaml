@@ -185,28 +185,29 @@
             <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                        <Grid MinHeight="52"
-                              Margin="0,0,0,4"
-                              Padding="12,4"
-                              Background="{ThemeResource ExpanderHeaderBackground}"
-                              CornerRadius="{ThemeResource ControlCornerRadius}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center" Spacing="2">
-                                <TextBlock FontWeight="SemiBold"
-                                           Text="{x:Bind ModelId, Mode=OneWay}" />
-                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Text="{x:Bind BaseUrl, Mode=OneWay}"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_CustomProviderRemove"
-                                    VerticalAlignment="Center"
-                                    Click="{x:Bind Remove}" />
-                        </Grid>
+                        <Border BorderThickness="0,1,0,0"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                Padding="0,16,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{x:Bind ModelId, Mode=OneWay}"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                               Opacity="0.6"
+                                               Text="{x:Bind BaseUrl, Mode=OneWay}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        x:Uid="AIAgents_CustomProviderRemove"
+                                        VerticalAlignment="Center"
+                                        Click="{x:Bind Remove}"
+                                        MinWidth="120" />
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
