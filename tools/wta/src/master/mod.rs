@@ -2900,6 +2900,9 @@ async fn host_titles_via_acp(
                     // synthetic so a subsequent poll adopts the real summary instead.
                     !title.is_empty()
                         && !crate::session_registry::title_is_injected_context_echo(title)
+                        && !state.cli_source.as_ref().is_some_and(|cli| {
+                            crate::agent_sessions::title_is_placeholder(cli, title)
+                        })
                 })
                 .map(|title| (row.session_id.to_string(), title))
         })
@@ -5519,7 +5522,7 @@ mod tests {
     // ── refresh_synthetic_titles_from ───────────────────────────────
 
     #[tokio::test]
-    async fn refresh_synthetic_titles_from_upgrades_empty_and_basename_titles_only() {
+    async fn refresh_synthetic_titles_from_upgrades_known_placeholder_titles_only() {
         use std::collections::HashMap;
 
         let state = make_state();
@@ -5537,6 +5540,14 @@ mod tests {
         basename.title = Some("project".to_string());
         state.registry.upsert(basename).await;
 
+        let mut placeholder = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("sid-placeholder".to_string()),
+            std::path::PathBuf::from("/repo/opencode"),
+        );
+        placeholder.cli_source = Some(crate::agent_sessions::CliSource::OpenCode);
+        placeholder.title = Some("New session - 2026-07-23T01:14:00.422Z".to_string());
+        state.registry.upsert(placeholder).await;
+
         let mut real = crate::session_registry::SessionInfo::new(
             acp::schema::v1::SessionId::new("sid-real".to_string()),
             std::path::PathBuf::from("/repo/real"),
@@ -5547,6 +5558,7 @@ mod tests {
         let titles = HashMap::from([
             ("sid-empty".to_string(), "Empty Real Title".to_string()),
             ("sid-base".to_string(), "Basename Real Title".to_string()),
+            ("sid-placeholder".to_string(), "OpenCode Real Title".to_string()),
             ("sid-real".to_string(), "Should Not Overwrite".to_string()),
         ]);
 
@@ -5570,6 +5582,18 @@ mod tests {
                 .title
                 .as_deref(),
             Some("Basename Real Title")
+        );
+        assert_eq!(
+            state
+                .registry
+                .lookup(&acp::schema::v1::SessionId::new(
+                    "sid-placeholder".to_string()
+                ))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("OpenCode Real Title")
         );
         assert_eq!(
             state

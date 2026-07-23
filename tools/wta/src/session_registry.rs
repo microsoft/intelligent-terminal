@@ -1141,7 +1141,13 @@ pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
         .unwrap_or("");
     match info.title.as_deref() {
         None | Some("") => true,
-        Some(t) => t == cwd_leaf,
+        Some(t) => {
+            t == cwd_leaf
+                || info
+                    .cli_source
+                    .as_ref()
+                    .is_some_and(|cli| crate::agent_sessions::title_is_placeholder(cli, t))
+        }
     }
 }
 
@@ -1349,13 +1355,20 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             pane_session_id,
             cwd,
             title,
-        } => SessionEvent::SessionStarted {
-            key,
-            cli_source,
-            pane_session_id: pane_key(&pane_session_id),
-            cwd,
-            title,
-        },
+        } => {
+            let title = if crate::agent_sessions::title_is_placeholder(&cli_source, &title) {
+                String::new()
+            } else {
+                title
+            };
+            SessionEvent::SessionStarted {
+                key,
+                cli_source,
+                pane_session_id: pane_key(&pane_session_id),
+                cwd,
+                title,
+            }
+        }
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
@@ -1931,11 +1944,25 @@ mod tests {
     }
 
     #[test]
-    fn title_is_synthetic_detects_missing_empty_and_cwd_basename() {
+    fn title_is_synthetic_detects_missing_empty_cwd_and_opencode_placeholder() {
         assert!(title_is_synthetic(&info_with("s-none", "/repo/proj", None)));
         assert!(title_is_synthetic(&info_with("s-empty", "/repo/proj", Some(""))));
         assert!(title_is_synthetic(&info_with("s-leaf", "/repo/proj", Some("proj"))));
         assert!(!title_is_synthetic(&info_with("s-real", "/repo/proj", Some("Real Title"))));
+
+        let mut opencode = info_with(
+            "s-opencode",
+            "/repo/proj",
+            Some("New session - 2026-07-23T01:14:00.422Z"),
+        );
+        opencode.cli_source = Some(CliSource::OpenCode);
+        assert!(title_is_synthetic(&opencode));
+
+        opencode.cli_source = Some(CliSource::Copilot);
+        assert!(
+            !title_is_synthetic(&opencode),
+            "provider-specific placeholders must not hide a real title from another CLI"
+        );
     }
 
     #[test]

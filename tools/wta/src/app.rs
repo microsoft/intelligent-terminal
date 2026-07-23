@@ -2245,17 +2245,32 @@ pub(crate) fn session_info_to_agent_session(
     use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
     let status = info.status.clone().unwrap_or(AgentStatus::Historical);
     let origin = info.origin.clone().unwrap_or(SessionOrigin::Unknown);
+    let cli_source = info
+        .cli_source
+        .clone()
+        .unwrap_or(CliSource::Unknown(String::new()));
+    let title = info
+        .title
+        .clone()
+        .filter(|title| !crate::agent_sessions::title_is_placeholder(&cli_source, title))
+        .unwrap_or_else(|| {
+            if cli_source == CliSource::OpenCode {
+                String::new()
+            } else {
+                "—".to_string()
+            }
+        });
     let last_activity_at = info
         .last_activity_at_ms
         .map(|ms| std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms))
         .unwrap_or_else(std::time::SystemTime::now);
     AgentSession {
         key: info.session_id.0.to_string(),
-        cli_source: info.cli_source.clone().unwrap_or(CliSource::Unknown(String::new())),
+        cli_source,
         pane_session_id: info.pane_session_id.clone(),
         window_id: None,
         tab_id: None,
-        title: info.title.clone().unwrap_or_else(|| "—".to_string()),
+        title,
         cwd: info.cwd.clone(),
         started_at: last_activity_at,
         last_activity_at,
@@ -10754,6 +10769,24 @@ mod tests {
         assert_eq!(s.cli_source, crate::agent_sessions::CliSource::Copilot);
         assert_eq!(s.origin, crate::agent_sessions::SessionOrigin::AgentPane);
         assert_eq!(s.pane_session_id.as_deref(), Some("pane-live"));
+    }
+
+    #[test]
+    fn session_info_to_agent_session_uses_cwd_fallback_for_opencode_placeholder() {
+        let mut info = crate::session_registry::SessionInfo::new(
+            agent_client_protocol::schema::v1::SessionId::new("sid-opencode"),
+            std::path::PathBuf::from(r"C:\repo\project"),
+        );
+        info.cli_source = Some(crate::agent_sessions::CliSource::OpenCode);
+        info.title = Some("New session - 2026-07-23T01:14:00.422Z".to_string());
+
+        let session = crate::app::session_info_to_agent_session(&info);
+
+        assert!(session.title.is_empty());
+        assert_eq!(
+            session.cwd.file_name().and_then(|name| name.to_str()),
+            Some("project")
+        );
     }
 
     #[test]
