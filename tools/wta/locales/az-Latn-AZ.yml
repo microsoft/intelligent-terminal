@@ -212,6 +212,7 @@ system.no_agents: "Bu maşında heç bir mövcud agent CLI tapılmadı."  # {Loc
 system.agent_unknown: "Naməlum və ya əlçatmaz agent %{agent} — əlçatan siyahını görmək üçün /agent yazın."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agent keçidi Windows Terminal tabından kənarda mövcud deyil."
+system.agent_source_fallback: "%{requested} · %{requested_source} əlçatan deyil. %{actual} · %{actual_source} istifadə edilir."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Bu panel üçün modeli seçin (birbaşa keçmək üçün /model <id>)"  # {Locked="/model","<id>"}

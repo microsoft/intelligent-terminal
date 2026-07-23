@@ -210,6 +210,7 @@ system.no_agents: "V tej napravi ni mogoče najti nobenega razpoložljivega vmes
 system.agent_unknown: "Neznan ali nedostopen agent %{agent} — vnesite /agent za prikaz razpoložljivega seznama."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Preklapljanje agentov ni na voljo zunaj zavihka programa Windows Terminal."
+system.agent_source_fallback: "%{requested} · %{requested_source} ni na voljo. Uporablja se %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izberite model za to podokno (/model <id> za neposreden preklop)"  # {Locked="/model","<id>"}

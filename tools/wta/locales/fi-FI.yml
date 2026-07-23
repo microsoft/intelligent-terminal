@@ -210,6 +210,7 @@ system.no_agents: "Tältä koneelta ei löytynyt käytettävissä olevaa agentti
 system.agent_unknown: "Tuntematon tai ei-käytettävissä oleva agentti %{agent} — kirjoita /agent nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agentin vaihtaminen ei ole käytettävissä Windows Terminal -välilehden ulkopuolella."
+system.agent_source_fallback: "%{requested} · %{requested_source} ei ole käytettävissä. Sen sijaan käytetään yhdistelmää %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Valitse tämän paneelin malli (/model <id> vaihtaaksesi suoraan)"  # {Locked="/model","<id>"}

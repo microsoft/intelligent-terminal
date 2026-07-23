@@ -205,6 +205,7 @@ system.no_agents: "在此電腦上找不到可用的智能體 CLI。"  # {Locked
 system.agent_unknown: "未知或無法使用的智能體 %{agent} — 輸入 /agent 查看可用清單。"  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "在 Windows Terminal 分頁之外，無法切換智能體。"
+system.agent_source_fallback: "%{requested} · %{requested_source} 無法使用。正在使用 %{actual} · %{actual_source}。"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}

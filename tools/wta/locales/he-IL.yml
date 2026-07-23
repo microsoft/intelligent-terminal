@@ -210,6 +210,7 @@ system.no_agents: "לא נמצא ממשק CLI זמין של סוכן במחשב 
 system.agent_unknown: "מודל לא ידוע %{agent} — הקלד /agent כדי לראות את הרשימה הזמינה."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין מחוץ לכרטיסייה של Windows Terminal."
+system.agent_source_fallback: "%{requested} · %{requested_source} אינו זמין. נעשה שימוש ב-%{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}

@@ -226,6 +226,7 @@ system.no_agents: "Այս սարքում հասանելի գործակալի CLI
 system.agent_unknown: "Անհայտ կամ անհասանելի գործակալ %{agent} — մուտքագրեք /agent՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Գործակալի փոխարկումը հասանելի չէ Windows Terminal-ի ներդիրից դուրս:"
+system.agent_source_fallback: "%{requested} · %{requested_source} հասանելի չէ։ Օգտագործվում է %{actual} · %{actual_source}։"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}

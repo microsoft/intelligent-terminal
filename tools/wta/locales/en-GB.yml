@@ -210,6 +210,7 @@ system.no_agents: "No available agent CLI was found on this machine."  # {Locked
 system.agent_unknown: "Unknown or unavailable agent %{agent} — type /agent to see the available list."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agent switching is unavailable outside a Windows Terminal tab."
+system.agent_source_fallback: "%{requested} · %{requested_source} is unavailable. Using %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}

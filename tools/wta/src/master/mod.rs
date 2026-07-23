@@ -59,7 +59,7 @@ use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
+use crate::protocol::acp::spawn::{spawn_agent_process_for_source, AgentStderrLog};
 use crate::Cli;
 
 /// Opaque identifier for a helper connection. Used in logs only;
@@ -330,6 +330,10 @@ struct MasterStateInner {
 /// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
 type AgentCmdKey = String;
 
+fn agent_cmd_key(command: &str, source: &crate::agent_source::AgentSource) -> AgentCmdKey {
+    format!("{source}\0{command}")
+}
+
 /// One spawned agent CLI subprocess and everything a helper needs to
 /// talk to it. Shared (`Arc`) across every helper currently bound to
 /// this agent.
@@ -347,6 +351,7 @@ struct AgentCli {
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
     /// not one process-wide value.
     cli_source: Option<crate::agent_sessions::CliSource>,
+    source: crate::agent_source::AgentSource,
     /// The pool key (agent command line) this CLI was spawned under —
     /// the same `AgentCmdKey` used in [`MasterStateInner::agents`]. Lets
     /// helper-disconnect cleanup and `load_session` scope orphan tracking
@@ -951,12 +956,14 @@ impl HelperHandler {
         // otherwise falls back to the trusted `--agent` default. See
         // `resolve_agent_selection` for the full policy.
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
-        let (agent_cmd, agent_id) = resolve_agent_selection(
+        let (agent_cmd, agent_id, agent_source) = resolve_agent_selection(
             &self.state.default_agent_cmd,
             self.state.default_agent_id.as_deref(),
             self.state.allowed_agent_ids.as_ref(),
             wta_meta.agent_id.as_deref(),
             wta_meta.model.as_deref(),
+            wta_meta.agent_source.as_deref(),
+            wta_meta.wsl_distro.as_deref(),
             self.helper_id,
         );
         tracing::info!(
@@ -968,14 +975,56 @@ impl HelperHandler {
             requested_agent_id = ?wta_meta.agent_id,
             resolved_agent_cmd = %agent_cmd,
             resolved_agent_id = ?agent_id,
+            resolved_agent_source = %agent_source,
             "resolving agent CLI for helper"
         );
 
-        // Lazily spawn (or reuse) the agent CLI for THIS tab's agent,
-        // then bind it to this helper for the rest of the connection.
-        let agent = get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref())
-            .await
-            .map_err(|e| {
+        // A profile/tab backend is opt-in. If it cannot start, reconnect the
+        // helper to the trusted global Windows agent so existing panes remain
+        // usable. Do not retry when the request already is the host default.
+        let requested_agent_id = agent_id.clone();
+        let requested_source = agent_source.clone();
+        let requested =
+            get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref(), &agent_source).await;
+        let (agent, fallback_used) = match requested {
+            Ok(agent) => (agent, false),
+            Err(requested_error)
+                if agent_source != crate::agent_source::AgentSource::Host
+                    || agent_cmd != self.state.default_agent_cmd =>
+            {
+                tracing::warn!(
+                    target: "master",
+                    op = "initialize",
+                    helper_id = ?self.helper_id,
+                    requested_agent_id = ?requested_agent_id,
+                    requested_agent_source = %requested_source,
+                    error = %requested_error,
+                    "profile/tab agent backend unavailable; falling back to trusted host default"
+                );
+                let host_source = crate::agent_source::AgentSource::Host;
+                let fallback = get_or_spawn_agent(
+                    &self.state,
+                    &self.state.default_agent_cmd,
+                    self.state.default_agent_id.as_deref(),
+                    &host_source,
+                )
+                .await
+                .map_err(|host_error| {
+                    tracing::error!(
+                        target: "master",
+                        op = "initialize",
+                        helper_id = ?self.helper_id,
+                        requested_error = %requested_error,
+                        host_error = %host_error,
+                        "requested backend and trusted host fallback both failed"
+                    );
+                    acp::Error::internal_error().data(serde_json::json!(format!(
+                        "requested agent unavailable ({requested_error}); host fallback unavailable ({host_error})"
+                    )))
+                })?;
+                (fallback, true)
+            }
+            Err(e) => {
                 tracing::error!(
                     target: "master",
                     op = "initialize",
@@ -984,17 +1033,39 @@ impl HelperHandler {
                     error = %e,
                     "failed to spawn/resolve agent CLI for helper"
                 );
-                acp::Error::internal_error()
-                    .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
-            })?;
+                return Err(acp::Error::internal_error()
+                    .data(serde_json::json!(format!("agent CLI unavailable: {e}"))));
+            }
+        };
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.
         let _ = self.agent.set(Arc::clone(&agent));
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar).
-        // Per-agent cache means each tab's bar shows ITS agent's identity.
-        Ok(agent.cached_init_resp.clone())
+        // Attach private metadata so the helper reports the backend master
+        // actually selected (especially after source fallback).
+        let mut response = agent.cached_init_resp.clone();
+        crate::session_registry::inject_wta_meta(
+            &mut response.meta,
+            &crate::session_registry::WtaMeta {
+                agent_id: if fallback_used {
+                    self.state.default_agent_id.clone()
+                } else {
+                    requested_agent_id.clone()
+                },
+                agent_source: Some(agent.source.kind().to_string()),
+                wsl_distro: agent.source.distro().map(str::to_string),
+                fallback_agent_id: fallback_used
+                    .then(|| requested_agent_id.unwrap_or_else(|| "unknown".to_string())),
+                fallback_agent_source: fallback_used.then(|| requested_source.kind().to_string()),
+                fallback_wsl_distro: fallback_used
+                    .then(|| requested_source.distro().map(str::to_string))
+                    .flatten(),
+                ..Default::default()
+            },
+        );
+        Ok(response)
     }
 
     async fn authenticate(
@@ -1079,6 +1150,7 @@ impl HelperHandler {
         // only), so master is the only one that can fill these fields.
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
         info.cli_source = agent.cli_source.clone();
+        info.location = agent.source.session_location();
         info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
         info.last_activity_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1259,6 +1331,7 @@ impl HelperHandler {
         info.pane_session_id = wta_meta.pane_session_id;
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
         info.cli_source = agent.cli_source.clone();
+        info.location = agent.source.session_location();
         info.origin = Some(crate::agent_sessions::SessionOrigin::AgentPane);
         info.last_activity_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2092,8 +2165,14 @@ fn resolve_agent_selection(
     allowed_ids: Option<&std::collections::HashSet<String>>,
     requested_id: Option<&str>,
     requested_model: Option<&str>,
+    requested_source: Option<&str>,
+    requested_wsl_distro: Option<&str>,
     helper_id: HelperId,
-) -> (String, Option<String>) {
+) -> (
+    String,
+    Option<String>,
+    crate::agent_source::AgentSource,
+) {
     let requested = requested_id
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -2114,7 +2193,11 @@ fn resolve_agent_selection(
                 .map(str::trim)
                 .filter(|s| !s.is_empty());
             let cmd = crate::agent_registry::build_acp_command(id, model);
-            return (cmd, Some(id.to_string()));
+            let source = crate::agent_source::AgentSource::from_wire(
+                requested_source,
+                requested_wsl_distro,
+            );
+            return (cmd, Some(id.to_string()), source);
         }
 
         // A real selection we refused — surface why, then fall back.
@@ -2129,7 +2212,11 @@ fn resolve_agent_selection(
         );
     }
 
-    (default_cmd.to_string(), default_id.map(str::to_string))
+    (
+        default_cmd.to_string(),
+        default_id.map(str::to_string),
+        crate::agent_source::AgentSource::Host,
+    )
 }
 
 /// Get the agent CLI for `agent_cmd`, spawning + initializing it on
@@ -2141,8 +2228,9 @@ async fn get_or_spawn_agent(
     state: &Arc<MasterStateInner>,
     agent_cmd: &str,
     agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
 ) -> Result<Arc<AgentCli>> {
-    let key: AgentCmdKey = agent_cmd.to_string();
+    let key = agent_cmd_key(agent_cmd, source);
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -2157,7 +2245,9 @@ async fn get_or_spawn_agent(
     // helper requesting the same agent gets a fresh cell and retries
     // cleanly (no lingering dead slot, no leaked subprocess).
     let agent = cell
-        .get_or_try_init(|| async { spawn_one_agent(state, &key, agent_cmd, agent_id).await })
+        .get_or_try_init(|| async {
+            spawn_one_agent(state, &key, agent_cmd, agent_id, source).await
+        })
         .await?;
     Ok(Arc::clone(agent))
 }
@@ -2172,13 +2262,15 @@ async fn spawn_one_agent(
     key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
 ) -> Result<Arc<AgentCli>> {
-    let mut spawn_result = spawn_agent_process(agent_cmd, None)
+    let mut spawn_result = spawn_agent_process_for_source(agent_cmd, None, source)
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
         target: "master",
         program = %spawn_result.resolved_program,
         agent_cmd = %agent_cmd,
+        agent_source = %source,
         "agent CLI spawned"
     );
 
@@ -2439,6 +2531,7 @@ async fn spawn_one_agent(
         conn,
         cached_init_resp: init_resp,
         cli_source,
+        source: source.clone(),
         cmd_key: key.clone(),
     }))
 }
@@ -3873,14 +3966,17 @@ mod tests {
         requested_id: Option<&str>,
         model: Option<&str>,
     ) -> (String, Option<String>) {
-        resolve_agent_selection(
+        let (command, agent_id, _source) = resolve_agent_selection(
             DEFAULT_CMD,
             Some("copilot"),
             allowed,
             requested_id,
             model,
+            None,
+            None,
             HelperId(1),
-        )
+        );
+        (command, agent_id)
     }
 
     #[test]
@@ -3890,6 +3986,33 @@ mod tests {
         let (cmd, id) = resolve(None, Some("gemini"), None);
         assert_eq!(cmd, "gemini --experimental-acp");
         assert_eq!(id.as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn known_agent_selection_preserves_wsl_source() {
+        let (command, agent_id, source) = resolve_agent_selection(
+            DEFAULT_CMD,
+            Some("copilot"),
+            None,
+            Some("copilot"),
+            None,
+            Some("wsl"),
+            Some("Ubuntu"),
+            HelperId(1),
+        );
+        assert_eq!(command, "copilot --acp --stdio");
+        assert_eq!(agent_id.as_deref(), Some("copilot"));
+        assert_eq!(
+            source,
+            crate::agent_source::AgentSource::Wsl {
+                distro: "Ubuntu".to_string()
+            }
+        );
+        assert_ne!(
+            agent_cmd_key(&command, &crate::agent_source::AgentSource::Host),
+            agent_cmd_key(&command, &source),
+            "host and WSL instances must occupy separate pool slots"
+        );
     }
 
     #[test]
@@ -4166,6 +4289,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ),
                     cli_source: None,
+                    source: crate::agent_source::AgentSource::Host,
                     cmd_key: "copilot --acp --stdio".to_string(),
                 }));
                 let handler = HelperHandler {
@@ -4440,6 +4564,7 @@ mod tests {
                         acp::schema::ProtocolVersion::V1,
                     ),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                    source: crate::agent_source::AgentSource::Host,
                     cmd_key: "copilot --acp --stdio".to_string(),
                 }));
                 let handler = HelperHandler {

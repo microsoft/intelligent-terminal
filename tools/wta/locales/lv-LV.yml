@@ -210,6 +210,7 @@ system.no_agents: "Šajā datorā netika atrasts neviens pieejams aģenta CLI." 
 system.agent_unknown: "Nezināms vai nepieejams aģents %{agent} — ierakstiet /agent, lai redzētu pieejamo sarakstu."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Aģenta pārslēgšana nav pieejama ārpus Windows Terminal cilnes."
+system.agent_source_fallback: "%{requested} · %{requested_source} nav pieejams. Tā vietā tiek izmantots %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izvēlieties šīs rūts modeli (/model <id>, lai pārslēgtu tieši)"  # {Locked="/model","<id>"}

@@ -210,6 +210,7 @@ system.no_agents: "На этом компьютере не найден дост
 system.agent_unknown: "Неизвестный или недоступный агент %{agent} — введите /agent, чтобы увидеть доступный список."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Переключение агентов недоступно за пределами вкладки Windows Terminal."
+system.agent_source_fallback: "%{requested} · %{requested_source} недоступно. Используется %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Выберите модель для этой панели (/model <id> для прямого переключения)"  # {Locked="/model","<id>"}

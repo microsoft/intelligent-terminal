@@ -211,6 +211,7 @@ system.no_agents: "Geen beskikbare agent-CLI is op hierdie masjien gevind nie." 
 system.agent_unknown: "Onbekende of onbeskikbare agent %{agent} — tik /agent om die beskikbare lys te sien."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agent-oorskakeling is nie beskikbaar buite 'n Windows Terminal-oortjie nie."
+system.agent_source_fallback: "%{requested} · %{requested_source} is nie beskikbaar nie. Gebruik %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}

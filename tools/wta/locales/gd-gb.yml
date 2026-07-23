@@ -209,6 +209,7 @@ system.no_agents: "Cha deach CLI àidhent sam bith a lorg air a' mhadhinn seo." 
 system.agent_unknown: "Àidhent neo-aithnichte no nach eil ri fhaighinn %{agent} — sgrìobh /agent gus an liosta a tha ri làimh fhaicinn."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Chan eil atharrachadh àidhent ri fhaighinn bên a-muigh de thab Windows Terminal."
+system.agent_source_fallback: "Chan eil %{requested} · %{requested_source} ri fhaighinn. Tha %{actual} · %{actual_source} ga chleachdadh."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}

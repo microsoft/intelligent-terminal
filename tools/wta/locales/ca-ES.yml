@@ -212,6 +212,7 @@ system.no_agents: "No s'ha trobat cap CLI d'agent disponible en aquesta màquina
 system.agent_unknown: "Agent desconegut o no disponible %{agent} — escriviu /agent per veure la llista disponible."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "La commutació d'agent no està disponible fora d'una pestanya de Windows Terminal."
+system.agent_source_fallback: "%{requested} · %{requested_source} no està disponible. S'està utilitzant %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Trieu el model per a aquest tauler (/model <id> per canviar directament)"  # {Locked="/model","<id>"}

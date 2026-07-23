@@ -20,7 +20,8 @@ namespace winrt::TerminalApp::implementation
         void UpdateAgentStatus(const winrt::hstring& name,
                                const winrt::hstring& version,
                                const winrt::hstring& model,
-                               const winrt::hstring& state);
+                               const winrt::hstring& state,
+                               const winrt::hstring& backend);
 
         void SetSessionsView(bool active);
         // Whether the agent pane is currently displaying its sessions view
@@ -137,6 +138,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentVersion{};
         winrt::hstring _agentModel{};
         winrt::hstring _agentState{};
+        winrt::hstring _agentBackend{};
 
         // When true, the bar replaces "<agent> <version>" with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged

@@ -209,6 +209,7 @@ system.no_agents: "Nem található elérhető ügynök-CLI ezen a gépen."  # {L
 system.agent_unknown: "Ismeretlen vagy nem elérhető ügynök: %{agent} — írja be a /agent parancsot az elérhető lista megtekintéséhez."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Az ügynökváltás nem érhető el a Windows Terminal lapján kívül."
+system.agent_source_fallback: "%{requested} · %{requested_source} nem érhető el. Helyette ezt használjuk: %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Válassza ki a modellt ehhez a panelhez (/model <id> a közvetlen váltáshoz)"  # {Locked="/model","<id>"}

@@ -1237,6 +1237,26 @@
     <value>启用后，此配置文件将在启动终端的目录中生成。</value>
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
+  <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
+    <value>智能体窗格后端</value>
+    <comment>Header for choosing which AI agent backend is used by this profile.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
+    <value>使用全局 Windows 智能体，或安装在此配置文件环境中的智能体。如果环境内智能体无法启动，则使用全局 Windows 智能体。</value>
+    <comment>{Locked="Windows"} Description for the per-profile AI agent backend setting.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
+    <value>使用全局智能体 — {0} · Windows</value>
+    <comment>{Locked="Windows","{0}"} The global agent display name replaces {0}.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
+    <value>{0} · {1}</value>
+    <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_UnavailableSuffix" xml:space="preserve">
+    <value> (不可用)</value>
+    <comment>Suffix for a saved per-profile agent backend that is no longer installed.</comment>
+  </data>
   <data name="Profile_SuppressApplicationTitle.Header" xml:space="preserve">
     <value>禁止更改标题</value>
     <comment>Header for a control to toggle changes in the app title.</comment>

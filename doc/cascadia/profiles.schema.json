@@ -3195,6 +3195,14 @@
             "null"
           ]
         },
+        "agentPaneBackend": {
+          "description": "Selects an optional profile-specific agent pane backend. An empty value uses the global Windows-hosted agent. WSL values identify an agent installed in the profile's own distro and fall back to the global agent when unavailable.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(|host:[^:]+|wsl:[^:]+:[^:]+)$"
+        },
         "suppressApplicationTitle": {
           "description": "When set to true, tabTitle overrides the default title of the tab and any title change messages from the application will be suppressed. When set to false, tabTitle behaves as normal.",
           "type": "boolean",

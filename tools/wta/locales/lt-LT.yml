@@ -210,6 +210,7 @@ system.no_agents: "Šiame kompiuteryje nerasta pasiekiama agento CLI."  # {Locke
 system.agent_unknown: "Nežinomas arba nepasiekiamas agentas %{agent} — įveskite /agent, kad pamatytumėte galimų sąrašą."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Windows Terminal“ skirtuko ribų."
+system.agent_source_fallback: "%{requested} · %{requested_source} nepasiekiama. Vietoj to naudojama %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}

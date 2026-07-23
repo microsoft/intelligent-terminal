@@ -16,6 +16,7 @@ pub struct AgentPopupState<'a> {
     pub selected: usize,
     pub pane_focused: bool,
     pub current_id: &'a str,
+    pub current_source: &'a crate::agent_source::AgentSource,
 }
 
 pub fn render_popup(frame: &mut Frame, state: AgentPopupState<'_>, input_area: Rect) {
@@ -31,7 +32,8 @@ pub fn render_popup(frame: &mut Frame, state: AgentPopupState<'_>, input_area: R
         .agents
         .iter()
         .map(|agent| {
-            let marker = if agent.id == state.current_id {
+            let marker =
+                if agent.id == state.current_id && &agent.source == state.current_source {
                 CURRENT_MARKER
             } else {
                 CURRENT_PAD

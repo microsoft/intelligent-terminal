@@ -210,6 +210,7 @@ system.no_agents: "Det gick inte att hitta något tillgängligt agent-CLI på de
 system.agent_unknown: "Okänd eller otillgänglig agent %{agent} — skriv /agent för att se den tillgängliga listan."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en Windows Terminal-flik."
+system.agent_source_fallback: "%{requested} · %{requested_source} är inte tillgänglig. %{actual} · %{actual_source} används i stället."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}

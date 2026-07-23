@@ -212,6 +212,7 @@ system.no_agents: "Na ovoj mašini nije pronađen nijedan dostupan CLI agenta." 
 system.agent_unknown: "Nepoznat ili nedostupan agent %{agent} — upišite /agent da vidite dostupnu listu."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Prebacivanje agenta nije dostupno izvan kartice Windows Terminala."
+system.agent_source_fallback: "%{requested} · %{requested_source} nije dostupan. Koristi se %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izaberite model za ovaj panel (/model <id> za direktnu promjenu)"  # {Locked="/model","<id>"}
