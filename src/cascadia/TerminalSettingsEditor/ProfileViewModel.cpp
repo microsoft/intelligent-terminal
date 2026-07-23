@@ -203,7 +203,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     Editor::AgentEntry ProfileViewModel::CurrentAgentPaneBackend()
     {
-        const auto selected = AgentPaneBackend();
+        auto selected = AgentPaneBackend();
+        const auto globalId = _appSettings.GlobalSettings().EffectiveAcpAgent();
+        if (!globalId.empty() &&
+            selected == winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ globalId }) })
+        {
+            selected = {};
+        }
         for (uint32_t i = 0; i < _agentPaneBackendList.Size(); ++i)
         {
             const auto entry = _agentPaneBackendList.GetAt(i);

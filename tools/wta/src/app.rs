@@ -2863,6 +2863,20 @@ impl App {
         self.current_tab().agent_picker_open
     }
 
+    fn find_host_agent_for_command<'a>(
+        available_agents: &'a [AvailableAgent],
+        arg: &str,
+    ) -> Option<&'a AvailableAgent> {
+        available_agents.iter().find(|agent| {
+            agent.source == crate::agent_source::AgentSource::Host
+                && crate::agent_registry::KNOWN_AGENTS.iter().any(|profile| {
+                    profile.id.eq_ignore_ascii_case(&agent.id)
+                        && (profile.id.eq_ignore_ascii_case(arg)
+                            || profile.display_name.eq_ignore_ascii_case(arg))
+                })
+        })
+    }
+
     fn cmd_agent(&mut self, arg: String) {
         let arg = arg.trim();
         if arg.is_empty() {
@@ -2871,15 +2885,8 @@ impl App {
         }
 
         self.refresh_available_agents();
-        let selected = self
-            .available_agents
-            .iter()
-            .find(|agent| {
-                agent.source == crate::agent_source::AgentSource::Host
-                    && (agent.id.eq_ignore_ascii_case(arg)
-                        || agent.display_name.eq_ignore_ascii_case(arg))
-            })
-            .cloned();
+        let selected =
+            Self::find_host_agent_for_command(&self.available_agents, arg).cloned();
         match selected {
             Some(agent) => self.apply_agent_pick(agent),
             None => {
@@ -15615,6 +15622,23 @@ mod tests {
             text.contains("Claude Test Agent"),
             "the agent picker must list available agents; rendered:\n{text}"
         );
+    }
+
+    #[test]
+    fn slash_agent_accepts_base_display_name_with_source_suffix() {
+        let available_agents = vec![AvailableAgent {
+            id: "copilot".into(),
+            display_name: "GitHub Copilot — Windows".into(),
+            source: crate::agent_source::AgentSource::Host,
+        }];
+
+        let selected = App::find_host_agent_for_command(
+            &available_agents,
+            crate::agent_registry::lookup_profile_by_id("copilot").display_name,
+        )
+        .expect("base built-in display name should select the suffixed host entry");
+
+        assert_eq!(selected.id, "copilot");
     }
 
     /// Render: the setup diagnostic screen must paint its title and subtitle.

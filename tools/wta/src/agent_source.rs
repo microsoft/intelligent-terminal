@@ -8,6 +8,9 @@
 use std::fmt;
 use std::time::Duration;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// Environment that hosts an ACP agent process.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum AgentSource {
@@ -135,7 +138,7 @@ fn normalize_wsl_cwd(distro: &str, cwd: &str) -> Option<String> {
             return Some("/".to_string());
         }
         let prefix = format!("{root}/");
-        if normalized.len() > prefix.len()
+        if normalized.len() >= prefix.len()
             && normalized[..prefix.len()].eq_ignore_ascii_case(&prefix)
         {
             return Some(format!("/{}", &normalized[prefix.len()..]));
@@ -165,6 +168,9 @@ async fn resolve_wsl_home(distro: &str) -> Option<String> {
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
     let output = tokio::time::timeout(Duration::from_secs(10), command.output())
         .await
         .ok()?
@@ -229,5 +235,17 @@ mod tests {
         );
         assert_eq!(normalize_wsl_cwd("Ubuntu", "~"), None);
         assert_eq!(normalize_wsl_cwd("Ubuntu", r"\\wsl$\Debian\home\me"), None);
+    }
+
+    #[test]
+    fn wsl_cwd_normalizes_unc_roots_with_trailing_separator() {
+        for cwd in [
+            r"\\wsl$\Ubuntu\",
+            r"\\wsl.localhost\Ubuntu\",
+            "//wsl$/Ubuntu/",
+            "//wsl.localhost/Ubuntu/",
+        ] {
+            assert_eq!(normalize_wsl_cwd("Ubuntu", cwd).as_deref(), Some("/"));
+        }
     }
 }
