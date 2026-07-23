@@ -83,7 +83,7 @@ fn configure_child_with_config(
 
 fn configure_copilot(cmd: &mut Command, config: &Config) -> Result<()> {
     cmd.env(COPILOT_BASE_URL, &config.base_url)
-        .env(COPILOT_MODEL, &config.model)
+        .env(COPILOT_MODEL, config.model.as_str())
         .env(COPILOT_PROVIDER_TYPE, "openai")
         .env(COPILOT_OFFLINE, "true")
         .env_remove(COPILOT_API_KEY);
@@ -145,7 +145,7 @@ fn render_codex_config(config: &Config, has_api_key: bool) -> Result<String> {
     }
 
     serde_json::to_string(&serde_json::json!({
-        "model": config.model,
+        "model": config.model.as_str(),
         "model_provider": PROVIDER_ID,
         "model_providers": {
             PROVIDER_ID: provider,
@@ -167,8 +167,8 @@ fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> 
     }
 
     let models = serde_json::Map::from_iter([(
-        config.model.clone(),
-        serde_json::json!({ "name": config.model }),
+        config.model.to_owned(),
+        serde_json::json!({ "name": config.model.as_str() }),
     )]);
     let providers = serde_json::Map::from_iter([(
         PROVIDER_ID.to_string(),
@@ -182,7 +182,7 @@ fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> 
 
     serde_json::to_string(&serde_json::json!({
         "$schema": "https://opencode.ai/config.json",
-        "model": format!("{PROVIDER_ID}/{}", config.model),
+        "model": format!("{PROVIDER_ID}/{}", config.model.as_str()),
         "provider": providers,
     }))
     .context("failed to serialize OpenCode custom model configuration")
