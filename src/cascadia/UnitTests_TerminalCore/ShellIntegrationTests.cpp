@@ -50,6 +50,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(BuildBlock_ContainsMarkersAndScriptFilename);
     TEST_METHOD(BuildBlock_HonoursEolParameter);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
+    TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
+    TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
 
     // Install scenarios.
     TEST_METHOD(Install_EmptyPath_Fails);
@@ -423,6 +425,62 @@ void ShellIntegrationTests::PowerShell_ScriptContent_HandlesNullLastExitCode()
                        nativeReturn < sentinelReturn &&
                        sentinelReturn < functionEnd,
                    L"The exit-code helper must guard null/zero before returning a native code, then fall back to a numeric non-zero sentinel");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
+    const auto parseInput = script.find("Language.Parser]::ParseInput", readLineWrapper);
+    const auto parserFlagSet = script.find("$Global:__ShellInteg_LastInputHadParserError = $parseErrors.Count -gt 0", parseInput);
+    const auto promptStart = script.find("function prompt");
+    const auto parserFlagCapture = script.find("$inputHadParserError = $Global:__ShellInteg_LastInputHadParserError", promptStart);
+    const auto capture = script.find("$errorRecord", parserFlagCapture);
+    const auto historyCheck = script.find("$historyAdvanced =", capture);
+    const auto errorCheck = script.find("$newErrorRecord =", historyCheck);
+    const auto referenceCheck = script.find("[object]::ReferenceEquals", errorCheck);
+    const auto staleZeroCheck = script.find("if (($inputHadParserError -or (-not $historyAdvanced -and $newErrorRecord)) -and $gle -eq 0)", referenceCheck);
+    const auto sentinelAssignment = script.find("$gle = -1", staleZeroCheck);
+    const auto untrackedErrorCheck = script.find("$newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord", sentinelAssignment);
+    const auto combinedCheck = script.find("if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError)", untrackedErrorCheck);
+    const auto originalPrompt = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", combinedCheck);
+    const auto consumeError = script.find("$Global:__ShellInteg_LastErrorRecord = $Error[0]", originalPrompt);
+    const auto consumeParserFlag = script.find("$Global:__ShellInteg_LastInputHadParserError = $false", consumeError);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeParserFlag);
+    VERIFY_IS_TRUE(readLineWrapper < parseInput &&
+                       parseInput < parserFlagSet &&
+                       parserFlagSet < promptStart &&
+                       promptStart < parserFlagCapture &&
+                       parserFlagCapture < capture &&
+                       capture < historyCheck &&
+                       historyCheck < errorCheck &&
+                       errorCheck < referenceCheck &&
+                       referenceCheck < staleZeroCheck &&
+                       staleZeroCheck < sentinelAssignment &&
+                       sentinelAssignment < untrackedErrorCheck &&
+                       untrackedErrorCheck < combinedCheck &&
+                       combinedCheck < originalPrompt &&
+                       originalPrompt < consumeError &&
+                       consumeError < consumeParserFlag,
+                   L"Parser errors must be captured at the PSReadLine boundary, emitted once with a non-zero exit code, and consumed after prompt rendering");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto languageMode = script.find("$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'");
+    const auto readLineGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and (Test-Path Function:\\PSConsoleHostReadLine))", languageMode);
+    const auto parseInput = script.find("Language.Parser]::ParseInput", readLineGuard);
+    const auto errorRecordGuard = script.find("$newErrorRecord = $Global:__ShellInteg_CanInspectErrors", parseInput);
+    const auto referenceCheck = script.find("[object]::ReferenceEquals", errorRecordGuard);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, referenceCheck);
+    VERIFY_IS_TRUE(languageMode < readLineGuard &&
+                       readLineGuard < parseInput &&
+                       parseInput < errorRecordGuard &&
+                       errorRecordGuard < referenceCheck,
+                   L"Constrained Language Mode must bypass static parser and reference-identity method calls");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────
