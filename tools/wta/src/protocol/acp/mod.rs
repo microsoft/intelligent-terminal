@@ -8,3 +8,4 @@ pub(crate) mod prompt_context;
 pub(crate) mod session_list;
 pub mod soft_stop;
 pub(crate) mod spawn;
+pub(crate) mod cwd_format;

@@ -993,6 +993,35 @@ async fn read_pane_last_message(
     result
 }
 
+/// Resolve the user's active (source) pane cwd for seeding a bootstrap agent
+/// session — e.g. a WSL pane reporting `/home/yeelam` via shell integration.
+/// Returns `None` when WT isn't connected, the active pane query fails, or the
+/// active pane IS an agent pane (in which case there's no meaningful user cwd
+/// to inherit and the caller falls back to the process cwd). Master converts
+/// the returned path into the agent's namespace and applies its own fallback
+/// ladder if it's unusable (see `cwd_format`).
+async fn resolve_active_pane_cwd(
+    shell_mgr: &ShellManager,
+    wt_connected: bool,
+) -> Option<std::path::PathBuf> {
+    if !wt_connected {
+        return None;
+    }
+    let active = shell_mgr.wt_get_active_pane().await.ok()?;
+    let is_agent = active
+        .get("is_agent_pane")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if is_agent {
+        return None;
+    }
+    active
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
 /// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
 /// `powershell.exe`, `cmd.exe`, `bash.exe`, `wsl.exe`. Unlike the WT profile
 /// *name* (which the user can rename), this is the actual running process, so
@@ -2499,7 +2528,17 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = std::env::current_dir().unwrap_or_default();
+    // Seed the bootstrap session's cwd from the user's active (source) pane
+    // — e.g. a WSL pane reporting `/home/yeelam` via shell integration — so
+    // the agent starts where the user is, not in the helper's own process
+    // dir (`std::env::current_dir()` = `C:\WINDOWS\system32` for the packaged
+    // helper). Master converts this into the agent's namespace and falls
+    // back if it's unusable (see `cwd_format`). `None` (e.g. the active pane
+    // is the agent pane itself) falls through to the process cwd, which
+    // master then normalizes to `%USERPROFILE%`.
+    let cwd = resolve_active_pane_cwd(&shell_mgr, wt_connected)
+        .await
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let (session_id, available_models, current_model_id, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
