@@ -2938,13 +2938,6 @@ impl App {
     }
 
     fn handle_agent_picker_key(&mut self, key: KeyEvent) {
-        tracing::debug!(
-            target: "agent_picker",
-            code = ?key.code,
-            selected = self.current_tab().agent_picker_selected,
-            count = self.available_agents.len(),
-            "agent picker key"
-        );
         match key.code {
             KeyCode::Up => self.agent_picker_up(),
             KeyCode::Down => self.agent_picker_down(),
