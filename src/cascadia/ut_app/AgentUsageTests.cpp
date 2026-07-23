@@ -43,6 +43,10 @@ namespace TerminalAppUnitTests
         TEST_METHOD(UpdateCachePreservesPreviousOnMalformedInput);
         TEST_METHOD(BuildPrimaryDisplayTextsFormatsContextAndCost);
         TEST_METHOD(BuildPrimaryDisplayTextsCapsMainBarItems);
+        TEST_METHOD(BuildPrimaryDisplayShowsCostWithoutTokens);
+        TEST_METHOD(BuildPrimaryDisplayShowsTokensWithoutCost);
+        TEST_METHOD(BuildPrimaryDisplayHidesAfterContainedError);
+        TEST_METHOD(BuildPrimaryDisplayHidesWhenNothingReported);
     };
 
     void AgentUsageTests::ParseValidItems()
@@ -184,5 +188,72 @@ namespace TerminalAppUnitTests
         const auto texts = TerminalApp::AgentUsage::BuildPrimaryDisplayTexts(items, L"Tokens");
 
         VERIFY_ARE_EQUAL(TerminalApp::AgentUsage::MaxPrimaryItems, texts.size());
+    }
+
+    void AgentUsageTests::BuildPrimaryDisplayShowsCostWithoutTokens()
+    {
+        const std::vector<TerminalApp::AgentUsage::Item> items{
+            TerminalApp::AgentUsage::Item{
+                .metricId = "acp.billing.cost",
+                .valueDecimalText = "0.004",
+                .unitId = "USD",
+                .scope = "session",
+                .source = "provider_reported",
+            },
+        };
+
+        const auto display = TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"Tokens");
+
+        VERIFY_IS_TRUE(display.visible);
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), display.texts.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"0.004 USD" }, display.texts[0]);
+    }
+
+    void AgentUsageTests::BuildPrimaryDisplayShowsTokensWithoutCost()
+    {
+        const std::vector<TerminalApp::AgentUsage::Item> items{
+            TerminalApp::AgentUsage::Item{
+                .metricId = "acp.context.window",
+                .valueDecimalText = "1024",
+                .limitDecimalText = "8192",
+                .unitId = "token",
+                .scope = "session",
+                .source = "acp_standard",
+            },
+        };
+
+        const auto display = TerminalApp::AgentUsage::BuildPrimaryDisplay(items, L"Tokens");
+
+        VERIFY_IS_TRUE(display.visible);
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), display.texts.size());
+        VERIFY_ARE_EQUAL(std::wstring{ L"1024 / 8192 Tokens" }, display.texts[0]);
+    }
+
+    void AgentUsageTests::BuildPrimaryDisplayHidesAfterContainedError()
+    {
+        std::vector<TerminalApp::AgentUsage::Item> cache{
+            TerminalApp::AgentUsage::Item{
+                .metricId = "acp.context.window",
+                .valueDecimalText = "20",
+                .limitDecimalText = "100",
+                .unitId = "token",
+                .scope = "session",
+                .source = "acp_standard",
+            },
+        };
+        TerminalApp::AgentUsage::UpdateCache(cache, Json::Value::nullSingleton());
+
+        const auto display = TerminalApp::AgentUsage::BuildPrimaryDisplay(cache, L"Tokens");
+
+        VERIFY_IS_FALSE(display.visible);
+        VERIFY_IS_TRUE(display.texts.empty());
+    }
+
+    void AgentUsageTests::BuildPrimaryDisplayHidesWhenNothingReported()
+    {
+        const auto display = TerminalApp::AgentUsage::BuildPrimaryDisplay({}, L"Tokens");
+
+        VERIFY_IS_FALSE(display.visible);
+        VERIFY_IS_TRUE(display.texts.empty());
     }
 }

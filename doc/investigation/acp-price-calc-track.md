@@ -31,6 +31,7 @@ code it describes.
 | 7. Bottom Bar UI | C++/XAML tests assert hidden/visible/format/accessibility states | Add right-aligned `UsageGroup` before Session button | Complete |
 | 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Complete |
 | 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Complete |
+| 10. Partial/error UI states | Cost-only, tokens-only, malformed, and absent reports never crash UI | Add one tested primary-display state and deterministic local mocks | Complete |
 
 ## Completed Steps
 
@@ -326,6 +327,58 @@ code it describes.
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state update in `doc/investigation/acp-price-calc.md`
 - No local standalone agent, E2E verifier, log, or screenshot files.
+
+### Step 10 - Partial, Error, and Missing Usage States
+
+**RED**
+
+- Added four TerminalApp TAEF tests before `BuildPrimaryDisplay` existed. The focused build failed
+  with C2039/C3861 for the missing builder.
+- The tests require cost-only normalized items to show one currency value, tokens-only items to
+  show one context ratio, and both contained-error clear and no-report states to collapse Usage.
+- Standard ACP v1 requires `used` and `size`; only `cost` is optional. Therefore tokens-only,
+  malformed, and no-report mocks run through ACP wire, while cost-only is tested at the
+  normalized projection contract consumed by C++ (the shape a future trusted extension uses).
+
+**GREEN**
+
+- Added a pure `PrimaryDisplay { texts, visible }` state that reuses the existing formatter.
+- `_UpdateBottomBarState` consumes that state, so one tested visibility decision owns empty,
+  one-item, and two-item rendering. XAML does not contain provider or scenario branches.
+- Extended the ignored standalone ACP agent with deterministic `tokens-only`, `error`, and
+  `none` scenarios. Added a local four-scenario desktop verifier with chat markers, UIA
+  visibility/text checks, screenshots, and process-liveness assertions.
+- The local verifier resolves each pane from its current structured helper log. This avoids a
+  known local test-framework race where concurrent helpers can interleave append-only JSONL
+  records; no test-framework file is committed in this feature change.
+
+**Validation**
+
+- RED build reported missing `AgentUsage::BuildPrimaryDisplay`.
+- `AgentUsageTests`: 13 passed, 0 failed, 0 skipped.
+- Full x64 Debug solution build: succeeded with 0 errors (169 existing warnings).
+- CascadiaPackage clean build: succeeded with 0 errors; deployed Dev 0.8.0.2 Terminal and WTA
+  hashes matched current build outputs.
+- ACP probes: tokens-only emitted valid `usage_update` without cost; error emitted malformed
+  Usage then a chat chunk; no-report emitted only a chat chunk. All returned `end_turn`.
+- Desktop cost-only: displayed only `0.004 USD`; chat continued; process remained alive.
+- Desktop tokens-only: displayed only `1024 / 8192 Tokens`; chat continued; process remained
+  alive.
+- Desktop malformed error: Usage collapsed, `EDGE_ERROR_OK` remained visible, and the process
+  remained alive.
+- Desktop no-report: Usage stayed collapsed, `EDGE_NO_USAGE_OK` remained visible, and the process
+  remained alive.
+- Visual inspection found no Bottom Bar overlap. Error-run logs contained the redacted rejection
+  warning and neither malformed sentinel value.
+
+**Committed files**
+
+- `src/cascadia/TerminalApp/AgentUsage.h/.cpp`
+- `src/cascadia/TerminalApp/TerminalPage.cpp`
+- `src/cascadia/ut_app/AgentUsageTests.cpp`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state/edge-contract update in `doc/investigation/acp-price-calc.md`
+- No local mock, E2E verifier, helper log, or screenshot files.
 
 ### Step 4 - Session Usage Lifecycle
 

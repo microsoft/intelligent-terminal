@@ -28,9 +28,18 @@ namespace TerminalApp::AgentUsage
         bool operator==(const Item&) const = default;
     };
 
+    struct PrimaryDisplay
+    {
+        std::vector<std::wstring> texts;
+        bool visible{ false };
+    };
+
     std::vector<Item> Parse(const Json::Value& usage);
     void UpdateCache(std::vector<Item>& cache, const Json::Value& usage);
     std::vector<std::wstring> BuildPrimaryDisplayTexts(
+        const std::vector<Item>& items,
+        std::wstring_view tokensUnit);
+    PrimaryDisplay BuildPrimaryDisplay(
         const std::vector<Item>& items,
         std::wstring_view tokensUnit);
 }

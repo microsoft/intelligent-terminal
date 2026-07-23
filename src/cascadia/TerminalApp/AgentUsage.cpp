@@ -161,4 +161,15 @@ namespace TerminalApp::AgentUsage
         }
         return texts;
     }
+
+    PrimaryDisplay BuildPrimaryDisplay(
+        const std::vector<Item>& items,
+        const std::wstring_view tokensUnit)
+    {
+        auto texts = BuildPrimaryDisplayTexts(items, tokensUnit);
+        return PrimaryDisplay{
+            .texts = std::move(texts),
+            .visible = !items.empty(),
+        };
+    }
 }

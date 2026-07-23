@@ -2599,13 +2599,15 @@ namespace winrt::TerminalApp::implementation
         if (const auto usageGroup = UsageGroup())
         {
             usageGroup.Children().Clear();
+            bool usageVisible = false;
             if (activeAgent)
             {
                 const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(activeAgent);
-                const auto texts = ::TerminalApp::AgentUsage::BuildPrimaryDisplayTexts(
+                const auto display = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(
                     impl->GetAgentUsage(),
                     RS_(L"Usage_TokensUnit"));
-                for (const auto& text : texts)
+                usageVisible = display.visible;
+                for (const auto& text : display.texts)
                 {
                     TextBlock block;
                     block.Text(text);
@@ -2616,8 +2618,7 @@ namespace winrt::TerminalApp::implementation
                     usageGroup.Children().Append(block);
                 }
             }
-            usageGroup.Visibility(
-                usageGroup.Children().Size() == 0 ? Visibility::Collapsed : Visibility::Visible);
+            usageGroup.Visibility(usageVisible ? Visibility::Visible : Visibility::Collapsed);
         }
 
         if (auto diagBtn = DiagnosticsButton())
