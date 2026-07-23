@@ -8,9 +8,10 @@ suite and build commands to the files changed by that PR.
 Inspect the PR before reading implementation files:
 
 ```powershell
-gh pr view <number> --repo microsoft/intelligent-terminal `
+$prNumber = 482
+gh pr view $prNumber --repo microsoft/intelligent-terminal `
   --json number,title,body,state,mergedAt,mergeCommit,baseRefName,headRefName,commits,files,closingIssuesReferences,reviews,url
-gh pr diff <number> --repo microsoft/intelligent-terminal
+gh pr diff $prNumber --repo microsoft/intelligent-terminal
 ```
 
 Read linked issues and relevant review threads. Record:
@@ -61,7 +62,8 @@ code, issue reproduction, logs/events, and live behavior when available.
 Search before adding helpers:
 
 ```powershell
-git grep -n -E "<pattern>" -- test/e2e tools/wta/src src/cascadia
+$pattern = 'feature|event|setting|command'
+git grep -n -E $pattern -- test/e2e tools/wta/src src/cascadia
 ```
 
 Read:
@@ -182,8 +184,9 @@ pwsh -NoProfile -File test/e2e/bootstrap.ps1 -Check
 Run the new suite through the report driver:
 
 ```powershell
+$suite = 'test/e2e/tests/Feature.AutofixParser.Tests.ps1'
 pwsh -NoProfile -File test/e2e/Invoke-ItE2EReport.ps1 `
-  -Path test/e2e/tests/Feature.<Name>.Tests.ps1 `
+  -Path $suite `
   -UpdateReport
 ```
 
@@ -199,10 +202,13 @@ exists and falls back to a fresh report otherwise. To validate the underlying
 incremental script explicitly or use a custom output directory, run:
 
 ```powershell
+$report = 'test/e2e/artifacts/release-report.md'
+$results = 'test/e2e/artifacts/results.xml'
+$updated = 'test/e2e/artifacts/release-report-updated.md'
 pwsh -NoProfile -File test/e2e/Update-ReleaseReport.ps1 `
-  -Report <existing-release-report.md> `
-  -ResultsXml <results.xml> `
-  -OutFile <updated-release-report.md>
+  -Report $report `
+  -ResultsXml $results `
+  -OutFile $updated
 ```
 
 Verify only matched items changed and every new ID is `[x]`. A skipped-only
