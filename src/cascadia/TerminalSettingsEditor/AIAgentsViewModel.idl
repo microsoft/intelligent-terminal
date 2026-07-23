@@ -25,6 +25,14 @@ namespace Microsoft.Terminal.Settings.Editor
         String Description { get; };
     }
 
+    runtimeclass CustomModelProviderEntry : Windows.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        String Id { get; };
+        String BaseUrl { get; };
+        String ModelId { get; };
+        void Remove();
+    }
+
     runtimeclass AIAgentsViewModel : Windows.UI.Xaml.Data.INotifyPropertyChanged
     {
         AIAgentsViewModel(Microsoft.Terminal.Settings.Model.GlobalAppSettings globalSettings);
@@ -71,6 +79,16 @@ namespace Microsoft.Terminal.Settings.Editor
         // matching entry (or null when AcpModel doesn't appear in the list).
         AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
+        Windows.Foundation.Collections.IObservableVector<CustomModelProviderEntry> CustomModelProviders { get; };
+        Boolean IsAddingCustomModelProvider { get; };
+        String NewCustomModelProviderBaseUrl;
+        String NewCustomModelId;
+        String NewCustomModelApiKey;
+        String NewCustomModelApiKeyError { get; };
+        Boolean CanSaveCustomModelProvider { get; };
+        void AddCustomModelProvider();
+        void SaveCustomModelProvider();
+        void CancelCustomModelProvider();
         Boolean ShowDelegateModel { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AutoErrorDetectionEnabled);

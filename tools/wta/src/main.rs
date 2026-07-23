@@ -11,6 +11,7 @@ mod clipboard_image;
 mod command_recall;
 mod commands;
 mod coordinator;
+mod custom_model_provider;
 mod cwd_util;
 mod event;
 mod helper;
@@ -188,6 +189,10 @@ struct Cli {
     /// agents may use their own --model flag in `agent`.
     #[arg(long)]
     acp_model: Option<String>,
+    /// Model configured through an Intelligent Terminal custom provider.
+    /// Helper-only UI metadata; provider credentials remain master-only.
+    #[arg(long, hide = true)]
+    custom_model_id: Option<String>,
 
     /// Delegate agent CLI command (e.g. "codex")
     #[arg(long)]
@@ -3319,6 +3324,7 @@ async fn run_acp_app(
                 cli.agent.clone(),
                 cli.acp_model.clone(),
             );
+            app_state.set_custom_model_id(cli.custom_model_id.clone());
             app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial

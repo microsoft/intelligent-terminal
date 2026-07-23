@@ -2603,4 +2603,36 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>Дозвольте Інтелектуальному Терміналу надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
   </data>
+  <data name="AIAgents_CustomModelsGroupHeader.Text" xml:space="preserve">
+    <value>Постачальники BYOK</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
+    <value>https://openrouter.ai/api/v1</value>
+    <comment>{Locked} Example OpenAI-compatible provider endpoint.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
+    <value>Видалити</value>
+    <comment>Button that removes a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
+    <value>qwen/qwen3.5-9b</value>
+    <comment>{Locked} Example provider-specific model identifier.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
+    <value>Ключ API (необов’язковий для локальних постачальників)</value>
+    <comment>Placeholder for a custom provider API key. {Locked="API"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Додати новий</value>
+    <comment>Button that starts adding a custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <value>Зберегти</value>
+    <comment>Button that saves a new custom model provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Скасувати</value>
+    <comment>Button that cancels adding a provider.</comment>
+  </data>
 </root>

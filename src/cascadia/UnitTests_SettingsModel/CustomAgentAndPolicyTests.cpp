@@ -73,6 +73,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInAcpAgentRoundtrips);
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
+        TEST_METHOD(CustomModelProvidersRoundtrip);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
@@ -343,6 +344,28 @@ namespace SettingsModelUnitTests
         const auto settings = MakeSettings(R"("acpModel": "gpt-5", "delegateModel": "claude-4")");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"gpt-5" }, settings->GlobalSettings().AcpModel());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude-4" }, settings->GlobalSettings().DelegateModel());
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProvidersRoundtrip()
+    {
+        const auto settings = MakeSettings(
+            R"("acpModel": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-chat-completions","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","name":"Ollama","baseUrl":"http://localhost:11434/v1","apiContract":"openai-chat-completions","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
+        const auto& globals = settings->GlobalSettings();
+        const auto providers = globals.CustomModelProviders();
+        VERIFY_ARE_EQUAL(2u, providers.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-openrouter" }, providers.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"https://openrouter.ai/api/v1" }, providers.GetAt(0).BaseUrl());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-chat-completions" }, providers.GetAt(0).ApiContract());
+        VERIFY_ARE_EQUAL(2u, providers.GetAt(0).Models().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen/qwen3.5-9b" }, providers.GetAt(0).Models().GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-ollama" }, providers.GetAt(1).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"auto" }, providers.GetAt(1).Location());
+        VERIFY_ARE_EQUAL(1u, providers.GetAt(1).Models().Size());
+
+        const auto copy = settings->Copy();
+        const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
+        copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
     }
 
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()

@@ -6,9 +6,12 @@
 #include "AIAgentsViewModel.g.h"
 #include "AcpModelEntry.g.h"
 #include "AgentEntry.g.h"
+#include "CustomModelProviderEntry.g.h"
 #include "ViewModelHelpers.h"
 #include "Utils.h"
 #include "../inc/AgentHooksStatus.h"
+#include "../inc/CustomModelCredential.h"
+#include "../inc/CustomModelProviderUtils.h"
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
@@ -48,6 +51,28 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _id;
         winrt::hstring _displayName;
         winrt::hstring _description;
+    };
+
+    struct CustomModelProviderEntry :
+        CustomModelProviderEntryT<CustomModelProviderEntry>,
+        ViewModelHelper<CustomModelProviderEntry>
+    {
+        CustomModelProviderEntry(
+            Model::CustomModelProvider provider,
+            std::function<void()> remove);
+
+        using ViewModelHelper<CustomModelProviderEntry>::PropertyChanged;
+
+        winrt::hstring Id() const { return _provider.Id(); }
+        winrt::hstring BaseUrl() const { return _provider.BaseUrl(); }
+        winrt::hstring ModelId() const { return _provider.Models().Size() == 0 ? winrt::hstring{} : _provider.Models().GetAt(0).Id(); }
+        void Remove();
+
+        Model::CustomModelProvider Provider() const { return _provider; }
+
+    private:
+        Model::CustomModelProvider _provider;
+        std::function<void()> _remove;
     };
 
     struct AIAgentsViewModel : AIAgentsViewModelT<AIAgentsViewModel>, ViewModelHelper<AIAgentsViewModel>
@@ -95,11 +120,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Probe in flight counts as "present" so the ComboBox stays
         // visible (PlaceholderText="Default") instead of flashing the
         // free-form textbox during the probe window.
-        bool HasAcpModelList() const { return _acpModelList && (_acpModelList.Size() > 0 || _acpProbing); }
+        bool HasAcpModelList() const;
         bool ShowAcpModelTextBox() const { return !HasAcpModelList(); }
         Editor::AcpModelEntry CurrentAcpModelEntry();
         void CurrentAcpModelEntry(const Editor::AcpModelEntry& value);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpModel);
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> CustomModelProviders() const { return _customModelProviders; }
+        bool IsAddingCustomModelProvider() const { return _isAddingCustomModelProvider; }
+        winrt::hstring NewCustomModelProviderBaseUrl() const { return _newCustomModelProviderBaseUrl; }
+        void NewCustomModelProviderBaseUrl(const winrt::hstring& value);
+        winrt::hstring NewCustomModelId() const { return _newCustomModelId; }
+        void NewCustomModelId(const winrt::hstring& value);
+        winrt::hstring NewCustomModelApiKey() const { return _newCustomModelApiKey; }
+        void NewCustomModelApiKey(const winrt::hstring& value);
+        winrt::hstring NewCustomModelApiKeyError() const { return _newCustomModelApiKeyError; }
+        bool CanSaveCustomModelProvider() const { return !_newCustomModelProviderBaseUrl.empty() && !_newCustomModelId.empty(); }
+        void AddCustomModelProvider();
+        void SaveCustomModelProvider();
+        void CancelCustomModelProvider();
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
         bool AutoErrorDetectionEnabled() const;
@@ -169,17 +207,26 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _acpAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> _customModelProviders;
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
         winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionMap;
 
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };
+        bool _isAddingCustomModelProvider{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;
+        winrt::hstring _newCustomModelProviderBaseUrl;
+        winrt::hstring _newCustomModelId;
+        winrt::hstring _newCustomModelApiKey;
+        winrt::hstring _newCustomModelApiKeyError;
 
         winrt::event_token _acpRuntimeChangedToken{};
         void _RebuildAcpModelListFromCache();
+        void _LoadCustomModelProviders();
+        void _CommitCustomModelProviders();
+        void _RemoveCustomModelProvider(const winrt::hstring& id);
 
         // ── ACP model probe ──
         // A background `wta probe-models --agent <cmd>` invocation that

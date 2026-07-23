@@ -75,6 +75,7 @@ Author(s):
     X(bool, ShowTabsFullscreen, "showTabsFullscreen", false)                                                                                                                                            \
     X(hstring, AcpAgent, "acpAgent", L"copilot")                                                                                                                                                        \
     X(hstring, AcpModel, "acpModel", L"")                                                                                                                                                               \
+    X(winrt::Windows::Foundation::Collections::IVector<Model::CustomModelProvider>, CustomModelProviders, "customModelProviders", winrt::single_threaded_vector<Model::CustomModelProvider>())             \
     X(hstring, DelegateAgent, "delegateAgent", L"copilot")                                                                                                                                              \
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
     X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \

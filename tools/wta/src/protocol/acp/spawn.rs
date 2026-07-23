@@ -228,6 +228,11 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
+    crate::custom_model_provider::configure_child(
+        &mut cmd,
+        crate::custom_model_provider::is_copilot_program(&resolved_program),
+        crate::custom_model_provider::is_opencode_program(&resolved_program),
+    )?;
 
     // Give the agent CLI a PATH rebuilt from the Windows registry. Windows
     // Terminal — and thus this wta-master / wta child — snapshots its

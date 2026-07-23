@@ -8,6 +8,7 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:local="using:Microsoft.Terminal.Settings.Editor"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:mtu="using:Microsoft.Terminal.UI"
       xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
       mc:Ignorable="d">
 
@@ -167,6 +168,82 @@
                              Visibility="{x:Bind ViewModel.ShowAcpModelTextBox, Mode=OneWay}" />
                 </Grid>
             </local:SettingContainer>
+
+            <muxc:Expander Margin="0,4,0,0"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch">
+                <muxc:Expander.Header>
+                    <Grid MinHeight="64">
+                        <TextBlock x:Uid="AIAgents_CustomModelsGroupHeader"
+                                   VerticalAlignment="Center"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap" />
+                    </Grid>
+                </muxc:Expander.Header>
+                <StackPanel Margin="16,4,16,16"
+                            Spacing="8">
+            <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="local:CustomModelProviderEntry">
+                        <Grid MinHeight="52"
+                              Margin="0,0,0,4"
+                              Padding="12,4"
+                              Background="{ThemeResource ExpanderHeaderBackground}"
+                              CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{x:Bind ModelId, Mode=OneWay}" />
+                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Text="{x:Bind BaseUrl, Mode=OneWay}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_CustomProviderRemove"
+                                    VerticalAlignment="Center"
+                                    Click="{x:Bind Remove}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Button x:Uid="AIAgents_CustomProviderAdd"
+                    HorizontalAlignment="Left"
+                    Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                    Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
+            <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                    BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                    BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                    CornerRadius="{ThemeResource ControlCornerRadius}"
+                    Padding="16"
+                    Margin="0,8,0,0"
+                    Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                             Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox x:Uid="AIAgents_CustomModelId"
+                             Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
+                                 Password="{x:Bind ViewModel.NewCustomModelApiKey, Mode=TwoWay}" />
+                    <TextBlock Foreground="{ThemeResource SystemControlErrorTextForegroundBrush}"
+                               Text="{x:Bind ViewModel.NewCustomModelApiKeyError, Mode=OneWay}"
+                               TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Uid="AIAgents_CustomProviderSave"
+                                IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
+                                Click="{x:Bind ViewModel.SaveCustomModelProvider}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        <Button x:Uid="AIAgents_CustomProviderCancel"
+                                Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+                </StackPanel>
+            </muxc:Expander>
 
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"

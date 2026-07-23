@@ -28,6 +28,8 @@ pub struct ModelPopupState<'a> {
     /// Id of the model the pane is currently effectively on, if any — drawn
     /// with a leading marker so the user can see "where we are".
     pub current_id: Option<&'a str>,
+    /// Model configured through Intelligent Terminal's shared provider.
+    pub custom_model_id: Option<&'a str>,
 }
 
 /// Render the model picker just above `input_area`, falling back to below
@@ -47,13 +49,22 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
         .iter()
         .map(|m| {
             let is_current = state.current_id == Some(m.id.as_str());
-            let marker = if is_current { CURRENT_MARKER } else { CURRENT_PAD };
-            let mut spans = vec![
-                Span::styled(format!(" {}{}", marker, m.name), theme::INPUT_TEXT),
-            ];
+            let custom_model = state
+                .custom_model_id
+                .filter(|configured| is_custom_model(&m.id, configured));
+            let display_name = custom_model.unwrap_or(&m.name);
+            let marker = if is_current {
+                CURRENT_MARKER
+            } else {
+                CURRENT_PAD
+            };
+            let mut spans = vec![Span::styled(
+                format!(" {marker}{display_name}"),
+                theme::INPUT_TEXT,
+            )];
             // Show the raw id when it differs from the display name, plus the
             // optional one-line description, both dimmed.
-            if m.id != m.name {
+            if custom_model.is_none() && m.id != m.name {
                 spans.push(Span::styled(format!("  ({})", m.id), theme::DIM));
             }
             if let Some(desc) = m.description.as_deref().filter(|d| !d.is_empty()) {
@@ -77,4 +88,26 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
     list_state.select(Some(state.selected.min(state.models.len() - 1)));
 
     frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn is_custom_model(model_id: &str, configured_model_id: &str) -> bool {
+    model_id == configured_model_id
+        || model_id
+            .strip_prefix("intelligent-terminal/")
+            .is_some_and(|id| id == configured_model_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_native_and_opencode_custom_model_ids() {
+        assert!(is_custom_model("qwen/qwen3.5-9b", "qwen/qwen3.5-9b"));
+        assert!(is_custom_model(
+            "intelligent-terminal/qwen/qwen3.5-9b",
+            "qwen/qwen3.5-9b"
+        ));
+        assert!(!is_custom_model("openai/gpt-5.4", "qwen/qwen3.5-9b"));
+    }
 }

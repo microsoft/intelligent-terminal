@@ -2136,6 +2136,10 @@ pub struct App {
     /// lazy-first-prompt sessions stay on the configured model, not just the
     /// bootstrap one. None = "agent default" (no override).
     acp_model: Option<String>,
+    /// Shared-provider model id supplied directly to this helper by WT.
+    /// Kept separate from the master-only provider environment because this
+    /// process owns the `/model` UI but never receives provider credentials.
+    custom_model_id: Option<String>,
     /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -2357,6 +2361,7 @@ impl App {
             delegate_agents: None,
             delegate_base_agent_cmd: String::new(),
             acp_model: None,
+            custom_model_id: None,
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -2666,6 +2671,11 @@ impl App {
         self.delegate_agents = Some(delegate_agents);
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
+    }
+    pub fn set_custom_model_id(&mut self, model_id: Option<String>) {
+        self.custom_model_id = model_id
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty());
     }
 
     /// Low-level: ask the ACP client task to apply `model` via
@@ -5113,14 +5123,13 @@ impl App {
                 }
 
                 let is_auth_error = failure.is_auth();
+                let agent_id = if !self.current_agent_id.is_empty() {
+                    self.current_agent_id.clone()
+                } else {
+                    "copilot".to_string()
+                };
                 if is_auth_error && !self.preflight_setup_active {
                     tracing::info!("AgentError auth fallback: showing setup screen");
-                    // Use current_agent_id — set at preflight or agent selection time.
-                    let agent_id = if !self.current_agent_id.is_empty() {
-                        self.current_agent_id.clone()
-                    } else {
-                        "copilot".to_string()
-                    };
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
                     let agent_status = crate::agent_check::check_agent(profile.id);
@@ -7819,6 +7828,7 @@ impl App {
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
             current_id,
+            custom_model_id: self.custom_model_id.as_deref(),
         })
     }
 
@@ -9785,10 +9795,13 @@ impl App {
         } else {
             None
         };
+        let display_model = self
+            .current_model_display()
+            .or_else(|| self.agent_model.clone());
         let mut params = serde_json::json!({
             "name": self.agent_name,
             "version": self.agent_version,
-            "model": self.agent_model,
+            "model": display_model,
             "state": state_str,
             "available_models": self.available_models,
             "current_model_id": self.current_model_id,

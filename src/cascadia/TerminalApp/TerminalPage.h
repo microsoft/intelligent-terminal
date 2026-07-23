@@ -423,6 +423,7 @@ namespace winrt::TerminalApp::implementation
         {
             std::wstring acpAgent;
             std::wstring acpModel;
+            std::string customModelProviders;
             std::wstring acpCustomCommand;
             std::wstring delegateAgent;
             std::wstring delegateModel;
@@ -531,6 +532,7 @@ namespace winrt::TerminalApp::implementation
         // (first acquire) and `_RebuildAgentStack` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
         std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
