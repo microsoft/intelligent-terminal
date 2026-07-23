@@ -1066,7 +1066,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring providerId;
         std::wstring modelId;
         if (!::Microsoft::Terminal::CustomModels::TryParseSelectionId(
-                std::wstring_view{ globals.AcpModel() },
+                std::wstring_view{ globals.CustomModelSelection() },
                 providerId,
                 modelId))
         {
@@ -1122,8 +1122,9 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& agentId,
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals) noexcept
     {
-        const bool supportsSharedProvider = agentId == L"copilot" || agentId == L"opencode";
-        return supportsSharedProvider && _FindSelectedCustomModel(globals).has_value();
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        return Reg::SupportsByok(std::wstring_view{ agentId }) &&
+               _FindSelectedCustomModel(globals).has_value();
     }
 
     // Build a launchable command line from a bare agent id (e.g. "copilot"
@@ -1471,6 +1472,7 @@ namespace winrt::TerminalApp::implementation
         return AgentSettingsSnapshot{
             std::wstring{ globals.AcpAgent() },
             std::wstring{ globals.AcpModel() },
+            std::wstring{ globals.CustomModelSelection() },
             _SerializeCustomModelProviders(globals),
             std::wstring{ globals.AcpCustomCommand() },
             std::wstring{ globals.DelegateAgent() },
@@ -1488,8 +1490,7 @@ namespace winrt::TerminalApp::implementation
         // the delegate agent restarted the whole agent pane connection.
         const bool customModelProvidersChanged =
             a.customModelProviders != b.customModelProviders ||
-            ((til::starts_with(a.acpModel, L"custom:") || til::starts_with(b.acpModel, L"custom:")) &&
-             a.acpModel != b.acpModel);
+            a.customModelSelection != b.customModelSelection;
         return a.acpAgent != b.acpAgent ||
               a.acpCustomCommand != b.acpCustomCommand ||
               customModelProvidersChanged;
@@ -2141,9 +2142,12 @@ namespace winrt::TerminalApp::implementation
             }
         }
         appendHelperFlagValue(L"--acp-model", effectiveModel);
-        if (const auto custom = _FindSelectedCustomModel(globals))
+        if (_IsAgentByokConfigured(effectiveAgentId, globals))
         {
-            appendHelperFlagValue(L"--custom-model-id", custom->second.Id());
+            if (const auto custom = _FindSelectedCustomModel(globals))
+            {
+                appendHelperFlagValue(L"--custom-model-id", custom->second.Id());
+            }
         }
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
@@ -2897,8 +2901,7 @@ namespace winrt::TerminalApp::implementation
              _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
         const bool customModelProvidersChanged =
             _lastAgentSettings.customModelProviders != current.customModelProviders ||
-            ((til::starts_with(_lastAgentSettings.acpModel, L"custom:") || til::starts_with(current.acpModel, L"custom:")) &&
-             _lastAgentSettings.acpModel != current.acpModel);
+            _lastAgentSettings.customModelSelection != current.customModelSelection;
         const bool masterConfigurationChanged =
             customMasterArgsChanged ||
             customModelProvidersChanged;

@@ -196,8 +196,14 @@ impl AgentSpawn {
 /// the agent's `execute_command` tool — which inherits the agent process cwd
 /// when its shell wrapper doesn't explicitly set one — starts in the user's
 /// project. None preserves the parent's cwd (probe path, where it doesn't
-/// matter).
-pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result<AgentSpawn> {
+/// matter). `agent_id` is authoritative when supplied by the master, so a
+/// custom command whose executable happens to match a built-in agent cannot
+/// inherit that built-in's BYOK configuration.
+pub(crate) fn spawn_agent_process(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -228,11 +234,16 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
-    crate::custom_model_provider::configure_child(
-        &mut cmd,
-        crate::custom_model_provider::is_copilot_program(&resolved_program),
-        crate::custom_model_provider::is_opencode_program(&resolved_program),
-    )?;
+    let inferred_agent_id;
+    let agent_id = match agent_id {
+        Some(id) => id,
+        None => {
+            inferred_agent_id = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
+            inferred_agent_id
+        }
+    };
+    let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+    crate::custom_model_provider::configure_child(&mut cmd, profile.byok_mode)?;
 
     // Give the agent CLI a PATH rebuilt from the Windows registry. Windows
     // Terminal — and thus this wta-master / wta child — snapshots its

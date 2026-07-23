@@ -36,7 +36,7 @@ pub struct ProbeResult {
 /// pane (e.g. `"copilot --acp --stdio"`,
 /// `"npx -y @zed-industries/claude-code-acp"`).
 pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None)?;
+    let mut spawned = spawn_agent_process(agent_cmd, None, None)?;
     tracing::debug!(
         "probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,
@@ -189,7 +189,7 @@ pub struct SessionProbeResult {
 /// preamble (kept inline rather than shared so the probe stays a
 /// self-contained diagnostic).
 pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None)?;
+    let mut spawned = spawn_agent_process(agent_cmd, None, None)?;
     tracing::debug!(
         "session probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,

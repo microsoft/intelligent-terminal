@@ -3,6 +3,8 @@
 use anyhow::{bail, Context, Result};
 use tokio::process::Command;
 
+use crate::agent_registry::ByokMode;
+
 const SHARED_BASE_URL: &str = "WTA_CUSTOM_MODEL_BASE_URL";
 const SHARED_MODEL: &str = "WTA_CUSTOM_MODEL_ID";
 const SHARED_CREDENTIAL_ID: &str = "WTA_CUSTOM_MODEL_CREDENTIAL_ID";
@@ -60,22 +62,18 @@ impl Config {
 
 /// Scrub trusted provider metadata from every child, then adapt the shared
 /// configuration only for an agent that supports it.
-pub(crate) fn configure_child(
-    cmd: &mut Command,
-    is_copilot: bool,
-    is_opencode: bool,
-) -> Result<()> {
+pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<()> {
     let shared = Config::shared_from_env();
     for key in METADATA_ENV_KEYS {
         cmd.env_remove(key);
     }
     cmd.env_remove(OPENCODE_API_KEY);
 
-    if is_opencode && shared.is_complete() {
-        configure_opencode(cmd, &shared)?;
-    } else if is_copilot {
-        if shared.is_complete() {
-            configure_copilot(cmd, &shared)?;
+    if shared.is_complete() {
+        match byok_mode {
+            ByokMode::Unsupported => {}
+            ByokMode::CopilotProviderEnvironment => configure_copilot(cmd, &shared)?,
+            ByokMode::OpenCodeConfigContent => configure_opencode(cmd, &shared)?,
         }
     }
     Ok(())
@@ -139,20 +137,6 @@ fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> 
     .context("failed to serialize OpenCode custom model configuration")
 }
 
-pub(crate) fn is_copilot_program(program: &str) -> bool {
-    std::path::Path::new(program)
-        .file_stem()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.eq_ignore_ascii_case("copilot"))
-}
-
-pub(crate) fn is_opencode_program(program: &str) -> bool {
-    std::path::Path::new(program)
-        .file_stem()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.eq_ignore_ascii_case("opencode"))
-}
-
 fn trimmed_env(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
@@ -205,22 +189,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recognizes_copilot_program_names() {
-        assert!(is_copilot_program("copilot"));
-        assert!(is_copilot_program(r"C:\Tools\copilot.exe"));
-        assert!(is_copilot_program(r"C:\Tools\Copilot.cmd"));
-        assert!(!is_copilot_program("gemini"));
-    }
-
-    #[test]
-    fn recognizes_opencode_program_names() {
-        assert!(is_opencode_program("opencode"));
-        assert!(is_opencode_program(r"C:\Tools\opencode.exe"));
-        assert!(is_opencode_program(r"C:\Tools\OpenCode.cmd"));
-        assert!(!is_opencode_program("codex"));
-    }
-
-    #[test]
     fn opencode_config_uses_shared_provider_without_persisting_secret() {
         let rendered = render_opencode_config(
             &Config {
@@ -271,7 +239,8 @@ mod tests {
             cmd.env(key, "must-not-leak");
         }
 
-        configure_child(&mut cmd, false, false).expect("metadata scrubbing should succeed");
+        configure_child(&mut cmd, ByokMode::Unsupported)
+            .expect("metadata scrubbing should succeed");
 
         let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
         for key in METADATA_ENV_KEYS {

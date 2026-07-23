@@ -74,6 +74,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
         TEST_METHOD(CustomModelProvidersRoundtrip);
+        TEST_METHOD(LegacyCustomAcpModelMigratesToSharedSelection);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
@@ -349,8 +350,9 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::CustomModelProvidersRoundtrip()
     {
         const auto settings = MakeSettings(
-            R"("acpModel": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-chat-completions","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","baseUrl":"http://localhost:11434/v1","apiContract":"openai-chat-completions","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
+            R"("customModelSelection": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-chat-completions","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","baseUrl":"http://localhost:11434/v1","apiContract":"openai-chat-completions","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
         const auto& globals = settings->GlobalSettings();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:provider-openrouter:qwen/qwen3.5-9b" }, globals.CustomModelSelection());
         const auto providers = globals.CustomModelProviders();
         VERIFY_ARE_EQUAL(2u, providers.Size());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-openrouter" }, providers.GetAt(0).Id());
@@ -367,6 +369,14 @@ namespace SettingsModelUnitTests
         const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
         copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
+    }
+
+    void CustomAgentAndPolicyTests::LegacyCustomAcpModelMigratesToSharedSelection()
+    {
+        const auto settings = MakeSettings(R"("acpModel": "custom:provider-openrouter:qwen/qwen3.5-9b")");
+        const auto& globals = settings->GlobalSettings();
+        VERIFY_ARE_EQUAL(winrt::hstring{}, globals.AcpModel());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:provider-openrouter:qwen/qwen3.5-9b" }, globals.CustomModelSelection());
     }
 
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()

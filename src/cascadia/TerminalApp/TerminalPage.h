@@ -423,6 +423,7 @@ namespace winrt::TerminalApp::implementation
         {
             std::wstring acpAgent;
             std::wstring acpModel;
+            std::wstring customModelSelection;
             std::string customModelProviders;
             std::wstring acpCustomCommand;
             std::wstring delegateAgent;

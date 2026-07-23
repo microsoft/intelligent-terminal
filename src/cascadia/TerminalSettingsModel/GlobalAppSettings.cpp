@@ -195,6 +195,18 @@ void GlobalAppSettings::LayerJson(const Json::Value& json, const OriginTag origi
     MTSM_GLOBAL_SETTINGS(GLOBAL_SETTINGS_LAYER_JSON)
 #undef GLOBAL_SETTINGS_LAYER_JSON
 
+    // Early BYOK builds stored the shared provider selection in acpModel.
+    // Move it to its agent-independent setting so changing agents cannot
+    // discard or forward the composite custom selection as a native model id.
+    if (!_CustomModelSelection.has_value() &&
+        _AcpModel.has_value() &&
+        til::starts_with(*_AcpModel, L"custom:"))
+    {
+        _CustomModelSelection = std::move(*_AcpModel);
+        _AcpModel = L"";
+        _fixupsAppliedDuringLoad = true;
+    }
+
     // GH#11975 We only want to allow sensible values and prevent crashes, so we are clamping those values
     // We only want to assign if the value did change through clamping,
     // otherwise we could end up setting defaults that get persisted

@@ -117,6 +117,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, SearchWebDefaultQueryUrl);
         INHERITABLE_SETTING(String, AcpAgent);
         INHERITABLE_SETTING(String, AcpModel);
+        INHERITABLE_SETTING(String, CustomModelSelection);
         INHERITABLE_SETTING(IVector<CustomModelProvider>, CustomModelProviders);
         INHERITABLE_SETTING(String, DelegateAgent);
         INHERITABLE_SETTING(String, DelegateModel);

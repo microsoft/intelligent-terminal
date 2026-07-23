@@ -74,9 +74,9 @@ namespace Microsoft.Terminal.Settings.Editor
         // free-form TextBox should take its place. Avoids needing a
         // bool-to-bool converter resource in the page.
         Boolean ShowAcpModelTextBox { get; };
-        // ComboBox SelectedItem binding target. Setter writes the entry's
-        // Id back to AcpModel; getter resolves AcpModel back to the
-        // matching entry (or null when AcpModel doesn't appear in the list).
+        // ComboBox SelectedItem binding target. Native models are stored in
+        // AcpModel; shared provider models are stored independently so they
+        // survive agent switches.
         AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
         Windows.Foundation.Collections.IObservableVector<CustomModelProviderEntry> CustomModelProviders { get; };

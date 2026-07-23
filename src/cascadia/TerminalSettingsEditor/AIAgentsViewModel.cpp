@@ -291,12 +291,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::wstring selectedProvider;
         std::wstring selectedModel;
         if (::Microsoft::Terminal::CustomModels::TryParseSelectionId(
-                std::wstring_view{ _GlobalSettings.AcpModel() },
+                std::wstring_view{ _GlobalSettings.CustomModelSelection() },
                 selectedProvider,
                 selectedModel) &&
             selectedProvider == std::wstring_view{ id })
         {
-            _GlobalSettings.AcpModel(L"");
+            _GlobalSettings.CustomModelSelection(L"");
         }
         _CommitCustomModelProviders();
     }
@@ -446,7 +446,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 m.Description()));
         }
         const auto agent = _GlobalSettings.AcpAgent();
-        const bool supportsCustomModels = agent == L"copilot" || agent == L"opencode";
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const bool supportsCustomModels = Reg::SupportsByok(std::wstring_view{ agent });
         if (supportsCustomModels)
         {
             for (const auto& provider : _GlobalSettings.CustomModelProviders())
@@ -495,7 +496,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // picks" sentinel, so the empty case needs no reconciliation.
         if (_acpModelList.Size() > 0)
         {
-            const auto current = _GlobalSettings.AcpModel();
+            const auto current = supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty() ?
+                                     _GlobalSettings.CustomModelSelection() :
+                                     _GlobalSettings.AcpModel();
             if (!current.empty())
             {
                 bool matched = false;
@@ -512,7 +515,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     // Stale leftover id this agent doesn't advertise → reset
                     // to the empty "agent default" sentinel (send no model
                     // override), which renders as the "Default" placeholder.
-                    _GlobalSettings.AcpModel(L"");
+                    if (supportsCustomModels && !_GlobalSettings.CustomModelSelection().empty())
+                    {
+                        _GlobalSettings.CustomModelSelection(L"");
+                    }
+                    else
+                    {
+                        _GlobalSettings.AcpModel(L"");
+                    }
                 }
             }
         }
@@ -595,7 +605,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     Editor::AcpModelEntry AIAgentsViewModel::CurrentAcpModelEntry()
     {
         if (!_acpModelList) return nullptr;
-        const auto current = _GlobalSettings.AcpModel();
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto current =
+            Reg::SupportsByok(std::wstring_view{ _GlobalSettings.AcpAgent() }) &&
+                    !_GlobalSettings.CustomModelSelection().empty() ?
+                _GlobalSettings.CustomModelSelection() :
+                _GlobalSettings.AcpModel();
         for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
         {
             const auto entry = _acpModelList.GetAt(i);
@@ -623,11 +638,22 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             return;
         }
-        if (_GlobalSettings.AcpModel() != value.Id())
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const bool supportsByok = Reg::SupportsByok(std::wstring_view{ _GlobalSettings.AcpAgent() });
+        if (::Microsoft::Terminal::CustomModels::IsCustomSelection(value.Id()))
+        {
+            _GlobalSettings.CustomModelSelection(value.Id());
+            _GlobalSettings.AcpModel(L"");
+        }
+        else
         {
             _GlobalSettings.AcpModel(value.Id());
-            _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
+            if (supportsByok)
+            {
+                _GlobalSettings.CustomModelSelection(L"");
+            }
         }
+        _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
     }
 
     bool AIAgentsViewModel::ShowAcpModel()
@@ -706,9 +732,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _isAddingCustomAcpAgent = false;
             _GlobalSettings.AcpAgent(value.Id());
-            // Drop the previous agent's model id and cached list — they
-            // don't apply to the new agent. The probe below repopulates
-            // the cache.
+            // Native model ids are agent-specific; the shared BYOK selection
+            // is stored separately and survives agent switches.
             _GlobalSettings.AcpModel(L"");
             Model::AcpRuntimeState::Current().SetAvailableModels(
                 winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
