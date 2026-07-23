@@ -13,6 +13,7 @@
 use crate::agent_registry;
 
 const WSL_AGENT_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const WSL_AGENT_PROBE_ATTEMPTS: usize = 3;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -84,45 +85,65 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
         return None;
     }
 
-    let mut cmd = tokio::process::Command::new("wsl.exe");
-    cmd.arg("-d")
-        .arg(distro)
-        .arg("--")
-        .arg("bash")
-        .arg("-lc")
-        .arg(wsl_agent_probe_script(executable))
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true);
-    // The probe runs from the interactive wta-helper. If wsl.exe attaches to
-    // that ConPTY it changes the console input mode on exit, after which
-    // crossterm receives arrow CSI sequences as literal '[' / 'B' characters
-    // and the entire agent-pane input appears frozen. Keep the probe off the
-    // helper's console; stdout/stderr are already captured through pipes.
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
+    let mut output = None;
+    for attempt in 1..=WSL_AGENT_PROBE_ATTEMPTS {
+        let mut cmd = tokio::process::Command::new("wsl.exe");
+        cmd.arg("-d")
+            .arg(distro)
+            .arg("--")
+            .arg("bash")
+            .arg("-lc")
+            .arg(wsl_agent_probe_script(executable))
+            .stdin(std::process::Stdio::null())
+            .kill_on_drop(true);
+        // The probe runs from the interactive wta-helper. If wsl.exe attaches
+        // to that ConPTY it changes the console input mode on exit, after which
+        // crossterm receives arrow CSI sequences as literal '[' / 'B'
+        // characters and the entire agent-pane input appears frozen.
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let output = match tokio::time::timeout(WSL_AGENT_PROBE_TIMEOUT, cmd.output()).await {
-        Ok(Ok(output)) => output,
-        Ok(Err(error)) => {
-            tracing::warn!(
-                target: "agent_source",
-                distro,
-                executable,
-                %error,
-                "WSL agent availability probe failed to spawn"
-            );
-            return None;
+        match tokio::time::timeout(WSL_AGENT_PROBE_TIMEOUT, cmd.output()).await {
+            Ok(Ok(result)) => {
+                output = Some(result);
+                break;
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    target: "agent_source",
+                    distro,
+                    executable,
+                    attempt,
+                    %error,
+                    "WSL agent availability probe failed to spawn"
+                );
+                return None;
+            }
+            Err(_) if attempt < WSL_AGENT_PROBE_ATTEMPTS => {
+                tracing::warn!(
+                    target: "agent_source",
+                    distro,
+                    executable,
+                    attempt,
+                    max_attempts = WSL_AGENT_PROBE_ATTEMPTS,
+                    "WSL agent availability probe timed out; retrying"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            Err(_) => {
+                tracing::warn!(
+                    target: "agent_source",
+                    distro,
+                    executable,
+                    attempt,
+                    max_attempts = WSL_AGENT_PROBE_ATTEMPTS,
+                    "WSL agent availability probe timed out after retries"
+                );
+                return None;
+            }
         }
-        Err(_) => {
-            tracing::warn!(
-                target: "agent_source",
-                distro,
-                executable,
-                "WSL agent availability probe timed out"
-            );
-            return None;
-        }
-    };
+    }
+    let output = output?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let resolved = stdout
