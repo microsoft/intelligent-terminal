@@ -9873,6 +9873,7 @@ impl App {
             .current_model_display()
             .or_else(|| self.agent_model.clone());
         let mut params = serde_json::json!({
+            "agent_id": self.current_agent_id,
             "name": self.agent_name,
             "version": self.agent_version,
             "model": display_model,

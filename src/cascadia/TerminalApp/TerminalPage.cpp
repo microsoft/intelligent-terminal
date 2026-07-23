@@ -4607,10 +4607,14 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("OnAgentStatusChanged: persisted acpAgent=" + winrt::to_string(selectedAgent));
             }
         }
-        // Sync the process-wide model-list cache. The Settings UI's
+        // Sync this agent's process-wide model-list cache. The Settings UI's
         // AIAgentsViewModel reads from this on construction, so any new
         // dropdown opened after this point sees the freshest list.
-        if (params.isMember("available_models") && params["available_models"].isArray())
+        const auto agentId = pickStr("agent_id");
+        if (state == L"connected" &&
+            !agentId.empty() &&
+            params.isMember("available_models") &&
+            params["available_models"].isArray())
         {
             _agentPaneLog("OnAgentStatusChanged: available_models has " +
                           std::to_string(params["available_models"].size()) + " entries");
@@ -4651,6 +4655,7 @@ namespace winrt::TerminalApp::implementation
             }
             winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current()
                 .SetAvailableModels(
+                    agentId,
                     winrt::single_threaded_vector(std::move(entries)).GetView(),
                     currentId);
         }

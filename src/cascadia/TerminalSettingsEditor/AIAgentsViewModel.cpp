@@ -429,7 +429,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         if (!_acpModelList) return;
 
-        const auto cached = Model::AcpRuntimeState::Current().AvailableModels();
+        const auto agent = _GlobalSettings.EffectiveAcpAgent();
+        const auto cached = Model::AcpRuntimeState::Current().AvailableModels(agent);
         const uint32_t newSize = cached ? cached.Size() : 0;
 
         // Mirror the agent's advertised list 1:1 — each ACP agent
@@ -437,6 +438,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // calls it `default`, copilot `auto`), so synthesizing one
         // here would just duplicate it.
         _acpModelList.Clear();
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const bool supportsCustomModels = Reg::SupportsByok(std::wstring_view{ agent });
         for (uint32_t i = 0; i < newSize; ++i)
         {
             const auto m = cached.GetAt(i);
@@ -445,9 +448,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 m.DisplayName(),
                 m.Description()));
         }
-        const auto agent = _GlobalSettings.AcpAgent();
-        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-        const bool supportsCustomModels = Reg::SupportsByok(std::wstring_view{ agent });
         if (supportsCustomModels)
         {
             for (const auto& provider : _GlobalSettings.CustomModelProviders())
@@ -751,9 +751,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             // Native model ids are agent-specific; the shared BYOK selection
             // is stored separately and survives agent switches.
             _GlobalSettings.AcpModel(L"");
-            Model::AcpRuntimeState::Current().SetAvailableModels(
-                winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
-                L"");
             _TriggerAcpModelProbe();
             _NotifyChanges(L"CurrentAcpAgent",
                            L"IsAddingCustomAcpAgent",
@@ -868,9 +865,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         _isAddingCustomAcpAgent = false;
         _GlobalSettings.AcpAgent(settingsId);
-        // Same cache reset as the built-in dropdown path above.
         _GlobalSettings.AcpModel(L"");
         Model::AcpRuntimeState::Current().SetAvailableModels(
+            settingsId,
             winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
             L"");
         _TriggerAcpModelProbe();
@@ -1398,8 +1395,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::_TriggerAcpModelProbe()
     {
+        const auto agentId = _GlobalSettings.EffectiveAcpAgent();
         const auto cmdline = _ResolveEffectiveAcpAgentCmdline();
-        if (cmdline.empty())
+        if (agentId.empty() || cmdline.empty())
         {
             return;
         }
@@ -1410,10 +1408,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         ++_acpProbeGeneration;
         _acpProbing = true;
         _RebuildAcpModelListFromCache();
-        _RunAcpModelProbeAsync(cmdline, _acpProbeGeneration);
+        const auto cacheRevision = Model::AcpRuntimeState::Current().Revision(agentId);
+        _RunAcpModelProbeAsync(agentId, cmdline, _acpProbeGeneration, cacheRevision);
     }
 
-    winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(std::wstring agentCmdline, uint64_t generation)
+    winrt::fire_and_forget AIAgentsViewModel::_RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision)
     {
         auto strongThis = get_strong();
         auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
@@ -1492,7 +1491,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (parseOk)
         {
             auto view = winrt::single_threaded_vector(std::move(parsed)).GetView();
-            Model::AcpRuntimeState::Current().SetAvailableModels(view, currentId);
+            Model::AcpRuntimeState::Current().TrySetAvailableModels(agentId, cacheRevision, view, currentId);
         }
         else
         {

@@ -11,7 +11,7 @@ namespace Microsoft.Terminal.Settings.Model
         String Description { get; };
     }
 
-    // Process-wide cache of the ACP agent's last-known model list.
+    // Process-wide cache of each ACP agent's last-known model list.
     // TerminalApp writes via SetAvailableModels when wta pushes an
     // `agent_status` event; TerminalSettingsEditor reads in
     // AIAgentsViewModel's constructor to populate the model dropdown.
@@ -20,13 +20,15 @@ namespace Microsoft.Terminal.Settings.Model
     [default_interface] runtimeclass AcpRuntimeState
     {
         static AcpRuntimeState Current { get; };
-        Windows.Foundation.Collections.IVectorView<AcpModelInfo> AvailableModels { get; };
-        String CurrentModelId { get; };
-        void SetAvailableModels(Windows.Foundation.Collections.IVectorView<AcpModelInfo> models, String currentId);
+        Windows.Foundation.Collections.IVectorView<AcpModelInfo> AvailableModels(String agentId);
+        String CurrentModelId(String agentId);
+        UInt64 Revision(String agentId);
+        void SetAvailableModels(String agentId, Windows.Foundation.Collections.IVectorView<AcpModelInfo> models, String currentId);
+        Boolean TrySetAvailableModels(String agentId, UInt64 expectedRevision, Windows.Foundation.Collections.IVectorView<AcpModelInfo> models, String currentId);
 
         // Fires whenever SetAvailableModels writes new data. Settings UI
-        // subscribes so the model dropdown refreshes when the user switches
-        // agents (clears the cache) or wta reconnects (publishes a new list).
+        // subscribes so the model dropdown refreshes when a probe completes
+        // or wta reconnects and publishes a new list.
         event Windows.Foundation.TypedEventHandler<AcpRuntimeState, IInspectable> Changed;
     }
 }

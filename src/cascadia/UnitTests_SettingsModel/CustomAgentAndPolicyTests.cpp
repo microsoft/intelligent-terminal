@@ -26,6 +26,7 @@
 
 #include "../TerminalSettingsModel/GlobalAppSettings.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
+#include "../TerminalSettingsModel/AcpRuntimeState.h"
 #include "../inc/AgentPolicy.h"
 #include "JsonTestClass.h"
 
@@ -74,6 +75,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
         TEST_METHOD(CustomModelProvidersRoundtrip);
+        TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
@@ -368,6 +370,43 @@ namespace SettingsModelUnitTests
         const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
         copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
+    }
+
+    void CustomAgentAndPolicyTests::AcpRuntimeModelsAreScopedByAgent()
+    {
+        const auto state = AcpRuntimeState::Current();
+        auto copilotModels = winrt::single_threaded_vector<AcpModelInfo>();
+        copilotModels.Append(winrt::make<implementation::AcpModelInfo>(
+            L"custom:openrouter:deepseek",
+            L"deepseek (BYOK)",
+            L"OpenRouter"));
+        auto claudeModels = winrt::single_threaded_vector<AcpModelInfo>();
+        claudeModels.Append(winrt::make<implementation::AcpModelInfo>(
+            L"default",
+            L"Default",
+            L"Claude default"));
+
+        state.SetAvailableModels(L"custom:Test-Copilot", copilotModels.GetView(), L"custom:openrouter:deepseek");
+        state.SetAvailableModels(L"test-claude", claudeModels.GetView(), L"default");
+
+        const auto cachedCopilot = state.AvailableModels(L"custom:test-copilot");
+        const auto cachedClaude = state.AvailableModels(L"test-claude");
+        VERIFY_ARE_EQUAL(1u, cachedCopilot.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, cachedCopilot.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(1u, cachedClaude.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, cachedClaude.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, state.CurrentModelId(L"CUSTOM:TEST-COPILOT"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"test-claude"));
+        VERIFY_ARE_EQUAL(0u, state.AvailableModels(L"test-missing").Size());
+
+        const auto staleRevision = state.Revision(L"custom:test-copilot");
+        state.SetAvailableModels(L"custom:test-copilot", claudeModels.GetView(), L"default");
+        VERIFY_IS_FALSE(state.TrySetAvailableModels(
+            L"custom:test-copilot",
+            staleRevision,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"custom:test-copilot"));
     }
 
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()

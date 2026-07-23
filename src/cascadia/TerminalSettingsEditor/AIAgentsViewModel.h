@@ -243,7 +243,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // previous one).
         uint64_t _acpProbeGeneration{ 0 };
         void _TriggerAcpModelProbe();
-        winrt::fire_and_forget _RunAcpModelProbeAsync(std::wstring agentCmdline, uint64_t generation);
+        winrt::fire_and_forget _RunAcpModelProbeAsync(winrt::hstring agentId, std::wstring agentCmdline, uint64_t generation, uint64_t cacheRevision);
         // Mirror of TerminalPage::_ResolveEffectiveAgentCliPath. Kept
         // here (rather than in inc/) because the Settings UI sits in
         // a separate project and can't include TerminalApp headers.
