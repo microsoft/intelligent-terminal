@@ -17,6 +17,7 @@ environment. Current status (run on the Store package):
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
+| `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation | 3 |
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
@@ -27,9 +28,9 @@ environment. Current status (run on the Store package):
 | `Feature.PerTabAgent.Tests.ps1` | C225-C228: `/agent` picker/direct selection, invalid-id safety, per-tab isolation/shared-master reuse, and global-default/override behavior | 6 |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
-**Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
-**Test status: 95 feature cases pass + 2 documented skips** (`wta sessions list` is
-identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
+**Coverage: all 101 automatable `[E2E]` checklist items are implemented.**
+**Test status: 98 feature cases pass + 2 documented skips** (`wta sessions list` is
+identity-gated — see `Feature.SessionList.Tests.ps1`); the 101 checklist items map to these
 cases plus the deterministic settings/persistence assertions. Remaining
 environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
 **other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
