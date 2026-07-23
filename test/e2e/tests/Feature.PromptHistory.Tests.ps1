@@ -90,7 +90,11 @@ Describe 'Feature agent prompt input history' -Tag 'Feature' -Skip:(-not $script
         Send-AgentShiftEnter -App $script:app -PaneSessionId $tab.Pane.PaneSessionId | Out-Null
         Send-AgentPrompt -App $script:app -PaneSessionId $tab.Pane.PaneSessionId -Text $lineTwo -NoSubmit | Out-Null
         Send-AgentKey -App $script:app -PaneSessionId $tab.Pane.PaneSessionId -Key Enter | Out-Null
-        Start-Sleep -Milliseconds 500
+        $firstTranscriptRow = '(?m)^\s*(?:▼\s*)?>\s*' + [regex]::Escape($lineOne)
+        Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $tab.Pane.PaneSessionId -MaxLines 35
+            $text -match $firstTranscriptRow -and $text -match [regex]::Escape($lineTwo)
+        } | Should -BeTrue -Because 'both lines of the submitted prompt must reach the transcript before cancellation'
         Send-AgentWin32Key -App $script:app -PaneSessionId $tab.Pane.PaneSessionId -Vk 0x43 -Sc 0x2E -Uc 3 -Modifiers 0x08 | Out-Null
         Start-Sleep -Milliseconds 750
 
