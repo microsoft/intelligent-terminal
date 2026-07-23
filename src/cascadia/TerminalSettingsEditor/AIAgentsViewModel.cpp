@@ -649,18 +649,27 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const bool supportsByok = Reg::SupportsByok(std::wstring_view{ _GlobalSettings.AcpAgent() });
         if (::Microsoft::Terminal::CustomModels::IsCustomSelection(value.Id()))
         {
+            if (_GlobalSettings.CustomModelSelection() == value.Id() && _GlobalSettings.AcpModel().empty())
+            {
+                return;
+            }
             _GlobalSettings.CustomModelSelection(value.Id());
             _GlobalSettings.AcpModel(L"");
         }
         else
         {
+            if (_GlobalSettings.AcpModel() == value.Id() &&
+                (!supportsByok || _GlobalSettings.CustomModelSelection().empty()))
+            {
+                return;
+            }
             _GlobalSettings.AcpModel(value.Id());
             if (supportsByok)
             {
                 _GlobalSettings.CustomModelSelection(L"");
             }
         }
-        _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
+        _NotifyChanges(L"AcpModel");
     }
 
     bool AIAgentsViewModel::ShowAcpModel()

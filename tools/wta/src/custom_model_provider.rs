@@ -114,11 +114,8 @@ fn configure_opencode(cmd: &mut Command, config: &Config) -> Result<()> {
     let api_key = config.resolve_api_key()?;
     cmd.env(
         OPENCODE_CONFIG_CONTENT,
-        render_opencode_config(config, api_key.is_some())?,
+        render_opencode_config(config, api_key.as_deref())?,
     );
-    if let Some(api_key) = api_key {
-        cmd.env(PROVIDER_API_KEY, api_key);
-    }
     Ok(())
 }
 
@@ -158,15 +155,15 @@ fn render_codex_config(config: &Config, has_api_key: bool) -> Result<String> {
     .context("failed to serialize Codex custom model configuration")
 }
 
-fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> {
+fn render_opencode_config(config: &Config, api_key: Option<&str>) -> Result<String> {
     let mut options = serde_json::Map::from_iter([(
         "baseURL".to_string(),
         serde_json::Value::String(config.base_url.clone()),
     )]);
-    if has_api_key {
+    if let Some(api_key) = api_key {
         options.insert(
             "apiKey".to_string(),
-            serde_json::Value::String(format!("{{env:{PROVIDER_API_KEY}}}")),
+            serde_json::Value::String(api_key.to_string()),
         );
     }
 
@@ -244,7 +241,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn opencode_config_uses_shared_provider_without_persisting_secret() {
+    fn opencode_config_uses_resolved_provider_secret() {
         let rendered = render_opencode_config(
             &Config {
                 base_url: "https://openrouter.ai/api/v1".to_string(),
@@ -252,7 +249,7 @@ mod tests {
                 credential_id: Some("opaque-id".to_string()),
                 credential_resource: "test",
             },
-            true,
+            Some("test-api-key"),
         )
         .expect("OpenCode config should serialize");
         let parsed: serde_json::Value =
@@ -265,7 +262,7 @@ mod tests {
         );
         assert_eq!(
             parsed["provider"]["intelligent-terminal"]["options"]["apiKey"],
-            "{env:INTELLIGENT_TERMINAL_MODEL_API_KEY}"
+            "test-api-key"
         );
         assert!(!rendered.contains("opaque-id"));
     }
