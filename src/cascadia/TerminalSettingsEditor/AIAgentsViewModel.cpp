@@ -263,7 +263,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     }
                 }));
         }
-        _CommitCustomModelProviders();
     }
 
     void AIAgentsViewModel::_CommitCustomModelProviders()
@@ -350,7 +349,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto id = winrt::hstring{ idValue };
         auto provider = Model::CustomModelProvider{
             id,
-            _newCustomModelId,
+            _newCustomModelProviderBaseUrl,
             _newCustomModelProviderBaseUrl };
         provider.Models().Append(Model::CustomModel{ _newCustomModelId, _newCustomModelId });
         if (!_newCustomModelApiKey.empty())
