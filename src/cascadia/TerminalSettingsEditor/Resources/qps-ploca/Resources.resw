@@ -1240,11 +1240,11 @@
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
   <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
-    <value>Agent pane agent</value>
+    <value>Δğэňŧ рǻлё αğєņť !!! !</value>
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Choose the agent used in the agent pane that supports ACP. For this profile, this selection takes precedence over the global Agent pane selection.</value>
+    <value>Čнοθśê ťнĕ ăĝĕήţ ùşéδ îή ťћε āġêŉτ рâńё ťђăţ śùρρόřŧś ACP. ₣õř ťĥιѕ ряőƒїℓé, ţђĩş ѕéℓē¢ŧιбⁿ тåкёś φѓэĉзďелċ℮ öνёґ ťĥз ġĺôьåĺ Äĝёņţ ράπє ѕêłēçτíθŋ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
