@@ -30,7 +30,7 @@ Describe 'Feature: PowerShell parser errors trigger Autofix end-to-end' -Tag 'Fe
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'submits exactly one Autofix prompt for a PowerShell parser error' {
+    It 'PowerShell parser errors trigger exactly one Autofix prompt' {
         $listener = Start-WtEventListener -App $script:app
         try {
             Start-Sleep -Milliseconds 400
@@ -52,7 +52,7 @@ Describe 'Feature: PowerShell parser errors trigger Autofix end-to-end' -Tag 'Fe
         finally { Stop-WtEventListener -Listener $listener }
     }
 
-    It 'does not retrigger Autofix when the parser-error prompt is redrawn by blank Enter' {
+    It 'Parser-error prompt redraw does not retrigger Autofix' {
         $listener = Start-WtEventListener -App $script:app
         try {
             Start-Sleep -Milliseconds 400
@@ -87,7 +87,7 @@ Describe 'Feature: successful PowerShell completion does not trigger Autofix' -T
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'does not trigger Autofix for a normal successful command' {
+    It 'Successful PowerShell commands do not trigger Autofix' {
         $listener = Start-WtEventListener -App $script:app
         try {
             Start-Sleep -Milliseconds 400
@@ -106,7 +106,7 @@ Describe 'Feature: successful PowerShell completion does not trigger Autofix' -T
         finally { Stop-WtEventListener -Listener $listener }
     }
 
-    It 'does not trigger Autofix when a non-terminating error is handled successfully' {
+    It 'Handled non-terminating PowerShell errors do not trigger Autofix' {
         $missingPath = Join-Path $env:TEMP "it-autofix-parser-missing-$([guid]::NewGuid())"
         $escapedPath = $missingPath.Replace("'", "''")
         $listener = Start-WtEventListener -App $script:app

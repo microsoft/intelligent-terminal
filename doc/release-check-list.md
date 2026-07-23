@@ -185,6 +185,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C088` `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
 - [x] `C089` `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
 - [x] `C090` `[UT✓]` **Successful commands ignored:** Successful commands do not trigger autofix. _(UT: `classify_wt_event` + `success_exit_code_does_not_arm_autofix`.)_
+- [ ] `C230` `[new]` `[E2E]` **PowerShell parser errors trigger exactly one Autofix prompt:** A malformed PowerShell command emits a non-zero completion mark and submits one Autofix turn. _(#474; E2E: `Feature.AutofixParser`.)_
+- [ ] `C231` `[new]` `[E2E]` **Parser-error prompt redraw does not retrigger Autofix:** Pressing Enter on the fresh prompt after a parser error does not replay the prior failure or submit another Autofix turn. _(#474; E2E: `Feature.AutofixParser`.)_
+- [ ] `C232` `[new]` `[E2E]` **Successful PowerShell commands do not trigger Autofix:** A normal PowerShell command emits a zero-exit completion mark and does not submit an Autofix turn. _(#474; E2E: `Feature.AutofixParser`.)_
+- [ ] `C233` `[new]` `[E2E]` **Handled non-terminating PowerShell errors do not trigger Autofix:** A command that handles a non-terminating error and completes successfully remains distinct from a parser failure. _(#474; E2E: `Feature.AutofixParser`.)_
 - [x] `C091` `[UT✓]` **Detection off suppresses autofix:** With automatic error detection off, failures do not trigger autofix. _(UT: autofix reducer.)_
 - [x] `C092` `[UT✓]` **Detection on observes failures:** With detection on, failure notifications are observed. _(UT: autofix reducer.)_
 - [x] `C093` `[UT✓]` **Suggestion off suppresses LLM call:** With suggestion off, detection can show any expected local UI but does not ask the agent for a fix. _(UT: `suggestion_off_emits_detected_without_submitting_turn`.)_
