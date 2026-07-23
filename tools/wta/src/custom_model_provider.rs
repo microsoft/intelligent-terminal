@@ -26,6 +26,7 @@ const METADATA_ENV_KEYS: &[&str] = &[
     COPILOT_PROVIDER_TYPE,
     COPILOT_MODEL,
     COPILOT_OFFLINE,
+    OPENCODE_CONFIG_CONTENT,
 ];
 
 pub(crate) struct Config {

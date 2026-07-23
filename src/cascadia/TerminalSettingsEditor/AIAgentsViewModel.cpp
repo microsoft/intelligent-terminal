@@ -335,9 +335,35 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _NotifyChanges(L"IsAddingCustomModelProvider");
     }
 
+    bool AIAgentsViewModel::_HasNonWhitespace(const std::wstring_view value) noexcept
+    {
+        return std::ranges::any_of(value, [](const wchar_t ch) {
+            return !std::iswspace(ch);
+        });
+    }
+
+    winrt::hstring AIAgentsViewModel::_TrimWhitespace(const std::wstring_view value)
+    {
+        const auto isWhitespace = [](const wchar_t ch) {
+            return std::iswspace(ch);
+        };
+        const auto first = std::ranges::find_if_not(value, isWhitespace);
+        const auto last = std::ranges::find_if_not(value.rbegin(), value.rend(), isWhitespace).base();
+        if (first >= last)
+        {
+            return {};
+        }
+
+        const auto offset = gsl::narrow_cast<size_t>(first - value.begin());
+        const auto length = gsl::narrow_cast<size_t>(last - first);
+        return winrt::hstring{ value.substr(offset, length) };
+    }
+
     void AIAgentsViewModel::SaveCustomModelProvider()
     {
-        if (!CanSaveCustomModelProvider())
+        const auto baseUrl = _TrimWhitespace(_newCustomModelProviderBaseUrl);
+        const auto modelId = _TrimWhitespace(_newCustomModelId);
+        if (baseUrl.empty() || modelId.empty())
         {
             return;
         }
@@ -349,9 +375,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto id = winrt::hstring{ idValue };
         auto provider = Model::CustomModelProvider{
             id,
-            _newCustomModelProviderBaseUrl,
-            _newCustomModelProviderBaseUrl };
-        provider.Models().Append(Model::CustomModel{ _newCustomModelId, _newCustomModelId });
+            baseUrl,
+            baseUrl };
+        provider.Models().Append(Model::CustomModel{ modelId, modelId });
         if (!_newCustomModelApiKey.empty())
         {
             try

@@ -134,7 +134,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring NewCustomModelApiKey() const { return _newCustomModelApiKey; }
         void NewCustomModelApiKey(const winrt::hstring& value);
         winrt::hstring NewCustomModelApiKeyError() const { return _newCustomModelApiKeyError; }
-        bool CanSaveCustomModelProvider() const { return !_newCustomModelProviderBaseUrl.empty() && !_newCustomModelId.empty(); }
+        bool CanSaveCustomModelProvider() const { return _HasNonWhitespace(_newCustomModelProviderBaseUrl) && _HasNonWhitespace(_newCustomModelId); }
         void AddCustomModelProvider();
         void SaveCustomModelProvider();
         void CancelCustomModelProvider();
@@ -227,6 +227,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _LoadCustomModelProviders();
         void _CommitCustomModelProviders();
         void _RemoveCustomModelProvider(const winrt::hstring& id);
+        static bool _HasNonWhitespace(std::wstring_view value) noexcept;
+        static winrt::hstring _TrimWhitespace(std::wstring_view value);
 
         // ── ACP model probe ──
         // A background `wta probe-models --agent <cmd>` invocation that

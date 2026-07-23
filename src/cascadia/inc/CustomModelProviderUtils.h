@@ -3,6 +3,15 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cwctype>
+#include <string>
+#include <string_view>
+
+#include <gsl/narrow>
+#include <winrt/Microsoft.Terminal.Settings.Model.h>
+#include <winrt/base.h>
+
 namespace Microsoft::Terminal::CustomModels
 {
     inline winrt::hstring SelectionId(const winrt::hstring& providerId, const winrt::hstring& modelId)
