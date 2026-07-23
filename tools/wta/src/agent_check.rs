@@ -12,6 +12,10 @@
 
 use crate::agent_registry;
 
+const WSL_AGENT_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 // ─── Data types ─────────────────────────────────────────────────────────────
 
 /// Status of a single agent, combining CLI detection and setup hints.
@@ -23,12 +27,13 @@ pub struct AgentStatus {
     pub cli_path: Option<String>,
     pub install_hint: String,
     pub auth_hint: String,
+    pub auto_installable: bool,
 }
 
 impl AgentStatus {
     /// Whether this agent can be auto-installed (e.g. via winget).
     pub fn can_auto_install(&self) -> bool {
-        self.id == "copilot"
+        self.auto_installable
     }
 }
 
@@ -66,6 +71,104 @@ pub fn find_exe(agent_id: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Resolve a native Linux executable inside one WSL distro.
+///
+/// A login shell is required for npm-global, snap, and `~/.local/bin`
+/// installations. Windows executables leaked through WSL's appended Windows
+/// PATH are rejected so a source is never advertised when it cannot run with
+/// Linux dependencies.
+pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
+    if distro.trim().is_empty() || executable.trim().is_empty() {
+        return None;
+    }
+
+    let mut cmd = tokio::process::Command::new("wsl.exe");
+    cmd.arg("-d")
+        .arg(distro)
+        .arg("--")
+        .arg("bash")
+        .arg("-lc")
+        .arg(wsl_agent_probe_script(executable))
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    // The probe runs from the interactive wta-helper. If wsl.exe attaches to
+    // that ConPTY it changes the console input mode on exit, after which
+    // crossterm receives arrow CSI sequences as literal '[' / 'B' characters
+    // and the entire agent-pane input appears frozen. Keep the probe off the
+    // helper's console; stdout/stderr are already captured through pipes.
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = match tokio::time::timeout(WSL_AGENT_PROBE_TIMEOUT, cmd.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                target: "agent_source",
+                distro,
+                executable,
+                %error,
+                "WSL agent availability probe failed to spawn"
+            );
+            return None;
+        }
+        Err(_) => {
+            tracing::warn!(
+                target: "agent_source",
+                distro,
+                executable,
+                "WSL agent availability probe timed out"
+            );
+            return None;
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let resolved = stdout
+        .lines()
+        .skip_while(|line| *line != "__WTA_PROBE_BEGIN__")
+        .skip(1)
+        .take_while(|line| *line != "__WTA_PROBE_END__")
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    let available = is_native_wsl_resolution(&resolved);
+    tracing::info!(
+        target: "agent_source",
+        distro,
+        executable,
+        resolved_path = %resolved,
+        available,
+        "WSL agent availability probe"
+    );
+    available.then_some(resolved)
+}
+
+/// Whether a known ACP agent can start inside `distro`.
+pub async fn wsl_agent_available(distro: &str, agent_id: &str) -> bool {
+    if find_wsl_exe(distro, agent_id).await.is_none() {
+        return false;
+    }
+
+    let profile = agent_registry::lookup_profile_by_id(agent_id);
+    if profile.acp_launch_command.starts_with("npx ") {
+        return find_wsl_exe(distro, "npx").await.is_some();
+    }
+    true
+}
+
+pub(crate) fn wsl_agent_probe_script(executable: &str) -> String {
+    format!(
+        "printf '__WTA_PROBE_BEGIN__\\n'; command -v {} 2>/dev/null; \
+         printf '__WTA_PROBE_END__\\n'",
+        crate::coordinator::sh_quote(executable)
+    )
+}
+
+fn is_native_wsl_resolution(resolved: &str) -> bool {
+    !resolved.is_empty() && !resolved.starts_with("/mnt/")
 }
 
 /// Build the login command for an agent, resolving the full executable path.
@@ -235,6 +338,31 @@ pub fn check_agent(agent_id: &str) -> AgentStatus {
         cli_path,
         install_hint: profile.install_hint.to_string(),
         auth_hint: profile.auth_hint.to_string(),
+        auto_installable: agent_id == "copilot",
+    }
+}
+
+pub async fn check_agent_in_source(
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+) -> AgentStatus {
+    match source {
+        crate::agent_source::AgentSource::Host => check_agent(agent_id),
+        crate::agent_source::AgentSource::Wsl { distro } => {
+            let profile = agent_registry::lookup_profile_by_id(agent_id);
+            let cli_path = find_wsl_exe(distro, agent_id).await;
+            AgentStatus {
+                id: agent_id.to_string(),
+                display_name: format!("{} — {} (WSL)", profile.display_name, distro),
+                cli_found: cli_path.is_some()
+                    && (!profile.acp_launch_command.starts_with("npx ")
+                        || find_wsl_exe(distro, "npx").await.is_some()),
+                cli_path,
+                install_hint: profile.install_hint.to_string(),
+                auth_hint: profile.auth_hint.to_string(),
+                auto_installable: false,
+            }
+        }
     }
 }
 

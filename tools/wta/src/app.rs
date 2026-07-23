@@ -12,6 +12,8 @@ use tokio::sync::mpsc;
 struct DeferredAcpParams {
     agent_cmd: String,
     acp_model: Option<String>,
+    agent_source: crate::agent_source::AgentSource,
+    source_cwd: Option<String>,
     prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
     cancel_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>>,
     new_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>>,
@@ -41,6 +43,7 @@ struct DeferredAcpParams {
 pub struct AvailableAgent {
     pub id: String,
     pub display_name: String,
+    pub source: crate::agent_source::AgentSource,
 }
 
 mod turn_state;
@@ -198,6 +201,8 @@ impl SetupReason {
 /// A single option in the unified setup list.
 #[derive(Debug, Clone)]
 pub enum SetupOption {
+    /// Open the same source-aware picker as `/agent`.
+    ChooseAgentSource,
     /// Preflight: reinstall via winget (automatic)
     Install {
         agent_id: String,
@@ -381,6 +386,7 @@ pub fn build_setup_options(
     } else {
         opts.push(SetupOption::Retry);
     }
+    opts.push(SetupOption::ChooseAgentSource);
     opts
 }
 
@@ -1286,6 +1292,11 @@ pub enum AppEvent {
         agent_id: String,
         generation: u64,
     },
+    /// Result of a source-aware `/agent` discovery for the active working pane.
+    AgentSourcesDiscovered {
+        generation: u64,
+        wsl_sources: Vec<AvailableAgent>,
+    },
     /// Result of `preflight::check_agent` run by main.rs before the TUI
     /// loop starts. If `all_passed()` is false the App switches into
     /// `AppMode::Setup` so the user can install / authenticate the CLI.
@@ -1990,12 +2001,15 @@ pub struct App {
     pub state: ConnectionState,
     /// The agent ID we're trying to connect to (set at preflight/FRE time).
     pub current_agent_id: String,
+    /// Execution source paired with `current_agent_id`.
+    pub current_agent_source: crate::agent_source::AgentSource,
     /// Agent ids supplied by Windows Terminal after GPO filtering.
     allowed_agent_ids: Vec<String>,
     /// Distinguishes a manual/legacy launch from an explicitly empty policy.
     host_agent_allowlist_present: bool,
     /// Installed subset of the host-allowed agents, refreshed by `/agent`.
     pub available_agents: Vec<AvailableAgent>,
+    agent_source_probe_generation: u64,
     /// True when preflight detected an issue and is showing Setup screen.
     /// Prevents AgentError from overriding the preflight Setup.
     preflight_setup_active: bool,
@@ -2320,9 +2334,11 @@ impl App {
             deferred_acp: None,
             state: ConnectionState::Connecting(t!("connection.starting").into_owned()),
             current_agent_id: String::new(),
+            current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
             host_agent_allowlist_present: false,
             available_agents: Vec::new(),
+            agent_source_probe_generation: 0,
             preflight_setup_active: false,
             agent_name: String::new(),
             agent_model: None,
@@ -2408,6 +2424,8 @@ impl App {
         pipe_name: String,
         agent_cmd: String,
         acp_model: Option<String>,
+        agent_source: crate::agent_source::AgentSource,
+        source_cwd: Option<String>,
         owner_tab_id: Option<String>,
         shell_mgr: Arc<crate::shell::ShellManager>,
         wt_connected: bool,
@@ -2415,6 +2433,8 @@ impl App {
         self.deferred_acp = Some(DeferredAcpParams {
             agent_cmd,
             acp_model,
+            agent_source,
+            source_cwd,
             prompt_rx: None,
             cancel_rx: None,
             new_session_rx: None,
@@ -2505,6 +2525,8 @@ impl App {
                 params.master_ext_rx.take(),
             ) {
                 let acp_model = params.acp_model.clone();
+                let agent_source = params.agent_source.clone();
+                let source_cwd = params.source_cwd.clone();
                 let event_tx = tx.clone();
                 let shell_mgr = Arc::clone(&params.shell_mgr);
                 let wt_connected = params.wt_connected;
@@ -2548,6 +2570,8 @@ impl App {
                                 pipe_name,
                                 acp_model,
                                 agent_id_opt,
+                                agent_source,
+                                source_cwd,
                                 owner_tab_opt,
                                 None, // initial_load_session_id: already handled by the dead initial task
                                 event_tx_for_pipe.clone(),
@@ -2773,11 +2797,80 @@ impl App {
                     || self.allowed_agent_ids.iter().any(|id| id == profile.id))
                     && crate::agent_check::find_exe(profile.id).is_some()
             })
-            .map(|profile| AvailableAgent {
-                id: profile.id.to_string(),
-                display_name: profile.display_name.to_string(),
+            .map(|profile| {
+                let source = crate::agent_source::AgentSource::Host;
+                AvailableAgent {
+                    id: profile.id.to_string(),
+                    display_name: format!(
+                        "{} — {}",
+                        profile.display_name,
+                        source.display_suffix()
+                    ),
+                    source,
+                }
             })
             .collect();
+    }
+
+    fn request_agent_source_picker(&mut self) {
+        self.refresh_available_agents();
+        self.agent_source_probe_generation = self.agent_source_probe_generation.wrapping_add(1);
+        let generation = self.agent_source_probe_generation;
+        let Some(event_tx) = self.event_tx.clone() else {
+            return;
+        };
+        let shell_mgr = Arc::clone(&self.shell_mgr);
+        let allowed_agent_ids = self.allowed_agent_ids.clone();
+        let allowlist_present = self.host_agent_allowlist_present;
+        tokio::task::spawn_local(async move {
+            let active_pane = shell_mgr.wt_get_active_pane().await.ok();
+            let Some(distro) =
+                crate::agent_source::active_pane_wsl_distro(active_pane.as_ref()).map(str::to_string)
+            else {
+                let _ = event_tx.send(AppEvent::AgentSourcesDiscovered {
+                    generation,
+                    wsl_sources: Vec::new(),
+                });
+                return;
+            };
+
+            use futures::StreamExt;
+            let candidates = crate::agent_registry::KNOWN_AGENTS
+                .iter()
+                .filter(|profile| {
+                    !allowlist_present
+                        || allowed_agent_ids.iter().any(|id| id == profile.id)
+                })
+                .map(|profile| (profile.id, profile.display_name));
+            let wsl_sources = futures::stream::iter(candidates)
+                .map(|(id, display_name)| {
+                    let distro = distro.clone();
+                    async move {
+                        crate::agent_check::wsl_agent_available(&distro, id)
+                            .await
+                            .then(|| {
+                                let source =
+                                    crate::agent_source::AgentSource::Wsl { distro };
+                                AvailableAgent {
+                                    id: id.to_string(),
+                                    display_name: format!(
+                                        "{display_name} — {}",
+                                        source.display_suffix()
+                                    ),
+                                    source,
+                                }
+                            })
+                    }
+                })
+                .buffer_unordered(crate::agent_registry::KNOWN_AGENTS.len())
+                .filter_map(async move |source| source)
+                .collect()
+                .await;
+            let _ = event_tx.send(AppEvent::AgentSourcesDiscovered {
+                generation,
+                wsl_sources,
+            });
+        });
     }
 
     fn agent_picker_visible(&self) -> bool {
@@ -2785,35 +2878,24 @@ impl App {
     }
 
     fn cmd_agent(&mut self, arg: String) {
-        self.refresh_available_agents();
         let arg = arg.trim();
-        if self.available_agents.is_empty() {
-            let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::System(t!("system.no_agents").into_owned()));
-            tab.scroll_to_bottom();
-            return;
-        }
         if arg.is_empty() {
-            let selected = self
-                .available_agents
-                .iter()
-                .position(|agent| agent.id == self.current_agent_id)
-                .unwrap_or(0);
-            self.open_agent_picker(selected);
+            self.request_agent_source_picker();
             return;
         }
 
+        self.refresh_available_agents();
         let selected = self
             .available_agents
             .iter()
             .find(|agent| {
-                agent.id.eq_ignore_ascii_case(arg)
-                    || agent.display_name.eq_ignore_ascii_case(arg)
+                agent.source == crate::agent_source::AgentSource::Host
+                    && (agent.id.eq_ignore_ascii_case(arg)
+                        || agent.display_name.eq_ignore_ascii_case(arg))
             })
             .cloned();
         match selected {
-            Some(agent) => self.apply_agent_pick(agent.id),
+            Some(agent) => self.apply_agent_pick(agent),
             None => {
                 let tab = self.current_tab_mut();
                 tab.messages.push(ChatMessage::System(
@@ -2836,29 +2918,56 @@ impl App {
     }
 
     fn agent_picker_up(&mut self) {
+        let count = self.available_agents.len();
+        if count == 0 {
+            return;
+        }
         let tab = self.current_tab_mut();
-        tab.agent_picker_selected = tab.agent_picker_selected.saturating_sub(1);
+        tab.agent_picker_selected = (tab.agent_picker_selected + count - 1) % count;
+        tracing::debug!(
+            target: "agent_picker",
+            selected = tab.agent_picker_selected,
+            count,
+            "agent picker moved up"
+        );
     }
 
     fn agent_picker_down(&mut self) {
-        let last = self.available_agents.len().saturating_sub(1);
-        let tab = self.current_tab_mut();
-        if tab.agent_picker_selected < last {
-            tab.agent_picker_selected += 1;
+        let count = self.available_agents.len();
+        if count == 0 {
+            return;
         }
+        let tab = self.current_tab_mut();
+        tab.agent_picker_selected = (tab.agent_picker_selected + 1) % count;
+        tracing::debug!(
+            target: "agent_picker",
+            selected = tab.agent_picker_selected,
+            count,
+            "agent picker moved down"
+        );
     }
 
     fn commit_agent_pick(&mut self) {
         let selected = self.current_tab().agent_picker_selected;
-        let agent_id = self.available_agents.get(selected).map(|agent| agent.id.clone());
+        let agent = self.available_agents.get(selected).cloned();
         self.close_agent_picker();
-        if let Some(agent_id) = agent_id {
-            self.apply_agent_pick(agent_id);
+        if let Some(agent) = agent {
+            self.apply_agent_pick(agent);
         }
     }
 
-    fn apply_agent_pick(&mut self, agent_id: String) {
-        if agent_id == self.current_agent_id {
+    fn handle_agent_picker_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Up => self.agent_picker_up(),
+            KeyCode::Down => self.agent_picker_down(),
+            KeyCode::Enter => self.commit_agent_pick(),
+            KeyCode::Esc => self.close_agent_picker(),
+            _ => {}
+        }
+    }
+
+    fn apply_agent_pick(&mut self, agent: AvailableAgent) {
+        if agent.id == self.current_agent_id && agent.source == self.current_agent_source {
             return;
         }
         let Some(tab_id) = self.owner_tab_id.as_deref() else {
@@ -2869,7 +2978,12 @@ impl App {
             self.push_agent_switch_unavailable();
             return;
         };
-        send_wt_protocol_event(build_switch_agent_event(window_id, tab_id, &agent_id));
+        send_wt_protocol_event(build_switch_agent_event(
+            window_id,
+            tab_id,
+            &agent.id,
+            &agent.source,
+        ));
     }
 
     fn push_agent_switch_unavailable(&mut self) {
@@ -4249,6 +4363,9 @@ impl App {
     fn handle_setup_enter(&mut self, opt: SetupOption) {
         tracing::info!(target: "setup_key", option = ?std::mem::discriminant(&opt), "handle_setup_enter");
         match opt {
+            SetupOption::ChooseAgentSource => {
+                self.request_agent_source_picker();
+            }
             SetupOption::Install { agent_id, .. } => {
                 if let Some(ref setup) = self.setup {
                     if setup.install_in_progress {
@@ -4305,6 +4422,20 @@ impl App {
                 if let Some(ref setup) = self.setup {
                     let agent_id = setup.preflight.agent_id.clone();
                     if !agent_id.is_empty() {
+                        if matches!(
+                            self.current_agent_source,
+                            crate::agent_source::AgentSource::Wsl { .. }
+                        ) {
+                            self.update_deferred_acp_agent(&agent_id);
+                            self.state = ConnectionState::Connecting(
+                                t!("connection.reconnecting").into_owned(),
+                            );
+                            self.preflight_setup_active = false;
+                            if self.deferred_acp.is_some() {
+                                self.pending_acp_start = true;
+                            }
+                            return;
+                        }
                         let status = crate::agent_check::check_agent(&agent_id);
                         if status.cli_found {
                             // CLI found — try to connect (auth will be checked by ACP).
@@ -4592,6 +4723,7 @@ impl App {
             AppEvent::LoginComplete { .. } => "login_complete",
             AppEvent::PostLoginAuthRecovery { .. } => "post_login_auth_recovery",
             AppEvent::AuthRecoveryTimedOut { .. } => "auth_recovery_timed_out",
+            AppEvent::AgentSourcesDiscovered { .. } => "agent_sources_discovered",
             AppEvent::PreflightComplete(_) => "preflight_complete",
             AppEvent::AgentSessionEvent(_) => "agent_session_event",
             AppEvent::AliveSnapshotLoaded(_) => "alive_snapshot_loaded",
@@ -4633,9 +4765,29 @@ impl App {
     fn show_signin_setup_screen(&mut self, agent_id: String) {
         tracing::info!("show_signin_setup_screen: agent_id={}", agent_id);
         let profile = crate::agent_registry::lookup_profile(&agent_id);
-        let agent_status = crate::agent_check::check_agent(profile.id);
         let reason = SetupReason::AgentError;
-        let options = build_setup_options(&reason, Some(&agent_status));
+        let is_wsl_source = matches!(
+            self.current_agent_source,
+            crate::agent_source::AgentSource::Wsl { .. }
+        );
+        let agent_status = if is_wsl_source {
+            crate::agent_check::AgentStatus {
+                id: profile.id.to_string(),
+                display_name: profile.display_name.to_string(),
+                cli_found: true,
+                cli_path: None,
+                install_hint: profile.install_hint.to_string(),
+                auth_hint: profile.auth_hint.to_string(),
+                auto_installable: false,
+            }
+        } else {
+            crate::agent_check::check_agent(profile.id)
+        };
+        let options = if is_wsl_source {
+            build_setup_options(&reason, None)
+        } else {
+            build_setup_options(&reason, Some(&agent_status))
+        };
         self.mode = AppMode::Setup;
         self.state = ConnectionState::Disconnected;
         self.auth = None;
@@ -5137,9 +5289,16 @@ impl App {
                     };
                     tracing::info!("AgentError: resolved agent_id={}", agent_id);
                     let profile = crate::agent_registry::lookup_profile(&agent_id);
-                    let agent_status = crate::agent_check::check_agent(profile.id);
                     let reason = SetupReason::AgentError;
-                    let options = build_setup_options(&reason, Some(&agent_status));
+                    let options = if matches!(
+                        self.current_agent_source,
+                        crate::agent_source::AgentSource::Wsl { .. }
+                    ) {
+                        build_setup_options(&reason, None)
+                    } else {
+                        let agent_status = crate::agent_check::check_agent(profile.id);
+                        build_setup_options(&reason, Some(&agent_status))
+                    };
                     self.mode = AppMode::Setup;
                     self.state = ConnectionState::Disconnected;
                     self.auth = None;
@@ -5518,10 +5677,20 @@ impl App {
                 );
                 if !result.all_passed() {
                     let reason = SetupReason::AgentMissing;
-                    let current_status = crate::agent_check::check_agent(&result.agent_id);
-                    let options = build_setup_options(&reason, Some(&current_status));
+                    let current_status = if matches!(
+                        self.current_agent_source,
+                        crate::agent_source::AgentSource::Wsl { .. }
+                    ) {
+                        None
+                    } else {
+                        Some(crate::agent_check::check_agent(&result.agent_id))
+                    };
+                    let options = build_setup_options(&reason, current_status.as_ref());
                     let title = reason.title().to_string();
-                    let subtitle = if current_status.can_auto_install() {
+                    let subtitle = if current_status
+                        .as_ref()
+                        .is_some_and(crate::agent_check::AgentStatus::can_auto_install)
+                    {
                         t!(
                             "setup.subtitle.copilot_missing",
                             agent = &result.display_name
@@ -5545,6 +5714,35 @@ impl App {
                         title,
                         subtitle,
                     });
+                }
+            }
+            AppEvent::AgentSourcesDiscovered {
+                generation,
+                mut wsl_sources,
+            } => {
+                if generation != self.agent_source_probe_generation {
+                    return;
+                }
+                self.refresh_available_agents();
+                self.available_agents.append(&mut wsl_sources);
+                if self.available_agents.is_empty() {
+                    self.close_agent_picker();
+                    if self.mode == AppMode::Chat {
+                        self.current_tab_mut()
+                            .messages
+                            .push(ChatMessage::System(t!("system.no_agents").into_owned()));
+                        self.scroll_to_bottom();
+                    }
+                } else {
+                    let selected = self
+                        .available_agents
+                        .iter()
+                        .position(|agent| {
+                            agent.id == self.current_agent_id
+                                && agent.source == self.current_agent_source
+                        })
+                        .unwrap_or(0);
+                    self.open_agent_picker(selected);
                 }
             }
             AppEvent::AgentSessionEvent(ev) => {
@@ -6655,6 +6853,8 @@ impl App {
                         self.deferred_acp = Some(DeferredAcpParams {
                             agent_cmd: new_cmd,
                             acp_model: None,
+                            agent_source: self.current_agent_source.clone(),
+                            source_cwd: self.source_cwd.clone(),
                             prompt_rx: None, // try_start_acp will create fresh channels
                             cancel_rx: None,
                             new_session_rx: None,
@@ -6774,6 +6974,13 @@ impl App {
             // Don't clear `transient_hint` here — it has its own deadline and
             // ui::render checks expiry on each draw. Clearing on every key
             // would steal too much of the hint's visible lifetime.
+        }
+
+        // Setup consumes all keys before the normal picker/modal section below,
+        // so its source picker needs this narrow early route.
+        if self.mode == AppMode::Setup && self.agent_picker_visible() {
+            self.handle_agent_picker_key(key);
+            return;
         }
 
         // Setup mode: diagnostic install/sign-in/retry flow.
@@ -7171,19 +7378,15 @@ impl App {
             return;
         }
 
-        if self.current_tab().paste_pending {
-            tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
+        // Keep the chat-mode `/agent` picker beside `/model`, matching the
+        // original modal ordering. Setup uses the early route above.
+        if self.agent_picker_visible() {
+            self.handle_agent_picker_key(key);
             return;
         }
 
-        if self.agent_picker_visible() {
-            match key.code {
-                KeyCode::Up => self.agent_picker_up(),
-                KeyCode::Down => self.agent_picker_down(),
-                KeyCode::Enter => self.commit_agent_pick(),
-                KeyCode::Esc => self.close_agent_picker(),
-                _ => {}
-            }
+        if self.current_tab().paste_pending {
+            tracing::debug!(target: "agent_paste", "ignoring key while paste is pending");
             return;
         }
 
@@ -7512,7 +7715,7 @@ impl App {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
-                        cwd: None,
+                        cwd: self.source_cwd.clone(),
                         source_pane_id: None,
                     };
                     // The echoed user message shows a marker for each queued
@@ -7845,6 +8048,7 @@ impl App {
             selected: tab.agent_picker_selected,
             pane_focused: self.pane_focused,
             current_id: &self.current_agent_id,
+            current_source: &self.current_agent_source,
         })
     }
 
@@ -8046,7 +8250,10 @@ impl App {
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self
             .new_session_tx
-            .send(NewSessionForTab { tab_id, cwd: None });
+            .send(NewSessionForTab {
+                tab_id,
+                cwd: self.source_cwd.clone(),
+            });
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.completed_turns.clear();
@@ -9925,7 +10132,12 @@ pub fn send_wt_protocol_event(json_payload: String) {
     let _ = tx.send(json_payload);
 }
 
-fn build_switch_agent_event(window_id: &str, tab_id: &str, agent_id: &str) -> String {
+fn build_switch_agent_event(
+    window_id: &str,
+    tab_id: &str,
+    agent_id: &str,
+    source: &crate::agent_source::AgentSource,
+) -> String {
     serde_json::json!({
         "type": "event",
         "method": "switch_agent",
@@ -9933,6 +10145,8 @@ fn build_switch_agent_event(window_id: &str, tab_id: &str, agent_id: &str) -> St
             "window_id": window_id,
             "tab_id": tab_id,
             "agent_id": agent_id,
+            "agent_source": source.kind(),
+            "wsl_distro": source.distro(),
         }
     })
     .to_string()
@@ -15438,10 +15652,12 @@ mod tests {
             AvailableAgent {
                 id: "copilot".into(),
                 display_name: "GitHub Copilot".into(),
+                source: crate::agent_source::AgentSource::Host,
             },
             AvailableAgent {
                 id: "claude".into(),
                 display_name: "Claude Test Agent".into(),
+                source: crate::agent_source::AgentSource::Host,
             },
         ];
         app.current_tab_mut().agent_picker_open = true;
@@ -15451,6 +15667,40 @@ mod tests {
             text.contains("Claude Test Agent"),
             "the agent picker must list available agents; rendered:\n{text}"
         );
+    }
+
+    #[test]
+    fn agent_picker_arrow_keys_move_and_wrap_selection() {
+        let mut app = test_app();
+        app.available_agents = vec![
+            AvailableAgent {
+                id: "copilot".into(),
+                display_name: "GitHub Copilot — Windows".into(),
+                source: crate::agent_source::AgentSource::Host,
+            },
+            AvailableAgent {
+                id: "copilot".into(),
+                display_name: "GitHub Copilot — Debian (WSL)".into(),
+                source: crate::agent_source::AgentSource::Wsl {
+                    distro: "Debian".into(),
+                },
+            },
+            AvailableAgent {
+                id: "claude".into(),
+                display_name: "Claude — Debian (WSL)".into(),
+                source: crate::agent_source::AgentSource::Wsl {
+                    distro: "Debian".into(),
+                },
+            },
+        ];
+        app.open_agent_picker(0);
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().agent_picker_selected, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().agent_picker_selected, 0);
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().agent_picker_selected, 2);
     }
 
     /// Render: the setup diagnostic screen must paint its title and subtitle.
@@ -15880,6 +16130,7 @@ mod tests {
             cli_path: None,
             install_hint: String::new(),
             auth_hint: String::new(),
+            auto_installable: id == "copilot",
         }
     }
 
@@ -15888,14 +16139,21 @@ mod tests {
         let copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
         let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
         assert!(
-            matches!(copilot_options.as_slice(), [SetupOption::SignIn { agent_id, .. }] if agent_id == "copilot"),
+            matches!(
+                copilot_options.as_slice(),
+                [SetupOption::SignIn { agent_id, .. }, SetupOption::ChooseAgentSource]
+                    if agent_id == "copilot"
+            ),
             "Copilot auth failures must offer the in-app SignIn flow"
         );
 
         let codex = agent_status_for_test("codex", "Codex", true);
         let codex_options = build_setup_options(&SetupReason::AgentError, Some(&codex));
         assert!(
-            matches!(codex_options.as_slice(), [SetupOption::Retry]),
+            matches!(
+                codex_options.as_slice(),
+                [SetupOption::Retry, SetupOption::ChooseAgentSource]
+            ),
             "external-auth agents stay on the diagnostic Retry flow"
         );
     }

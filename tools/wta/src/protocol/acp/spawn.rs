@@ -223,6 +223,7 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     if needs_cmd {
         cmd.arg("/c").arg(&resolved_program);
     }
+
     // The claude-code-acp adapter refuses to start when its recursion-
     // guard env var is set — that guard exists to block recursive
     // `claude` shells from sharing runtime, but doesn't apply to an
@@ -307,6 +308,79 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     })
 }
 
+/// Spawn an ACP agent in the selected per-tab execution source.
+pub(crate) fn spawn_agent_process_for_source(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    source: &crate::agent_source::AgentSource,
+) -> Result<AgentSpawn> {
+    match source {
+        crate::agent_source::AgentSource::Host => spawn_agent_process(agent_cmd, cwd),
+        crate::agent_source::AgentSource::Wsl { distro } => {
+            spawn_wsl_agent_process(agent_cmd, distro)
+        }
+    }
+}
+
+fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> {
+    let parts = crate::coordinator::split_windows_commandline(agent_cmd);
+    let raw_program = parts
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow!("empty agent command"))?;
+    let is_npx = ["npx", "npx.cmd", "npx.exe"]
+        .iter()
+        .any(|name| raw_program.eq_ignore_ascii_case(name));
+    let adapter_package = is_npx
+        .then(|| parts.iter().find(|arg| arg.starts_with('@')).cloned())
+        .flatten();
+    let script = wsl_agent_launch_script(&parts);
+
+    let child = tokio::process::Command::new("wsl.exe")
+        .arg("-d")
+        .arg(distro)
+        .arg("--")
+        .arg("bash")
+        .arg("--noprofile")
+        .arg("--norc")
+        .arg("-c")
+        .arg(script)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| {
+            anyhow!(
+                "failed to spawn agent '{}' in WSL distro '{}': {}",
+                agent_cmd,
+                distro,
+                error
+            )
+        })?;
+
+    Ok(AgentSpawn {
+        child,
+        raw_program,
+        resolved_program: format!("wsl.exe -d {distro}"),
+        is_npx,
+        adapter_package,
+    })
+}
+
+fn wsl_agent_launch_script(parts: &[String]) -> String {
+    let invocation = parts
+        .iter()
+        .map(|part| crate::coordinator::sh_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let inner = format!("exec 1>&3 3>&-; unset CLAUDECODE; exec {invocation}");
+    format!(
+        "bash -lc {} 3>&1 >/dev/null",
+        crate::coordinator::sh_quote(&inner)
+    )
+}
+
 /// Convert a BCP-47 locale tag (e.g. `zh-CN`, `gd-gb`) to the POSIX
 /// `LANG`/`LC_ALL` form (e.g. `zh_CN.UTF-8`, `gd_GB.UTF-8`).
 ///
@@ -346,6 +420,20 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wsl_launch_script_quotes_every_agent_argument() {
+        let parts = vec![
+            "copilot".to_string(),
+            "--model".to_string(),
+            "model; touch /tmp/nope".to_string(),
+        ];
+        assert_eq!(
+            wsl_agent_launch_script(&parts),
+            "bash -lc 'exec 1>&3 3>&-; unset CLAUDECODE; exec '\\''copilot'\\'' \
+             '\\''--model'\\'' '\\''model; touch /tmp/nope'\\''' 3>&1 >/dev/null"
+        );
+    }
 
     #[test]
     fn stderr_log_promotes_only_failed_startup_lines() {
