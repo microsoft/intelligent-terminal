@@ -431,39 +431,43 @@ void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
 {
     const auto script = ShellIntegrationScriptContent();
     const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
-    const auto parseInput = script.find("Language.Parser]::ParseInput", readLineWrapper);
-    const auto parserFlagSet = script.find("$Global:__ShellInteg_LastInputHadParserError = $parseErrors.Count -gt 0", parseInput);
+    const auto lineStored = script.find("$Global:__ShellInteg_LastSubmittedLine =", readLineWrapper);
     const auto promptStart = script.find("function prompt");
-    const auto parserFlagCapture = script.find("$inputHadParserError = $Global:__ShellInteg_LastInputHadParserError", promptStart);
-    const auto capture = script.find("$errorRecord", parserFlagCapture);
+    const auto lineCaptured = script.find("$submittedLine = $Global:__ShellInteg_LastSubmittedLine", promptStart);
+    const auto capture = script.find("$errorRecord", lineCaptured);
     const auto historyCheck = script.find("$historyAdvanced =", capture);
     const auto errorCheck = script.find("$newErrorRecord =", historyCheck);
     const auto referenceCheck = script.find("[object]::ReferenceEquals", errorCheck);
-    const auto staleZeroCheck = script.find("if (($inputHadParserError -or (-not $historyAdvanced -and $newErrorRecord)) -and $gle -eq 0)", referenceCheck);
+    const auto lazyParseGuard = script.find("($newErrorRecord -or -not $historyAdvanced)", referenceCheck);
+    const auto parseInput = script.find("Language.Parser]::ParseInput", lazyParseGuard);
+    const auto parserFlagSet = script.find("$inputHadParserError = $parseErrors.Count -gt 0", parseInput);
+    const auto staleZeroCheck = script.find("if ($inputHadParserError -and $gle -eq 0)", parserFlagSet);
     const auto sentinelAssignment = script.find("$gle = -1", staleZeroCheck);
     const auto untrackedErrorCheck = script.find("$newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord", sentinelAssignment);
     const auto combinedCheck = script.find("if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError)", untrackedErrorCheck);
     const auto originalPrompt = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", combinedCheck);
     const auto consumeError = script.find("$Global:__ShellInteg_LastErrorRecord = $Error[0]", originalPrompt);
-    const auto consumeParserFlag = script.find("$Global:__ShellInteg_LastInputHadParserError = $false", consumeError);
+    const auto consumeLine = script.find("$Global:__ShellInteg_LastSubmittedLine = $null", consumeError);
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeParserFlag);
-    VERIFY_IS_TRUE(readLineWrapper < parseInput &&
-                       parseInput < parserFlagSet &&
-                       parserFlagSet < promptStart &&
-                       promptStart < parserFlagCapture &&
-                       parserFlagCapture < capture &&
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
+    VERIFY_IS_TRUE(readLineWrapper < lineStored &&
+                       lineStored < promptStart &&
+                       promptStart < lineCaptured &&
+                       lineCaptured < capture &&
                        capture < historyCheck &&
                        historyCheck < errorCheck &&
                        errorCheck < referenceCheck &&
-                       referenceCheck < staleZeroCheck &&
+                       referenceCheck < lazyParseGuard &&
+                       lazyParseGuard < parseInput &&
+                       parseInput < parserFlagSet &&
+                       parserFlagSet < staleZeroCheck &&
                        staleZeroCheck < sentinelAssignment &&
                        sentinelAssignment < untrackedErrorCheck &&
                        untrackedErrorCheck < combinedCheck &&
                        combinedCheck < originalPrompt &&
                        originalPrompt < consumeError &&
-                       consumeError < consumeParserFlag,
-                   L"Parser errors must be captured at the PSReadLine boundary, emitted once with a non-zero exit code, and consumed after prompt rendering");
+                       consumeError < consumeLine,
+                   L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
 }
 
 void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
@@ -471,15 +475,17 @@ void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeat
     const auto script = ShellIntegrationScriptContent();
     const auto languageMode = script.find("$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'");
     const auto readLineGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and (Test-Path Function:\\PSConsoleHostReadLine))", languageMode);
-    const auto parseInput = script.find("Language.Parser]::ParseInput", readLineGuard);
-    const auto errorRecordGuard = script.find("$newErrorRecord = $Global:__ShellInteg_CanInspectErrors", parseInput);
+    const auto errorRecordGuard = script.find("$newErrorRecord = $Global:__ShellInteg_CanInspectErrors", readLineGuard);
     const auto referenceCheck = script.find("[object]::ReferenceEquals", errorRecordGuard);
+    const auto lazyParseGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and", referenceCheck);
+    const auto parseInput = script.find("Language.Parser]::ParseInput", lazyParseGuard);
 
-    VERIFY_ARE_NOT_EQUAL(std::string::npos, referenceCheck);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, parseInput);
     VERIFY_IS_TRUE(languageMode < readLineGuard &&
-                       readLineGuard < parseInput &&
-                       parseInput < errorRecordGuard &&
-                       errorRecordGuard < referenceCheck,
+                       readLineGuard < errorRecordGuard &&
+                       errorRecordGuard < referenceCheck &&
+                       referenceCheck < lazyParseGuard &&
+                       lazyParseGuard < parseInput,
                    L"Constrained Language Mode must bypass static parser and reference-identity method calls");
 }
 
