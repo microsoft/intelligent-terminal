@@ -2899,16 +2899,33 @@ impl App {
     }
 
     fn agent_picker_up(&mut self) {
+        let count = self.available_agents.len();
+        if count == 0 {
+            return;
+        }
         let tab = self.current_tab_mut();
-        tab.agent_picker_selected = tab.agent_picker_selected.saturating_sub(1);
+        tab.agent_picker_selected = (tab.agent_picker_selected + count - 1) % count;
+        tracing::debug!(
+            target: "agent_picker",
+            selected = tab.agent_picker_selected,
+            count,
+            "agent picker moved up"
+        );
     }
 
     fn agent_picker_down(&mut self) {
-        let last = self.available_agents.len().saturating_sub(1);
-        let tab = self.current_tab_mut();
-        if tab.agent_picker_selected < last {
-            tab.agent_picker_selected += 1;
+        let count = self.available_agents.len();
+        if count == 0 {
+            return;
         }
+        let tab = self.current_tab_mut();
+        tab.agent_picker_selected = (tab.agent_picker_selected + 1) % count;
+        tracing::debug!(
+            target: "agent_picker",
+            selected = tab.agent_picker_selected,
+            count,
+            "agent picker moved down"
+        );
     }
 
     fn commit_agent_pick(&mut self) {
@@ -2917,6 +2934,23 @@ impl App {
         self.close_agent_picker();
         if let Some(agent) = agent {
             self.apply_agent_pick(agent);
+        }
+    }
+
+    fn handle_agent_picker_key(&mut self, key: KeyEvent) {
+        tracing::debug!(
+            target: "agent_picker",
+            code = ?key.code,
+            selected = self.current_tab().agent_picker_selected,
+            count = self.available_agents.len(),
+            "agent picker key"
+        );
+        match key.code {
+            KeyCode::Up => self.agent_picker_up(),
+            KeyCode::Down => self.agent_picker_down(),
+            KeyCode::Enter => self.commit_agent_pick(),
+            KeyCode::Esc => self.close_agent_picker(),
+            _ => {}
         }
     }
 
@@ -6887,17 +6921,10 @@ impl App {
             // would steal too much of the hint's visible lifetime.
         }
 
-        // The source picker is also reachable from Setup when the configured
-        // Windows agent is missing, so it must receive keys before the
-        // mode-specific setup handler.
-        if self.agent_picker_visible() {
-            match key.code {
-                KeyCode::Up => self.agent_picker_up(),
-                KeyCode::Down => self.agent_picker_down(),
-                KeyCode::Enter => self.commit_agent_pick(),
-                KeyCode::Esc => self.close_agent_picker(),
-                _ => {}
-            }
+        // Setup consumes all keys before the normal picker/modal section below,
+        // so its source picker needs this narrow early route.
+        if self.mode == AppMode::Setup && self.agent_picker_visible() {
+            self.handle_agent_picker_key(key);
             return;
         }
 
@@ -7283,6 +7310,13 @@ impl App {
                 KeyCode::Esc => self.close_model_picker(),
                 _ => {}
             }
+            return;
+        }
+
+        // Keep the chat-mode `/agent` picker beside `/model`, matching the
+        // original modal ordering. Setup uses the early route above.
+        if self.agent_picker_visible() {
+            self.handle_agent_picker_key(key);
             return;
         }
 
@@ -15464,6 +15498,40 @@ mod tests {
             text.contains("Claude Test Agent"),
             "the agent picker must list available agents; rendered:\n{text}"
         );
+    }
+
+    #[test]
+    fn agent_picker_arrow_keys_move_and_wrap_selection() {
+        let mut app = test_app();
+        app.available_agents = vec![
+            AvailableAgent {
+                id: "copilot".into(),
+                display_name: "GitHub Copilot — Windows".into(),
+                source: crate::agent_source::AgentSource::Host,
+            },
+            AvailableAgent {
+                id: "copilot".into(),
+                display_name: "GitHub Copilot — Debian (WSL)".into(),
+                source: crate::agent_source::AgentSource::Wsl {
+                    distro: "Debian".into(),
+                },
+            },
+            AvailableAgent {
+                id: "claude".into(),
+                display_name: "Claude — Debian (WSL)".into(),
+                source: crate::agent_source::AgentSource::Wsl {
+                    distro: "Debian".into(),
+                },
+            },
+        ];
+        app.open_agent_picker(0);
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().agent_picker_selected, 1);
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().agent_picker_selected, 0);
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().agent_picker_selected, 2);
     }
 
     /// Render: the setup diagnostic screen must paint its title and subtitle.
