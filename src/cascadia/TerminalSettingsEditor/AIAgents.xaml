@@ -186,7 +186,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="local:CustomModelProviderEntry">
                         <Border BorderThickness="0,1,0,0"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                                 Padding="0,16,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
