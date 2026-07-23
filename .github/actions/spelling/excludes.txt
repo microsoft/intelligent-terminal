@@ -126,6 +126,7 @@ Resources/(?!en)
 ^XamlStyler\.json$
 ^\.clang-format$
 ^\.github/actions/spelling/
+^\.github/skills/upstream-sync/
 ^\.github/workflows/spelling\d*\.yml$
 ^\.vsconfig$
 ^\Qbuild/config/release.gdnbaselines\E$
