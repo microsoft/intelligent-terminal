@@ -34,13 +34,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         try
         {
             ::Microsoft::Terminal::CustomModels::RemoveApiKey(_provider.ApiKeyCredential());
-            _remove();
         }
         catch (...)
         {
             const auto hr = wil::ResultFromCaughtException();
             LOG_HR(hr);
         }
+        _remove();
     }
 
     // ── AgentEntry ───────────────────────────────────────────────────────
