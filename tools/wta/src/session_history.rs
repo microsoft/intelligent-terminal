@@ -54,6 +54,11 @@ pub(crate) fn classify_and_map(
 ) -> Vec<AgentSession> {
     sessions
         .iter()
+        .filter(|s| {
+            !s.title
+                .as_deref()
+                .is_some_and(|title| crate::agent_sessions::title_is_placeholder(cli, title))
+        })
         .map(|s| acp_session_to_agent_session(s, location.clone(), cli))
         .filter(|s| !agent_pane_index.contains(&s.key))
         .collect()
@@ -65,6 +70,7 @@ pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
         CliSource::Claude => "claude",
         CliSource::Codex => "codex",
         CliSource::Gemini => "gemini",
+        CliSource::OpenCode => "opencode",
         CliSource::Unknown(_) => "agent",
     }
 }
@@ -102,5 +108,31 @@ mod tests {
         let out = classify_and_map(&rows, &idx, SessionLocation::Host, &CliSource::Copilot);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].key, "keep-b");
+    }
+
+    #[test]
+    fn classify_filters_only_opencode_timestamp_placeholders() {
+        let mut placeholder = info("placeholder", "C:/p");
+        placeholder.title = Some("New session - 2026-07-23T01:14:00.422Z".into());
+        let mut real = info("real", "C:/p");
+        real.title = Some("Project overview".into());
+        let rows = vec![placeholder.clone(), real];
+
+        let opencode = classify_and_map(
+            &rows,
+            &HashSet::new(),
+            SessionLocation::Host,
+            &CliSource::OpenCode,
+        );
+        assert_eq!(opencode.len(), 1);
+        assert_eq!(opencode[0].key, "real");
+
+        let copilot = classify_and_map(
+            &[placeholder],
+            &HashSet::new(),
+            SessionLocation::Host,
+            &CliSource::Copilot,
+        );
+        assert_eq!(copilot.len(), 1, "the placeholder shape is OpenCode-specific");
     }
 }

@@ -365,8 +365,18 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // native process was started. Treat null like the stale zero used by
     // PowerShell-level errors so OSC 133;D always carries a numeric non-zero
     // failure code.
+    //
+    // v5: track newly observed ErrorRecords as a fallback for failures that
+    // do not enter Get-History, and consume errors raised by custom prompt
+    // rendering so prompt redraws do not emit duplicate command-finished
+    // marks.
+    //
+    // v6: PowerShell 7 discards parser failures before prompt runs: $? is
+    // true, $Error[0] is null, and Get-History has no entry. Wrap
+    // PSConsoleHostReadLine to retain the submitted line, then parse it lazily
+    // in prompt only when no normal completion signal exists.
     // ───────────────────────────────────────────────────────────────────
-    inline constexpr int kVersion = 4;
+    inline constexpr int kVersion = 6;
 
     inline std::wstring ScriptFileName()
     {
@@ -421,7 +431,24 @@ if (-not $Global:__ShellInteg_Installed) {
     # ── Snapshot the user's current prompt before we touch it ──────────
     $Global:__ShellInteg_OriginalPrompt = $function:prompt
     $Global:__ShellInteg_LastHistoryId  = -1
+    $Global:__ShellInteg_LastErrorRecord = $Error[0]
+    $Global:__ShellInteg_LastSubmittedLine = $null
+    $Global:__ShellInteg_CanInspectErrors =
+        $ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'
     $Global:__ShellInteg_Installed      = $true
+
+    # PowerShell 7 drops parser failures before prompt runs, leaving no
+    # observable status there. Retain the submitted line at the PSReadLine
+    # boundary without changing what is returned to the engine.
+    if ($Global:__ShellInteg_CanInspectErrors -and (Test-Path Function:\PSConsoleHostReadLine)) {
+        $Global:__ShellInteg_OriginalPSConsoleHostReadLine = $function:PSConsoleHostReadLine
+        function Global:PSConsoleHostReadLine {
+            $line = & $Global:__ShellInteg_OriginalPSConsoleHostReadLine @args
+            $Global:__ShellInteg_LastSubmittedLine =
+                if ($line -is [string]) { $line } else { $null }
+            return $line
+        }
+    }
 
     function Global:__ShellInteg_GetLastExitCode {
         # $? still reflects the *user's* last command here because this
@@ -439,17 +466,40 @@ if (-not $Global:__ShellInteg_Installed) {
 
     function prompt {
         # ── Capture exit code FIRST — before anything else can clobber $? ──
-        $gle   = $(__ShellInteg_GetLastExitCode)
-        $entry = Get-History -Count 1
-        $loc   = $executionContext.SessionState.Path.CurrentLocation
-        $E     = $Global:__ShellInteg_ESC
-        $B     = $Global:__ShellInteg_BEL
+        $gle           = $(__ShellInteg_GetLastExitCode)
+        $submittedLine = $Global:__ShellInteg_LastSubmittedLine
+        $errorRecord   = $Error[0]
+        $entry         = Get-History -Count 1
+        $loc           = $executionContext.SessionState.Path.CurrentLocation
+        $E             = $Global:__ShellInteg_ESC
+        $B             = $Global:__ShellInteg_BEL
 
         $prefix = ''
         $suffix = ''
 
         # ── Previous command finished (OSC 133;D with exit code) ──
-        if ($entry -and $entry.Id -ne $Global:__ShellInteg_LastHistoryId) {
+        $historyAdvanced = $entry -and $entry.Id -ne $Global:__ShellInteg_LastHistoryId
+        $newErrorRecord = $Global:__ShellInteg_CanInspectErrors -and
+            $null -ne $errorRecord -and
+            -not [object]::ReferenceEquals($errorRecord, $Global:__ShellInteg_LastErrorRecord)
+        $inputHadParserError = $false
+        if ($Global:__ShellInteg_CanInspectErrors -and
+            $gle -eq 0 -and
+            $null -ne $submittedLine -and
+            ($newErrorRecord -or -not $historyAdvanced)) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseInput(
+                $submittedLine,
+                [ref]$tokens,
+                [ref]$parseErrors)
+            $inputHadParserError = $parseErrors.Count -gt 0
+        }
+        if ($inputHadParserError -and $gle -eq 0) {
+            $gle = -1
+        }
+        $newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord
+        if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError) {
             $prefix += "${E}]133;D;${gle}${B}"
         }
 
@@ -474,6 +524,8 @@ if (-not $Global:__ShellInteg_Installed) {
         $originalOutput = & $Global:__ShellInteg_OriginalPrompt
 
         $Global:__ShellInteg_LastHistoryId = if ($entry) { $entry.Id } else { -1 }
+        $Global:__ShellInteg_LastErrorRecord = $Error[0]
+        $Global:__ShellInteg_LastSubmittedLine = $null
 
         return "${prefix}${originalOutput}${suffix}"
     }

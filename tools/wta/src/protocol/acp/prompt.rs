@@ -231,8 +231,7 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 mod tests {
     use super::{
         load_planner_prompt_template_from_root, merge_runtime_sections, DEFAULT_PROMPT_FILE_NAME,
-        EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT, RUNTIME_CONTEXT_MARKER,
-        USER_PROMPT_FILE_NAME,
+        RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -263,23 +262,6 @@ mod tests {
             merge_runtime_sections("before", &[String::from("first"), String::from("second")]);
 
         assert_eq!(merged, "before\n\nfirst\n\nsecond");
-    }
-
-    #[test]
-    fn embedded_autofix_prompt_requires_tool_or_markdown_not_json() {
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("propose_terminal_actions"));
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("exactly one `send_input` action"));
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Never return JSON"));
-        assert!(!EMBEDDED_AUTOFIX_PROMPT.contains("\"action\": \"fix\""));
-    }
-
-    #[test]
-    fn embedded_planner_prompt_requires_typed_tool_or_markdown() {
-        assert!(EMBEDDED_DEFAULT_PROMPT.contains("propose_terminal_actions"));
-        assert!(EMBEDDED_DEFAULT_PROMPT.contains("Never return recommendation JSON"));
-        assert!(!EMBEDDED_DEFAULT_PROMPT.contains("Recommendation Card Schema"));
-        assert!(!EMBEDDED_DEFAULT_PROMPT.contains("\"recommended_choice\""));
-        assert!(!EMBEDDED_DEFAULT_PROMPT.contains("\"parent\""));
     }
 
     #[test]

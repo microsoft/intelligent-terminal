@@ -43,7 +43,7 @@ Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Cli
 
 You must install and authenticate the agent CLI yourself first (Intelligent Terminal does not install bring-your-own agents — see [`installing-dependencies.md`](./installing-dependencies.md) for the pattern).
 
-**Limitation:** **Agent session management does not yet work for custom agents or OpenCode.** The session-tracking hooks currently ship for Copilot, Claude, Codex, and Gemini, so other agent sessions will not appear in the agent session management panel even after you install hooks. The agent pane and delegate flows themselves work normally.
+**Limitation:** **Agent session management does not yet work for custom agents.** Session-tracking hooks ship for Copilot, Claude, Codex, Gemini, and OpenCode. Other custom agent sessions will not appear in the agent session management panel even after you install hooks; the agent pane and delegate flows themselves still work normally.
 
 ## 5. Why does the Model dropdown stay greyed out / show "default" after I change agents?
 

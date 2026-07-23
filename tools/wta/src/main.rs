@@ -20,10 +20,10 @@ mod logging;
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
 mod master;
-mod mcp;
 mod osc52;
 mod pane_context;
 mod protocol;
+mod resolve_command;
 mod rtl;
 mod runtime_paths;
 mod session_history;
@@ -45,13 +45,13 @@ use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    cursor::SetCursorStyle,
+    cursor::{SetCursorStyle, Show},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
 use serde_json::json;
-use std::io;
+use std::io::{self, Write};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -347,6 +347,21 @@ enum Command {
         window_id: Option<String>,
     },
 
+    /// Identify a command using the user's PowerShell profile
+    ResolveCommand {
+        /// Command name to identify (without arguments or a path)
+        #[arg(value_parser = resolve_command::parse_non_empty)]
+        token: String,
+
+        /// PowerShell executable to use
+        #[arg(
+            long,
+            default_value = "pwsh.exe",
+            value_parser = resolve_command::parse_non_empty
+        )]
+        shell: String,
+    },
+
     /// Create a new tab
     #[command(alias = "neww")]
     NewTab {
@@ -627,6 +642,8 @@ enum HooksCliFilter {
     Claude,
     Gemini,
     Codex,
+    #[value(name = "opencode")]
+    OpenCode,
 }
 
 impl HooksCliFilter {
@@ -638,6 +655,7 @@ impl HooksCliFilter {
             HooksCliFilter::Claude => CliScope::One(CliKind::Claude),
             HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
             HooksCliFilter::Codex => CliScope::One(CliKind::Codex),
+            HooksCliFilter::OpenCode => CliScope::One(CliKind::OpenCode),
         }
     }
 }
@@ -756,6 +774,17 @@ async fn main() -> Result<()> {
                 .request("list_panes", json!({ "tab_id": tid }))
                 .await?;
             print_output(&result, json_mode, format_panes_human);
+            Ok(())
+        }
+
+        // ── Profile-aware command resolution ──
+        Some(Command::ResolveCommand { token, shell }) => {
+            let result = resolve_command::resolve(&token, &shell).await;
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("{}", resolve_command::format_human(&result));
+            }
             Ok(())
         }
 
@@ -1134,8 +1163,7 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let rows = match local
         .run_until(async {
-            let mut spawned =
-                crate::protocol::acp::spawn::spawn_agent_process(agent, None, false)?;
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
             let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
             let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
             let result = crate::protocol::acp::session_list::fetch_session_list(
@@ -1213,12 +1241,13 @@ async fn run_probe_wsl_sessions(cli: Option<&str>) -> Result<()> {
         Some("claude") => Some(CliSource::Claude),
         Some("codex") => Some(CliSource::Codex),
         Some("gemini") => Some(CliSource::Gemini),
+        Some("opencode") => Some(CliSource::OpenCode),
         Some(other) => {
             // Reject unknown values rather than silently widening to "scan all"
             // (Unknown → clis_to_scan → every built-in), which would make the
             // diagnostic's output contradict the requested restriction.
             anyhow::bail!(
-                "unknown --cli value {other:?}; expected one of: copilot, claude, codex, gemini"
+                "unknown --cli value {other:?}; expected one of: copilot, claude, codex, gemini, opencode"
             );
         }
     };
@@ -1318,7 +1347,11 @@ fn run_hooks_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     } else {
         format_hooks_uninstall_human(&report);
     }
-    Ok(())
+    if report.succeeded() {
+        Ok(())
+    } else {
+        anyhow::bail!("one or more hook uninstall steps failed")
+    }
 }
 
 fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {
@@ -1712,6 +1745,7 @@ fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
         Some(agent_sessions::CliSource::Codex)   => "Codex".to_string(),
         Some(agent_sessions::CliSource::Copilot) => "Copilot".to_string(),
         Some(agent_sessions::CliSource::Gemini)  => "Gemini".to_string(),
+        Some(agent_sessions::CliSource::OpenCode) => "OpenCode".to_string(),
         Some(agent_sessions::CliSource::Unknown(s)) if !s.is_empty() => s.clone(),
         _ => "-".to_string(),
     }
@@ -2630,6 +2664,40 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
     None
 }
 
+struct TuiRestoreGuard {
+    armed: bool,
+}
+
+impl TuiRestoreGuard {
+    fn new() -> Self {
+        Self { armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TuiRestoreGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        // Agent panes start with alternate-scroll enabled, so restore that known state.
+        let _ = write!(stdout, "\x1b[?1007h");
+        let _ = stdout.flush();
+        let _ = execute!(
+            stdout,
+            SetCursorStyle::DefaultUserShape,
+            LeaveAlternateScreen,
+            Show
+        );
+    }
+}
+
 async fn run_acp_tui_mode(
     cli: Cli,
     shell_mgr: Arc<ShellManager>,
@@ -2641,15 +2709,14 @@ async fn run_acp_tui_mode(
     connect_master_pipe: String,
 ) -> Result<()> {
     enable_raw_mode()?;
+    let mut restore_guard = TuiRestoreGuard::new();
     let mut stdout = io::stdout();
-    // NOTE: We intentionally do NOT call EnableMouseCapture. Without mouse
-    // tracking, the host terminal emulator (Windows Terminal, xterm, kitty,
-    // alacritty, wezterm) translates mouse-wheel events into Up/Down arrow
-    // keystrokes while we are in the alternate screen buffer. That gives us
-    // wheel-driven chat scrolling for free, and — crucially — leaves native
-    // click-drag text selection working so users can highlight and copy
-    // from the agent pane the way they would from any other terminal.
+    // Keep mouse capture off so native click-drag selection continues to work.
+    // Disable xterm alternate-scroll mode while the TUI is active so wheel
+    // events are not translated into the Up/Down keys used by input history.
     execute!(stdout, EnterAlternateScreen)?;
+    write!(stdout, "\x1b[?1007l")?;
+    stdout.flush()?;
     // Deliberately do NOT emit `OSC 11` to force a background color: the pane
     // must inherit the profile's color scheme background so it tracks the
     // user's theme like any other pane (#234). Cells render on the terminal's
@@ -2674,12 +2741,16 @@ async fn run_acp_tui_mode(
     .await;
 
     disable_raw_mode()?;
+    // WT does not implement xterm private-mode save/restore (`?1007s`/`?1007r`).
+    // Agent panes start with alternate-scroll enabled, so restore that known state.
+    write!(terminal.backend_mut(), "\x1b[?1007h")?;
     execute!(
         terminal.backend_mut(),
         SetCursorStyle::DefaultUserShape,
         LeaveAlternateScreen
     )?;
     terminal.show_cursor()?;
+    restore_guard.disarm();
 
     if let Err(e) = result {
         // This is the real exit point for a TUI/helper failure (connection

@@ -178,6 +178,9 @@ pub enum MasterExtRequest {
         /// returning the cached registry snapshot.
         rescan: bool,
     },
+    SessionBornBound {
+        event: crate::agent_sessions::SessionEvent,
+    },
     SessionResumeDispatched {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
@@ -1119,75 +1122,62 @@ async fn resolve_pane_by_session_id(
     None
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PlannerTerminalContext {
-    pub target_pane_id: Option<String>,
-    pub json: String,
-}
+pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
+    // WT's GetActivePane already resolves the agent pane to the user's working
+    // pane (the "source"), so a single active-pane query gives us the right
+    // target. Pane IDs are process-globally unique, so we only need the pane
+    // id itself — tab/window aren't needed for addressing.
+    let active = shell_mgr.wt_get_active_pane().await.ok()?;
 
-pub(crate) async fn build_planner_terminal_context(
-    shell_mgr: &ShellManager,
-    wt_connected: bool,
-) -> PlannerTerminalContext {
-    let active = if wt_connected {
-        shell_mgr.wt_get_active_pane().await.ok()
-    } else {
-        None
-    };
-    let active = active.filter(|pane| {
-        !pane
-            .get("is_agent_pane")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false)
-    });
-    let target_pane_id = active
-        .as_ref()
-        .and_then(|pane| json_str_or_num(pane.get("session_id")));
+    let is_agent = active
+        .get("is_agent_pane")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if is_agent {
+        return None;
+    }
+
+    let target_pane_id = json_str_or_num(active.get("session_id"))?;
     let target_window_title = active
-        .as_ref()
-        .and_then(|pane| pane.get("title"))
-        .and_then(|value| value.as_str())
-        .map(str::to_string);
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let target_cwd = active
-        .as_ref()
-        .and_then(|pane| pane.get("cwd"))
-        .and_then(|value| value.as_str())
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let target_shell = active.as_ref().and_then(shell_from_active);
-    let buffer = match target_pane_id.as_deref() {
-        Some(pane_id) => {
-            tracing::debug!(
-                target: "acp.terminal_context",
-                target_pane_id = %pane_id,
-                shell = ?target_shell,
-                mode = "planner",
-                "terminal_context_target_resolved"
-            );
-            read_pane_last_message(
-                shell_mgr,
-                pane_id,
-                24,
-                ACTIVE_PANE_CONTEXT_MAX_CHARS,
-            )
-            .await
-        }
-        None => None,
-    };
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's pid.
+    // Load-bearing for the planner: any `send` action it emits has to match the
+    // active pane's shell syntax (`Get-ChildItem` vs `ls`, `Set-Location` vs
+    // `cd`, etc.). We use the real process rather than the WT profile name,
+    // which the user can rename.
+    let target_shell = shell_from_active(&active);
 
-    let json = serde_json::to_string(&serde_json::json!({
-        "active_pane_available": target_pane_id.is_some(),
+    tracing::debug!(
+        target: "acp.terminal_context",
+        target_pane_id = %target_pane_id,
+        shell = ?target_shell,
+        "terminal_context_target_resolved"
+    );
+
+    let buffer = read_pane_last_message(
+        shell_mgr,
+        &target_pane_id,
+        24,
+        ACTIVE_PANE_CONTEXT_MAX_CHARS,
+    )
+    .await;
+
+    serde_json::to_string(&serde_json::json!({
+        "activeTarget": target_pane_id,
         "window_title": target_window_title,
         "cwd": target_cwd,
         "shell": target_shell,
         "locale": user_locale_tag(),
         "buffer": buffer,
     }))
-    .unwrap_or_else(|_| r#"{"active_pane_available":false}"#.to_string());
-    PlannerTerminalContext {
-        target_pane_id,
-        json,
-    }
+    .ok()
 }
 
 /// User's UI locale as a BCP-47 tag, suitable for embedding in
@@ -1211,16 +1201,14 @@ async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
-) -> (String, String, String, Option<String>, Option<String>) {
+) -> (String, String, String, Option<String>) {
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
     // Working pane resolved from the active pane for a manual `/fix` (one with
     // no explicit `source_pane_id`). Plumbed back to the App so it can fill
-    // `AutofixContext.target_pane_id` — empty otherwise. Planner routing is
-    // captured separately below and never echoed by the agent.
+    // `AutofixContext.target_pane_id` — empty otherwise (auto-fix carries its
+    // failing pane explicitly; planner turns let the agent fill `Send.parent`).
     let mut resolved_fix_pane: Option<String> = None;
-    let mut resolved_planner_pane: Option<String> = None;
-    let mut planner_context_json: Option<String> = None;
 
     let template_started = std::time::Instant::now();
     let planner_template = if is_autofix {
@@ -1250,12 +1238,7 @@ async fn build_prompt_text(
     let mut shell_exe: Option<String> = None;
     let mut terminal_output: Option<String> = None;
 
-    if !is_autofix {
-        let planner_context =
-            build_planner_terminal_context(shell_mgr, wt_connected).await;
-        resolved_planner_pane = planner_context.target_pane_id;
-        planner_context_json = Some(planner_context.json);
-    } else if wt_connected {
+    if is_autofix && wt_connected {
         let active = shell_mgr.wt_get_active_pane().await.ok();
 
         // Explicit source pane (error-triggered autofix) wins; otherwise fall
@@ -1328,7 +1311,8 @@ async fn build_prompt_text(
     // one such provider — see `prompt_context`.
     let context_request = ContextRequest {
         is_autofix,
-        planner_context_json: planner_context_json.as_deref(),
+        wt_connected,
+        shell_mgr,
         context_pane: context_pane.as_ref(),
         shell_exe: shell_exe.as_deref(),
         terminal_output: terminal_output.as_deref(),
@@ -1403,7 +1387,6 @@ async fn build_prompt_text(
         planner_template.source_label,
         planner_template.display_name,
         resolved_fix_pane,
-        resolved_planner_pane,
     )
 }
 
@@ -1547,39 +1530,6 @@ fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str 
 }
 
 impl WtaClient {
-    async fn ext_method(
-        &self,
-        args: acp::schema::v1::ExtRequest,
-    ) -> acp::Result<acp::schema::v1::ExtResponse> {
-        if crate::session_registry::ext_method_matches(
-            &args.method,
-            crate::mcp::INTELLTERM_METHOD_PROPOSE_TERMINAL_ACTIONS,
-        ) {
-            let params = crate::mcp::parse_terminal_actions_proposal_params(&args.params)
-                .map_err(|err| acp::Error::invalid_params().data(err.to_string()))?;
-            let session_id = params.session_id.0.to_string();
-            let (responder, response) = tokio::sync::oneshot::channel();
-            self.state
-                .event_tx
-                .send(AppEvent::TerminalActionsProposal {
-                    session_id,
-                    proposal: params.proposal,
-                    responder,
-                })
-                .map_err(|_| {
-                    acp::Error::internal_error()
-                        .data("terminal proposal UI channel is closed")
-                })?;
-            let disposition = response.await.map_err(|_| {
-                acp::Error::internal_error().data("terminal proposal response channel is closed")
-            })?;
-            return Ok(crate::mcp::build_terminal_actions_proposal_response(
-                &crate::mcp::TerminalActionsProposalResponse { disposition },
-            ));
-        }
-        Err(acp::Error::method_not_found())
-    }
-
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
@@ -2277,7 +2227,6 @@ pub async fn run_acp_client_over_pipe(
                 Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
                 Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
                 Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
-                Q::ExtMethodRequest(a) => conn::respond_enum(responder, c.ext_method(a).await.map(R::ExtMethodResponse)),
                 _ => responder.respond_with_error(acp::Error::method_not_found()),
             }
         } } }, acp::on_receive_request!())
@@ -2960,6 +2909,31 @@ fn dispatch_master_ext_request(
                     }
                 }
             }
+            MasterExtRequest::SessionBornBound { event } => {
+                const BORN_BOUND_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(8);
+                let wire = crate::session_registry::build_born_bound_request(&event);
+                match tokio::time::timeout(BORN_BOUND_TIMEOUT, conn.ext_method(wire)).await {
+                    Ok(Ok(response)) => tracing::debug!(
+                        target: "session_hook",
+                        event = ?event,
+                        response = %response.0.get(),
+                        "born-bound registration sent to master"
+                    ),
+                    Ok(Err(err)) => tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        error = ?err,
+                        "born-bound registration ext-request failed"
+                    ),
+                    Err(_) => tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        timeout_secs = BORN_BOUND_TIMEOUT.as_secs(),
+                        "born-bound registration timed out"
+                    ),
+                }
+            }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
                 let wire = crate::session_registry::build_session_resume_dispatched_request(&sid);
                 match conn.ext_method(wire).await {
@@ -3632,8 +3606,7 @@ async fn dispatch_prompt_body(
         .await;
 
     prompt_timing_task.activate(&prompt_session_id_str, &prompt);
-    let (text, prompt_source, prompt_name, resolved_fix_pane, resolved_planner_pane) =
-        build_prompt_text(
+    let (text, prompt_source, prompt_name, resolved_fix_pane) = build_prompt_text(
         prompt.id,
         prompt.submitted_at_unix_s,
         &prompt.text,
@@ -3643,7 +3616,7 @@ async fn dispatch_prompt_body(
         wt_connected,
         prompt.pane_context.as_ref(),
     )
-        .await;
+    .await;
     // A manual `/fix` resolved its working pane in build_prompt_text (it had no
     // explicit source pane). Plumb it back so the App fills the turn's
     // `target_pane_id`; the host fills `Send.parent` from it at execute time.
@@ -3655,13 +3628,6 @@ async fn dispatch_prompt_body(
                 .and_then(|c| c.tab_id.clone()),
             prompt_id: prompt.id,
             pane_id,
-        });
-    }
-    if !prompt.is_autofix {
-        let _ = event_tx_task.send(AppEvent::PlannerTargetResolved {
-            session_id: prompt_session_id_str.clone(),
-            prompt_id: prompt.id,
-            pane_id: resolved_planner_pane,
         });
     }
     let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name: prompt_name });
@@ -4274,28 +4240,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn planner_terminal_context_marks_unavailable_without_wt_channel() {
+    async fn build_terminal_context_json_none_without_wt_channel() {
         let mgr = crate::shell::ShellManager::new();
-        let context = super::build_planner_terminal_context(&mgr, false).await;
-        assert!(context.target_pane_id.is_none());
-        let value: serde_json::Value = serde_json::from_str(&context.json).unwrap();
-        assert_eq!(value["active_pane_available"], false);
+        assert!(super::build_terminal_context_json(&mgr).await.is_none());
     }
 
     #[tokio::test]
-    async fn planner_terminal_context_skips_agent_pane() {
+    async fn build_terminal_context_json_skips_agent_pane() {
         let mgr = shell_mgr_with_pane(serde_json::json!({
             "session_id": "p1",
             "is_agent_pane": true,
         }));
-        let context = super::build_planner_terminal_context(&mgr, true).await;
-        assert!(context.target_pane_id.is_none());
-        let value: serde_json::Value = serde_json::from_str(&context.json).unwrap();
-        assert_eq!(value["active_pane_available"], false);
+        assert!(
+            super::build_terminal_context_json(&mgr).await.is_none(),
+            "an active agent pane has no terminal output to ship"
+        );
     }
 
     #[tokio::test]
-    async fn planner_terminal_context_separates_trusted_target_from_model_json() {
+    async fn build_terminal_context_json_assembles_fields_for_real_pane() {
         let mgr = shell_mgr_with_pane(serde_json::json!({
             "session_id": "pane-9",
             "title": "My Tab",
@@ -4303,12 +4266,11 @@ mod tests {
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
-        let context = super::build_planner_terminal_context(&mgr, true).await;
-        assert_eq!(context.target_pane_id.as_deref(), Some("pane-9"));
-        let v: serde_json::Value = serde_json::from_str(&context.json).unwrap();
-        assert_eq!(v["active_pane_available"], true);
-        assert!(v.get("activeTarget").is_none());
-        assert!(!context.json.contains("pane-9"));
+        let json = super::build_terminal_context_json(&mgr)
+            .await
+            .expect("a non-agent active pane must yield context json");
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["activeTarget"], "pane-9");
         assert_eq!(v["window_title"], "My Tab");
         assert_eq!(v["cwd"], "C:\\workspace");
         // The mock errors the buffer reads, so `buffer` is null.
@@ -4328,25 +4290,24 @@ mod tests {
     }
 
     /// A planner turn with `include_template=true` ships the persona template,
-    /// terminal availability context, and appends the user request. It never
+    /// the delegate-agents section, and appends the user request. It never
     /// resolves a fix pane.
     #[tokio::test]
     async fn build_prompt_text_planner_includes_template_and_user_request() {
         let mgr = crate::shell::ShellManager::new();
         let expected = super::prompt::load_planner_prompt_template();
-        let (prompt, _source, display_name, fix_pane, planner_pane) =
+        let (prompt, _source, display_name, fix_pane) =
             super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
-            prompt.contains(r#""active_pane_available":false"#),
-            "planner must ship target availability without a pane id"
+            prompt.contains("### Supported Delegate Agents"),
+            "planner must ship the delegate-agents section"
         );
         assert!(
             prompt.contains("## User Request\nlist files"),
             "planner must append the user text"
         );
         assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
-        assert!(planner_pane.is_none());
     }
 
     /// An autofix turn loads the *autofix* persona (not the planner), appends a
@@ -4356,7 +4317,7 @@ mod tests {
         let mgr = crate::shell::ShellManager::new();
         let planner = super::prompt::load_planner_prompt_template();
         let autofix = super::prompt::load_autofix_prompt_template();
-        let (prompt, _s, display_name, fix_pane, planner_pane) =
+        let (prompt, _s, display_name, fix_pane) =
             super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
@@ -4364,7 +4325,7 @@ mod tests {
             "autofix must not reuse the planner persona"
         );
         assert!(
-            !prompt.contains("### Terminal Context JSON"),
+            !prompt.contains("### Supported Delegate Agents"),
             "autofix prompt is not the planner prompt"
         );
         let user_request = format!("## User Request\n{}", "fix the build");
@@ -4373,14 +4334,13 @@ mod tests {
             "a non-empty autofix hint is appended"
         );
         assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");
-        assert!(planner_pane.is_none(), "autofix has no planner target");
     }
 
     /// A blank autofix hint must not produce an empty `## User Request` section.
     #[tokio::test]
     async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
         let mgr = crate::shell::ShellManager::new();
-        let (prompt, _s, _d, _f, _p) =
+        let (prompt, _s, _d, _f) =
             super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
         assert!(
             !prompt.contains("## User Request"),
@@ -4399,7 +4359,7 @@ mod tests {
             !planner.content.trim().is_empty(),
             "test precondition: planner template body is non-empty"
         );
-        let (prompt, _s, _d, _f, _p) =
+        let (prompt, _s, _d, _f) =
             super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
         assert!(
             !prompt.contains(planner.content.trim()),
@@ -4420,14 +4380,13 @@ mod tests {
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
-        let (prompt, _s, _d, fix_pane, planner_pane) =
+        let (prompt, _s, _d, fix_pane) =
             super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
         assert_eq!(
             fix_pane.as_deref(),
             Some("work-pane"),
             "manual /fix must resolve the active working pane"
         );
-        assert!(planner_pane.is_none());
         assert!(
             prompt.contains("### Shell Context"),
             "autofix with a wt channel must ship shell context"
@@ -4448,13 +4407,12 @@ mod tests {
             source_pane_id: Some("explicit-src".to_string()),
             ..Default::default()
         };
-        let (_p, _s, _d, fix_pane, planner_pane) =
+        let (_p, _s, _d, fix_pane) =
             super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
         assert!(
             fix_pane.is_none(),
             "error-triggered autofix carries its source; resolved_fix_pane stays None"
         );
-        assert!(planner_pane.is_none());
     }
 
     /// Regression: error-triggered autofix whose failing pane lives in a
@@ -4489,7 +4447,7 @@ mod tests {
             source_pane_id: Some("src-pane".to_string()),
             ..Default::default()
         };
-        let (prompt, _s, _d, _f, _p) =
+        let (prompt, _s, _d, _f) =
             super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
         assert!(prompt.contains("### Shell Context"), "got: {prompt}");
         // The shell-context JSON must carry the SOURCE pane's shell + cwd…

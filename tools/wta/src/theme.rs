@@ -18,17 +18,13 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
-pub const SELECTED: Style = Style::new()
-    .fg(Color::Black)
-    .bg(Color::Yellow)
-    .add_modifier(Modifier::BOLD);
-// Selected row while the pane is unfocused: same shape, muted to a gray bar
-// so the selection is preserved (and restored on refocus) without reading as
-// the live, active target. Light foreground keeps it legible on the dim bg.
+// Match the /sessions cursor: cyan foreground with no full-row background.
+pub const SELECTED: Style = Style::new().fg(Color::Cyan);
+// Preserve the selection when the pane loses focus without presenting it as
+// the active keyboard target.
 pub const SELECTED_INACTIVE: Style = Style::new()
-    .fg(Color::White)
-    .bg(Color::DarkGray)
-    .add_modifier(Modifier::BOLD);
+    .fg(Color::Cyan)
+    .add_modifier(Modifier::DIM);
 pub const DEBUG_SENT: Style = Style::new().fg(Color::Green);
 pub const DEBUG_RECEIVED: Style = Style::new().fg(Color::Cyan);
 pub const RECOMMENDATION_TITLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);

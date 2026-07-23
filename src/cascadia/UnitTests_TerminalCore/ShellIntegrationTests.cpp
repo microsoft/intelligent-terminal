@@ -50,6 +50,8 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(BuildBlock_ContainsMarkersAndScriptFilename);
     TEST_METHOD(BuildBlock_HonoursEolParameter);
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
+    TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
+    TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
 
     // Install scenarios.
     TEST_METHOD(Install_EmptyPath_Fails);
@@ -112,6 +114,7 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(Bash_BuildBlock_IsLfOnly);
     TEST_METHOD(Bash_BuildBlock_UsesHomeAndGuardsOnBashVersion);
     TEST_METHOD(Bash_ScriptContent_HasIdempotencyGuardAndOscSequences);
+    TEST_METHOD(Bash_ScriptContent_GatesAndRepairsPromptMarks);
 
     // InstallBash / UninstallBash scenarios.
     TEST_METHOD(Bash_Install_EmptyProfilePath_Fails);
@@ -422,6 +425,68 @@ void ShellIntegrationTests::PowerShell_ScriptContent_HandlesNullLastExitCode()
                        nativeReturn < sentinelReturn &&
                        sentinelReturn < functionEnd,
                    L"The exit-code helper must guard null/zero before returning a native code, then fall back to a numeric non-zero sentinel");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_TracksUnhistoriedErrors()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
+    const auto lineStored = script.find("$Global:__ShellInteg_LastSubmittedLine =", readLineWrapper);
+    const auto promptStart = script.find("function prompt");
+    const auto lineCaptured = script.find("$submittedLine = $Global:__ShellInteg_LastSubmittedLine", promptStart);
+    const auto capture = script.find("$errorRecord", lineCaptured);
+    const auto historyCheck = script.find("$historyAdvanced =", capture);
+    const auto errorCheck = script.find("$newErrorRecord =", historyCheck);
+    const auto referenceCheck = script.find("[object]::ReferenceEquals", errorCheck);
+    const auto lazyParseGuard = script.find("($newErrorRecord -or -not $historyAdvanced)", referenceCheck);
+    const auto parseInput = script.find("Language.Parser]::ParseInput", lazyParseGuard);
+    const auto parserFlagSet = script.find("$inputHadParserError = $parseErrors.Count -gt 0", parseInput);
+    const auto staleZeroCheck = script.find("if ($inputHadParserError -and $gle -eq 0)", parserFlagSet);
+    const auto sentinelAssignment = script.find("$gle = -1", staleZeroCheck);
+    const auto untrackedErrorCheck = script.find("$newUntrackedError = -not $historyAdvanced -and $gle -ne 0 -and $newErrorRecord", sentinelAssignment);
+    const auto combinedCheck = script.find("if ($historyAdvanced -or $newUntrackedError -or $inputHadParserError)", untrackedErrorCheck);
+    const auto originalPrompt = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", combinedCheck);
+    const auto consumeError = script.find("$Global:__ShellInteg_LastErrorRecord = $Error[0]", originalPrompt);
+    const auto consumeLine = script.find("$Global:__ShellInteg_LastSubmittedLine = $null", consumeError);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, consumeLine);
+    VERIFY_IS_TRUE(readLineWrapper < lineStored &&
+                       lineStored < promptStart &&
+                       promptStart < lineCaptured &&
+                       lineCaptured < capture &&
+                       capture < historyCheck &&
+                       historyCheck < errorCheck &&
+                       errorCheck < referenceCheck &&
+                       referenceCheck < lazyParseGuard &&
+                       lazyParseGuard < parseInput &&
+                       parseInput < parserFlagSet &&
+                       parserFlagSet < staleZeroCheck &&
+                       staleZeroCheck < sentinelAssignment &&
+                       sentinelAssignment < untrackedErrorCheck &&
+                       untrackedErrorCheck < combinedCheck &&
+                       combinedCheck < originalPrompt &&
+                       originalPrompt < consumeError &&
+                       consumeError < consumeLine,
+                   L"Submitted input must be retained at the PSReadLine boundary, parsed only after normal completion signals are absent, and consumed after prompt rendering");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeatures()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto languageMode = script.find("$ExecutionContext.SessionState.LanguageMode -eq 'FullLanguage'");
+    const auto readLineGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and (Test-Path Function:\\PSConsoleHostReadLine))", languageMode);
+    const auto errorRecordGuard = script.find("$newErrorRecord = $Global:__ShellInteg_CanInspectErrors", readLineGuard);
+    const auto referenceCheck = script.find("[object]::ReferenceEquals", errorRecordGuard);
+    const auto lazyParseGuard = script.find("if ($Global:__ShellInteg_CanInspectErrors -and", referenceCheck);
+    const auto parseInput = script.find("Language.Parser]::ParseInput", lazyParseGuard);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, parseInput);
+    VERIFY_IS_TRUE(languageMode < readLineGuard &&
+                       readLineGuard < errorRecordGuard &&
+                       errorRecordGuard < referenceCheck &&
+                       referenceCheck < lazyParseGuard &&
+                       lazyParseGuard < parseInput,
+                   L"Constrained Language Mode must bypass static parser and reference-identity method calls");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────
@@ -1163,6 +1228,35 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     VERIFY_IS_TRUE(_Contains(script, "${PWD:-}"));
     VERIFY_IS_FALSE(_Contains(script, "\"$PWD\""),
                     L"Script must use ${PWD:-} not bare $PWD (set -u safety)");
+}
+
+void ShellIntegrationTests::Bash_ScriptContent_GatesAndRepairsPromptMarks()
+{
+    const auto& script = ShellIntegrationBashScriptContent();
+
+    const auto gate = script.find("[ \"${INTELLIGENT_TERMINAL:-}\" = \"1\" ]");
+    const auto installed = script.find("__IT_SHELLINTEG_INSTALLED=1");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, gate);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, installed);
+    VERIFY_IS_TRUE(gate < installed, L"The host gate must run before installing shell hooks");
+
+    const auto stripMark = script.find("PS1=\"${PS1%\"$__it_suffix\"}\"");
+    const auto userPrompt = script.find("eval \"$__IT_SHELLINTEG_USER_PC\"");
+    const auto appendMark = script.find("PS1=\"${PS1:-}${__it_suffix}\"");
+    const auto promptStart = script.find("printf '\\033]133;A\\007'");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, stripMark);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, userPrompt);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, appendMark);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, promptStart);
+    VERIFY_IS_TRUE(stripMark < userPrompt,
+                   L"The previous OSC 133;B suffix must be removed before the user's prompt hook runs");
+    VERIFY_IS_TRUE(userPrompt < appendMark,
+                   L"The user's PROMPT_COMMAND must finish rebuilding PS1 before OSC 133;B is appended");
+    VERIFY_IS_TRUE(appendMark < promptStart,
+                   L"OSC 133;A must not be emitted until PS1 contains the matching OSC 133;B");
+
+    VERIFY_IS_TRUE(_Contains(script, "*\"$__it_suffix\") printf '\\033]133;A\\007'"),
+                   L"OSC 133;A must be guarded by a check for the matching PS1 suffix");
 }
 
 // ─── InstallBash ──────────────────────────────────────────────────────────────

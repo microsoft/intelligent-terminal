@@ -401,7 +401,7 @@ pub fn parse_ext_notification(n: &acp::schema::v1::ExtNotification) -> WtaExtNot
 /// via a `build_*` helper (still `_`-prefixed).
 #[inline]
 #[must_use]
-pub(crate) fn ext_method_matches(inbound: &str, const_with_underscore: &str) -> bool {
+fn ext_method_matches(inbound: &str, const_with_underscore: &str) -> bool {
     inbound == const_with_underscore
         || Some(inbound) == const_with_underscore.strip_prefix('_')
 }
@@ -631,6 +631,7 @@ impl From<&crate::agent_sessions::CliSource> for SessionHookCliSource {
             crate::agent_sessions::CliSource::Codex => Self::Known("Codex".to_string()),
             crate::agent_sessions::CliSource::Copilot => Self::Known("Copilot".to_string()),
             crate::agent_sessions::CliSource::Gemini => Self::Known("Gemini".to_string()),
+            crate::agent_sessions::CliSource::OpenCode => Self::Known("OpenCode".to_string()),
             crate::agent_sessions::CliSource::Unknown(value) => Self::Unknown {
                 value: value.clone(),
             },
@@ -646,6 +647,7 @@ impl From<SessionHookCliSource> for crate::agent_sessions::CliSource {
                 "Codex"  | "codex"  => Self::Codex,
                 "Copilot" | "copilot" => Self::Copilot,
                 "Gemini" | "gemini" => Self::Gemini,
+                "OpenCode" | "opencode" => Self::OpenCode,
                 other => Self::Unknown(other.to_string()),
             },
             SessionHookCliSource::Unknown { value } => Self::Unknown(value),
@@ -1139,7 +1141,13 @@ pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
         .unwrap_or("");
     match info.title.as_deref() {
         None | Some("") => true,
-        Some(t) => t == cwd_leaf,
+        Some(t) => {
+            t == cwd_leaf
+                || info
+                    .cli_source
+                    .as_ref()
+                    .is_some_and(|cli| crate::agent_sessions::title_is_placeholder(cli, t))
+        }
     }
 }
 
@@ -1347,13 +1355,20 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             pane_session_id,
             cwd,
             title,
-        } => SessionEvent::SessionStarted {
-            key,
-            cli_source,
-            pane_session_id: pane_key(&pane_session_id),
-            cwd,
-            title,
-        },
+        } => {
+            let title = if crate::agent_sessions::title_is_placeholder(&cli_source, &title) {
+                String::new()
+            } else {
+                title
+            };
+            SessionEvent::SessionStarted {
+                key,
+                cli_source,
+                pane_session_id: pane_key(&pane_session_id),
+                cwd,
+                title,
+            }
+        }
         SessionEvent::ConnectionFailed {
             pane_session_id,
             reason,
@@ -1929,11 +1944,25 @@ mod tests {
     }
 
     #[test]
-    fn title_is_synthetic_detects_missing_empty_and_cwd_basename() {
+    fn title_is_synthetic_detects_missing_empty_cwd_and_opencode_placeholder() {
         assert!(title_is_synthetic(&info_with("s-none", "/repo/proj", None)));
         assert!(title_is_synthetic(&info_with("s-empty", "/repo/proj", Some(""))));
         assert!(title_is_synthetic(&info_with("s-leaf", "/repo/proj", Some("proj"))));
         assert!(!title_is_synthetic(&info_with("s-real", "/repo/proj", Some("Real Title"))));
+
+        let mut opencode = info_with(
+            "s-opencode",
+            "/repo/proj",
+            Some("New session - 2026-07-23T01:14:00.422Z"),
+        );
+        opencode.cli_source = Some(CliSource::OpenCode);
+        assert!(title_is_synthetic(&opencode));
+
+        opencode.cli_source = Some(CliSource::Copilot);
+        assert!(
+            !title_is_synthetic(&opencode),
+            "provider-specific placeholders must not hide a real title from another CLI"
+        );
     }
 
     #[test]
@@ -3225,6 +3254,15 @@ mod tests {
         let wire = SessionHookCliSource::Known("codex".to_string());
         let typed: CliSource = wire.into();
         assert_eq!(typed, CliSource::Codex);
+    }
+
+    #[test]
+    fn session_hook_cli_source_round_trips_opencode() {
+        use crate::agent_sessions::CliSource;
+        let wire: SessionHookCliSource = (&CliSource::OpenCode).into();
+        assert!(matches!(wire, SessionHookCliSource::Known(ref s) if s == "OpenCode"));
+        let typed: CliSource = wire.into();
+        assert_eq!(typed, CliSource::OpenCode);
     }
 
     #[test]

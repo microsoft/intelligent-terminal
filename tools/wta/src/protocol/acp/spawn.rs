@@ -17,23 +17,6 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-#[cfg(windows)]
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
-#[cfg(windows)]
-use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
-};
-#[cfg(windows)]
-use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-};
-#[cfg(windows)]
-use windows_sys::Win32::System::Threading::{
-    OpenThread, ResumeThread, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
-};
-
 const STARTUP_STDERR_MAX_LINES: usize = 32;
 const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
 const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
@@ -184,9 +167,6 @@ fn truncate_stderr_line(line: &str) -> String {
 
 pub(crate) struct AgentSpawn {
     pub child: tokio::process::Child,
-    /// Keeps the optional process-tree job alive. Dropping it terminates any
-    /// descendants that outlive a launcher such as `cmd.exe`.
-    pub process_job: Option<ProcessJob>,
     /// Original first token of `agent_cmd`, before path resolution.
     pub raw_program: String,
     /// Resolved program path (post `resolve_bare_agent_name`).
@@ -199,135 +179,6 @@ pub(crate) struct AgentSpawn {
     /// package id, e.g. `@zed-industries/claude-code-acp`).
     pub adapter_package: Option<String>,
 }
-
-#[cfg(windows)]
-pub(crate) struct ProcessJob {
-    handle: HANDLE,
-}
-
-#[cfg(windows)]
-impl ProcessJob {
-    fn assign_and_resume(child: &tokio::process::Child) -> Result<Self> {
-        let process = child
-            .raw_handle()
-            .ok_or_else(|| anyhow!("spawned agent has no process handle"))?
-            as HANDLE;
-        let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if handle.is_null() {
-            return Err(anyhow!(
-                "failed to create agent process-tree job: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-
-        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let configured = unsafe {
-            SetInformationJobObject(
-                handle,
-                JobObjectExtendedLimitInformation,
-                std::ptr::addr_of!(limits).cast(),
-                std::mem::size_of_val(&limits) as u32,
-            )
-        };
-        if configured == 0 {
-            let error = std::io::Error::last_os_error();
-            unsafe {
-                CloseHandle(handle);
-            }
-            return Err(anyhow!(
-                "failed to configure agent process-tree job: {error}"
-            ));
-        }
-
-        if unsafe { AssignProcessToJobObject(handle, process) } == 0 {
-            let error = std::io::Error::last_os_error();
-            unsafe {
-                CloseHandle(handle);
-            }
-            return Err(anyhow!(
-                "failed to assign agent to process-tree job: {error}"
-            ));
-        }
-        let job = Self { handle };
-        resume_suspended_process(child)?;
-        Ok(job)
-    }
-}
-
-#[cfg(windows)]
-fn resume_suspended_process(child: &tokio::process::Child) -> Result<()> {
-    let process_id = child
-        .id()
-        .ok_or_else(|| anyhow!("spawned agent has no process id"))?;
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-    if snapshot == INVALID_HANDLE_VALUE {
-        return Err(anyhow!(
-            "failed to enumerate suspended agent threads: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
-
-    let result = (|| {
-        let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
-        entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
-        if unsafe { Thread32First(snapshot, &mut entry) } == 0 {
-            return Err(anyhow!(
-                "failed to read suspended agent threads: {}",
-                std::io::Error::last_os_error()
-            ));
-        }
-
-        loop {
-            if entry.th32OwnerProcessID == process_id {
-                let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID) };
-                if thread.is_null() {
-                    return Err(anyhow!(
-                        "failed to open suspended agent thread: {}",
-                        std::io::Error::last_os_error()
-                    ));
-                }
-                let resume_result = unsafe { ResumeThread(thread) };
-                let resume_error = std::io::Error::last_os_error();
-                unsafe {
-                    CloseHandle(thread);
-                }
-                if resume_result == u32::MAX {
-                    return Err(anyhow!(
-                        "failed to resume suspended agent thread: {resume_error}"
-                    ));
-                }
-                return Ok(());
-            }
-            if unsafe { Thread32Next(snapshot, &mut entry) } == 0 {
-                return Err(anyhow!(
-                    "suspended agent process {process_id} had no thread to resume"
-                ));
-            }
-        }
-    })();
-
-    unsafe {
-        CloseHandle(snapshot);
-    }
-    result
-}
-
-// A job HANDLE has no thread affinity; this wrapper only closes it on drop.
-#[cfg(windows)]
-unsafe impl Send for ProcessJob {}
-
-#[cfg(windows)]
-impl Drop for ProcessJob {
-    fn drop(&mut self) {
-        unsafe {
-            CloseHandle(self.handle);
-        }
-    }
-}
-
-#[cfg(not(windows))]
-pub(crate) struct ProcessJob;
 
 impl AgentSpawn {
     /// Human-readable agent label for error messages. Prefers the npx
@@ -346,11 +197,7 @@ impl AgentSpawn {
 /// when its shell wrapper doesn't explicitly set one — starts in the user's
 /// project. None preserves the parent's cwd (probe path, where it doesn't
 /// matter).
-pub(crate) fn spawn_agent_process(
-    agent_cmd: &str,
-    cwd: Option<&Path>,
-    contain_process_tree: bool,
-) -> Result<AgentSpawn> {
+pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -442,46 +289,22 @@ pub(crate) fn spawn_agent_process(
     if let Some(cwd) = cwd {
         cmd.current_dir(cwd);
     }
-    if needs_cmd {
-        cmd.args(args.iter().map(|arg| escape_cmd_parentheses(arg)));
-    } else {
-        cmd.args(&args);
-    }
-    #[cfg(windows)]
-    if contain_process_tree {
-        cmd.creation_flags(CREATE_SUSPENDED);
-    }
     let child = cmd
+        .args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| anyhow!("failed to spawn agent '{}': {}", agent_cmd, e))?;
-    #[cfg(windows)]
-    let process_job = if contain_process_tree {
-        Some(ProcessJob::assign_and_resume(&child)?)
-    } else {
-        None
-    };
-    #[cfg(not(windows))]
-    let process_job = {
-        let _ = contain_process_tree;
-        None
-    };
 
     Ok(AgentSpawn {
         child,
-        process_job,
         raw_program: raw_program.to_string(),
         resolved_program,
         is_npx,
         adapter_package,
     })
-}
-
-fn escape_cmd_parentheses(arg: &str) -> String {
-    arg.replace('(', "^(").replace(')', "^)")
 }
 
 /// Convert a BCP-47 locale tag (e.g. `zh-CN`, `gd-gb`) to the POSIX
@@ -631,43 +454,5 @@ mod tests {
     #[test]
     fn canonicalizes_language_only() {
         assert_eq!(canonicalize_posix_locale("en"), "en.UTF-8");
-    }
-
-    #[test]
-    fn escapes_exact_mcp_permission_for_cmd_shims() {
-        assert_eq!(
-            escape_cmd_parentheses("--allow-tool=wta(propose_terminal_actions)"),
-            "--allow-tool=wta^(propose_terminal_actions^)"
-        );
-    }
-
-    #[cfg(windows)]
-    #[tokio::test(flavor = "current_thread")]
-    async fn contained_process_resumes_after_job_assignment() {
-        let mut spawned =
-            spawn_agent_process("cmd.exe /d /c exit 0", None, true).expect("spawn contained cmd");
-        let status = tokio::time::timeout(Duration::from_secs(5), spawned.child.wait())
-            .await
-            .expect("contained cmd should resume")
-            .expect("wait for contained cmd");
-
-        assert!(status.success());
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn cmd_shim_receives_exact_mcp_permission() {
-        let permission = "--allow-tool=wta(propose_terminal_actions)";
-        let output = std::process::Command::new("cmd.exe")
-            .arg("/d")
-            .arg("/s")
-            .arg("/c")
-            .arg("echo")
-            .arg(escape_cmd_parentheses(permission))
-            .output()
-            .expect("cmd.exe should run");
-
-        assert!(output.status.success());
-        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), permission);
     }
 }

@@ -95,7 +95,7 @@ pub(crate) async fn scan_running_distros_acp(cli: Option<&CliSource>) -> Vec<Age
 
 /// Which CLIs to query for a given filter. Known ACP-capable CLIs map to
 /// themselves. `None` (the all-CLI session view) and custom/unknown agents both
-/// map to "scan the built-in ACP-capable CLIs" (copilot, claude, codex) — WTA
+/// map to "scan the built-in ACP-capable CLIs" (copilot, claude, codex, opencode) — WTA
 /// has no bespoke launch command for a custom agent inside a distro, so it falls
 /// back to the known set. Gemini is always excluded: it has no ACP
 /// `session/list`.
@@ -105,10 +105,16 @@ fn clis_to_scan(cli: Option<&CliSource>) -> Vec<CliSource> {
         Some(CliSource::Claude) => vec![CliSource::Claude],
         Some(CliSource::Codex) => vec![CliSource::Codex],
         Some(CliSource::Gemini) => Vec::new(),
+        Some(CliSource::OpenCode) => vec![CliSource::OpenCode],
         // `None` = the all-CLI view; a custom/unknown agent likewise maps
         // to "scan the known ACP-capable built-ins".
         None | Some(CliSource::Unknown(_)) => {
-            vec![CliSource::Copilot, CliSource::Claude, CliSource::Codex]
+            vec![
+                CliSource::Copilot,
+                CliSource::Claude,
+                CliSource::Codex,
+                CliSource::OpenCode,
+            ]
         }
     }
 }
@@ -172,6 +178,7 @@ fn acp_command_for(cli: &CliSource) -> Option<String> {
         CliSource::Copilot => "copilot",
         CliSource::Claude => "claude",
         CliSource::Codex => "codex",
+        CliSource::OpenCode => "opencode",
         CliSource::Gemini | CliSource::Unknown(_) => return None,
     };
     Some(crate::agent_registry::build_acp_command(id, None))
@@ -246,18 +253,32 @@ mod tests {
             clis_to_scan(Some(&CliSource::Codex)),
             vec![CliSource::Codex]
         );
+        assert_eq!(
+            clis_to_scan(Some(&CliSource::OpenCode)),
+            vec![CliSource::OpenCode]
+        );
         // Gemini has no ACP session/list → never queried.
         assert!(clis_to_scan(Some(&CliSource::Gemini)).is_empty());
-        // None / custom → the three ACP-capable built-ins (no Gemini).
+        // None / custom → all ACP-capable built-ins (no Gemini).
         let all = clis_to_scan(None);
         assert_eq!(
             all,
-            vec![CliSource::Copilot, CliSource::Claude, CliSource::Codex]
+            vec![
+                CliSource::Copilot,
+                CliSource::Claude,
+                CliSource::Codex,
+                CliSource::OpenCode,
+            ]
         );
         assert!(!all.contains(&CliSource::Gemini));
         assert_eq!(
             clis_to_scan(Some(&CliSource::Unknown("custom:x".into()))),
-            vec![CliSource::Copilot, CliSource::Claude, CliSource::Codex]
+            vec![
+                CliSource::Copilot,
+                CliSource::Claude,
+                CliSource::Codex,
+                CliSource::OpenCode,
+            ]
         );
     }
 
@@ -274,6 +295,10 @@ mod tests {
         assert_eq!(
             acp_command_for(&CliSource::Codex).as_deref(),
             Some("npx -y @agentclientprotocol/codex-acp@1.1.0")
+        );
+        assert_eq!(
+            acp_command_for(&CliSource::OpenCode).as_deref(),
+            Some("opencode acp")
         );
         assert!(acp_command_for(&CliSource::Gemini).is_none());
         assert!(acp_command_for(&CliSource::Unknown("x".into())).is_none());

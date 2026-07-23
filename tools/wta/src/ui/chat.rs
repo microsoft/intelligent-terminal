@@ -20,8 +20,11 @@ const MAX_RENDER_LINE_CHARS: usize = 4096;
 pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
-    // Resolve the pending text once so the reveal and height calculations use
-    // the same streaming snapshot.
+    // Fetch once and reuse below for both the reveal-catchup check and the
+    // pending-height calc. `pending_render_text` re-parses the streaming
+    // buffer on every call (and allocates on the JSON-wrapper path via
+    // `extract_json_string_field`), so calling it twice per frame here would
+    // be a redundant, measurable cost on the render hot path.
     let pending_text = pending_render_text(tab);
 
     // Reserve the row only when the shimmer will actually render; mirrors
@@ -334,11 +337,126 @@ fn is_reveal_catching_up(tab: &crate::app::TabSession) -> bool {
     }
 }
 
-/// Assistant text is always user-visible Markdown. Typed MCP requests, not
-/// assistant-text parsing, are the only path that can create action cards.
+/// Incrementally extracts a JSON string field's decoded value from a
+/// possibly-truncated text. Handles `\"`, `\\`, `\n`, `\t`, `\uXXXX` and
+/// UTF-16 surrogate pairs (e.g. emoji). Returns the partial value if the
+/// closing quote hasn't arrived yet.
+pub(crate) fn extract_json_string_field(text: &str, field: &str) -> Option<String> {
+    let key = format!("\"{field}\"");
+    // Find the occurrence of `"field"` that is actually a *key* (followed by
+    // `:`), not the same token appearing earlier as a string value. Without
+    // this, `{"kind":"explanation","explanation":"real"}` would stop at the
+    // value and return None.
+    let mut search_from = 0;
+    let rest = loop {
+        let rel = text[search_from..].find(&key)?;
+        let abs = search_from + rel;
+        let after = text[abs + key.len()..].trim_start();
+        if let Some(r) = after.strip_prefix(':') {
+            break r.trim_start();
+        }
+        search_from = abs + key.len();
+    };
+    let body = rest.strip_prefix('"')?;
+
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next() {
+                None => return Some(out),
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some('/') => out.push('/'),
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some('b') => out.push('\u{08}'),
+                Some('f') => out.push('\u{0C}'),
+                Some('u') => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if hex.len() < 4 {
+                        return Some(out);
+                    }
+                    let Some(code) = u32::from_str_radix(&hex, 16).ok() else {
+                        continue;
+                    };
+                    match code {
+                        // High surrogate: pair it with the following
+                        // `\uXXXX` low surrogate to recover the non-BMP scalar
+                        // (e.g. emoji). If the low half hasn't streamed in yet
+                        // (or is malformed), drop the lone surrogate — the next
+                        // frame re-runs over the now-complete buffer.
+                        0xD800..=0xDBFF => {
+                            let mut lookahead = chars.clone();
+                            if lookahead.next() == Some('\\')
+                                && lookahead.next() == Some('u')
+                            {
+                                let lo_hex: String = lookahead.by_ref().take(4).collect();
+                                if lo_hex.len() == 4 {
+                                    if let Some(lo @ 0xDC00..=0xDFFF) =
+                                        u32::from_str_radix(&lo_hex, 16).ok()
+                                    {
+                                        let scalar = 0x1_0000
+                                            + ((code - 0xD800) << 10)
+                                            + (lo - 0xDC00);
+                                        if let Some(ch) = char::from_u32(scalar) {
+                                            out.push(ch);
+                                        }
+                                        chars = lookahead; // consume the low half
+                                    }
+                                }
+                            }
+                        }
+                        // Lone low surrogate or any non-scalar: skip. Valid
+                        // scalars get pushed.
+                        _ => {
+                            if let Some(ch) = char::from_u32(code) {
+                                out.push(ch);
+                            }
+                        }
+                    }
+                }
+                Some(other) => out.push(other),
+            },
+            c => out.push(c),
+        }
+    }
+    Some(out)
+}
+
+/// Resolves the user-visible portion of a streaming buffer:
+///
+/// - Buffer starts with a JSON wrapper (autofix): extract the `explanation`
+///   field so the user sees flowing markdown rather than raw JSON syntax.
+///   fix actions lack this field and yield None — the card surfaces on
+///   finalize.
+/// - Buffer is mixed prose followed by a fenced JSON block (planner
+///   terminal-task mode): render only the prose prefix; the recommendation
+///   card replaces it on eager/end-of-turn finalize.
+/// - Pure prose: stream as-is.
+///
+/// Callers outside the render path (e.g. turn-cancel / ignore commits) use
+/// this to record exactly what the user saw during streaming, instead of the
+/// raw buffer (which may contain JSON the UI deliberately hid).
 pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
-    if text.trim().is_empty() {
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
         return None;
+    }
+    if trimmed.starts_with("```") || trimmed.starts_with('{') {
+        return extract_json_string_field(text, "explanation")
+            .filter(|s| !s.is_empty())
+            .map(Cow::Owned);
+    }
+    if let Some(fence_pos) = text.find("```") {
+        let prose = text[..fence_pos].trim_end();
+        return if prose.is_empty() {
+            None
+        } else {
+            Some(Cow::Borrowed(prose))
+        };
     }
     Some(Cow::Borrowed(text))
 }
@@ -553,6 +671,90 @@ mod tests {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
+    // ── extract_json_string_field: escape decoding ──────────────────────────
+
+    #[test]
+    fn json_field_basic_value() {
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"hello"}"#, "explanation")
+                .as_deref(),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn json_field_decodes_escapes() {
+        // \" \\ \/ \n \r \t all per RFC 8259.
+        let raw = r#"{"explanation":"a\"b\\c\/d\ne\tf"}"#;
+        assert_eq!(
+            extract_json_string_field(raw, "explanation").as_deref(),
+            Some("a\"b\\c/d\ne\tf")
+        );
+    }
+
+    #[test]
+    fn json_field_decodes_bmp_unicode_escape() {
+        // \u0041 = 'A', \u00e9 = 'é'
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"\u0041\u00e9"}"#, "explanation")
+                .as_deref(),
+            Some("Aé")
+        );
+    }
+
+    #[test]
+    fn json_field_tolerates_whitespace_around_colon() {
+        assert_eq!(
+            extract_json_string_field("{ \"explanation\" : \"v\" }", "explanation")
+                .as_deref(),
+            Some("v")
+        );
+    }
+
+    #[test]
+    fn json_field_returns_partial_when_unterminated() {
+        // Streaming: the closing quote hasn't arrived yet — show what we have.
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"hello world"#, "explanation")
+                .as_deref(),
+            Some("hello world")
+        );
+    }
+
+    #[test]
+    fn json_field_absent_returns_none() {
+        assert_eq!(
+            extract_json_string_field(r#"{"command":"ls"}"#, "explanation"),
+            None
+        );
+    }
+
+    // ── extract_json_string_field: ADVERSARIAL (expected to expose gaps) ─────
+
+    /// A non-BMP character (emoji) encoded as a UTF-16 surrogate pair must
+    /// decode to the actual character. Agents routinely emit emoji in prose.
+    #[test]
+    fn json_field_decodes_surrogate_pair_emoji() {
+        // U+1F600 😀 = \uD83D\uDE00 in UTF-16.
+        assert_eq!(
+            extract_json_string_field(r#"{"explanation":"\uD83D\uDE00"}"#, "explanation")
+                .as_deref(),
+            Some("😀")
+        );
+    }
+
+    /// When the field name also appears earlier as a *value*, extraction must
+    /// still find the real key=value pair, not give up at the first textual
+    /// match.
+    #[test]
+    fn json_field_skips_name_appearing_as_value() {
+        let raw = r#"{"kind":"explanation","explanation":"real"}"#;
+        assert_eq!(
+            extract_json_string_field(raw, "explanation").as_deref(),
+            Some("real")
+        );
+    }
+
     // ── user_visible_stream_text ────────────────────────────────────────────
 
     #[test]
@@ -564,17 +766,26 @@ mod tests {
     }
 
     #[test]
-    fn stream_text_json_is_visible_markdown() {
+    fn stream_text_json_wrapper_extracts_explanation() {
         assert_eq!(
             user_visible_stream_text(r#"{"explanation":"why blue"}"#).as_deref(),
-            Some(r#"{"explanation":"why blue"}"#)
+            Some("why blue")
         );
     }
 
     #[test]
-    fn stream_text_fenced_json_is_visible_markdown() {
+    fn stream_text_json_without_explanation_is_hidden() {
+        // A fix-action wrapper (no explanation) must not leak raw JSON.
+        assert_eq!(user_visible_stream_text(r#"{"command":"ls"}"#), None);
+    }
+
+    #[test]
+    fn stream_text_prose_then_fence_shows_prose_prefix_only() {
         let buf = "Here is the plan.\n```json\n{\"choices\":[]}\n```";
-        assert_eq!(user_visible_stream_text(buf).as_deref(), Some(buf));
+        assert_eq!(
+            user_visible_stream_text(buf).as_deref(),
+            Some("Here is the plan.")
+        );
     }
 
     #[test]
@@ -585,19 +796,18 @@ mod tests {
     // ── is_reveal_catching_up ────────────────────────────────────────────────
 
     fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
-        crate::app::TabSession {
-            turn: crate::app::TurnState::Streaming {
-                prompt: crate::app::SubmittedPrompt {
-                    id: 1,
-                    text: "hi".into(),
-                    submitted_at_unix_s: 0.0,
-                    autofix: None,
-                },
-                buf: buf.to_string(),
+        let mut tab = crate::app::TabSession::default();
+        tab.turn = crate::app::TurnState::Streaming {
+            prompt: crate::app::SubmittedPrompt {
+                id: 1,
+                text: "hi".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
             },
-            reveal_chars,
-            ..Default::default()
-        }
+            buf: buf.to_string(),
+        };
+        tab.reveal_chars = reveal_chars;
+        tab
     }
 
     #[test]

@@ -472,6 +472,23 @@ pub fn is_cli_available(bare_name: &str) -> bool {
     false
 }
 
+// ─── Delegate Agent Helpers ──────────────────────────────────────────────────
+
+/// List all agents that can serve as delegates (all known agents).
+pub fn supported_delegate_agents() -> Vec<crate::coordinator::SupportedDelegateAgent> {
+    KNOWN_AGENTS
+        .iter()
+        .map(|p| crate::coordinator::SupportedDelegateAgent {
+            id: p.id.to_string(),
+            name: p.display_name.to_string(),
+            description: format!(
+                "Launches `{}` in a new terminal target with a self-contained startup task prompt.",
+                p.id
+            ),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
