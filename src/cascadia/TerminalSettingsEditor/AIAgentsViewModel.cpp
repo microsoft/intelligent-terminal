@@ -458,21 +458,28 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                         provider.Id(),
                         model.Id());
                     const auto location = ::Microsoft::Terminal::CustomModels::ResolvedLocation(provider);
-                    const auto modelName = model.Name().empty() ? model.Id() : model.Name();
                     bool alreadyPresent = false;
-                    for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
+                    for (uint32_t i = _acpModelList.Size(); i > 0; --i)
                     {
-                        if (_acpModelList.GetAt(i).Id() == id)
+                        const auto existingId = _acpModelList.GetAt(i - 1).Id();
+                        if (existingId == id)
                         {
                             alreadyPresent = true;
                             break;
+                        }
+                        if (existingId == model.Id())
+                        {
+                            // A BYOK-configured agent may advertise the injected
+                            // model as if it were a native model. Keep the BYOK
+                            // entry so selecting it retains the provider metadata.
+                            _acpModelList.RemoveAt(i - 1);
                         }
                     }
                     if (alreadyPresent)
                     {
                         continue;
                     }
-                    const auto displayName = modelName + L" - " + provider.Name() + L" (" + location + L")";
+                    const auto displayName = model.Id() + L" (BYOK)";
                     const auto description = provider.Name() + L" | " + location + L" | OpenAI-compatible";
                     _acpModelList.Append(winrt::make<AcpModelEntry>(
                         id,
