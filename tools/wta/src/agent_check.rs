@@ -13,6 +13,8 @@
 use crate::agent_registry;
 
 const WSL_AGENT_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 // ─── Data types ─────────────────────────────────────────────────────────────
 
@@ -91,6 +93,13 @@ pub async fn find_wsl_exe(distro: &str, executable: &str) -> Option<String> {
         .arg(wsl_agent_probe_script(executable))
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
+    // The probe runs from the interactive wta-helper. If wsl.exe attaches to
+    // that ConPTY it changes the console input mode on exit, after which
+    // crossterm receives arrow CSI sequences as literal '[' / 'B' characters
+    // and the entire agent-pane input appears frozen. Keep the probe off the
+    // helper's console; stdout/stderr are already captured through pipes.
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
 
     let output = match tokio::time::timeout(WSL_AGENT_PROBE_TIMEOUT, cmd.output()).await {
         Ok(Ok(output)) => output,
