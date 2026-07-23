@@ -2706,6 +2706,8 @@ async fn run_acp_tui_mode(
     .await;
 
     disable_raw_mode()?;
+    // WT does not implement xterm private-mode save/restore (`?1007s`/`?1007r`).
+    // Agent panes start with alternate-scroll enabled, so restore that known state.
     write!(terminal.backend_mut(), "\x1b[?1007h")?;
     execute!(
         terminal.backend_mut(),
