@@ -51,7 +51,7 @@ use crossterm::{
 };
 use ratatui::prelude::*;
 use serde_json::json;
-use std::io;
+use std::io::{self, Write};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -2676,14 +2676,12 @@ async fn run_acp_tui_mode(
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    // NOTE: We intentionally do NOT call EnableMouseCapture. Without mouse
-    // tracking, the host terminal emulator (Windows Terminal, xterm, kitty,
-    // alacritty, wezterm) translates mouse-wheel events into Up/Down arrow
-    // keystrokes while we are in the alternate screen buffer. That gives us
-    // wheel-driven chat scrolling for free, and — crucially — leaves native
-    // click-drag text selection working so users can highlight and copy
-    // from the agent pane the way they would from any other terminal.
+    // Keep mouse capture off so native click-drag selection continues to work.
+    // Disable xterm alternate-scroll mode while the TUI is active so wheel
+    // events are not translated into the Up/Down keys used by input history.
     execute!(stdout, EnterAlternateScreen)?;
+    write!(stdout, "\x1b[?1007l")?;
+    stdout.flush()?;
     // Deliberately do NOT emit `OSC 11` to force a background color: the pane
     // must inherit the profile's color scheme background so it tracks the
     // user's theme like any other pane (#234). Cells render on the terminal's
@@ -2708,6 +2706,7 @@ async fn run_acp_tui_mode(
     .await;
 
     disable_raw_mode()?;
+    write!(terminal.backend_mut(), "\x1b[?1007h")?;
     execute!(
         terminal.backend_mut(),
         SetCursorStyle::DefaultUserShape,

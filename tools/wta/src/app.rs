@@ -67,6 +67,8 @@ pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, Tu
 const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
     crate::agent_sessions::OriginFilter::ShellOnly;
 
+const INPUT_HISTORY_MAX_ENTRIES: usize = 50;
+
 /// Resolve the `/sessions` origin filter for this process.
 ///
 /// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
@@ -1496,6 +1498,7 @@ pub struct TabSession {
     // cursor, and slash-command popup across switches.
     pub input: String,
     pub cursor_pos: usize,
+    input_history: InputHistory,
     /// Images captured from the clipboard via Alt+V, waiting to be sent with
     /// the next prompt. Rendered as `[image #N]` chips above the input; drained
     /// into the `PromptSubmission` on Enter and cleared after submit, and on
@@ -1578,6 +1581,13 @@ pub struct TabSession {
     // sends `{view:sessions, pane_open:true}`, but the view switch (and thus
     // our snapshot) runs while `pane_open` still holds the old `false`.
     pub agents_view_prev_pane_open: Option<bool>,
+}
+
+#[derive(Default)]
+struct InputHistory {
+    entries: VecDeque<String>,
+    selected: Option<usize>,
+    draft: Option<(String, usize)>,
 }
 
 impl TabSession {
@@ -1799,12 +1809,14 @@ impl TabSession {
     }
 
     pub fn clear_input(&mut self) {
+        self.reset_input_history_navigation();
         self.input.clear();
         self.cursor_pos = 0;
         self.refresh_command_popup();
     }
 
     pub fn insert_input_char(&mut self, ch: char) {
+        self.reset_input_history_navigation();
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert(self.cursor_pos, ch);
         self.cursor_pos += ch.len_utf8();
@@ -1815,6 +1827,7 @@ impl TabSession {
         if text.is_empty() {
             return;
         }
+        self.reset_input_history_navigation();
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert_str(self.cursor_pos, text);
         self.cursor_pos += text.len();
@@ -1827,6 +1840,7 @@ impl TabSession {
             return;
         }
 
+        self.reset_input_history_navigation();
         let previous = prev_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(previous..self.cursor_pos, "");
         self.cursor_pos = previous;
@@ -1838,6 +1852,7 @@ impl TabSession {
         if self.cursor_pos == 0 {
             return;
         }
+        self.reset_input_history_navigation();
         let word_start = prev_word_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(word_start..self.cursor_pos, "");
         self.cursor_pos = word_start;
@@ -1850,6 +1865,7 @@ impl TabSession {
             return;
         }
 
+        self.reset_input_history_navigation();
         let next = next_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(self.cursor_pos..next, "");
         self.refresh_command_popup();
@@ -1877,6 +1893,73 @@ impl TabSession {
 
     pub fn move_cursor_end(&mut self) {
         self.cursor_pos = self.input.len();
+    }
+
+    fn record_input_history(&mut self, input: &str) {
+        self.reset_input_history_navigation();
+        if input.is_empty() {
+            return;
+        }
+        if let Some(index) = self.input_history.entries.iter().position(|entry| entry == input) {
+            self.input_history.entries.remove(index);
+        }
+        self.input_history.entries.push_front(input.to_string());
+        self.input_history.entries.truncate(INPUT_HISTORY_MAX_ENTRIES);
+    }
+
+    fn input_history_is_browsing(&self) -> bool {
+        self.input_history.selected.is_some()
+    }
+
+    fn has_input_history(&self) -> bool {
+        !self.input_history.entries.is_empty()
+    }
+
+    fn navigate_input_history_older(&mut self) {
+        if self.input_history.entries.is_empty() {
+            return;
+        }
+        let index = match self.input_history.selected {
+            Some(index) => (index + 1).min(self.input_history.entries.len() - 1),
+            None => {
+                self.input_history.draft = Some((self.input.clone(), self.cursor_pos));
+                0
+            }
+        };
+        self.input_history.selected = Some(index);
+        self.input = self.input_history.entries[index].clone();
+        self.cursor_pos = self.input.len();
+        self.command_popup_candidates.clear();
+        self.move_position_candidates.clear();
+        self.command_popup_selected = 0;
+    }
+
+    fn navigate_input_history_newer(&mut self) {
+        let Some(index) = self.input_history.selected else {
+            return;
+        };
+        if index == 0 {
+            let (draft, cursor_pos) = self.input_history.draft.take().unwrap_or_default();
+            self.input = draft;
+            self.cursor_pos = clamp_cursor_to_boundary(&self.input, cursor_pos);
+            self.input_history.selected = None;
+        } else {
+            let next = index - 1;
+            self.input_history.selected = Some(next);
+            self.input = self.input_history.entries[next].clone();
+            self.cursor_pos = self.input.len();
+            self.command_popup_candidates.clear();
+            self.move_position_candidates.clear();
+            self.command_popup_selected = 0;
+        }
+        if self.input_history.selected.is_none() {
+            self.refresh_command_popup();
+        }
+    }
+
+    fn reset_input_history_navigation(&mut self) {
+        self.input_history.selected = None;
+        self.input_history.draft = None;
     }
 
     /// Recompute the slash-command popup candidates from the current
@@ -1942,6 +2025,7 @@ impl TabSession {
     /// name) and reset the cursor to the end. Triggered by Tab when the
     /// popup is visible.
     pub fn accept_command_popup_completion(&mut self) {
+        self.reset_input_history_navigation();
         if let Some(position) = self.selected_move_position() {
             self.input = format!("/move {}", position.name);
             self.cursor_pos = self.input.len();
@@ -7217,28 +7301,6 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            // Wheel-as-arrow scroll fallback: when the input is empty and no
-            // recommendation card is active, ↑/↓ scroll the chat transcript.
-            // The host terminal (WT, xterm, kitty, …) translates a mouse-wheel
-            // notch into ~3 arrow keystrokes when mouse capture is OFF and the
-            // app is in the alt-screen buffer, so by(1)/by(-1) per key matches
-            // one wheel notch ≈ 3 lines, in line with the previous explicit
-            // MouseScroll handler. Convention here mirrors PgUp/PgDn below:
-            // positive delta = scroll up (toward older content).
-            KeyCode::Up
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_none()
-                    && !self.command_popup_visible() =>
-            {
-                self.current_tab_mut().chat_scroll.by(1);
-            }
-            KeyCode::Down
-                if self.current_tab().input.is_empty()
-                    && self.current_tab().turn.recommendations().is_none()
-                    && !self.command_popup_visible() =>
-            {
-                self.current_tab_mut().chat_scroll.by(-1);
-            }
             KeyCode::Right | KeyCode::Tab
                 if self.current_tab().turn.recommendations().is_some() =>
             {
@@ -7268,6 +7330,12 @@ impl App {
                 // Esc clears the past-turn selection without any other side
                 // effect. Lets the user back out of the history nav cleanly.
                 self.current_tab_mut().selected_completed_turn_idx = None;
+            }
+            KeyCode::Up if self.current_tab().selected_completed_turn_idx.is_some() => {
+                self.current_tab_mut().select_older_completed_turn();
+            }
+            KeyCode::Down if self.current_tab().selected_completed_turn_idx.is_some() => {
+                self.current_tab_mut().select_newer_completed_turn();
             }
             KeyCode::Left | KeyCode::BackTab
                 if self.current_tab().turn.recommendations().is_some() =>
@@ -7412,6 +7480,24 @@ impl App {
             KeyCode::Tab if self.command_popup_visible() => {
                 self.current_tab_mut().accept_command_popup_completion();
             }
+            KeyCode::Up
+                if self.current_tab().input_has_nav_focus()
+                    && self.current_tab().input_history_is_browsing() =>
+            {
+                self.current_tab_mut().navigate_input_history_older();
+            }
+            KeyCode::Down
+                if self.current_tab().input_has_nav_focus()
+                    && self.current_tab().input_history_is_browsing() =>
+            {
+                self.current_tab_mut().navigate_input_history_newer();
+            }
+            KeyCode::Up
+                if self.current_tab().input_has_nav_focus()
+                    && self.current_tab().has_input_history() =>
+            {
+                self.current_tab_mut().navigate_input_history_older();
+            }
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 // Input editing only acts when the input is the live caret
                 // target. While a recommendation/permission card or a past
@@ -7492,6 +7578,7 @@ impl App {
                     }
                     let tab = self.current_tab_mut();
                     let text = std::mem::take(&mut tab.input);
+                    tab.record_input_history(&text);
                     // Drain any Alt+V images queued for this prompt.
                     let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
@@ -16816,73 +16903,169 @@ mod tests {
         );
     }
 
-    // ─── Up/Down chat-scroll fallback ──────────────────────────────────
-    //
-    // After dropping crossterm mouse capture (so users can drag-select &
-    // copy text in the agent pane), wheel scrolling relies on the host
-    // terminal translating wheel notches into Up/Down arrow keystrokes
-    // while in the alt-screen buffer. The fallback in `handle_key`
-    // forwards those arrows to `chat_scroll.by(±1)` ONLY when none of
-    // the existing arrow-key consumers is active:
-    //   * input box is empty
-    //   * no recommendation card is shown
-    //   * slash-command popup is not visible
-    // These tests pin down each branch.
+    // ─── Per-tab input history ──────────────────────────────────────────
 
     #[test]
-    fn up_arrow_scrolls_chat_when_input_empty_no_recs_no_popup() {
+    fn input_history_navigates_newest_first_and_restores_draft() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
-        // Fresh chat tab — Idle turn, empty input, no popup candidates.
+        let tab = app.current_tab_mut();
+        tab.record_input_history("older");
+        tab.record_input_history("newer");
+        tab.input = "draft".into();
+        tab.cursor_pos = 2;
+
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "newer");
+        assert_eq!(app.current_tab().cursor_pos, "newer".len());
+
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "older");
+
+        // The oldest boundary clamps instead of wrapping.
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "older");
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "newer");
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "draft");
+        assert_eq!(app.current_tab().cursor_pos, 2);
+        assert!(!app.current_tab().input_history_is_browsing());
+    }
+
+    #[test]
+    fn message_list_focus_routes_arrows_to_completed_turn_selection() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tab = app.current_tab_mut();
+        tab.record_input_history("historical prompt");
+        tab.completed_turns.push(CompletedTurn {
+            prompt: "older prompt".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        tab.completed_turns.push(CompletedTurn {
+            prompt: "newer prompt".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+        tab.selected_completed_turn_idx = Some(1);
+
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_completed_turn_idx, Some(0));
         assert!(app.current_tab().input.is_empty());
-        assert!(app.current_tab().turn.recommendations().is_none());
-        assert!(!app.command_popup_visible());
-        assert_eq!(app.current_tab().chat_scroll.offset, 0);
+        assert!(!app.current_tab().input_history_is_browsing());
 
-        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(
-            app.current_tab().chat_scroll.offset,
-            1,
-            "↑ on empty input should scroll chat up by one line",
-        );
-        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(app.current_tab().chat_scroll.offset, 2);
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().selected_completed_turn_idx, Some(1));
+        assert!(app.current_tab().input.is_empty());
+        assert!(!app.current_tab().input_history_is_browsing());
     }
 
     #[test]
-    fn down_arrow_scrolls_chat_when_input_empty_no_recs_no_popup() {
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        let mut app = test_app();
-        // Prime scroll offset so Down has somewhere to go (saturating sub
-        // would otherwise leave it at 0 and the assert couldn't tell the
-        // arm from a no-op).
-        app.current_tab_mut().chat_scroll.offset = 5;
+    fn input_history_deduplicates_and_caps_at_fifty() {
+        let mut tab = TabSession::default();
+        for index in 0..55 {
+            tab.record_input_history(&format!("prompt-{index}"));
+        }
+        assert_eq!(tab.input_history.entries.len(), INPUT_HISTORY_MAX_ENTRIES);
+        assert_eq!(tab.input_history.entries.front().unwrap(), "prompt-54");
+        assert_eq!(tab.input_history.entries.back().unwrap(), "prompt-5");
 
-        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        tab.record_input_history("prompt-20");
+        assert_eq!(tab.input_history.entries.len(), INPUT_HISTORY_MAX_ENTRIES);
+        assert_eq!(tab.input_history.entries.front().unwrap(), "prompt-20");
         assert_eq!(
-            app.current_tab().chat_scroll.offset,
-            4,
-            "↓ on empty input should scroll chat down by one line",
+            tab.input_history
+                .entries
+                .iter()
+                .filter(|entry| entry.as_str() == "prompt-20")
+                .count(),
+            1
         );
     }
 
     #[test]
-    fn up_down_does_not_scroll_chat_when_input_non_empty() {
+    fn editing_recalled_input_detaches_without_overwriting_history() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
-        // Non-empty input: arrows belong to the input-box editor, not
-        // the chat-scroll fallback.
-        app.current_tab_mut().input.push_str("hi");
-        app.current_tab_mut().cursor_pos = 2;
-        app.current_tab_mut().chat_scroll.offset = 3;
+        app.current_tab_mut().record_input_history("original");
 
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('!'), KeyModifiers::NONE));
+        assert_eq!(app.current_tab().input, "original!");
+        assert!(!app.current_tab().input_history_is_browsing());
+        assert_eq!(app.current_tab().input_history.entries[0], "original");
+
+        // Down is a no-op after editing; the edited buffer is now the live draft.
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(
-            app.current_tab().chat_scroll.offset,
-            3,
-            "non-empty input must NOT trigger the chat-scroll fallback",
+        assert_eq!(app.current_tab().input, "original!");
+
+        app.current_tab_mut().record_input_history("original!");
+        assert_eq!(app.current_tab().input_history.entries[0], "original!");
+        assert_eq!(app.current_tab().input_history.entries[1], "original");
+    }
+
+    #[test]
+    fn input_history_preserves_multiline_entries_atomically() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_tab_mut()
+            .record_input_history("first line\nsecond line");
+
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+
+        assert_eq!(app.current_tab().input, "first line\nsecond line");
+        assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
+    }
+
+    #[test]
+    fn submitting_prompt_records_only_that_tab_history() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.tab_sessions
+            .insert("another-tab".into(), TabSession::default());
+        app.state = ConnectionState::Connected;
+        app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+        app.current_tab_mut().input = "remember me".into();
+        app.current_tab_mut().cursor_pos = "remember me".len();
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.current_tab().input.is_empty());
+        assert_eq!(app.current_tab().input_history.entries[0], "remember me");
+        assert!(
+            app.tab_sessions
+                .get("another-tab")
+                .is_some_and(|tab| tab.input_history.entries.is_empty())
         );
+    }
+
+    #[test]
+    fn clearing_chat_keeps_input_history_for_the_tab() {
+        let mut tab = TabSession::default();
+        tab.record_input_history("keep me");
+
+        tab.clear_chat_history();
+
+        assert_eq!(tab.input_history.entries[0], "keep me");
+    }
+
+    #[test]
+    fn local_slash_command_is_not_recorded_in_input_history() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.current_tab_mut().input = "/help".into();
+        app.current_tab_mut().cursor_pos = "/help".len();
+        app.current_tab_mut().refresh_command_popup();
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.help_overlay_visible);
+        assert!(app.current_tab().input_history.entries.is_empty());
     }
 
     #[test]
@@ -16979,7 +17162,7 @@ mod tests {
         assert_eq!(
             app.current_tab().selected_completed_turn_idx,
             Some(0),
-            "selection must survive the keystroke so Tab/↑ history nav keeps working",
+            "selection must survive the keystroke so Tab/Shift+Tab navigation keeps working",
         );
     }
 
@@ -17003,11 +17186,10 @@ mod tests {
     }
 
     #[test]
-    fn up_down_does_not_scroll_chat_when_command_popup_visible() {
+    fn command_popup_keeps_arrow_priority_over_input_history() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
-        // Open the slash-command popup the same way real input would:
-        // type "/" and let refresh_command_popup populate candidates.
+        app.current_tab_mut().record_input_history("historical prompt");
         app.current_tab_mut().input.push('/');
         app.current_tab_mut().cursor_pos = 1;
         app.current_tab_mut().refresh_command_popup();
@@ -17015,31 +17197,17 @@ mod tests {
             app.command_popup_visible(),
             "test prerequisite: command popup must be visible after typing '/'",
         );
-        // Force-clear input WITHOUT calling refresh_command_popup so the
-        // candidates list stays populated while input becomes empty. This
-        // isolates the !command_popup_visible() guard as the one being
-        // tested — without this step, the input-empty guard would
-        // independently suppress the fallback and the assertion below
-        // could not tell which guard fired.
-        app.current_tab_mut().input.clear();
-        app.current_tab_mut().cursor_pos = 0;
-        assert!(
-            app.current_tab().input.is_empty(),
-            "test prerequisite: input must be empty so only the popup guard is exercised",
-        );
-        assert!(
-            app.command_popup_visible(),
-            "test prerequisite: popup must remain visible after clearing input",
-        );
-        app.current_tab_mut().chat_scroll.offset = 7;
+        assert!(app.current_tab().command_popup_candidates.len() > 1);
+        app.current_tab_mut().command_popup_selected = 1;
 
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.current_tab().command_popup_selected, 0);
+        assert_eq!(app.current_tab().input, "/");
+        assert!(!app.current_tab().input_history_is_browsing());
+
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(
-            app.current_tab().chat_scroll.offset,
-            7,
-            "command popup visibility must suppress the chat-scroll fallback",
-        );
+        assert_eq!(app.current_tab().command_popup_selected, 1);
+        assert_eq!(app.current_tab().input, "/");
     }
 
     // ─── compute_chip_card_target ───────────────────────────────────────────
