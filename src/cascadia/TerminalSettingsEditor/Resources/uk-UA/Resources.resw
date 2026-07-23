@@ -1254,16 +1254,12 @@
     <comment>A description for what the supplementary "Hide icon" setting does. Presented near "Profile_HideIconCheckbox".</comment>
   </data>
   <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
-    <value>Серверна частина панелі агента</value>
+    <value>Агент для панелі агента</value>
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Використовуйте глобальний агент Windows або агент, інстальований у середовищі цього профілю. Якщо агент у середовищі не вдається запустити, використовується глобальний агент Windows.</value>
-    <comment>{Locked="Windows"} Description for the per-profile AI agent backend setting.</comment>
-  </data>
-  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
-    <value>Використовувати глобальний агент — {0} · Windows</value>
-    <comment>{Locked="Windows","{0}"} The global agent display name replaces {0}.</comment>
+    <value>Виберіть сумісного з ACP агента, який використовуватиметься на панелі агента. Для цього профілю цей вибір має пріоритет над глобальним вибором агента для панелі.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>

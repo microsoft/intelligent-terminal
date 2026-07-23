@@ -1901,6 +1901,7 @@ namespace winrt::TerminalApp::implementation
         else if (const auto profile = tab->GetFocusedProfile())
         {
             const auto configured = std::wstring_view{ profile.AgentPaneBackend() };
+            hasProfileBackend = !configured.empty();
             if (const auto backend = ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Parse(configured))
             {
                 effectiveAgentId = winrt::hstring{ backend->agentId };
@@ -1909,23 +1910,32 @@ namespace winrt::TerminalApp::implementation
                                            winrt::hstring{ L"wsl" } :
                                            winrt::hstring{ L"host" };
                 effectiveAgentWslDistro = winrt::hstring{ backend->wslDistro };
-                agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, {});
-                hasProfileBackend = !agentCliPath.empty();
-                if (hasProfileBackend && backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
+                namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+                const auto allowedAgents = Registry::FilteredAcpAgents();
+                const auto knownAndAllowed = std::any_of(
+                    allowedAgents.begin(),
+                    allowedAgents.end(),
+                    [&](const auto& agent) {
+                        return agent.id == std::wstring_view{ effectiveAgentId };
+                    });
+                if (knownAndAllowed)
+                {
+                    agentCliPath = _ResolveAgentCliPathForId(effectiveAgentId, effectiveModel, {});
+                }
+                if (backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
                 {
                     const auto shellName = tab->GetActiveTerminalControl().ShellName();
                     const auto expectedShell = winrt::hstring{ L"wsl:" + backend->wslDistro };
                     if (!shellName.empty() && shellName != expectedShell)
                     {
-                        _agentPaneLog("_AutoCreateHiddenAgentPaneShared: profile WSL backend does not match active shell; using global host agent");
+                        _agentPaneLog("_AutoCreateHiddenAgentPaneShared: profile WSL backend does not match active shell");
                         agentCliPath = {};
-                        hasProfileBackend = false;
                     }
                 }
             }
-            else if (!configured.empty())
+            else if (hasProfileBackend)
             {
-                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: invalid profile agentPaneBackend; using global host agent");
+                _agentPaneLog("_AutoCreateHiddenAgentPaneShared: invalid profile agentPaneBackend");
             }
         }
         // `_ResolveAgentCliPathForId` returns empty to signal "fall back"
@@ -1937,7 +1947,7 @@ namespace winrt::TerminalApp::implementation
         // to the global/default agent (the same resolution as the
         // no-override case). The GPO all-agents-blocked case is still caught
         // by the policy check below.
-        if ((!hasAgentOverride && !hasProfileBackend) || agentCliPath.empty())
+        if (!hasAgentOverride && !hasProfileBackend)
         {
             effectiveAgentId = globals.EffectiveAcpAgent();
             effectiveModel = globals.AcpModel();
@@ -1958,6 +1968,12 @@ namespace winrt::TerminalApp::implementation
             {
                 effectiveAgentId = _DetectAgentCli();
             }
+        }
+
+        if ((hasAgentOverride || hasProfileBackend) && agentCliPath.empty())
+        {
+            _agentPaneLog("_AutoCreateHiddenAgentPaneShared: explicit agent selection cannot be launched");
+            return false;
         }
 
         // GPO `AllowedAgents` enforcement — mirror the legacy path so a

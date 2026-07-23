@@ -3196,7 +3196,7 @@
           ]
         },
         "agentPaneBackend": {
-          "description": "Selects an optional profile-specific agent pane backend. An empty value uses the global Windows-hosted agent. WSL values identify an agent installed in the profile's own distro and fall back to the global agent when unavailable.",
+          "description": "Selects an optional profile-specific agent pane agent. An empty value uses the global Windows-hosted agent. WSL values identify an agent installed in the profile's own distro.",
           "type": [
             "string",
             "null"

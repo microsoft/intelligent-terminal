@@ -1238,16 +1238,12 @@
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
   <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
-    <value>Backend des Agentbereichs</value>
+    <value>Agent im Agentbereich</value>
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Verwenden Sie den globalen Windows-Agenten oder einen Agenten, der in der Umgebung dieses Profils installiert ist. Wenn ein Agent in dieser Umgebung nicht gestartet werden kann, wird der globale Windows-Agent verwendet.</value>
-    <comment>{Locked="Windows"} Description for the per-profile AI agent backend setting.</comment>
-  </data>
-  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
-    <value>Globalen Agenten verwenden — {0} · Windows</value>
-    <comment>{Locked="Windows","{0}"} The global agent display name replaces {0}.</comment>
+    <value>Wählen Sie den ACP-kompatiblen Agenten aus, der im Agentbereich verwendet wird. Für dieses Profil hat diese Auswahl Vorrang vor der globalen Auswahl für den Agentbereich.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>

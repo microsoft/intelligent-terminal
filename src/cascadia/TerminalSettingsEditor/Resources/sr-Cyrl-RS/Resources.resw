@@ -1338,16 +1338,12 @@
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
   <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
-    <value>Позадински систем панела агента</value>
+    <value>Агент за панел агента</value>
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Користите глобалног Windows агента или агента инсталираног у окружењу овог профила. Ако агент у окружењу не може да се покрене, користи се глобални Windows агент.</value>
-    <comment>{Locked="Windows"} Description for the per-profile AI agent backend setting.</comment>
-  </data>
-  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
-    <value>Користи глобалног агента — {0} · Windows</value>
-    <comment>{Locked="Windows","{0}"} The global agent display name replaces {0}.</comment>
+    <value>Изаберите агента компатибилног са ACP који ће се користити у панелу агента. За овај профил, овај избор има предност над глобалним избором агента за панел.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>

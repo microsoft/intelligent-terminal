@@ -62,12 +62,6 @@ pub struct WtaMeta {
     pub agent_source: Option<String>,
     /// WSL distribution paired with `agent_source=wsl`.
     pub wsl_distro: Option<String>,
-    /// Requested agent id when master fell back to its trusted host default.
-    pub fallback_agent_id: Option<String>,
-    /// Requested source when master fell back to its trusted host default.
-    pub fallback_agent_source: Option<String>,
-    /// Requested WSL distro when master fell back to its trusted host default.
-    pub fallback_wsl_distro: Option<String>,
     /// The WT tab StableId (`--owner-tab-id`) of the agent pane that
     /// owns this session. Carried so master can address per-tab events
     /// (notably `restart_agent_pane` on helper crash recovery) by the
@@ -95,9 +89,6 @@ impl WtaMeta {
             && blank(&self.model)
             && blank(&self.agent_source)
             && blank(&self.wsl_distro)
-            && blank(&self.fallback_agent_id)
-            && blank(&self.fallback_agent_source)
-            && blank(&self.fallback_wsl_distro)
             && blank(&self.owner_tab_id)
     }
 }
@@ -144,9 +135,6 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         model: str_field("model"),
         agent_source: str_field("agent_source"),
         wsl_distro: str_field("wsl_distro"),
-        fallback_agent_id: str_field("fallback_agent_id"),
-        fallback_agent_source: str_field("fallback_agent_source"),
-        fallback_wsl_distro: str_field("fallback_wsl_distro"),
         owner_tab_id: str_field("owner_tab_id"),
     }
 }
@@ -183,9 +171,6 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("model", &wta.model);
     put("agent_source", &wta.agent_source);
     put("wsl_distro", &wta.wsl_distro);
-    put("fallback_agent_id", &wta.fallback_agent_id);
-    put("fallback_agent_source", &wta.fallback_agent_source);
-    put("fallback_wsl_distro", &wta.fallback_wsl_distro);
     put("owner_tab_id", &wta.owner_tab_id);
     // Every field was absent/whitespace-only after filtering — nothing
     // meaningful to attach, so don't litter the wire with an empty
@@ -3339,9 +3324,6 @@ mod tests {
             model: Some("gemini-2.5-pro".to_string()),
             agent_source: Some("wsl".to_string()),
             wsl_distro: Some("Ubuntu".to_string()),
-            fallback_agent_id: Some("claude".to_string()),
-            fallback_agent_source: Some("wsl".to_string()),
-            fallback_wsl_distro: Some("Debian".to_string()),
             ..Default::default()
         };
         let mut meta: Option<acp::schema::v1::Meta> = None;
@@ -3391,11 +3373,7 @@ mod tests {
                 model: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
                 wsl_distro: Some("\t".to_string()),
-                fallback_agent_id: Some(" ".to_string()),
-                fallback_agent_source: Some("\t".to_string()),
-                fallback_wsl_distro: Some("\n".to_string()),
                 owner_tab_id: Some("\n".to_string()),
-                ..Default::default()
             },
         );
         assert!(meta.is_none(), "all-blank meta ⇒ no _meta.wta on the wire");
@@ -3432,11 +3410,7 @@ mod tests {
                 model: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
                 wsl_distro: Some("\t".to_string()),
-                fallback_agent_id: Some(" ".to_string()),
-                fallback_agent_source: Some("\t".to_string()),
-                fallback_wsl_distro: Some("\n".to_string()),
                 owner_tab_id: Some("\n".to_string()),
-                ..Default::default()
             }
             .is_empty(),
             "all-whitespace fields ⇒ empty"

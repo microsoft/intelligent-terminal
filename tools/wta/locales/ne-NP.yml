@@ -211,7 +211,6 @@ system.no_agents: "यस मेसिनमा कुनै पनि उपल
 system.agent_unknown: "अज्ञात वा अनुपलब्ध एजेन्ट %{agent} — उपलब्ध सूची हेर्न /agent टाइप गर्नुहोस्।"  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "विन्डोज टर्मिनल ट्याब बाहिर एजेन्ट स्विचिङ उपलब्ध छैन।"
-system.agent_source_fallback: "%{requested} · %{requested_source} उपलब्ध छैन। %{actual} · %{actual_source} प्रयोग गरिँदै छ।"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "यो पेनका लागि मोडेल छान्नुहोस् (सिधै बदल्न /model <id>)"  # {Locked="/model","<id>"}

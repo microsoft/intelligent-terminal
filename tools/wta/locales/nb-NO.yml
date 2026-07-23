@@ -210,7 +210,6 @@ system.no_agents: "Ingen tilgjengelig agent-CLI ble funnet på denne maskinen." 
 system.agent_unknown: "Ukjent eller utilgjengelig agent %{agent} — skriv /agent for å se den tilgjengelige listen."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agentskifting er ikke tilgjengelig utenfor en Windows Terminal-fane."
-system.agent_source_fallback: "%{requested} · %{requested_source} er ikke tilgjengelig. %{actual} · %{actual_source} brukes i stedet."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Velg modellen for dette panelet (/model <id> for å bytte direkte)"  # {Locked="/model","<id>"}

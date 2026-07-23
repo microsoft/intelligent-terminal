@@ -210,7 +210,6 @@ system.no_agents: "Walang nahanap na available na CLI ng agent sa machine na ito
 system.agent_unknown: "Hindi kilala o hindi available na agent %{agent} — i-type ang /agent para makita ang available na listahan."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas ng tab ng Windows Terminal."
-system.agent_source_fallback: "Hindi available ang %{requested} · %{requested_source}. Ginagamit ang %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}

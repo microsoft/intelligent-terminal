@@ -1104,19 +1104,6 @@ pub enum AppEvent {
         /// of silently sending an image the agent will reject.
         image_supported: bool,
     },
-    /// Backend master actually selected for this helper. Sent immediately
-    /// before `AgentConnected`; it may differ from the requested source after
-    /// master falls back to the global Windows agent.
-    AgentBackendResolved {
-        agent_id: Option<String>,
-        source: crate::agent_source::AgentSource,
-    },
-    AgentSourceFallbackNotice {
-        requested_agent_id: String,
-        requested_source: crate::agent_source::AgentSource,
-        actual_agent_id: Option<String>,
-        actual_source: crate::agent_source::AgentSource,
-    },
     /// A new ACP session has been created and bound to a tab. Carries the
     /// per-tab model list (each ACP session can advertise its own).
     SessionAttached {
@@ -2008,10 +1995,6 @@ pub struct App {
     auth_recovery_generation: u64,
     /// Agent ID selected by user (FRE/preflight) — sent to C++ once connected.
     pending_agent_selection: Option<String>,
-    /// Last source-fallback notice inserted before connection completes.
-    /// Excluded from the "real content" check so it does not suppress the
-    /// normal AI disclaimer on an otherwise-empty chat.
-    last_agent_source_fallback_notice: Option<String>,
     /// Show first-run welcome hint until user sends first message.
     pub show_welcome_hint: bool,
     deferred_acp: Option<DeferredAcpParams>,
@@ -2333,7 +2316,6 @@ impl App {
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
             pending_agent_selection: None,
-            last_agent_source_fallback_notice: None,
             show_welcome_hint: false,
             deferred_acp: None,
             state: ConnectionState::Connecting(t!("connection.starting").into_owned()),
@@ -4671,8 +4653,6 @@ impl App {
             AppEvent::ConnectionStage(_) => "connection_stage",
             AppEvent::ProgressStatus { .. } => "progress_status",
             AppEvent::AgentConnected { .. } => "agent_connected",
-            AppEvent::AgentBackendResolved { .. } => "agent_backend_resolved",
-            AppEvent::AgentSourceFallbackNotice { .. } => "agent_source_fallback_notice",
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
@@ -5104,20 +5084,13 @@ impl App {
                     .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
-                let fallback_notice = self.last_agent_source_fallback_notice.clone();
                 let tab = self.tab_mut(&bind_tab);
                 tab.session_id = Some(session_id);
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
                         .messages
                         .iter()
-                        .any(|message| match message {
-                            ChatMessage::Disclaimer => false,
-                            ChatMessage::System(text) => fallback_notice
-                                .as_ref()
-                                .is_none_or(|notice| notice != text),
-                            _ => true,
-                        });
+                        .any(|m| !matches!(m, ChatMessage::Disclaimer));
                 if !has_real_content
                     && !tab
                         .messages
@@ -5127,56 +5100,6 @@ impl App {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
                 self.publish_agent_status();
-            }
-            AppEvent::AgentBackendResolved { agent_id, source } => {
-                if let Some(agent_id) = agent_id {
-                    self.current_agent_id = agent_id;
-                }
-                self.shell_mgr.set_agent_source(source.clone());
-                if let Some(deferred) = self.deferred_acp.as_mut() {
-                    deferred.agent_source = source.clone();
-                    if matches!(source, crate::agent_source::AgentSource::Host) {
-                        deferred.source_cwd = None;
-                    }
-                }
-                if matches!(source, crate::agent_source::AgentSource::Host)
-                    && matches!(
-                        self.current_agent_source,
-                        crate::agent_source::AgentSource::Wsl { .. }
-                    )
-                {
-                    self.source_cwd = None;
-                }
-                self.current_agent_source = source;
-            }
-            AppEvent::AgentSourceFallbackNotice {
-                requested_agent_id,
-                requested_source,
-                actual_agent_id,
-                actual_source,
-            } => {
-                let requested =
-                    crate::agent_registry::lookup_profile_by_id(&requested_agent_id).display_name;
-                let actual_id = actual_agent_id.as_deref().unwrap_or(&self.current_agent_id);
-                let actual = if self.agent_name.is_empty() {
-                    crate::agent_registry::lookup_profile_by_id(actual_id)
-                        .display_name
-                        .to_string()
-                } else {
-                    self.agent_name.clone()
-                };
-                let message = t!(
-                    "system.agent_source_fallback",
-                    requested = requested,
-                    requested_source = requested_source.display_suffix(),
-                    actual = &actual,
-                    actual_source = actual_source.display_suffix(),
-                )
-                .into_owned();
-                self.last_agent_source_fallback_notice = Some(message.clone());
-                let tab = self.current_tab_mut();
-                tab.messages.push(ChatMessage::System(message));
-                tab.scroll_to_bottom();
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -10575,45 +10498,6 @@ mod tests {
             false,
             Arc::new(crate::shell::ShellManager::new()),
         )
-    }
-
-    #[test]
-    fn wsl_backend_fallback_updates_actual_source_and_surfaces_notice() {
-        let mut app = test_app();
-        app.current_agent_id = "claude".to_string();
-        app.current_agent_source = crate::agent_source::AgentSource::Wsl {
-            distro: "Ubuntu".to_string(),
-        };
-        app.agent_name = "GitHub Copilot".to_string();
-
-        app.handle_event(AppEvent::AgentBackendResolved {
-            agent_id: Some("copilot".to_string()),
-            source: crate::agent_source::AgentSource::Host,
-        });
-        app.handle_event(AppEvent::AgentSourceFallbackNotice {
-            requested_agent_id: "claude".to_string(),
-            requested_source: crate::agent_source::AgentSource::Wsl {
-                distro: "Ubuntu".to_string(),
-            },
-            actual_agent_id: Some("copilot".to_string()),
-            actual_source: crate::agent_source::AgentSource::Host,
-        });
-
-        assert_eq!(app.current_agent_id, "copilot");
-        assert_eq!(
-            app.current_agent_source,
-            crate::agent_source::AgentSource::Host
-        );
-        assert!(app.current_tab().messages.iter().any(|message| {
-            matches!(
-                message,
-                ChatMessage::System(text)
-                    if text.contains("Claude")
-                        && text.contains("Ubuntu")
-                        && text.contains("GitHub Copilot")
-                        && text.contains("Windows")
-            )
-        }));
     }
 
     fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {

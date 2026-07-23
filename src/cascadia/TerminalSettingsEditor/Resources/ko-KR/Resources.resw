@@ -1238,16 +1238,12 @@
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
   <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
-    <value>에이전트 창 백 엔드</value>
+    <value>에이전트 창에서 사용할 에이전트</value>
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>전역 Windows 에이전트 또는 이 프로필 환경에 설치된 에이전트를 사용합니다. 환경 내 에이전트를 시작할 수 없는 경우 전역 Windows 에이전트를 사용합니다.</value>
-    <comment>{Locked="Windows"} Description for the per-profile AI agent backend setting.</comment>
-  </data>
-  <data name="Profile_AgentPaneBackend_GlobalFormat" xml:space="preserve">
-    <value>전역 에이전트 사용 — {0} · Windows</value>
-    <comment>{Locked="Windows","{0}"} The global agent display name replaces {0}.</comment>
+    <value>에이전트 창에서 사용할 ACP 지원 에이전트를 선택하세요. 이 프로필에서는 이 선택 항목이 전역 에이전트 창 선택 항목보다 우선합니다.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>

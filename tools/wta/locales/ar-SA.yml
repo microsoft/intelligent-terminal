@@ -212,7 +212,6 @@ system.no_agents: "لم يتم العثور على واجهة سطر أوامر 
 system.agent_unknown: "عامل غير معروف أو غير متوفر %{agent} — اكتب /agent لعرض القائمة المتاحة."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "تبديل عامل الذكاء الاصطناعي غير متاح خارج علامة تبويب Windows Terminal."
-system.agent_source_fallback: "%{requested} · %{requested_source} غير متوفر. يتم استخدام %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}

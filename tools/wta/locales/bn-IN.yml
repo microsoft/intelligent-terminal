@@ -213,7 +213,6 @@ system.no_agents: "এই মেশিনে কোনো উপলব্ধ এ
 system.agent_unknown: "অজানা বা অনুপলব্ধ এজেন্ট %{agent} — উপলব্ধ তালিকা দেখতে /agent টাইপ করুন।"  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "উইন্ডোজ টার্মিনাল ট্যাবের বাইরে এজেন্ট স্যুইচিং উপলব্ধ নেই।"
-system.agent_source_fallback: "%{requested} · %{requested_source} উপলভ্য নয়। %{actual} · %{actual_source} ব্যবহার করা হচ্ছে।"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনের জন্য মডেল নির্বাচন করুন (সরাসরি পরিবর্তন করতে /model <id>)"  # {Locked="/model","<id>"}

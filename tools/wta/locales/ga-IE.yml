@@ -209,7 +209,6 @@ system.no_agents: "Níor aimsíodh aon CLI gníomhaire ar fáil ar an meaisín s
 system.agent_unknown: "Gníomhaire anaithnid nó nach bhfuil ar fáil %{agent} — clóscríobh /agent chun an liosta atá ar fáil a fheiceáil."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Níl athrú gníomhaire ar fáil lasmuigh de chluaisín Windows Terminal."
-system.agent_source_fallback: "Níl %{requested} · %{requested_source} ar fáil. Tá %{actual} · %{actual_source} á úsáid."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Roghnaigh an samhail don phána seo (/model <id> chun athrú go díreach)"  # {Locked="/model","<id>"}

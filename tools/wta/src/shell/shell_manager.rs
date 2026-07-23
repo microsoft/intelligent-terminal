@@ -49,7 +49,7 @@ pub struct ShellManager {
     terminals: Mutex<HashMap<String, Terminal>>,
     next_id: Mutex<u64>,
     wt_channel: Option<Arc<dyn WtChannel>>,
-    agent_source: Mutex<crate::agent_source::AgentSource>,
+    agent_source: crate::agent_source::AgentSource,
 }
 
 impl ShellManager {
@@ -58,7 +58,7 @@ impl ShellManager {
             terminals: Mutex::new(HashMap::new()),
             next_id: Mutex::new(1),
             wt_channel: None,
-            agent_source: Mutex::new(crate::agent_source::AgentSource::Host),
+            agent_source: crate::agent_source::AgentSource::Host,
         }
     }
 
@@ -68,15 +68,8 @@ impl ShellManager {
     }
 
     pub fn with_agent_source(mut self, source: crate::agent_source::AgentSource) -> Self {
-        self.agent_source = Mutex::new(source);
+        self.agent_source = source;
         self
-    }
-
-    pub fn set_agent_source(&self, source: crate::agent_source::AgentSource) {
-        *self
-            .agent_source
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = source;
     }
 
     /// Whether a Windows Terminal channel is connected.
@@ -118,16 +111,11 @@ impl ShellManager {
     }
 
     fn prepare_terminal_config(&self, config: TerminalConfig) -> anyhow::Result<TerminalConfig> {
-        let source = self
-            .agent_source
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        let crate::agent_source::AgentSource::Wsl { distro } = source else {
+        let crate::agent_source::AgentSource::Wsl { distro } = &self.agent_source else {
             return Ok(config);
         };
 
-        let mut args = vec!["-d".to_string(), distro];
+        let mut args = vec!["-d".to_string(), distro.clone()];
         if let Some(cwd) = config.cwd.as_deref().filter(|cwd| !cwd.trim().is_empty()) {
             anyhow::ensure!(
                 cwd.starts_with('/'),
@@ -696,25 +684,4 @@ mod tests {
         assert!(error.to_string().contains("non-Linux terminal cwd"));
     }
 
-    #[test]
-    fn resolved_host_fallback_stops_wsl_wrapping() {
-        let manager = ShellManager::new().with_agent_source(
-            crate::agent_source::AgentSource::Wsl {
-                distro: "Ubuntu".to_string(),
-            },
-        );
-        manager.set_agent_source(crate::agent_source::AgentSource::Host);
-        let config = TerminalConfig {
-            command: "pwsh.exe".to_string(),
-            args: vec!["-NoLogo".to_string()],
-            cwd: Some(r"C:\src".to_string()),
-            env: Vec::new(),
-        };
-
-        let prepared = manager
-            .prepare_terminal_config(config)
-            .expect("host fallback config");
-        assert_eq!(prepared.command, "pwsh.exe");
-        assert_eq!(prepared.cwd.as_deref(), Some(r"C:\src"));
-    }
 }

@@ -205,7 +205,6 @@ system.no_agents: "이 컴퓨터에서 사용할 수 있는 에이전트 CLI를 
 system.agent_unknown: "알 수 없거나 사용할 수 없는 에이전트 %{agent} — 사용 가능한 목록을 보려면 /agent을 입력하세요."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Windows Terminal 탭 외부에서는 에이전트 전환을 사용할 수 없습니다."
-system.agent_source_fallback: "%{requested} · %{requested_source}은(는) 사용할 수 없습니다. %{actual} · %{actual_source}을(를) 사용합니다."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "이 창의 모델 선택 (/model <id>로 바로 전환)"  # {Locked="/model","<id>"}

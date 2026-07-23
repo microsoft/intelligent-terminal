@@ -213,7 +213,6 @@ system.no_agents: "এই মেচিনত কোনো উপলব্ধ এ
 system.agent_unknown: "অজ্ঞাত এজেণ্ট %{agent} — উপলব্ধ তালিকা চাবলৈ /agent টাইপ কৰক।"  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনেল টেবৰ বাহিৰত এজেণ্ট সলনি কৰা উপলব্ধ নহয়।"
-system.agent_source_fallback: "%{requested} · %{requested_source} উপলব্ধ নহয়। %{actual} · %{actual_source} ব্যৱহাৰ কৰা হৈছে।"
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}

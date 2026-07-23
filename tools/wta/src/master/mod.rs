@@ -979,93 +979,32 @@ impl HelperHandler {
             "resolving agent CLI for helper"
         );
 
-        // A profile/tab backend is opt-in. If it cannot start, reconnect the
-        // helper to the trusted global Windows agent so existing panes remain
-        // usable. Do not retry when the request already is the host default.
-        let requested_agent_id = agent_id.clone();
-        let requested_source = agent_source.clone();
-        let requested =
-            get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref(), &agent_source).await;
-        let (agent, fallback_used) = match requested {
-            Ok(agent) => (agent, false),
-            Err(requested_error)
-                if agent_source != crate::agent_source::AgentSource::Host
-                    || agent_cmd != self.state.default_agent_cmd =>
-            {
-                tracing::warn!(
-                    target: "master",
-                    op = "initialize",
-                    helper_id = ?self.helper_id,
-                    requested_agent_id = ?requested_agent_id,
-                    requested_agent_source = %requested_source,
-                    error = %requested_error,
-                    "profile/tab agent backend unavailable; falling back to trusted host default"
-                );
-                let host_source = crate::agent_source::AgentSource::Host;
-                let fallback = get_or_spawn_agent(
-                    &self.state,
-                    &self.state.default_agent_cmd,
-                    self.state.default_agent_id.as_deref(),
-                    &host_source,
-                )
-                .await
-                .map_err(|host_error| {
-                    tracing::error!(
-                        target: "master",
-                        op = "initialize",
-                        helper_id = ?self.helper_id,
-                        requested_error = %requested_error,
-                        host_error = %host_error,
-                        "requested backend and trusted host fallback both failed"
-                    );
-                    acp::Error::internal_error().data(serde_json::json!(format!(
-                        "requested agent unavailable ({requested_error}); host fallback unavailable ({host_error})"
-                    )))
-                })?;
-                (fallback, true)
-            }
-            Err(e) => {
-                tracing::error!(
-                    target: "master",
-                    op = "initialize",
-                    helper_id = ?self.helper_id,
-                    agent_cmd = %agent_cmd,
-                    error = %e,
-                    "failed to spawn/resolve agent CLI for helper"
-                );
-                return Err(acp::Error::internal_error()
-                    .data(serde_json::json!(format!("agent CLI unavailable: {e}"))));
-            }
-        };
+        let agent = get_or_spawn_agent(
+            &self.state,
+            &agent_cmd,
+            agent_id.as_deref(),
+            &agent_source,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                target: "master",
+                op = "initialize",
+                helper_id = ?self.helper_id,
+                agent_cmd = %agent_cmd,
+                error = %e,
+                "failed to spawn/resolve agent CLI for helper"
+            );
+            acp::Error::internal_error()
+                .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
+        })?;
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.
         let _ = self.agent.set(Arc::clone(&agent));
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar).
-        // Attach private metadata so the helper reports the backend master
-        // actually selected (especially after source fallback).
-        let mut response = agent.cached_init_resp.clone();
-        crate::session_registry::inject_wta_meta(
-            &mut response.meta,
-            &crate::session_registry::WtaMeta {
-                agent_id: if fallback_used {
-                    self.state.default_agent_id.clone()
-                } else {
-                    requested_agent_id.clone()
-                },
-                agent_source: Some(agent.source.kind().to_string()),
-                wsl_distro: agent.source.distro().map(str::to_string),
-                fallback_agent_id: fallback_used
-                    .then(|| requested_agent_id.unwrap_or_else(|| "unknown".to_string())),
-                fallback_agent_source: fallback_used.then(|| requested_source.kind().to_string()),
-                fallback_wsl_distro: fallback_used
-                    .then(|| requested_source.distro().map(str::to_string))
-                    .flatten(),
-                ..Default::default()
-            },
-        );
-        Ok(response)
+        Ok(agent.cached_init_resp.clone())
     }
 
     async fn authenticate(

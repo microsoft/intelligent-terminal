@@ -219,7 +219,6 @@ system.no_agents: "بۇ ماشىنىدىن ھېچقانداق ۋاكالەتچى
 system.agent_unknown: "نامەلۇم ياكى ئىشلەتكىلى بولمايدىغان ۋاكالەتچى %{agent} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /agent نى كىرگۈزۈڭ."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "ۋاكالەتچى ئالماشتۇرۇشنى Windows Terminal بېتىنىڭ سىرتىدا ئىشلەتكىلى بولمايدۇ."
-system.agent_source_fallback: "%{requested} · %{requested_source} نى ئىشلەتكىلى بولمايدۇ. %{actual} · %{actual_source} ئىشلىتىلىۋاتىدۇ."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "بۇ تاختا ئۈچۈن مودېل تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /model <id>)"  # {Locked="/model","<id>"}

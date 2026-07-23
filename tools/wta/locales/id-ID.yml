@@ -210,7 +210,6 @@ system.no_agents: "Tidak ada CLI agen yang tersedia ditemukan di mesin ini."  # 
 system.agent_unknown: "Agent tidak dikenal atau tidak tersedia %{agent} — ketik /agent untuk melihat daftar yang tersedia."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Peralihan agen tidak tersedia di luar tab Windows Terminal."
-system.agent_source_fallback: "%{requested} · %{requested_source} tidak tersedia. Menggunakan %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}

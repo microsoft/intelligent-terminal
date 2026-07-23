@@ -163,11 +163,10 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 | `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
 
 Profiles use the global Windows-hosted agent by default. In a profile's
-**General** settings, **Agent pane backend** can instead select an ACP agent
+**General** settings, **Agent pane agent** can instead select an ACP agent
 installed in that profile's WSL distro. The picker only lists the Windows host
-and that one distro. If the in-distro backend cannot start, the pane remains
-available through the global Windows agent and shows a non-blocking fallback
-notice.
+and that one distro. An explicit profile selection is strict: if that agent
+cannot start, the pane reports the failure without switching to another agent.
 
 ### Agent Management
 

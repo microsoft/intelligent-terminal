@@ -210,7 +210,6 @@ system.no_agents: "Бұл компьютерде қолжетімді агент
 system.agent_unknown: "Белгісіз немесе қолжетімсіз агент %{agent} — қолжетімді тізімді көру үшін /agent теріңіз."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Агентті ауыстыру Windows Terminal қойындысынан тыс жерде қолжетімді емес."
-system.agent_source_fallback: "%{requested} · %{requested_source} қолжетімді емес. Оның орнына %{actual} · %{actual_source} пайдаланылуда."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Осы панель үшін модельді таңдаңыз (тікелей ауыстыру үшін /model <id>)"  # {Locked="/model","<id>"}

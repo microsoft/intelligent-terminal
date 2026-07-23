@@ -212,7 +212,6 @@ system.no_agents: "Na tomto počítači nebyl nalezen žádný dostupný CLI age
 system.agent_unknown: "Neznámý nebo nedostupný agent %{agent} — zadáním /agent zobrazíte dostupný seznam."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Přepínání agentů není mimo kartu Windows Terminal k dispozici."
-system.agent_source_fallback: "%{requested} · %{requested_source} není k dispozici. Používá se %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Vyberte model pro tento panel (/model <id> pro přímé přepnutí)"  # {Locked="/model","<id>"}

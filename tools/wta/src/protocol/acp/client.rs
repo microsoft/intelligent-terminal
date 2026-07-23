@@ -2330,7 +2330,7 @@ pub async fn run_acp_client_over_pipe(
     let init_result =
         tokio::time::timeout(std::time::Duration::from_secs(60), init_future).await;
     log_acp_initialize_timeout_result("HelperPipe", init_started, &init_result);
-    let mut init_resp = init_result
+    let init_resp = init_result
         .map_err(|_| {
             tracing::error!(
                 target: "helper",
@@ -2364,37 +2364,6 @@ pub async fn run_acp_client_over_pipe(
         "Agent init response received (over pipe): {:?}",
         init_resp
     ));
-    let resolved_backend =
-        crate::session_registry::extract_wta_meta(&mut init_resp.meta);
-    let actual_source = crate::agent_source::AgentSource::from_wire(
-        resolved_backend.agent_source.as_deref(),
-        resolved_backend.wsl_distro.as_deref(),
-    );
-    shell_mgr.set_agent_source(actual_source.clone());
-    let fallback_source = resolved_backend
-        .fallback_agent_source
-        .as_deref()
-        .map(|kind| {
-            crate::agent_source::AgentSource::from_wire(
-                Some(kind),
-                resolved_backend.fallback_wsl_distro.as_deref(),
-            )
-        });
-    let _ = event_tx.send(AppEvent::AgentBackendResolved {
-        agent_id: resolved_backend.agent_id.clone(),
-        source: actual_source.clone(),
-    });
-    if let (Some(requested_agent_id), Some(requested_source)) = (
-        resolved_backend.fallback_agent_id.clone(),
-        fallback_source.clone(),
-    ) {
-        let _ = event_tx.send(AppEvent::AgentSourceFallbackNotice {
-            requested_agent_id,
-            requested_source,
-            actual_agent_id: resolved_backend.agent_id.clone(),
-            actual_source: actual_source.clone(),
-        });
-    }
 
     // ── Post-login authenticate ──────────────────────────────────────────
     // If this is a reconnect after LoginComplete (the user just completed
@@ -2534,7 +2503,7 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = match &actual_source {
+    let cwd = match &agent_source {
         crate::agent_source::AgentSource::Host => std::env::current_dir().unwrap_or_default(),
         crate::agent_source::AgentSource::Wsl { .. } => source_cwd
             .as_deref()

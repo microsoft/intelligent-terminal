@@ -210,7 +210,6 @@ system.no_agents: "Et gouf kee verfügbaren Agent-CLI op dësem Computer fonnt."
 system.agent_unknown: "Onbekannte Modell %{agent} — tippt /agent fir d'verfügbar Lëscht ze gesinn."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "D'Agenten-Umschalten ass ausserhalb vun engem Windows Terminal Tab net verfügbar."
-system.agent_source_fallback: "%{requested} · %{requested_source} ass net verfügbar. Amplaz gëtt %{actual} · %{actual_source} benotzt."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}

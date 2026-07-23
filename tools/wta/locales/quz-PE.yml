@@ -209,7 +209,6 @@ system.no_agents: "Manam ima agente CLI kaqpas tarikunchu kay computadorapi."  #
 system.agent_unknown: "Mana riqsisqa modelo %{agent} — akllana lista rikunaykipaq /agent qillqay."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Terminal pestaña hawapi."
-system.agent_source_fallback: "%{requested} · %{requested_source} manam kanchu. %{actual} · %{actual_source} nisqatam llamk'achkan."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}

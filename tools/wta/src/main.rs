@@ -3374,13 +3374,10 @@ async fn run_acp_app(
                 let agent_id = canonical_agent_id.as_str();
                 let preflight_result = if agent_id.starts_with("custom:")
                     || !agent_registry::is_known_id(agent_id)
-                    || matches!(agent_source, crate::agent_source::AgentSource::Wsl { .. })
                 {
-                    // Custom/unknown commands are opaque, while a WSL source
-                    // deliberately relies on master's host fallback when the
-                    // in-distro CLI is absent. In both cases the real spawn is
-                    // authoritative, so a local preflight must not replace the
-                    // working pane with Setup before that path completes.
+                    // Custom/unknown agents: command is opaque (`.cmd`, `node script.js`,
+                    // shell function, …); a PATH probe would lie. The real spawn produces
+                    // the authoritative error via `ConnectionFailed`, so skip preflight.
                     app::PreflightResult::passed_for_custom_agent(&canonical_agent_id)
                 } else {
                     let status =

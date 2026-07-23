@@ -210,7 +210,6 @@ system.no_agents: "Non se atopou ningunha CLI de axente dispoñible nesta máqui
 system.agent_unknown: "Agente descoñecido ou non dispoñible %{agent} — escriba /agent para ver a lista dispoñible."  # {Locked="/agent"}
 # Shown only when /agent is used outside a Windows Terminal-owned agent pane.
 system.agent_switch_unavailable: "O cambio de axente non está dispoñible fóra dunha pestana de Windows Terminal."
-system.agent_source_fallback: "%{requested} · %{requested_source} non está dispoñible. Estase a usar %{actual} · %{actual_source}."
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Escolla o modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
