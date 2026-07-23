@@ -349,14 +349,14 @@ namespace SettingsModelUnitTests
     void CustomAgentAndPolicyTests::CustomModelProvidersRoundtrip()
     {
         const auto settings = MakeSettings(
-            R"("customModelSelection": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-chat-completions","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","baseUrl":"http://localhost:11434/v1","apiContract":"openai-chat-completions","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
+            R"("customModelSelection": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-compatible","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","baseUrl":"http://localhost:11434/v1","apiContract":"openai-compatible","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
         const auto& globals = settings->GlobalSettings();
         VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:provider-openrouter:qwen/qwen3.5-9b" }, globals.CustomModelSelection());
         const auto providers = globals.CustomModelProviders();
         VERIFY_ARE_EQUAL(2u, providers.Size());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-openrouter" }, providers.GetAt(0).Id());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"https://openrouter.ai/api/v1" }, providers.GetAt(0).BaseUrl());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-chat-completions" }, providers.GetAt(0).ApiContract());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(0).ApiContract());
         VERIFY_ARE_EQUAL(2u, providers.GetAt(0).Models().Size());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen/qwen3.5-9b" }, providers.GetAt(0).Models().GetAt(0).Id());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-ollama" }, providers.GetAt(1).Id());

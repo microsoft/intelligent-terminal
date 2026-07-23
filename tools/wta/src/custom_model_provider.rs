@@ -15,9 +15,12 @@ const COPILOT_PROVIDER_TYPE: &str = "COPILOT_PROVIDER_TYPE";
 const COPILOT_MODEL: &str = "COPILOT_MODEL";
 const COPILOT_OFFLINE: &str = "COPILOT_OFFLINE";
 
+const CODEX_CONFIG: &str = "CODEX_CONFIG";
+const CODEX_MODEL_PROVIDER: &str = "MODEL_PROVIDER";
+
 const OPENCODE_CONFIG_CONTENT: &str = "OPENCODE_CONFIG_CONTENT";
-const OPENCODE_API_KEY: &str = "INTELLIGENT_TERMINAL_MODEL_API_KEY";
-const OPENCODE_PROVIDER_ID: &str = "intelligent-terminal";
+const PROVIDER_API_KEY: &str = "INTELLIGENT_TERMINAL_MODEL_API_KEY";
+const PROVIDER_ID: &str = "intelligent-terminal";
 
 const METADATA_ENV_KEYS: &[&str] = &[
     SHARED_BASE_URL,
@@ -28,6 +31,8 @@ const METADATA_ENV_KEYS: &[&str] = &[
     COPILOT_PROVIDER_TYPE,
     COPILOT_MODEL,
     COPILOT_OFFLINE,
+    CODEX_CONFIG,
+    CODEX_MODEL_PROVIDER,
     OPENCODE_CONFIG_CONTENT,
 ];
 
@@ -67,12 +72,13 @@ pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<
     for key in METADATA_ENV_KEYS {
         cmd.env_remove(key);
     }
-    cmd.env_remove(OPENCODE_API_KEY);
+    cmd.env_remove(PROVIDER_API_KEY);
 
     if shared.is_complete() {
         match byok_mode {
             ByokMode::Unsupported => {}
             ByokMode::CopilotProviderEnvironment => configure_copilot(cmd, &shared)?,
+            ByokMode::CodexConfigEnvironment => configure_codex(cmd, &shared)?,
             ByokMode::OpenCodeConfigContent => configure_opencode(cmd, &shared)?,
         }
     }
@@ -91,6 +97,19 @@ fn configure_copilot(cmd: &mut Command, config: &Config) -> Result<()> {
     Ok(())
 }
 
+fn configure_codex(cmd: &mut Command, config: &Config) -> Result<()> {
+    let api_key = config.resolve_api_key()?;
+    cmd.env(
+        CODEX_CONFIG,
+        render_codex_config(config, api_key.is_some())?,
+    )
+    .env(CODEX_MODEL_PROVIDER, PROVIDER_ID);
+    if let Some(api_key) = api_key {
+        cmd.env(PROVIDER_API_KEY, api_key);
+    }
+    Ok(())
+}
+
 fn configure_opencode(cmd: &mut Command, config: &Config) -> Result<()> {
     let api_key = config.resolve_api_key()?;
     cmd.env(
@@ -98,9 +117,45 @@ fn configure_opencode(cmd: &mut Command, config: &Config) -> Result<()> {
         render_opencode_config(config, api_key.is_some())?,
     );
     if let Some(api_key) = api_key {
-        cmd.env(OPENCODE_API_KEY, api_key);
+        cmd.env(PROVIDER_API_KEY, api_key);
     }
     Ok(())
+}
+
+fn render_codex_config(config: &Config, has_api_key: bool) -> Result<String> {
+    let mut provider = serde_json::Map::from_iter([
+        (
+            "name".to_string(),
+            serde_json::Value::String("Intelligent Terminal BYOK".to_string()),
+        ),
+        (
+            "base_url".to_string(),
+            serde_json::Value::String(config.base_url.clone()),
+        ),
+        (
+            "wire_api".to_string(),
+            serde_json::Value::String("responses".to_string()),
+        ),
+        (
+            "requires_openai_auth".to_string(),
+            serde_json::Value::Bool(false),
+        ),
+    ]);
+    if has_api_key {
+        provider.insert(
+            "env_key".to_string(),
+            serde_json::Value::String(PROVIDER_API_KEY.to_string()),
+        );
+    }
+
+    serde_json::to_string(&serde_json::json!({
+        "model": config.model,
+        "model_provider": PROVIDER_ID,
+        "model_providers": {
+            PROVIDER_ID: provider,
+        },
+    }))
+    .context("failed to serialize Codex custom model configuration")
 }
 
 fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> {
@@ -111,7 +166,7 @@ fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> 
     if has_api_key {
         options.insert(
             "apiKey".to_string(),
-            serde_json::Value::String(format!("{{env:{OPENCODE_API_KEY}}}")),
+            serde_json::Value::String(format!("{{env:{PROVIDER_API_KEY}}}")),
         );
     }
 
@@ -120,7 +175,7 @@ fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> 
         serde_json::json!({ "name": config.model }),
     )]);
     let providers = serde_json::Map::from_iter([(
-        OPENCODE_PROVIDER_ID.to_string(),
+        PROVIDER_ID.to_string(),
         serde_json::json!({
             "npm": "@ai-sdk/openai-compatible",
             "name": "Intelligent Terminal BYOK",
@@ -131,7 +186,7 @@ fn render_opencode_config(config: &Config, has_api_key: bool) -> Result<String> 
 
     serde_json::to_string(&serde_json::json!({
         "$schema": "https://opencode.ai/config.json",
-        "model": format!("{OPENCODE_PROVIDER_ID}/{}", config.model),
+        "model": format!("{PROVIDER_ID}/{}", config.model),
         "provider": providers,
     }))
     .context("failed to serialize OpenCode custom model configuration")
@@ -216,6 +271,64 @@ mod tests {
     }
 
     #[test]
+    fn codex_config_uses_responses_provider_without_persisting_secret() {
+        let rendered = render_codex_config(
+            &Config {
+                base_url: "https://openrouter.ai/api/v1".to_string(),
+                model: "deepseek/deepseek-v4-flash".to_string(),
+                credential_id: Some("opaque-id".to_string()),
+                credential_resource: "test",
+            },
+            true,
+        )
+        .expect("Codex config should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("Codex config should be valid JSON");
+
+        assert_eq!(parsed["model"], "deepseek/deepseek-v4-flash");
+        assert_eq!(parsed["model_provider"], PROVIDER_ID);
+        assert_eq!(
+            parsed["model_providers"][PROVIDER_ID]["base_url"],
+            "https://openrouter.ai/api/v1"
+        );
+        assert_eq!(
+            parsed["model_providers"][PROVIDER_ID]["wire_api"],
+            "responses"
+        );
+        assert_eq!(
+            parsed["model_providers"][PROVIDER_ID]["env_key"],
+            PROVIDER_API_KEY
+        );
+        assert_eq!(
+            parsed["model_providers"][PROVIDER_ID]["requires_openai_auth"],
+            false
+        );
+        assert!(!rendered.contains("opaque-id"));
+    }
+
+    #[test]
+    fn codex_config_omits_env_key_for_keyless_provider() {
+        let rendered = render_codex_config(
+            &Config {
+                base_url: "http://localhost:11434/v1".to_string(),
+                model: "qwen3.5:9b".to_string(),
+                credential_id: None,
+                credential_resource: "test",
+            },
+            false,
+        )
+        .expect("Codex config should serialize");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("Codex config should be valid JSON");
+
+        assert!(
+            parsed["model_providers"][PROVIDER_ID]
+                .get("env_key")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn requires_endpoint_and_model() {
         let complete = Config {
             base_url: "http://localhost:11434/v1".to_string(),
@@ -238,6 +351,7 @@ mod tests {
         for key in METADATA_ENV_KEYS {
             cmd.env(key, "must-not-leak");
         }
+        cmd.env(PROVIDER_API_KEY, "must-not-leak");
 
         configure_child(&mut cmd, ByokMode::Unsupported)
             .expect("metadata scrubbing should succeed");
@@ -246,5 +360,9 @@ mod tests {
         for key in METADATA_ENV_KEYS {
             assert_eq!(configured_env.get(std::ffi::OsStr::new(key)), Some(&None));
         }
+        assert_eq!(
+            configured_env.get(std::ffi::OsStr::new(PROVIDER_API_KEY)),
+            Some(&None)
+        );
     }
 }

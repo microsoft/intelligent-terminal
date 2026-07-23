@@ -40,7 +40,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         WINRT_PROPERTY(winrt::hstring, Id);
         WINRT_PROPERTY(winrt::hstring, Name);
         WINRT_PROPERTY(winrt::hstring, BaseUrl);
-        WINRT_PROPERTY(winrt::hstring, ApiContract, L"openai-chat-completions");
+        WINRT_PROPERTY(winrt::hstring, ApiContract, L"openai-compatible");
         WINRT_PROPERTY(winrt::hstring, Location, L"auto");
         WINRT_PROPERTY(winrt::hstring, ApiKeyCredential);
         WINRT_PROPERTY(
