@@ -15,7 +15,7 @@
 
 namespace Microsoft::Terminal::CustomModels
 {
-    inline constexpr std::wstring_view CredentialResource{ L"IntelligentTerminal.CustomModelProvider" };
+    inline constexpr std::wstring_view CredentialResource{ L"IntelligentTerminal.LocalModelProvider" };
 
     inline std::wstring CredentialTarget(const winrt::hstring& credentialId)
     {
