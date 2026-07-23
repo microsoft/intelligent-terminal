@@ -4942,8 +4942,9 @@ mod tests {
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"opencode\""));
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("agent.session.start"));
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("value.data?.message"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("if (!sessionID) return"));
         assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("info.title !== previous.title"));
-        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("rootSessions.get(input.sessionID).cwd"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("rootSessions.get(sessionID).cwd"));
     }
 
     #[test]

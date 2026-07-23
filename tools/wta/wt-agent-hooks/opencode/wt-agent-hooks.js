@@ -84,15 +84,18 @@ export const WtAgentHooks = async ({ directory }) => {
 
   return {
     "chat.message": async (input) => {
-      if (!childSessions.has(input.sessionID) && !rootSessions.has(input.sessionID)) {
-        rootSessions.set(input.sessionID, { cwd: directory, title: "" })
+      const sessionID = input.sessionID
+      if (!sessionID) return
+
+      if (!childSessions.has(sessionID) && !rootSessions.has(sessionID)) {
+        rootSessions.set(sessionID, { cwd: directory, title: "" })
       }
-      if (isRootSession(input.sessionID)) {
+      if (isRootSession(sessionID)) {
         // Rebind an existing OpenCode session when the user returns to it.
-        emit("agent.session.start", input.sessionID, {
-          cwd: rootSessions.get(input.sessionID).cwd,
+        emit("agent.session.start", sessionID, {
+          cwd: rootSessions.get(sessionID).cwd,
         })
-        emit("agent.prompt.submit", input.sessionID)
+        emit("agent.prompt.submit", sessionID)
       }
     },
 
