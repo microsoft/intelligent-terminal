@@ -16,7 +16,7 @@ The replacement keeps the existing card and execution pipeline while moving
 proposal submission to a WTA CLI contract:
 
 ```text
-wta propose-terminal-actions --payload-base64 <base64url-json>
+wta propose-terminal-actions --route <opaque-turn-token>
 ```
 
 The command is proposal-only. It cannot send input, create panes, launch
@@ -27,6 +27,8 @@ path to terminal mutation.
 ## Goals
 
 - Use WTA CLI, not MCP, for typed terminal-action proposals.
+- Expect the agent session to execute the WTA CLI directly.
+- Reuse the existing short-lived CLI-to-master ACP connection pattern.
 - Share one versioned wire schema between Autofix and Terminal Agent.
 - Keep session, helper, tab, window, and pane identifiers out of model-authored
   payloads.
@@ -41,9 +43,9 @@ path to terminal mutation.
 
 - Reintroducing an MCP server, MCP route, or MCP dependency.
 - Letting the proposal CLI execute terminal actions directly.
+- Relying on ACP `create_terminal` to proxy the WTA CLI through the helper.
 - Treating model-authored shell text as trusted or intrinsically
   non-destructive.
-- Supporting arbitrary shell-wrapped proposal invocations in v1.
 - Replacing the existing `wtcli` to COM execution path.
 - Solving delegate startup latency tracked by #445.
 
@@ -71,57 +73,69 @@ only how a typed `RecommendationSet` reaches the helper.
 ## Proposed flow
 
 ```text
-1. WTA submits an Autofix or Terminal Agent prompt over ACP.
-2. The agent requests create_terminal for direct argv:
-     command = "wta"
-     args    = ["propose-terminal-actions", "--payload-base64", "..."]
-3. wta-master routes create_terminal by ACP session id to the owning helper.
-4. The helper recognizes the reserved direct WTA subcommand.
-5. The helper mints a short-lived, one-use capability bound to the active
-   session and prompt, injects its private pipe name and capability into the
-   child environment, and launches the co-located wta.exe locally.
-6. The CLI decodes the versioned payload and submits it over the helper-local
-   pipe.
-7. The helper validates the wire schema. App performs the authoritative
-   active-turn, generation, origin, target, and duplicate checks.
-8. App converts the accepted wire proposal into the existing
-   RecommendationSet and displays the existing confirmation card.
-9. The CLI returns a structured "presented" disposition. This means the card
-   was shown; it does not mean an action ran.
+1. The helper sends an Autofix or Terminal Agent prompt to wta-master over ACP.
+2. Master already knows the source HelperId and ACP session id. It increments
+   that session's turn generation, mints a short-lived one-use route token, and
+   stores token -> {session id, helper id, generation, expiry}.
+3. Master injects the opaque token and CLI instruction into the prompt, then
+   forwards the prompt to the agent CLI over ACP stdio.
+4. The agent session directly executes `wta propose-terminal-actions`, passing
+   the token and versioned proposal JSON.
+5. The short-lived WTA CLI discovers and connects to the existing master named
+   pipe, performs an ACP initialize, and sends a WTA ExtRequest.
+6. Master atomically consumes the token, derives the owning session/helper, and
+   forwards the proposal to that helper as an ExtNotification containing the
+   trusted session id.
+7. The helper routes by session id. App performs the authoritative active-turn,
+   Autofix-generation, origin, target, and duplicate checks.
+8. App converts an accepted wire proposal into the existing RecommendationSet,
+   displays the existing confirmation card, and immediately sends a correlated
+   disposition ExtRequest back to master.
+9. Master resolves the pending CLI request. The CLI prints "presented" and
+   exits, unblocking the agent's command tool. This does not mean an action ran.
 10. Only a later user card confirmation sends ChoiceExecution to the existing
     executor and reaches wtcli/COM.
 ```
 
-The master does not host the proposal endpoint. Its only role in this flow is
-the existing ACP `session_id -> helper` routing for `create_terminal`.
+No new server is introduced. The proposal command reuses the master named pipe,
+ACP handshake, and ExtRequest mechanism already used by `wta sessions list`.
 
 ## CLI contract
 
 ### Invocation
 
-v1 accepts only a direct structured ACP terminal request:
+The agent session executes:
 
 ```text
-command: wta or wta.exe
-args:
-  - propose-terminal-actions
-  - --payload-base64
-  - <base64url-encoded UTF-8 JSON>
+wta propose-terminal-actions --route <opaque-turn-token>
 ```
 
-The helper rewrites the executable to its own trusted, co-located `wta.exe`
-before spawning. The payload has a decoded size limit.
+The CLI reads one UTF-8 JSON proposal from stdin. Agents whose command tools
+cannot provide stdin may use:
 
-v1 deliberately does not support:
+```text
+wta propose-terminal-actions --route <opaque-turn-token> --payload-file <path>
+```
 
-- `pwsh -Command "wta propose-terminal-actions ..."`
-- `cmd /c wta propose-terminal-actions ...`
-- `bash -lc "wta propose-terminal-actions ..."`
-- stdin or shell pipelines
-- a model-provided proposal pipe, token, session id, or target id
+The model must not base64-encode the payload. Payload size is capped before
+deserialization. Shell wrapping is allowed when required by the agent's native
+command tool, but each built-in agent must prove its quoting and stdin/file
+behavior before CLI proposal mode is enabled.
 
-These forms either lose the structured argv boundary or bypass the current
-`ShellManager` direct-WTA local execution rule.
+The route token is the only routing input. The CLI does not accept a
+model-provided master pipe, session id, helper id, or target id.
+
+### Master discovery
+
+The CLI resolves master in this order:
+
+1. `WTA_MASTER_PIPE`, set by master on the agent process so direct child
+   commands inherit the exact pipe;
+2. the existing package-private `master-pipe.txt` discovery file used by
+   `wta sessions list`.
+
+The route token still must validate on the connected master. A stale discovery
+file therefore fails closed instead of routing to another helper.
 
 ### Output
 
@@ -140,15 +154,14 @@ Defined statuses:
 | `duplicate` | This active prompt already surfaced an equivalent proposal. |
 | `stale` | The prompt, Autofix generation, or target context is no longer active. |
 | `rejected` | Schema or origin policy rejected the proposal. |
-| `unavailable` | The helper proposal channel or required target context is unavailable. |
+| `unavailable` | The master/helper route or required target context is unavailable. |
 
 Protocol-complete dispositions exit with code 0 so agents do not retry rejected
 or stale proposals as transport failures. Nonzero exit codes are reserved for
-invalid CLI syntax, undecodable payloads, broken local transport, or internal
+invalid CLI syntax, unreadable payloads, broken master transport, or internal
 failures.
 
-stderr is diagnostic-only. The implementation must stop merging proposal
-stdout and stderr before the agent consumes the result.
+stderr is diagnostic-only; stdout contains only the disposition object.
 
 ## Wire schema
 
@@ -196,21 +209,18 @@ injects the real parent pane and resolves the configured delegate runtime.
 
 ## Trusted binding and freshness
 
-The helper removes reserved proposal environment variables
-case-insensitively, then injects:
+Master mints the route token while handling the helper-originated prompt, where
+it already has the source HelperId and ACP session id. The token registry is
+bounded and each entry contains:
 
-- a cryptographically random helper-local pipe name;
-- a cryptographically random, one-use capability;
-- no reusable session, tab, window, or pane credential.
+- ACP session id;
+- source HelperId;
+- master-owned per-session turn generation;
+- expiry.
 
-Each capability is stored in a bounded map with a short TTL and is bound to:
-
-- ACP session id from `create_terminal`;
-- the helper's active prompt id;
-- proposal origin;
-- the owning helper.
-
-The capability is consumed on first submission. Unused entries expire.
+Starting a newer prompt invalidates the previous token for that session. The
+token is consumed atomically on the first proposal submission. The CLI payload
+contains no routing identifiers.
 
 App remains authoritative for state that the ACP client does not own:
 
@@ -221,11 +231,10 @@ App remains authoritative for state that the ACP client does not own:
 - whether a recommendation already surfaced;
 - configured delegate availability.
 
-The shared agent process can still send a `create_terminal` request containing
-another live ACP session id. The capability does not turn the shared agent into
-a security boundary. Freshness checks prevent unsolicited or stale cards, pane
-targets are injected locally, and explicit card confirmation remains the final
-security boundary.
+The token is visible to the agent session and may be retained in its transcript.
+One-use, short expiry, per-turn invalidation, and master-owned routing limit its
+authority to proposing one card for the session that received it. Explicit card
+confirmation remains the final security boundary.
 
 ## Origin policies
 
@@ -253,42 +262,47 @@ confirmation controls execution.
 
 ## Permission and single-confirmation requirement
 
-Calling the proposal CLI is non-mutating, but some agents may issue an ACP
-`request_permission` before `create_terminal`. The current permission request's
-human-readable title is agent-authored and cannot be used for safe
-auto-approval.
+Calling the proposal CLI is non-mutating, but some agents may request permission
+before directly executing the command. The human-readable tool-call title is
+agent-authored and cannot be used for safe auto-approval.
 
 Therefore CLI proposal mode is enabled per built-in agent only after live
 verification proves one of:
 
 1. the agent does not request permission for this exact direct WTA command;
-2. the permission request exposes trustworthy structured command/argv data
-   that WTA can match to its co-located executable and reserved subcommand; or
+2. the agent exposes trustworthy structured command/argv data that can be
+   matched to the WTA proposal subcommand; or
 3. the agent has an official command allowlist that can permit only this
    proposal subcommand.
 
 If none applies, that agent stays on assistant-text JSON fallback. Shipping a
 permission confirmation followed by a card confirmation is not acceptable.
 
-## Local transport
+## CLI-to-master transport
 
-The proposal channel is a per-helper local named pipe, not COM and not the
-helper-master ACP pipe.
+The proposal CLI follows the existing `wta sessions list` connection shape:
 
-Required hardening:
+1. resolve and open the master named pipe;
+2. initialize as a short-lived ACP client named `wta-proposal`;
+3. send `_intellterm.wta/terminal_actions/propose` with the route token and
+   versioned payload;
+4. wait for a bounded structured response and disconnect.
 
-- random, unguessable pipe name;
-- first-instance creation;
-- DACL restricted to the current user;
-- one-use capability required before payload processing;
-- bounded payload, capability map, and TTL;
-- one response per connection;
-- no terminal-operation methods on the pipe.
+Master recognizes `wta-proposal` during initialize and does not bind/spawn an
+agent or register the connection as a helper live-set subscriber.
 
-Using the helper-master pipe would require the short-lived CLI to impersonate a
-helper or extend the ACP multiplexer with a non-ACP protocol. COM events would
-unnecessarily expose proposal routing to the WT process and weaken
-session/helper ownership.
+After validating the token, master sends the target helper an ExtNotification
+containing `{proposal_id, session_id, payload}`. The helper immediately returns
+`_intellterm.wta/terminal_actions/result` with the proposal id and disposition.
+The result acknowledges that the card was presented or rejected; it never waits
+for user confirmation, which would deadlock the in-flight agent tool and prompt.
+
+Master keeps a bounded pending-response map keyed by proposal id and tagged with
+the target HelperId. Helper disconnect, timeout, or master shutdown resolves
+pending CLI requests as unavailable. Late or duplicate results are ignored.
+
+This reuses the existing ACP pipe and WTA extension namespace. It does not use
+COM, MCP, or a second local server.
 
 ## Compatibility and rollout
 
@@ -298,20 +312,25 @@ session/helper ownership.
 - Add the CLI parser and stable disposition schema behind a feature gate.
 - Keep assistant-text JSON as the only live card source.
 
-### Phase 2: helper-local transport
+### Phase 2: direct CLI routing
 
-- Add the hardened per-helper proposal pipe and capability registry.
-- Recognize only direct WTA proposal invocations.
-- Add AppEvent plus oneshot response plumbing.
+- Inject master-owned turn route tokens while forwarding prompts.
+- Reuse the existing CLI-to-master ACP connection and add proposal/result
+  extension methods.
+- Add the bounded token and pending-response registries.
+- Add AppEvent plus immediate disposition plumbing.
 - Surface Terminal Agent cards through the existing `TurnState`.
 - Keep the JSON fallback enabled.
 
 ### Phase 3: agent compatibility
 
-- Verify direct invocation and permission behavior for every built-in agent.
+- Verify direct process execution, payload delivery, and permission behavior for
+  every built-in agent.
 - Enable CLI proposals only for agents that preserve single confirmation.
-- Suppress the internal proposal command's ToolCall row only after it is
-  positively identified from the helper-owned invocation.
+- Suppress the internal proposal command's ToolCall row only when the agent
+  exposes a trustworthy structured identity for that invocation.
+- Keep the JSON fallback for WSL-hosted agents unless their WTA command can
+  reach the Windows master pipe.
 
 ### Phase 4: Autofix
 
@@ -332,13 +351,15 @@ Focused automated coverage must include:
 - wire round-trip and schema-version rejection;
 - unknown-field, payload-size, choice-count, and action-count limits;
 - origin-specific policy rejection;
-- direct invocation matching and shell-wrapper rejection;
-- trusted executable rewriting;
-- case-insensitive reserved environment stripping;
-- capability one-use, TTL, bounded-map, and wrong-pipe rejection;
+- master pipe environment/discovery fallback and stale-master rejection;
+- stdin and payload-file handling across supported agent command tools;
+- capability one-use, TTL, per-turn invalidation, and bounded-map behavior;
+- short-lived proposal clients do not spawn agents or register as helpers;
+- proposal/result correlation, timeout, helper disconnect, and late-result handling;
 - current prompt, generation, target, duplicate, and stale checks;
 - no model-authored pane/session/helper identifiers;
 - stdout/stderr separation and disposition exit behavior;
+- immediate proposal acknowledgement does not deadlock the in-flight turn;
 - one visible card and one execution after confirmation;
 - no terminal mutation before confirmation;
 - JSON fallback for agents without CLI proposal support;
