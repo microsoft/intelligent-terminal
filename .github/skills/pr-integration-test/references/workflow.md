@@ -61,7 +61,7 @@ code, issue reproduction, logs/events, and live behavior when available.
 Search before adding helpers:
 
 ```powershell
-git grep -n -E "<feature|event|setting|command>" -- test/e2e tools/wta/src src/cascadia
+git grep -n -E "<pattern>" -- test/e2e tools/wta/src src/cascadia
 ```
 
 Read:
@@ -92,7 +92,7 @@ Start with the regression, then add only risk-driven controls:
 
 1. **Regression positive:** the exact old failure now reaches the intended final
    effect.
-2. **Ordinary baseline:** the pre-existing successful or failure path still
+2. **Ordinary baseline:** the preexisting successful or failure path still
    works.
 3. **False-positive control:** a similar but legitimate case remains ignored.
 4. **Replay/idempotency:** redraw, retry, duplicate event, or repeated command

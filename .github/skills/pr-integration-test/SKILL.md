@@ -1,6 +1,6 @@
 ---
 name: pr-integration-test
-description: 'Design, implement, and validate Intelligent Terminal integration tests for a target pull request or regression. Use when asked to add PR integration tests, convert a bug fix into E2E coverage, prove existing behavior still works, map tests to the release checklist, or verify Invoke-ItE2EReport marks checklist cases complete.'
+description: 'Design, implement, and validate Intelligent Terminal integration tests for a target pull request or regression. Use when asked to add PR integration tests, convert a bug fix into E2E coverage, prove existing behavior still works, map tests to the release checklist, or verify E2E reports mark checklist cases complete.'
 ---
 
 # PR Integration Test
@@ -86,8 +86,8 @@ single-flight regressions depend on model wording.
   only when an exact test name would be misleading or one case intentionally
   covers multiple checklist items.
 - Run `pwsh -File test/e2e/Set-ChecklistIds.ps1`; never assign or renumber
-  `Cnnn` IDs manually.
-- Run the suite through `Invoke-ItE2EReport.ps1`, not only `Invoke-Pester`, and
+  stable checklist IDs manually.
+- Run the suite through the E2E report driver, not only `Invoke-Pester`, and
   inspect `release-report.md` to prove every new ID is `[x]`.
 - Verify `Update-ReleaseReport.ps1` too when the suite is expected to support
   partial release-signoff runs.
@@ -100,7 +100,7 @@ Do not call the work complete until all of these are true:
   verified pre-fix symptom.
 - The fixed path passes through the real integration boundary.
 - False-positive and replay/idempotency risks are covered where applicable.
-- Related pre-existing suites pass, or every skip/failure is explicitly
+- Related preexisting suites pass, or every skip/failure is explicitly
   classified as environment, model variance, product regression, or test bug.
 - New checklist IDs become `[x]` through both applicable report paths.
 - The deployed package or executable under test is proven to contain the target
