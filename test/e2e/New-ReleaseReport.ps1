@@ -26,8 +26,8 @@
 
 .EXAMPLE
     # 1) run the suites (writes results.xml), 2) generate the report:
-    pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
-    pwsh -File test/e2e/New-ReleaseReport.ps1
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/New-ReleaseReport.ps1
 #>
 [CmdletBinding()]
 param(

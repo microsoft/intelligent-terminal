@@ -1,6 +1,6 @@
 # ACP Usage / Cost 调查与统一展示设计
 
-- **状态**：首版实现完成；TDD Step 0-11 与本地完整pipeline/edge-state验证已完成
+- **状态**：首版实现完成；TDD Step 0-12 与本地完整pipeline/edge-state验证已完成
 - **首次调查**：2026-07-17
 - **最后核验**：2026-07-23
 - **协议基线**：ACP protocol version 1
@@ -954,8 +954,9 @@ debug log 和为实验修改的 Agent Maestro 代码**一律不提交**。这些
 ### 8.2 Feature 开发前 E2E 能力验证（2026-07-22）
 
 在没有实现 Usage feature 的情况下，已先验证 build/deploy、桌面 UI automation、真实 ACP
-adapter routing 和 Agent Maestro 后端。测试复用现有 [test/e2e](../../test/e2e) 的 ItE2E
-PowerShell module；新增 orchestration scripts、screenshots、result JSON 和本机 provider 配置
+adapter routing和Agent Maestro后端。测试复用现有[test/e2e](../../test/e2e)的ItE2E
+PowerShell module，并固定使用`C:\Program Files\PowerShell\7\pwsh.exe`。新增orchestration
+scripts、screenshots、result JSON和本机provider配置
 全部位于 git-ignored `test/e2e/artifacts/acp-provider-preflight/` 或 user home，不进入 feature
 commit。该 harness 与 Usage production code 没有依赖，可在未来独立整理成 test PR。
 

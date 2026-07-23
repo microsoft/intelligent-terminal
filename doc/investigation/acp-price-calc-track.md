@@ -16,6 +16,8 @@ code it describes.
 - Existing unit/integration frameworks are committed. The local desktop E2E orchestration,
   screenshots, provider configs, and wire captures remain under git-ignored
   `test/e2e/artifacts/` or the user profile and are not committed.
+- Every E2E runner and child PowerShell process uses
+  `C:\Program Files\PowerShell\7\pwsh.exe`; module import fails fast under another host.
 
 ## TDD Plan
 
@@ -33,6 +35,7 @@ code it describes.
 | 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Complete |
 | 10. Partial/error UI states | Cost-only, tokens-only, malformed, and absent reports never crash UI | Add one tested primary-display state and deterministic local mocks | Complete |
 | 11. Provider extension boundary | Every known family has a module; unverified private payloads yield no data | Add a typed provider registry with empty trust allowlists | Complete |
+| 12. PowerShell 7 E2E host | E2E rejects the wrong host and children use the canonical executable | Pin `C:\Program Files\PowerShell\7\pwsh.exe` in the existing harness | Complete |
 
 ## Completed Steps
 
@@ -425,6 +428,47 @@ code it describes.
 - `tools/wta/src/usage/providers/{copilot,claude,codex,gemini,opencode}.rs`
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state/interface update in `doc/investigation/acp-price-calc.md`
+
+### Step 12 - Canonical PowerShell 7 E2E Host
+
+**RED**
+
+- Added two existing-framework unit contracts before the host helpers existed. Both failed with
+  `CommandNotFoundException` for `Get-ItPowerShell7Path` and `Assert-ItPowerShell7Host`.
+
+**GREEN**
+
+- Added one canonical E2E executable path:
+  `C:\Program Files\PowerShell\7\pwsh.exe`.
+- Every ItE2E module import validates the current process path, so direct Pester runs and report
+  runners fail fast under another PowerShell host. The module manifest still enforces 7.2+.
+- Bootstrap validates the exact host before dependency checks. FRE's pwsh execution-policy probe
+  uses the same resolver rather than PATH lookup.
+- Updated runner/tool examples to the absolute executable. The two `powershell.exe` references
+  that remain are intentional WinPS 5.1 compatibility tests, not E2E hosts.
+- Local Usage ACP mocks launch through an ignored `.cmd` wrapper whose only executable is the
+  canonical PowerShell 7 path; the mock also validates its own process path.
+
+**Validation**
+
+- RED: both host helper tests failed because the functions did not exist.
+- Canonical host resolved to PowerShell 7.6.3 x64 at the required path.
+- ItE2E unit self-tests: 13 passed, 0 failed.
+- ItE2E live self-tests: 12 passed, 0 failed in 30.67 seconds; cleanup left no processes.
+- Canonical report runner: 13 passed, 0 failed; HTML/XML/Markdown artifacts generated under the
+  ignored artifacts directory.
+- Bootstrap `-Check`: exit 0; winapp, Pester 6.0.1, Dev package, and module import succeeded.
+- Windows PowerShell 5.1 module import was rejected by the 7.2 requirement.
+- Both policy setup tools rejected Windows PowerShell before UAC or registry work.
+- ACP mock probe launched through the canonical host and completed initialize, tokens-only Usage,
+  chat marker, and `end_turn` with exit 0.
+
+**Committed files**
+
+- Existing ItE2E module/host helpers, FRE helper, bootstrap, unit self-test, and runner docs.
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
+- Local Usage mock launcher remains git-ignored.
 
 ### Step 4 - Session Usage Lifecycle
 

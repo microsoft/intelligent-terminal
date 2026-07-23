@@ -54,7 +54,7 @@ Three planes, all built on self-verifying primitives:
 
 ## Prerequisites
 
-- Windows, **PowerShell 7+**
+- Windows, **PowerShell 7** at `C:\Program Files\PowerShell\7\pwsh.exe`
 - **Windows App CLI**: `winget install Microsoft.winappcli` (gives `winapp ui`)
 - **Pester 5**: `Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser`
 - A deployed Intelligent Terminal package (Store `Microsoft.IntelligentTerminal_8wekyb3d8bbwe`
@@ -63,8 +63,8 @@ Three planes, all built on self-verifying primitives:
 One-shot setup + verify:
 
 ```powershell
-pwsh -File test/e2e/bootstrap.ps1          # install deps, import module
-pwsh -File test/e2e/bootstrap.ps1 -Check   # verify only
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/bootstrap.ps1
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/bootstrap.ps1 -Check
 ```
 
 ## Choosing the build: Dev vs Store
@@ -104,12 +104,11 @@ dev package is absent — keeping CI green on machines that only have the store 
 ## Running the self-tests
 
 ```powershell
-Import-Module Pester
-Invoke-Pester test/e2e/selftests -Tag Unit    # hermetic, no terminal needed
-Invoke-Pester test/e2e/selftests -Tag Live    # launches/closes the real terminal
-Invoke-Pester test/e2e/selftests -Tag AI      # AI oracle (needs an agent CLI, e.g. copilot)
-Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + autofix (needs copilot auth)
-Invoke-Pester test/e2e/selftests              # everything (30 tests)
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -Command "Invoke-Pester test/e2e/selftests -Tag Unit"
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -Command "Invoke-Pester test/e2e/selftests -Tag Live"
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -Command "Invoke-Pester test/e2e/selftests -Tag AI"
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -Command "Invoke-Pester test/e2e/selftests -Tag Agent"
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -Command "Invoke-Pester test/e2e/selftests"
 ```
 
 The self-tests are the framework's own proof: every primitive is exercised against a
@@ -121,9 +120,9 @@ in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
 in-repo path `test/e2e/artifacts/`** (override with `-OutDir`; the dir is git-ignored):
 
 ```powershell
-pwsh -File test/e2e/Invoke-ItE2EReport.ps1                 # full suite -> test/e2e/artifacts/
-pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
-pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
 ```
 
 Outputs (all under `test/e2e/artifacts/`):
@@ -140,13 +139,13 @@ Outputs (all under `test/e2e/artifacts/`):
   driven purely by automation: **`[x]`** = a test passed, **`[ ] ⚠️ AUTOMATION FAILED`** = a test ran
   and failed, plain **`[ ]`** = not covered this run, verify manually. Suppress with
   `-SkipReleaseReport`; regenerate standalone from an existing `results.xml` with
-  `pwsh -File test/e2e/New-ReleaseReport.ps1`. Items listed in `test/e2e/release-exclude.psd1`
+  `& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/New-ReleaseReport.ps1`. Items listed in `test/e2e/release-exclude.psd1`
   (by title regex, e.g. RTL) are dropped from the report to keep it focused on the sign-off set.
 
   **Stable item IDs (`C001`, `C002`, …).** Every checkbox item in `doc/release-check-list.md`
   carries a stable ID right after the box, and the generators carry it verbatim into
   `release-report.md` — so you can refer to a case by number ("C136 is failing") and it means the
-  same item in both files. Assign/refresh IDs with `pwsh -File test/e2e/Set-ChecklistIds.ps1`
+  same item in both files. Assign/refresh IDs with `& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Set-ChecklistIds.ps1`
   (idempotent: existing IDs are never renumbered; a newly-added item gets the next free number).
 
   **Incremental update (no full-suite re-run needed).** `New-ReleaseReport.ps1` regenerates the
@@ -156,10 +155,10 @@ Outputs (all under `test/e2e/artifacts/`):
   that **passed** becomes `[x]`, one that **failed** becomes `[ ] ⚠️ AUTOMATION FAILED`, a covered
   item that only **skipped** is left unchanged (a flaky skip never un-ticks a prior pass), and every
   item **out of scope** for the run is preserved exactly. One-liner via the runner:
-  `pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.Delegate.Tests.ps1 -UpdateReport`
+  `& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.Delegate.Tests.ps1 -UpdateReport`
   (runs the suite, then overlays only its items onto the existing report; falls back to a fresh
   generate if no report exists yet). Or standalone after a run wrote `results.xml`:
-  `pwsh -File test/e2e/Update-ReleaseReport.ps1`.
+  `& 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Update-ReleaseReport.ps1`.
 - Console echo of the same precise failures; exit code `1` on any failure (CI-friendly).
 
 Every failure is precise because each `Assert-*` throws a descriptive message — e.g.

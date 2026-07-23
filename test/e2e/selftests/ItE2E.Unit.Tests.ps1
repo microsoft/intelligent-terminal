@@ -6,6 +6,16 @@ BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
 }
 
+Describe 'PowerShell 7 host' -Tag 'Unit' {
+    It 'uses the canonical user-experience host' {
+        Get-ItPowerShell7Path | Should -Be 'C:\Program Files\PowerShell\7\pwsh.exe'
+    }
+
+    It 'accepts the current E2E process as the canonical host' {
+        { Assert-ItPowerShell7Host } | Should -Not -Throw
+    }
+}
+
 Describe 'Invoke-Native' -Tag 'Unit' {
     It 'captures stdout and a zero exit code' {
         $r = Invoke-Native -FilePath 'cmd.exe' -Arguments @('/c', 'echo', 'hello-ite2e')
