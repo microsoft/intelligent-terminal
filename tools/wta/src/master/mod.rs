@@ -331,7 +331,7 @@ struct MasterStateInner {
 type AgentCmdKey = String;
 
 fn agent_cmd_key(agent_cmd: &str, agent_id: Option<&str>) -> AgentCmdKey {
-    format!("{agent_id:?}\0{agent_cmd}")
+    format!("{:?}", (agent_id, agent_cmd))
 }
 
 /// One spawned agent CLI subprocess and everything a helper needs to
@@ -3842,6 +3842,12 @@ mod tests {
         assert_eq!(
             agent_cmd_key(command, Some("copilot")),
             agent_cmd_key(command, Some("copilot"))
+        );
+        assert_ne!(agent_cmd_key("b:c", Some("a")), agent_cmd_key("c", Some("a:b")));
+        assert!(
+            agent_cmd_key("custom\0command\n", Some("custom\0id"))
+                .chars()
+                .all(|character| !character.is_control())
         );
     }
 

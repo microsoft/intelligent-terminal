@@ -479,8 +479,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     {
                         continue;
                     }
-                    const auto displayName = model.Id() + L" (BYOK)";
-                    const auto description = provider.Name() + L" | " + location + L" | OpenAI-compatible";
+                    const auto displayName = winrt::hstring{ RS_fmt(L"AIAgents_BYOKModelDisplayName", model.Id()) };
+                    const auto description = winrt::hstring{ RS_fmt(L"AIAgents_OpenAICompatibleModelDescription", provider.Name(), location) };
                     _acpModelList.Append(winrt::make<AcpModelEntry>(
                         id,
                         displayName,

@@ -22,19 +22,7 @@ const OPENCODE_CONFIG_CONTENT: &str = "OPENCODE_CONFIG_CONTENT";
 const PROVIDER_API_KEY: &str = "INTELLIGENT_TERMINAL_MODEL_API_KEY";
 const PROVIDER_ID: &str = "intelligent-terminal";
 
-const METADATA_ENV_KEYS: &[&str] = &[
-    SHARED_BASE_URL,
-    SHARED_MODEL,
-    SHARED_CREDENTIAL_ID,
-    COPILOT_BASE_URL,
-    COPILOT_API_KEY,
-    COPILOT_PROVIDER_TYPE,
-    COPILOT_MODEL,
-    COPILOT_OFFLINE,
-    CODEX_CONFIG,
-    CODEX_MODEL_PROVIDER,
-    OPENCODE_CONFIG_CONTENT,
-];
+const SHARED_METADATA_ENV_KEYS: &[&str] = &[SHARED_BASE_URL, SHARED_MODEL, SHARED_CREDENTIAL_ID];
 
 pub(crate) struct Config {
     pub(crate) base_url: String,
@@ -65,11 +53,19 @@ impl Config {
     }
 }
 
-/// Scrub trusted provider metadata from every child, then adapt the shared
-/// configuration only for an agent that supports it.
+/// Scrub shared provider metadata and the injected secret from every child,
+/// then adapt a complete shared configuration only for an agent that supports it.
 pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<()> {
     let shared = Config::shared_from_env();
-    for key in METADATA_ENV_KEYS {
+    configure_child_with_config(cmd, byok_mode, &shared)
+}
+
+fn configure_child_with_config(
+    cmd: &mut Command,
+    byok_mode: ByokMode,
+    shared: &Config,
+) -> Result<()> {
+    for key in SHARED_METADATA_ENV_KEYS {
         cmd.env_remove(key);
     }
     cmd.env_remove(PROVIDER_API_KEY);
@@ -77,9 +73,9 @@ pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<
     if shared.is_complete() {
         match byok_mode {
             ByokMode::Unsupported => {}
-            ByokMode::CopilotProviderEnvironment => configure_copilot(cmd, &shared)?,
-            ByokMode::CodexConfigEnvironment => configure_codex(cmd, &shared)?,
-            ByokMode::OpenCodeConfigContent => configure_opencode(cmd, &shared)?,
+            ByokMode::CopilotProviderEnvironment => configure_copilot(cmd, shared)?,
+            ByokMode::CodexConfigEnvironment => configure_codex(cmd, shared)?,
+            ByokMode::OpenCodeConfigContent => configure_opencode(cmd, shared)?,
         }
     }
     Ok(())
@@ -348,21 +344,109 @@ mod tests {
     #[test]
     fn unsupported_agent_has_provider_metadata_removed() {
         let mut cmd = Command::new("unsupported-agent");
-        for key in METADATA_ENV_KEYS {
+        for key in SHARED_METADATA_ENV_KEYS {
             cmd.env(key, "must-not-leak");
         }
         cmd.env(PROVIDER_API_KEY, "must-not-leak");
+        let native_env = [
+            COPILOT_BASE_URL,
+            COPILOT_API_KEY,
+            COPILOT_PROVIDER_TYPE,
+            COPILOT_MODEL,
+            COPILOT_OFFLINE,
+            CODEX_CONFIG,
+            CODEX_MODEL_PROVIDER,
+            OPENCODE_CONFIG_CONTENT,
+        ];
+        for key in native_env {
+            cmd.env(key, "native-value");
+        }
 
-        configure_child(&mut cmd, ByokMode::Unsupported)
-            .expect("metadata scrubbing should succeed");
+        configure_child_with_config(
+            &mut cmd,
+            ByokMode::Unsupported,
+            &Config {
+                base_url: "https://example.test/v1".to_string(),
+                model: "test-model".to_string(),
+                credential_id: None,
+                credential_resource: "test",
+            },
+        )
+        .expect("metadata scrubbing should succeed");
 
         let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
-        for key in METADATA_ENV_KEYS {
+        for key in SHARED_METADATA_ENV_KEYS {
             assert_eq!(configured_env.get(std::ffi::OsStr::new(key)), Some(&None));
         }
         assert_eq!(
             configured_env.get(std::ffi::OsStr::new(PROVIDER_API_KEY)),
             Some(&None)
         );
+        for key in native_env {
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(key)),
+                Some(&Some(std::ffi::OsStr::new("native-value")))
+            );
+        }
+    }
+
+    #[test]
+    fn incomplete_shared_config_preserves_supported_agent_native_environment() {
+        let incomplete = Config {
+            base_url: "https://example.test/v1".to_string(),
+            model: String::new(),
+            credential_id: None,
+            credential_resource: "test",
+        };
+        let cases = [
+            (
+                ByokMode::CopilotProviderEnvironment,
+                [
+                    COPILOT_BASE_URL,
+                    COPILOT_API_KEY,
+                    COPILOT_PROVIDER_TYPE,
+                    COPILOT_MODEL,
+                    COPILOT_OFFLINE,
+                ]
+                .as_slice(),
+            ),
+            (
+                ByokMode::CodexConfigEnvironment,
+                [CODEX_CONFIG, CODEX_MODEL_PROVIDER].as_slice(),
+            ),
+            (
+                ByokMode::OpenCodeConfigContent,
+                [OPENCODE_CONFIG_CONTENT].as_slice(),
+            ),
+        ];
+
+        for (byok_mode, native_env) in cases {
+            let mut cmd = Command::new("supported-agent");
+            for key in SHARED_METADATA_ENV_KEYS {
+                cmd.env(key, "must-not-leak");
+            }
+            cmd.env(PROVIDER_API_KEY, "must-not-leak");
+            for key in native_env {
+                cmd.env(key, "native-value");
+            }
+
+            configure_child_with_config(&mut cmd, byok_mode, &incomplete)
+                .expect("metadata scrubbing should succeed");
+
+            let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
+            for key in SHARED_METADATA_ENV_KEYS {
+                assert_eq!(configured_env.get(std::ffi::OsStr::new(key)), Some(&None));
+            }
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(PROVIDER_API_KEY)),
+                Some(&None)
+            );
+            for key in native_env {
+                assert_eq!(
+                    configured_env.get(std::ffi::OsStr::new(key)),
+                    Some(&Some(std::ffi::OsStr::new("native-value")))
+                );
+            }
+        }
     }
 }
