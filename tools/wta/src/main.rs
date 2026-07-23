@@ -45,7 +45,7 @@ use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    cursor::SetCursorStyle,
+    cursor::{SetCursorStyle, Show},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -2664,6 +2664,40 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
     None
 }
 
+struct TuiRestoreGuard {
+    armed: bool,
+}
+
+impl TuiRestoreGuard {
+    fn new() -> Self {
+        Self { armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TuiRestoreGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        // Agent panes start with alternate-scroll enabled, so restore that known state.
+        let _ = write!(stdout, "\x1b[?1007h");
+        let _ = stdout.flush();
+        let _ = execute!(
+            stdout,
+            SetCursorStyle::DefaultUserShape,
+            LeaveAlternateScreen,
+            Show
+        );
+    }
+}
+
 async fn run_acp_tui_mode(
     cli: Cli,
     shell_mgr: Arc<ShellManager>,
@@ -2675,6 +2709,7 @@ async fn run_acp_tui_mode(
     connect_master_pipe: String,
 ) -> Result<()> {
     enable_raw_mode()?;
+    let mut restore_guard = TuiRestoreGuard::new();
     let mut stdout = io::stdout();
     // Keep mouse capture off so native click-drag selection continues to work.
     // Disable xterm alternate-scroll mode while the TUI is active so wheel
@@ -2715,6 +2750,7 @@ async fn run_acp_tui_mode(
         LeaveAlternateScreen
     )?;
     terminal.show_cursor()?;
+    restore_guard.disarm();
 
     if let Err(e) = result {
         // This is the real exit point for a TUI/helper failure (connection
