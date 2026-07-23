@@ -254,6 +254,48 @@ fn slash_model_bare_opens_picker_when_models_present() {
 }
 
 #[test]
+fn custom_provider_models_replace_agent_duplicates_and_keep_byok_identity() {
+    let mut app = test_app();
+    app.set_custom_model_selection(Some(
+        "custom:provider-two:deepseek/deepseek-v4-flash".into(),
+    ));
+    app.set_custom_models(vec![
+        CustomModelOption {
+            selection_id: "custom:provider-one:qwen/qwen3.5-9b".into(),
+            model_id: "qwen/qwen3.5-9b".into(),
+        },
+        CustomModelOption {
+            selection_id: "custom:provider-two:deepseek/deepseek-v4-flash".into(),
+            model_id: "deepseek/deepseek-v4-flash".into(),
+        },
+    ]);
+
+    let merged = app.merge_custom_models(vec![
+        AcpModelInfo {
+            id: "intelligent-terminal/deepseek/deepseek-v4-flash".into(),
+            name: "deepseek/deepseek-v4-flash".into(),
+            description: None,
+        },
+        AcpModelInfo { id: "native".into(), name: "Native".into(), description: None },
+    ]);
+
+    assert_eq!(merged.len(), 3);
+    assert!(merged.iter().any(|model| model.id == "native"));
+    assert!(merged.iter().any(|model| {
+        model.id == "custom:provider-one:qwen/qwen3.5-9b"
+            && model.name == "qwen/qwen3.5-9b (BYOK)"
+    }));
+    assert!(merged.iter().any(|model| {
+        model.id == "custom:provider-two:deepseek/deepseek-v4-flash"
+            && model.name == "deepseek/deepseek-v4-flash (BYOK)"
+    }));
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:provider-two:deepseek/deepseek-v4-flash")
+    );
+}
+
+#[test]
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
     app.available_models =
@@ -370,6 +412,25 @@ fn switch_agent_event_is_scoped_to_window_and_tab() {
     assert_eq!(event["params"]["window_id"], "42");
     assert_eq!(event["params"]["tab_id"], "{tab-guid}");
     assert_eq!(event["params"]["agent_id"], "claude");
+}
+
+#[test]
+fn switch_custom_model_event_carries_validated_selection_metadata() {
+    let payload = build_switch_custom_model_event(
+        "42",
+        "{tab-guid}",
+        "opencode",
+        "custom:provider-one:qwen/qwen3.5-9b",
+    );
+    let event: serde_json::Value = serde_json::from_str(&payload).expect("valid event json");
+    assert_eq!(event["method"], "switch_agent");
+    assert_eq!(event["params"]["window_id"], "42");
+    assert_eq!(event["params"]["tab_id"], "{tab-guid}");
+    assert_eq!(event["params"]["agent_id"], "opencode");
+    assert_eq!(
+        event["params"]["custom_model_selection"],
+        "custom:provider-one:qwen/qwen3.5-9b"
+    );
 }
 
 // ---- Degraded (transport-lost) gating: only /restart runs ----

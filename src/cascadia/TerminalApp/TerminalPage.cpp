@@ -1118,6 +1118,28 @@ namespace winrt::TerminalApp::implementation
         return Json::writeString(writer, providers);
     }
 
+    static std::string _SerializeCustomModelOptions(
+        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
+    {
+        Json::Value options{ Json::arrayValue };
+        for (const auto& provider : globals.CustomModelProviders())
+        {
+            for (const auto& model : provider.Models())
+            {
+                Json::Value option{ Json::objectValue };
+                option["selection_id"] = winrt::to_string(
+                    ::Microsoft::Terminal::CustomModels::SelectionId(
+                        provider.Id(),
+                        model.Id()));
+                option["model_id"] = winrt::to_string(model.Id());
+                options.append(std::move(option));
+            }
+        }
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        return Json::writeString(writer, options);
+    }
+
     static bool _IsAgentByokConfigured(
         const winrt::hstring& agentId,
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals) noexcept
@@ -2142,11 +2164,17 @@ namespace winrt::TerminalApp::implementation
             }
         }
         appendHelperFlagValue(L"--acp-model", effectiveModel);
-        if (_IsAgentByokConfigured(effectiveAgentId, globals))
         {
-            if (const auto custom = _FindSelectedCustomModel(globals))
+            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            if (Reg::SupportsByok(std::wstring_view{ effectiveAgentId }))
             {
-                appendHelperFlagValue(L"--custom-model-id", custom->second.Id());
+                appendHelperFlagValue(
+                    L"--custom-models",
+                    winrt::to_hstring(_SerializeCustomModelOptions(globals)));
+                if (_FindSelectedCustomModel(globals))
+                {
+                    appendHelperFlagValue(L"--custom-model-selection", globals.CustomModelSelection());
+                }
             }
         }
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
@@ -4972,6 +5000,70 @@ namespace winrt::TerminalApp::implementation
         if (!allowed)
         {
             _agentPaneLog("OnAgentSwitchRequested: unknown or policy-blocked agent");
+            return;
+        }
+
+        if (params.isMember("custom_model_selection") && params["custom_model_selection"].isString())
+        {
+            if (!Reg::SupportsByok(std::wstring_view{ agentId }))
+            {
+                _agentPaneLog("OnAgentSwitchRequested: BYOK selection rejected for unsupported agent");
+                return;
+            }
+
+            const auto selection = winrt::to_hstring(params["custom_model_selection"].asString());
+            std::wstring providerId;
+            std::wstring modelId;
+            if (!::Microsoft::Terminal::CustomModels::TryParseSelectionId(
+                    std::wstring_view{ selection },
+                    providerId,
+                    modelId))
+            {
+                _agentPaneLog("OnAgentSwitchRequested: malformed BYOK selection");
+                return;
+            }
+
+            bool found = false;
+            for (const auto& provider : _settings.GlobalSettings().CustomModelProviders())
+            {
+                if (provider.Id() != providerId)
+                {
+                    continue;
+                }
+                for (const auto& model : provider.Models())
+                {
+                    if (model.Id() == modelId)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                break;
+            }
+            if (!found)
+            {
+                _agentPaneLog("OnAgentSwitchRequested: unknown BYOK selection");
+                return;
+            }
+
+            auto globals = _settings.GlobalSettings();
+            if (globals.CustomModelSelection() == selection)
+            {
+                return;
+            }
+            globals.CustomModelSelection(selection);
+            globals.AcpModel(L"");
+            try
+            {
+                _settings.WriteSettingsToDisk();
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+                return;
+            }
+            _agentPaneLog("OnAgentSwitchRequested: persisted BYOK model selection");
+            _RebuildAgentStack();
             return;
         }
 

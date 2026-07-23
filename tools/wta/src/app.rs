@@ -1014,6 +1014,12 @@ pub struct AcpModelInfo {
     pub description: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+pub struct CustomModelOption {
+    pub selection_id: String,
+    pub model_id: String,
+}
+
 /// Test-visible record of a wtcli command the App fired through the
 /// `wt_channel::spawn_*` helpers. Captured under `cfg(test)` so we can
 /// assert the agent session view dispatches the right shape of command
@@ -2136,10 +2142,12 @@ pub struct App {
     /// lazy-first-prompt sessions stay on the configured model, not just the
     /// bootstrap one. None = "agent default" (no override).
     acp_model: Option<String>,
-    /// Shared-provider model id supplied directly to this helper by WT.
+    /// Shared-provider selection id supplied directly to this helper by WT.
     /// Kept separate from the master-only provider environment because this
     /// process owns the `/model` UI but never receives provider credentials.
-    custom_model_id: Option<String>,
+    custom_model_selection: Option<String>,
+    /// Every configured shared-provider model exposed through `/model`.
+    custom_models: Vec<CustomModelOption>,
     /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -2361,7 +2369,8 @@ impl App {
             delegate_agents: None,
             delegate_base_agent_cmd: String::new(),
             acp_model: None,
-            custom_model_id: None,
+            custom_model_selection: None,
+            custom_models: Vec::new(),
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -2672,10 +2681,49 @@ impl App {
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
     }
-    pub fn set_custom_model_id(&mut self, model_id: Option<String>) {
-        self.custom_model_id = model_id
+    pub fn set_custom_model_selection(&mut self, selection_id: Option<String>) {
+        self.custom_model_selection = selection_id
             .map(|id| id.trim().to_string())
             .filter(|id| !id.is_empty());
+    }
+
+    pub fn set_custom_models(&mut self, models: Vec<CustomModelOption>) {
+        self.custom_models = models
+            .into_iter()
+            .filter(|model| !model.selection_id.is_empty() && !model.model_id.is_empty())
+            .collect();
+        let advertised = std::mem::take(&mut self.available_models);
+        self.available_models = self.merge_custom_models(advertised);
+        let current_model_id = self.current_model_id.take();
+        self.current_model_id = self.resolve_current_model_id(current_model_id);
+    }
+
+    fn merge_custom_models(&self, mut advertised: Vec<AcpModelInfo>) -> Vec<AcpModelInfo> {
+        for custom in &self.custom_models {
+            advertised.retain(|model| {
+                model.id != custom.selection_id
+                    && model.id != custom.model_id
+                    && model.id != format!("intelligent-terminal/{}", custom.model_id)
+            });
+            advertised.push(AcpModelInfo {
+                id: custom.selection_id.clone(),
+                name: format!("{} (BYOK)", custom.model_id),
+                description: None,
+            });
+        }
+        advertised
+    }
+
+    fn resolve_current_model_id(&self, agent_model_id: Option<String>) -> Option<String> {
+        self.custom_model_selection
+            .as_deref()
+            .and_then(|selection_id| {
+                self.custom_models
+                    .iter()
+                    .find(|model| model.selection_id == selection_id)
+                    .map(|model| model.selection_id.clone())
+            })
+            .or(agent_model_id)
     }
 
     /// Low-level: ask the ACP client task to apply `model` via
@@ -2984,6 +3032,26 @@ impl App {
     /// and `/model <id>`. If no session is live yet, the override is stored
     /// and `SessionAttached` applies it via `effective_model_for_tab`.
     fn apply_model_pick(&mut self, model_id: String) {
+        if self
+            .custom_models
+            .iter()
+            .any(|model| model.selection_id == model_id)
+        {
+            let (Some(window_id), Some(tab_id)) =
+                (self.window_id.as_deref(), self.owner_tab_id.as_deref())
+            else {
+                self.push_agent_switch_unavailable();
+                return;
+            };
+            send_wt_protocol_event(build_switch_custom_model_event(
+                window_id,
+                tab_id,
+                &self.current_agent_id,
+                &model_id,
+            ));
+            return;
+        }
+
         let name = self
             .available_models
             .iter()
@@ -4934,8 +5002,8 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
-                self.available_models = available_models.clone();
-                self.current_model_id = current_model_id.clone();
+                self.available_models = self.merge_custom_models(available_models.clone());
+                self.current_model_id = self.resolve_current_model_id(current_model_id.clone());
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -5024,10 +5092,10 @@ impl App {
                 // App.available_models pointing at the active session's
                 // models so the existing settings UI stays correct.
                 if !available_models.is_empty() {
-                    self.available_models = available_models;
+                    self.available_models = self.merge_custom_models(available_models);
                 }
                 if current_model_id.is_some() {
-                    self.current_model_id = current_model_id;
+                    self.current_model_id = self.resolve_current_model_id(current_model_id);
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -7818,9 +7886,16 @@ impl App {
         // Same precedence as `current_model_display`: override → agent's
         // reported model → global `acpModel`, so the picker marks the pane's
         // effective model even before the agent reports `current_model_id`.
+        let selected_custom = self.custom_model_selection.as_deref().and_then(|selected| {
+            self.custom_models
+                .iter()
+                .find(|model| model.selection_id == selected)
+                .map(|model| model.selection_id.as_str())
+        });
         let current_id = tab
             .model_override
             .as_deref()
+            .or(selected_custom)
             .or(self.current_model_id.as_deref())
             .or(self.acp_model.as_deref());
         Some(crate::ui::ModelPopupState {
@@ -7828,7 +7903,6 @@ impl App {
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
             current_id,
-            custom_model_id: self.custom_model_id.as_deref(),
         })
     }
 
@@ -9938,6 +10012,24 @@ fn build_switch_agent_event(window_id: &str, tab_id: &str, agent_id: &str) -> St
     .to_string()
 }
 
+fn build_switch_custom_model_event(
+    window_id: &str,
+    tab_id: &str,
+    agent_id: &str,
+    selection_id: &str,
+) -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "switch_agent",
+        "params": {
+            "window_id": window_id,
+            "tab_id": tab_id,
+            "agent_id": agent_id,
+            "custom_model_selection": selection_id,
+        }
+    })
+    .to_string()
+}
 
 /// Tell WT which pane in `tab_id` should display the blue "Agent" chip.
 /// `pane_session_id = None` releases the override and lets the C++ side
