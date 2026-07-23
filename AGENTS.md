@@ -1,3 +1,35 @@
+我们要做一个feature，
+
+在开发正式的feature之前，请先确认你能做到以下测试：
+
+1. 完美 mock claude和 codex，
+2. build/deploy an intelligent terminal from existing code, launch it，
+3. 截图，并确认你能从截图中看到terminal的窗口。
+4. 点击左下角的按钮展开agent 窗口，截图，并确认你能从截图中看到与agent对话的窗口。
+4. 选择claude做agent，截图，并确认你能从截图中读到agent已经切换为claude。
+5. 选择codex做agent，截图，并确认你能从截图中读到agent已经切换为codex。
+6. 回到 terminal，点击右下角的菜单按钮，截图，确认你能从截图中看到session窗口（我复制了一个session窗口的样子给你看）
+
+try to reuse existing tests code, but note that the existing test framework 可能并不强大。你或许需要自己开发新的 test framework，请在本地开发。但是注意我们的test-framework不进feature commit，所以要做好moduralization，使其在未来能尽可能地独立成为一个新的PR。
+
+
+测试跑通后，请严格按照 the Test Driven Development workflow 来制定计划并逐步完成开发。feature详情请见：
+"./doc/investigation/acp-price-calc.md"
+
+用 pwsh （powershell 7）来做 e2e test. pwsh 更贴近用户体验：
+"C:\Program Files\PowerShell\7\pwsh.exe"
+
+注意做好 moduralization，and reusing existing code.
+
+每当你完成一个步骤并测试成功，将你实现的东西记录在 "./doc/investigation/acp-price-calc-track.md" 中，并将与这一部分feature相关的代码，e2e测试截图 和 acp-price-calc-track.md中的新note，通过 commit + push 到 本地和远程的 branch： user/DinahK-2SO/acp-price-calc
+
+关于tests是否commits：our dev PR doesn't mean to introduce a brand new test framework here. 因此，现有的 test framework 能够cover的tests才加入commits，其他只留在本地。未来我们会另开一个PR to make the tests more E2E and closer to the actual user interaction, 因此，本地的测试代码都不要删除。
+
+========================
+
+
+以下是本repo原有的prompts，仅供参考，请始终以实际代码为准。
+
 # Intelligent Terminal (Windows Terminal Fork)
 
 AI-native Windows Terminal — agents (Copilot, Claude, Gemini, custom) can understand, fix, and automate terminal workflows.
