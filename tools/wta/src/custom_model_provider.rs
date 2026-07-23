@@ -188,13 +188,12 @@ fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option
         unsafe { CredFree(credential.cast()) };
         bail!("model provider credential is empty");
     }
-    let bytes = unsafe { std::slice::from_raw_parts(blob, blob_size).to_vec() };
+    let mut bytes = unsafe { std::slice::from_raw_parts(blob, blob_size).to_vec() };
     unsafe { CredFree(credential.cast()) };
 
-    let api_key = String::from_utf8(bytes)
-        .context("model provider credential is not valid UTF-8")?
-        .trim()
-        .to_string();
+    let api_key = std::str::from_utf8(&bytes).map(|value| value.trim().to_string());
+    bytes.fill(0);
+    let api_key = api_key.context("model provider credential is not valid UTF-8")?;
     if api_key.is_empty() {
         bail!("model provider credential is empty");
     }

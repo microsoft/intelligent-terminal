@@ -70,7 +70,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         const auto id = JsonUtils::GetValueForKey<winrt::hstring>(json, "id");
         const auto name = JsonUtils::GetValueForKey<winrt::hstring>(json, "name");
         const auto baseUrl = JsonUtils::GetValueForKey<winrt::hstring>(json, "baseUrl");
-        auto provider = winrt::make_self<CustomModelProvider>(id, name, baseUrl);
+        const auto displayName = name.empty() ? (baseUrl.empty() ? id : baseUrl) : name;
+        auto provider = winrt::make_self<CustomModelProvider>(id, displayName, baseUrl);
         JsonUtils::GetValueForKey(json, "apiContract", provider->_ApiContract);
         JsonUtils::GetValueForKey(json, "location", provider->_Location);
         JsonUtils::GetValueForKey(json, "apiKeyCredential", provider->_ApiKeyCredential);
