@@ -11,18 +11,13 @@ checklist.
 
 ## When to Use This Skill
 
-- Add integration or E2E tests for a specific PR.
-- Add follow-up regression coverage after a fix has merged.
-- Prove a bug from an issue cannot recur across real component boundaries.
+- Convert an open or merged PR into cross-component regression coverage.
 - Extend `doc/release-check-list.md` and make report scripts check the new rows.
 - Audit whether a PR's existing tests cover the user-visible behavior rather
   than only its implementation details.
 
 ## Prerequisites
 
-- Work on a feature branch, never directly on `main` or `master`.
-- Use `gh` to inspect the target PR, linked issues, review discussion, and state.
-- Read repository and area-specific instructions before editing.
 - Read `test/e2e/README.md` and reuse the ItE2E framework instead of creating a
   parallel harness.
 - Run `pwsh -File test/e2e/bootstrap.ps1 -Check` before live E2E validation.
@@ -30,19 +25,9 @@ checklist.
 ## Workflow
 
 Follow [workflow.md](./references/workflow.md). Track the phases with a TODO
-list because PR analysis, test design, checklist wiring, live validation, and
-delivery must all complete.
+list.
 
-1. Resolve the target PR and select the correct base commit and branch strategy.
-2. Reconstruct the user-visible behavior and the complete component path.
-3. Audit existing unit, integration, E2E, and release-checklist coverage.
-4. Build a positive/negative/regression behavior matrix before writing tests.
-5. Implement the smallest deterministic integration suite using existing ItE2E
-   primitives.
-6. Map each new release-signoff behavior to a stable checklist item.
-7. Run the new suite, related existing regressions, and release-report scripts.
-8. Commit, push, and prepare a PR whose evidence names passes, skips, checklist
-   IDs, and the exact build tested.
+`analyze PR -> reconstruct behavior -> audit coverage -> design matrix -> write ItE2E -> wire checklist -> validate -> deliver`
 
 ## Test Design Standard
 
@@ -58,11 +43,6 @@ For every proposed case, record:
 | Existing protection | Which existing tests protect old behavior and must still run? |
 | Checklist title | Which exact bold release-checklist title contains the Pester test name? |
 
-An integration test is justified only when it proves a boundary that lower-level
-tests do not. Keep focused unit tests for branch logic; use E2E for wiring,
-packaging, process boundaries, protocol events, persistence, and real UI
-interaction.
-
 ## Oracle Priority
 
 Prefer the earliest deterministic product-owned signal:
@@ -73,9 +53,8 @@ Prefer the earliest deterministic product-owned signal:
 4. Rendered terminal or UI state
 5. LLM-generated text
 
-Use an LLM output or AI judge only when usefulness or semantic correctness is
-the behavior under test. Do not make routing, trigger, suppression, or
-single-flight regressions depend on model wording.
+Use model output only when it is the behavior under test; never use it to prove
+routing, triggers, suppression, or idempotency.
 
 ## Release Checklist Contract
 
@@ -85,26 +64,18 @@ single-flight regressions depend on model wording.
 - Prefer exact-title matching. Add `test/e2e/release-coverage-map.psd1` entries
   only when an exact test name would be misleading or one case intentionally
   covers multiple checklist items.
-- Run `pwsh -File test/e2e/Set-ChecklistIds.ps1`; never assign or renumber
-  stable checklist IDs manually.
-- Run the suite through the E2E report driver, not only `Invoke-Pester`, and
-  inspect `release-report.md` to prove every new ID is `[x]`.
-- Verify `Update-ReleaseReport.ps1` too when the suite is expected to support
-  partial release-signoff runs.
+- Assign stable IDs and verify `[x]` output through the full and incremental
+  report paths in [workflow.md](./references/workflow.md).
 
 ## Completion Gate
 
 Do not call the work complete until all of these are true:
 
-- The original regression fails on the old behavior or is otherwise tied to a
-  verified pre-fix symptom.
-- The fixed path passes through the real integration boundary.
-- False-positive and replay/idempotency risks are covered where applicable.
-- Related preexisting suites pass, or every skip/failure is explicitly
-  classified as environment, model variance, product regression, or test bug.
-- New checklist IDs become `[x]` through both applicable report paths.
-- The deployed package or executable under test is proven to contain the target
-  change; no stale artifact is being exercised.
+- Pre-fix evidence identifies the regression, and the fixed path crosses the
+  real integration boundary.
+- Relevant false positives, replay risks, and existing behavior are covered.
+- The correct build passes related suites and marks new checklist IDs `[x]`;
+  every skip is explained.
 
 ## Gotchas
 
@@ -118,16 +89,6 @@ Do not call the work complete until all of these are true:
 - **Do not turn product failures into skips.** Skip only when an external
   prerequisite is genuinely unavailable. A connected product that behaves
   incorrectly must fail.
-- **Do not rely on fixed sleeps for positive completion.** Start listeners
-  before actions and poll for a scoped event/state. Use a short bounded
-  observation window only to prove that something does not happen.
-- **Do not let unrelated panes or windows satisfy assertions.** Scope events by
-  pane/session/tab/window identifiers whenever the protocol exposes them.
-- **Do not trust a build command alone.** Confirm package selection, deployed
-  version, co-located binaries, and runtime logs when stale artifacts are
-  possible.
-- **Do not add checklist text without validating report matching.** A passing
-  Pester case that leaves its release row unchecked is incomplete coverage.
 
 ## References
 

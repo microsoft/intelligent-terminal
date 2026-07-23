@@ -31,9 +31,8 @@ Choose the branch deliberately:
 - **Open PR but independent validation is requested:** create a branch from the
   PR head and clearly state that the test branch depends on the unmerged PR.
 
-Never force-delete a branch based only on its name. Verify the PR state and a
-clean worktree first. A squash-merged branch may require `git branch -D`
-because Git cannot infer ancestry even though GitHub confirms the merge.
+Verify merge state and a clean worktree before deleting a branch. Squash-merged
+branches may require `git branch -D` because Git cannot infer ancestry.
 
 ## 2. Reconstruct the Behavioral Contract
 
@@ -53,9 +52,6 @@ For a regression, distinguish:
 - What downstream code interpreted.
 - Why existing tests did not catch the gap.
 - Which observable separates the regression from a legitimate success case.
-
-Do not accept a PR description as the sole source of truth. Compare it with the
-code, issue reproduction, logs/events, and live behavior when available.
 
 ## 3. Audit Existing Coverage and Harness Primitives
 
@@ -85,8 +81,8 @@ Classify current coverage:
 | Integration/E2E | Real process/protocol/package/UI wiring |
 | Release checklist | Which user-facing behaviors count as signed off |
 
-Reuse public ItE2E primitives. Add a shared helper only when multiple suites
-need the same operation or the helper itself provides a more precise oracle.
+Add a shared helper only when multiple suites need it or it provides a more
+precise oracle.
 
 ## 4. Build the Behavior Matrix
 
@@ -104,8 +100,8 @@ Start with the regression, then add only risk-driven controls:
 6. **Compatibility:** alternate shell, agent, policy, or language mode only when
    the changed code is shared with it.
 
-Avoid combinatorial matrices. Each case must correspond to a plausible failure
-mode introduced or exposed by the target PR.
+Each case must correspond to a plausible failure mode introduced or exposed by
+the target PR.
 
 For every case, identify both the immediate trigger and the downstream effect.
 For example, proving a failure event exists is insufficient when the user
@@ -139,19 +135,13 @@ Describe 'Feature: <behavior>' -Tag 'Feature' -Skip:(-not $script:Ready) {
 
 Implementation rules:
 
-- Start event listeners before triggering the behavior.
-- Scope event predicates by stable IDs; do not accept unrelated startup events.
-- Use `Wait-WtEvent`, `Test-Until`, or assertion helpers for positive outcomes.
-- For negative outcomes, first prove the command/action completed, then observe
-  a short bounded window and assert the forbidden event/state is absent.
-- Use unique command text when the product intentionally deduplicates repeated
-  requests.
-- Use fresh applications or explicit state cleanup when one case can leave an
-  agent turn, setting, pane, or listener active.
-- Put cleanup in `finally`/`AfterAll`.
-- Keep model-semantic tests separate from deterministic routing tests. If model
-  variance is accepted, skip only the semantic assertion after proving the
-  deterministic pipeline succeeded.
+- Start listeners before the action; scope predicates by stable IDs and poll for
+  positive outcomes.
+- For a negative case, first prove the action completed, then use a bounded
+  observation window.
+- Use unique inputs when the product deduplicates, isolate state between cases,
+  and clean up in `finally`/`AfterAll`.
+- Keep model-semantic assertions separate from deterministic pipeline checks.
 
 ## 6. Wire the Release Checklist
 
@@ -226,40 +216,19 @@ regressions or the PR changes common harness/product infrastructure.
 
 ## 8. Prove the Correct Build Ran
 
-Build and deploy according to the changed area. For WTA + Terminal changes:
-
-1. Build WTA with the explicit target matching the package architecture:
-   `--target x86_64-pc-windows-msvc` for x64 or
-   `--target aarch64-pc-windows-msvc` for ARM64. Package deployment prefers the
-   explicit-target artifact.
-2. Build the C++ package after WTA.
-3. Deploy/redeploy the package and select it with `ITE2E_PACKAGE` or
-   `-Package Dev`.
-4. Verify package version/path, runtime logs, or a changed observable.
-
-Do not infer deployment success from compilation alone. A stale packaged
-`wta.exe`, generated shell-integration script, profile reference, or AppX
-staging directory can make a new test exercise old code.
+Build and deploy the changed area. For WTA changes, build the explicit target
+matching the package architecture before the C++ package, deploy it, select it
+with `ITE2E_PACKAGE` or `-Package Dev`, and verify a runtime version, path, log,
+or changed observable. Compilation alone does not prove the deployed package
+contains the new `wta.exe` or generated shell integration.
 
 ## 9. Deliver the Test PR
 
-Before committing:
-
-```powershell
-git -c core.whitespace=cr-at-eol diff --check
-git status --short --branch
-```
+Before committing, run `git -c core.whitespace=cr-at-eol diff --check`.
 
 The PR description must include:
 
-- Target PR and issue.
-- Missing integration boundary now covered.
-- Positive, negative, and compatibility cases added.
-- New checklist IDs and proof they become `[x]`.
-- Exact targeted and regression test totals.
-- Every skip with its reason.
+- Target PR/issue and the integration boundary added.
+- Cases and checklist IDs.
+- Targeted/regression totals and skip reasons.
 - Package/build tested.
-
-Do not claim complete regression coverage if environment-dependent suites were
-not run. Distinguish deterministic passes from accepted model variance and
-unavailable prerequisites.
