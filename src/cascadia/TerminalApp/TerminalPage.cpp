@@ -1068,11 +1068,11 @@ namespace winrt::TerminalApp::implementation
         // Adapter-style launches: claude/codex CLIs don't speak ACP themselves.
         if (lower == "claude")
         {
-            return winrt::hstring{ L"npx -y @agentclientprotocol/claude-agent-acp" };
+            return winrt::hstring{ L"npx -y @agentclientprotocol/claude-agent-acp@0.59.0" };
         }
         if (lower == "codex")
         {
-            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.0" };
+            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.2" };
         }
         if (lower == "opencode")
         {
@@ -2594,6 +2594,31 @@ namespace winrt::TerminalApp::implementation
                 detectedSummary = impl->GetDetectedSummary();
                 agentConnected = impl->IsAgentConnected();
             }
+        }
+
+        if (const auto usageGroup = UsageGroup())
+        {
+            usageGroup.Children().Clear();
+            bool usageVisible = false;
+            if (activeAgent)
+            {
+                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(activeAgent);
+                const auto display = ::TerminalApp::AgentUsage::BuildPrimaryDisplay(
+                    impl->GetAgentUsage(),
+                    RS_(L"Usage_TokensUnit"));
+                usageVisible = display.visible;
+                for (const auto& text : display.texts)
+                {
+                    TextBlock block;
+                    block.Text(text);
+                    block.FontSize(12);
+                    block.VerticalAlignment(VerticalAlignment::Center);
+                    block.TextTrimming(TextTrimming::CharacterEllipsis);
+                    block.MaxWidth(180);
+                    usageGroup.Children().Append(block);
+                }
+            }
+            usageGroup.Visibility(usageVisible ? Visibility::Visible : Visibility::Collapsed);
         }
 
         if (auto diagBtn = DiagnosticsButton())
@@ -4630,6 +4655,17 @@ namespace winrt::TerminalApp::implementation
                 logSuffix += " pane_position=global";
             }
         }
+        std::optional<Json::Value> usage;
+        if (params.isMember("usage"))
+        {
+            const auto& value = params["usage"];
+            if (!value.isNull() && !value.isObject())
+            {
+                throw std::invalid_argument{ "agent_state_changed usage must be null or object" };
+            }
+            usage = value;
+            logSuffix += value.isNull() ? " usage=null" : " usage=present";
+        }
         _agentPaneLog(std::string{ "OnAgentStateChanged:" } + logSuffix);
 
         // Apply view to the existing AgentPaneContent if any.
@@ -4745,6 +4781,14 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+            }
+        }
+
+        if (usage.has_value())
+        {
+            if (const auto agentContent = targetTab->FindAgentPaneContent())
+            {
+                winrt::get_self<implementation::AgentPaneContent>(agentContent)->ApplyAgentUsage(*usage);
             }
         }
 

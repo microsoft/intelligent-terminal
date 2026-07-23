@@ -171,6 +171,12 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
+    void AgentPaneContent::ApplyAgentUsage(const Json::Value& usage)
+    {
+        ::TerminalApp::AgentUsage::UpdateCache(_agentUsage, usage);
+        StateChanged.raise(*this, nullptr);
+    }
+
     void AgentPaneContent::SetAgentPanePosition(const winrt::hstring& position)
     {
         if (_agentPanePosition == position)

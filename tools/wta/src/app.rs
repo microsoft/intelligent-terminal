@@ -1108,6 +1108,13 @@ pub enum AppEvent {
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
     },
+    UsageReported {
+        session_id: String,
+        snapshot: crate::usage::UsageSnapshot,
+    },
+    UsageCleared {
+        session_id: String,
+    },
     /// Error scoped to a specific tab. Used by paths that know the tab
     /// (e.g. ACP `session/load` failure) but have no session_id yet
     /// because the session never came up. Routes into that tab's chat as
@@ -1412,6 +1419,7 @@ impl Scroll {
 pub struct TabSession {
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
+    pub usage: Option<crate::usage::UsageSnapshot>,
 
     // Conversation history
     pub messages: Vec<ChatMessage>,
@@ -1662,6 +1670,7 @@ impl TabSession {
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
         self.tool_calls.clear();
+        self.usage = None;
         // Dropping pending responders signals `Cancelled` back to the
         // agent — appropriate when the user wipes chat history mid-turn.
         self.permission.clear();
@@ -2224,6 +2233,8 @@ pub struct App {
     /// place of a live wtcli; not compiled into release builds.
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
+    #[cfg(test)]
+    projected_test_events: std::sync::Mutex<Vec<serde_json::Value>>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
     /// launching pane). Used by autofix to attribute which pane originated
     /// the failing command we're about to fix.
@@ -2457,6 +2468,8 @@ impl App {
             acp_model: None,
             #[cfg(test)]
             last_dispatched_command: None,
+            #[cfg(test)]
+            projected_test_events: std::sync::Mutex::new(Vec::new()),
             source_session_id: None,
             source_cwd: None,
             log_agent_events: false,
@@ -4648,6 +4661,8 @@ impl App {
             AppEvent::ProgressStatus { .. } => "progress_status",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
+            AppEvent::UsageReported { .. } => "usage_reported",
+            AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
@@ -5058,6 +5073,9 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
+                if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    tab.usage = None;
+                }
                 tab.session_id = Some(session_id);
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
@@ -5130,6 +5148,19 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+            }
+            AppEvent::UsageReported {
+                session_id,
+                snapshot,
+            } => {
+                let target_tab = self.tab_for_session(&session_id);
+                self.tab_mut(&target_tab).usage = Some(snapshot);
+                self.project_tab_state(&target_tab);
+            }
+            AppEvent::UsageCleared { session_id } => {
+                let target_tab = self.tab_for_session(&session_id);
+                self.tab_mut(&target_tab).usage = None;
+                self.project_tab_state(&target_tab);
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -9973,20 +10004,12 @@ impl App {
             );
             return;
         };
-        let view = match tab.current_view {
-            View::Agents => "sessions",
-            View::Chat => "chat",
-        };
-        let evt = serde_json::json!({
-            "type": "event",
-            "method": "agent_state_changed",
-            "params": {
-                "tab_id":    target_tab,
-                "view":      view,
-                "pane_open": tab.pane_open,
-                "pane_position": tab.agent_pane_position,
-            }
-        });
+        let evt = build_agent_state_changed_event(target_tab, tab);
+        #[cfg(test)]
+        self.projected_test_events
+            .lock()
+            .unwrap()
+            .push(evt.clone());
         send_wt_protocol_event(evt.to_string());
 
         // Autofix bar is window-level (single bottom bar reflecting the
@@ -9996,6 +10019,33 @@ impl App {
             send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
         }
     }
+
+    #[cfg(test)]
+    fn take_projected_test_events(&self) -> Vec<serde_json::Value> {
+        std::mem::take(&mut *self.projected_test_events.lock().unwrap())
+    }
+}
+
+fn build_agent_state_changed_event(target_tab: &str, tab: &TabSession) -> serde_json::Value {
+    let view = match tab.current_view {
+        View::Agents => "sessions",
+        View::Chat => "chat",
+    };
+    let usage = tab
+        .usage
+        .as_ref()
+        .map(crate::usage::UsageProjection::from);
+    serde_json::json!({
+        "type": "event",
+        "method": "agent_state_changed",
+        "params": {
+            "tab_id": target_tab,
+            "view": view,
+            "pane_open": tab.pane_open,
+            "pane_position": tab.agent_pane_position,
+            "usage": usage,
+        }
+    })
 }
 
 /// Publish a raw JSON event via `wtcli publish`. The event flows through
@@ -11895,6 +11945,227 @@ mod tests {
             "resume must not leave any loose chat messages, got {:?}",
             tab.messages
         );
+    }
+
+    #[test]
+    fn usage_reported_updates_only_the_session_owner_tab() {
+        let mut app = test_app();
+        app.tab_id = Some("ACTIVE-TAB".to_string());
+        app.tab_sessions
+            .insert("ACTIVE-TAB".to_string(), TabSession::default());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+        app.session_to_tab
+            .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+        let snapshot = crate::usage::UsageSnapshot {
+            used: 20,
+            size: 100,
+            cost: None,
+        };
+
+        app.handle_event(AppEvent::UsageReported {
+            session_id: "usage-session".to_string(),
+            snapshot: snapshot.clone(),
+        });
+
+        assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
+        assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
+    }
+
+    #[test]
+    fn usage_events_immediately_project_owner_tab_state() {
+        let mut app = test_app();
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+        app.session_to_tab
+            .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+
+        app.handle_event(AppEvent::UsageReported {
+            session_id: "usage-session".to_string(),
+            snapshot: lifecycle_usage_snapshot(),
+        });
+
+        let reported = app.take_projected_test_events();
+        assert_eq!(reported.len(), 1);
+        assert_eq!(reported[0]["method"], "agent_state_changed");
+        assert_eq!(reported[0]["params"]["tab_id"], "OWNER-TAB");
+        assert!(reported[0]["params"]["usage"].is_object());
+
+        app.handle_event(AppEvent::UsageCleared {
+            session_id: "usage-session".to_string(),
+        });
+
+        let cleared = app.take_projected_test_events();
+        assert_eq!(cleared.len(), 1);
+        assert_eq!(cleared[0]["method"], "agent_state_changed");
+        assert_eq!(cleared[0]["params"]["tab_id"], "OWNER-TAB");
+        assert!(cleared[0]["params"]["usage"].is_null());
+    }
+
+    #[test]
+    fn usage_cleared_removes_only_owner_snapshot_without_changing_chat() {
+        let mut app = test_app();
+        let snapshot = lifecycle_usage_snapshot();
+        app.state = ConnectionState::Connected;
+        app.tab_sessions.insert(
+            "OWNER-TAB".to_string(),
+            TabSession {
+                messages: vec![ChatMessage::System("keep this message".to_string())],
+                usage: Some(snapshot.clone()),
+                ..Default::default()
+            },
+        );
+        app.tab_sessions.insert(
+            "OTHER-TAB".to_string(),
+            TabSession {
+                usage: Some(snapshot.clone()),
+                ..Default::default()
+            },
+        );
+        app.session_to_tab
+            .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+
+        app.handle_event(AppEvent::UsageCleared {
+            session_id: "usage-session".to_string(),
+        });
+
+        assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+        assert_eq!(
+            app.tab_sessions["OWNER-TAB"].messages,
+            vec![ChatMessage::System("keep this message".to_string())]
+        );
+        assert_eq!(app.tab_sessions["OTHER-TAB"].usage, Some(snapshot));
+        assert_eq!(app.state, ConnectionState::Connected);
+    }
+
+    fn lifecycle_usage_snapshot() -> crate::usage::UsageSnapshot {
+        crate::usage::UsageSnapshot {
+            used: 20,
+            size: 100,
+            cost: None,
+        }
+    }
+
+    #[test]
+    fn usage_lifecycle_clear_history_clears_snapshot() {
+        let mut tab = TabSession {
+            usage: Some(lifecycle_usage_snapshot()),
+            ..Default::default()
+        };
+
+        tab.clear_chat_history();
+
+        assert!(tab.usage.is_none());
+    }
+
+    #[test]
+    fn usage_lifecycle_new_session_command_clears_snapshot() {
+        let mut app = test_app();
+        app.current_tab_mut().usage = Some(lifecycle_usage_snapshot());
+
+        app.cmd_new(false);
+
+        assert!(app.current_tab().usage.is_none());
+    }
+
+    #[test]
+    fn usage_lifecycle_load_session_clears_snapshot() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.owner_tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions.insert(
+            "OWNER-TAB".to_string(),
+            TabSession {
+                usage: Some(lifecycle_usage_snapshot()),
+                ..Default::default()
+            },
+        );
+
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "loaded-session",
+                "cwd": "",
+            }),
+        });
+
+        assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+    }
+
+    #[test]
+    fn usage_lifecycle_model_change_preserves_snapshot() {
+        let mut app = test_app();
+        let snapshot = lifecycle_usage_snapshot();
+        app.current_tab_mut().usage = Some(snapshot.clone());
+
+        app.apply_global_acp_model(Some("new-model".to_string()));
+
+        assert_eq!(app.current_tab().usage, Some(snapshot));
+    }
+
+    #[test]
+    fn usage_lifecycle_new_connection_session_clears_snapshot() {
+        let mut app = test_app();
+        app.current_tab_mut().session_id = Some("old-session".to_string());
+        app.current_tab_mut().usage = Some(lifecycle_usage_snapshot());
+
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Agent".to_string(),
+            model: None,
+            version: None,
+            session_id: "new-session".to_string(),
+            available_models: Vec::new(),
+            current_model_id: None,
+            load_session_supported: false,
+            image_supported: false,
+        });
+
+        assert!(app.current_tab().usage.is_none());
+    }
+
+    #[test]
+    fn usage_projection_adds_context_and_cost_to_agent_state_snapshot() {
+        let tab = TabSession {
+            usage: Some(crate::usage::UsageSnapshot {
+                used: 1_024,
+                size: 8_192,
+                cost: Some(crate::usage::UsageCost {
+                    amount_decimal_text: "0.004".to_string(),
+                    currency: "USD".to_string(),
+                }),
+            }),
+            ..Default::default()
+        };
+
+        let event = build_agent_state_changed_event("TAB-1", &tab);
+        let items = event["params"]["usage"]["items"]
+            .as_array()
+            .expect("usage items");
+
+        assert_eq!(event["method"], "agent_state_changed");
+        assert_eq!(event["params"]["tab_id"], "TAB-1");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["metric_id"], "acp.context.window");
+        assert_eq!(items[0]["value_decimal_text"], "1024");
+        assert_eq!(items[0]["limit_decimal_text"], "8192");
+        assert_eq!(items[0]["unit_id"], "token");
+        assert_eq!(items[1]["metric_id"], "acp.billing.cost");
+        assert_eq!(items[1]["value_decimal_text"], "0.004");
+        assert_eq!(items[1]["unit_id"], "USD");
+        for item in items {
+            assert_eq!(item["scope"], "session");
+            assert_eq!(item["source"], "acp_standard");
+            assert_eq!(item["stale"], false);
+        }
+    }
+
+    #[test]
+    fn usage_projection_emits_null_to_clear_cached_usage() {
+        let event = build_agent_state_changed_event("TAB-1", &TabSession::default());
+
+        assert!(event["params"]["usage"].is_null());
     }
 
     // ─── WtNotification auto-dismiss ────────────────────────────────────────

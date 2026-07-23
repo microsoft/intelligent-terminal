@@ -13,7 +13,7 @@
     policy. Safe to run even if the key doesn't exist.
 
 .EXAMPLE
-    pwsh -File test/e2e/tools/Disable-WtAgentPolicyTesting.ps1
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/tools/Disable-WtAgentPolicyTesting.ps1
 #>
 [CmdletBinding()]
 param(
@@ -22,6 +22,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
+$currentPowerShell = (Get-Process -Id $PID -ErrorAction Stop).Path
+if (-not [string]::Equals($currentPowerShell, $pwsh, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "This E2E setup tool must run under '$pwsh'; current host is '$currentPowerShell'."
+}
 
 function Test-IsAdmin {
     ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -35,7 +40,6 @@ if (-not $UserSid) {
 
 if (-not (Test-IsAdmin)) {
     Write-Host "Elevating to remove '$UserName' agent-policy key (approve the UAC prompt)..."
-    $pwsh = (Get-Process -Id $PID).Path
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-UserSid', $UserSid, '-UserName', "`"$UserName`"")
     $p = Start-Process -FilePath $pwsh -ArgumentList $argList -Verb RunAs -Wait -PassThru
     if ($p.ExitCode -ne 0) { throw "Elevated cleanup failed (exit $($p.ExitCode))." }
@@ -55,6 +59,6 @@ if ($provisioned) {
     Write-Host "Removed $path (was provisioned by Enable-WtAgentPolicyTesting)."
 }
 else {
-    Write-Host "Key pre-existed (no provisioning marker) — leaving it untouched."
+    Write-Host "Key pre-existed (no provisioning marker) - leaving it untouched."
 }
 exit 0

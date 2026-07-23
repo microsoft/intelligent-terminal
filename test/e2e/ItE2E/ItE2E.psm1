@@ -11,10 +11,13 @@ foreach ($scope in @('Private', 'Public')) {
     }
 }
 
+# Keep every direct Pester invocation, runner, and child helper on the same user-facing shell.
+Assert-ItPowerShell7Host | Out-Null
+
 # Export every function defined by the Public files (and the few private ones tests use).
 $publicFns = @(
     # Harness
-    'Resolve-ItApp', 'Resolve-WtComClsid', 'Get-ItTestPackage', 'Start-Terminal', 'Start-TerminalClean', 'Stop-Terminal',
+    'Resolve-ItApp', 'Resolve-WtComClsid', 'Get-ItTestPackage', 'Get-ItPowerShell7Path', 'Assert-ItPowerShell7Host', 'Start-Terminal', 'Start-TerminalClean', 'Stop-Terminal',
     'Reset-TerminalState', 'Backup-WtConfig', 'Restore-WtConfig', 'Clear-WtConfig', 'Get-WtProcessesForApp', 'Stop-AppInstances', 'Stop-StaleItInstances', 'Start-TerminalFre', 'Get-DescendantWtaIds',
     # Core (useful in tests)
     'Wait-Until', 'Test-Until', 'Invoke-Native', 'Write-ItLog', 'ConvertFrom-JsonSafe',

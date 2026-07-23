@@ -1095,11 +1095,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         if (lower == "claude")
         {
-            return L"npx -y @agentclientprotocol/claude-agent-acp";
+            return L"npx -y @agentclientprotocol/claude-agent-acp@0.59.0";
         }
         if (lower == "codex")
         {
-            return L"npx -y @agentclientprotocol/codex-acp@1.1.0";
+            return L"npx -y @agentclientprotocol/codex-acp@1.1.2";
         }
         if (lower == "opencode")
         {

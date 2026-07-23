@@ -4,6 +4,7 @@
 #pragma once
 
 #include "AgentPaneContent.g.h"
+#include "AgentUsage.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
 
@@ -98,6 +99,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring GetSuggestionTitle() const noexcept { return _suggestionTitle; }
         winrt::hstring GetDetectedSummary() const noexcept { return _detectedSummary; }
         winrt::hstring GetAgentPanePosition() const noexcept { return _agentPanePosition; }
+        void ApplyAgentUsage(const Json::Value& usage);
+        const std::vector<::TerminalApp::AgentUsage::Item>& GetAgentUsage() const noexcept { return _agentUsage; }
 
         // Fired whenever cached bottom-bar-relevant state changes (autofix
         // state, sessions view, agent pane position). The outer page
@@ -150,6 +153,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _hotkeyHint{};
         winrt::hstring _suggestionTitle{};
         winrt::hstring _detectedSummary{};
+        std::vector<::TerminalApp::AgentUsage::Item> _agentUsage;
         // Current AgentPanePosition for icon orientation. Set by
         // TerminalPage on creation + on settings change.
         winrt::hstring _agentPanePosition{ L"bottom" };

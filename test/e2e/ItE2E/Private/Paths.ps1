@@ -15,6 +15,29 @@ $script:ItKnownFamilies = [ordered]@{
     Dev   = 'IntelligentTerminal_rd9vj3e6a2mbr'
 }
 
+$script:ItPowerShell7Path = 'C:\Program Files\PowerShell\7\pwsh.exe'
+
+function Get-ItPowerShell7Path {
+    <# Return the exact PowerShell 7 host used for every E2E process. #>
+    if (-not (Test-Path -LiteralPath $script:ItPowerShell7Path -PathType Leaf)) {
+        throw "ItE2E requires PowerShell 7 at '$script:ItPowerShell7Path'. Install PowerShell 7 before running E2E tests."
+    }
+    $script:ItPowerShell7Path
+}
+
+function Assert-ItPowerShell7Host {
+    <# Fail fast when an E2E entry point was launched by another PowerShell host. #>
+    $required = Get-ItPowerShell7Path
+    $current = (Get-Process -Id $PID -ErrorAction Stop).Path
+    if (-not [string]::Equals(
+        [IO.Path]::GetFullPath($current),
+        [IO.Path]::GetFullPath($required),
+        [StringComparison]::OrdinalIgnoreCase)) {
+        throw "ItE2E must run under '$required'; current host is '$current'."
+    }
+    $required
+}
+
 # Which brand CLSID a known package family registers (TerminalProtocolComServer.h brands).
 # The Store package ships the Release brand; the dev sideload ships the Dev brand. This lets
 # Resolve-WtComClsid probe the CORRECT brand for the package under test instead of blindly

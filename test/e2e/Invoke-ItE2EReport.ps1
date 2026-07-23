@@ -19,9 +19,9 @@
     (0 = all passed, 1 = any failure).
 
 .EXAMPLE
-    pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
-    pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
-    pwsh -File test/e2e/Invoke-ItE2EReport.ps1            # full suite -> test/e2e/artifacts/
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
+    & 'C:\Program Files\PowerShell\7\pwsh.exe' -File test/e2e/Invoke-ItE2EReport.ps1
 #>
 [CmdletBinding()]
 param(
@@ -39,6 +39,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'ItE2E\ItE2E.psd1') -Force
 Import-Module Pester -MinimumVersion 5.5.0 -Force
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 

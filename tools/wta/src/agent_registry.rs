@@ -6,6 +6,12 @@
 //
 // To add a new agent, just add an entry to KNOWN_AGENTS below.
 
+pub const COPILOT_AGENT_ID: &str = "copilot";
+pub const CLAUDE_AGENT_ID: &str = "claude";
+pub const CODEX_AGENT_ID: &str = "codex";
+pub const GEMINI_AGENT_ID: &str = "gemini";
+pub const OPENCODE_AGENT_ID: &str = "opencode";
+
 /// How the agent CLI accepts a startup prompt in delegate mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptFlag {
@@ -84,7 +90,7 @@ pub struct AgentProfile {
 
 pub const KNOWN_AGENTS: &[AgentProfile] = &[
     AgentProfile {
-        id: "copilot",
+        id: COPILOT_AGENT_ID,
         display_name: "GitHub Copilot",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--acp", "--stdio"],
@@ -101,7 +107,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
-        id: "claude",
+        id: CLAUDE_AGENT_ID,
         display_name: "Claude",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
@@ -110,7 +116,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         // `claude` shim implies node/npx are present, so this works whenever
         // delegate mode does. (Renamed from the deprecated
         // `@zed-industries/claude-code-acp`; see issue #257.)
-        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp",
+        acp_launch_command: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Positional,
@@ -123,13 +129,13 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
-        id: "codex",
+        id: CODEX_AGENT_ID,
         display_name: "Codex",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
         // Codex CLI itself doesn't speak ACP. Use the ACP-project-maintained
         // adapter, pinned so a future npm release cannot silently break startup.
-        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.0",
+        acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.2",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
         delegate_prompt_flag: PromptFlag::Positional,
@@ -145,7 +151,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         auth_hint: "Run: codex auth (or set OPENAI_API_KEY)",
     },
     AgentProfile {
-        id: "gemini",
+        id: GEMINI_AGENT_ID,
         display_name: "Gemini",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--experimental-acp"],
@@ -162,7 +168,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
-        id: "opencode",
+        id: OPENCODE_AGENT_ID,
         display_name: "OpenCode",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["acp"],
@@ -235,8 +241,16 @@ pub fn lookup_profile_by_id(id: &str) -> &'static AgentProfile {
 // Identification-only aliases. The registry command remains the pinned launch
 // command used for new Codex sessions.
 const ACP_LAUNCH_COMMAND_ALIASES: &[(&str, &str)] = &[
-    ("npx -y @agentclientprotocol/codex-acp", "codex"),
-    ("npx -y @zed-industries/codex-acp", "codex"),
+    (
+        "npx -y @agentclientprotocol/claude-agent-acp",
+        CLAUDE_AGENT_ID,
+    ),
+    (
+        "npx -y @agentclientprotocol/codex-acp@1.1.0",
+        CODEX_AGENT_ID,
+    ),
+    ("npx -y @agentclientprotocol/codex-acp", CODEX_AGENT_ID),
+    ("npx -y @zed-industries/codex-acp", CODEX_AGENT_ID),
 ];
 
 fn adapter_profile_from_tokens(tokens: &[String]) -> Option<&'static AgentProfile> {
@@ -517,11 +531,11 @@ mod tests {
     fn resolve_agent_id_from_cmd_recognises_adapter_launches() {
         // Exact match against the known adapter command.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.59.0"),
             "claude",
         );
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.0"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/codex-acp@1.1.2"),
             "codex",
         );
         assert_eq!(
@@ -534,7 +548,7 @@ mod tests {
         );
         // Adapter prefix with extra trailing args still resolves.
         assert_eq!(
-            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp --debug"),
+            resolve_agent_id_from_cmd("npx -y @agentclientprotocol/claude-agent-acp@0.59.0 --debug"),
             "claude",
         );
         assert_eq!(
@@ -574,7 +588,7 @@ mod tests {
     fn codex_acp_launch_command_stays_pinned() {
         assert_eq!(
             build_acp_command("codex", None),
-            "npx -y @agentclientprotocol/codex-acp@1.1.0",
+            "npx -y @agentclientprotocol/codex-acp@1.1.2",
         );
     }
 
