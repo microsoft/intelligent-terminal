@@ -32,6 +32,7 @@ code it describes.
 | 8. Outer containment/privacy | Usage failure hides only Usage; logs contain no values | Add one outer boundary and usage-specific redaction | Complete |
 | 9. Final integration | Rust full suite, x64 Debug build, and local ignored E2E | Verify end-to-end behavior and update design/current-state tables | Complete |
 | 10. Partial/error UI states | Cost-only, tokens-only, malformed, and absent reports never crash UI | Add one tested primary-display state and deterministic local mocks | Complete |
+| 11. Provider extension boundary | Every known family has a module; unverified private payloads yield no data | Add a typed provider registry with empty trust allowlists | Complete |
 
 ## Completed Steps
 
@@ -379,6 +380,51 @@ code it describes.
 - `doc/investigation/acp-price-calc-track.md`
 - Current-state/edge-contract update in `doc/investigation/acp-price-calc.md`
 - No local mock, E2E verifier, helper log, or screenshot files.
+
+### Step 11 - Modular Provider Usage Boundary
+
+**RED**
+
+- Added provider registry contract tests before the module existed. The focused build failed with
+  E0583 because `usage/providers` was missing.
+- Tests require one adapter for every `KNOWN_AGENTS` family, explicit private-usage policy,
+  fail-closed lookup for unknown/custom agents, and no data from unverified private payloads.
+
+**GREEN**
+
+- Added `tools/wta/src/usage/providers/` with separate `copilot`, `claude`, `codex`, `gemini`, and
+  `opencode` modules behind one `ProviderUsageAdapter` interface and registry.
+- Centralized the five Rust family IDs in `agent_registry`; launch profiles, historical command
+  aliases, and provider modules now share those constants. C++-to-Rust codegen remains separate.
+- The interface accepts session-update metadata, prompt-response metadata, extension
+  notifications, and already-fetched provider API responses. Network/auth and CLI credential
+  access are deliberately outside this parser boundary.
+- Provider contributions can independently contain context, cost, or custom metrics, preserving
+  the cost-only normalized shape without inventing standard ACP token fields.
+- Every module explicitly implements extraction but currently returns an empty contribution.
+  Trusted reporter allowlists are empty until a real wire schema and reporter identity are
+  verified. Unknown/custom agents receive no private adapter and continue through standard ACP.
+- Policies are explicit: Copilot `Reserved`; Claude/Codex/OpenCode `StandardAcpOnly`; Gemini
+  `OutOfScope`. Standard ACP remains provider-neutral and runs before this future extension layer.
+- The private registry is intentionally not runtime-wired yet: effective family and exact
+  reporter identity must first be carried from the trusted master handshake into helper state.
+
+**Validation**
+
+- RED build reported missing module `providers`.
+- Usage tests: 9 passed, 0 failed (5 standard normalizer + 4 provider contracts).
+- Agent registry tests: 14 passed, 0 failed.
+- Full WTA Rust suite: 1143 passed, 0 failed.
+- No compiler warning originated from `usage.rs` or `usage/providers`.
+
+**Committed files**
+
+- `tools/wta/src/agent_registry.rs`
+- `tools/wta/src/usage.rs`
+- `tools/wta/src/usage/providers/mod.rs`
+- `tools/wta/src/usage/providers/{copilot,claude,codex,gemini,opencode}.rs`
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state/interface update in `doc/investigation/acp-price-calc.md`
 
 ### Step 4 - Session Usage Lifecycle
 

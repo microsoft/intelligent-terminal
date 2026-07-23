@@ -1,5 +1,7 @@
 use agent_client_protocol as acp;
 
+pub mod providers;
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UsageSnapshot {
     pub used: u64,
@@ -206,5 +208,97 @@ mod tests {
                 Err(UsageError::InvalidCurrency)
             );
         }
+    }
+
+    #[test]
+    fn provider_registry_covers_every_known_agent_family() {
+        let mut registered = providers::all()
+            .iter()
+            .map(|provider| provider.family_id())
+            .collect::<Vec<_>>();
+        registered.sort_unstable();
+
+        let mut known = crate::agent_registry::KNOWN_AGENTS
+            .iter()
+            .map(|profile| profile.id)
+            .collect::<Vec<_>>();
+        known.sort_unstable();
+
+        assert_eq!(registered, known);
+    }
+
+    #[test]
+    fn provider_registry_declares_current_private_usage_policy() {
+        use providers::PrivateUsagePolicy;
+
+        assert_eq!(
+            providers::lookup("copilot").unwrap().private_usage_policy(),
+            PrivateUsagePolicy::Reserved
+        );
+        assert_eq!(
+            providers::lookup("claude").unwrap().private_usage_policy(),
+            PrivateUsagePolicy::StandardAcpOnly
+        );
+        assert_eq!(
+            providers::lookup("codex").unwrap().private_usage_policy(),
+            PrivateUsagePolicy::StandardAcpOnly
+        );
+        assert_eq!(
+            providers::lookup("gemini").unwrap().private_usage_policy(),
+            PrivateUsagePolicy::OutOfScope
+        );
+        assert_eq!(
+            providers::lookup("opencode")
+                .unwrap()
+                .private_usage_policy(),
+            PrivateUsagePolicy::StandardAcpOnly
+        );
+    }
+
+    #[test]
+    fn provider_adapters_do_not_invent_unverified_private_usage() {
+        let meta = serde_json::json!({ "unverified": { "amount": 12345 } });
+        let notification = serde_json::json!({ "credits": 98765 });
+        let inputs = [
+            providers::ProviderUsageInput::SessionUpdateMeta(&meta),
+            providers::ProviderUsageInput::PromptResponseMeta(&meta),
+            providers::ProviderUsageInput::ExtensionNotification {
+                method: "vendor/private-usage",
+                params: &notification,
+            },
+            providers::ProviderUsageInput::ProviderApiResponse {
+                schema_id: "vendor.usage.v1",
+                body: &notification,
+            },
+        ];
+
+        for provider in providers::all() {
+            assert!(
+                provider.trusted_reporter_ids().is_empty(),
+                "{} must not trust a private reporter before wire verification",
+                provider.family_id()
+            );
+            for reporter_id in [None, Some("lookalike-reporter")] {
+                for input in &inputs {
+                    assert_eq!(
+                        provider
+                            .extract_private_usage(providers::ProviderUsageRequest {
+                                reporter_id,
+                                input: *input,
+                            })
+                            .unwrap(),
+                        providers::ProviderUsageContribution::default(),
+                        "{} must stay no-op until its schema is verified",
+                        provider.family_id()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_or_custom_agents_have_no_private_provider_adapter() {
+        assert!(providers::lookup("unknown").is_none());
+        assert!(providers::lookup("custom:npx").is_none());
     }
 }

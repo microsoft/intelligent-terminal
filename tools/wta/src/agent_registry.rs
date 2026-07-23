@@ -6,6 +6,12 @@
 //
 // To add a new agent, just add an entry to KNOWN_AGENTS below.
 
+pub const COPILOT_AGENT_ID: &str = "copilot";
+pub const CLAUDE_AGENT_ID: &str = "claude";
+pub const CODEX_AGENT_ID: &str = "codex";
+pub const GEMINI_AGENT_ID: &str = "gemini";
+pub const OPENCODE_AGENT_ID: &str = "opencode";
+
 /// How the agent CLI accepts a startup prompt in delegate mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptFlag {
@@ -84,7 +90,7 @@ pub struct AgentProfile {
 
 pub const KNOWN_AGENTS: &[AgentProfile] = &[
     AgentProfile {
-        id: "copilot",
+        id: COPILOT_AGENT_ID,
         display_name: "GitHub Copilot",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--acp", "--stdio"],
@@ -101,7 +107,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
-        id: "claude",
+        id: CLAUDE_AGENT_ID,
         display_name: "Claude",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
@@ -123,7 +129,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
-        id: "codex",
+        id: CODEX_AGENT_ID,
         display_name: "Codex",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &[],
@@ -145,7 +151,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         auth_hint: "Run: codex auth (or set OPENAI_API_KEY)",
     },
     AgentProfile {
-        id: "gemini",
+        id: GEMINI_AGENT_ID,
         display_name: "Gemini",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["--experimental-acp"],
@@ -162,7 +168,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         new_session_id_flag: Some("--session-id"),
     },
     AgentProfile {
-        id: "opencode",
+        id: OPENCODE_AGENT_ID,
         display_name: "OpenCode",
         exe_search_order: &[".exe", ".cmd"],
         acp_flags: &["acp"],
@@ -235,10 +241,16 @@ pub fn lookup_profile_by_id(id: &str) -> &'static AgentProfile {
 // Identification-only aliases. The registry command remains the pinned launch
 // command used for new Codex sessions.
 const ACP_LAUNCH_COMMAND_ALIASES: &[(&str, &str)] = &[
-    ("npx -y @agentclientprotocol/claude-agent-acp", "claude"),
-    ("npx -y @agentclientprotocol/codex-acp@1.1.0", "codex"),
-    ("npx -y @agentclientprotocol/codex-acp", "codex"),
-    ("npx -y @zed-industries/codex-acp", "codex"),
+    (
+        "npx -y @agentclientprotocol/claude-agent-acp",
+        CLAUDE_AGENT_ID,
+    ),
+    (
+        "npx -y @agentclientprotocol/codex-acp@1.1.0",
+        CODEX_AGENT_ID,
+    ),
+    ("npx -y @agentclientprotocol/codex-acp", CODEX_AGENT_ID),
+    ("npx -y @zed-industries/codex-acp", CODEX_AGENT_ID),
 ];
 
 fn adapter_profile_from_tokens(tokens: &[String]) -> Option<&'static AgentProfile> {
