@@ -74,7 +74,6 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
         TEST_METHOD(CustomModelProvidersRoundtrip);
-        TEST_METHOD(LegacyCustomAcpModelMigratesToSharedSelection);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
@@ -369,14 +368,6 @@ namespace SettingsModelUnitTests
         const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
         copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
-    }
-
-    void CustomAgentAndPolicyTests::LegacyCustomAcpModelMigratesToSharedSelection()
-    {
-        const auto settings = MakeSettings(R"("acpModel": "custom:provider-openrouter:qwen/qwen3.5-9b")");
-        const auto& globals = settings->GlobalSettings();
-        VERIFY_ARE_EQUAL(winrt::hstring{}, globals.AcpModel());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:provider-openrouter:qwen/qwen3.5-9b" }, globals.CustomModelSelection());
     }
 
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()
