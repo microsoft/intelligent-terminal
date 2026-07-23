@@ -18,8 +18,9 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <DataTemplate x:Key="ProfileAgentEntryTemplate">
-                <TextBlock Text="{Binding DisplayLabel}" />
+            <DataTemplate x:Key="ProfileAgentEntryTemplate"
+                          x:DataType="local:AgentEntry">
+                <TextBlock Text="{x:Bind DisplayLabel}" />
             </DataTemplate>
         </ResourceDictionary>
     </Page.Resources>

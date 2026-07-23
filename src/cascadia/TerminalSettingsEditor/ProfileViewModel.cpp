@@ -234,31 +234,39 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         std::vector<Editor::AgentEntry> entries;
         const auto globalId = _appSettings.GlobalSettings().EffectiveAcpAgent();
         const auto globalName = _AgentDisplayName(std::wstring_view{ globalId });
-        entries.emplace_back(winrt::make<implementation::AgentEntry>(
+        const auto globalEntry = winrt::make<implementation::AgentEntry>(
             L"",
             winrt::hstring{ RS_fmt(
-                L"Profile_AgentPaneBackend_GlobalFormat",
-                std::wstring{ std::wstring_view{ globalName } }) },
-            true));
+                L"Profile_AgentPaneBackend_AgentFormat",
+                std::wstring{ std::wstring_view{ globalName } },
+                std::wstring{ L"Windows" }) },
+            true);
 
         const auto allowedAgents = Registry::FilteredAcpAgents();
-        if (wslDistro.empty())
+        bool globalEntryAdded = false;
+        for (const auto& agent : allowedAgents)
         {
-            for (const auto& agent : allowedAgents)
+            if (_HostAgentInstalled(agent.id))
             {
-                if (_HostAgentInstalled(agent.id))
-                {
-                    entries.emplace_back(winrt::make<implementation::AgentEntry>(
+                const bool isGlobalAgent = agent.id == std::wstring_view{ globalId };
+                entries.emplace_back(winrt::make<implementation::AgentEntry>(
+                    isGlobalAgent ?
+                        winrt::hstring{} :
                         winrt::hstring{ Backend::AgentPaneBackend::Host(agent.id) },
-                        winrt::hstring{ RS_fmt(
-                            L"Profile_AgentPaneBackend_AgentFormat",
-                            std::wstring{ agent.displayName },
-                            std::wstring{ L"Windows" }) },
-                        true));
-                }
+                    winrt::hstring{ RS_fmt(
+                        L"Profile_AgentPaneBackend_AgentFormat",
+                        std::wstring{ agent.displayName },
+                        std::wstring{ L"Windows" }) },
+                    true));
+                globalEntryAdded = globalEntryAdded || isGlobalAgent;
             }
         }
-        else
+        if (!globalEntryAdded)
+        {
+            entries.insert(entries.begin(), globalEntry);
+        }
+
+        if (!wslDistro.empty())
         {
             for (const auto& agent : allowedAgents)
             {
@@ -279,9 +287,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         const auto selected = std::wstring{ AgentPaneBackend() };
-        const auto selectedPresent = std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
-            return std::wstring_view{ entry.Id() } == selected;
-        });
+        const auto selectedIsGlobalHost =
+            !globalId.empty() &&
+            selected == Backend::AgentPaneBackend::Host(std::wstring_view{ globalId });
+        const auto selectedPresent =
+            selectedIsGlobalHost ||
+            std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
+                return std::wstring_view{ entry.Id() } == selected;
+            });
         if (!selected.empty() && !selectedPresent)
         {
             std::wstring label{ selected };
