@@ -73,10 +73,9 @@ pub enum AgentFailure {
 impl AgentFailure {
     /// Classify a typed ACP JSON-RPC error by its `code`.
     ///
-    /// Matching is numeric so it is independent of which `unstable_*` Cargo
-    /// features gate the corresponding `ErrorCode` variant (e.g.
-    /// `RequestCancelled` is behind `unstable_cancel_request`, which we do not
-    /// enable — without numeric matching it would not even be nameable here).
+    /// Matching remains numeric so standard and agent-defined codes share one
+    /// forward-compatible classification path. `RequestCancelled` (`-32800`)
+    /// is stable as of agent-client-protocol 1.1.
     pub fn from_acp_error(e: &acp::Error) -> Self {
         let code: i32 = e.code.into();
         match code {
