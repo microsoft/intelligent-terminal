@@ -169,16 +169,13 @@
                 </Grid>
             </local:SettingContainer>
 
-            <Border Background="{ThemeResource ExpanderHeaderBackground}"
-                    BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                    BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                    CornerRadius="{ThemeResource ControlCornerRadius}"
-                    MaxWidth="1000"
-                    HorizontalAlignment="Stretch"
-                    Margin="0,4,0,0">
-                <StackPanel>
-                    <Grid MinHeight="64"
-                          Padding="16,0">
+            <muxc:Expander x:Name="CustomModelProvidersExpander"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch"
+                           IsExpanded="True">
+                <muxc:Expander.Header>
+                    <Grid MinHeight="64">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -190,9 +187,11 @@
                         <Button Grid.Column="1"
                                 x:Uid="AIAgents_CustomProviderAdd"
                                 VerticalAlignment="Center"
-                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Click="AddCustomModelProvider_Click"
                                 Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
                     </Grid>
+                </muxc:Expander.Header>
+                <StackPanel>
             <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="local:CustomModelProviderEntry">
@@ -248,7 +247,7 @@
                 </StackPanel>
             </Border>
                 </StackPanel>
-            </Border>
+            </muxc:Expander>
 
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
