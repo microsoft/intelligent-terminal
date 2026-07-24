@@ -172,6 +172,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C080` `[UT✓]` `[E2E]` **`/model` works:** Opens/selects model where supported; unsupported agents fail gracefully. _(UT: `slash_model_*`; picker render covered by `render_model_picker_lists_models`, full UI flow still E2E.)_
 - [x] `C081` `[UT✓]` **Unknown slash command is safe:** Unknown `/command` does not lose user input or crash.
 - [ ] `C225` `[E2E]` **`/agent` picker works:** `/agent` opens a keyboard-operable picker containing the current installed/allowed agents, and selecting the current agent is a safe no-op.
+- [ ] `C240` `[new]` `[E2E]` **`/agent` prefix completion works:** Typing `/agent <prefix>` shows matching installed and policy-allowed agents, renders the selected suffix inline, and Tab commits the full agent ID. _(#487; E2E: `Feature.PerTabAgent`.)_
+- [ ] `C241` `[new]` `[E2E]` **`/agent` completion selection is safe:** Enter activates the highlighted matching agent without rebuilding the pane or changing the global default when it is already selected. _(#487; E2E: `Feature.PerTabAgent`.)_
 - [ ] `C226` `[E2E]` **Invalid `/agent` selection is safe:** `/agent <id>` rejects an unavailable agent without rebuilding the pane or changing the global default.
 - [ ] `C082` `[E2E]` **Esc/back navigation works:** User can return from popups/session/model views to chat.
 
