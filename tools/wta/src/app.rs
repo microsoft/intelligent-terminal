@@ -7905,7 +7905,7 @@ impl App {
         let prefix = prefix.to_ascii_lowercase();
         self.available_agents
             .iter()
-            .filter(|agent| agent.id.to_ascii_lowercase().starts_with(&prefix))
+            .filter(|agent| agent.id.starts_with(&prefix))
             .collect()
     }
 
