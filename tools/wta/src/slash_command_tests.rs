@@ -410,17 +410,22 @@ fn agent_argument_completion_uses_available_agents_in_registry_order() {
 }
 
 #[test]
-fn agent_without_argument_keeps_existing_picker_command_path() {
+fn agent_trailing_space_opens_completion_with_all_agents() {
     let mut app = test_app();
     seed_completion_agents(&mut app);
     type_input(&mut app, "/agent ");
 
-    assert!(app.command_popup_state().is_none());
-    let ParseOutcome::Command(command) = commands::classify(&app.current_tab().input) else {
-        panic!("expected /agent command");
+    let state = app.command_popup_state().expect("all agent candidates");
+    let crate::ui::PopupCandidates::Agents(candidates) = state.candidates else {
+        panic!("expected agent candidates");
     };
-    assert_eq!(command.kind, CommandKind::Agent);
-    assert!(command.rest.is_empty());
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|agent| agent.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["copilot", "codex", "gemini"]
+    );
 }
 
 #[test]

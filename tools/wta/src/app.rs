@@ -7902,9 +7902,6 @@ impl App {
         let Some(prefix) = commands::agent_id_prefix(&self.current_tab().input) else {
             return Vec::new();
         };
-        if prefix.is_empty() {
-            return Vec::new();
-        }
         let prefix = prefix.to_ascii_lowercase();
         self.available_agents
             .iter()
