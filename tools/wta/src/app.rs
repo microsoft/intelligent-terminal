@@ -406,6 +406,8 @@ pub enum ConnectionState {
 pub enum ChatMessage {
     User(String),
     Agent(String),
+    /// App-generated agent-style text that should stay literal.
+    AgentLiteral(String),
     System(String),
     ToolCall {
         id: String,

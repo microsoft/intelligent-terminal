@@ -89,7 +89,9 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
     // "> " for user) and a trailing blank line.
     let body_width = wrap_width.saturating_sub(2).max(1);
     match msg {
-        ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
+        ChatMessage::Agent(t) | ChatMessage::AgentLiteral(t) | ChatMessage::Error(t) => {
+            dot_wrap_count(t, body_width) + 1
+        }
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { .. } => 1,
@@ -530,6 +532,18 @@ fn build_message_lines<'a>(
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
+            push_dot_prefixed_lines(
+                &mut lines,
+                text,
+                wrap_width,
+                theme::DOT_AGENT,
+                theme::AGENT_TEXT,
+            );
+            if !agent_streaming || !is_last_message {
+                lines.push(Line::default());
+            }
+        }
+        ChatMessage::AgentLiteral(text) => {
             push_dot_prefixed_lines(
                 &mut lines,
                 text,
