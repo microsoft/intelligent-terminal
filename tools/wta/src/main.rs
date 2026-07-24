@@ -2388,7 +2388,7 @@ async fn delegate_with_context(
                         target: "delegate",
                         distro,
                         agent = %agent_exe,
-                        "selected command palette agent is unavailable in its WSL distro; keeping the selected source",
+                        "selected delegate agent is unavailable in its WSL distro; keeping the selected source",
                     );
                 } else {
                     tracing::info!(
