@@ -552,3 +552,82 @@ fn delegate_source_never_switches_based_on_wsl_agent_availability() {
     assert!(delegate_launchable_for_source(&AgentSource::Host, true, false));
 }
 
+// `select_wsl_delegate_cwd` picks the POSIX cwd recorded/used for an explicit
+// WSL delegate launch (see PR #488 review). It must never fall back to a
+// Windows/UNC `--cwd` — a WSL session's cwd has to stay a POSIX path.
+
+#[test]
+fn select_wsl_delegate_cwd_prefers_active_pane_over_explicit_cwd() {
+    // Both candidates are valid POSIX paths — the active pane wins.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("/home/user/active"), Some("/home/user/explicit")),
+        Some("/home/user/active")
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_falls_back_to_valid_explicit_cwd() {
+    // No active pane cwd — an explicit, valid POSIX `--cwd` is used.
+    assert_eq!(
+        select_wsl_delegate_cwd(None, Some("/home/user/explicit")),
+        Some("/home/user/explicit")
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_rejects_windows_and_unc_paths() {
+    // A Windows path never wins, even when it's the only candidate — this is
+    // the case the review flagged: an active Windows pane under an explicit
+    // `--delegate-source wsl` must not leak its Windows cwd into the WSL
+    // session record via `wsl_cwd.or(cwd)`.
+    assert_eq!(select_wsl_delegate_cwd(Some("C:\\Users\\me"), None), None);
+    assert_eq!(select_wsl_delegate_cwd(None, Some("C:\\Users\\me")), None);
+    // UNC paths are likewise rejected — not absolute POSIX (`/…`).
+    assert_eq!(select_wsl_delegate_cwd(Some("\\\\server\\share"), None), None);
+    // An invalid active-pane cwd does not block falling back to a valid
+    // explicit `--cwd`.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("C:\\Users\\me"), Some("/home/user/explicit")),
+        Some("/home/user/explicit")
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_rejects_values_containing_quotes() {
+    // A `"` would break the `wsl --cd "<cwd>"` quoting — reject it even
+    // though it's otherwise an absolute POSIX-looking path.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("/home/user/\"; rm -rf /"), None),
+        None
+    );
+    assert_eq!(
+        select_wsl_delegate_cwd(None, Some("/home/user/\"; rm -rf /")),
+        None
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_trims_whitespace_before_validating() {
+    // Leading/trailing whitespace around an otherwise-valid POSIX path is
+    // trimmed away, and the trimmed value is what's returned.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("  /home/user/active  "), None),
+        Some("/home/user/active")
+    );
+    assert_eq!(
+        select_wsl_delegate_cwd(None, Some("\t/home/user/explicit\n")),
+        Some("/home/user/explicit")
+    );
+    // Whitespace-only candidates are not absolute POSIX paths.
+    assert_eq!(select_wsl_delegate_cwd(Some("   "), None), None);
+}
+
+#[test]
+fn select_wsl_delegate_cwd_returns_none_when_neither_candidate_is_valid() {
+    assert_eq!(select_wsl_delegate_cwd(None, None), None);
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("relative/path"), Some("also/relative")),
+        None
+    );
+}
+

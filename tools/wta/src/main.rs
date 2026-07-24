@@ -2321,6 +2321,30 @@ fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
     format!("{marker}{}", &context[start..])
 }
 
+/// Selects the POSIX cwd to record/use for an explicit WSL delegate launch.
+///
+/// A WSL session's cwd must be a POSIX path (`/…`) — an unbounded fallback to
+/// a Windows/UNC `--cwd` is misleading (the active pane may be a Windows pane
+/// when `--delegate-source wsl` is forced) and breaks downstream assumptions
+/// about WSL session cwd formatting (see PR #488 review). Trims whitespace off
+/// each candidate, requires an absolute POSIX path (`/…`), and rejects `"`
+/// (which would break the `wsl --cd "<cwd>"` quoting). Prefers the active
+/// pane's cwd over the explicit CLI `--cwd`; returns `None` if neither is a
+/// valid POSIX path.
+fn select_wsl_delegate_cwd<'a>(
+    active_pane_cwd: Option<&'a str>,
+    explicit_cwd: Option<&'a str>,
+) -> Option<&'a str> {
+    fn valid_posix_cwd(candidate: &str) -> Option<&str> {
+        let trimmed = candidate.trim();
+        (trimmed.starts_with('/') && !trimmed.contains('"')).then_some(trimmed)
+    }
+
+    active_pane_cwd
+        .and_then(valid_posix_cwd)
+        .or_else(|| explicit_cwd.and_then(valid_posix_cwd))
+}
+
 /// Shared delegation logic: enrich the prompt with the active pane's recent
 /// output (when available), build the delegate-agent commandline, and create a
 /// new tab to launch it. WT's GetActivePane already resolves the agent pane to
@@ -2520,11 +2544,11 @@ async fn delegate_with_context(
         let escaped = crate::coordinator::quote_windows_commandline_arg(&wsl_agent_cmd);
         let login_invocation = format!("bash -lc {}", escaped);
         let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
-        let wsl_cwd = active
+        let active_pane_cwd = active
             .as_ref()
             .and_then(|pane| pane.get("cwd"))
-            .and_then(|v| v.as_str())
-            .filter(|s| s.starts_with('/') && !s.contains('"'));
+            .and_then(|v| v.as_str());
+        let wsl_cwd = select_wsl_delegate_cwd(active_pane_cwd, cwd);
         let wsl_commandline = match wsl_cwd {
             Some(cwd) => {
                 format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
@@ -2574,7 +2598,7 @@ async fn delegate_with_context(
                     sid,
                     pane,
                     &runtime.id,
-                    wsl_cwd.or(cwd),
+                    wsl_cwd,
                     Some(distro),
                 )
                 .await;
