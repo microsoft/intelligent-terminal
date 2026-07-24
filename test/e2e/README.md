@@ -29,12 +29,14 @@ environment. Current status (run on the Store package):
 | `Feature.WslAgentBackend.Tests.ps1` | PR #481 profile-scoped WSL agent backend: settings hot reload, helper/master source routing, and authenticated chat | 2 (environment-gated) |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
-**Coverage: all 101 automatable `[E2E]` checklist items are implemented.**
+**Coverage: 103 of 104 automatable `[E2E]` checklist items are implemented.**
 **Test status: 98 baseline feature cases pass + 2 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases that
 run only when a dev package, runnable distro, and native supported agent are available; the
-chat case also requires authentication. The 101 checklist items map to the baseline cases
-plus the deterministic settings/persistence assertions. Remaining
+chat case also requires authentication. The 103 implemented checklist items map to the
+baseline cases plus the deterministic settings/persistence assertions. The remaining new
+item is the profile Agent pane agent picker UI; it stays explicit E2E work rather than being
+falsely credited by the JSON-level runtime tests. Other
 environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
 **other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
 auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,
