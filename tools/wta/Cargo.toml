@@ -58,3 +58,4 @@ sys-locale = "0.3"
 # (issue #287). Already in the lockfile as a transitive dep of clap, so
 # promoting it to a direct dep does not change the resolved graph.
 strsim = "0.11"
+agent-client-protocol-conductor = "1.2.0"

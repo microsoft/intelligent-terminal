@@ -349,6 +349,29 @@ pub struct WatchedTransport<O, I> {
     death: std::sync::Arc<TransportDeath>,
 }
 
+impl<O, I, R> acp::ConnectTo<R> for WatchedTransport<O, I>
+where
+    O: futures::AsyncWrite + Send + Unpin + 'static,
+    I: futures::AsyncRead + Send + Unpin + 'static,
+    R: acp::Role,
+{
+    async fn connect_to(
+        self,
+        client: impl acp::ConnectTo<R::Counterpart>,
+    ) -> acp::Result<()> {
+        let Self { inner, death } = self;
+        let connection = Box::pin(acp::ConnectTo::<R>::connect_to(inner, client));
+        let peer_death = Box::pin(death.wait());
+        let result = match futures::future::select(connection, peer_death).await {
+            futures::future::Either::Left((result, _)) => result,
+            futures::future::Either::Right(((), _)) => Err(
+                acp::Error::internal_error().data("ACP transport peer closed"),
+            ),
+        };
+        result
+    }
+}
+
 /// Drive a pre-wired client builder over `transport`, returning a [`ClientLink`]
 /// for sending requests plus a `handle_io` future. The future resolves when the
 /// connection ends: peer death (EOF/error) → `Ok(())`, transport error surfaced
@@ -403,6 +426,55 @@ where
             cell.failed.store(true, std::sync::atomic::Ordering::Release);
             cell.notify.notify_waiters();
             r
+        }
+    };
+    (ClientLink { cell }, handle_io)
+}
+
+/// Drive a pre-wired client builder against an in-process ACP component.
+///
+/// This is the component equivalent of [`spawn_client`]. It is used when the
+/// immediate peer is a canonical ACP conductor rather than a byte transport.
+///
+/// Its `main_fn` intentionally remains pending after publishing the link, so
+/// `handle_io` completes only when the connected component/conductor chain
+/// returns (normally surfacing peer shutdown). A component that swallows peer
+/// termination without returning can leave `handle_io` pending.
+///
+/// This function uses [`tokio::task::spawn_local`], so callers must run it
+/// within a [`tokio::task::LocalSet`].
+pub fn spawn_client_component<H, Run, C>(
+    builder: acp::Builder<acp::Client, H, Run>,
+    component: C,
+) -> (ClientLink, impl Future<Output = acp::Result<()>>)
+where
+    H: acp::HandleDispatchFrom<acp::Agent> + 'static,
+    Run: acp::RunWithConnectionTo<acp::Agent> + 'static,
+    C: acp::ConnectTo<acp::Client>,
+{
+    let cell = std::sync::Arc::new(Ready::default());
+    let fill = cell.clone();
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+    tokio::task::spawn_local(async move {
+        let result = builder
+            .connect_with(component, async move |cx| {
+                let _ = fill.slot.set(cx.clone());
+                fill.notify.notify_waiters();
+                std::future::pending::<acp::Result<()>>().await
+            })
+            .await;
+        let _ = done_tx.send(result);
+    });
+    let handle_io = {
+        let cell = cell.clone();
+        async move {
+            let result = done_rx.await.unwrap_or_else(|_| {
+                Err(acp::Error::internal_error()
+                    .data("ACP component task ended without reporting a result"))
+            });
+            cell.failed.store(true, std::sync::atomic::Ordering::Release);
+            cell.notify.notify_waiters();
+            result
         }
     };
     (ClientLink { cell }, handle_io)
@@ -612,6 +684,117 @@ mod transport_death_tests {
         ) -> std::task::Poll<std::io::Result<usize>> {
             std::task::Poll::Ready(self.0.take().expect("ScriptedRead polled twice"))
         }
+
+    }
+
+    /// The same EOF guarantee must hold when the watched transport is used as
+    /// a final `ConnectTo<Client>` component inside a proxy chain.
+    #[test]
+    fn watched_component_resolves_when_final_agent_dies() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (near, far) = tokio::io::duplex(64 * 1024);
+            let (near_r, near_w) = tokio::io::split(near);
+            let transport = byte_streams(near_w.compat_write(), near_r.compat());
+            let connection =
+                acp::ConnectTo::<acp::Client>::connect_to(transport, acp::Client.builder());
+
+            drop(far);
+
+            let result =
+                tokio::time::timeout(std::time::Duration::from_secs(3), connection).await;
+            let result =
+                result.expect("final-agent EOF must terminate the watched proxy-chain component");
+            assert!(result.is_err(), "final-agent EOF must propagate as an error");
+        });
+    }
+
+    /// A final-agent EOF must escape the canonical conductor and resolve the
+    /// master's component-backed `handle_io`, otherwise the pool reaper never runs.
+    #[test]
+    fn conductor_handle_io_resolves_when_final_agent_dies() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&rt, async {
+            let (near, far) = tokio::io::duplex(64 * 1024);
+            let (near_r, near_w) = tokio::io::split(near);
+            let final_agent = byte_streams(near_w.compat_write(), near_r.compat());
+            let conductor = agent_client_protocol_conductor::ConductorImpl::new_agent(
+                "test-conductor",
+                agent_client_protocol_conductor::AgentOnly(final_agent),
+            );
+
+            let client_builder = acp::Client
+                .builder()
+                .name("test-client")
+                .on_receive_request(
+                    |_req: v1::AgentRequest,
+                     responder: acp::Responder<serde_json::Value>,
+                     _cx| async move {
+                        responder.respond_with_error(acp::Error::method_not_found())
+                    },
+                    acp::on_receive_request!(),
+                )
+                .on_receive_notification(
+                    |_notif: v1::AgentNotification, _cx| async move { Ok(()) },
+                    acp::on_receive_notification!(),
+                );
+            let (link, handle_io) = spawn_client_component(client_builder, conductor);
+
+            let (far_r, far_w) = tokio::io::split(far);
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+            let agent_task = tokio::task::spawn_local(async move {
+                acp::Agent
+                    .builder()
+                    .name("test-final-agent")
+                    .on_receive_request(
+                        |request: v1::InitializeRequest,
+                         responder: acp::Responder<v1::InitializeResponse>,
+                         _cx| async move {
+                            responder.respond(v1::InitializeResponse::new(
+                                request.protocol_version,
+                            ))
+                        },
+                        acp::on_receive_request!(),
+                    )
+                    .connect_with(
+                        acp::ByteStreams::new(far_w.compat_write(), far_r.compat()),
+                        async move |_cx| {
+                            let _ = shutdown_rx.await;
+                            Ok(())
+                        },
+                    )
+                    .await
+            });
+
+            link.initialize(v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::V1,
+            ))
+            .await
+            .expect("conductor should initialize the final agent");
+            let _ = shutdown_tx.send(());
+            agent_task
+                .await
+                .expect("final-agent task should not panic")
+                .expect("final-agent task should close cleanly");
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                handle_io,
+            )
+                .await
+                .expect("final-agent EOF must resolve conductor handle_io");
+            assert!(
+                result.is_err(),
+                "final-agent EOF must fail the conductor chain"
+            );
+        });
     }
 
     /// A no-op `Waker` so `DeathWatchRead::poll_read` can be driven synchronously

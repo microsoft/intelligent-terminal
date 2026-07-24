@@ -1,11 +1,11 @@
-# ACP 1.0 conductor migration — abstracting the master/helper plane onto the standard proxy/conductor model
+# ACP 1.x proxy-chain migration — separating session routing from the standard conductor
 
 ## Abstract
 
-WTA's agent plane is a hand-rolled ACP multiplexer: `wta-master` owns one
-`ACP/stdio` connection to the agent CLI and fans per-helper sessions onto it
-(`session_to_helper` routing), while each `wta-helper` is an ACP client over a
-named pipe. All of this is built on the **0.10.x** `agent-client-protocol`
+WTA's agent plane is a hand-rolled ACP multiplexer: `wta-master` owns a pool of
+`ACP/stdio` agent CLI connections and uses `SessionRouter` to fan per-helper sessions onto them
+by `(agent instance, SessionId)`, while each `wta-helper` is an ACP client over a
+named pipe. All of this was built on the **0.10.x** `agent-client-protocol`
 programming model (`impl acp::Agent/Client`, `ClientSideConnection` /
 `AgentSideConnection`, `LocalSet` + `spawn_local` + `handle_io`, trait-style
 `conn.method().await` calls).
@@ -20,12 +20,17 @@ so the 0.10 → 1.0 upgrade is now both unavoidable and worth doing deliberately
 2. It **ships proxy/conductor natively** — the [ACP proxy-chains
    direction](https://agentclientprotocol.com/rfds/proxy-chains): `Proxy`/`Conductor`
    roles, `_proxy/initialize` / `_proxy/successor` wire methods, `start_session_proxy`,
-   `on_proxy_session_start`, `send_proxied_message_to`, `ProxySessionMessages`, and
+   `on_proxy_session_start`, `send_proxied_message_to`, the private
+   `ProxySessionMessages` implementation type, and
    MCP-over-ACP. This is no longer just the `sacp` prototype or an RFD.
 
-This spec migrates the master/helper ACP plane to 1.0 and, in the same effort,
-re-expresses master's bespoke fan-in/fan-out as a library-managed **conductor**
-with composable **proxies**. Heading toward the ACP-proxy model is the real prize:
+This spec migrates the master/helper ACP plane to stable ACP and separates two
+different responsibilities:
+
+- WTA's outer N:M **session-routing control plane**, which remains WTA-owned;
+- one canonical linear **Proxy Conductor** inside each pooled agent slot.
+
+Composable library proxies then become linear inner transform chains:
 
 - **Modularity** — each cross-cutting concern (autofix, prompt/context injection,
   delegate/recommendation) becomes a self-contained proxy with a clear
@@ -34,8 +39,7 @@ with composable **proxies**. Heading toward the ACP-proxy model is the real priz
   config**, not by editing the event loop; a new behavior is a new proxy in the
   chain.
 - **Testability** — a proxy is a pure 1:1 transform with typed ACP in/out, so it
-  is unit-testable in isolation, unlike the hand-rolled N:1 multiplexer it
-  replaces.
+  is unit-testable in isolation; it does not replace WTA's N:M multiplexer.
 
 It is a **feasibility assessment + phased plan**, not a final design.
 
@@ -183,7 +187,7 @@ flowchart TB
   requests (`request_permission`, `terminal/*`, `fs/*`) are routed back to the
   owning helper via `session_to_helper` / `MasterClient::route_for(session_id)`.
 
-### Target (1.0): master as a library Conductor + composable proxies
+### Target: outer session router + per-agent canonical proxy conductor
 
 ```mermaid
 flowchart TB
@@ -202,27 +206,27 @@ flowchart TB
         PERM["permission-policy shim<br/>auto-decide request_permission"]
     end
 
-    subgraph master["wta-master = library Conductor"]
-        CB["Conductor.builder()<br/>on_receive_request_from(Client, NewSessionRequest)<br/>build_session_from + on_proxy_session_start"]
-        PSM["ProxySessionMessages(session_id)<br/>library dynamic handler — auto fan-out both ways"]
-        BR["N:1 bridge skeleton (still ours)<br/>N helper transports → 1 shared agent conn"]
-        AC["ConnectionTo&lt;Agent&gt;<br/>AcpAgent (shared)"]
+    subgraph master["wta-master"]
+        SC["SessionRouter<br/>(agent instance, session id, generation)<br/>route + orphan + pending-new state"]
+        BR["N:M bridge<br/>N helper transports → pooled agent connections"]
+        PCR["ProxyChainRuntime × AgentPoolSlot"]
+        C["canonical ConductorImpl<br/>ordered linear chain"]
     end
 
     CLI["agent CLI<br/>unchanged: sees plain initialize"]
 
     PLUMB -->|"N× ACP/pipe (plain)"| BR
-    BR -->|"presents each helper to the conductor"| CB
-    CB -.->|"installs per session"| PSM
-    PSM ---|"auto-forward update / permission / terminal / fs"| AC
-    CB -.->|"_proxy/initialize"| AFX
+    BR --> SC
+    SC -->|"select owning slot"| PCR
+    PCR --> C
+    C -.->|"_proxy/initialize"| AFX
     AFX -.->|"_proxy/successor"| CTX
     CTX -.->|"_proxy/successor"| REC
     REC -.->|"_proxy/successor"| SLU
     SLU -.->|"_proxy/successor"| SLE
     SLE -.->|"_proxy/successor"| SLA
-    SLA -.->|"_proxy/successor"| AC
-    AC -->|"ACP/stdio: initialize, session/new"| CLI
+    SLA -.->|"_proxy/successor"| CLI
+    C -->|"zero proxies: plain ACP initialize<br/>configured proxies: successor routing"| CLI
     MOD -.->|"folds into"| CTX
     PERM -.->|"folds into"| CB
 
@@ -232,13 +236,13 @@ flowchart TB
     classDef handrolled fill:#f8cecc,stroke:#b85450,color:#000;
     class AFX,CTX,REC,SLU,SLE,SLA,MOD,PERM proxyable;
     class PLUMB plumbing;
-    class CB,PSM,AC library;
-    class BR handrolled;
+    class C,PCR library;
+    class SC,BR handrolled;
 ```
 
 > **Legend:** orange = a standalone, reorderable **proxy** (the same concerns fused
-> in app.rs above, plus the session subsystem); green = library-managed conductor
-> pieces; red = the hand-rolled N:1 bridge skeleton that stays ours; blue = helper
+> in app.rs above, plus the session subsystem); green = usable library connection
+> pieces; red = the WTA-owned N:M router/bridge; blue = helper
 > plumbing that stays.
 >
 > The transform cores lift out into composable proxies: the three solid ones
@@ -248,10 +252,13 @@ flowchart TB
 > instead of being its own proxy — but either *could* be a standalone proxy; it is a
 > granularity choice, not a hard boundary. Each proxy is a pure 1:1 ACP transform
 > inserted via `_proxy/initialize` / `_proxy/successor`, reorderable by config.
-> Library-managed pieces (green) replace the hand-rolled fan-out; the **N:1 bridge**
-> (red) is where the N helper transports land before being funneled onto the 1
-> shared agent connection — the library's linear 1:1 chain can't express this, so it
-> stays ours (see *The topology caveat* below for why). The helper (blue) keeps only
+> The session router and bridge (red) own WTA's N-helper → pooled-agent
+> topology, per-agent-instance session identity, orphan/rebind lifetime, and
+> bounded delivery. They are a prerequisite control plane, not an ACP
+> Conductor. Each pool slot then owns a canonical linear `ConductorImpl`, which
+> performs proxy initialization, ordered successor routing, and final-agent
+> initialization. The
+> helper (blue) keeps only
 > TUI / connection / tab routing + card/picker shells; the agent CLI is untouched.
 
 The 1.0 proxy/conductor model expresses per-session forwarding natively. The
@@ -277,24 +284,24 @@ Key primitives:
 |---|---|
 | `on_proxy_session_start(responder, op)` | send `new_session` to the Agent, forward the response back to the Client, then install `ProxySessionMessages(session_id)` to auto-forward all later messages both ways (non-blocking) |
 | `start_session_proxy(responder)` | blocking convenience = `start_session()` + respond + `proxy_remaining_messages()` |
-| `ProxySessionMessages::new(session_id)` | dynamic handler that routes a session's messages — the **library equivalent of `session_to_helper`** |
+| `ProxySessionMessages::new(session_id)` | Internal dynamic handler used by the SDK's linear proxy path; it remains `pub(crate)` and is not constructed by WTA |
 | `send_proxied_message_to(Peer, dispatch)` | forward a raw dispatch to `Client`/`Agent` |
 | `proxy_remaining_messages()` | drain queued messages, then hand off to the dynamic handler (race-free) |
 | `_proxy/initialize` (`InitializeProxyRequest`), `_proxy/successor` (`SuccessorMessage`) | wire methods — **only needed when inserting additional proxies into a chain**; the basic helper↔master and master↔agent hops stay plain ACP |
 
-### Fan-in / fan-out mapping (what the library subsumes)
+### Fan-in / fan-out mapping (what WTA must own)
 
 | master today (hand-rolled) | 1.0 library equivalent | verdict |
 |---|---|---|
-| fan-out notif: `MasterClient::session_notification` → owner helper → channel | `ProxySessionMessages` auto-forwards agent session updates to the client | ✅ deletable |
-| fan-out request: `route_for(sid)` → helper's `AgentSideConnection` | dynamic handler / `send_proxied_message_to(Client, ..)` | ✅ deletable |
-| `forward_new_session_to_agent` + 120s timeout | `connection.send_request_to(Agent, req)` + `forward_cancellation_from` | ✅ replaceable (timeout/cancel via library cancellation) |
-| `cached_init_resp` replay | builder role discovery + `InitializeProxyRequest` | 🟡 partial (see N:1 caveat) |
-| `HelperHandler` pass-through → shared `agent_conn` | `cx.build_session_from(request)` → `on_proxy_session_start` | 🟡 partial |
-| `session_to_helper: HashMap<SessionId, HelperRoute>` | library routes a single message by session_id; "which sessions belong to which helper, N helpers sharing 1 agent" still ours | 🟡 shrinks, doesn't vanish |
+| fan-out notification → bounded helper channel | `SessionRouter` route keyed by `(AgentInstanceId, SessionId)` | WTA-owned |
+| reverse request → helper `AgentSideConnection` | same instance-scoped route | WTA-owned |
+| `session/new` response/notification race | per-agent pending-new buffer, bounded and drained before response | WTA-owned |
+| helper disconnect + orphan/rebind | generation-token state transition | WTA-owned |
+| `cached_init_resp` replay | per-agent process cache | WTA-owned |
+| later 1:1 transforms | public `Proxy`/`Conductor` builder and `_proxy/*` primitives | library candidate |
 
-Estimated **~60–70% of the hand-rolled per-session routing can be deleted** and
-delegated to the library.
+The old loose maps and lifecycle code can be consolidated, but routing itself is
+not delegated to the library.
 
 ### The topology caveat (the key honest finding)
 
@@ -311,33 +318,36 @@ explicitly a *future* `peer` extension in the RFD).
   proxy front-ends — but **bridging N helper transports onto 1 shared agent
   connection remains our bespoke skeleton.**
 
-**Net:** 1.0 solves the *per-session forwarding + insertable transform proxy*
-half well; the *N:1 multiplexing* half stays ours.
+There is a concrete public-API boundary in the core crate:
+`ProxySessionMessages` is `pub(crate)`. The public `Conductor`/session-proxy
+entry points create it only while owning a linear Client → Conductor → Agent
+transport chain. WTA cannot supply N independently accepted helper transports,
+select one of several pooled agent-process transports, or retain an orphan after
+the client transport disappears through those APIs.
 
-**Why not the off-the-shelf conductor?** A ready-made conductor binary exists
-(`agent-client-protocol-conductor`), but it solves a narrower problem: it
-orchestrates a **linear chain for one editor ↔ one (spawned) agent over stdio**,
-launching each proxy as a separate process. It has no concept of N clients
-sharing one upstream agent ("Multiple parallel chains" is an unchecked Phase-4
-item in its own design doc), and it runs as a standalone stdio binary — neither
-fits WTA.
+**Net:** the outer session routing, multiplexing, and lifetime state machine
+stays WTA-owned. The inner, linear transform chain uses the public
+`agent-client-protocol-conductor::ConductorImpl` rather than reimplementing the
+RFD routing algorithm.
+
+**How the canonical conductor fits.** `agent-client-protocol-conductor` is both
+a binary and an embeddable library. Its `ConductorImpl` deliberately solves one
+linear chain; WTA embeds one instance per pooled agent slot and keeps N:M
+routing outside it.
 
 | | `agent-client-protocol-conductor` | WTA `master` |
 |---|---|---|
 | Clients | 1 editor (stdio) | N helpers (named-pipe server + accept loop) |
 | Agent | spawns its own, 1 chain : 1 agent | **1 shared** agent CLI, reused by N helpers |
-| Multiplexing | ✗ none (linear 1:1) | ✓ `session_to_helper` fans N onto 1 agent |
-| Embedding | standalone stdio process | must live **inside the WT process** (COM package identity, `SharedWta` singleton, master-pipe rendezvous) |
+| Multiplexing | ✗ none (linear 1:1) | ✓ `SessionRouter` fans N helpers onto pooled chains |
+| Embedding | binary or library component | embedded `ConductorImpl` inside each `ProxyChainRuntime` |
 | Maturity | MVP (crash-detection / tests still on its punch list) | production |
 
-So `master` stays a **specialized conductor** (the N:1 multiplexer + WTA
-lifecycle: agent-CLI spawn, pipe discovery, per-tab/window routing, alive-mirror,
-restart) and **reuses the library's proxy/conductor *primitives*** —
-`start_session_proxy`, `ProxySessionMessages`, `_proxy/successor` routing, and the
-conductor's message-ordering guarantee (responses must not overtake
-notifications) — *per session*. The library handles "how proxies are ordered
-within one chain"; `master` handles "how N WT panes share one agent + WTA
-lifecycle." The former is an inner part of the latter, not a replacement.
+So `master` contains two layers: `SessionRouter` owns N:M selection and WTA
+lifetime; `ConductorImpl` owns each slot's ordered linear chain. WTA explicitly
+closes its outer `session/new` ordering gap with a bounded pending-new buffer.
+The canonical conductor owns `_proxy/initialize`, `_proxy/successor`, and
+request/response/notification/reverse-request forwarding inside the slot.
 
 ## Phased plan (de-risked)
 
@@ -345,10 +355,18 @@ lifecycle." The former is an inner part of the latter, not a replacement.
   master + helper onto the builder/dispatch model. No proxy semantics yet. This
   is the largest, unavoidable step; isolate and verify it against the existing
   mock-ACP/render tests. (Checklist below.)
-- **Phase 1 — master becomes a Conductor.** Replace the `session_to_helper`
-  fan-out with `start_session_proxy` / `ProxySessionMessages`. Keep our N:1
-  bridge skeleton.
-- **Phase 2 — extract transform proxies.** Move the three strong transform cores
+- **Phase 1 — extract WTA's session-routing control plane.** Replace loose route
+  and orphan maps with one instance-scoped, generation-token state machine.
+  Keep bounded helper delivery and explicitly buffer early `session/new`
+  notifications. No private SDK API use.
+- **Phase 2 — embed the canonical conductor.** Replace each pool slot's direct
+  agent connection with a `ProxyChainRuntime` containing a zero-proxy
+  `ConductorImpl` and the final agent transport. Observable behavior must remain
+  identical.
+- **Phase 3 — prove the proxy wire.** Add one no-op tracing proxy that receives
+  `_proxy/initialize` and forwards every request, response, notification, and
+  reverse request through `_proxy/successor`.
+- **Phase 4 — extract transform proxies.** Move the three strong transform cores
   out of `app.rs` — **autofix**, **context/prompt injection**, and
   **delegate/recommendation** — into standalone proxies wired via
   `_proxy/initialize` / `_proxy/successor`. This is where `_proxy/*` first becomes
@@ -405,9 +423,10 @@ rewrote the SDK. The main blocks:
    0 gap.
 4. **Schema moved.** All message types moved to `acp::schema::v1::*` (~538 path
    moves); `ProtocolVersion` to `acp::schema::ProtocolVersion`.
-5. **Proxy/conductor primitives shipped.** `Proxy` / `Conductor`, `_proxy/*`,
-   `build_session_from`, `on_proxy_session_start`, `ProxySessionMessages` —
-   unused in Phase 0, but the foundation Phase 1/2 build on.
+5. **Proxy/conductor primitives shipped.** Public `Proxy` / `Conductor`,
+   `_proxy/*`, `build_session_from`, and `on_proxy_session_start` are candidates
+   for later linear chains. `ProxySessionMessages` also exists but is
+   `pub(crate)` and is not a WTA integration surface.
 6. **Dropped / changed APIs.** `session/set_model` + `SetSessionModelRequest`
    were removed (re-declared locally; the model list now comes from
    `config_options`); `unstable_session_list` / `unstable_session_model`
@@ -464,8 +483,8 @@ let builder = acp::Client.builder()
 
 #### Phase 0 migration checklist (grounded in current code)
 
-**Status: landed.** Phase 0 is done in this branch — `tools/wta/Cargo.toml` is on
-`agent-client-protocol = "1.0"` (lockfile `1.0.0`), master + helper run on the
+**Status: landed.** Phase 0 is done — `tools/wta/Cargo.toml` is on
+`agent-client-protocol = "1.2.0"`, master + helper run on the
 builder/dispatch model, and outbound calls resolve via
 `cx.send_request(..).block_task().await` behind the `protocol/acp/conn.rs` shim (see
 *Structure after Phase 0*). The items below are what landed; the single
@@ -513,8 +532,8 @@ Blast radius by file (matches of the removed 0.10 symbols):
 - `tools/wta/src/main.rs` — helper `run_acp_app` entry / `LocalSet` bootstrap.
 - `tools/wta/src/protocol/acp/probe.rs` — `probe-models` ACP path.
 - `tools/wta/src/protocol/acp/spawn.rs` — subprocess wiring on the 1.0 model.
-- `agent-client-protocol = "0.10"` → `"1.0"` in `tools/wta/Cargo.toml`
-      (lockfile `1.0.0`); message types moved to `acp::schema::v1::*`; third-party
+- `agent-client-protocol = "0.10"` → stable 1.x in `tools/wta/Cargo.toml`;
+      message types moved to `acp::schema::v1::*`; third-party
       notices regenerated (`Generate-WtaThirdPartyNotices.ps1`).
 
 #### Structure after Phase 0 (what actually landed)
@@ -537,97 +556,104 @@ above and the *fan-in / fan-out mapping* table.
 > delivered async via a `Ready` cell (`spawn_client`/`spawn_agent`); the removed
 > `session/set_model` is re-declared locally and model lists read from
 > `config_options`; ext methods only enum-fall-through for `_`-prefixed names so
-> `intellterm.wta/*` became `_intellterm.wta/*`. `session_to_helper` / `route_for`
-> and the N:1 bridge are still hand-rolled — that is exactly what Phase 1 removes.
+> `intellterm.wta/*` became `_intellterm.wta/*`. Phase 1 consolidates route,
+> orphan, and ordering state behind WTA's session router; it does not
+> remove the N:M bridge or manual forwarding.
 
-### Phase 1 detail: master → library Conductor
+### Phase 1 detail: extract the session-routing control plane
 
-**Why a Conductor, and why master is the fit.** A *Conductor* is ACP 1.0's native
-role for a component that sits between a Client and an Agent, intercepts
-`session/new`, and then forwards every per-session message both ways. That is
-*already* master's job — it just does it by hand (`session_to_helper` + `route_for` +
-the manual notification / reverse-request fan-out). So adopting the conductor is
-not a new layer but a **swap of master's bespoke routing core for a library-owned
-one**: the library takes over per-session forwarding (with a message-ordering
-guarantee — a response can't overtake a notification), which deletes the race-prone
-cold-start-join / tombstone reconciliation that made the hand-rolled version
-fragile.
+Master is the correct owner because it alone sees helper connection lifetime,
+agent-process lifetime, the pooled transport selected for each helper, registry
+publication, and ext-notification ordering. Phase 1 extracts those concerns from
+`master/mod.rs` into `master/session_router.rs`. `SessionRouter` is a prerequisite
+for the SDK conductor, not a specialized implementation of it.
 
-Master is the fit because that routing core is intrinsically **per-session and
-1:1** — each session has exactly one owning helper, which is precisely the
-relationship the conductor models — and because master is the single point all
-agent traffic funnels through (it owns the one shared agent connection and every
-helper session), so it is also the natural home for the insertable transform proxies
-Phase 2 adds. The parts that *don't* fit a stock conductor — the N:1 multiplexing (N
-helpers sharing one agent CLI) and the WTA lifecycle (agent spawn, pipe discovery,
-restart) — stay master's bespoke skeleton, so master becomes a **specialized**
-conductor that reuses the library's per-session primitives rather than a plain one
-(see the topology caveat).
+The state machine is keyed by `(AgentInstanceId, SessionId)`, not `SessionId`
+alone. Every bind returns a generation token. Load failure, closed-channel
+cleanup, helper disconnect, registry removal, and agent reap mutate state only
+when that exact token or agent instance is still current.
 
-**How it runs (per helper pipe).** Each helper still connects as a plain ACP `Client` over
-its pipe; master answers as a `Conductor`. For every helper pipe master runs a
-`Conductor.builder()` whose `on_receive_request_from(Client, NewSessionRequest)`
-calls `cx.build_session_from(request)` then `on_proxy_session_start(responder, …)`.
-That single call:
-- forwards `session/new` to the shared agent `ConnectionTo<Agent>`, and
-- installs a library **`ProxySessionMessages(session_id)`** dynamic handler that
-  auto-forwards *both directions* for that session id — `session/update`,
-  `request_permission`, `terminal/*`, `fs/*` — with no `session_to_helper` lookup.
+An active helper binding is exclusive: a competing `session/load` is rejected
+rather than stealing the route. Only a detached orphan can be claimed without
+an upstream load round-trip. Agent reap removes all routes and publications for
+that exact process instance under the lifecycle transaction gate and leaves an
+instance tombstone so an in-flight RPC cannot publish after process death.
 
-**Deleted (hand-rolled routing retires):**
-- `session_to_helper: HashMap<SessionId, HelperRoute>` and `route_for`.
-- `MasterClient`'s manual reverse-request re-dispatch (`request_permission` /
-  `terminal/*` / `fs/*` → owning helper).
-- the per-helper `notif_tx` / `ext_tx` fan-out loops in `serve_helper` and the
-  `agent_side_slot` (`Weak`/cell) plumbing that fed them.
-- `HelperHandler`'s verbatim pass-through methods (the library forwards instead).
+It owns:
 
-**Kept (still ours):**
-- the **N:1 bridge**: the accept loop that takes N helper pipes + the single
-  shared agent `ConnectionTo<Agent>` (one `AcpAgent`), because the conductor's
-  native chain is 1:1.
-- per-tab routing identity (`window_id` / `owner_tab_id`) carried in `_meta.wta`
-  on `session/new` so WT-side reconciliation still addresses tabs.
-- the `cached_init_resp` replay and the host `session/list` title sourcing.
+- helper route and reverse-request forwarder;
+- orphan detach/claim/rollback for the exact live agent process;
+- pending `session/new` counts and bounded early-notification buffers;
+- registry-publication ownership, so stale cleanup cannot remove a replacement
+  row or emit `session_removed` after its replacement `session_added`.
 
-**Wire & compat.** Helpers stay plain `Client`; the `_proxy/*` envelope methods
-are used by the library *inside* the conductor, not on the helper↔master pipe — so
-the named-pipe wire stays private plain ACP through Phase 1. Risk goes **down**:
-the race-prone cold-start join / tombstone reconciliation around
-`session_to_helper` is replaced by the library's per-session handler lifecycle.
+Pending-new ownership is request- and helper-scoped, so helper disconnect
+cancels late completion. Raw-SessionId publication collisions retain candidate
+metadata; when the published owner exits, the oldest still-live candidate is
+promoted atomically into the management registry.
+
+The lifecycle transaction gate serializes router/registry/ext-notification
+commits, but is released during upstream `session/new` and `session/load`.
+Generation tokens validate the commit after the await. Notification delivery
+remains bounded and uses `try_send`; full queues drop with rate-limited logging.
+A closed queue triggers exact-token cleanup and cannot tear down a rebound route.
+
+**Wire & compatibility.** Both hops remain plain ACP in Phase 1. No
+`_proxy/*` envelope is introduced. Multi-agent pooling, orphan fast rebind,
+already-loaded fallback, Cancelled orphan permissions, helper restart, and
+reentrant prompt requests remain unchanged.
 
 ```mermaid
 flowchart TB
     H1["helper[1]<br/>Client.builder() (plain ACP)"]
     Hn["helper[N]<br/>Client.builder() (plain ACP)"]
 
-    subgraph master["wta-master = library Conductor"]
-        CB["Conductor.builder()<br/>on_receive_request_from(Client, NewSessionRequest)<br/>build_session_from + on_proxy_session_start"]
-        PSM["ProxySessionMessages(session_id) ×live<br/>library dynamic handler<br/>auto fan-out BOTH ways"]
-        BR["N:1 bridge skeleton (still ours)<br/>N helper transports → 1 shared agent conn"]
-        AC["ConnectionTo&lt;Agent&gt; (shared AcpAgent)"]
+    subgraph master["wta-master session-routing control plane"]
+        SC["SessionRouter<br/>instance + session + generation"]
+        REG["registry publication ownership<br/>lifecycle transaction gate"]
+        BR["N helper transports → pooled agent instances"]
+        AC["ConnectionTo&lt;Agent&gt; × instance"]
     end
 
     CLI["agent CLI (unchanged)"]
 
     H1 -->|"ACP/pipe"| BR
     Hn -->|"ACP/pipe"| BR
-    BR -.->|"presents each helper to the conductor"| CB
-    CB -.->|"build_session_from"| AC
-    CB -.->|"installs per session"| PSM
-    PSM -.-|"auto-forward update / permission / terminal / fs"| AC
+    BR --> SC
+    SC --> REG
+    SC -->|"route update / permission / terminal / fs"| AC
     AC -->|"ACP/stdio"| CLI
 ```
 
-> **Dashed = new / changed vs Phase 0; solid = unchanged.** New (dashed): the library
-> conductor (`build_session_from` + `on_proxy_session_start`) that the bridge now
-> feeds, and `ProxySessionMessages` auto-forwarding — together they replace Phase 0's
-> hand-rolled fan-in (`HelperHandler`) + fan-out (`session_to_helper` +
-> `MasterClient::route_for`, both **gone**). Unchanged (solid): the helper pipes
-> landing on the **N:1 bridge**, and the shared agent connection + `ACP/stdio` to the
-> CLI.
+> Phase 1 changes ownership and correctness, not the wire: helper pipes and
+> agent stdio connections are unchanged. The old loose routing/orphan maps move
+> behind one tested state machine; manual ACP forwarding remains because WTA's
+> topology requires it.
 
-### Phase 2 detail: extracting the transform proxies
+### Phase 2 detail: canonical zero-proxy conductor
+
+Each `AgentPoolSlot` holds a `ProxyChainRuntime` rather than a direct
+`AgentCli`. The runtime's client link terminates at
+`agent-client-protocol-conductor::ConductorImpl<Agent>`, configured with
+`AgentOnly(final_agent_transport)`. The final agent process is still spawned,
+logged, initialized, and reaped by WTA, preserving package PATH/environment,
+stderr diagnostics, exact instance IDs, tombstones, and pool retry semantics.
+
+With zero configured transform proxies, the canonical conductor is transparent:
+
+- the final component receives ordinary `initialize`, never
+  `_proxy/initialize`;
+- every request, response, notification, and reverse request crosses the
+  conductor unchanged;
+- helper ownership remains entirely in `SessionRouter`;
+- conductor termination and final-agent termination both feed the existing
+  exact-instance reap path.
+
+This phase deliberately uses the upstream implementation rather than copying
+its dispatch algorithm. Phase 3 adds an explicit no-op tracing proxy to prove
+the successor wire before any feature changes message contents.
+
+### Phase 4 detail: extracting the transform proxies
 
 `app.rs` is the central event-loop + state hub (`App` struct + the `AppEvent`
 match), which is why every concern accreted there. Sizing (as of this spec):
@@ -660,13 +686,13 @@ is *not* an app.rs core — it splits into the separate session-proxy family out
 the session subsystem (counted under *Proxy criterion & count* below). The last two
 columns double as the **extraction manifest**: each proxy row is a pure 1:1 ACP
 transform lifted out of a monolith — only the decision/transform core moves out; the
-cards / pickers / TUI stay in the helper. (Proxy extraction is **Phase 2**; Phase 1
-only turned master into the Conductor.)
+cards / pickers / TUI stay in the helper. Feature-proxy extraction is **Phase
+4**; Phases 1–3 establish routing, the canonical conductor, and wire proof.
 
-#### Structure after Phase 2 (conductor + chained transform proxies)
+#### Structure after Phase 4 (conductor + chained transform proxies)
 
-The conductor from Phase 1 is unchanged; the three `app.rs` transform cores (autofix
-/ context / delegate) become standalone proxies chained between the conductor and
+The conductor from Phase 2 is unchanged; the three `app.rs` transform cores
+(autofix / context / delegate) become standalone proxies chained between it and
 the agent via `_proxy/initialize` / `_proxy/successor` — and the session-proxy family
 + the model / permission shims chain in the same way. The full chain below carries
 the **same proxy set as the *Target* diagram** (this is just the LR chain view). Each
@@ -677,8 +703,9 @@ the chain.
 ```mermaid
 flowchart LR
     H["helper (Client, plain ACP)"]
-    subgraph master["wta-master Conductor"]
-        CB["build_session_from<br/>start_session_proxy chain"]
+    subgraph master["wta-master"]
+        CB["SessionRouter<br/>N:M control plane"]
+        C["ConductorImpl<br/>per-slot linear chain"]
     end
     AFX["autofix proxy<br/>WtEvent → inject session/prompt"]
     CTX["context/prompt proxy<br/>rewrite session/prompt"]
@@ -691,7 +718,8 @@ flowchart LR
     CLI["agent CLI (plain initialize)"]
 
     H -->|"ACP/pipe"| CB
-    CB -.->|"_proxy/initialize"| AFX
+    CB --> C
+    C -.->|"_proxy/initialize"| AFX
     AFX -.->|"_proxy/successor"| CTX
     CTX -.->|"_proxy/successor"| REC
     REC -.->|"_proxy/successor"| SLU
@@ -703,8 +731,8 @@ flowchart LR
     PERM -.->|"folds into"| CB
 ```
 
-> Only the dashed `_proxy/*` chain is new vs Phase 1. The conductor still owns the
-> N:1 bridge + `ProxySessionMessages`; the proxies are pure 1:1 transforms in the
+> Only the dashed `_proxy/*` chain is new vs Phase 1. The WTA conductor still owns
+> the N:M bridge and session lifecycle; proxies are optional pure 1:1 transforms in the
 > chain. `app.rs` keeps the cards/pickers + TUI/tab/connection plumbing; only each
 > proxy's decision/transform core moved out. Landing order within Phase 2: the three
 > `app.rs` cores (autofix / context / delegate) first, then the `session:` family
@@ -870,11 +898,11 @@ trust consideration to document when they are introduced, not in Phase 0.
 
 ### Reliability
 
-Phase 0 is the risk peak (large mechanical rewrite of two ACP planes + the mock
-harness). Mitigated by: behavior-preserving scope, the existing mock-ACP and
-render test suites, and landing it before any proxy semantics. Library-managed
-forwarding (Phase 1) should *reduce* the surface for the race-prone hand-rolled
-routing (cold-start joins, tombstones, etc.).
+Phase 0 is the API-migration risk peak. Phase 1 is a concurrency/lifecycle
+change and therefore relies on focused state-machine tests: instance isolation,
+generation-safe rollback, orphan restoration/reap, pending-new buffering,
+closed/full channels, and registry/broadcast ordering. The SDK does not supply
+ordering for WTA's topology; WTA's lifecycle gate and binding tokens do.
 
 ### Compatibility
 
@@ -883,9 +911,9 @@ routing (cold-start joins, tombstones, etc.).
   the proxy is transparent to them.
 - 0.10→1.0 is a breaking API change for **our** code only. The helper↔master
   named-pipe wire stays private (plain ACP) through Phase 1.
-- `agent-client-protocol` 1.0 was published the day before this spec; the proxy
-  types note they are "intended to become part of the ACP spec" — treat the
-  proxy wire format as still-settling for Phase 2 timing.
+- WTA uses `agent-client-protocol` and
+  `agent-client-protocol-conductor` **1.2.0**. The latter is the canonical
+  implementation of the RFD's linear chain.
 
 ### Performance, Power, and Efficiency
 
@@ -903,8 +931,8 @@ transform on the helper↔agent wire), which is a *different axis* from `app.rs`
 
 | Metric | Today | After |
 |---|---|---|
-| Reasoned units | 2 monoliths (`app.rs` 16K + hand-rolled `master`) | ~7–8 units (lean App + library conductor + autofix/context/delegate + the ~2–3 session proxies, ± marginal model/permission + a residual session core) |
-| master per-session routing | hand-rolled `session_to_helper` fan-in/fan-out | library `ProxySessionMessages` → **~60–70% deletable** (3 of 6 mapping rows) |
+| Reasoned units | 2 monoliths (`app.rs` 16K + hand-rolled `master`) | `SessionRouter` control plane + per-slot canonical `ConductorImpl` + later transform proxies |
+| master per-session routing | loose route/orphan maps in `master/mod.rs` | cohesive instance-scoped state machine; forwarding remains WTA-owned |
 | `app.rs` decoupling | 3 transform cores share App's ~50 fields + the `AppEvent` match | autofix / context / delegate move out as standalone proxies, own state |
 | `app.rs` size | 16,137 lines | ≈ **−20–25%** (~3–4K transform-glue lines move out) → still ~12–13K |
 
@@ -940,7 +968,20 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 ## Potential Issues
 
 - **N:1 topology mismatch (see caveat):** the bespoke multiplexer skeleton
-  survives; do not assume the library erases it.
+  survives (and is N:M with the agent pool); do not assume the library erases it.
+- **Public API mismatch:** `ProxySessionMessages` is `pub(crate)`, while public
+  conductor/session-proxy APIs own one linear transport chain. Do not copy the
+  private type or imply it backs WTA routing.
+- **Session-id collisions:** agent processes may return equal SessionIds.
+  Every route, orphan, pending buffer, and reap operation must include the
+  stable agent-process instance id. The existing session-management registry is
+  still keyed by raw SessionId, so only the first instance can publish a
+  colliding id at a time; later instances remain correctly routable and are
+  promoted when the current published owner exits.
+- **Await races:** never hold the lifecycle gate over an upstream RPC. Bind
+  first, await, then commit/rollback by generation token.
+- **Buffer pressure:** pre-response notification buffering is bounded; overflow
+  and final-pending-failure discards are logged.
 - **Mock harness churn:** `mock_agent_tests.rs` (59 matches) and
   `DispatchHarness` underpin most regression coverage — they must be migrated in
   lockstep or the safety net disappears mid-rewrite.
@@ -961,15 +1002,15 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 
 - ACP proxy chains RFD — "Agent Extensions via ACP Proxies":
   https://agentclientprotocol.com/rfds/proxy-chains
-- `agent-client-protocol` 1.0.0 source (release commit `12498fd`):
-  `schema/proxy_protocol.rs`, `session.rs`, `md/migration_v0.11.x.md`
+- `agent-client-protocol` and `agent-client-protocol-conductor` 1.2.0 source:
+  `role/acp.rs`, `session.rs`, and the conductor crate's `conductor.rs`
   (`agentclientprotocol/rust-sdk`).
 - `sacp` / `sacp-proxy` / `sacp-conductor` (Symposium prototype the upstream work
   came from): `symposium-dev/symposium-acp`.
 - Existing internal design: `doc/specs/Multi-window-agent-pane.md`,
   `tools/wta/AGENTS.md`.
 
-## Implementation status (Phase 0)
+## Implementation status
 
 Branch `dev/<alias>/acp-1.0-phase0`. Build/test from the **worktree root** (not
 `tools/wta/src` — that dir's `rust-toolchain.toml` pins an uninstalled channel):
@@ -993,6 +1034,14 @@ list is config-option only. **ext** (`ext_method`/`ext_notification`) only enum-
 falls-through for `_`-prefixed methods in 1.0, so all `intellterm.wta/*` were
 prefixed `_intellterm.wta/*`. `ProtocolVersion` → `acp::schema::ProtocolVersion`.
 
-**TODO — beyond Phase 0:** clear residual dead-code warnings; revisit conductor
-proxy abstraction (future-considerations) and MCP-over-ACP — these are Phase 1-3,
-not part of this 0.10→1.0 bucket.
+**Done — Phase 1:** `SessionRouter` owns generation-safe bindings,
+pending-new buffering, orphan/rebind, exact agent reap, and registry collision
+promotion. It is explicitly the outer control plane, not the proxy conductor.
+
+**Done — Phase 2:** each pool slot is a `ProxyChainRuntime` backed by
+`agent-client-protocol-conductor` 1.2.0 with zero configured transform proxies.
+The final agent still receives plain `initialize`; WTA retains process launch,
+diagnostics, timeout, and exact-instance reap.
+
+**Next — Phase 3:** add a no-op tracing proxy and assert
+`_proxy/initialize`/`_proxy/successor` routing before migrating any feature.

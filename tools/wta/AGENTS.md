@@ -10,10 +10,12 @@ no MCP server**; bare `wta` with neither `--master` nor `--connect-master` exits
 with an error.
 
 - **`wta-master`** (`--master <pipe>`, spawned once by the C++ `SharedWta`
-  singleton) -- the ACP **multiplexer**. Owns the *single* `ACP/stdio`
-  connection to the agent CLI subprocess (Copilot, Claude, Gemini, Codex, or a
-  custom command), listens on a named pipe, and fans per-helper ACP sessions
-  onto that one agent CLI. Implementation: `src/master/mod.rs`.
+  singleton) -- the ACP **multiplexer**. Owns a lazy pool of per-agent
+  `ProxyChainRuntime`s (Copilot, Claude, Gemini, Codex, or custom), listens on a
+  named pipe, and fans per-helper ACP sessions onto the selected runtime.
+  Instance-scoped route/orphan lifetime lives in `src/master/session_router.rs`;
+  each runtime embeds the canonical ACP `ConductorImpl` from
+  `src/master/proxy_chain.rs`.
 - **`wta-helper`** (`--connect-master <pipe>`, spawned once per agent pane by
   Windows Terminal) -- the per-pane **TUI**. Drives the ratatui chat UI (`app.rs`)
   but, instead of spawning its own agent CLI, speaks ACP/JSON-RPC to master over
@@ -43,14 +45,15 @@ a single implementation today:
               v                               v
         +--------------+   named pipe   +------------------+
         | wta-master   |<-------------->| wta-helper       |  (one per pane)
-        | (singleton)  |  ACP/JSON-RPC  | TUI: app.rs +    |
-        | master/mod.rs|                | helper/mod.rs    |
+        | + router     |  ACP/JSON-RPC  | TUI: app.rs +    |
+        | + conductors |                |                  |
+        | + agent pool |                | helper/mod.rs    |
         +------+-------+                +--------+---------+
-               |  ACP/stdio                      |  ShellManager
+               |  ACP/stdio × instance           |  ShellManager
                v                                 |  (create_terminal /
-         Agent CLI                               |   permission)
+         Agent CLI pool                          |   permission)
       (copilot/claude/                           v
-       gemini/codex)                        CliChannel
+       gemini/codex/custom)                 CliChannel
                                                  |
  Human / agent shell-out:                        v
    wta <subcommand>  ----------------->  wtcli.exe -> COM IProtocolServer
@@ -66,16 +69,17 @@ a single implementation today:
 
 ### ACP (Agent Client Protocol)
 
-ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on **two hops**,
+ACP (`agent-client-protocol = "1.2.0"`, JSON-RPC 2.0) is spoken on **two hops**,
 because of the helper+master split:
 
-- **master ↔ agent CLI** (stdio): master is the ACP **client** of the agent CLI
-  subprocess — the same role legacy single-process wta used to play. It spawns
-  the agent CLI and owns its stdin/stdout.
+- **master ↔ proxy chain ↔ agent CLI**: master is the ACP **client** of each
+  pooled canonical conductor, which owns an ordered linear proxy chain ending
+  at the agent CLI's stdio transport.
 - **helper ↔ master** (named pipe): master is an ACP **agent** (server) to each
   helper, and the helper is the ACP **client**. Master forwards helper requests
   to the agent CLI and routes inbound `session_notification`s back to the helper
-  that owns the session (`session_to_helper` map in `src/master/mod.rs`).
+  that owns the session. `session_router.rs` scopes identity by stable
+  agent-process instance plus SessionId and owns generation-safe orphan/rebind.
 
 Implementations: agent-CLI client + helper-side `WtaClient` in
 `src/protocol/acp/client.rs`; the master multiplexer in `src/master/mod.rs`.
@@ -190,7 +194,7 @@ subfolder keyed by the package version:
 Per-process logs in the helper+master architecture:
 
 - `wta-main_master.log` -- `wta-master`: agent CLI spawn, pipe accept loop,
-  per-helper routing, `session_to_helper` updates, agent CLI exit detection
+  instance-scoped session-conductor transitions, agent CLI exit detection
 - `wta-main_helper-{pid}.log` -- each `wta-helper` (one file per PID): pipe
   connect, ACP initialize, `session/new`, prompts, agent responses, TUI lifecycle
 - `wta-cli.log` -- short-lived CLI helpers (`list-*`, `capture-pane`, `listen`,
@@ -241,7 +245,8 @@ green build says nothing about the tests.
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `agent-client-protocol` | 0.10 | ACP client library |
+| `agent-client-protocol` | 1.2.0 | ACP client/proxy roles and transports |
+| `agent-client-protocol-conductor` | 1.2.0 | Canonical ordered proxy-chain runtime |
 | `tokio` | 1 | Async runtime |
 | `ratatui` | 0.30 | TUI rendering |
 | `crossterm` | 0.29 | Terminal I/O |
@@ -534,4 +539,3 @@ was already serialized.
 ready, flip `MVP_SESSIONS_ORIGIN_FILTER` to `OriginFilter::All` and
 delete `WTA_SESSIONS_SHOW_AGENT_PANE` handling in
 `resolve_sessions_origin_filter`. No other call site needs to change.
-
