@@ -534,7 +534,7 @@ fn delegate_source_never_switches_based_on_wsl_agent_availability() {
         distro: "Ubuntu".to_string(),
     };
     // An explicit WSL selection stays WSL even when its agent is missing in
-    // the distro — no fallback to the host.
+    // the distro — the selection does not fall back to the host.
     assert!(!delegate_launchable_for_source(
         &wsl,
         /* host_launchable */ true,
