@@ -2151,7 +2151,12 @@ async fn run_delegate(
     cwd: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
-    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
+    // Log only the executable (first token) of agent_cmd, not the full command line with args.
+    let agent_exe = crate::coordinator::split_windows_commandline(agent_cmd.trim())
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = %agent_exe, "run_delegate started");
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
     let requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;

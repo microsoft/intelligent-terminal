@@ -1374,7 +1374,7 @@ namespace winrt::TerminalApp::implementation
         // ACP agent command.
         if (delegateAgent.empty())
         {
-            _agentPaneLog("ABORT: no allowed command palette agent configured");
+            _agentPaneLog("ABORT: no allowed delegate agent configured");
             if (AgentPolicy::IsAllowedAgentsPolicyConfigured())
             {
                 if (auto tip{ FindName(L"WindowIdToast").try_as<MUX::Controls::TeachingTip>() })
