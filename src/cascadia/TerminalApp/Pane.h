@@ -134,7 +134,8 @@ public:
     void Close();
 
     std::shared_ptr<Pane> AttachPane(std::shared_ptr<Pane> pane,
-                                     winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType);
+                                     winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
+                                     float splitSize = 0.5f);
     std::shared_ptr<Pane> DetachPane(std::shared_ptr<Pane> pane);
 
     bool RepositionAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitDirection);

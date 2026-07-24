@@ -65,6 +65,8 @@ namespace winrt::TerminalApp::implementation
         // Update the cached pane-position. Fires StateChanged so the
         // bottom bar can refresh its toggle-icon orientation.
         void SetAgentPanePosition(const winrt::hstring& position);
+        void SetDurableSessionId(const winrt::hstring& sessionId) noexcept { _durableSessionId = sessionId; }
+        winrt::hstring DurableSessionId() const noexcept { return _durableSessionId; }
         // --- Cross-window drag rename plumbing ---
         // When a tab is dragged into this window, the source side has stashed
         // the originating tab's StableId keyed by ContentId. The target
@@ -148,6 +150,9 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentModel{};
         winrt::hstring _agentState{};
         winrt::hstring _agentBackend{};
+        // Empty for a pre-warmed session that has not processed a prompt.
+        // WTA only projects an ID after a real turn starts or a session is loaded.
+        winrt::hstring _durableSessionId{};
 
         // When true, the bar replaces "<agent> <version>" with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged

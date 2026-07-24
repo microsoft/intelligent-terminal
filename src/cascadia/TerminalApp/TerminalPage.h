@@ -256,6 +256,7 @@ namespace winrt::TerminalApp::implementation
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnAgentStateChanged(hstring eventJson);
         void OnResumeInNewAgentTabRequested(hstring eventJson);
+        void OnPaneAgentSessionChanged(hstring eventJson);
         void OnAgentChipTargetChanged(hstring eventJson);
         void OnRestartAgentStackRequested(hstring eventJson);
         void OnAgentPaneRestartRequested(hstring eventJson);
@@ -496,6 +497,21 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
+        struct _PendingDurableAgentPaneRestore
+        {
+            uint64_t startupActionBatchId{ 0 };
+            std::string sessionId;
+            winrt::hstring agent;
+            winrt::hstring customCommand;
+            std::string cwd;
+            bool sessionsView{ false };
+            bool paneOpen{ false };
+            winrt::hstring panePosition;
+            float paneSize{ 0.5f };
+        };
+        std::unordered_map<winrt::hstring, _PendingDurableAgentPaneRestore> _pendingDurableAgentPaneRestores;
+        uint64_t _nextStartupActionBatchId{ 0 };
+        uint64_t _currentStartupActionBatchId{ 0 };
         // Short-lived marks keyed by tab StableId: set whenever an agent
         // pane is torn down deliberately (Ctrl+C×2, settings rebuild,
         // /restart, recovery re-warm). `OnAgentPaneRestartRequested`
@@ -562,7 +578,10 @@ namespace winrt::TerminalApp::implementation
                                               bool autoStash = false,
                                               std::string_view initialLoadSessionId = {},
                                               std::string_view initialLoadCwd = {},
-                                              std::wstring_view initialAuthAgent = {});
+                                              std::wstring_view initialAuthAgent = {},
+                                              std::wstring_view initialPanePosition = {},
+                                              float initialPaneSize = 0.5f);
+        void _RestorePendingDurableAgentPanes(uint64_t startupActionBatchId);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.
@@ -672,6 +691,15 @@ namespace winrt::TerminalApp::implementation
         void _RemoveTab(const winrt::TerminalApp::Tab& tab, bool movingAway = false);
         safe_void_coroutine _RemoveTabs(const std::vector<winrt::TerminalApp::Tab> tabs);
         void _SaveWorkspaceIfNeeded();
+        void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        winrt::hstring _GetDurableAgentIdentity(Tab* tab) const;
+        winrt::hstring _GetDurableAgentCustomCommand(Tab* tab) const;
+        struct _PaneAgentSession
+        {
+            winrt::hstring sessionId;
+            winrt::hstring agent;
+        };
+        std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
 
         void _InitializeTab(winrt::com_ptr<Tab> newTabImpl, uint32_t insertPosition = -1, bool openInBackground = false);
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);

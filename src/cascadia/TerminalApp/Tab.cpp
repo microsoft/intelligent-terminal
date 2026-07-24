@@ -774,7 +774,8 @@ namespace winrt::TerminalApp::implementation
     // Return Value:
     // - a pair of (the Pane wrapping the original tree, the new Pane)
     std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Tab::SplitPaneAtRoot(SplitDirection splitType,
-                                                                                  std::shared_ptr<Pane> pane)
+                                                                                  std::shared_ptr<Pane> pane,
+                                                                                  const float splitSize)
     {
         ASSERT_UI_THREAD();
 
@@ -803,7 +804,7 @@ namespace winrt::TerminalApp::implementation
         // _firstChild and the new pane becomes _secondChild. Because _rootPane
         // is modified in-place, Content() (which points to _rootPane->GetRootElement())
         // remains valid without any re-parenting.
-        auto originalTree = _rootPane->AttachPane(pane, splitType);
+        auto originalTree = _rootPane->AttachPane(pane, splitType, splitSize);
 
         // The split created a new wrapper pane for the original tree. Attach
         // Tab event handlers so that focus changes are tracked correctly —
@@ -2519,6 +2520,20 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return nullptr;
+    }
+
+    float Tab::AgentPaneSize() const noexcept
+    {
+        if (const auto agentPane = FindAgentPane())
+        {
+            if (const auto parent = _rootPane->_FindParentOfPane(agentPane))
+            {
+                return parent->_firstChild == agentPane ?
+                           parent->_desiredSplitPosition :
+                           1.0f - parent->_desiredSplitPosition;
+            }
+        }
+        return 0.5f;
     }
 
     // Hide the agent pane without destroying it. The pane stays in the tab
