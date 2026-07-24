@@ -47,16 +47,11 @@ fn agent_command_on_enter(
     input: &str,
     selected: Option<&AvailableAgent>,
 ) -> Option<ParsedCommand> {
-    let prefix = commands::agent_id_prefix(input)?;
-    let rest = if prefix.is_empty() {
-        String::new()
-    } else {
-        selected?.id.clone()
-    };
+    commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
         kind: CommandKind::Agent,
         spec: commands::lookup("agent").expect("/agent is registered"),
-        rest,
+        rest: selected?.id.clone(),
     })
 }
 

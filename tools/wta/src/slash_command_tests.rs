@@ -432,9 +432,9 @@ fn agent_trailing_space_opens_completion_with_all_agents() {
     let command =
         agent_command_on_enter(&app.current_tab().input, highlighted).expect("agent command");
     assert_eq!(command.kind, CommandKind::Agent);
-    assert!(
-        command.rest.is_empty(),
-        "Enter must dispatch bare /agent so cmd_agent opens the picker"
+    assert_eq!(
+        command.rest, "copilot",
+        "Enter must dispatch the highlighted agent once the completion list is visible"
     );
 }
 
