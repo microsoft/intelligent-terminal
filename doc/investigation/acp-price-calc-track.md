@@ -458,6 +458,64 @@ code it describes.
 - Canonical report runner: 13 passed, 0 failed; HTML/XML/Markdown artifacts generated under the
   ignored artifacts directory.
 - Bootstrap `-Check`: exit 0; winapp, Pester 6.0.1, Dev package, and module import succeeded.
+
+### Step 13 - OpenCode Native ACP Usage POC
+
+**Investigation gate**
+
+- Read the OpenCode repository README, native `opencode acp` entry point, ACP Usage service, and
+  existing OpenCode Usage tests. The local `dev` source identifies as `1.18.4`.
+- Stopped public package-source access after the corporate policy warning. npm is configured to
+  `https://packagefeedproxy.microsoft.io/npm/`; no public npm, PyPI, or NuGet registry was used.
+- The source monorepo lockfile contains `github:` and `pkg.pr.new` direct dependencies, so a full
+  source `bun install` remains blocked until approved internal equivalents are available.
+- Installed fixed `opencode-ai@1.18.3` and `opencode-windows-x64@1.18.3` from the Microsoft-protected
+  npm feed. Both tarball URLs resolved to Microsoft Azure Artifacts.
+- Confirmed OpenCode is a native ACP agent (`opencode acp`), not a TUI substituted for an ACP server
+  and not a third-party adapter.
+
+**Real wire**
+
+- Ran `initialize`, `session/new`, and `session/prompt` against native OpenCode ACP with an isolated
+  inline OpenAI-compatible provider pointed at local Agent Maestro.
+- Handshake reported `agentInfo.name = OpenCode`, version `1.18.3`, protocol version 1.
+- Prompt completed with `end_turn`, returned the expected marker, and emitted one standard
+  `usage_update`: `used=6092`, `size=271790`, `cost=0 USD`.
+- Prompt response Usage reported input 460, output 11, thought 15, cached-read 5632, total 6118.
+  This confirms context occupancy is input + cached-read (`6092`), not total processed tokens.
+- `0 USD` is a deliberate zero-rate custom model result. Maestro exposes AIC rates, while OpenCode
+  labels ACP cost as USD; the POC does not convert or relabel AICs.
+- Raw/pretty wire, stderr, summary, sanitized config, and the PowerShell capture harness remain
+  local under ignored `test/e2e/artifacts/opencode-acp/`; the wire scan found no sensitive keys.
+
+**TDD / characterization**
+
+- Added the verified OpenCode payload as a provider-local Rust characterization test before making
+  any production change.
+- The focused test passed on its first run because the existing standard ACP normalizer already
+  handles OpenCode correctly. No private parser, runtime provider dispatch, credential access, or
+  provider API call was added merely to manufacture a RED phase.
+- The test also locks `opencode` to `StandardAcpOnly` with an empty private trusted-reporter
+  allowlist, preserving the fail-closed provider boundary.
+
+**Validation**
+
+- Real OpenCode ACP capture: 1 standard Usage update; marker present; sensitive-key hits: 0.
+- Focused offline Rust test:
+  `normalizes_verified_opencode_1_18_3_standard_usage_capture` passed (1 passed, 0 failed).
+- Offline Usage/provider slice: 10 passed, 0 failed.
+- Targeted `rustfmt --check tools/wta/src/usage/providers/opencode.rs`: passed.
+- Full offline WTA Rust suite: 1144 passed, 0 failed, 0 ignored.
+- OpenCode source tests were not run because the monorepo dependency set includes non-CFS direct
+  URLs; no public-source exception or bypass was attempted.
+
+**Committed files**
+
+- `tools/wta/src/usage/providers/opencode.rs`
+- `doc/investigation/acp-price-calc.md`
+- `doc/investigation/acp-price-calc-track.md`
+- No package cache, OpenCode binary, raw wire, local capture harness, credentials, or user-global
+  OpenCode configuration.
 - Windows PowerShell 5.1 module import was rejected by the 7.2 requirement.
 - Both policy setup tools rejected Windows PowerShell before UAC or registry work.
 - ACP mock probe launched through the canonical host and completed initialize, tokens-only Usage,

@@ -296,8 +296,9 @@ Claude binary；不要求另行安装全局 Claude Code CLI。它也会读取 us
 - 已运行 `Agent Maestro: Configure Claude Code Settings`，user-level
   `~/.claude/settings.json` 指向 `http://127.0.0.1:23333/api/anthropic`，模型为
   `claude-sonnet-5[1m]`；
-- `npx` 下载 pinned adapter 时仍出现间歇性 `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE`，
-  adapter 尚未成功缓存/启动；需要先恢复到 `registry.npmjs.org` 的稳定 TLS 连接。
+- `npx` 下载 pinned adapter 曾出现间歇性 `ERR_SSL_SSL/TLS_ALERT_HANDSHAKE_FAILURE`。公司设备
+  不得切回公共 npm registry；package 必须通过
+  `https://packagefeedproxy.microsoft.io/npm/` 或批准的 Azure Artifacts feed 获取。
 
 #### 可行的实验步骤
 
@@ -443,7 +444,83 @@ compatible family；如果 handshake 未返回该 ID，保持 Generic/unknown。
 首版产品方案仍不把 Agent Maestro 作为正式 provider dependency；它仅作为本地实验桥和
 fixture 产生工具。
 
-### 2.5 Gemini 暂停，后续迁移到 Antigravity
+### 2.5 OpenCode native ACP Usage 调查（2026-07-24）
+
+OpenCode 不需要第三方 adapter。发布版 `opencode-ai@1.18.3` 原生提供：
+
+```text
+opencode acp
+```
+
+公司设备上的安装固定使用 Microsoft-protected npm feed，未访问公共 npm registry：
+
+```powershell
+npm install --global opencode-ai@1.18.3 `
+  --registry https://packagefeedproxy.microsoft.io/npm/ `
+  --include=optional
+```
+
+`opencode-ai@1.18.3` 与 `opencode-windows-x64@1.18.3` 的 tarball 均来自 Microsoft Azure
+Artifacts。当前本地 OpenCode `dev` 源码版本为 `1.18.4`；源码 monorepo lockfile 还包含
+`github:` 与 `pkg.pr.new` 直链，因此在这些依赖有 approved internal source 前，不使用公共源
+强行完成全仓 `bun install`。
+
+真实 ACP round-trip 使用隔离配置，将 OpenCode 的 OpenAI-compatible provider 指向本机 Agent
+Maestro `http://127.0.0.1:23333/api/openai/v1`。OpenCode handshake 报告：
+
+```json
+{
+  "agentInfo": { "name": "OpenCode", "version": "1.18.3" },
+  "protocolVersion": 1
+}
+```
+
+一次真实 `session/prompt` 在 agent message chunks 后发送：
+
+```json
+{
+  "sessionUpdate": "usage_update",
+  "used": 6092,
+  "size": 271790,
+  "cost": { "amount": 0, "currency": "USD" }
+}
+```
+
+同一 prompt response 的 Usage 为：
+
+```json
+{
+  "inputTokens": 460,
+  "outputTokens": 11,
+  "thoughtTokens": 15,
+  "cachedReadTokens": 5632,
+  "totalTokens": 6118
+}
+```
+
+这验证了 OpenCode 的 `used` 口径是当前 assistant message 的
+`inputTokens + cachedReadTokens`，即 `460 + 5632 = 6092`，而不是 `totalTokens`。`size` 来自
+provider/model config 的 context limit。源码 `packages/opencode/src/acp/usage.ts` 也显示同一
+算法，并将当前 session 所有 assistant message 的 `cost` 累加为标准 ACP USD cost。
+
+本次 `0 USD` 不是实际账单。Agent Maestro model catalog 报告的是 AICs/1M tokens，而 OpenCode
+ACP 当前把 currency 固定为 `USD`；测试配置故意将价格设为零，避免把 AIC rates 错标成 USD。
+若未来通过 OpenCode 使用真实 provider，cost 仍是 OpenCode 根据 message usage 与 model price
+metadata 计算或使用 Copilot `totalNanoAiu` metadata 得到的报告值，必须单独验证 issuer、单位和
+定价来源，不能仅因 ACP 字段写着 USD 就承诺账单准确。
+
+完整 raw/pretty wire、stderr、去敏配置与摘要保存在本地 ignored 目录：
+
+```text
+test/e2e/artifacts/opencode-acp/real-wire/
+```
+
+POC 结论：OpenCode `1.18.3` 已发送合法的标准 ACP `usage_update`，现有 provider-neutral
+normalizer 可以直接消费；`opencode` private adapter 继续保持 `StandardAcpOnly`、空 trusted
+reporter allowlist 和 no-op，不需要新增 runtime dispatch、私有 schema parser 或 provider API
+访问。
+
+### 2.6 Gemini 暂停，后续迁移到 Antigravity
 
 这是产品范围决策，不是对 Gemini 当前 ACP 能力的技术否定：Google 已发布新的 agent tool
 Antigravity，而 Intelligent Terminal 计划未来逐步迁移到它。为避免在即将退出的 provider
