@@ -426,6 +426,16 @@ fn agent_trailing_space_opens_completion_with_all_agents() {
             .collect::<Vec<_>>(),
         vec!["copilot", "codex", "gemini"]
     );
+
+    let highlighted = app.selected_agent_command_candidate();
+    assert_eq!(highlighted.map(|agent| agent.id.as_str()), Some("copilot"));
+    let command =
+        agent_command_on_enter(&app.current_tab().input, highlighted).expect("agent command");
+    assert_eq!(command.kind, CommandKind::Agent);
+    assert!(
+        command.rest.is_empty(),
+        "Enter must dispatch bare /agent so cmd_agent opens the picker"
+    );
 }
 
 #[test]
@@ -458,15 +468,13 @@ fn agent_ghost_requires_cursor_at_end() {
 fn agent_argument_enter_dispatches_highlighted_agent() {
     let mut app = test_app();
     seed_completion_agents(&mut app);
-    app.current_agent_id = "copilot".into();
     type_input(&mut app, "/agent co");
 
-    assert!(app.try_handle_slash_on_enter());
-    assert!(app.current_tab().input.is_empty());
-    assert!(
-        app.current_tab().messages.is_empty(),
-        "the selected exact agent must dispatch; the raw prefix must not reach unknown-agent handling"
-    );
+    let highlighted = app.selected_agent_command_candidate();
+    let command =
+        agent_command_on_enter(&app.current_tab().input, highlighted).expect("agent command");
+    assert_eq!(command.kind, CommandKind::Agent);
+    assert_eq!(command.rest, "copilot");
 }
 
 #[test]

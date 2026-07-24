@@ -43,6 +43,23 @@ pub struct AvailableAgent {
     pub display_name: String,
 }
 
+fn agent_command_on_enter(
+    input: &str,
+    selected: Option<&AvailableAgent>,
+) -> Option<ParsedCommand> {
+    let prefix = commands::agent_id_prefix(input)?;
+    let rest = if prefix.is_empty() {
+        String::new()
+    } else {
+        selected?.id.clone()
+    };
+    Some(ParsedCommand {
+        kind: CommandKind::Agent,
+        spec: commands::lookup("agent").expect("/agent is registered"),
+        rest,
+    })
+}
+
 mod turn_state;
 mod autofix;
 use autofix::*;
@@ -8025,16 +8042,10 @@ impl App {
             // spec if it's in the filtered candidate list; otherwise there's
             // nothing to run, so consume Enter and show the reconnect hint.
             if !self.transport_lost {
-                if let Some(agent_id) = self
-                    .selected_agent_command_candidate()
-                    .map(|agent| agent.id.clone())
+                let selected_agent = self.selected_agent_command_candidate();
+                if let Some(parsed) =
+                    agent_command_on_enter(&self.current_tab().input, selected_agent)
                 {
-                    let spec = commands::lookup("agent").expect("/agent is registered");
-                    let parsed = ParsedCommand {
-                        kind: CommandKind::Agent,
-                        spec,
-                        rest: agent_id,
-                    };
                     self.current_tab_mut().clear_input();
                     self.handle_slash_command(parsed);
                     return true;
