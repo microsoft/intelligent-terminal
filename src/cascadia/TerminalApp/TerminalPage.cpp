@@ -1073,7 +1073,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (lower == "codex")
         {
-            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.0" };
+            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.4" };
         }
         if (lower == "opencode")
         {
