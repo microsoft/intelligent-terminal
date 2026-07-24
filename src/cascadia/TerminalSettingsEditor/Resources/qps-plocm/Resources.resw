@@ -1253,7 +1253,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>Choose the agent used for command palette delegation in this profile. This selection takes precedence over the global delegate agent setting.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Description for the per-profile command palette agent setting.</comment>
+    <comment>Description for the per-profile command palette agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>

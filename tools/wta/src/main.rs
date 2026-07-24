@@ -2330,7 +2330,7 @@ async fn delegate_with_context(
             .filter(|command| !command.is_empty())
             .is_none()
     {
-        anyhow::bail!("no command palette agent configured");
+        anyhow::bail!("--delegate-agent is required when --delegate-source is supplied");
     }
     let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
         delegate_agent_cmd,
