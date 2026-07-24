@@ -506,6 +506,15 @@ enum Command {
         #[arg(long)]
         delegate_model: Option<String>,
 
+        /// Exact execution source (host or wsl). Defaults to host when
+        /// omitted; never inferred from the active pane's shell/distro
+        #[arg(long)]
+        delegate_source: Option<String>,
+
+        /// WSL distro for an explicit --delegate-source wsl selection
+        #[arg(long)]
+        delegate_wsl_distro: Option<String>,
+
         /// Working directory for the delegate agent tab
         #[arg(long)]
         cwd: Option<String>,
@@ -973,6 +982,8 @@ async fn main() -> Result<()> {
             agent,
             delegate_agent,
             delegate_model,
+            delegate_source,
+            delegate_wsl_distro,
             cwd,
         }) => {
             run_delegate(
@@ -980,6 +991,8 @@ async fn main() -> Result<()> {
                 &agent,
                 delegate_agent.as_deref(),
                 delegate_model.as_deref(),
+                delegate_source.as_deref(),
+                delegate_wsl_distro.as_deref(),
                 cwd.as_deref(),
             )
             .await
@@ -2133,11 +2146,21 @@ async fn run_delegate(
     agent_cmd: &str,
     delegate_agent_cmd: Option<&str>,
     delegate_model: Option<&str>,
+    delegate_source: Option<&str>,
+    delegate_wsl_distro: Option<&str>,
     cwd: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
-    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
+    // Log only the executable (first token) of agent_cmd, not the full command line with args.
+    let agent_exe = crate::coordinator::split_windows_commandline(agent_cmd.trim())
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = %agent_exe, "run_delegate started");
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
+
+    let requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
+    require_delegate_agent_for_explicit_source(delegate_source, delegate_agent_cmd)?;
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
     let channel = match connect_to_wt_protocol(debug_tx).await {
@@ -2159,6 +2182,7 @@ async fn run_delegate(
         agent_cmd,
         delegate_agent_cmd,
         delegate_model,
+        &requested_source,
         cwd,
     )
     .await
@@ -2174,14 +2198,6 @@ async fn run_delegate(
     }
 }
 
-/// The WSL distro backing the delegate's active pane, if any — i.e. its shell,
-/// reported via `OSC 9001;ShellType`, is `wsl:<distro>` with a **non-empty**
-/// distro name (e.g. `wsl:Ubuntu`). The shipped Bash shell integration only
-/// emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set (otherwise it reports
-/// `bash`), so a bare `wsl:` never occurs in practice; rejecting it defensively
-/// keeps us from ever building a `wsl -d "" …` command. Returns `None` when the
-/// pane is missing, has no `shell` field, or the shell is anything else
-/// (PowerShell, cmd, …).
 /// Whether the delegate agent CLI is actually available inside `distro`.
 ///
 /// PR375 routes a `?<prompt>` from a WSL pane into the distro
@@ -2192,32 +2208,86 @@ async fn run_delegate(
 /// only put the agent on the login PATH, so a non-login `bash -c` would miss it.
 /// The probe resolves the agent's PATH location and accepts it only when it is a
 /// native Linux install — a Windows CLI leaking in via `appendWindowsPath`
-/// (resolving under `/mnt/…`) is rejected, so it falls back to the host CLI that
-/// can actually run it (see [`wsl_agent_probe_script`]). Returns `false` on any
-/// spawn/exec error or timeout so the caller falls back to the known-good
-/// Windows host CLI instead of launching a doomed in-distro command that would
-/// silently drop the prompt.
+/// (resolving under `/mnt/…`) is rejected (see [`wsl_agent_probe_script`]).
+/// This only gates an explicit `--delegate-source wsl` selection: an
+/// unavailable agent keeps WSL as the source (see
+/// [`delegate_launchable_for_source`]) so its command-not-found error remains
+/// visible, rather than silently switching to the host.
 async fn wsl_delegate_agent_available(distro: &str, agent_exe: &str) -> bool {
     crate::agent_check::find_wsl_exe(distro, agent_exe)
         .await
         .is_some()
 }
 
-/// Whether the delegate agent should be treated as launchable for the active
-/// pane's *target* environment.
+/// Parse `--delegate-source`/`--delegate-wsl-distro` into a concrete
+/// [`AgentSource`](crate::agent_source::AgentSource).
 ///
-/// `host_launchable` comes from [`crate::coordinator::delegate_command_launchable`],
-/// which only inspects the Windows PATH. `wsl_agent_available` is true when the
-/// active pane is a WSL distro **and** the agent CLI is installed inside it (see
-/// [`wsl_delegate_agent_available`]). Either path makes the delegate
-/// launchable: the Windows host, or the in-distro CLI. Without the WSL term a
-/// Copilot/Claude installed only in the distro would be treated as
-/// non-launchable and silently drop its `?<prompt>` text; with it, a WSL pane
-/// whose distro lacks the CLI still falls through to the host term rather than
-/// being force-routed into a doomed in-distro launch. The prompt-enrichment and
-/// session-pin gates in `delegate_with_context` both key off this value.
-fn delegate_launchable_for_target(host_launchable: bool, wsl_agent_available: bool) -> bool {
-    host_launchable || wsl_agent_available
+/// Omitting `--delegate-source` defaults to `Host` — WTA never inspects the
+/// active pane's shell/distro to pick a source and never routes to WSL
+/// unless the caller asks for it explicitly. `--delegate-wsl-distro` is only
+/// meaningful (and required) alongside an explicit `--delegate-source wsl`.
+fn parse_delegate_source(
+    source: Option<&str>,
+    wsl_distro: Option<&str>,
+) -> Result<crate::agent_source::AgentSource> {
+    use crate::agent_source::AgentSource;
+
+    match source.map(str::trim) {
+        None => {
+            anyhow::ensure!(
+                wsl_distro.is_none(),
+                "--delegate-wsl-distro requires --delegate-source wsl"
+            );
+            Ok(AgentSource::Host)
+        }
+        Some(source) if source.eq_ignore_ascii_case(AgentSource::HOST_KIND) => {
+            anyhow::ensure!(
+                wsl_distro.is_none(),
+                "--delegate-wsl-distro is invalid with --delegate-source host"
+            );
+            Ok(AgentSource::Host)
+        }
+        Some(source) if source.eq_ignore_ascii_case(AgentSource::WSL_KIND) => {
+            let distro = wsl_distro
+                .map(str::trim)
+                .filter(|distro| !distro.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("--delegate-source wsl requires --delegate-wsl-distro"))?;
+            Ok(AgentSource::Wsl {
+                distro: distro.to_string(),
+            })
+        }
+        Some(source) => anyhow::bail!("unsupported delegate source '{source}'"),
+    }
+}
+
+/// An explicit `--delegate-source` (host or wsl) commits the caller to a
+/// specific agent command, so a bare source with no delegate agent is a
+/// caller error rather than something to paper over with the `agent_cmd`
+/// fallback used when the source is omitted entirely.
+fn require_delegate_agent_for_explicit_source(
+    delegate_source: Option<&str>,
+    delegate_agent_cmd: Option<&str>,
+) -> Result<()> {
+    anyhow::ensure!(
+        delegate_source.is_none()
+            || delegate_agent_cmd
+                .map(str::trim)
+                .filter(|command| !command.is_empty())
+                .is_some(),
+        "--delegate-agent is required when --delegate-source is supplied"
+    );
+    Ok(())
+}
+
+fn delegate_launchable_for_source(
+    source: &crate::agent_source::AgentSource,
+    host_launchable: bool,
+    wsl_agent_available: bool,
+) -> bool {
+    match source {
+        crate::agent_source::AgentSource::Host => host_launchable,
+        crate::agent_source::AgentSource::Wsl { .. } => wsl_agent_available,
+    }
 }
 
 /// Max bytes of captured terminal context baked into a delegate prompt.
@@ -2251,6 +2321,30 @@ fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
     format!("{marker}{}", &context[start..])
 }
 
+/// Selects the POSIX cwd to record/use for an explicit WSL delegate launch.
+///
+/// A WSL session's cwd must be a POSIX path (`/…`) — falling back without
+/// validation to a Windows/UNC `--cwd` is misleading (the active pane may be a
+/// Windows pane when `--delegate-source wsl` is forced) and breaks downstream
+/// assumptions about WSL session cwd formatting (see PR #488 review). Trims
+/// whitespace off each candidate, requires an absolute POSIX path (`/…`), and
+/// rejects `"` (which would break the `wsl --cd "<cwd>"` quoting). Prefers the
+/// active pane's cwd over the explicit CLI `--cwd`; returns `None` if neither
+/// is a valid POSIX path.
+fn select_wsl_delegate_cwd<'a>(
+    active_pane_cwd: Option<&'a str>,
+    explicit_cwd: Option<&'a str>,
+) -> Option<&'a str> {
+    fn valid_posix_cwd(candidate: &str) -> Option<&str> {
+        let trimmed = candidate.trim();
+        (trimmed.starts_with('/') && !trimmed.contains('"')).then_some(trimmed)
+    }
+
+    active_pane_cwd
+        .and_then(valid_posix_cwd)
+        .or_else(|| explicit_cwd.and_then(valid_posix_cwd))
+}
+
 /// Shared delegation logic: enrich the prompt with the active pane's recent
 /// output (when available), build the delegate-agent commandline, and create a
 /// new tab to launch it. WT's GetActivePane already resolves the agent pane to
@@ -2261,6 +2355,7 @@ async fn delegate_with_context(
     agent_cmd: &str,
     delegate_agent_cmd: Option<&str>,
     delegate_model: Option<&str>,
+    requested_source: &crate::agent_source::AgentSource,
     cwd: Option<&str>,
 ) -> Result<()> {
     let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
@@ -2291,19 +2386,22 @@ async fn delegate_with_context(
 
     // A WSL pane runs the agent *inside the distro* (`wsl -d <distro> -- …`), so
     // the Windows-host launchable check does not apply to it. Fetch the active
-    // pane up front so the gate below and the WSL branch further down can see
-    // it. See `delegate_launchable_for_target`.
+    // pane up front — it feeds the enriched-prompt block and the WSL cwd lookup
+    // further down, not source selection: `requested_source` is the sole input
+    // to that decision (see `parse_delegate_source`), never the active pane's
+    // shell/distro.
     let active = shell_mgr.wt_get_active_pane().await.ok();
 
-    // If the active pane is a WSL distro, prefer running the agent inside it —
-    // but only when the agent CLI is actually installed there. Otherwise, fall
-    // back to the Windows host CLI (which the Settings UI already verified is
-    // installed): an in-distro launch would just print "<agent>: command not
-    // found" and drop the prompt. Probe the distro once, up front, so the
-    // launchable gate, the WSL branch, and the host fallback all agree.
-    let wsl_distro: Option<String> =
-        crate::agent_source::active_pane_wsl_distro(active.as_ref()).map(str::to_string);
-    let wsl_agent_available = match wsl_distro.as_deref() {
+    // `requested_source` is always a concrete, caller-chosen source (defaults
+    // to `Host` when `--delegate-source` is omitted; see
+    // `parse_delegate_source`). Probe WSL availability only for an explicit
+    // WSL selection — an unavailable agent keeps WSL as the source (never
+    // swaps to Host) so its command-not-found error stays visible.
+    let candidate_wsl_distro = match requested_source {
+        crate::agent_source::AgentSource::Host => None,
+        crate::agent_source::AgentSource::Wsl { distro } => Some(distro.as_str()),
+    };
+    let wsl_agent_available = match candidate_wsl_distro {
         Some(distro) => {
             let agent_exe =
                 crate::coordinator::split_windows_commandline(runtime.commandline.trim())
@@ -2312,11 +2410,11 @@ async fn delegate_with_context(
                     .unwrap_or_default();
             let available = wsl_delegate_agent_available(distro, &agent_exe).await;
             if !available {
-                tracing::info!(
+                tracing::warn!(
                     target: "delegate",
                     distro,
                     agent = %agent_exe,
-                    "delegate agent not available in WSL distro — falling back to Windows host CLI",
+                    "selected delegate agent is unavailable in its WSL distro; keeping WSL as the source",
                 );
             }
             available
@@ -2324,7 +2422,9 @@ async fn delegate_with_context(
         None => false,
     };
 
-    let launchable_for_target = delegate_launchable_for_target(launchable, wsl_agent_available);
+    let launch_source = requested_source;
+    let launchable_for_target =
+        delegate_launchable_for_source(launch_source, launchable, wsl_agent_available);
 
     if !launchable_for_target {
         // Log only the executable (first token), never the full commandline: a
@@ -2417,11 +2517,10 @@ async fn delegate_with_context(
     )?;
 
     // ── WSL delegate path ───────────────────────────────────────────────────
-    // Taken only when the active pane is a WSL distro AND the agent CLI is
-    // installed inside it (`wsl_agent_available`). Build a WSL-native command
-    // that runs the agent CLI inside the distro (using the Linux toolchain and
-    // filesystem). When the distro lacks the CLI we fall through to the Windows
-    // host path below, which sanitizes the pane's POSIX cwd to the Windows home.
+    // An explicit `--delegate-source wsl` selection always stays in its
+    // configured distro. When the CLI is missing there, launch the selected
+    // command there anyway, without a prompt, so the new tab reports the real
+    // command-not-found error rather than silently switching to the host.
     //
     // Delivery (see `build_wsl_delegate_commandline`): the prompt rides as an
     // inline base64 payload decoded in-distro — base64's alphabet has no shell
@@ -2436,80 +2535,76 @@ async fn delegate_with_context(
     //
     // Composability works because the two layers have disjoint special
     // characters: ' is special to bash, " is special to Windows.
-    if wsl_agent_available {
-        // `wsl_agent_available` implies both `wsl_distro` and `active` are set
-        // (it is derived from them above); the `if let` is a defensive guard
-        // that falls through to the host path in the impossible None case.
-        if let (Some(distro), Some(active_pane)) = (wsl_distro.as_deref(), active.as_ref()) {
-            let wsl_agent_cmd = crate::coordinator::build_wsl_delegate_commandline(
-                runtime,
-                enriched_prompt.as_deref(),
-                pinned_session_id.as_deref(),
-            )?;
-            let escaped = crate::coordinator::quote_windows_commandline_arg(&wsl_agent_cmd);
-            let login_invocation = format!("bash -lc {}", escaped);
-            let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
-            let wsl_cwd = active_pane
-                .get("cwd")
-                .and_then(|v| v.as_str())
-                .filter(|s| s.starts_with('/') && !s.contains('"'));
-            let wsl_commandline = match wsl_cwd {
-                Some(cwd) => {
-                    format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
-                }
-                None => format!("wsl -d {distro_arg} -- {login_invocation}"),
-            };
-
-            tracing::debug!("delegate_with_context: launching in WSL ({distro})");
-            tracing::trace!(
-                target: "delegate.content",
-                commandline = %wsl_commandline,
-                "wsl delegate commandline",
-            );
-
-            let create_resp = shell_mgr
-                .wt_create_tab(Some(&wsl_commandline), None, None, None)
-                .await?;
-            let pane_guid = create_resp
-                .get("session_id")
-                .and_then(|v| v.as_str())
-                .map(str::to_string);
-            tracing::info!(
-                target: "delegate",
-                pane_guid = ?pane_guid,
-                pinned = ?pinned_session_id,
-                distro,
-                "delegate WSL tab created",
-            );
-
-            // Born-bound registration for the WSL delegate session — but only
-            // when WSL sessions are enabled. The whole WSL surface is gated on
-            // `WTA_WSL_SESSIONS`; with it off we must not surface *any* WSL
-            // session, born-bound delegate rows included (the master-side
-            // historical WSL scan is already gated, so skipping this registration
-            // keeps a `?<prompt>` WSL delegate out of the session view). The tab
-            // still opens and the CLI still runs — it's just untracked, exactly
-            // like every other WSL session while the flag is off.
-            //
-            // The distro is threaded through so the master stamps the row
-            // `Wsl { distro }` → the session view shows the `[WSL-<distro>]`
-            // prefix.
-            if crate::history_loader::wsl_sessions_enabled() {
-                if let (Some(sid), Some(pane)) =
-                    (pinned_session_id.as_deref(), pane_guid.as_deref())
-                {
-                    register_launched_session_with_master(
-                        sid,
-                        pane,
-                        &runtime.id,
-                        wsl_cwd.or(cwd),
-                        Some(distro),
-                    )
-                    .await;
-                }
+    if let crate::agent_source::AgentSource::Wsl { distro } = launch_source {
+        let wsl_agent_cmd = crate::coordinator::build_wsl_delegate_commandline(
+            runtime,
+            enriched_prompt.as_deref(),
+            pinned_session_id.as_deref(),
+        )?;
+        let escaped = crate::coordinator::quote_windows_commandline_arg(&wsl_agent_cmd);
+        let login_invocation = format!("bash -lc {}", escaped);
+        let distro_arg = crate::coordinator::quote_windows_commandline_arg(distro);
+        let active_pane_cwd = active
+            .as_ref()
+            .and_then(|pane| pane.get("cwd"))
+            .and_then(|v| v.as_str());
+        let wsl_cwd = select_wsl_delegate_cwd(active_pane_cwd, cwd);
+        let wsl_commandline = match wsl_cwd {
+            Some(cwd) => {
+                format!("wsl -d {distro_arg} --cd \"{cwd}\" -- {login_invocation}")
             }
-            return Ok(());
+            None => format!("wsl -d {distro_arg} -- {login_invocation}"),
+        };
+
+        tracing::debug!("delegate_with_context: launching in WSL ({distro})");
+        tracing::trace!(
+            target: "delegate.content",
+            commandline = %wsl_commandline,
+            "wsl delegate commandline",
+        );
+
+        let create_resp = shell_mgr
+            .wt_create_tab(Some(&wsl_commandline), None, None, None)
+            .await?;
+        let pane_guid = create_resp
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        tracing::info!(
+            target: "delegate",
+            pane_guid = ?pane_guid,
+            pinned = ?pinned_session_id,
+            distro,
+            "delegate WSL tab created",
+        );
+
+        // Born-bound registration for the WSL delegate session — but only
+        // when WSL sessions are enabled. The whole WSL surface is gated on
+        // `WTA_WSL_SESSIONS`; with it off we must not surface *any* WSL
+        // session, born-bound delegate rows included (the master-side
+        // historical WSL scan is already gated, so skipping this registration
+        // keeps a `?<prompt>` WSL delegate out of the session view). The tab
+        // still opens and the CLI still runs — it's just untracked, exactly
+        // like every other WSL session while the flag is off.
+        //
+        // The distro is threaded through so the master stamps the row
+        // `Wsl { distro }` → the session view shows the `[WSL-<distro>]`
+        // prefix.
+        if crate::history_loader::wsl_sessions_enabled() {
+            if let (Some(sid), Some(pane)) =
+                (pinned_session_id.as_deref(), pane_guid.as_deref())
+            {
+                register_launched_session_with_master(
+                    sid,
+                    pane,
+                    &runtime.id,
+                    wsl_cwd,
+                    Some(distro),
+                )
+                .await;
+            }
         }
+        return Ok(());
     }
 
     // ── Windows (existing) path ────────────────────────────────────────────

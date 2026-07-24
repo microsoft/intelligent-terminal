@@ -167,6 +167,10 @@ Profiles use the global Windows-hosted agent by default. In a profile's
 installed in that profile's WSL distro. The picker only lists the Windows host
 and that one distro. An explicit profile selection is strict: if that agent
 cannot start, the pane reports the failure without switching to another agent.
+**Command palette agent** independently selects the agent used by `?<prompt>`
+and the interactive delegate action for that profile. Its host or WSL selection
+is also strict: if the selected agent is unavailable, delegation reports that
+error instead of falling back to another agent or execution environment.
 
 ### Agent Management
 

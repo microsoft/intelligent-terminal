@@ -397,18 +397,22 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(json_str_or_num(&v, "missing"), "-");
 }
 
-// ── Delegate: WSL pane target detection + launchable gate ───────────────────
+// ── Delegate: execution source ───────────────────────────────────────────────
+//
+// `--delegate-source` defaults to `host` when omitted and is never inferred
+// from the active pane's shell/distro. An explicit `host` or `wsl` selection
+// is strict: it never switches based on CLI availability, so the selected
+// command reports its own launch error instead of silently falling back.
 //
 // `delegate_command_launchable` only checks the Windows PATH, which is
-// meaningless for a WSL pane (the agent runs inside the distro). A WSL pane is
-// therefore treated as launchable when the agent CLI is present *inside the
-// distro* — so a `?<prompt>` from a WSL pane still gets its prompt
-// enriched/delivered when the agent (e.g. Copilot) is installed only inside the
-// distro (regression guard for the "prompt silently dropped" bug), while a WSL
-// pane whose distro lacks the CLI falls back to the Windows host term.
+// meaningless for a WSL pane (the agent runs inside the distro), so a WSL
+// source is treated as launchable only when the agent CLI is present *inside
+// the distro* (`delegate_launchable_for_source`).
 
 /// Build a minimal active-pane JSON value with the given `shell` field, as
-/// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
+/// reported by WT's `get_active_pane` / `OSC 9001;ShellType`. Used only by
+/// `active_pane_wsl_distro` tests below — that helper now backs the `/agent`
+/// source picker (see `app.rs`), not delegate source selection.
 fn pane_with_shell(shell: &str) -> serde_json::Value {
     serde_json::json!({ "shell": shell })
 }
@@ -484,18 +488,164 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
 }
 
 #[test]
-fn delegate_launchable_for_target_ors_host_and_wsl() {
-    // Agent not launchable on the Windows host, but present inside the WSL
-    // distro → launchable (in-distro path), so the prompt is enriched, not
-    // dropped.
-    assert!(delegate_launchable_for_target(false, true));
+fn delegate_source_args_require_a_valid_exact_target() {
+    use crate::agent_source::AgentSource;
 
-    // Not launchable on host AND not available in WSL → stays non-launchable
-    // (the bare-command path, where the prompt is intentionally not baked in).
-    // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
-    assert!(!delegate_launchable_for_target(false, false));
+    // Omitting --delegate-source defaults to Host — WTA never inspects the
+    // active pane's shell/distro to pick a source.
+    assert_eq!(
+        parse_delegate_source(None, None).unwrap(),
+        AgentSource::Host
+    );
+    assert_eq!(
+        parse_delegate_source(Some("host"), None).unwrap(),
+        AgentSource::Host
+    );
+    assert_eq!(
+        parse_delegate_source(Some("wsl"), Some("Ubuntu")).unwrap(),
+        AgentSource::Wsl {
+            distro: "Ubuntu".to_string()
+        }
+    );
+    assert!(parse_delegate_source(Some("wsl"), None).is_err());
+    assert!(parse_delegate_source(Some("host"), Some("Ubuntu")).is_err());
+    assert!(parse_delegate_source(None, Some("Ubuntu")).is_err());
+    assert!(parse_delegate_source(Some("remote"), None).is_err());
 
-    // Launchable on the host is always launchable, regardless of WSL.
-    assert!(delegate_launchable_for_target(true, false));
-    assert!(delegate_launchable_for_target(true, true));
+    // Any presence of --delegate-wsl-distro (even empty/whitespace-only) is
+    // rejected for an omitted source or an explicit --delegate-source host —
+    // the caller passed the flag, so a silently-ignored empty value would be
+    // misleading.
+    assert!(parse_delegate_source(None, Some("")).is_err());
+    assert!(parse_delegate_source(None, Some("   ")).is_err());
+    assert!(parse_delegate_source(Some("host"), Some("")).is_err());
+    assert!(parse_delegate_source(Some("host"), Some("   ")).is_err());
+
+    // --delegate-source wsl still trims and requires a non-empty distro.
+    assert!(parse_delegate_source(Some("wsl"), Some("   ")).is_err());
+    assert_eq!(
+        parse_delegate_source(Some("wsl"), Some("  Ubuntu  ")).unwrap(),
+        AgentSource::Wsl {
+            distro: "Ubuntu".to_string()
+        }
+    );
 }
+
+#[test]
+fn delegate_agent_required_only_when_source_is_explicit() {
+    // Omitted --delegate-source: no --delegate-agent required (the
+    // `agent_cmd` fallback covers it).
+    assert!(require_delegate_agent_for_explicit_source(None, None).is_ok());
+    // Explicit --delegate-source (host or wsl) requires --delegate-agent.
+    assert!(require_delegate_agent_for_explicit_source(Some("host"), None).is_err());
+    assert!(require_delegate_agent_for_explicit_source(Some("host"), Some("  ")).is_err());
+    assert!(require_delegate_agent_for_explicit_source(Some("wsl"), None).is_err());
+    assert!(require_delegate_agent_for_explicit_source(Some("host"), Some("codex")).is_ok());
+    assert!(require_delegate_agent_for_explicit_source(Some("wsl"), Some("codex")).is_ok());
+}
+
+#[test]
+fn delegate_source_never_switches_based_on_wsl_agent_availability() {
+    use crate::agent_source::AgentSource;
+
+    let wsl = AgentSource::Wsl {
+        distro: "Ubuntu".to_string(),
+    };
+    // An explicit WSL selection stays WSL even when its agent is missing in
+    // the distro — the selection does not fall back to the host.
+    assert!(!delegate_launchable_for_source(
+        &wsl,
+        /* host_launchable */ true,
+        /* wsl_agent_available */ false
+    ));
+    assert!(delegate_launchable_for_source(&wsl, false, true));
+
+    // An explicit (or defaulted) Host selection stays Host even when a WSL
+    // agent happens to be available — no auto-routing into WSL.
+    assert!(!delegate_launchable_for_source(
+        &AgentSource::Host,
+        /* host_launchable */ false,
+        /* wsl_agent_available */ true
+    ));
+    assert!(delegate_launchable_for_source(&AgentSource::Host, true, false));
+}
+
+// `select_wsl_delegate_cwd` picks the POSIX cwd recorded/used for an explicit
+// WSL delegate launch (see PR #488 review). It must never fall back to a
+// Windows/UNC `--cwd` — a WSL session's cwd has to stay a POSIX path.
+
+#[test]
+fn select_wsl_delegate_cwd_prefers_active_pane_over_explicit_cwd() {
+    // Both candidates are valid POSIX paths — the active pane wins.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("/home/user/active"), Some("/home/user/explicit")),
+        Some("/home/user/active")
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_falls_back_to_valid_explicit_cwd() {
+    // No active pane cwd — an explicit, valid POSIX `--cwd` is used.
+    assert_eq!(
+        select_wsl_delegate_cwd(None, Some("/home/user/explicit")),
+        Some("/home/user/explicit")
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_rejects_windows_and_unc_paths() {
+    // A Windows path never wins, even when it's the only candidate — this is
+    // the case the review flagged: an active Windows pane under an explicit
+    // `--delegate-source wsl` must not leak its Windows cwd into the WSL
+    // session record via `wsl_cwd.or(cwd)`.
+    assert_eq!(select_wsl_delegate_cwd(Some("C:\\Users\\me"), None), None);
+    assert_eq!(select_wsl_delegate_cwd(None, Some("C:\\Users\\me")), None);
+    // UNC paths are likewise rejected — not absolute POSIX (`/…`).
+    assert_eq!(select_wsl_delegate_cwd(Some("\\\\server\\share"), None), None);
+    // An invalid active-pane cwd does not block falling back to a valid
+    // explicit `--cwd`.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("C:\\Users\\me"), Some("/home/user/explicit")),
+        Some("/home/user/explicit")
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_rejects_values_containing_quotes() {
+    // A `"` would break the `wsl --cd "<cwd>"` quoting — reject it even
+    // though it's otherwise an absolute POSIX-looking path.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("/home/user/\"; rm -rf /"), None),
+        None
+    );
+    assert_eq!(
+        select_wsl_delegate_cwd(None, Some("/home/user/\"; rm -rf /")),
+        None
+    );
+}
+
+#[test]
+fn select_wsl_delegate_cwd_trims_whitespace_before_validating() {
+    // Leading/trailing whitespace around an otherwise-valid POSIX path is
+    // trimmed away, and the trimmed value is what's returned.
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("  /home/user/active  "), None),
+        Some("/home/user/active")
+    );
+    assert_eq!(
+        select_wsl_delegate_cwd(None, Some("\t/home/user/explicit\n")),
+        Some("/home/user/explicit")
+    );
+    // Whitespace-only candidates are not absolute POSIX paths.
+    assert_eq!(select_wsl_delegate_cwd(Some("   "), None), None);
+}
+
+#[test]
+fn select_wsl_delegate_cwd_returns_none_when_neither_candidate_is_valid() {
+    assert_eq!(select_wsl_delegate_cwd(None, None), None);
+    assert_eq!(
+        select_wsl_delegate_cwd(Some("relative/path"), Some("also/relative")),
+        None
+    );
+}
+

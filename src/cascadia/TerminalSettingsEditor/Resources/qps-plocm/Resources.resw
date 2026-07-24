@@ -1247,6 +1247,14 @@
     <value>Čнοθśê ťнĕ ăĝĕήţ ùşéδ îή ťћε āġêŉτ рâńё ťђăţ śùρρόřŧś ACP. ₣õř ťĥιѕ ряőƒїℓé, ţђĩş ѕéℓē¢ŧιбⁿ тåкёś φѓэĉзďелċ℮ öνёґ ťĥз ġĺôьåĺ Äĝёņţ ράπє ѕêłēçτíθŋ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>Command palette agent</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>Choose the agent used for command palette delegation in this profile. This selection takes precedence over the global delegate agent setting.</value>
+    <comment>Description for the per-profile command palette agent setting.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
