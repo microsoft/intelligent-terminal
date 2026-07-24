@@ -76,6 +76,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         let is_selected = i == setup.selected_index;
 
         let (label, status_text) = match opt {
+            SetupOption::ChooseAgentSource => {
+                (t!("agent_picker.title").into_owned(), String::new())
+            }
             SetupOption::Install { display_name, .. } => {
                 let status = if setup.install_in_progress {
                     format!("  {} {}", spinner_char, t!("setup.status.installing"))

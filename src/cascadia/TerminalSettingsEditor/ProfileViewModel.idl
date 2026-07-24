@@ -5,6 +5,7 @@ import "EnumEntry.idl";
 import "MainPage.idl";
 import "Appearances.idl";
 import "ColorSchemesPageViewModel.idl";
+import "AIAgentsViewModel.idl";
 
 #include "ViewModelHelpers.idl.h"
 
@@ -76,6 +77,9 @@ namespace Microsoft.Terminal.Settings.Editor
         String CurrentStartingDirectoryPreview { get; };
         Boolean UseParentProcessDirectory;
 
+        Windows.Foundation.Collections.IObservableVector<AgentEntry> AgentPaneBackendList { get; };
+        AgentEntry CurrentAgentPaneBackend;
+
         Boolean CanDeleteProfile { get; };
         Boolean FocusDeleteButton;
         Boolean IsBaseLayer;
@@ -122,6 +126,7 @@ namespace Microsoft.Terminal.Settings.Editor
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, Padding);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, Commandline);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, StartingDirectory);
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentPaneBackend);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Microsoft.Terminal.Control.TextAntialiasingMode, AntialiasingMode);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Int32, HistorySize);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, SnapOnInput);

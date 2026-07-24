@@ -61,6 +61,7 @@ namespace Microsoft.Terminal.Settings.Model
 
         INHERITABLE_PROFILE_SETTING(String, StartingDirectory);
         String EvaluatedStartingDirectory { get; };
+        INHERITABLE_PROFILE_SETTING(String, AgentPaneBackend);
 
         FontConfig FontInfo { get; };
 

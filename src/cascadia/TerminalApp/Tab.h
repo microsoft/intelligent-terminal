@@ -138,20 +138,30 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& AgentIdOverride() const noexcept { return _agentIdOverride; }
         const winrt::hstring& AgentModelOverride() const noexcept { return _agentModelOverride; }
         const winrt::hstring& AgentCustomCommandOverride() const noexcept { return _agentCustomCommandOverride; }
+        const winrt::hstring& AgentSourceOverride() const noexcept { return _agentSourceOverride; }
+        const winrt::hstring& AgentWslDistroOverride() const noexcept { return _agentWslDistroOverride; }
+        std::optional<winrt::guid> AgentSourceProfileGuid() const noexcept { return _agentSourceProfileGuid; }
+        void AgentSourceProfileGuid(const winrt::guid& value) noexcept { _agentSourceProfileGuid = value; }
         bool HasAgentOverride() const noexcept { return !_agentIdOverride.empty(); }
         void SetAgentOverride(const winrt::hstring& agentId,
                               const winrt::hstring& model,
-                              const winrt::hstring& customCommand)
+                              const winrt::hstring& customCommand,
+                              const winrt::hstring& source = L"host",
+                              const winrt::hstring& wslDistro = {})
         {
             _agentIdOverride = agentId;
             _agentModelOverride = model;
             _agentCustomCommandOverride = customCommand;
+            _agentSourceOverride = source;
+            _agentWslDistroOverride = wslDistro;
         }
         void ClearAgentOverride() noexcept
         {
             _agentIdOverride = {};
             _agentModelOverride = {};
             _agentCustomCommandOverride = {};
+            _agentSourceOverride = {};
+            _agentWslDistroOverride = {};
         }
 
         // Stable per-tab identifier (GUID string). Survives tab reordering
@@ -243,6 +253,9 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentIdOverride{};
         winrt::hstring _agentModelOverride{};
         winrt::hstring _agentCustomCommandOverride{};
+        winrt::hstring _agentSourceOverride{};
+        winrt::hstring _agentWslDistroOverride{};
+        std::optional<winrt::guid> _agentSourceProfileGuid;
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};

@@ -2094,6 +2094,8 @@ pub async fn run_acp_client_over_pipe(
     // (it never executes a command string sent over the pipe). `None` →
     // master uses its `--agent` default (the legacy single-agent behavior).
     agent_id: Option<String>,
+    agent_source: crate::agent_source::AgentSource,
+    source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
@@ -2317,6 +2319,8 @@ pub async fn run_acp_client_over_pipe(
                 model: acp_model_override
                     .clone()
                     .filter(|s| !s.trim().is_empty()),
+                agent_source: Some(agent_source.kind().to_string()),
+                wsl_distro: agent_source.distro().map(str::to_string),
                 ..Default::default()
             },
         );
@@ -2499,7 +2503,13 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = match &agent_source {
+        crate::agent_source::AgentSource::Host => std::env::current_dir().unwrap_or_default(),
+        crate::agent_source::AgentSource::Wsl { .. } => source_cwd
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/")),
+    };
     let (session_id, available_models, current_model_id, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
@@ -2665,7 +2675,6 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported,
         image_supported,
     });
-
     // Per-tab session cache. Only
     // prepopulate the owner-tab binding when we actually have a
     // bootstrap session — otherwise the `load_session_rx` arm would
