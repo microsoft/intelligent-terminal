@@ -1,8 +1,9 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # PR #296: `/agent` selects a runtime-only agent override for one tab while the
-# shared master keeps sibling tabs and their conversations alive.
-# Release checklist: C225-C226 cover the slash-command UX; C227-C228 cover
-# per-tab isolation and global-default/override behavior.
+# shared master keeps sibling tabs and their conversations alive. PR #487 adds
+# prefix-filtered agent completion and keyboard acceptance.
+# Release checklist: C225-C226 and the PR #487 items cover the slash-command UX;
+# C227-C228 cover per-tab isolation and global-default/override behavior.
 
 BeforeDiscovery {
     $script:Ready = [bool](
@@ -22,6 +23,45 @@ Describe 'Feature per-tab agent selection through /agent' -Tag 'Feature' -Skip:(
         $script:defaultPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $active.session_id -TimeoutSec 30).PaneSessionId
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It '/agent prefix completion works' {
+        try {
+            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
+            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '/agent cop' -NoSubmit | Out-Null
+
+            (Test-Until -TimeoutSec 10 -IntervalSec 0.25 -Condition {
+                    (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) -match '(?i)/agent\s+copilot\s+.*Copilot'
+                }) | Should -BeTrue -Because 'typing an agent-id prefix must show the matching installed and policy-allowed agent'
+
+            $inputRow = '(?m)^\s*[│║|]\s+>\s+/agent copilot'
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) |
+                Should -Match $inputRow -Because 'the selected completion suffix must render inline as ghost text'
+
+            Send-AgentKey -App $script:app -PaneSessionId $script:defaultPane -Key Tab | Out-Null
+            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '-e2e' -NoSubmit | Out-Null
+            (Get-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -MaxLines 40) |
+                Should -Match '(?m)^\s*[│║|]\s+>\s+/agent copilot-e2e' -Because 'Tab must commit the full selected id into the editable input buffer'
+        }
+        finally {
+            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
+        }
+    }
+
+    It '/agent completion selection is safe' {
+        try {
+            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
+            Send-AgentPrompt -App $script:app -PaneSessionId $script:defaultPane -Text '/agent cop' -NoSubmit | Out-Null
+            Assert-AgentPaneText -App $script:app -PaneSessionId $script:defaultPane -Pattern '(?i)/agent\s+copilot\s+.*Copilot' -TimeoutSec 10
+
+            Send-AgentKey -App $script:app -PaneSessionId $script:defaultPane -Key Enter | Out-Null
+            (Get-AgentPaneSession -App $script:app -PaneSessionId $script:defaultPane) |
+                Should -Not -BeNullOrEmpty -Because 'Enter must dispatch the highlighted current agent without rebuilding its pane'
+            Assert-Setting -App $script:app -Key 'acpAgent' -Value 'copilot'
+        }
+        finally {
+            Clear-AgentInput -App $script:app -PaneSessionId $script:defaultPane | Out-Null
+        }
+    }
 
     It '/agent appears in the slash menu and opens a keyboard-operable picker' {
         $titleRe = Get-WtaLocalizedTextRegex -Key 'agent_picker.title'
