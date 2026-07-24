@@ -1439,6 +1439,9 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// Latched after the first prompt or session/load. A pre-warmed session/new
+    /// alone must not become durable; `/clear` keeps the same session durable.
+    pub has_meaningful_conversation: bool,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -1616,6 +1619,16 @@ struct InputHistory {
 impl TabSession {
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
+    }
+
+    fn durable_session_id(&self) -> Option<&str> {
+        self.has_meaningful_conversation
+            .then(|| {
+                self.loading_target_session_id
+                    .as_deref()
+                    .or(self.session_id.as_deref())
+            })
+            .flatten()
     }
 
     /// Whether the input box is the live, enterable caret target. False when
@@ -5266,6 +5279,7 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -5275,6 +5289,7 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
+                tab.has_meaningful_conversation = false;
                 tab.progress_status = None;
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
@@ -5282,6 +5297,7 @@ impl App {
                 tab.turn = TurnState::Idle;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
@@ -6273,6 +6289,7 @@ impl App {
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
                         tab.session_id = None;
+                        tab.has_meaningful_conversation = true;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by
@@ -6296,9 +6313,7 @@ impl App {
                     // not-yet-active tab (e.g. WT just created a fresh tab
                     // and the `tab_changed` race still hasn't landed), the
                     // imminent `tab_changed` to that tab will project then.
-                    if tab_id == self.active_tab_key() {
-                        self.project_active_tab_state();
-                    }
+                    self.project_tab_state(tab_id);
                     let _ = self.load_session_tx.send(LoadSessionForTab {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),
@@ -8415,6 +8430,7 @@ impl App {
         tab.completed_turns.clear();
         tab.selected_completed_turn_idx = None;
         tab.session_id = None;
+        tab.has_meaningful_conversation = false;
         tab.scroll_to_bottom();
     }
 
@@ -8594,6 +8610,7 @@ impl App {
             tab.completed_turns.clear();
             tab.selected_completed_turn_idx = None;
             tab.session_id = None;
+            tab.has_meaningful_conversation = false;
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
         self.publish_agent_status();
@@ -8991,6 +9008,7 @@ impl App {
             tab.selected_completed_turn_idx = None;
             tab.scroll_to_bottom();
             tab.session_id = None;
+            tab.has_meaningful_conversation = false;
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for
@@ -9251,6 +9269,7 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
+        tab.has_meaningful_conversation = true;
 
         // Submitting a new prompt dismisses any prior leftover card (the
         // `selected_recommendation = 0` + turn reset above). If the helper
@@ -9261,6 +9280,7 @@ impl App {
         // `turn_surface_*` callback once recommendations arrive.
         let owned_tab = tab_id.to_string();
         self.recompute_chip_override(&owned_tab);
+        self.project_tab_state(&owned_tab);
     }
 
     /// Observe a streamed chunk. Thought chunks only advance the state
@@ -10254,6 +10274,7 @@ impl App {
             View::Agents => "sessions",
             View::Chat => "chat",
         };
+        let durable_session_id = tab.durable_session_id();
         let evt = serde_json::json!({
             "type": "event",
             "method": "agent_state_changed",
@@ -10262,6 +10283,7 @@ impl App {
                 "view":      view,
                 "pane_open": tab.pane_open,
                 "pane_position": tab.agent_pane_position,
+                "agent_session_id": durable_session_id,
             }
         });
         send_wt_protocol_event(evt.to_string());
@@ -17708,6 +17730,35 @@ mod tests {
     fn known_cli_id_returns_none_for_unknown_variant() {
         use crate::agent_sessions::CliSource;
         assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    }
+
+    #[test]
+    fn durable_session_id_requires_a_meaningful_conversation() {
+        let mut tab = TabSession {
+            session_id: Some("fresh-session".into()),
+            ..Default::default()
+        };
+        assert_eq!(tab.durable_session_id(), None);
+
+        tab.turn = TurnState::Submitted(SubmittedPrompt {
+            id: 1,
+            text: "hello".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: None,
+        });
+        tab.has_meaningful_conversation = true;
+        assert_eq!(tab.durable_session_id(), Some("fresh-session"));
+    }
+
+    #[test]
+    fn durable_session_id_uses_the_load_target_during_replay() {
+        let tab = TabSession {
+            loading_session: true,
+            loading_target_session_id: Some("loaded-session".into()),
+            has_meaningful_conversation: true,
+            ..Default::default()
+        };
+        assert_eq!(tab.durable_session_id(), Some("loaded-session"));
     }
 
     #[test]

@@ -26,6 +26,14 @@ fn cli_initial_load_session_id_defaults_to_none() {
     let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
     assert!(cli.initial_load_session_id.is_none());
     assert!(cli.initial_load_cwd.is_none());
+    assert!(cli.initial_pane_position.is_none());
+}
+
+#[test]
+fn cli_parses_initial_pane_position() {
+    let cli = Cli::try_parse_from(["wta", "--initial-pane-position", "right"])
+        .expect("pane position must parse");
+    assert_eq!(cli.initial_pane_position.as_deref(), Some("right"));
 }
 
 #[test]

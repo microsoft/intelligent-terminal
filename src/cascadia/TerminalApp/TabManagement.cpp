@@ -92,7 +92,30 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        const auto newTab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        if (_settings.GlobalSettings().FirstWindowPreference() == FirstWindowPreference::PersistedLayoutAndContent)
+        {
+            if (const auto newTerminalArgs = newContentArgs.try_as<NewTerminalArgs>();
+                newTerminalArgs && !newTerminalArgs.AgentPaneAgent().empty())
+            {
+                if (const auto tabImpl = _GetTabImpl(newTab))
+                {
+                    const auto paneSize = newTerminalArgs.AgentPaneSize();
+                    _pendingDurableAgentPaneRestores.insert_or_assign(
+                        tabImpl->StableId(),
+                        _PendingDurableAgentPaneRestore{
+                            _currentStartupActionBatchId,
+                            winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                            newTerminalArgs.AgentPaneAgent(),
+                            newTerminalArgs.AgentPaneCustomCommand(),
+                            winrt::to_string(newTerminalArgs.StartingDirectory()),
+                            newTerminalArgs.AgentPaneView() == L"sessions",
+                            newTerminalArgs.AgentPaneOpen(),
+                            newTerminalArgs.AgentPanePosition(),
+                            paneSize > 0.0f && paneSize < 1.0f ? paneSize : 0.5f });
+                }
+            }
+        }
         return S_OK;
     }
     CATCH_RETURN();
@@ -369,6 +392,13 @@ namespace winrt::TerminalApp::implementation
                 // unrelated new-tab pre-warm).
                 if (agentLeavesSeen == 0)
                 {
+                    if (self->_pendingDurableAgentPaneRestores.contains(newTabId))
+                    {
+                        _agentPaneLog(
+                            std::string{ "_InitializeTab(deferred): durable agent pane restore pending on tab " } +
+                            winrt::to_string(newTabId));
+                        return;
+                    }
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
                         winrt::to_string(newTabId));
@@ -590,6 +620,54 @@ namespace winrt::TerminalApp::implementation
         }
 
         _previouslyClosedPanesAndTabs.emplace_back(args);
+    }
+
+    void TerminalPage::_AddDurableSessionMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
+    {
+        for (const auto& action : actions)
+        {
+            INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            {
+                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId());
+                    binding != _paneAgentSessions.end())
+                {
+                    terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentSessionAgent(binding->second.agent);
+                }
+            }
+        }
+
+        if (const auto agentContent = tab->FindAgentPaneContent())
+        {
+            for (const auto& action : actions)
+            {
+                if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                {
+                    if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
+                    {
+                        const auto content = winrt::get_self<implementation::AgentPaneContent>(agentContent);
+                        terminalArgs.AgentPaneSessionId(content->DurableSessionId());
+                        terminalArgs.AgentPaneAgent(_GetDurableAgentIdentity(tab));
+                        terminalArgs.AgentPaneCustomCommand(_GetDurableAgentCustomCommand(tab));
+                        terminalArgs.AgentPaneView(agentContent.IsSessionsView() ? L"sessions" : L"chat");
+                        terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
+                        terminalArgs.AgentPanePosition(content->GetAgentPanePosition());
+                        terminalArgs.AgentPaneSize(tab->AgentPaneSize());
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     // Method Description:
