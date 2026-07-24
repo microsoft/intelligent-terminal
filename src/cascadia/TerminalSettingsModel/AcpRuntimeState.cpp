@@ -113,11 +113,21 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         auto copy = _copyModels(models);
         {
             std::lock_guard lock{ _mutex };
-            auto& catalog = _catalogs[_agentKey(agentId)];
-            if (catalog.revision != expectedRevision)
+            auto key = _agentKey(agentId);
+            auto it = _catalogs.find(key);
+            if (it == _catalogs.end())
+            {
+                if (expectedRevision != 0)
+                {
+                    return false;
+                }
+                it = _catalogs.try_emplace(std::move(key)).first;
+            }
+            else if (it->second.revision != expectedRevision)
             {
                 return false;
             }
+            auto& catalog = it->second;
             catalog.models = std::move(copy);
             catalog.currentId = currentId;
             ++catalog.revision;

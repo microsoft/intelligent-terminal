@@ -407,6 +407,22 @@ namespace SettingsModelUnitTests
             copilotModels.GetView(),
             L"custom:openrouter:deepseek"));
         VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"custom:test-copilot"));
+
+        VERIFY_IS_FALSE(state.TrySetAvailableModels(
+            L"test-missing-write",
+            1,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(0ull, state.Revision(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, state.CurrentModelId(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(0u, state.AvailableModels(L"test-missing-write").Size());
+        VERIFY_IS_TRUE(state.TrySetAvailableModels(
+            L"test-missing-write",
+            0,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(1ull, state.Revision(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, state.CurrentModelId(L"test-missing-write"));
     }
 
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()
