@@ -397,15 +397,14 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(json_str_or_num(&v, "missing"), "-");
 }
 
-// ── Delegate: WSL pane target detection + launchable gate ───────────────────
+// ── Delegate: profile-selected execution source ─────────────────────────────
 //
 // `delegate_command_launchable` only checks the Windows PATH, which is
 // meaningless for a WSL pane (the agent runs inside the distro). A WSL pane is
 // therefore treated as launchable when the agent CLI is present *inside the
-// distro* — so a `?<prompt>` from a WSL pane still gets its prompt
-// enriched/delivered when the agent (e.g. Copilot) is installed only inside the
-// distro (regression guard for the "prompt silently dropped" bug), while a WSL
-// pane whose distro lacks the CLI falls back to the Windows host term.
+// distro. A profile-selected source is strict: it stays on that source even
+// when unavailable, so the selected command reports its own launch error
+// instead of falling back.
 
 /// Build a minimal active-pane JSON value with the given `shell` field, as
 /// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
@@ -484,18 +483,61 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
 }
 
 #[test]
-fn delegate_launchable_for_target_ors_host_and_wsl() {
-    // Agent not launchable on the Windows host, but present inside the WSL
-    // distro → launchable (in-distro path), so the prompt is enriched, not
-    // dropped.
-    assert!(delegate_launchable_for_target(false, true));
+fn delegate_source_args_require_a_valid_exact_target() {
+    use crate::agent_source::AgentSource;
 
-    // Not launchable on host AND not available in WSL → stays non-launchable
-    // (the bare-command path, where the prompt is intentionally not baked in).
-    // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
-    assert!(!delegate_launchable_for_target(false, false));
+    assert_eq!(
+        parse_delegate_source(Some("host"), None).unwrap(),
+        Some(AgentSource::Host)
+    );
+    assert_eq!(
+        parse_delegate_source(Some("wsl"), Some("Ubuntu")).unwrap(),
+        Some(AgentSource::Wsl {
+            distro: "Ubuntu".to_string()
+        })
+    );
+    assert!(parse_delegate_source(Some("wsl"), None).is_err());
+    assert!(parse_delegate_source(Some("host"), Some("Ubuntu")).is_err());
+    assert!(parse_delegate_source(None, Some("Ubuntu")).is_err());
+    assert!(parse_delegate_source(Some("remote"), None).is_err());
+}
 
-    // Launchable on the host is always launchable, regardless of WSL.
-    assert!(delegate_launchable_for_target(true, false));
-    assert!(delegate_launchable_for_target(true, true));
+#[test]
+fn explicit_delegate_source_never_falls_back() {
+    use crate::agent_source::AgentSource;
+
+    let wsl = AgentSource::Wsl {
+        distro: "Ubuntu".to_string(),
+    };
+    assert_eq!(
+        delegate_launch_source(Some(&wsl), Some("Ubuntu"), false),
+        wsl
+    );
+    assert!(!delegate_launchable_for_source(&wsl, true, false));
+
+    assert_eq!(
+        delegate_launch_source(Some(&AgentSource::Host), Some("Ubuntu"), true),
+        AgentSource::Host
+    );
+    assert!(!delegate_launchable_for_source(
+        &AgentSource::Host,
+        false,
+        true
+    ));
+}
+
+#[test]
+fn legacy_delegate_source_auto_routes_only_to_available_wsl_agent() {
+    use crate::agent_source::AgentSource;
+
+    assert_eq!(
+        delegate_launch_source(None, Some("Ubuntu"), true),
+        AgentSource::Wsl {
+            distro: "Ubuntu".to_string()
+        }
+    );
+    assert_eq!(
+        delegate_launch_source(None, Some("Ubuntu"), false),
+        AgentSource::Host
+    );
 }

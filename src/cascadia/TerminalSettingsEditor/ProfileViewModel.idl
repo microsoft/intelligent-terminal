@@ -79,6 +79,8 @@ namespace Microsoft.Terminal.Settings.Editor
 
         Windows.Foundation.Collections.IObservableVector<AgentEntry> AgentPaneBackendList { get; };
         AgentEntry CurrentAgentPaneBackend;
+        Windows.Foundation.Collections.IObservableVector<AgentEntry> CommandPaletteAgentList { get; };
+        AgentEntry CurrentCommandPaletteAgent;
 
         Boolean CanDeleteProfile { get; };
         Boolean FocusDeleteButton;
@@ -127,6 +129,7 @@ namespace Microsoft.Terminal.Settings.Editor
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, Commandline);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, StartingDirectory);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(String, AgentPaneBackend);
+        OBSERVABLE_PROJECTED_PROFILE_SETTING(String, CommandPaletteAgent);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Microsoft.Terminal.Control.TextAntialiasingMode, AntialiasingMode);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Int32, HistorySize);
         OBSERVABLE_PROJECTED_PROFILE_SETTING(Boolean, SnapOnInput);

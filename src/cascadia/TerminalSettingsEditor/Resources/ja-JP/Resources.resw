@@ -1245,6 +1245,14 @@
     <value>エージェント ペインで使用する ACP 対応エージェントを選択します。このプロファイルでは、この選択がグローバルなエージェント ペインの選択より優先されます。</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>コマンド パレットのエージェント</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>このプロファイルでコマンド パレットからの委任に使用するエージェントを選択します。この選択は、グローバルな委任エージェント設定より優先されます。</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>

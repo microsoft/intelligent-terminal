@@ -45,6 +45,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 return winrt::hstring{ agent.displayName };
             }
         }
+        for (const auto& agent : Registry::BuiltinDelegateAgents)
+        {
+            if (agent.id == id)
+            {
+                return winrt::hstring{ agent.displayName };
+            }
+        }
         return id.empty() ? winrt::hstring{ L"Agent" } : winrt::hstring{ id };
     }
 
@@ -58,6 +65,102 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         const auto commandShim = executable + L".cmd";
         return SearchPathW(nullptr, commandShim.c_str(), nullptr, MAX_PATH, path, nullptr) > 0;
+    }
+
+    static void _RebuildAgentBackendList(
+        const Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+        const std::wstring_view globalId,
+        const std::wstring_view selected,
+        const std::wstring_view wslDistro,
+        const std::vector<std::wstring>& availableWslAgents,
+        const std::vector<::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAgent>& allowedAgents)
+    {
+        namespace Backend = ::Microsoft::Terminal::Settings::Model;
+
+        std::vector<Editor::AgentEntry> entries;
+        const auto globalEntry = winrt::make<implementation::AgentEntry>(
+            L"",
+            winrt::hstring{ RS_fmt(
+                L"Profile_AgentPaneBackend_AgentFormat",
+                std::wstring{ std::wstring_view{ _AgentDisplayName(globalId) } },
+                std::wstring{ L"Windows" }) },
+            true);
+
+        bool globalEntryAdded = false;
+        for (const auto& agent : allowedAgents)
+        {
+            if (_HostAgentInstalled(agent.id))
+            {
+                const bool isGlobalAgent = agent.id == globalId;
+                entries.emplace_back(winrt::make<implementation::AgentEntry>(
+                    isGlobalAgent ?
+                        winrt::hstring{} :
+                        winrt::hstring{ Backend::AgentPaneBackend::Host(agent.id) },
+                    winrt::hstring{ RS_fmt(
+                        L"Profile_AgentPaneBackend_AgentFormat",
+                        std::wstring{ agent.displayName },
+                        std::wstring{ L"Windows" }) },
+                    true));
+                globalEntryAdded = globalEntryAdded || isGlobalAgent;
+            }
+        }
+        if (!globalEntryAdded)
+        {
+            entries.insert(entries.begin(), globalEntry);
+        }
+
+        if (!wslDistro.empty())
+        {
+            for (const auto& agent : allowedAgents)
+            {
+                if (std::find(
+                        availableWslAgents.begin(),
+                        availableWslAgents.end(),
+                        std::wstring{ agent.id }) != availableWslAgents.end())
+                {
+                    entries.emplace_back(winrt::make<implementation::AgentEntry>(
+                        winrt::hstring{ Backend::AgentPaneBackend::Wsl(wslDistro, agent.id) },
+                        winrt::hstring{ RS_fmt(
+                            L"Profile_AgentPaneBackend_AgentFormat",
+                            std::wstring{ agent.displayName },
+                            std::wstring{ wslDistro }) },
+                        true));
+                }
+            }
+        }
+
+        const auto selectedIsGlobalHost =
+            !globalId.empty() &&
+            selected == Backend::AgentPaneBackend::Host(globalId);
+        const auto selectedPresent =
+            selectedIsGlobalHost ||
+            std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
+                return std::wstring_view{ entry.Id() } == selected;
+            });
+        if (!selected.empty() && !selectedPresent)
+        {
+            std::wstring label{ selected };
+            if (const auto parsed = Backend::AgentPaneBackend::Parse(selected))
+            {
+                const auto location = parsed->source == Backend::AgentPaneBackendSource::Wsl ?
+                                          parsed->wslDistro :
+                                          std::wstring{ L"Windows" };
+                label = RS_fmt(L"Profile_AgentPaneBackend_AgentFormat",
+                               std::wstring{ std::wstring_view{ _AgentDisplayName(parsed->agentId) } },
+                               location);
+            }
+            label += RS_(L"Profile_AgentPaneBackend_UnavailableSuffix");
+            entries.emplace_back(winrt::make<implementation::AgentEntry>(
+                winrt::hstring{ selected },
+                winrt::hstring{ label },
+                true));
+        }
+
+        list.Clear();
+        for (const auto& entry : entries)
+        {
+            list.Append(entry);
+        }
     }
 
     ProfileViewModel::ProfileViewModel(const Model::Profile& profile, const Model::CascadiaSettings& appSettings, const Windows::UI::Core::CoreDispatcher& dispatcher) :
@@ -76,6 +179,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _InitializeCurrentBellSounds();
 
         _agentPaneBackendList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
+        _commandPaletteAgentList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
         _RefreshAgentPaneBackendList();
 
         // Add a property changed handler to our own property changed event.
@@ -97,6 +201,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             else if (viewModelProperty == L"AgentPaneBackend")
             {
                 _NotifyChanges(L"CurrentAgentPaneBackend");
+            }
+            else if (viewModelProperty == L"CommandPaletteAgent")
+            {
+                _NotifyChanges(L"CurrentCommandPaletteAgent");
             }
             else if (viewModelProperty == L"Commandline")
             {
@@ -230,102 +338,60 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    void ProfileViewModel::_RebuildAgentPaneBackendList(
+    Editor::AgentEntry ProfileViewModel::CurrentCommandPaletteAgent()
+    {
+        auto selected = CommandPaletteAgent();
+        const auto globalId = _appSettings.GlobalSettings().EffectiveDelegateAgent();
+        if (!globalId.empty() &&
+            selected == winrt::hstring{ ::Microsoft::Terminal::Settings::Model::AgentPaneBackend::Host(std::wstring_view{ globalId }) })
+        {
+            selected = {};
+        }
+        for (uint32_t i = 0; i < _commandPaletteAgentList.Size(); ++i)
+        {
+            const auto entry = _commandPaletteAgentList.GetAt(i);
+            if (entry.Id() == selected)
+            {
+                return entry;
+            }
+        }
+        return _commandPaletteAgentList.Size() > 0 ? _commandPaletteAgentList.GetAt(0) : nullptr;
+    }
+
+    void ProfileViewModel::CurrentCommandPaletteAgent(const Editor::AgentEntry& value)
+    {
+        if (value && CommandPaletteAgent() != value.Id())
+        {
+            CommandPaletteAgent(value.Id());
+            _NotifyChanges(L"CurrentCommandPaletteAgent");
+        }
+    }
+
+    void ProfileViewModel::_RebuildAgentBackendLists(
         const std::wstring_view wslDistro,
         const std::vector<std::wstring>& availableWslAgents)
     {
         namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-        namespace Backend = ::Microsoft::Terminal::Settings::Model;
-
-        std::vector<Editor::AgentEntry> entries;
-        const auto globalId = _appSettings.GlobalSettings().EffectiveAcpAgent();
-        const auto globalName = _AgentDisplayName(std::wstring_view{ globalId });
-        const auto globalEntry = winrt::make<implementation::AgentEntry>(
-            L"",
-            winrt::hstring{ RS_fmt(
-                L"Profile_AgentPaneBackend_AgentFormat",
-                std::wstring{ std::wstring_view{ globalName } },
-                std::wstring{ L"Windows" }) },
-            true);
-
-        const auto allowedAgents = Registry::FilteredAcpAgents();
-        bool globalEntryAdded = false;
-        for (const auto& agent : allowedAgents)
-        {
-            if (_HostAgentInstalled(agent.id))
-            {
-                const bool isGlobalAgent = agent.id == std::wstring_view{ globalId };
-                entries.emplace_back(winrt::make<implementation::AgentEntry>(
-                    isGlobalAgent ?
-                        winrt::hstring{} :
-                        winrt::hstring{ Backend::AgentPaneBackend::Host(agent.id) },
-                    winrt::hstring{ RS_fmt(
-                        L"Profile_AgentPaneBackend_AgentFormat",
-                        std::wstring{ agent.displayName },
-                        std::wstring{ L"Windows" }) },
-                    true));
-                globalEntryAdded = globalEntryAdded || isGlobalAgent;
-            }
-        }
-        if (!globalEntryAdded)
-        {
-            entries.insert(entries.begin(), globalEntry);
-        }
-
-        if (!wslDistro.empty())
-        {
-            for (const auto& agent : allowedAgents)
-            {
-                if (std::find(
-                        availableWslAgents.begin(),
-                        availableWslAgents.end(),
-                        std::wstring{ agent.id }) != availableWslAgents.end())
-                {
-                    entries.emplace_back(winrt::make<implementation::AgentEntry>(
-                        winrt::hstring{ Backend::AgentPaneBackend::Wsl(wslDistro, agent.id) },
-                        winrt::hstring{ RS_fmt(
-                            L"Profile_AgentPaneBackend_AgentFormat",
-                            std::wstring{ agent.displayName },
-                            std::wstring{ wslDistro }) },
-                        true));
-                }
-            }
-        }
-
-        const auto selected = std::wstring{ AgentPaneBackend() };
-        const auto selectedIsGlobalHost =
-            !globalId.empty() &&
-            selected == Backend::AgentPaneBackend::Host(std::wstring_view{ globalId });
-        const auto selectedPresent =
-            selectedIsGlobalHost ||
-            std::any_of(entries.begin(), entries.end(), [&](const auto& entry) {
-                return std::wstring_view{ entry.Id() } == selected;
-            });
-        if (!selected.empty() && !selectedPresent)
-        {
-            std::wstring label{ selected };
-            if (const auto parsed = Backend::AgentPaneBackend::Parse(selected))
-            {
-                const auto location = parsed->source == Backend::AgentPaneBackendSource::Wsl ?
-                                          parsed->wslDistro :
-                                          std::wstring{ L"Windows" };
-                label = RS_fmt(L"Profile_AgentPaneBackend_AgentFormat",
-                               std::wstring{ std::wstring_view{ _AgentDisplayName(parsed->agentId) } },
-                               location);
-            }
-            label += RS_(L"Profile_AgentPaneBackend_UnavailableSuffix");
-            entries.emplace_back(winrt::make<implementation::AgentEntry>(
-                winrt::hstring{ selected },
-                winrt::hstring{ label },
-                true));
-        }
-
-        _agentPaneBackendList.Clear();
-        for (const auto& entry : entries)
-        {
-            _agentPaneBackendList.Append(entry);
-        }
-        _NotifyChanges(L"AgentPaneBackendList", L"CurrentAgentPaneBackend");
+        const auto& globals = _appSettings.GlobalSettings();
+        _RebuildAgentBackendList(
+            _agentPaneBackendList,
+            std::wstring_view{ globals.EffectiveAcpAgent() },
+            std::wstring_view{ AgentPaneBackend() },
+            wslDistro,
+            availableWslAgents,
+            Registry::FilteredAcpAgents());
+        _RebuildAgentBackendList(
+            _commandPaletteAgentList,
+            std::wstring_view{ globals.EffectiveDelegateAgent() },
+            std::wstring_view{ CommandPaletteAgent() },
+            wslDistro,
+            availableWslAgents,
+            Registry::FilteredDelegateAgents());
+        _NotifyChanges(
+            L"AgentPaneBackendList",
+            L"CurrentAgentPaneBackend",
+            L"CommandPaletteAgentList",
+            L"CurrentCommandPaletteAgent");
     }
 
     void ProfileViewModel::_RefreshAgentPaneBackendList()
@@ -334,12 +400,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto commandline = std::wstring{ Commandline() };
         if (::Microsoft::Terminal::ShellIntegration::IsWslProfile(commandline))
         {
-            _RebuildAgentPaneBackendList(L"WSL", {});
+            _RebuildAgentBackendLists(L"WSL", {});
             _ProbeWslAgentPaneBackendsAsync(commandline, generation);
         }
         else
         {
-            _RebuildAgentPaneBackendList({}, {});
+            _RebuildAgentBackendLists({}, {});
         }
     }
 
@@ -396,7 +462,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         co_await wil::resume_foreground(dispatcher);
         if (generation == _agentPaneBackendProbeGeneration)
         {
-            _RebuildAgentPaneBackendList(distro, availableAgents);
+            _RebuildAgentBackendLists(distro, availableAgents);
         }
     }
 
