@@ -348,6 +348,8 @@ pub struct CliChannel {
     available: AtomicBool,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
     event_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<serde_json::Value>>>,
+    connection_states: std::sync::Mutex<std::collections::HashMap<String, String>>,
+    connection_state_tx: tokio::sync::broadcast::Sender<(String, String)>,
     wtcli_path: String,
 }
 
@@ -358,10 +360,13 @@ impl CliChannel {
             bail!("WT_COM_CLSID not set. Must run inside a Windows Terminal pane.");
         }
 
+        let (connection_state_tx, _) = tokio::sync::broadcast::channel(32);
         Ok(Self {
             available: AtomicBool::new(true),
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
+            connection_states: std::sync::Mutex::new(std::collections::HashMap::new()),
+            connection_state_tx,
             wtcli_path: resolve_wtcli_path(),
         })
     }
@@ -404,6 +409,7 @@ impl CliChannel {
                     Ok(_) => {
                         let Some(this) = weak.upgrade() else { break };
                         if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+                            this.record_connection_state(&val);
                             let tx = this.event_tx.lock().unwrap();
                             if let Some(tx) = tx.as_ref() {
                                 let _ = tx.send(val);
@@ -421,6 +427,7 @@ impl CliChannel {
     async fn run_wtcli(&self, args: &[&str]) -> anyhow::Result<serde_json::Value> {
         let mut cmd = tokio::process::Command::new(&self.wtcli_path);
         cmd.arg("--json").args(args);
+        cmd.kill_on_drop(true);
 
         let output = cmd.output().await.context("Failed to run wtcli")?;
 
@@ -437,6 +444,34 @@ impl CliChannel {
         let val: serde_json::Value =
             serde_json::from_str(trimmed).context("Failed to parse wtcli JSON output")?;
         Ok(val)
+    }
+
+    fn record_connection_state(&self, event: &serde_json::Value) {
+        if event.get("method").and_then(|value| value.as_str()) != Some("connection_state") {
+            return;
+        }
+
+        let Some(params) = event.get("params") else {
+            return;
+        };
+        let Some(session_id) = params
+            .get("pane_id")
+            .or_else(|| params.get("session_id"))
+            .and_then(|value| value.as_str())
+        else {
+            return;
+        };
+        let Some(state) = params.get("state").and_then(|value| value.as_str()) else {
+            return;
+        };
+
+        let session_id = session_id.to_ascii_lowercase();
+        let state = state.to_ascii_lowercase();
+        self.connection_states
+            .lock()
+            .unwrap()
+            .insert(session_id.clone(), state.clone());
+        let _ = self.connection_state_tx.send((session_id, state));
     }
 }
 
@@ -654,7 +689,138 @@ impl WtChannel for CliChannel {
         }
     }
 
+    async fn wait_for_connection(&self, session_id: &str) -> anyhow::Result<()> {
+        const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+        const STATUS_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+        const STATUS_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+        let session_id = session_id.to_ascii_lowercase();
+        let mut state_rx = self.connection_state_tx.subscribe();
+        let deadline = tokio::time::Instant::now() + CONNECTION_TIMEOUT;
+        let mut last_status_error: Option<String>;
+
+        loop {
+            if let Some(state) = self.connection_states.lock().unwrap().get(&session_id).cloned()
+            {
+                match state.as_str() {
+                    "connected" => return Ok(()),
+                    "closed" | "failed" => {
+                        anyhow::bail!(
+                            "pane {} entered connection state {} before becoming ready",
+                            session_id,
+                            state
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
+            let query_deadline = std::cmp::min(
+                deadline,
+                tokio::time::Instant::now() + STATUS_QUERY_TIMEOUT,
+            );
+            match tokio::time::timeout_at(
+                query_deadline,
+                self.run_wtcli(&["pane-status", "-t", &session_id]),
+            )
+            .await
+            {
+                Ok(Ok(status)) => {
+                    last_status_error = None;
+                    match status.get("state").and_then(|value| value.as_str()) {
+                        Some("running") => return Ok(()),
+                        Some("exited") => {
+                            let exit_code = status
+                                .get("exit_code")
+                                .and_then(|value| value.as_i64())
+                                .map_or_else(|| "unknown".to_string(), |value| value.to_string());
+                            anyhow::bail!(
+                                "pane {} exited with code {} before becoming ready",
+                                session_id,
+                                exit_code
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Err(error)) => last_status_error = Some(error.to_string()),
+                Err(_) => {
+                    last_status_error = Some("pane-status query timed out".to_string());
+                }
+            }
+
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                if let Some(error) = last_status_error {
+                    anyhow::bail!(
+                        "timed out waiting for pane {} to connect; last status query failed: {}",
+                        session_id,
+                        error
+                    );
+                }
+                anyhow::bail!("timed out waiting for pane {} to connect", session_id);
+            }
+
+            tokio::select! {
+                event = state_rx.recv() => match event {
+                    Ok((changed_session_id, _)) if changed_session_id == session_id => {}
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        anyhow::bail!("Windows Terminal connection event stream closed")
+                    }
+                },
+                _ = tokio::time::sleep(std::cmp::min(STATUS_POLL_INTERVAL, deadline - now)) => {}
+            }
+        }
+    }
+
     fn is_available(&self) -> bool {
         self.available.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod connection_state_tests {
+    use super::*;
+
+    fn test_channel() -> CliChannel {
+        let (connection_state_tx, _) = tokio::sync::broadcast::channel(4);
+        CliChannel {
+            available: AtomicBool::new(true),
+            debug_tx: None,
+            event_tx: std::sync::Mutex::new(None),
+            connection_states: std::sync::Mutex::new(std::collections::HashMap::new()),
+            connection_state_tx,
+            wtcli_path: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_for_connection_observes_cached_state_case_insensitively() {
+        let channel = test_channel();
+        channel.record_connection_state(&serde_json::json!({
+            "method": "connection_state",
+            "params": {
+                "pane_id": "{ABCDEF}",
+                "state": "Connected"
+            }
+        }));
+
+        channel.wait_for_connection("{abcdef}").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_for_connection_surfaces_terminal_failure() {
+        let channel = test_channel();
+        channel.record_connection_state(&serde_json::json!({
+            "method": "connection_state",
+            "params": {
+                "session_id": "{abcdef}",
+                "state": "failed"
+            }
+        }));
+
+        let error = channel.wait_for_connection("{ABCDEF}").await.unwrap_err();
+        assert!(error.to_string().contains("entered connection state failed"));
     }
 }

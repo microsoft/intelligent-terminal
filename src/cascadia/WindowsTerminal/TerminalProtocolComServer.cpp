@@ -489,8 +489,8 @@ try
     // ITerminalProtocol method is gated on this call.
     Json::Value v;
     v["authenticated"] = true;
-    // 2.2 — SendInput restored on the COM surface; pane identifiers remain GUIDs.
-    v["protocol_version"] = "2.2";
+    // 2.3 — create_tab/split_pane return at Created; connection_state reports readiness.
+    v["protocol_version"] = "2.3";
     *resultJson = _bstrFromJson(v);
     return S_OK;
 }

@@ -454,6 +454,11 @@ namespace winrt::TerminalApp::implementation
                 result.State = L"running";
                 result.Pid = _getPidFromPane(foundPane);
             }
+            else if (connState == ConnectionState::NotConnected ||
+                     connState == ConnectionState::Connecting)
+            {
+                result.State = L"connecting";
+            }
             else
             {
                 result.State = L"exited";
@@ -608,7 +613,6 @@ namespace winrt::TerminalApp::implementation
             co_return result;
 
         _CreateNewTabFromPane(pane, -1, /*openInBackground=*/background);
-        _tabContent.UpdateLayout(); // Force synchronous terminal initialization
 
         if (_tabs.Size() == 0)
             co_return result;
@@ -625,7 +629,10 @@ namespace winrt::TerminalApp::implementation
             if (rootPane)
             {
                 result.SessionId = _getSessionIdFromPane(rootPane);
-                result.Pid = _getPidFromPane(rootPane);
+                // Terminal initialization is intentionally deferred. The
+                // connection_state event is the readiness signal, and callers
+                // that need a PID can query the pane after it connects.
+                result.Pid = 0;
             }
         }
 
@@ -664,15 +671,13 @@ namespace winrt::TerminalApp::implementation
             if (!newPane)
                 co_return result;
 
-            const auto newPanePid = _getPidFromPane(newPane);
             auto newPaneRef = newPane; // copy shared_ptr before move
 
             _SplitPane(tabImpl, direction, size, std::move(newPane), /*focusNewPane=*/!background);
-            _tabContent.UpdateLayout(); // Force synchronous terminal initialization
 
             result.TabId = tabIdx;
             result.SessionId = _getSessionIdFromPane(newPaneRef);
-            result.Pid = newPanePid;
+            result.Pid = 0;
             co_return result;
         }
 

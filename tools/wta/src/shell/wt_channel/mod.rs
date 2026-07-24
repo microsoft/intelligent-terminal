@@ -13,5 +13,9 @@ pub trait WtChannel: Send + Sync {
         params: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
 
+    async fn wait_for_connection(&self, _session_id: &str) -> anyhow::Result<()> {
+        anyhow::bail!("waiting for pane connection is not supported by this channel")
+    }
+
     fn is_available(&self) -> bool;
 }

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
 
 use crate::app::AppEvent;
 use crate::shell::ShellManager;
@@ -1167,15 +1166,22 @@ async fn send_input_to_new_pane(
     ensure_non_empty("session_id", pane_id)?;
     ensure_non_empty("input", input)?;
     coordinator_log(&format!(
-        "open_and_send send_input_begin pane_id={} wait_ms=700 input_chars={}",
+        "open_and_send wait_connected_begin pane_id={} input_chars={}",
         pane_id,
         input.chars().count(),
     ));
     let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
-        "Sending input to pane {}.",
+        "Waiting for pane {} to start.",
         pane_id
     )));
-    sleep(Duration::from_millis(700)).await;
+    shell_mgr
+        .wt_wait_for_connection(pane_id)
+        .await
+        .with_context(|| format!("pane {} did not become ready", pane_id))?;
+    coordinator_log(&format!(
+        "open_and_send connected pane_id={}",
+        pane_id
+    ));
     let result = shell_mgr
         .wt_send_input(pane_id, &format!("{input}\r"))
         .await

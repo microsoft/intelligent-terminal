@@ -503,6 +503,11 @@ impl ShellManager {
             .await
     }
 
+    /// Wait until WT reports that a pane's terminal connection is ready.
+    pub async fn wt_wait_for_connection(&self, pane_id: &str) -> anyhow::Result<()> {
+        self.wt()?.wait_for_connection(pane_id).await
+    }
+
     /// Split an existing pane. Returns the raw response JSON.
     pub async fn wt_split_pane(
         &self,
