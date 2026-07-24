@@ -2000,14 +2000,6 @@ impl TabSession {
         }
     }
 
-    pub fn command_popup_down(&mut self) {
-        let candidate_count =
-            self.command_popup_candidates.len() + self.move_position_candidates.len();
-        if self.command_popup_selected + 1 < candidate_count {
-            self.command_popup_selected += 1;
-        }
-    }
-
     pub fn selected_command_spec(&self) -> Option<&'static CommandSpec> {
         self.command_popup_candidates
             .get(self.command_popup_selected)
@@ -7472,13 +7464,13 @@ impl App {
                 self.current_tab_mut().clear_input();
             }
             KeyCode::Up if self.command_popup_visible() => {
-                self.current_tab_mut().command_popup_up();
+                self.command_popup_up();
             }
             KeyCode::Down if self.command_popup_visible() => {
-                self.current_tab_mut().command_popup_down();
+                self.command_popup_down();
             }
             KeyCode::Tab if self.command_popup_visible() => {
-                self.current_tab_mut().accept_command_popup_completion();
+                self.accept_command_popup_completion();
             }
             KeyCode::Up
                 if self.current_tab().input_has_nav_focus()
@@ -7812,7 +7804,7 @@ impl App {
     /// popup should not be drawn this frame. Reads from the active tab.
     pub fn command_popup_state(&self) -> Option<crate::ui::PopupState<'_>> {
         let tab = self.current_tab();
-        if !tab.command_popup_visible() {
+        if !self.command_popup_visible() {
             return None;
         }
         // When the transport to master is lost, only /restart can run — so the
@@ -7820,8 +7812,9 @@ impl App {
         // them). Collapse the candidate list to /restart if it's among the
         // prefix matches; otherwise show nothing (the typed prefix excludes
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
-        // Normal path borrows the tab's list (no per-frame allocation on the
-        // render hot path); only the degraded filter allocates.
+        // Static command and move candidates borrow the tab's lists. Agent
+        // candidates are filtered from the small cached available-agent list.
+        let agent_candidates = self.agent_command_candidates();
         let candidates = if self.transport_lost {
             let filtered: Vec<&'static crate::commands::CommandSpec> = tab
                 .command_popup_candidates
@@ -7833,6 +7826,8 @@ impl App {
                 return None;
             }
             crate::ui::PopupCandidates::Commands(std::borrow::Cow::Owned(filtered))
+        } else if !agent_candidates.is_empty() {
+            crate::ui::PopupCandidates::Agents(agent_candidates)
         } else if !tab.move_position_candidates.is_empty() {
             crate::ui::PopupCandidates::MovePositions(tab.move_position_candidates.as_slice())
         } else {
@@ -7883,7 +7878,9 @@ impl App {
     /// their normal behavior instead of swallowing the key against an
     /// invisible popup.
     fn command_popup_visible(&self) -> bool {
-        if !self.current_tab().command_popup_visible() {
+        if !self.current_tab().command_popup_visible()
+            && self.agent_command_candidates().is_empty()
+        {
             return false;
         }
         if self.transport_lost {
@@ -7896,6 +7893,79 @@ impl App {
                 .any(|s| s.kind == crate::commands::CommandKind::Restart);
         }
         true
+    }
+
+    fn agent_command_candidates(&self) -> Vec<&AvailableAgent> {
+        if self.transport_lost {
+            return Vec::new();
+        }
+        let Some(prefix) = commands::agent_id_prefix(&self.current_tab().input) else {
+            return Vec::new();
+        };
+        if prefix.is_empty() {
+            return Vec::new();
+        }
+        let prefix = prefix.to_ascii_lowercase();
+        self.available_agents
+            .iter()
+            .filter(|agent| agent.id.to_ascii_lowercase().starts_with(&prefix))
+            .collect()
+    }
+
+    fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
+        let candidates = self.agent_command_candidates();
+        let selected = self
+            .current_tab()
+            .command_popup_selected
+            .min(candidates.len().saturating_sub(1));
+        candidates.get(selected).copied()
+    }
+
+    fn command_popup_candidate_count(&self) -> usize {
+        let agent_count = self.agent_command_candidates().len();
+        if agent_count > 0 {
+            agent_count
+        } else {
+            let tab = self.current_tab();
+            tab.command_popup_candidates.len() + tab.move_position_candidates.len()
+        }
+    }
+
+    fn command_popup_up(&mut self) {
+        self.current_tab_mut().command_popup_up();
+    }
+
+    fn command_popup_down(&mut self) {
+        let candidate_count = self.command_popup_candidate_count();
+        let tab = self.current_tab_mut();
+        if tab.command_popup_selected + 1 < candidate_count {
+            tab.command_popup_selected += 1;
+        }
+    }
+
+    fn accept_command_popup_completion(&mut self) {
+        if let Some(agent_id) = self
+            .selected_agent_command_candidate()
+            .map(|agent| agent.id.clone())
+        {
+            let tab = self.current_tab_mut();
+            tab.reset_input_history_navigation();
+            tab.input = format!("/agent {agent_id}");
+            tab.cursor_pos = tab.input.len();
+            tab.refresh_command_popup();
+        } else {
+            self.current_tab_mut().accept_command_popup_completion();
+        }
+    }
+
+    pub(crate) fn command_ghost_suffix(&self) -> Option<&str> {
+        let tab = self.current_tab();
+        if tab.cursor_pos != tab.input.len() {
+            return None;
+        }
+        let prefix = commands::agent_id_prefix(&tab.input)?;
+        let candidate = self.selected_agent_command_candidate()?;
+        candidate.id.get(prefix.len()..).filter(|suffix| !suffix.is_empty())
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not
@@ -7958,6 +8028,20 @@ impl App {
             // spec if it's in the filtered candidate list; otherwise there's
             // nothing to run, so consume Enter and show the reconnect hint.
             if !self.transport_lost {
+                if let Some(agent_id) = self
+                    .selected_agent_command_candidate()
+                    .map(|agent| agent.id.clone())
+                {
+                    let spec = commands::lookup("agent").expect("/agent is registered");
+                    let parsed = ParsedCommand {
+                        kind: CommandKind::Agent,
+                        spec,
+                        rest: agent_id,
+                    };
+                    self.current_tab_mut().clear_input();
+                    self.handle_slash_command(parsed);
+                    return true;
+                }
                 if let Some(position) = self.current_tab().selected_move_position() {
                     let spec = commands::lookup("move").expect("/move is registered");
                     let parsed = ParsedCommand {

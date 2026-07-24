@@ -319,15 +319,27 @@ pub fn match_move_positions(prefix: &str) -> Vec<&'static MovePositionSpec> {
         .collect()
 }
 
+/// Return the canonical agent-id prefix while completing `/agent <id>`.
+///
+/// The command name must be complete and followed by whitespace. Agent IDs
+/// are single tokens, so a second argument hides completion.
+pub fn agent_id_prefix(input: &str) -> Option<&str> {
+    single_argument_prefix(input, "agent")
+}
+
 /// Return the argument prefix while the input is completing `/move <position>`.
 ///
 /// The command name must be complete and followed by whitespace. A second
 /// argument hides the popup because `/move` accepts exactly one position.
 pub fn move_position_prefix(input: &str) -> Option<&str> {
+    single_argument_prefix(input, "move")
+}
+
+fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {
     let trimmed = input.trim_start();
     let rest = trimmed.strip_prefix('/')?;
     let command_end = rest.find(char::is_whitespace)?;
-    if !rest[..command_end].eq_ignore_ascii_case("move") {
+    if !rest[..command_end].eq_ignore_ascii_case(command) {
         return None;
     }
     let argument = rest[command_end..].trim_start();
@@ -387,6 +399,10 @@ mod tests {
         let direct = parse("/agent claude").unwrap();
         assert_eq!(direct.kind, CommandKind::Agent);
         assert_eq!(direct.rest, "claude");
+
+        let trailing_space = parse("/agent ").unwrap();
+        assert_eq!(trailing_space.kind, CommandKind::Agent);
+        assert_eq!(trailing_space.rest, "");
         assert!(lookup("agent").unwrap().takes_args);
     }
 
@@ -493,6 +509,16 @@ mod tests {
         assert_eq!(move_position_prefix("/move"), None);
         assert_eq!(move_position_prefix("/move left extra"), None);
         assert_eq!(move_position_prefix("/model r"), None);
+    }
+
+    #[test]
+    fn agent_id_prefix_accepts_one_argument() {
+        assert_eq!(agent_id_prefix("/agent "), Some(""));
+        assert_eq!(agent_id_prefix("/AGENT co"), Some("co"));
+        assert_eq!(agent_id_prefix("  /agent gem"), Some("gem"));
+        assert_eq!(agent_id_prefix("/agent"), None);
+        assert_eq!(agent_id_prefix("/agent copilot extra"), None);
+        assert_eq!(agent_id_prefix("/model co"), None);
     }
 
     #[test]

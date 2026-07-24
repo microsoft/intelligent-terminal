@@ -372,6 +372,119 @@ fn switch_agent_event_is_scoped_to_window_and_tab() {
     assert_eq!(event["params"]["agent_id"], "claude");
 }
 
+fn seed_completion_agents(app: &mut App) {
+    app.available_agents = vec![
+        AvailableAgent {
+            id: "copilot".into(),
+            display_name: "GitHub Copilot".into(),
+        },
+        AvailableAgent {
+            id: "codex".into(),
+            display_name: "Codex".into(),
+        },
+        AvailableAgent {
+            id: "gemini".into(),
+            display_name: "Gemini".into(),
+        },
+    ];
+}
+
+#[test]
+fn agent_argument_completion_uses_available_agents_in_registry_order() {
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    type_input(&mut app, "/AGENT CO");
+
+    let state = app.command_popup_state().expect("agent candidates");
+    let crate::ui::PopupCandidates::Agents(candidates) = state.candidates else {
+        panic!("expected agent candidates");
+    };
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|agent| agent.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["copilot", "codex"]
+    );
+    assert_eq!(app.command_ghost_suffix(), Some("pilot"));
+}
+
+#[test]
+fn agent_without_argument_keeps_existing_picker_command_path() {
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    type_input(&mut app, "/agent ");
+
+    assert!(app.command_popup_state().is_none());
+    let ParseOutcome::Command(command) = commands::classify(&app.current_tab().input) else {
+        panic!("expected /agent command");
+    };
+    assert_eq!(command.kind, CommandKind::Agent);
+    assert!(command.rest.is_empty());
+}
+
+#[test]
+fn agent_argument_arrow_changes_ghost_and_tab_completes() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    type_input(&mut app, "/agent co");
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.command_ghost_suffix(), Some("dex"));
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "/agent codex");
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn agent_ghost_requires_cursor_at_end() {
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    type_input(&mut app, "/agent co");
+    app.current_tab_mut().move_cursor_left();
+
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn agent_argument_enter_dispatches_highlighted_agent() {
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    app.current_agent_id = "copilot".into();
+    type_input(&mut app, "/agent co");
+
+    assert!(app.try_handle_slash_on_enter());
+    assert!(app.current_tab().input.is_empty());
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "the selected exact agent must dispatch; the raw prefix must not reach unknown-agent handling"
+    );
+}
+
+#[test]
+fn unknown_agent_prefix_does_not_open_completion() {
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    type_input(&mut app, "/agent zzz");
+
+    assert!(app.command_popup_state().is_none());
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
+#[test]
+fn agent_argument_completion_is_hidden_when_transport_is_lost() {
+    let mut app = test_app();
+    seed_completion_agents(&mut app);
+    type_input(&mut app, "/agent co");
+    app.transport_lost = true;
+
+    assert!(app.command_popup_state().is_none());
+    assert_eq!(app.command_ghost_suffix(), None);
+}
+
 // ---- Degraded (transport-lost) gating: only /restart runs ----
 
 #[test]
