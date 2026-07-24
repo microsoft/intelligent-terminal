@@ -1347,6 +1347,8 @@ namespace winrt::TerminalApp::implementation
                     [&](const auto& agent) {
                         return agent.id == backend->agentId;
                     });
+                // Only an empty profile setting follows the global delegate.
+                // An explicit unknown or blocked selection must fail closed.
                 if (!knownAndAllowed)
                 {
                     delegateAgent = {};
