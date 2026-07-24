@@ -386,14 +386,17 @@ fn seed_completion_agents(app: &mut App) {
         AvailableAgent {
             id: "copilot".into(),
             display_name: "GitHub Copilot".into(),
+            source: crate::agent_source::AgentSource::Host,
         },
         AvailableAgent {
             id: "codex".into(),
             display_name: "Codex".into(),
+            source: crate::agent_source::AgentSource::Host,
         },
         AvailableAgent {
             id: "gemini".into(),
             display_name: "Gemini".into(),
+            source: crate::agent_source::AgentSource::Host,
         },
     ];
 }
