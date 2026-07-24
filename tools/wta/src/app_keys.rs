@@ -652,13 +652,13 @@ impl App {
                 self.current_tab_mut().clear_input();
             }
             KeyCode::Up if self.command_popup_visible() => {
-                self.current_tab_mut().command_popup_up();
+                self.command_popup_up();
             }
             KeyCode::Down if self.command_popup_visible() => {
-                self.current_tab_mut().command_popup_down();
+                self.command_popup_down();
             }
             KeyCode::Tab if self.command_popup_visible() => {
-                self.current_tab_mut().accept_command_popup_completion();
+                self.accept_command_popup_completion();
             }
             KeyCode::Up
                 if self.current_tab().input_has_nav_focus()
