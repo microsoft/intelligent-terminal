@@ -60,6 +60,74 @@ Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-no
         }
     }
 
+    It 'PowerShell parser errors emit one command-finished mark per malformed command' {
+        $sid = (Get-ActivePane -App $script:app).session_id
+        $malformedCommand = "'x'.like '*x*'"
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command $malformedCommand | Out-Null
+            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
+            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
+            Start-Sleep -Seconds 2
+            @(Get-WtEvents -Listener $listener -Predicate {
+                    $_.method -eq 'vt_sequence' -and
+                    "$($_.params.pane_id)" -eq "$sid" -and
+                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
+                }) | Should -HaveCount 1
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Send-WtKeys -App $script:app -SessionId $sid -Keys @('Enter') | Out-Null
+            Start-Sleep -Seconds 3
+            $duplicateFailures = @(Get-WtEvents -Listener $listener -Predicate {
+                    $_.method -eq 'vt_sequence' -and
+                    "$($_.params.pane_id)" -eq "$sid" -and
+                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
+                })
+            $duplicateFailures | Should -BeNullOrEmpty
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command $malformedCommand | Out-Null
+            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
+            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
+            Start-Sleep -Seconds 2
+            @(Get-WtEvents -Listener $listener -Predicate {
+                    $_.method -eq 'vt_sequence' -and
+                    "$($_.params.pane_id)" -eq "$sid" -and
+                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
+                }) | Should -HaveCount 1
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+    }
+
+    It 'PowerShell commands that handle a non-terminating error still emit a zero-exit mark' {
+        $sid = (Get-ActivePane -App $script:app).session_id
+        $missingPath = Join-Path $env:TEMP "it-shell-integration-missing-$([guid]::NewGuid())"
+        $command = "Get-Item '$($missingPath.Replace("'", "''"))' -ErrorAction SilentlyContinue; Write-Output ok"
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command $command | Out-Null
+            { Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                    $_.method -eq 'vt_sequence' -and
+                    "$($_.params.pane_id)" -eq "$sid" -and
+                    "$($_.params.sequence)" -match '(?i)osc:133;D;0(\b|;|$)'
+                } } | Should -Not -Throw
+            Start-Sleep -Seconds 2
+            @(Get-WtEvents -Listener $listener -Predicate {
+                    $_.method -eq 'vt_sequence' -and
+                    "$($_.params.pane_id)" -eq "$sid" -and
+                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
+                }) | Should -BeNullOrEmpty
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+    }
+
     It 'PowerShell shell integration emits a zero-exit mark on success (OSC 133;D;0)' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $listener = Start-WtEventListener -App $script:app

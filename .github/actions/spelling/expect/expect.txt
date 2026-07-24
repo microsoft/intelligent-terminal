@@ -525,6 +525,7 @@ EOK
 EPres
 EQU
 ERASEBKGND
+EReport
 ERRORONEXIT
 espt
 esrp
@@ -816,6 +817,7 @@ INVALIDARG
 INVALIDATERECT
 ipch
 ipsp
+ITE
 iterm
 itermcolors
 itf

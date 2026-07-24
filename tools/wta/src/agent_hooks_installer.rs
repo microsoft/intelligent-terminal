@@ -1,7 +1,7 @@
 // tools/wta/src/agent_hooks_installer.rs
 //
-// Auto-install / status / uninstall the wt-agent-hooks bridge for Claude
-// Code, Copilot CLI, and Gemini CLI.
+// Auto-install / status / uninstall the wt-agent-hooks bridge for supported
+// agent CLIs.
 //
 // Why this exists
 // ===============
@@ -133,6 +133,13 @@ const MARKETPLACE_NAME: &str = "wt-local";
 /// Folder name installed under `~/.gemini/extensions/` for Gemini CLI.
 const GEMINI_EXTENSION_DIR_NAME: &str = "wt-agent-hooks";
 
+const OPENCODE_PLUGIN_JS: &str = "wt-agent-hooks.js";
+const OPENCODE_BRIDGE_PS1: &str = "send-event.ps1";
+const OPENCODE_MANIFEST: &str = "plugin.json";
+const OPENCODE_SUPPORT_DIR: &str = "wt-agent-hooks";
+const OPENCODE_MANAGED_MARKER: &str = "Managed by Intelligent Terminal: wt-agent-hooks";
+const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks";
+
 /// Schema version of the JSON returned by [`status`]. Bumped when the shape
 /// or the set of possible string-enum values changes.
 ///
@@ -169,6 +176,50 @@ pub enum CliKind {
     Claude,
     Gemini,
     Codex,
+    OpenCode,
+}
+
+fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -> CliStatus {
+    let mut out = CliStatus {
+        name: CliKind::OpenCode.name(),
+        binary_on_path: on_path,
+        binary_path: bin_path,
+        marketplace_registered: false,
+        marketplace_path: None,
+        marketplace_path_valid: false,
+        plugin_installed: false,
+        plugin_enabled: false,
+        detection_fallback: None,
+    };
+    let Some(home) = home else { return out };
+    let dir = opencode_plugins_dir(home);
+    let support_dir = opencode_support_dir(home);
+    let js = dir.join(OPENCODE_PLUGIN_JS);
+    let managed_js = fs::read_to_string(&js)
+        .map(|text| text.contains(OPENCODE_MANAGED_MARKER))
+        .unwrap_or(false);
+    let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
+    let managed = managed_js || managed_support;
+    let complete = managed_js
+        && managed_support
+        && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    out.marketplace_registered = managed;
+    out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
+    out.marketplace_path_valid = complete;
+    out.plugin_installed = complete;
+    out.plugin_enabled = complete;
+    out
+}
+
+fn opencode_manifest_is_managed(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|manifest| {
+            manifest.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
+                && manifest.get("managed_by").and_then(Value::as_str)
+                    == Some(OPENCODE_MANIFEST_MANAGED_BY)
+        })
 }
 
 impl CliKind {
@@ -179,6 +230,7 @@ impl CliKind {
         CliKind::Claude,
         CliKind::Gemini,
         CliKind::Codex,
+        CliKind::OpenCode,
     ];
 
     pub fn name(self) -> &'static str {
@@ -187,6 +239,7 @@ impl CliKind {
             Self::Claude => "claude",
             Self::Gemini => "gemini",
             Self::Codex => "codex",
+            Self::OpenCode => "opencode",
         }
     }
 
@@ -196,6 +249,7 @@ impl CliKind {
             "claude" => Some(Self::Claude),
             "gemini" => Some(Self::Gemini),
             "codex" => Some(Self::Codex),
+            "opencode" => Some(Self::OpenCode),
             _ => None,
         }
     }
@@ -208,6 +262,7 @@ impl CliKind {
             Self::Copilot => "copilot",
             Self::Gemini => "gemini-extension",
             Self::Codex => "codex",
+            Self::OpenCode => "opencode",
         }
     }
 }
@@ -335,11 +390,25 @@ pub struct CliUninstallResult {
     pub messages: Vec<String>,
 }
 
+impl CliUninstallResult {
+    fn succeeded(&self) -> bool {
+        self.plugin_uninstalled != Some(false)
+            && self.marketplace_removed != Some(false)
+            && self.staging_dir_removed
+    }
+}
+
 /// Top-level shape of `wta hooks uninstall --json`.
 #[derive(Debug, Clone, Serialize)]
 pub struct UninstallReport {
     pub schema_version: u32,
     pub clis: Vec<CliUninstallResult>,
+}
+
+impl UninstallReport {
+    pub fn succeeded(&self) -> bool {
+        self.clis.iter().all(CliUninstallResult::succeeded)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +462,9 @@ mod bundle {
         // under it — guards against an empty `WTA_HOOKS_BUNDLE_DIR` or a
         // half-populated layout.
         let any_subtree = |root: &std::path::Path| -> bool {
-            CliKind::ALL.iter().any(|c| root.join(c.dir_name()).is_dir())
+            CliKind::ALL
+                .iter()
+                .any(|c| root.join(c.dir_name()).is_dir())
         };
 
         let env = std::env::var_os("WTA_HOOKS_BUNDLE_DIR")
@@ -526,6 +597,9 @@ pub fn ensure_installed_scoped(scope: CliScope) {
     if scope.includes(CliKind::Codex) {
         install_for_codex(&home);
     }
+    if scope.includes(CliKind::OpenCode) {
+        install_for_opencode(&home);
+    }
 }
 
 /// Run the installer against a specific home directory. Split out from
@@ -536,6 +610,7 @@ fn ensure_installed_in(home: &Path) {
     install_for_copilot(home);
     install_for_gemini(home);
     install_for_codex(home);
+    install_for_opencode(home);
 }
 
 // ---------------------------------------------------------------------------
@@ -694,13 +769,13 @@ fn install_for_claude(home: &Path) {
 /// Trust step: after install, the user must run `/hooks` inside Codex
 /// to trust the plugin before any events fire. That's documented in
 /// the slice-C README; this function returns success on registration.
-fn install_for_codex(_home: &Path) {
+fn install_for_codex(_home: &Path) -> bool {
     if !cli_binary_on_path(CliKind::Codex) {
         tracing::debug!(
             target: "agent_hooks",
             "codex not on PATH; skipping hook install (CLI not installed)",
         );
-        return;
+        return false;
     }
     // Intentionally no `~/.codex` existence check: a freshly installed
     // Codex CLI may not have populated that dir yet, and `codex plugin
@@ -714,7 +789,7 @@ fn install_for_codex(_home: &Path) {
                 "no wt-agent-hooks/codex bundle found next to wta.exe or in dev tree; \
                  skipping Codex plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return;
+            return false;
         }
     };
 
@@ -736,17 +811,26 @@ fn install_for_codex(_home: &Path) {
             err = %e,
             "codex plugin marketplace add failed; aborting plugin install",
         );
-        return;
+        return false;
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    if let Err(e) = run_plugin_cli("codex", &["plugin", "add", &plugin_ref], "agent_hooks", &[]) {
-        tracing::warn!(
-            target: "agent_hooks",
-            err = %e,
-            plugin = %plugin_ref,
-            "codex plugin add failed",
-        );
+    match run_plugin_cli(
+        "codex",
+        &["plugin", "add", &plugin_ref],
+        "agent_hooks",
+        &[],
+    ) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                plugin = %plugin_ref,
+                "codex plugin add failed",
+            );
+            false
+        }
     }
 }
 
@@ -887,14 +971,15 @@ fn install_for_copilot(home: &Path) {
 }
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
-fn install_for_gemini(_home: &Path) {
+fn install_for_gemini(_home: &Path) -> bool {
     if !cli_binary_on_path(CliKind::Gemini) {
         tracing::debug!(
             target: "gemini_hooks",
             "gemini not on PATH; skipping hook install (CLI not installed)",
         );
-        return;
+        return false;
     }
+
     // Intentionally no `~/.gemini` existence check: a freshly installed
     // Gemini CLI may not have populated that dir yet, and `gemini
     // extensions install` creates it as needed.
@@ -907,7 +992,7 @@ fn install_for_gemini(_home: &Path) {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Gemini extension install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return;
+            return false;
         }
     };
 
@@ -941,7 +1026,7 @@ fn install_for_gemini(_home: &Path) {
     // exit code `0xC0000409`. The extension files are already on disk
     // at that point, so match the success line to avoid a misleading
     // `gemini extensions install failed` warning in the trace log.
-    if let Err(e) = run_plugin_cli_with_env(
+    match run_plugin_cli_with_env(
         "gemini",
         &[
             "extensions",
@@ -954,11 +1039,143 @@ fn install_for_gemini(_home: &Path) {
         "gemini_hooks",
         &["already installed", "installed successfully and enabled"],
     ) {
-        tracing::warn!(
-            target: "gemini_hooks",
-            err = %e,
-            "gemini extensions install failed",
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "gemini_hooks",
+                err = %e,
+                "gemini extensions install failed",
+            );
+            false
+        }
+    }
+}
+
+fn opencode_plugins_dir(home: &Path) -> PathBuf {
+    let xdg_config_home = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    opencode_plugins_dir_from(home, xdg_config_home.as_deref())
+}
+
+fn opencode_plugins_dir_from(home: &Path, xdg_config_home: Option<&Path>) -> PathBuf {
+    xdg_config_home
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| home.join(".config"))
+        .join("opencode")
+        .join("plugins")
+}
+
+fn opencode_support_dir(home: &Path) -> PathBuf {
+    opencode_plugins_dir(home).join(OPENCODE_SUPPORT_DIR)
+}
+
+fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
+    let destination = opencode_plugins_dir(home);
+    let support_dir = opencode_support_dir(home);
+    let installed_js = destination.join(OPENCODE_PLUGIN_JS);
+    let installed_js_metadata = match fs::symlink_metadata(&installed_js) {
+        Ok(metadata) => Some(metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let installed_js_existed = installed_js_metadata.is_some();
+    let support_dir_existed = support_dir.exists();
+    let installed_js_managed = if let Some(metadata) = installed_js_metadata {
+        if !metadata.file_type().is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "{} exists but is not a regular managed file",
+                    installed_js.display()
+                ),
+            ));
+        }
+        let text = fs::read_to_string(&installed_js)?;
+        if !text.contains(OPENCODE_MANAGED_MARKER) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "{} exists but is not managed by Intelligent Terminal",
+                    installed_js.display()
+                ),
+            ));
+        }
+        true
+    } else {
+        false
+    };
+    if support_dir.exists() {
+        let managed_support =
+            opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
+            || installed_js_managed;
+        if !managed_support {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "{} exists but is not managed by Intelligent Terminal",
+                    support_dir.display()
+                ),
+            ));
+        }
+    }
+
+    let copy_result = (|| {
+        fs::create_dir_all(&destination)?;
+        fs::create_dir_all(&support_dir)?;
+        fs::copy(
+            source.join(OPENCODE_BRIDGE_PS1),
+            support_dir.join(OPENCODE_BRIDGE_PS1),
+        )?;
+        fs::copy(source.join(OPENCODE_PLUGIN_JS), &installed_js)?;
+        // Commit the new version last. If either runtime file fails to copy,
+        // the old manifest keeps the upgrade eligible for retry.
+        fs::copy(
+            source.join(OPENCODE_MANIFEST),
+            support_dir.join(OPENCODE_MANIFEST),
+        )?;
+        Ok(())
+    })();
+
+    if copy_result.is_err() {
+        if !installed_js_existed {
+            let _ = fs::remove_file(&installed_js);
+        }
+        if !support_dir_existed {
+            let _ = fs::remove_file(support_dir.join(OPENCODE_BRIDGE_PS1));
+            let _ = fs::remove_file(support_dir.join(OPENCODE_MANIFEST));
+            let _ = fs::remove_dir(&support_dir);
+        }
+    }
+    copy_result
+}
+
+fn install_for_opencode(home: &Path) -> bool {
+    if !cli_binary_on_path(CliKind::OpenCode) {
+        tracing::debug!(
+            target: "agent_hooks",
+            "opencode not on PATH; skipping hook install (CLI not installed)",
         );
+        return false;
+    }
+    let Some(bundle_dir) = bundle::resolve_cli_dir(CliKind::OpenCode) else {
+        tracing::warn!(
+            target: "agent_hooks",
+            "no wt-agent-hooks/opencode bundle found; skipping OpenCode plugin install",
+        );
+        return false;
+    };
+    match copy_opencode_bundle(&bundle_dir, home) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                source = %bundle_dir.display(),
+                "OpenCode plugin install failed",
+            );
+            false
+        }
     }
 }
 
@@ -1011,6 +1228,7 @@ fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
         CliKind::Claude => claude_status(on_path, bin_path, home),
         CliKind::Gemini => gemini_status(on_path, bin_path, home),
         CliKind::Codex => codex_status(on_path, bin_path, home),
+        CliKind::OpenCode => opencode_status(on_path, bin_path, home),
     }
 }
 
@@ -1064,11 +1282,7 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         .filter(|o| o.success)
         .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
-    let mkt_ok = join_or_run_plugin_cli(
-        mkt_handle,
-        "copilot",
-        &["plugin", "marketplace", "list"],
-    )
+    let mkt_ok = join_or_run_plugin_cli(mkt_handle, "copilot", &["plugin", "marketplace", "list"])
     .filter(|o| o.success)
     .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
@@ -1248,22 +1462,16 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
     // no shared state, ~2-3s wall-clock saved when Node CLI startup
     // dominates). `Builder::spawn` failures fall back to serial
     // execution via `join_or_run_plugin_cli`.
-    let plugin_handle = spawn_plugin_cli_query(
-        "claude",
-        "plugin-list",
-        &["plugin", "list", "--json"],
-    );
+    let plugin_handle =
+        spawn_plugin_cli_query("claude", "plugin-list", &["plugin", "list", "--json"]);
     let mkt_handle = spawn_plugin_cli_query(
         "claude",
         "marketplace-list",
         &["plugin", "marketplace", "list", "--json"],
     );
 
-    let plugin_json = join_or_run_plugin_cli(
-        plugin_handle,
-        "claude",
-        &["plugin", "list", "--json"],
-    )
+    let plugin_json =
+        join_or_run_plugin_cli(plugin_handle, "claude", &["plugin", "list", "--json"])
     .filter(|o| o.success)
     .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
     let mkt_json = join_or_run_plugin_cli(
@@ -1414,6 +1622,7 @@ fn populate_marketplace_path(out: &mut CliStatus, cli: CliKind, home: Option<&Pa
         CliKind::Claude => claude_marketplace_info(home),
         CliKind::Gemini => gemini_marketplace_info(home),
         CliKind::Codex => codex_marketplace_info(home),
+        CliKind::OpenCode => opencode_marketplace_info(home),
     };
     out.marketplace_path = info.path;
     out.marketplace_path_valid = info.valid;
@@ -1599,9 +1808,10 @@ fn parse_claude_plugin_list_json(stdout: &str) -> Option<PluginPresence> {
 fn parse_claude_marketplace_list_json(stdout: &str) -> Option<bool> {
     let v: Value = serde_json::from_str(stdout.trim()).ok()?;
     let arr = v.as_array()?;
-    Some(arr.iter().any(|e| {
-        e.get("name").and_then(|x| x.as_str()) == Some(MARKETPLACE_NAME)
-    }))
+    Some(
+        arr.iter()
+            .any(|e| e.get("name").and_then(|x| x.as_str()) == Some(MARKETPLACE_NAME)),
+    )
 }
 
 /// Parse `gemini extensions list -o json`. Looks for our extension by
@@ -1647,7 +1857,11 @@ fn parse_codex_marketplace_list(stdout: &str) -> (bool, Option<String>) {
        };
        if name == MARKETPLACE_NAME {
            let rest = split.next().unwrap_or("").trim();
-           let path = if rest.is_empty() { None } else { Some(rest.to_string()) };
+            let path = if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_string())
+            };
            return (true, path);
        }
     }
@@ -1725,7 +1939,11 @@ fn parse_codex_plugin_list_entry(stdout: &str) -> Option<InstalledInfo> {
         let rest: Vec<&str> = cols.collect();
         // Must start with "installed" (rules out "not installed",
         // "available", etc.).
-        if !rest.first().map(|s| s.starts_with("installed")).unwrap_or(false) {
+        if !rest
+            .first()
+            .map(|s| s.starts_with("installed"))
+            .unwrap_or(false)
+        {
             return None;
         }
         // Enabled unless the next status token explicitly says
@@ -1737,10 +1955,7 @@ fn parse_codex_plugin_list_entry(stdout: &str) -> Option<InstalledInfo> {
             .unwrap_or(true);
         // Version: first token after the status column that parses as
         // semver. Skips past the status word(s) and any "-" placeholder.
-        let version = rest
-            .iter()
-            .skip(1)
-            .find_map(|t| t.parse::<Version>().ok());
+        let version = rest.iter().skip(1).find_map(|t| t.parse::<Version>().ok());
         return Some(InstalledInfo {
             version,
             enabled,
@@ -1779,6 +1994,7 @@ fn uninstall_for(cli: CliKind, home: Option<&Path>) -> CliUninstallResult {
         CliKind::Claude => claude_uninstall(home),
         CliKind::Gemini => gemini_uninstall(home),
         CliKind::Codex => uninstall_for_codex(home),
+        CliKind::OpenCode => opencode_uninstall(home),
     }
 }
 
@@ -1807,7 +2023,13 @@ fn copilot_uninstall(_home: Option<&Path>) -> CliUninstallResult {
         out.marketplace_removed = Some(spawn_step(
             &mut out.messages,
             "copilot",
-            &["plugin", "marketplace", "remove", MARKETPLACE_NAME, "--force"],
+            &[
+                "plugin",
+                "marketplace",
+                "remove",
+                MARKETPLACE_NAME,
+                "--force",
+            ],
             &[],
         ));
     } else {
@@ -1927,11 +2149,8 @@ fn gemini_uninstall(home: Option<&Path>) -> CliUninstallResult {
                 }
                 Err(e) => {
                     all_removed = false;
-                    out.messages.push(format!(
-                        "failed to remove {}: {}",
-                        ext_dir.display(),
-                        e,
-                    ));
+                    out.messages
+                        .push(format!("failed to remove {}: {}", ext_dir.display(), e,));
                 }
             }
         }
@@ -1943,6 +2162,92 @@ fn gemini_uninstall(home: Option<&Path>) -> CliUninstallResult {
     let legacy_ok = sweep_legacy_staging_dirs(&mut out.messages, CliKind::Gemini);
 
     out.staging_dir_removed = all_removed && legacy_ok;
+    out
+}
+
+fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
+    let mut out = CliUninstallResult {
+        name: CliKind::OpenCode.name(),
+        attempted: false,
+        plugin_uninstalled: None,
+        marketplace_removed: None,
+        staging_dir_removed: true,
+        messages: Vec::new(),
+    };
+    let Some(home) = home else {
+        out.messages.push("home path not provided; skipping".into());
+        return out;
+    };
+    let dir = opencode_plugins_dir(home);
+    let js = dir.join(OPENCODE_PLUGIN_JS);
+    let support_dir = opencode_support_dir(home);
+    if !js.exists() && !support_dir.exists() {
+        out.messages.push("OpenCode plugin is not installed".into());
+        return out;
+    }
+    let managed_js = fs::read_to_string(&js)
+        .map(|text| text.contains(OPENCODE_MANAGED_MARKER))
+        .unwrap_or(false);
+    let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
+    if (js.exists() && !managed_js) || (support_dir.exists() && !managed_support && !managed_js) {
+        out.messages.push(format!(
+            "refusing to remove non-managed OpenCode hook files under {}",
+            dir.display()
+        ));
+        out.plugin_uninstalled = Some(false);
+        return out;
+    }
+
+    out.attempted = true;
+    let mut removed = true;
+    let bridge = support_dir.join(OPENCODE_BRIDGE_PS1);
+    if bridge.exists() {
+        if let Err(e) = fs::remove_file(&bridge) {
+            removed = false;
+            out.messages
+                .push(format!("failed to remove {}: {}", bridge.display(), e));
+        }
+    }
+    // Keep the JavaScript ownership marker until the support artifacts are
+    // gone. If any earlier removal fails, the next uninstall can still
+    // identify and repair the managed installation.
+    if removed {
+        let manifest = support_dir.join(OPENCODE_MANIFEST);
+        if manifest.exists() {
+            if let Err(e) = fs::remove_file(&manifest) {
+                removed = false;
+                out.messages
+                    .push(format!("failed to remove {}: {}", manifest.display(), e));
+            }
+        }
+    }
+    if removed {
+        let support_dir_empty = fs::read_dir(&support_dir)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if support_dir_empty {
+            if let Err(e) = fs::remove_dir(&support_dir) {
+                removed = false;
+                out.messages.push(format!(
+                    "failed to remove {}: {}",
+                    support_dir.display(),
+                    e
+                ));
+            }
+        }
+    }
+    if removed && js.exists() {
+        if let Err(e) = fs::remove_file(&js) {
+            removed = false;
+            out.messages
+                .push(format!("failed to remove {}: {}", js.display(), e));
+        }
+    }
+    out.plugin_uninstalled = Some(removed);
+    if removed {
+        out.messages
+            .push("removed Intelligent Terminal OpenCode plugin".into());
+    }
     out
 }
 
@@ -2053,6 +2358,7 @@ fn legacy_staging_dirs(cli: CliKind) -> Vec<PathBuf> {
                 .join(GEMINI_EXTENSION_DIR_NAME),
         ),
         CliKind::Codex => dirs.push(root.join("codex-plugin-src").join(MARKETPLACE_NAME)),
+        CliKind::OpenCode => {}
     }
     // #20-first-commit-style embedded-fallback materialization.
     dirs.push(root.join("hook-bundle-fallback").join(cli.dir_name()));
@@ -2329,11 +2635,7 @@ fn run_plugin_cli_with_env(
 ) -> std::io::Result<()> {
     let outcome = run_plugin_cli_capture_with_env(exe, args, env)?;
     if !outcome.success {
-        if matches_idempotency_substring(
-            &outcome.stdout,
-            &outcome.stderr,
-            idempotency_substrings,
-        ) {
+        if matches_idempotency_substring(&outcome.stdout, &outcome.stderr, idempotency_substrings) {
             tracing::info!(
                 target: "agent_hooks",
                 exe = exe,
@@ -2521,7 +2823,10 @@ fn cleanup_legacy_claude_hooks(settings_path: &Path) -> std::io::Result<()> {
     let mut changed = false;
     let event_names: Vec<String> = hooks_obj.keys().cloned().collect();
     for event_name in event_names {
-        let Some(arr) = hooks_obj.get_mut(&event_name).and_then(|v| v.as_array_mut()) else {
+        let Some(arr) = hooks_obj
+            .get_mut(&event_name)
+            .and_then(|v| v.as_array_mut())
+        else {
             continue;
         };
         let before = arr.len();
@@ -2565,7 +2870,9 @@ fn entry_is_wta_tagged(entry: &Value) -> bool {
         return false;
     };
     for h in hooks {
-        let Some(cmd) = h.get("command").and_then(|c| c.as_str()) else { continue; };
+        let Some(cmd) = h.get("command").and_then(|c| c.as_str()) else {
+            continue;
+        };
         if cmd.contains(WTA_TAG) || cmd.contains("send-event.ps1") {
             return true;
         }
@@ -2761,11 +3068,7 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
         &["plugin", "list", "--marketplace", MARKETPLACE_NAME],
     );
 
-    let mkt = join_or_run_plugin_cli(
-        mkt_handle,
-        "codex",
-        &["plugin", "marketplace", "list"],
-    )
+    let mkt = join_or_run_plugin_cli(mkt_handle, "codex", &["plugin", "marketplace", "list"])
     .filter(|o| o.success)
     .map(|o| parse_codex_marketplace_list(&o.stdout));
     let plugin = join_or_run_plugin_cli(
@@ -2820,8 +3123,19 @@ fn dir_has_entries(p: &Path) -> bool {
     }
 }
 
+fn opencode_marketplace_info(home: &Path) -> MarketplaceInfo {
+    let status = opencode_status(false, None, Some(home));
+    MarketplaceInfo {
+        path: status.marketplace_path,
+        valid: status.marketplace_path_valid,
+    }
+}
+
 fn codex_marketplace_info(home: &Path) -> MarketplaceInfo {
-    let mut info = MarketplaceInfo { path: None, valid: false };
+    let mut info = MarketplaceInfo {
+        path: None,
+        valid: false,
+    };
     let marketplace_path = home
         .join(".codex")
         .join("plugins")
@@ -2845,13 +3159,17 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
     };
 
     let Some(home) = home else {
-        result.messages.push("home path not provided; skipping".into());
+        result
+            .messages
+            .push("home path not provided; skipping".into());
         return result;
     };
 
     let codex_dir = home.join(".codex");
     if !codex_dir.is_dir() {
-        result.messages.push("skipped: no ~/.codex directory".to_string());
+        result
+            .messages
+            .push("skipped: no ~/.codex directory".to_string());
         return result;
     }
     result.attempted = true;
@@ -2865,11 +3183,15 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
     ) {
         Ok(()) => {
             result.plugin_uninstalled = Some(true);
-            result.messages.push("codex plugin remove succeeded".to_string());
+            result
+                .messages
+                .push("codex plugin remove succeeded".to_string());
         }
         Err(e) => {
             result.plugin_uninstalled = Some(false);
-            result.messages.push(format!("codex plugin remove failed: {e}"));
+            result
+                .messages
+                .push(format!("codex plugin remove failed: {e}"));
         }
     }
 
@@ -2886,11 +3208,15 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
     ) {
         Ok(()) => {
             result.marketplace_removed = Some(true);
-            result.messages.push("codex plugin marketplace remove succeeded".to_string());
+            result
+                .messages
+                .push("codex plugin marketplace remove succeeded".to_string());
         }
         Err(e) => {
             result.marketplace_removed = Some(false);
-            result.messages.push(format!("codex plugin marketplace remove failed: {e}"));
+            result
+                .messages
+                .push(format!("codex plugin marketplace remove failed: {e}"));
         }
     }
 
@@ -3021,14 +3347,16 @@ fn read_version_field(path: &Path) -> Option<Version> {
 fn read_bundled_version(cli: CliKind) -> Option<Version> {
     let dir = bundle::resolve_cli_dir(cli)?;
     let manifest = match cli {
-        CliKind::Copilot | CliKind::Claude => {
-            dir.join("wt-agent-hooks").join(".claude-plugin").join("plugin.json")
-        }
+        CliKind::Copilot | CliKind::Claude => dir
+            .join("wt-agent-hooks")
+            .join(".claude-plugin")
+            .join("plugin.json"),
         CliKind::Codex => dir
             .join("wt-agent-hooks")
             .join(".codex-plugin")
             .join("plugin.json"),
         CliKind::Gemini => dir.join("gemini-extension.json"),
+        CliKind::OpenCode => dir.join(OPENCODE_MANIFEST),
     };
     read_version_field(&manifest)
 }
@@ -3055,18 +3383,30 @@ struct InstalledInfo {
 
 /// Read Copilot's installed-plugin entry directly from
 /// `~/.copilot/config.json`. Pure file IO — no spawn.
-fn read_installed_copilot(home: &Path) -> Option<InstalledInfo> {
+type InstalledProbe = Result<Option<InstalledInfo>, String>;
+
+fn read_installed_copilot(home: &Path) -> InstalledProbe {
     let path = home.join(".copilot").join("config.json");
-    let text = fs::read_to_string(&path).ok()?;
-    let v: Value = serde_json::from_str(&strip_jsonc_line_comments(&text)).ok()?;
-    let entry = v
-        .get("installedPlugins")?
-        .as_array()?
-        .iter()
-        .find(|e| {
-            e.get("name").and_then(|n| n.as_str()) == Some(PLUGIN_NAME)
-                && e.get("marketplace").and_then(|n| n.as_str()) == Some(MARKETPLACE_NAME)
-        })?;
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("failed to read {}: {}", path.display(), error)),
+    };
+    let v: Value = serde_json::from_str(&strip_jsonc_line_comments(&text))
+        .map_err(|error| format!("failed to parse {}: {}", path.display(), error))?;
+    let Some(entry) = v
+        .get("installedPlugins")
+        .and_then(Value::as_array)
+        .and_then(|entries| {
+            entries.iter().find(|entry| {
+                entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str)
+                        == Some(MARKETPLACE_NAME)
+            })
+        })
+    else {
+        return Ok(None);
+    };
     let version = entry
         .get("version")
         .and_then(|x| x.as_str())
@@ -3075,25 +3415,33 @@ fn read_installed_copilot(home: &Path) -> Option<InstalledInfo> {
         .get("enabled")
         .and_then(|x| x.as_bool())
         .unwrap_or(true);
-    Some(InstalledInfo {
+    Ok(Some(InstalledInfo {
         version,
         enabled,
         gemini_source: None,
         gemini_type: None,
-    })
+    }))
 }
 
 /// Spawn `claude plugin list --json` and locate our plugin. One-shot
 /// Node spawn; the fast-path short-circuit in `upgrade_installed_hooks`
 /// ensures this only runs after a bundle version change.
-fn read_installed_claude() -> Option<InstalledInfo> {
-    let outcome = run_plugin_cli_capture("claude", &["plugin", "list", "--json"]).ok()?;
+fn read_installed_claude() -> InstalledProbe {
+    let outcome = run_plugin_cli_capture("claude", &["plugin", "list", "--json"])
+        .map_err(|error| format!("claude plugin list failed to start: {}", error))?;
     if !outcome.success {
-        return None;
+        return Err(format!(
+            "claude plugin list exited unsuccessfully: {}",
+            outcome.stderr.trim()
+        ));
     }
-    let arr: Value = serde_json::from_str(outcome.stdout.trim()).ok()?;
+    let arr: Value = serde_json::from_str(outcome.stdout.trim())
+        .map_err(|error| format!("failed to parse claude plugin list: {}", error))?;
+    let entries = arr
+        .as_array()
+        .ok_or_else(|| "claude plugin list did not return an array".to_string())?;
     let id_target = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    for entry in arr.as_array()? {
+    for entry in entries {
         if entry.get("id").and_then(|x| x.as_str()) != Some(id_target.as_str()) {
             continue;
         }
@@ -3105,14 +3453,14 @@ fn read_installed_claude() -> Option<InstalledInfo> {
             .get("enabled")
             .and_then(|x| x.as_bool())
             .unwrap_or(true);
-        return Some(InstalledInfo {
+        return Ok(Some(InstalledInfo {
             version,
             enabled,
             gemini_source: None,
             gemini_type: None,
-        });
+        }));
     }
-    None
+    Ok(None)
 }
 
 /// Spawn `codex plugin list` and parse the wt-agent-hooks row to
@@ -3120,7 +3468,7 @@ fn read_installed_claude() -> Option<InstalledInfo> {
 /// binary so the list call is fast (~10ms); no PATH probe needed.
 /// Returns `None` when the spawn fails, the plugin row is missing,
 /// or the status indicates "not installed" / "available".
-fn read_installed_codex() -> Option<InstalledInfo> {
+fn read_installed_codex() -> InstalledProbe {
     // Scope the listing to our marketplace; otherwise Codex prints every
     // plugin from every registered marketplace (~150 lines from the
     // built-in `openai-curated` snapshot) which is wasted work and
@@ -3129,31 +3477,35 @@ fn read_installed_codex() -> Option<InstalledInfo> {
         "codex",
         &["plugin", "list", "--marketplace", MARKETPLACE_NAME],
     )
-    .ok()?;
+    .map_err(|error| format!("codex plugin list failed to start: {}", error))?;
     if !outcome.success {
-        return None;
+        return Err(format!(
+            "codex plugin list exited unsuccessfully: {}",
+            outcome.stderr.trim()
+        ));
     }
     let payload = if !outcome.stdout.trim().is_empty() {
         &outcome.stdout
     } else {
         &outcome.stderr
     };
-    parse_codex_plugin_list_entry(payload)
+    Ok(parse_codex_plugin_list_entry(payload))
 }
 
 /// Read Gemini's installed extension from disk: version from
 /// `gemini-extension.json`, source/type from `.gemini-extension-install.json`.
 /// Pure file IO. Treats a missing metadata file as `gemini_source: None`,
 /// which forces the upgrade flow into the uninstall+install fallback.
-fn read_installed_gemini(home: &Path) -> Option<InstalledInfo> {
+fn read_installed_gemini(home: &Path) -> InstalledProbe {
     let ext_dir = gemini_extension_dir(home);
     let manifest = ext_dir.join("gemini-extension.json");
     let version = read_version_field(&manifest);
     // Treat presence of the manifest file (regardless of parseable version)
     // as "installed". A missing manifest means not installed.
     if !manifest.is_file() {
-        return None;
+        return Ok(None);
     }
+
     // Read enabled/disabled from `gemini extensions list -o json` is the
     // robust source, but it requires a spawn. Skip for the initial probe;
     // the upgrade flow re-reads `isActive` only when it's about to do a
@@ -3162,21 +3514,15 @@ fn read_installed_gemini(home: &Path) -> Option<InstalledInfo> {
     let (gemini_source, gemini_type) = match fs::read_to_string(&install_meta) {
         Ok(t) => match serde_json::from_str::<Value>(&t) {
             Ok(v) => {
-                let src = v
-                    .get("source")
-                    .and_then(|x| x.as_str())
-                    .map(PathBuf::from);
-                let kind = v
-                    .get("type")
-                    .and_then(|x| x.as_str())
-                    .map(String::from);
+                let src = v.get("source").and_then(|x| x.as_str()).map(PathBuf::from);
+                let kind = v.get("type").and_then(|x| x.as_str()).map(String::from);
                 (src, kind)
             }
             Err(_) => (None, None),
         },
         Err(_) => (None, None),
     };
-    Some(InstalledInfo {
+    Ok(Some(InstalledInfo {
         version,
         // Disk-read can't distinguish — Gemini stores disabled state in
         // `~/.gemini/settings.json` / scoped settings. For decision
@@ -3185,7 +3531,32 @@ fn read_installed_gemini(home: &Path) -> Option<InstalledInfo> {
         enabled: true,
         gemini_source,
         gemini_type,
-    })
+    }))
+}
+
+fn read_installed_opencode(home: &Path) -> InstalledProbe {
+    let dir = opencode_plugins_dir(home);
+    let js = dir.join(OPENCODE_PLUGIN_JS);
+    let managed_js = match fs::read_to_string(&js) {
+        Ok(text) => text.contains(OPENCODE_MANAGED_MARKER),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(format!("failed to read {}: {}", js.display(), error)),
+    };
+    let support_dir = opencode_support_dir(home);
+    let manifest = support_dir.join(OPENCODE_MANIFEST);
+    let managed_support = opencode_manifest_is_managed(&manifest);
+    if !managed_js && !managed_support {
+        return Ok(None);
+    }
+    let complete = managed_js && managed_support && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    Ok(Some(InstalledInfo {
+        // A partial managed install must go through OpenCodeCopy even when its
+        // surviving manifest already has the current bundle version.
+        version: complete.then(|| read_version_field(&manifest)).flatten(),
+        enabled: true,
+        gemini_source: None,
+        gemini_type: None,
+    }))
 }
 
 // ---- Pure upgrade decision -----------------------------------------------
@@ -3223,6 +3594,7 @@ enum UpgradeAction {
     /// Gemini, source path stale or non-local: uninstall + install
     /// (and re-disable if the extension was disabled before).
     GeminiReinstall,
+    OpenCodeCopy,
 }
 
 /// Decide what to do for one CLI given the bundle version and the
@@ -3247,6 +3619,9 @@ fn decide_upgrade(
         return UpgradeAction::Skip(SkipReason::Disabled);
     }
     let Some(installed_version) = installed.version else {
+        if cli == CliKind::OpenCode {
+            return UpgradeAction::OpenCodeCopy;
+        }
         return UpgradeAction::Skip(SkipReason::UnknownInstalledVersion);
     };
     if installed_version >= bundle_version {
@@ -3271,6 +3646,7 @@ fn decide_upgrade(
                 UpgradeAction::GeminiReinstall
             }
         }
+        CliKind::OpenCode => UpgradeAction::OpenCodeCopy,
     }
 }
 
@@ -3302,6 +3678,7 @@ struct UpgradeState {
     claude: Option<String>,
     codex: Option<String>,
     gemini: Option<String>,
+    opencode: Option<String>,
 }
 
 impl UpgradeState {
@@ -3311,6 +3688,7 @@ impl UpgradeState {
             CliKind::Claude => self.claude.as_deref(),
             CliKind::Codex => self.codex.as_deref(),
             CliKind::Gemini => self.gemini.as_deref(),
+            CliKind::OpenCode => self.opencode.as_deref(),
         }
     }
 
@@ -3320,7 +3698,21 @@ impl UpgradeState {
             CliKind::Claude => self.claude = version,
             CliKind::Codex => self.codex = version,
             CliKind::Gemini => self.gemini = version,
+            CliKind::OpenCode => self.opencode = version,
         }
+    }
+
+    fn record_completed(
+        &mut self,
+        cli: CliKind,
+        version: Option<String>,
+        completed: bool,
+    ) -> bool {
+        if !completed {
+            return false;
+        }
+        self.set(cli, version);
+        true
     }
 
     fn to_json(&self) -> Value {
@@ -3337,6 +3729,9 @@ impl UpgradeState {
         if let Some(v) = &self.gemini {
             m.insert("gemini".into(), Value::String(v.clone()));
         }
+        if let Some(v) = &self.opencode {
+            m.insert("opencode".into(), Value::String(v.clone()));
+        }
         Value::Object(m)
     }
 
@@ -3352,6 +3747,7 @@ impl UpgradeState {
             claude: get("claude"),
             codex: get("codex"),
             gemini: get("gemini"),
+            opencode: get("opencode"),
         }
     }
 }
@@ -3450,7 +3846,9 @@ fn cleanup_stale_claude_marketplace(
         let Some(root) = settings.as_object_mut() else {
             return Ok(());
         };
-        let Some(entry) = root.get_mut(MARKETPLACE_NAME).and_then(|v| v.as_object_mut())
+        let Some(entry) = root
+            .get_mut(MARKETPLACE_NAME)
+            .and_then(|v| v.as_object_mut())
         else {
             return Ok(());
         };
@@ -3545,12 +3943,19 @@ pub fn upgrade_installed_hooks() {
         }
 
         // Cache miss (or first ever run): do the full per-CLI check.
-        upgrade_one_cli(cli, &home, bundle_version);
+        let completed = upgrade_one_cli(cli, &home, bundle_version);
 
-        // Whether or not we actually upgraded, record the bundle version
-        // we just observed so future startups can fast-path.
-        state.set(cli, bundle_version_str);
-        state_dirty = true;
+        // Cache completed checks, including intentional skips. Failed
+        // OpenCode file copies must retry on the next startup.
+        if state.record_completed(cli, bundle_version_str, completed) {
+            state_dirty = true;
+        } else {
+            tracing::warn!(
+                target: "agent_hooks",
+                cli = cli.name(),
+                "hook upgrade failed; leaving cache unchanged for retry",
+            );
+        }
     }
 
     if state_dirty {
@@ -3561,14 +3966,14 @@ pub fn upgrade_installed_hooks() {
 }
 
 /// Per-CLI upgrade entry: read installed state, decide, dispatch.
-fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) {
-    let installed = match cli {
+fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -> bool {
+    let probe = match cli {
         CliKind::Copilot => read_installed_copilot(home),
         CliKind::Claude => {
             // `claude plugin list --json` requires the CLI on PATH; if
             // it isn't, treat as "not installed" rather than spawning.
             if which::which("claude").is_err() {
-                None
+                Ok(None)
             } else {
                 read_installed_claude()
             }
@@ -3579,6 +3984,19 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) {
             read_installed_codex()
         }
         CliKind::Gemini => read_installed_gemini(home),
+        CliKind::OpenCode => read_installed_opencode(home),
+    };
+    let installed = match probe {
+        Ok(installed) => installed,
+        Err(error) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                cli = cli.name(),
+                err = %error,
+                "failed to detect installed hook version; leaving cache unchanged for retry",
+            );
+            return false;
+        }
     };
 
     let current_bundle_dir = bundle::resolve_cli_dir(cli);
@@ -3599,7 +4017,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) {
     );
 
     match action {
-        UpgradeAction::Skip(_) => {}
+        UpgradeAction::Skip(_) => true,
         UpgradeAction::UpdatePlugin => match cli {
             CliKind::Copilot => upgrade_copilot(home),
             CliKind::Claude => upgrade_claude(home),
@@ -3614,6 +4032,7 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) {
                     cli = cli.name(),
                     "decide_upgrade returned UpdatePlugin for Codex; skipping (treat as bug)",
                 );
+                false
             }
             CliKind::Gemini => {
                 // Defensive: `decide_upgrade` is the only producer of
@@ -3629,18 +4048,28 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) {
                     cli = cli.name(),
                     "decide_upgrade returned UpdatePlugin for Gemini; skipping (treat as bug)",
                 );
+                false
+            }
+            CliKind::OpenCode => {
+                tracing::error!(
+                    target: "agent_hooks",
+                    cli = cli.name(),
+                    "decide_upgrade returned UpdatePlugin for OpenCode; skipping (treat as bug)",
+                );
+                false
             }
         },
         UpgradeAction::CodexReinstall => upgrade_codex(home),
         UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(),
         UpgradeAction::GeminiReinstall => upgrade_gemini_reinstall(home),
+        UpgradeAction::OpenCodeCopy => install_for_opencode(home),
     }
 }
 
-fn upgrade_copilot(home: &Path) {
+fn upgrade_copilot(home: &Path) -> bool {
     let Some(bundle_dir) = bundle::resolve_cli_dir(CliKind::Copilot) else {
         tracing::warn!(target: "copilot_hooks", "bundle unresolvable; cannot upgrade");
-        return;
+        return false;
     };
     let settings_path = home.join(".copilot").join("settings.json");
     if let Err(e) = cleanup_stale_copilot_marketplace(&settings_path, &bundle_dir) {
@@ -3651,25 +4080,29 @@ fn upgrade_copilot(home: &Path) {
         );
     }
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    if let Err(e) = run_plugin_cli(
+    match run_plugin_cli(
         "copilot",
         &["plugin", "update", &plugin_ref],
         "copilot_hooks",
         &[],
     ) {
-        tracing::warn!(
-            target: "copilot_hooks",
-            err = %e,
-            plugin = %plugin_ref,
-            "copilot plugin update failed",
-        );
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "copilot_hooks",
+                err = %e,
+                plugin = %plugin_ref,
+                "copilot plugin update failed",
+            );
+            false
+        }
     }
 }
 
-fn upgrade_claude(home: &Path) {
+fn upgrade_claude(home: &Path) -> bool {
     let Some(bundle_dir) = bundle::resolve_cli_dir(CliKind::Claude) else {
         tracing::warn!(target: "agent_hooks", "claude bundle unresolvable; cannot upgrade");
-        return;
+        return false;
     };
     // Re-stage if bundle lives under WindowsApps; the staged path is
     // what we'll rewrite into known_marketplaces.json below.
@@ -3689,18 +4122,22 @@ fn upgrade_claude(home: &Path) {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    if let Err(e) = run_plugin_cli(
+    match run_plugin_cli(
         "claude",
         &["plugin", "update", &plugin_ref],
         "agent_hooks",
         &[],
     ) {
-        tracing::warn!(
-            target: "agent_hooks",
-            err = %e,
-            plugin = %plugin_ref,
-            "claude plugin update failed",
-        );
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "agent_hooks",
+                err = %e,
+                plugin = %plugin_ref,
+                "claude plugin update failed",
+            );
+            false
+        }
     }
 }
 
@@ -3715,7 +4152,7 @@ fn upgrade_claude(home: &Path) {
 /// (which uses the literal `${PLUGIN_ROOT}` token, not a resolved
 /// path), so they stay stable even when the bundle dir moves between
 /// MSIX version directories.
-fn upgrade_codex(home: &Path) {
+fn upgrade_codex(home: &Path) -> bool {
     // 1. Uninstall — `uninstall_for_codex` already tolerates
     //    "not installed" / "not registered" idempotency, so it's safe
     //    to call against a partial install state.
@@ -3728,30 +4165,37 @@ fn upgrade_codex(home: &Path) {
             "codex pre-upgrade uninstall step",
         );
     }
+    if !result.succeeded() {
+        return false;
+    }
 
     // 2. Reinstall pointing at the current bundle dir. Reuse the
     //    existing install flow so we pick up the WindowsApps staging
     //    and `already registered` tolerance handling.
-    install_for_codex(home);
+    install_for_codex(home)
 }
 
-fn upgrade_gemini_in_place() {
+fn upgrade_gemini_in_place() -> bool {
     // `extensions update` upstream yargs does NOT accept `--consent` /
     // `--skip-settings` (those are install-only flags). Keep
     // GEMINI_CLI_TRUST_WORKSPACE which is honored as a generic
     // headless-mode signal.
-    if let Err(e) = run_plugin_cli_with_env(
+    match run_plugin_cli_with_env(
         "gemini",
         &["extensions", "update", GEMINI_EXTENSION_DIR_NAME],
         &[("GEMINI_CLI_TRUST_WORKSPACE", "true")],
         "gemini_hooks",
         &[],
     ) {
-        tracing::warn!(
-            target: "gemini_hooks",
-            err = %e,
-            "gemini extensions update failed; user can re-trigger via Settings UI",
-        );
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "gemini_hooks",
+                err = %e,
+                "gemini extensions update failed; user can re-trigger via Settings UI",
+            );
+            false
+        }
     }
 }
 
@@ -3759,7 +4203,7 @@ fn upgrade_gemini_in_place() {
 /// stale (typical after an MSIX version-dir bump). Captures the
 /// `isActive` state via `gemini extensions list -o json` before
 /// uninstall so we can restore the disabled flag after reinstall.
-fn upgrade_gemini_reinstall(home: &Path) {
+fn upgrade_gemini_reinstall(home: &Path) -> bool {
     // 1. Capture enabled/disabled state. If the list spawn fails, assume
     //    enabled (the post-install default); we'd rather re-enable
     //    something the user disabled than leave them with a broken
@@ -3780,39 +4224,51 @@ fn upgrade_gemini_reinstall(home: &Path) {
     };
 
     // 2. Uninstall — tolerate "extension not found" idempotency.
-    if let Err(e) = run_plugin_cli(
+    let uninstall_succeeded = match run_plugin_cli(
         "gemini",
         &["extensions", "uninstall", GEMINI_EXTENSION_DIR_NAME],
         "gemini_hooks",
         &["extension not found", "successfully uninstalled"],
     ) {
-        tracing::warn!(
-            target: "gemini_hooks",
-            err = %e,
-            "gemini extensions uninstall (pre-reinstall) failed; trying install anyway",
-        );
-    }
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(
+                target: "gemini_hooks",
+                err = %e,
+                "gemini extensions uninstall (pre-reinstall) failed; trying install anyway",
+            );
+            false
+        }
+    };
 
     // 3. Reinstall pointing at the current bundle dir. Reuse the
     //    existing install flow so we pick up the same staging /
     //    consent / libuv-crash tolerances.
-    install_for_gemini(home);
+    let install_succeeded = install_for_gemini(home);
 
     // 4. Restore disabled state if needed.
-    if !was_enabled {
-        if let Err(e) = run_plugin_cli(
+    let state_restored = if !was_enabled {
+        match run_plugin_cli(
             "gemini",
             &["extensions", "disable", GEMINI_EXTENSION_DIR_NAME],
             "gemini_hooks",
             &[],
         ) {
-            tracing::warn!(
-                target: "gemini_hooks",
-                err = %e,
-                "gemini extensions disable (restore user state) failed",
-            );
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!(
+                    target: "gemini_hooks",
+                    err = %e,
+                    "gemini extensions disable (restore user state) failed",
+                );
+                false
+            }
         }
-    }
+    } else {
+        true
+    };
+
+    uninstall_succeeded && install_succeeded && state_restored
 }
 
 // ---------------------------------------------------------------------------
@@ -3969,6 +4425,306 @@ mod tests {
         );
     }
 
+    fn write_opencode_test_bundle(root: &Path, js: &str) {
+        fs::write(root.join(OPENCODE_PLUGIN_JS), js).unwrap();
+        fs::write(root.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
+        fs::write(
+            root.join(OPENCODE_MANIFEST),
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn copy_opencode_bundle_installs_managed_files() {
+        let source = unique_dir("opencode-source");
+        let home = unique_dir("opencode-home");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+
+        copy_opencode_bundle(&source, &home).unwrap();
+
+        let installed = opencode_plugins_dir(&home);
+        let support_dir = opencode_support_dir(&home);
+        assert_eq!(
+            fs::read_to_string(installed.join(OPENCODE_PLUGIN_JS)).unwrap(),
+            OPENCODE_PLUGIN_JS_CONTENT
+        );
+        assert_eq!(
+            fs::read_to_string(support_dir.join(OPENCODE_BRIDGE_PS1)).unwrap(),
+            "bridge"
+        );
+        assert!(support_dir.join(OPENCODE_MANIFEST).is_file());
+    }
+
+    #[test]
+    fn opencode_plugins_dir_honors_xdg_config_home() {
+        let home = Path::new(r"C:\Users\example");
+        let xdg = Path::new(r"D:\config");
+
+        assert_eq!(
+            opencode_plugins_dir_from(home, Some(xdg)),
+            xdg.join("opencode").join("plugins")
+        );
+        assert_eq!(
+            opencode_plugins_dir_from(home, None),
+            home.join(".config").join("opencode").join("plugins")
+        );
+    }
+
+    #[test]
+    fn copy_opencode_bundle_preserves_non_managed_collision() {
+        let source = unique_dir("opencode-collision-source");
+        let home = unique_dir("opencode-collision-home");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        let installed = opencode_plugins_dir(&home);
+        fs::create_dir_all(&installed).unwrap();
+        fs::write(installed.join(OPENCODE_PLUGIN_JS), "user plugin").unwrap();
+
+        let error = copy_opencode_bundle(&source, &home).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            fs::read_to_string(installed.join(OPENCODE_PLUGIN_JS)).unwrap(),
+            "user plugin"
+        );
+        assert!(!opencode_support_dir(&home).exists());
+    }
+
+    #[test]
+    fn copy_opencode_bundle_rejects_non_file_plugin_collision() {
+        let source = unique_dir("opencode-directory-collision-source");
+        let home = unique_dir("opencode-directory-collision-home");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        let installed_js = opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS);
+        fs::create_dir_all(&installed_js).unwrap();
+
+        let error = copy_opencode_bundle(&source, &home).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(error.to_string().contains("not a regular managed file"));
+        assert!(installed_js.is_dir());
+        assert!(!opencode_support_dir(&home).exists());
+    }
+
+    #[test]
+    fn copy_opencode_bundle_preserves_non_managed_support_directory() {
+        let source = unique_dir("opencode-support-collision-source");
+        let home = unique_dir("opencode-support-collision-home");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        let support_dir = opencode_support_dir(&home);
+        fs::create_dir_all(&support_dir).unwrap();
+        fs::write(support_dir.join("user.txt"), "keep").unwrap();
+
+        let error = copy_opencode_bundle(&source, &home).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            fs::read_to_string(support_dir.join("user.txt")).unwrap(),
+            "keep"
+        );
+        assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+    }
+
+    #[test]
+    fn copy_opencode_bundle_rolls_back_partial_first_install() {
+        let source = unique_dir("opencode-partial-source");
+        let home = unique_dir("opencode-partial-home");
+        fs::write(source.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
+        fs::write(
+            source.join(OPENCODE_MANIFEST),
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
+        )
+        .unwrap();
+
+        assert!(copy_opencode_bundle(&source, &home).is_err());
+        assert!(!opencode_support_dir(&home).exists());
+        assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+
+        fs::write(source.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
+        copy_opencode_bundle(&source, &home).unwrap();
+        assert!(opencode_support_dir(&home).join(OPENCODE_MANIFEST).is_file());
+        assert!(opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).is_file());
+    }
+
+    #[test]
+    fn copy_opencode_bundle_repairs_managed_install_with_bad_manifest() {
+        let source = unique_dir("opencode-repair-source");
+        let home = unique_dir("opencode-repair-home");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        let installed = opencode_plugins_dir(&home);
+        let support = opencode_support_dir(&home);
+        fs::create_dir_all(&support).unwrap();
+        fs::write(installed.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
+        fs::write(support.join(OPENCODE_MANIFEST), "incomplete").unwrap();
+
+        copy_opencode_bundle(&source, &home).unwrap();
+
+        assert_eq!(
+            read_version_field(&support.join(OPENCODE_MANIFEST)),
+            Some("0.1.3".parse().unwrap())
+        );
+        assert_eq!(
+            fs::read_to_string(support.join(OPENCODE_BRIDGE_PS1)).unwrap(),
+            "bridge"
+        );
+    }
+
+    #[test]
+    fn opencode_status_requires_complete_managed_install() {
+        let home = unique_dir("opencode-status");
+        let installed = opencode_plugins_dir(&home);
+        fs::create_dir_all(&installed).unwrap();
+        fs::write(
+            installed.join(OPENCODE_PLUGIN_JS),
+            OPENCODE_PLUGIN_JS_CONTENT,
+        )
+        .unwrap();
+
+        let partial = opencode_status(true, Some("opencode.exe".into()), Some(&home));
+        assert!(partial.marketplace_registered);
+        assert!(!partial.marketplace_path_valid);
+        assert!(!partial.plugin_installed);
+
+        let support_dir = opencode_support_dir(&home);
+        fs::create_dir_all(&support_dir).unwrap();
+        fs::write(support_dir.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
+        fs::write(
+            support_dir.join(OPENCODE_MANIFEST),
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
+        )
+        .unwrap();
+        let complete = opencode_status(true, Some("opencode.exe".into()), Some(&home));
+        assert!(complete.marketplace_path_valid);
+        assert!(complete.plugin_installed);
+        assert!(complete.plugin_enabled);
+
+        fs::remove_file(installed.join(OPENCODE_PLUGIN_JS)).unwrap();
+        let support_only = opencode_status(true, Some("opencode.exe".into()), Some(&home));
+        assert!(support_only.marketplace_registered);
+        assert!(!support_only.marketplace_path_valid);
+        assert!(!support_only.plugin_installed);
+    }
+
+    #[test]
+    fn opencode_same_name_manifest_without_marker_is_not_managed() {
+        let home = unique_dir("opencode-unmanaged-manifest");
+        let support = opencode_support_dir(&home);
+        fs::create_dir_all(&support).unwrap();
+        fs::write(
+            support.join(OPENCODE_MANIFEST),
+            r#"{"name":"wt-agent-hooks","version":"9.9.9"}"#,
+        )
+        .unwrap();
+
+        let status = opencode_status(true, Some("opencode.exe".into()), Some(&home));
+        assert!(!status.marketplace_registered);
+        assert!(!status.plugin_installed);
+        assert!(read_installed_opencode(&home).unwrap().is_none());
+
+        let uninstall = opencode_uninstall(Some(&home));
+        assert_eq!(uninstall.plugin_uninstalled, Some(false));
+        assert!(support.join(OPENCODE_MANIFEST).is_file());
+    }
+
+    #[test]
+    fn opencode_uninstall_removes_only_managed_files() {
+        let managed_home = unique_dir("opencode-uninstall-managed");
+        let managed_dir = opencode_plugins_dir(&managed_home);
+        let source = unique_dir("opencode-uninstall-source");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        copy_opencode_bundle(&source, &managed_home).unwrap();
+        let support_dir = opencode_support_dir(&managed_home);
+        fs::write(support_dir.join("user.txt"), "keep").unwrap();
+
+        let result = opencode_uninstall(Some(&managed_home));
+        assert_eq!(result.plugin_uninstalled, Some(true));
+        assert!(!managed_dir.join(OPENCODE_PLUGIN_JS).exists());
+        assert_eq!(
+            fs::read_to_string(support_dir.join("user.txt")).unwrap(),
+            "keep"
+        );
+
+        let user_home = unique_dir("opencode-uninstall-user");
+        let user_dir = opencode_plugins_dir(&user_home);
+        fs::create_dir_all(&user_dir).unwrap();
+        fs::write(user_dir.join(OPENCODE_PLUGIN_JS), "user plugin").unwrap();
+
+        let result = opencode_uninstall(Some(&user_home));
+        assert_eq!(result.plugin_uninstalled, Some(false));
+        assert_eq!(
+            fs::read_to_string(user_dir.join(OPENCODE_PLUGIN_JS)).unwrap(),
+            "user plugin"
+        );
+    }
+
+    #[test]
+    fn opencode_uninstall_retry_removes_orphaned_managed_support_files() {
+        let home = unique_dir("opencode-uninstall-retry");
+        let support = opencode_support_dir(&home);
+        fs::create_dir_all(&support).unwrap();
+        fs::write(support.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
+        fs::write(
+            support.join(OPENCODE_MANIFEST),
+            r#"{"name":"wt-agent-hooks","version":"0.1.3","managed_by":"Intelligent Terminal: wt-agent-hooks"}"#,
+        )
+        .unwrap();
+
+        let result = opencode_uninstall(Some(&home));
+
+        assert!(result.succeeded());
+        assert_eq!(result.plugin_uninstalled, Some(true));
+        assert!(!support.exists());
+    }
+
+    #[test]
+    fn opencode_uninstall_preserves_ownership_markers_after_bridge_failure() {
+        let home = unique_dir("opencode-uninstall-failure");
+        let source = unique_dir("opencode-uninstall-failure-source");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        copy_opencode_bundle(&source, &home).unwrap();
+        let plugins = opencode_plugins_dir(&home);
+        let support = opencode_support_dir(&home);
+        fs::remove_file(support.join(OPENCODE_BRIDGE_PS1)).unwrap();
+        fs::create_dir(support.join(OPENCODE_BRIDGE_PS1)).unwrap();
+
+        let failed = opencode_uninstall(Some(&home));
+
+        assert!(!failed.succeeded());
+        assert!(plugins.join(OPENCODE_PLUGIN_JS).is_file());
+        assert!(support.join(OPENCODE_MANIFEST).is_file());
+
+        fs::remove_dir(support.join(OPENCODE_BRIDGE_PS1)).unwrap();
+        let retried = opencode_uninstall(Some(&home));
+        assert!(retried.succeeded());
+        assert!(!plugins.join(OPENCODE_PLUGIN_JS).exists());
+        assert!(!support.join(OPENCODE_MANIFEST).exists());
+    }
+
+    #[test]
+    fn read_installed_opencode_uses_managed_manifest_version() {
+        let home = unique_dir("opencode-installed");
+        let installed = opencode_plugins_dir(&home);
+        let source = unique_dir("opencode-installed-source");
+        write_opencode_test_bundle(&source, OPENCODE_PLUGIN_JS_CONTENT);
+        copy_opencode_bundle(&source, &home).unwrap();
+
+        let info = read_installed_opencode(&home)
+            .expect("probe succeeds")
+            .expect("managed plugin is installed");
+        assert_eq!(info.version, Some("0.1.3".parse().unwrap()));
+        assert!(info.enabled);
+
+        fs::remove_file(installed.join(OPENCODE_PLUGIN_JS)).unwrap();
+        let support_only = read_installed_opencode(&home)
+            .expect("probe succeeds")
+            .expect("managed support manifest is repairable");
+        assert_eq!(support_only.version, None);
+
+        fs::remove_file(opencode_support_dir(&home).join(OPENCODE_MANIFEST)).unwrap();
+        fs::write(installed.join(OPENCODE_PLUGIN_JS), "user plugin").unwrap();
+        assert!(read_installed_opencode(&home).unwrap().is_none());
+    }
+
     /// Uninstall must sweep the active `hook-bundle-staging\claude\`
     /// directory in addition to the historical staging dirs, so a clean
     /// uninstall doesn't leave the MSIX workaround copy behind.
@@ -4033,8 +4789,15 @@ mod tests {
         include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/send-event.ps1");
     const COPILOT_SEND_EVENT_PS1: &str =
         include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/send-event.ps1");
+    const CODEX_SEND_EVENT_PS1: &str =
+        include_str!("../wt-agent-hooks/codex/wt-agent-hooks/hooks/send-event.ps1");
     const GEMINI_SEND_EVENT_PS1: &str =
         include_str!("../wt-agent-hooks/gemini-extension/hooks/send-event.ps1");
+    const OPENCODE_SEND_EVENT_PS1: &str = include_str!("../wt-agent-hooks/opencode/send-event.ps1");
+    const OPENCODE_PLUGIN_JS_CONTENT: &str =
+        include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
+    const OPENCODE_PLUGIN_JSON: &str =
+        include_str!("../wt-agent-hooks/opencode/plugin.json");
 
     /// `hooks.json` files must reference `${CLAUDE_PLUGIN_ROOT}` (Claude/
     /// Copilot) or `${extensionPath}` (Gemini), and `send-event.ps1` must
@@ -4077,12 +4840,11 @@ mod tests {
             "StopFailure",
             "Stop",
         ];
-        const COPILOT_EXTRA_EVENTS: &[&str] = &[
-            "PreToolUse",
-            "PostToolUse",
-            "PostToolUseFailure",
-        ];
-        for (label, hooks) in [("claude", CLAUDE_HOOKS_JSON), ("copilot", COPILOT_HOOKS_JSON)] {
+        const COPILOT_EXTRA_EVENTS: &[&str] = &["PreToolUse", "PostToolUse", "PostToolUseFailure"];
+        for (label, hooks) in [
+            ("claude", CLAUDE_HOOKS_JSON),
+            ("copilot", COPILOT_HOOKS_JSON),
+        ] {
             for event in COMMON_EVENTS {
                 assert!(
                     hooks.contains(&format!("\"{event}\":")),
@@ -4159,12 +4921,43 @@ mod tests {
         );
     }
 
-    /// `send-event.ps1` is single-source-of-truth across all three CLIs.
-    /// (Claude/Copilot byte-equality is covered above; this also pins
-    /// Gemini to the same content.)
+    /// `send-event.ps1` is single-source-of-truth across all supported CLIs.
+    /// (Claude/Copilot byte-equality is covered above; this also pins Codex,
+    /// Gemini, and OpenCode to the same content.)
     #[test]
-    fn all_three_cli_send_event_scripts_are_identical() {
+    fn all_cli_send_event_scripts_are_identical() {
+        assert_eq!(CLAUDE_SEND_EVENT_PS1, CODEX_SEND_EVENT_PS1);
         assert_eq!(CLAUDE_SEND_EVENT_PS1, GEMINI_SEND_EVENT_PS1);
+        assert_eq!(CLAUDE_SEND_EVENT_PS1, OPENCODE_SEND_EVENT_PS1);
+    }
+
+    #[test]
+    fn opencode_plugin_has_runtime_guards_and_source_tag() {
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains(OPENCODE_MANAGED_MARKER));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.WT_COM_CLSID"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.WT_SESSION"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("process.env.OPENCODE_CLIENT"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"acp\""));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("new TextEncoder().encode"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("\"opencode\""));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("agent.session.start"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("value.data?.message"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("if (!sessionID) return"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("info.title !== previous.title"));
+        assert!(OPENCODE_PLUGIN_JS_CONTENT.contains("rootSessions.get(sessionID).cwd"));
+    }
+
+    #[test]
+    fn opencode_manifest_has_explicit_ownership_marker() {
+        let manifest: Value = serde_json::from_str(OPENCODE_PLUGIN_JSON).unwrap();
+        assert_eq!(
+            manifest.get("name").and_then(Value::as_str),
+            Some(PLUGIN_NAME)
+        );
+        assert_eq!(
+            manifest.get("managed_by").and_then(Value::as_str),
+            Some(OPENCODE_MANIFEST_MANAGED_BY)
+        );
     }
 
     /// `marketplace.json` must declare the `wt-local` marketplace name and
@@ -4172,7 +4965,10 @@ mod tests {
     #[test]
     fn marketplace_json_shape() {
         let v: Value = serde_json::from_str(CLAUDE_MARKETPLACE_JSON).unwrap();
-        assert_eq!(v.get("name").and_then(|x| x.as_str()), Some(MARKETPLACE_NAME));
+        assert_eq!(
+            v.get("name").and_then(|x| x.as_str()),
+            Some(MARKETPLACE_NAME)
+        );
         let plugins = v.get("plugins").and_then(|x| x.as_array()).unwrap();
         assert_eq!(plugins.len(), 1);
         assert_eq!(
@@ -4234,10 +5030,7 @@ mod tests {
             .and_then(|v| v.as_array())
             .unwrap();
         assert_eq!(arr.len(), 1);
-        let cmd = arr[0]
-            .get("hooks")
-            .and_then(|h| h.as_array())
-            .unwrap()[0]
+        let cmd = arr[0].get("hooks").and_then(|h| h.as_array()).unwrap()[0]
             .get("command")
             .and_then(|c| c.as_str())
             .unwrap();
@@ -4399,8 +5192,9 @@ mod tests {
         }));
         fs::write(&path, serde_json::to_string_pretty(&before).unwrap()).unwrap();
 
-        let expected =
-            PathBuf::from("C:\\repo\\.worktree\\track-copilot-cleanup\\wta\\wt-agent-hooks\\copilot");
+        let expected = PathBuf::from(
+            "C:\\repo\\.worktree\\track-copilot-cleanup\\wta\\wt-agent-hooks\\copilot",
+        );
         cleanup_stale_copilot_marketplace(&path, &expected).unwrap();
 
         let after: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -4610,7 +5404,8 @@ Registered marketplaces:
     /// Real `gemini extensions list -o json` output (Gemini 0.41.2).
     #[test]
     fn gemini_extensions_list_json_parser_extracts_active_flag() {
-        let stdout = r#"[{"name":"wt-agent-hooks","version":"0.1.0","isActive":true,"path":"..."}]"#;
+        let stdout =
+            r#"[{"name":"wt-agent-hooks","version":"0.1.0","isActive":true,"path":"..."}]"#;
         let p = parse_gemini_extensions_list_json(stdout).expect("parses");
         assert!(p.installed);
         assert!(p.enabled);
@@ -4899,7 +5694,10 @@ Registered marketplaces:
             "path": dir.display().to_string(),
         });
         let info = classify_marketplace_source(Some(&v));
-        assert_eq!(info.path.as_deref(), Some(dir.display().to_string().as_str()));
+        assert_eq!(
+            info.path.as_deref(),
+            Some(dir.display().to_string().as_str())
+        );
         assert!(info.valid);
     }
 
@@ -5216,6 +6014,15 @@ Registered marketplaces:
     }
 
     #[test]
+    fn cli_kind_opencode_roundtrips() {
+        assert_eq!(CliKind::from_name("opencode"), Some(CliKind::OpenCode));
+        assert_eq!(CliKind::from_name("OPENCODE"), Some(CliKind::OpenCode));
+        assert_eq!(CliKind::OpenCode.name(), "opencode");
+        assert_eq!(CliKind::OpenCode.dir_name(), "opencode");
+        assert!(CliKind::ALL.contains(&CliKind::OpenCode));
+    }
+
+    #[test]
     fn bundle_resolves_codex_dir_in_dev_tree() {
         // Dev-tree lookup walks up from CARGO_MANIFEST_DIR to find
         // tools/wta/wt-agent-hooks/<dir_name>/. Task 2 puts a real
@@ -5238,9 +6045,23 @@ Registered marketplaces:
     #[test]
     fn version_parse_accepts_plain_semver() {
         let v: Version = "0.1.1".parse().unwrap();
-        assert_eq!(v, Version { major: 0, minor: 1, patch: 1 });
+        assert_eq!(
+            v,
+            Version {
+                major: 0,
+                minor: 1,
+                patch: 1
+            }
+        );
         let v: Version = "1.10.2".parse().unwrap();
-        assert_eq!(v, Version { major: 1, minor: 10, patch: 2 });
+        assert_eq!(
+            v,
+            Version {
+                major: 1,
+                minor: 10,
+                patch: 2
+            }
+        );
     }
 
     #[test]
@@ -5287,10 +6108,7 @@ Registered marketplaces:
             r#"{"name":"wt-agent-hooks","version":"0.1.1","other":"ignored"}"#,
         )
         .unwrap();
-        assert_eq!(
-            read_version_field(&path),
-            Some("0.1.1".parse().unwrap())
-        );
+        assert_eq!(read_version_field(&path), Some("0.1.1".parse().unwrap()));
     }
 
     #[test]
@@ -5332,7 +6150,10 @@ Registered marketplaces:
     fn codex_fs_fallback_detects_install_dirs() {
         let tmp_root = unique_dir("codex_fs_fallback");
         let codex_dir = tmp_root.join(".codex");
-        let cache_root = codex_dir.join("plugins").join("cache").join(MARKETPLACE_NAME);
+        let cache_root = codex_dir
+            .join("plugins")
+            .join("cache")
+            .join(MARKETPLACE_NAME);
         let plugin_dir = cache_root.join(PLUGIN_NAME).join("0.1.0");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 
@@ -5537,7 +6358,7 @@ Registered marketplaces:
         )
         .unwrap();
 
-        let info = read_installed_copilot(&home).unwrap();
+        let info = read_installed_copilot(&home).unwrap().unwrap();
         // Must pick the wt-local entry, not the other marketplace's
         assert_eq!(info.version, Some("0.1.0".parse().unwrap()));
         assert!(info.enabled);
@@ -5558,7 +6379,7 @@ Registered marketplaces:
 }"#,
         )
         .unwrap();
-        let info = read_installed_copilot(&home).unwrap();
+        let info = read_installed_copilot(&home).unwrap().unwrap();
         assert!(!info.enabled);
     }
 
@@ -5568,7 +6389,7 @@ Registered marketplaces:
         let cfg_dir = home.join(".copilot");
         fs::create_dir_all(&cfg_dir).unwrap();
         fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
-        assert!(read_installed_copilot(&home).is_none());
+        assert!(read_installed_copilot(&home).unwrap().is_none());
     }
 
     // ---- auto-upgrade: read_installed_gemini ---------------------------
@@ -5594,7 +6415,7 @@ Registered marketplaces:
         )
         .unwrap();
 
-        let info = read_installed_gemini(&home).unwrap();
+        let info = read_installed_gemini(&home).unwrap().unwrap();
         assert_eq!(info.version, Some("0.1.0".parse().unwrap()));
         assert_eq!(info.gemini_type.as_deref(), Some("local"));
         assert_eq!(info.gemini_source.as_deref(), Some(bundle_src.as_path()));
@@ -5603,7 +6424,7 @@ Registered marketplaces:
     #[test]
     fn read_installed_gemini_returns_none_when_no_manifest() {
         let home = unique_dir("gemini-empty");
-        assert!(read_installed_gemini(&home).is_none());
+        assert!(read_installed_gemini(&home).unwrap().is_none());
     }
 
     #[test]
@@ -5617,7 +6438,7 @@ Registered marketplaces:
         )
         .unwrap();
 
-        let info = read_installed_gemini(&home).unwrap();
+        let info = read_installed_gemini(&home).unwrap().unwrap();
         assert_eq!(info.version, Some("0.1.0".parse().unwrap()));
         assert!(info.gemini_source.is_none());
         assert!(info.gemini_type.is_none());
@@ -5636,12 +6457,7 @@ Registered marketplaces:
 
     #[test]
     fn decide_skip_when_not_installed() {
-        let a = decide_upgrade(
-            CliKind::Copilot,
-            Some("0.1.1".parse().unwrap()),
-            None,
-            None,
-        );
+        let a = decide_upgrade(CliKind::Copilot, Some("0.1.1".parse().unwrap()), None, None);
         assert_eq!(a, UpgradeAction::Skip(SkipReason::NotInstalled));
     }
 
@@ -5706,12 +6522,7 @@ Registered marketplaces:
     fn decide_copilot_and_claude_upgrade_via_update_plugin() {
         let info = installed("0.1.0", true);
         for cli in [CliKind::Copilot, CliKind::Claude] {
-            let a = decide_upgrade(
-                cli,
-                Some("0.1.1".parse().unwrap()),
-                Some(&info),
-                None,
-            );
+            let a = decide_upgrade(cli, Some("0.1.1".parse().unwrap()), Some(&info), None);
             assert_eq!(a, UpgradeAction::UpdatePlugin, "cli={cli:?}");
         }
     }
@@ -5728,6 +6539,35 @@ Registered marketplaces:
             None,
         );
         assert_eq!(a, UpgradeAction::CodexReinstall);
+    }
+
+    #[test]
+    fn decide_opencode_upgrade_via_managed_copy() {
+        let info = installed("0.1.0", true);
+        let action = decide_upgrade(
+            CliKind::OpenCode,
+            Some("0.1.3".parse().unwrap()),
+            Some(&info),
+            None,
+        );
+        assert_eq!(action, UpgradeAction::OpenCodeCopy);
+    }
+
+    #[test]
+    fn decide_opencode_repairs_unknown_installed_version() {
+        let info = InstalledInfo {
+            version: None,
+            enabled: true,
+            gemini_source: None,
+            gemini_type: None,
+        };
+        let action = decide_upgrade(
+            CliKind::OpenCode,
+            Some("0.1.3".parse().unwrap()),
+            Some(&info),
+            None,
+        );
+        assert_eq!(action, UpgradeAction::OpenCodeCopy);
     }
 
     #[test]
@@ -5756,12 +6596,7 @@ Registered marketplaces:
 
     #[test]
     fn decide_codex_skip_when_not_installed() {
-        let a = decide_upgrade(
-            CliKind::Codex,
-            Some("0.1.1".parse().unwrap()),
-            None,
-            None,
-        );
+        let a = decide_upgrade(CliKind::Codex, Some("0.1.1".parse().unwrap()), None, None);
         assert_eq!(a, UpgradeAction::Skip(SkipReason::NotInstalled));
     }
 
@@ -5847,6 +6682,42 @@ Registered marketplaces:
     }
 
     #[test]
+    fn failed_upgrade_does_not_advance_cached_version() {
+        let mut state = UpgradeState::default();
+        state.set(CliKind::OpenCode, Some("0.1.2".into()));
+
+        let changed =
+            state.record_completed(CliKind::OpenCode, Some("0.1.3".into()), false);
+
+        assert!(!changed);
+        assert_eq!(state.get(CliKind::OpenCode), Some("0.1.2"));
+    }
+
+    #[test]
+    fn uninstall_report_detects_explicit_failures() {
+        let success = CliUninstallResult {
+            name: "opencode",
+            attempted: true,
+            plugin_uninstalled: Some(true),
+            marketplace_removed: None,
+            staging_dir_removed: true,
+            messages: Vec::new(),
+        };
+        let mut report = UninstallReport {
+            schema_version: UNINSTALL_SCHEMA_VERSION,
+            clis: vec![success.clone()],
+        };
+        assert!(report.succeeded());
+
+        report.clis[0].plugin_uninstalled = Some(false);
+        assert!(!report.succeeded());
+
+        report.clis[0] = success;
+        report.clis[0].staging_dir_removed = false;
+        assert!(!report.succeeded());
+    }
+
+    #[test]
     fn upgrade_state_load_returns_default_on_missing_or_bad_file() {
         let dir = unique_dir("upgrade-state-bad");
         fs::create_dir_all(&dir).unwrap();
@@ -5903,8 +6774,7 @@ Registered marketplaces:
         let expected = unique_dir("claude-fresh-bundle");
         cleanup_stale_claude_marketplace(&path, &expected).unwrap();
 
-        let rewritten: Value =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let rewritten: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         let entry = rewritten.get(MARKETPLACE_NAME).unwrap();
         assert_eq!(
             entry["source"]["path"].as_str().unwrap(),

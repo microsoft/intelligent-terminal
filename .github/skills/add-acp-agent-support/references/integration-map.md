@@ -19,6 +19,7 @@ Record these facts before implementation:
 | ACP model selection | ACP model API and/or server-start flags |
 | Delegate command | Interactive initial-prompt syntax, model syntax, and argument order |
 | Resume/new session | Exact flag/subcommand and identifier semantics, or unsupported |
+| Session hooks | Official hook/plugin API, lifecycle events, install location, ACP-mode suppression, or unsupported |
 | Installation | Official package ID/command and documentation URL |
 | Branding | Official SVG source and license/usage terms |
 | Known limitations | Hooks, history, WSL, models, auth refresh, or delegate omissions |
@@ -107,6 +108,28 @@ authentication, model selection, and probing for agent-specific assumptions.
 Do not add protocol special cases when profile metadata or ACP capabilities can
 drive the behavior.
 
+### Session hooks and history
+
+Implement hooks only when the CLI exposes a documented hook or plugin API that
+can observe normal interactive sessions. Inventory the complete lifecycle:
+
+- bundle files under `tools/wta/wt-agent-hooks/<agent>`;
+- canonical CLI filtering for `wta hooks install/status/uninstall`;
+- startup auto-upgrade and its per-bundle version cache;
+- ownership markers, partial-install recovery, and user-file protection;
+- session, prompt, tool, notification, error, idle, and end event mappings;
+- child/subagent filtering when internal sessions should not become rows;
+- an ACP-mode guard so the shared agent-pane process does not emit duplicate
+  hook-backed sessions;
+- UTF-8 payload handling through every process boundary.
+
+Follow the current implementations in `agent_hooks_installer.rs`,
+`wt-agent-hooks`, and the session registry rather than assuming every CLI has a
+marketplace. Some CLIs require a command-driven plugin install, while others
+require a managed copy into a global plugin directory. Install ownership
+metadata last so it proves a complete install, and remove it last so failed
+cleanup remains retryable.
+
 ## Terminal (C++/XAML)
 
 ### `src/cascadia/inc/AgentRegistry.h`
@@ -141,6 +164,12 @@ Search these areas for explicit current-agent lists:
 
 Keep custom commands classified as `custom`; never emit a path or arbitrary
 command as a telemetry provider ID.
+
+When hooks are supported, also update the first-run scoped hook install and the
+Settings hook status/remove surface. Keep the WTA JSON status schema and the C++
+parser synchronized. A detected CLI with no hooks should have an intentional
+UI state, and an install left on disk after the CLI is removed must remain
+removable.
 
 ### Branding
 
@@ -178,6 +207,7 @@ rg 'BuiltinAcpAgents|BuiltinDelegateAgents' src\cascadia
 rg 'copilot|claude|codex|gemini' tools\wta\src src\cascadia policies README.md doc\faq.md
 rg 'sanitizeProviderId|probe-models|build_login_cmd|delegate_prompt' tools\wta\src src\cascadia
 rg 'enum CliSource|known_cli_id|SessionHookCliSource|clis_to_scan' tools\wta\src
+rg 'hooks install|hooks status|hooks uninstall|agent_hooks_installer|wt-agent-hooks' tools\wta src\cascadia
 rg 'AgentLogoKind|AgentName_' src\cascadia
 rg 'AllowedAgents|built-in AI agents' policies
 ```

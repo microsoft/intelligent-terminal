@@ -46,13 +46,13 @@ use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    cursor::SetCursorStyle,
+    cursor::{SetCursorStyle, Show},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
 use serde_json::json;
-use std::io;
+use std::io::{self, Write};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -651,6 +651,8 @@ enum HooksCliFilter {
     Claude,
     Gemini,
     Codex,
+    #[value(name = "opencode")]
+    OpenCode,
 }
 
 impl HooksCliFilter {
@@ -662,6 +664,7 @@ impl HooksCliFilter {
             HooksCliFilter::Claude => CliScope::One(CliKind::Claude),
             HooksCliFilter::Gemini => CliScope::One(CliKind::Gemini),
             HooksCliFilter::Codex => CliScope::One(CliKind::Codex),
+            HooksCliFilter::OpenCode => CliScope::One(CliKind::OpenCode),
         }
     }
 }
@@ -1354,7 +1357,11 @@ fn run_hooks_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     } else {
         format_hooks_uninstall_human(&report);
     }
-    Ok(())
+    if report.succeeded() {
+        Ok(())
+    } else {
+        anyhow::bail!("one or more hook uninstall steps failed")
+    }
 }
 
 fn format_hooks_status_human(r: &agent_hooks_installer::StatusReport) {
@@ -2667,6 +2674,40 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
     None
 }
 
+struct TuiRestoreGuard {
+    armed: bool,
+}
+
+impl TuiRestoreGuard {
+    fn new() -> Self {
+        Self { armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TuiRestoreGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        // Agent panes start with alternate-scroll enabled, so restore that known state.
+        let _ = write!(stdout, "\x1b[?1007h");
+        let _ = stdout.flush();
+        let _ = execute!(
+            stdout,
+            SetCursorStyle::DefaultUserShape,
+            LeaveAlternateScreen,
+            Show
+        );
+    }
+}
+
 async fn run_acp_tui_mode(
     cli: Cli,
     shell_mgr: Arc<ShellManager>,
@@ -2678,15 +2719,14 @@ async fn run_acp_tui_mode(
     connect_master_pipe: String,
 ) -> Result<()> {
     enable_raw_mode()?;
+    let mut restore_guard = TuiRestoreGuard::new();
     let mut stdout = io::stdout();
-    // NOTE: We intentionally do NOT call EnableMouseCapture. Without mouse
-    // tracking, the host terminal emulator (Windows Terminal, xterm, kitty,
-    // alacritty, wezterm) translates mouse-wheel events into Up/Down arrow
-    // keystrokes while we are in the alternate screen buffer. That gives us
-    // wheel-driven chat scrolling for free, and — crucially — leaves native
-    // click-drag text selection working so users can highlight and copy
-    // from the agent pane the way they would from any other terminal.
+    // Keep mouse capture off so native click-drag selection continues to work.
+    // Disable xterm alternate-scroll mode while the TUI is active so wheel
+    // events are not translated into the Up/Down keys used by input history.
     execute!(stdout, EnterAlternateScreen)?;
+    write!(stdout, "\x1b[?1007l")?;
+    stdout.flush()?;
     // Deliberately do NOT emit `OSC 11` to force a background color: the pane
     // must inherit the profile's color scheme background so it tracks the
     // user's theme like any other pane (#234). Cells render on the terminal's
@@ -2711,12 +2751,16 @@ async fn run_acp_tui_mode(
     .await;
 
     disable_raw_mode()?;
+    // WT does not implement xterm private-mode save/restore (`?1007s`/`?1007r`).
+    // Agent panes start with alternate-scroll enabled, so restore that known state.
+    write!(terminal.backend_mut(), "\x1b[?1007h")?;
     execute!(
         terminal.backend_mut(),
         SetCursorStyle::DefaultUserShape,
         LeaveAlternateScreen
     )?;
     terminal.show_cursor()?;
+    restore_guard.disarm();
 
     if let Err(e) = result {
         // This is the real exit point for a TUI/helper failure (connection

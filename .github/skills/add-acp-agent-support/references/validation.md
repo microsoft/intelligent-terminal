@@ -15,7 +15,10 @@ binary and the live logs prove the intended agent command and ACP behavior.
 7. Confirm documentation does not claim unsupported hooks/history features.
 8. When session listing or resume is supported, confirm the canonical ID has a
    typed `CliSource` and survives helper/master wire round-trips.
-9. Inspect `git diff --check` and the full diff for unrelated changes. Account
+9. When hooks are supported, confirm the packaged bundle, CLI filter,
+   install/status/uninstall/upgrade paths, onboarding, Settings row, and
+   canonical hook `CliSource` all include the agent.
+10. Inspect `git diff --check` and the full diff for unrelated changes. Account
    for this repository's existing CRLF files before treating every reported
    line as newly introduced trailing whitespace.
 
@@ -30,6 +33,10 @@ Add or update tests for:
 - resume/new-session metadata when supported;
 - session source parsing, filtering, wire round-trips, labels, and exact resume
   dispatch when session management is supported;
+- hook bundle resolution, install/status/uninstall/upgrade, ownership
+  protection, partial-install repair, lifecycle event mapping, child-session
+  filtering, and ACP-mode suppression when hooks are supported;
+- Settings hook-status parsing and detected/not-installed visibility;
 - direct Windows delegate command shape;
 - PowerShell 7 and Windows PowerShell 5.1 delegate quoting;
 - WSL delegate quoting and multiline prompts;
@@ -122,6 +129,28 @@ If the delegate exits successfully and the tab disappears, the integration is
 probably using a one-shot command. Find the CLI's interactive initial-prompt
 form; do not suppress Terminal's normal close-on-success behavior as a
 workaround.
+
+## Session Hook Verification
+
+Run this section only when the agent has a bundled session hook/plugin.
+
+1. Install through onboarding or Settings, then confirm `wta hooks status
+   --json` reports the agent and the packaged bundle version.
+2. Restart the interactive CLI so its plugin loader sees the new files.
+3. Run the normal interactive CLI in a regular Terminal pane, submit a prompt
+   that executes a tool, and verify `/sessions` shows one row with the canonical
+   source, cwd, and title.
+4. Submit another prompt in the same session and verify it updates or rebinds
+   the existing row rather than creating a duplicate.
+5. Trigger permission/input, error, idle, and exit/delete paths that the CLI can
+   produce; confirm WTA receives the expected notification, stop, error, and
+   session-end events.
+6. Start the agent through the ACP pane and verify the hook is suppressed; the
+   ACP session must appear exactly once through normal helper/master tracking.
+7. Remove hooks from Settings, including after temporarily removing the CLI
+   from `PATH`, and confirm only managed files are deleted.
+8. Inspect `hook-trace.log`, `wta-ensure-host.log`, and the master/helper logs in
+   the packaged versioned log directory for the complete event path.
 
 ## Policy Verification
 

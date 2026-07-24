@@ -796,19 +796,18 @@ mod tests {
     // ── is_reveal_catching_up ────────────────────────────────────────────────
 
     fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
-        crate::app::TabSession {
-            turn: crate::app::TurnState::Streaming {
-                prompt: crate::app::SubmittedPrompt {
-                    id: 1,
-                    text: "hi".into(),
-                    submitted_at_unix_s: 0.0,
-                    autofix: None,
-                },
-                buf: buf.to_string(),
+        let mut tab = crate::app::TabSession::default();
+        tab.turn = crate::app::TurnState::Streaming {
+            prompt: crate::app::SubmittedPrompt {
+                id: 1,
+                text: "hi".into(),
+                submitted_at_unix_s: 0.0,
+                autofix: None,
             },
-            reveal_chars,
-            ..Default::default()
-        }
+            buf: buf.to_string(),
+        };
+        tab.reveal_chars = reveal_chars;
+        tab
     }
 
     #[test]

@@ -142,7 +142,7 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-            </Grid>
+             </Grid>
 
             <!--  Model picker — shown for every selected agent (built-in
                   or custom) so a stale acpModel value is always visible
@@ -396,10 +396,9 @@
                                        Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
-                    <!--  Per-CLI Remove rows. Each is visible whenever the CLI
-                          has any hook state, so users can also clean up partial
-                          installs. Subtitle below the name surfaces the detail
-                          when state isn't fully clean.  -->
+                    <!--  Per-CLI rows surface installed or partial hook state.
+                          OpenCode also appears when its CLI is detected so new
+                          users can see that hook integration is supported.  -->
                     <Border Visibility="{x:Bind ViewModel.ShowCopilotHookRow, Mode=OneWay}"
                             BorderThickness="0,1,0,0"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -423,7 +422,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveCopilotHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -447,7 +446,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveClaudeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -471,7 +470,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveGeminiHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
                     </Border>
@@ -507,9 +506,33 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_HooksRemoveButton"
                                     Click="{x:Bind ViewModel.RemoveCodexHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
                                     MinWidth="120" />
                         </Grid>
+                    </Border>
+                    <Border Visibility="{x:Bind ViewModel.ShowOpenCodeHookRow, Mode=OneWay}"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Padding="0,16,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="OpenCode" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind ViewModel.OpenCodeHooksSubtitle, Mode=OneWay}"
+                                           Visibility="{x:Bind ViewModel.ShowOpenCodeHooksSubtitle, Mode=OneWay}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_HooksRemoveButton"
+                                    Click="{x:Bind ViewModel.RemoveOpenCodeHooks}"
+                                    IsEnabled="{x:Bind ViewModel.CanRemoveOpenCodeHooks, Mode=OneWay}"
+                                    MinWidth="120" />
+                       </Grid>
                     </Border>
                 </StackPanel>
             </local:SettingContainer>

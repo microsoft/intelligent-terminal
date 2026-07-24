@@ -132,20 +132,26 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsClaudeCliDetected { get; };
         Boolean IsGeminiCliDetected { get; };
         Boolean IsCodexCliDetected { get; };
+        Boolean IsOpenCodeCliDetected { get; };
         Boolean IsAnyAgentCliDetected { get; };
         Boolean ShowCopilotHookRow { get; };
         Boolean ShowClaudeHookRow { get; };
         Boolean ShowGeminiHookRow { get; };
         Boolean ShowCodexHookRow { get; };
+        Boolean ShowOpenCodeHookRow { get; };
         String CopilotHooksSubtitle { get; };
         String ClaudeHooksSubtitle { get; };
         String GeminiHooksSubtitle { get; };
         String CodexHooksSubtitle { get; };
+        String OpenCodeHooksSubtitle { get; };
         Boolean ShowCopilotHooksSubtitle { get; };
         Boolean ShowClaudeHooksSubtitle { get; };
         Boolean ShowGeminiHooksSubtitle { get; };
         Boolean ShowCodexHooksSubtitle { get; };
+        Boolean ShowOpenCodeHooksSubtitle { get; };
         Boolean CanInstallAgentHooks { get; };
+        Boolean CanRemoveAgentHooks { get; };
+        Boolean CanRemoveOpenCodeHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
         // True iff AgentHooksInstallSummary is non-empty — gates the
@@ -158,5 +164,6 @@ namespace Microsoft.Terminal.Settings.Editor
         void RemoveClaudeHooks();
         void RemoveGeminiHooks();
         void RemoveCodexHooks();
+        void RemoveOpenCodeHooks();
     }
 }

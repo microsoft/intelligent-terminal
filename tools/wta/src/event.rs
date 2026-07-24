@@ -11,8 +11,9 @@ use crate::app::AppEvent;
 /// Load-bearing branch: only `KeyEventKind::Press` becomes an `AppEvent::Key`
 /// — key *release* / *repeat* events (which conpty/Windows can deliver) must
 /// be dropped; otherwise every keystroke would fire twice. Paste, Mouse, and
-/// any other variant are dropped (we never enable mouse capture; the emulator
-/// translates wheel into arrow keys in alt-screen mode).
+/// any other variant are dropped. Mouse capture stays disabled so native text
+/// selection works; alternate-scroll is disabled while the TUI runs so wheel
+/// events are not translated into input-history arrows.
 fn map_crossterm_event(event: Event) -> Option<AppEvent> {
     match event {
         Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
@@ -103,10 +104,9 @@ pub async fn read_crossterm_events(tx: mpsc::UnboundedSender<AppEvent>) {
                 };
                 let app_event = match map_crossterm_event(event) {
                     Some(ev) => ev,
-                    // We do not enable mouse capture (see main.rs run_acp_tui_mode).
-                    // The terminal emulator translates wheel into Up/Down arrow
-                    // keystrokes in alt-screen mode, so we never observe raw
-                    // Event::Mouse here. Drop anything else (Paste, key release, etc.).
+                    // We do not enable mouse capture (see main.rs
+                    // run_acp_tui_mode). Drop mouse, paste, key release, and any
+                    // other event the TUI does not consume.
                     None => continue,
                 };
                 if let AppEvent::Key(key) = &app_event {
