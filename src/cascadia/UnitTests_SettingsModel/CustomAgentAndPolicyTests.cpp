@@ -26,6 +26,7 @@
 
 #include "../TerminalSettingsModel/GlobalAppSettings.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
+#include "../TerminalSettingsModel/AcpRuntimeState.h"
 #include "../inc/AgentPolicy.h"
 #include "JsonTestClass.h"
 
@@ -73,6 +74,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(BuiltInAcpAgentRoundtrips);
         TEST_METHOD(BuiltInDelegateAgentRoundtrips);
         TEST_METHOD(AcpAndDelegateModelRoundtrip);
+        TEST_METHOD(CustomModelProvidersRoundtrip);
+        TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
@@ -343,6 +346,83 @@ namespace SettingsModelUnitTests
         const auto settings = MakeSettings(R"("acpModel": "gpt-5", "delegateModel": "claude-4")");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"gpt-5" }, settings->GlobalSettings().AcpModel());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"claude-4" }, settings->GlobalSettings().DelegateModel());
+    }
+
+    void CustomAgentAndPolicyTests::CustomModelProvidersRoundtrip()
+    {
+        const auto settings = MakeSettings(
+            R"("customModelSelection": "custom:provider-openrouter:qwen/qwen3.5-9b", "customModelProviders": [{"id":"provider-openrouter","name":"OpenRouter","baseUrl":"https://openrouter.ai/api/v1","apiContract":"openai-compatible","location":"cloud","apiKeyCredential":"{11111111-1111-1111-1111-111111111111}","models":[{"id":"qwen/qwen3.5-9b","name":"Qwen 3.5 9B"},{"id":"deepseek/deepseek-v3","name":"DeepSeek V3"}]},{"id":"provider-ollama","baseUrl":"http://localhost:11434/v1","apiContract":"openai-compatible","location":"auto","models":[{"id":"qwen3.5:9b","name":"Qwen 3.5 9B"}]}])");
+        const auto& globals = settings->GlobalSettings();
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:provider-openrouter:qwen/qwen3.5-9b" }, globals.CustomModelSelection());
+        const auto providers = globals.CustomModelProviders();
+        VERIFY_ARE_EQUAL(2u, providers.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-openrouter" }, providers.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"https://openrouter.ai/api/v1" }, providers.GetAt(0).BaseUrl());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(0).ApiContract());
+        VERIFY_ARE_EQUAL(2u, providers.GetAt(0).Models().Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen/qwen3.5-9b" }, providers.GetAt(0).Models().GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-ollama" }, providers.GetAt(1).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"http://localhost:11434/v1" }, providers.GetAt(1).Name());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"auto" }, providers.GetAt(1).Location());
+        VERIFY_ARE_EQUAL(1u, providers.GetAt(1).Models().Size());
+
+        const auto copy = settings->Copy();
+        const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
+        copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
+    }
+
+    void CustomAgentAndPolicyTests::AcpRuntimeModelsAreScopedByAgent()
+    {
+        const auto state = AcpRuntimeState::Current();
+        auto copilotModels = winrt::single_threaded_vector<AcpModelInfo>();
+        copilotModels.Append(winrt::make<implementation::AcpModelInfo>(
+            L"custom:openrouter:deepseek",
+            L"deepseek (BYOK)",
+            L"OpenRouter"));
+        auto claudeModels = winrt::single_threaded_vector<AcpModelInfo>();
+        claudeModels.Append(winrt::make<implementation::AcpModelInfo>(
+            L"default",
+            L"Default",
+            L"Claude default"));
+
+        state.SetAvailableModels(L"custom:Test-Copilot", copilotModels.GetView(), L"custom:openrouter:deepseek");
+        state.SetAvailableModels(L"test-claude", claudeModels.GetView(), L"default");
+
+        const auto cachedCopilot = state.AvailableModels(L"custom:test-copilot");
+        const auto cachedClaude = state.AvailableModels(L"test-claude");
+        VERIFY_ARE_EQUAL(1u, cachedCopilot.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, cachedCopilot.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(1u, cachedClaude.Size());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, cachedClaude.GetAt(0).Id());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, state.CurrentModelId(L"CUSTOM:TEST-COPILOT"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"test-claude"));
+        VERIFY_ARE_EQUAL(0u, state.AvailableModels(L"test-missing").Size());
+
+        const auto staleRevision = state.Revision(L"custom:test-copilot");
+        state.SetAvailableModels(L"custom:test-copilot", claudeModels.GetView(), L"default");
+        VERIFY_IS_FALSE(state.TrySetAvailableModels(
+            L"custom:test-copilot",
+            staleRevision,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"default" }, state.CurrentModelId(L"custom:test-copilot"));
+
+        VERIFY_IS_FALSE(state.TrySetAvailableModels(
+            L"test-missing-write",
+            1,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(0ull, state.Revision(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, state.CurrentModelId(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(0u, state.AvailableModels(L"test-missing-write").Size());
+        VERIFY_IS_TRUE(state.TrySetAvailableModels(
+            L"test-missing-write",
+            0,
+            copilotModels.GetView(),
+            L"custom:openrouter:deepseek"));
+        VERIFY_ARE_EQUAL(1ull, state.Revision(L"test-missing-write"));
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:openrouter:deepseek" }, state.CurrentModelId(L"test-missing-write"));
     }
 
     void CustomAgentAndPolicyTests::AgentPanePositionRoundtripsAndDefaults()

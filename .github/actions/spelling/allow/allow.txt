@@ -13,6 +13,7 @@ azmcp
 bestpractices
 breadcrumb
 breadcrumbs
+byok
 caac
 CACHEDIR
 capturep
@@ -46,6 +47,7 @@ damerau
 dcs
 Dedented
 dedups
+deepseek
 demotable
 deselection
 desync
@@ -152,6 +154,7 @@ nullglob
 Nushell
 obra
 Oids
+ollama
 oobe
 ools
 openai
@@ -268,6 +271,7 @@ vcxprojs
 vendored
 vsdevcmd
 vte
+wcsicmp
 westus
 Wez
 wezterm

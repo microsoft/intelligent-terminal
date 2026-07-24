@@ -11,6 +11,7 @@ mod clipboard_image;
 mod command_recall;
 mod commands;
 mod coordinator;
+mod custom_model_provider;
 mod cwd_util;
 mod event;
 mod helper;
@@ -188,6 +189,14 @@ struct Cli {
     /// agents may use their own --model flag in `agent`.
     #[arg(long)]
     acp_model: Option<String>,
+    /// Model configured through an Intelligent Terminal custom provider.
+    /// Helper-only UI metadata; provider credentials remain master-only.
+    #[arg(long, hide = true)]
+    custom_model_selection: Option<String>,
+    /// All Intelligent Terminal custom-provider models available to `/model`.
+    /// JSON metadata only; provider credentials remain master-only.
+    #[arg(long, hide = true)]
+    custom_models: Option<String>,
 
     /// Delegate agent CLI command (e.g. "codex")
     #[arg(long)]
@@ -1163,7 +1172,8 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let rows = match local
         .run_until(async {
-            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(agent, None)?;
+            let mut spawned =
+                crate::protocol::acp::spawn::spawn_agent_process(agent, None, None)?;
             let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
             let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
             let result = crate::protocol::acp::session_list::fetch_session_list(
@@ -3363,6 +3373,17 @@ async fn run_acp_app(
                 cli.agent.clone(),
                 cli.acp_model.clone(),
             );
+            app_state.set_custom_model_selection(cli.custom_model_selection.clone());
+            if let Some(custom_models) = cli.custom_models.as_deref() {
+                match serde_json::from_str(custom_models) {
+                    Ok(models) => app_state.set_custom_models(models),
+                    Err(error) => tracing::error!(
+                        target: "custom_models",
+                        %error,
+                        "invalid --custom-models metadata"
+                    ),
+                }
+            }
             app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial

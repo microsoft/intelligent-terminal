@@ -37,6 +37,17 @@
 
 namespace winrt::TerminalApp::implementation
 {
+    namespace details
+    {
+        constexpr bool IsValidEnvironmentOverride(const std::wstring_view name, const std::wstring_view value) noexcept
+        {
+            return !name.empty() &&
+                   name.find(L'=') == std::wstring_view::npos &&
+                   name.find(L'\0') == std::wstring_view::npos &&
+                   value.find(L'\0') == std::wstring_view::npos;
+        }
+    }
+
     class SharedWta
     {
     public:
@@ -75,7 +86,8 @@ namespace winrt::TerminalApp::implementation
         /// When the count reaches zero the Job Object is closed,
         /// terminating wta and every descendant it spawned.
         bool AcquirePane(const std::wstring_view wtaPath,
-                         std::span<const std::wstring> extraArgs = {});
+                         std::span<const std::wstring> extraArgs = {},
+                         std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
         /// Release a previously acquired reference. Calling without a
         /// matching `AcquirePane` is a no-op (safe to call from
@@ -112,7 +124,8 @@ namespace winrt::TerminalApp::implementation
         /// successful respawn or no-op.
         bool Restart();
         bool Restart(const std::wstring_view wtaPath,
-                     std::span<const std::wstring> extraArgs);
+                     std::span<const std::wstring> extraArgs,
+                     std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
         /// Whether wta is currently spawned. Becomes false after a
         /// crash is observed by the wait callback, or after the last
@@ -160,7 +173,8 @@ namespace winrt::TerminalApp::implementation
 
         // All `*Locked` helpers assume the caller already holds `_mtx`.
         bool _SpawnLocked(const std::wstring_view wtaPath,
-                          std::span<const std::wstring> extraArgs);
+                          std::span<const std::wstring> extraArgs,
+                          std::span<const std::pair<std::wstring, std::wstring>> environment);
         void _CleanupLocked();
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
@@ -193,6 +207,7 @@ namespace winrt::TerminalApp::implementation
         // agent pane. Empty when no successful spawn has happened.
         std::wstring _cachedWtaPath;
         std::vector<std::wstring> _cachedExtraArgs;
+        std::vector<std::pair<std::wstring, std::wstring>> _cachedEnvironment;
         // Wall-clock-ish stamp of the most recent successful spawn.
         // Used by the no-arg `Restart()` to dedup the fan-out from
         // `_dispatchRestartAgentStackToPage`: every open window's

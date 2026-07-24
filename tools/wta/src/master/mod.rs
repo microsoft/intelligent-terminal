@@ -180,13 +180,13 @@ struct MasterStateInner {
     /// legacy resume path.
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
     /// The pool of agent CLI subprocesses master is multiplexing,
-    /// keyed by the agent command line (`AgentCmdKey`). Lazily
+    /// keyed by agent identity plus command line (`AgentCmdKey`). Lazily
     /// populated: a helper declares its agent *id* in the `initialize`
     /// handshake (`_meta.wta.agent_id`), the master reconstructs the
     /// command from that id (`agent_registry::build_acp_command`), and
     /// `get_or_spawn_agent` spawns the CLI on first use and reuses it for
-    /// every later helper that resolves to the same command line. The key
-    /// is always a master-derived command, never a string off the pipe.
+    /// every later helper that resolves to the same identity and command
+    /// line. The key is always master-derived, never a string off the pipe.
     /// This is what lets one tab run Gemini while another runs Claude in
     /// the same window.
     ///
@@ -323,12 +323,16 @@ struct MasterStateInner {
     wsl_seed_in_flight: std::sync::atomic::AtomicBool,
 }
 
-/// Canonical key for the agent-CLI pool: the full agent command line
-/// (e.g. `"copilot --acp --stdio"` or
-/// `"npx -y @agentclientprotocol/claude-agent-acp"`). Two tabs with the same
-/// command line share one CLI; different command lines get their own.
+/// Canonical key for the agent-CLI pool: authoritative agent identity plus
+/// full command line. Two tabs with the same identity and command share one
+/// CLI; custom and built-in agents never share merely because their commands
+/// happen to match.
 /// (Distinct from `agent_sessions::AgentKey`, which is a *session* id.)
 type AgentCmdKey = String;
+
+fn agent_cmd_key(agent_cmd: &str, agent_id: Option<&str>) -> AgentCmdKey {
+    format!("{:?}", (agent_id, agent_cmd))
+}
 
 /// One spawned agent CLI subprocess and everything a helper needs to
 /// talk to it. Shared (`Arc`) across every helper currently bound to
@@ -2142,7 +2146,7 @@ async fn get_or_spawn_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
 ) -> Result<Arc<AgentCli>> {
-    let key: AgentCmdKey = agent_cmd.to_string();
+    let key = agent_cmd_key(agent_cmd, agent_id);
     let cell = {
         let mut agents = state.agents.lock().await;
         Arc::clone(
@@ -2173,7 +2177,7 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
 ) -> Result<Arc<AgentCli>> {
-    let mut spawn_result = spawn_agent_process(agent_cmd, None)
+    let mut spawn_result = spawn_agent_process(agent_cmd, None, agent_id)
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
         target: "master",
@@ -3830,6 +3834,25 @@ mod tests {
     use super::*;
     use acp::schema::v1::{ContentChunk, SessionId, SessionNotification, SessionUpdate};
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    #[test]
+    fn agent_pool_key_includes_authoritative_identity() {
+        let command = "copilot --acp --stdio";
+        assert_ne!(
+            agent_cmd_key(command, Some("copilot")),
+            agent_cmd_key(command, Some("custom:copilot"))
+        );
+        assert_eq!(
+            agent_cmd_key(command, Some("copilot")),
+            agent_cmd_key(command, Some("copilot"))
+        );
+        assert_ne!(agent_cmd_key("b:c", Some("a")), agent_cmd_key("c", Some("a:b")));
+        assert!(
+            agent_cmd_key("custom\0command\n", Some("custom\0id"))
+                .chars()
+                .all(|character| !character.is_control())
+        );
+    }
 
     #[derive(Clone)]
     struct PendingNewSessionAgent;
