@@ -1356,7 +1356,10 @@ namespace winrt::TerminalApp::implementation
                 else
                 {
                     delegateAgent = winrt::hstring{ backend->agentId };
-                    delegateModel = {};
+                    // There is no profile-scoped model setting — the profile's
+                    // commandPaletteAgent selects only the agent and its exact
+                    // execution source, so the global DelegateModel still
+                    // applies and must not be cleared here.
                     if (backend->source == ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource::Wsl)
                     {
                         delegateSource = L"wsl";

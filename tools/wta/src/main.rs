@@ -506,7 +506,8 @@ enum Command {
         #[arg(long)]
         delegate_model: Option<String>,
 
-        /// Exact execution source selected by the active profile (host or wsl)
+        /// Exact execution source (host or wsl). Defaults to host when
+        /// omitted; never inferred from the active pane's shell/distro
         #[arg(long)]
         delegate_source: Option<String>,
 
@@ -2153,6 +2154,9 @@ async fn run_delegate(
     tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
+    let requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
+    require_delegate_agent_for_explicit_source(delegate_source, delegate_agent_cmd)?;
+
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
     let channel = match connect_to_wt_protocol(debug_tx).await {
         Ok(ch) => {
@@ -2166,7 +2170,6 @@ async fn run_delegate(
     };
     let shell_mgr = ShellManager::new()
         .with_wt_channel(Arc::new(channel) as Arc<dyn shell::wt_channel::WtChannel>);
-    let requested_source = parse_delegate_source(delegate_source, delegate_wsl_distro)?;
 
     match delegate_with_context(
         &shell_mgr,
@@ -2174,7 +2177,7 @@ async fn run_delegate(
         agent_cmd,
         delegate_agent_cmd,
         delegate_model,
-        requested_source.as_ref(),
+        &requested_source,
         cwd,
     )
     .await
@@ -2190,14 +2193,6 @@ async fn run_delegate(
     }
 }
 
-/// The WSL distro backing the delegate's active pane, if any — i.e. its shell,
-/// reported via `OSC 9001;ShellType`, is `wsl:<distro>` with a **non-empty**
-/// distro name (e.g. `wsl:Ubuntu`). The shipped Bash shell integration only
-/// emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set (otherwise it reports
-/// `bash`), so a bare `wsl:` never occurs in practice; rejecting it defensively
-/// keeps us from ever building a `wsl -d "" …` command. Returns `None` when the
-/// pane is missing, has no `shell` field, or the shell is anything else
-/// (PowerShell, cmd, …).
 /// Whether the delegate agent CLI is actually available inside `distro`.
 ///
 /// PR375 routes a `?<prompt>` from a WSL pane into the distro
@@ -2209,18 +2204,27 @@ async fn run_delegate(
 /// The probe resolves the agent's PATH location and accepts it only when it is a
 /// native Linux install — a Windows CLI leaking in via `appendWindowsPath`
 /// (resolving under `/mnt/…`) is rejected (see [`wsl_agent_probe_script`]).
-/// Legacy auto-routing may fall back to the host; an explicit profile source
-/// keeps the selected distro so its command-not-found error remains visible.
+/// This only gates an explicit `--delegate-source wsl` selection: an
+/// unavailable agent keeps WSL as the source (see
+/// [`delegate_launchable_for_source`]) so its command-not-found error remains
+/// visible, rather than silently switching to the host.
 async fn wsl_delegate_agent_available(distro: &str, agent_exe: &str) -> bool {
     crate::agent_check::find_wsl_exe(distro, agent_exe)
         .await
         .is_some()
 }
 
+/// Parse `--delegate-source`/`--delegate-wsl-distro` into a concrete
+/// [`AgentSource`](crate::agent_source::AgentSource).
+///
+/// Omitting `--delegate-source` defaults to `Host` — WTA never inspects the
+/// active pane's shell/distro to pick a source and never routes to WSL
+/// unless the caller asks for it explicitly. `--delegate-wsl-distro` is only
+/// meaningful (and required) alongside an explicit `--delegate-source wsl`.
 fn parse_delegate_source(
     source: Option<&str>,
     wsl_distro: Option<&str>,
-) -> Result<Option<crate::agent_source::AgentSource>> {
+) -> Result<crate::agent_source::AgentSource> {
     use crate::agent_source::AgentSource;
 
     match source.map(str::trim) {
@@ -2229,44 +2233,45 @@ fn parse_delegate_source(
                 wsl_distro.map(str::trim).filter(|distro| !distro.is_empty()).is_none(),
                 "--delegate-wsl-distro requires --delegate-source wsl"
             );
-            Ok(None)
+            Ok(AgentSource::Host)
         }
         Some(source) if source.eq_ignore_ascii_case(AgentSource::HOST_KIND) => {
             anyhow::ensure!(
                 wsl_distro.map(str::trim).filter(|distro| !distro.is_empty()).is_none(),
                 "--delegate-wsl-distro is invalid with --delegate-source host"
             );
-            Ok(Some(AgentSource::Host))
+            Ok(AgentSource::Host)
         }
         Some(source) if source.eq_ignore_ascii_case(AgentSource::WSL_KIND) => {
             let distro = wsl_distro
                 .map(str::trim)
                 .filter(|distro| !distro.is_empty())
                 .ok_or_else(|| anyhow::anyhow!("--delegate-source wsl requires --delegate-wsl-distro"))?;
-            Ok(Some(AgentSource::Wsl {
+            Ok(AgentSource::Wsl {
                 distro: distro.to_string(),
-            }))
+            })
         }
         Some(source) => anyhow::bail!("unsupported delegate source '{source}'"),
     }
 }
 
-fn delegate_launch_source(
-    requested: Option<&crate::agent_source::AgentSource>,
-    active_wsl_distro: Option<&str>,
-    wsl_agent_available: bool,
-) -> crate::agent_source::AgentSource {
-    use crate::agent_source::AgentSource;
-
-    match requested {
-        Some(source) => source.clone(),
-        None if wsl_agent_available => active_wsl_distro
-            .map(|distro| AgentSource::Wsl {
-                distro: distro.to_string(),
-            })
-            .unwrap_or(AgentSource::Host),
-        None => AgentSource::Host,
-    }
+/// An explicit `--delegate-source` (host or wsl) commits the caller to a
+/// specific agent command, so a bare source with no delegate agent is a
+/// caller error rather than something to paper over with the `agent_cmd`
+/// fallback used when the source is omitted entirely.
+fn require_delegate_agent_for_explicit_source(
+    delegate_source: Option<&str>,
+    delegate_agent_cmd: Option<&str>,
+) -> Result<()> {
+    anyhow::ensure!(
+        delegate_source.is_none()
+            || delegate_agent_cmd
+                .map(str::trim)
+                .filter(|command| !command.is_empty())
+                .is_some(),
+        "--delegate-agent is required when --delegate-source is supplied"
+    );
+    Ok(())
 }
 
 fn delegate_launchable_for_source(
@@ -2321,17 +2326,9 @@ async fn delegate_with_context(
     agent_cmd: &str,
     delegate_agent_cmd: Option<&str>,
     delegate_model: Option<&str>,
-    requested_source: Option<&crate::agent_source::AgentSource>,
+    requested_source: &crate::agent_source::AgentSource,
     cwd: Option<&str>,
 ) -> Result<()> {
-    if requested_source.is_some()
-        && delegate_agent_cmd
-            .map(str::trim)
-            .filter(|command| !command.is_empty())
-            .is_none()
-    {
-        anyhow::bail!("--delegate-agent is required when --delegate-source is supplied");
-    }
     let delegate_agents = crate::coordinator::default_delegate_agent_runtimes(
         delegate_agent_cmd,
         Some(agent_cmd),
@@ -2360,19 +2357,20 @@ async fn delegate_with_context(
 
     // A WSL pane runs the agent *inside the distro* (`wsl -d <distro> -- …`), so
     // the Windows-host launchable check does not apply to it. Fetch the active
-    // pane up front so the gate below and the WSL branch further down can see
-    // it. See `delegate_launchable_for_source`.
+    // pane up front — it feeds the enriched-prompt block and the WSL cwd lookup
+    // further down, not source selection: `requested_source` is the sole input
+    // to that decision (see `parse_delegate_source`), never the active pane's
+    // shell/distro.
     let active = shell_mgr.wt_get_active_pane().await.ok();
 
-    // Legacy callers without an explicit source retain active-WSL detection.
-    // Profile-scoped callers provide an exact host/WSL source, which is never
-    // replaced when its selected agent is unavailable.
-    let active_wsl_distro: Option<String> =
-        crate::agent_source::active_pane_wsl_distro(active.as_ref()).map(str::to_string);
+    // `requested_source` is always a concrete, caller-chosen source (defaults
+    // to `Host` when `--delegate-source` is omitted; see
+    // `parse_delegate_source`). Probe WSL availability only for an explicit
+    // WSL selection — an unavailable agent keeps WSL as the source (never
+    // swaps to Host) so its command-not-found error stays visible.
     let candidate_wsl_distro = match requested_source {
-        Some(crate::agent_source::AgentSource::Host) => None,
-        Some(crate::agent_source::AgentSource::Wsl { distro }) => Some(distro.as_str()),
-        None => active_wsl_distro.as_deref(),
+        crate::agent_source::AgentSource::Host => None,
+        crate::agent_source::AgentSource::Wsl { distro } => Some(distro.as_str()),
     };
     let wsl_agent_available = match candidate_wsl_distro {
         Some(distro) => {
@@ -2383,34 +2381,21 @@ async fn delegate_with_context(
                     .unwrap_or_default();
             let available = wsl_delegate_agent_available(distro, &agent_exe).await;
             if !available {
-                if requested_source.is_some() {
-                    tracing::warn!(
-                        target: "delegate",
-                        distro,
-                        agent = %agent_exe,
-                        "selected delegate agent is unavailable in its WSL distro; keeping the selected source",
-                    );
-                } else {
-                    tracing::info!(
-                        target: "delegate",
-                        distro,
-                        agent = %agent_exe,
-                        "delegate agent not available in WSL distro — falling back to Windows host CLI",
-                    );
-                }
+                tracing::warn!(
+                    target: "delegate",
+                    distro,
+                    agent = %agent_exe,
+                    "selected delegate agent is unavailable in its WSL distro; keeping WSL as the source",
+                );
             }
             available
         }
         None => false,
     };
 
-    let launch_source = delegate_launch_source(
-        requested_source,
-        active_wsl_distro.as_deref(),
-        wsl_agent_available,
-    );
+    let launch_source = requested_source;
     let launchable_for_target =
-        delegate_launchable_for_source(&launch_source, launchable, wsl_agent_available);
+        delegate_launchable_for_source(launch_source, launchable, wsl_agent_available);
 
     if !launchable_for_target {
         // Log only the executable (first token), never the full commandline: a
@@ -2503,10 +2488,10 @@ async fn delegate_with_context(
     )?;
 
     // ── WSL delegate path ───────────────────────────────────────────────────
-    // An explicit profile selection always stays in its configured distro.
-    // When the CLI is missing, launch the selected command there without a
-    // prompt so the new tab reports the real command-not-found error. Legacy
-    // auto-routing reaches this path only after a successful WSL probe.
+    // An explicit `--delegate-source wsl` selection always stays in its
+    // configured distro. When the CLI is missing there, launch the selected
+    // command there anyway, without a prompt, so the new tab reports the real
+    // command-not-found error rather than silently switching to the host.
     //
     // Delivery (see `build_wsl_delegate_commandline`): the prompt rides as an
     // inline base64 payload decoded in-distro — base64's alphabet has no shell
@@ -2521,7 +2506,7 @@ async fn delegate_with_context(
     //
     // Composability works because the two layers have disjoint special
     // characters: ' is special to bash, " is special to Windows.
-    if let crate::agent_source::AgentSource::Wsl { distro } = &launch_source {
+    if let crate::agent_source::AgentSource::Wsl { distro } = launch_source {
         let wsl_agent_cmd = crate::coordinator::build_wsl_delegate_commandline(
             runtime,
             enriched_prompt.as_deref(),

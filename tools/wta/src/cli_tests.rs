@@ -397,17 +397,22 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(json_str_or_num(&v, "missing"), "-");
 }
 
-// ── Delegate: profile-selected execution source ─────────────────────────────
+// ── Delegate: execution source ───────────────────────────────────────────────
+//
+// `--delegate-source` defaults to `host` when omitted and is never inferred
+// from the active pane's shell/distro. An explicit `host` or `wsl` selection
+// is strict: it never switches based on CLI availability, so the selected
+// command reports its own launch error instead of silently falling back.
 //
 // `delegate_command_launchable` only checks the Windows PATH, which is
-// meaningless for a WSL pane (the agent runs inside the distro). A WSL pane is
-// therefore treated as launchable when the agent CLI is present *inside the
-// distro. A profile-selected source is strict: it stays on that source even
-// when unavailable, so the selected command reports its own launch error
-// instead of falling back.
+// meaningless for a WSL pane (the agent runs inside the distro), so a WSL
+// source is treated as launchable only when the agent CLI is present *inside
+// the distro* (`delegate_launchable_for_source`).
 
 /// Build a minimal active-pane JSON value with the given `shell` field, as
-/// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
+/// reported by WT's `get_active_pane` / `OSC 9001;ShellType`. Used only by
+/// `active_pane_wsl_distro` tests below — that helper now backs the `/agent`
+/// source picker (see `app.rs`), not delegate source selection.
 fn pane_with_shell(shell: &str) -> serde_json::Value {
     serde_json::json!({ "shell": shell })
 }
@@ -486,15 +491,21 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
 fn delegate_source_args_require_a_valid_exact_target() {
     use crate::agent_source::AgentSource;
 
+    // Omitting --delegate-source defaults to Host — WTA never inspects the
+    // active pane's shell/distro to pick a source.
+    assert_eq!(
+        parse_delegate_source(None, None).unwrap(),
+        AgentSource::Host
+    );
     assert_eq!(
         parse_delegate_source(Some("host"), None).unwrap(),
-        Some(AgentSource::Host)
+        AgentSource::Host
     );
     assert_eq!(
         parse_delegate_source(Some("wsl"), Some("Ubuntu")).unwrap(),
-        Some(AgentSource::Wsl {
+        AgentSource::Wsl {
             distro: "Ubuntu".to_string()
-        })
+        }
     );
     assert!(parse_delegate_source(Some("wsl"), None).is_err());
     assert!(parse_delegate_source(Some("host"), Some("Ubuntu")).is_err());
@@ -503,41 +514,41 @@ fn delegate_source_args_require_a_valid_exact_target() {
 }
 
 #[test]
-fn explicit_delegate_source_never_falls_back() {
+fn delegate_agent_required_only_when_source_is_explicit() {
+    // Omitted --delegate-source: no --delegate-agent required (the
+    // `agent_cmd` fallback covers it).
+    assert!(require_delegate_agent_for_explicit_source(None, None).is_ok());
+    // Explicit --delegate-source (host or wsl) requires --delegate-agent.
+    assert!(require_delegate_agent_for_explicit_source(Some("host"), None).is_err());
+    assert!(require_delegate_agent_for_explicit_source(Some("host"), Some("  ")).is_err());
+    assert!(require_delegate_agent_for_explicit_source(Some("wsl"), None).is_err());
+    assert!(require_delegate_agent_for_explicit_source(Some("host"), Some("codex")).is_ok());
+    assert!(require_delegate_agent_for_explicit_source(Some("wsl"), Some("codex")).is_ok());
+}
+
+#[test]
+fn delegate_source_never_switches_based_on_wsl_agent_availability() {
     use crate::agent_source::AgentSource;
 
     let wsl = AgentSource::Wsl {
         distro: "Ubuntu".to_string(),
     };
-    assert_eq!(
-        delegate_launch_source(Some(&wsl), Some("Ubuntu"), false),
-        wsl
-    );
-    assert!(!delegate_launchable_for_source(&wsl, true, false));
+    // An explicit WSL selection stays WSL even when its agent is missing in
+    // the distro — no fallback to the host.
+    assert!(!delegate_launchable_for_source(
+        &wsl,
+        /* host_launchable */ true,
+        /* wsl_agent_available */ false
+    ));
+    assert!(delegate_launchable_for_source(&wsl, false, true));
 
-    assert_eq!(
-        delegate_launch_source(Some(&AgentSource::Host), Some("Ubuntu"), true),
-        AgentSource::Host
-    );
+    // An explicit (or defaulted) Host selection stays Host even when a WSL
+    // agent happens to be available — no auto-routing into WSL.
     assert!(!delegate_launchable_for_source(
         &AgentSource::Host,
-        false,
-        true
+        /* host_launchable */ false,
+        /* wsl_agent_available */ true
     ));
+    assert!(delegate_launchable_for_source(&AgentSource::Host, true, false));
 }
 
-#[test]
-fn legacy_delegate_source_auto_routes_only_to_available_wsl_agent() {
-    use crate::agent_source::AgentSource;
-
-    assert_eq!(
-        delegate_launch_source(None, Some("Ubuntu"), true),
-        AgentSource::Wsl {
-            distro: "Ubuntu".to_string()
-        }
-    );
-    assert_eq!(
-        delegate_launch_source(None, Some("Ubuntu"), false),
-        AgentSource::Host
-    );
-}
