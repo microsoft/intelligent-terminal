@@ -58,10 +58,4 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _ViewModel = args.ViewModel().as<Editor::AIAgentsViewModel>();
         BringIntoViewWhenLoaded(args.ElementToFocus());
     }
-
-    void AIAgents::AddCustomModelProvider_Click(const IInspectable&, const RoutedEventArgs&)
-    {
-        CustomModelProvidersExpander().IsExpanded(true);
-        _ViewModel.AddCustomModelProvider();
-    }
 }

@@ -173,7 +173,7 @@
                            Margin="0,4,0,0"
                            HorizontalAlignment="Stretch"
                            HorizontalContentAlignment="Stretch"
-                           IsExpanded="True">
+                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
                 <muxc:Expander.Header>
                     <Grid MinHeight="64">
                         <Grid.ColumnDefinitions>
@@ -187,7 +187,7 @@
                         <Button Grid.Column="1"
                                 x:Uid="AIAgents_CustomProviderAdd"
                                 VerticalAlignment="Center"
-                                Click="AddCustomModelProvider_Click"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
                                 Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
                     </Grid>
                 </muxc:Expander.Header>

@@ -980,16 +980,17 @@ impl HelperHandler {
         let agent = get_or_spawn_agent(&self.state, &agent_cmd, agent_id.as_deref())
             .await
             .map_err(|e| {
+                let error_chain = format!("{e:#}");
                 tracing::error!(
                     target: "master",
                     op = "initialize",
                     helper_id = ?self.helper_id,
                     agent_cmd = %agent_cmd,
-                    error = %e,
+                    error = %error_chain,
                     "failed to spawn/resolve agent CLI for helper"
                 );
                 acp::Error::internal_error()
-                    .data(serde_json::json!(format!("agent CLI unavailable: {e}")))
+                    .data(serde_json::json!(format!("agent CLI unavailable: {error_chain}")))
             })?;
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.

@@ -8,6 +8,7 @@ use crate::agent_registry::ByokMode;
 const SHARED_BASE_URL: &str = "WTA_CUSTOM_MODEL_BASE_URL";
 const SHARED_MODEL: &str = "WTA_CUSTOM_MODEL_ID";
 const SHARED_CREDENTIAL_ID: &str = "WTA_CUSTOM_MODEL_CREDENTIAL_ID";
+const SHARED_API_KEY_REQUIRED: &str = "WTA_CUSTOM_MODEL_API_KEY_REQUIRED";
 
 const COPILOT_BASE_URL: &str = "COPILOT_PROVIDER_BASE_URL";
 const COPILOT_API_KEY: &str = "COPILOT_PROVIDER_API_KEY";
@@ -22,12 +23,18 @@ const OPENCODE_CONFIG_CONTENT: &str = "OPENCODE_CONFIG_CONTENT";
 const PROVIDER_API_KEY: &str = "INTELLIGENT_TERMINAL_MODEL_API_KEY";
 const PROVIDER_ID: &str = "intelligent-terminal";
 
-const SHARED_METADATA_ENV_KEYS: &[&str] = &[SHARED_BASE_URL, SHARED_MODEL, SHARED_CREDENTIAL_ID];
+const SHARED_METADATA_ENV_KEYS: &[&str] = &[
+    SHARED_BASE_URL,
+    SHARED_MODEL,
+    SHARED_CREDENTIAL_ID,
+    SHARED_API_KEY_REQUIRED,
+];
 
 pub(crate) struct Config {
     pub(crate) base_url: String,
     pub(crate) model: String,
     pub(crate) credential_id: Option<String>,
+    pub(crate) api_key_required: bool,
     pub(crate) credential_resource: &'static str,
 }
 
@@ -37,6 +44,7 @@ impl Config {
             base_url: trimmed_env(SHARED_BASE_URL).unwrap_or_default(),
             model: trimmed_env(SHARED_MODEL).unwrap_or_default(),
             credential_id: trimmed_env(SHARED_CREDENTIAL_ID),
+            api_key_required: bool_env(SHARED_API_KEY_REQUIRED),
             credential_resource: "IntelligentTerminal.LocalModelProvider",
         }
     }
@@ -46,10 +54,20 @@ impl Config {
     }
 
     fn resolve_api_key(&self) -> Result<Option<String>> {
-        match self.credential_id.as_deref() {
+        let api_key = match self.credential_id.as_deref() {
             Some(id) => read_api_key(self.credential_resource, id),
             None => Ok(None),
+        }?;
+        self.validate_resolved_api_key(api_key)
+    }
+
+    fn validate_resolved_api_key(&self, api_key: Option<String>) -> Result<Option<String>> {
+        if self.api_key_required && api_key.is_none() {
+            bail!(
+                "API key credential for the selected BYOK provider is missing. Re-enter the API key in Settings, then restart the agent."
+            );
         }
+        Ok(api_key)
     }
 }
 
@@ -195,6 +213,10 @@ fn trimmed_env(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn bool_env(key: &str) -> bool {
+    trimmed_env(key).is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+}
+
 fn read_api_key(credential_resource: &str, credential_id: &str) -> Result<Option<String>> {
     use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
     use windows_sys::Win32::Security::Credentials::{
@@ -246,6 +268,7 @@ mod tests {
                 base_url: "https://openrouter.ai/api/v1".to_string(),
                 model: "qwen/qwen3.5-9b".to_string(),
                 credential_id: Some("opaque-id".to_string()),
+                api_key_required: true,
                 credential_resource: "test",
             },
             true,
@@ -273,6 +296,7 @@ mod tests {
                 base_url: "https://openrouter.ai/api/v1".to_string(),
                 model: "deepseek/deepseek-v4-flash".to_string(),
                 credential_id: Some("opaque-id".to_string()),
+                api_key_required: true,
                 credential_resource: "test",
             },
             true,
@@ -309,6 +333,7 @@ mod tests {
                 base_url: "http://localhost:11434/v1".to_string(),
                 model: "qwen3.5:9b".to_string(),
                 credential_id: None,
+                api_key_required: false,
                 credential_resource: "test",
             },
             false,
@@ -330,6 +355,7 @@ mod tests {
             base_url: "http://localhost:11434/v1".to_string(),
             model: "qwen3.5:9b".to_string(),
             credential_id: None,
+            api_key_required: false,
             credential_resource: "test",
         };
         assert!(complete.is_complete());
@@ -369,6 +395,7 @@ mod tests {
                 base_url: "https://example.test/v1".to_string(),
                 model: "test-model".to_string(),
                 credential_id: None,
+                api_key_required: false,
                 credential_resource: "test",
             },
         )
@@ -396,6 +423,7 @@ mod tests {
             base_url: "https://example.test/v1".to_string(),
             model: String::new(),
             credential_id: None,
+            api_key_required: false,
             credential_resource: "test",
         };
         let cases = [
@@ -448,5 +476,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn missing_required_api_key_is_rejected() {
+        let config = Config {
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model: "qwen/qwen3.5-9b".to_string(),
+            credential_id: Some("{79bbdb49-9af3-4ea8-b773-wta-missing-test}".to_string()),
+            api_key_required: true,
+            credential_resource: "IntelligentTerminal.TestMissingModelProviderCredential",
+        };
+
+        let error = config
+            .resolve_api_key()
+            .expect_err("a configured cloud BYOK key must not silently become keyless");
+        assert!(error.to_string().contains("API key credential"));
+    }
+
+    #[test]
+    fn keyless_local_provider_allows_absent_api_key() {
+        let config = Config {
+            base_url: "http://localhost:11434/v1".to_string(),
+            model: "qwen3.5:9b".to_string(),
+            credential_id: None,
+            api_key_required: false,
+            credential_resource: "test",
+        };
+
+        assert_eq!(
+            config
+                .validate_resolved_api_key(None)
+                .expect("a keyless local provider should remain supported"),
+            None
+        );
     }
 }

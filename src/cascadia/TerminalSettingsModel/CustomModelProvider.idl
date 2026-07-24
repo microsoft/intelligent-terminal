@@ -19,6 +19,7 @@ namespace Microsoft.Terminal.Settings.Model
         String ApiContract;
         String Location;
         String ApiKeyCredential;
+        Boolean ApiKeyRequired;
         Windows.Foundation.Collections.IVector<CustomModel> Models;
     }
 }

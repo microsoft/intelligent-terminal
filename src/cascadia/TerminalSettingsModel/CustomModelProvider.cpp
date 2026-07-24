@@ -44,6 +44,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         copy->_ApiContract = _ApiContract;
         copy->_Location = _Location;
         copy->_ApiKeyCredential = _ApiKeyCredential;
+        copy->_ApiKeyRequired = _ApiKeyRequired;
         copy->_Models = winrt::single_threaded_vector<Model::CustomModel>();
         for (const auto& model : _Models)
         {
@@ -61,6 +62,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         JsonUtils::SetValueForKey(json, "apiContract", _ApiContract);
         JsonUtils::SetValueForKey(json, "location", _Location);
         JsonUtils::SetValueForKey(json, "apiKeyCredential", _ApiKeyCredential);
+        JsonUtils::SetValueForKey(json, "apiKeyRequired", _ApiKeyRequired);
         JsonUtils::SetValueForKey(json, "models", _Models);
         return json;
     }
@@ -75,6 +77,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         JsonUtils::GetValueForKey(json, "apiContract", provider->_ApiContract);
         JsonUtils::GetValueForKey(json, "location", provider->_Location);
         JsonUtils::GetValueForKey(json, "apiKeyCredential", provider->_ApiKeyCredential);
+        if (json.isMember("apiKeyRequired"))
+        {
+            JsonUtils::GetValueForKey(json, "apiKeyRequired", provider->_ApiKeyRequired);
+        }
+        else
+        {
+            // Existing providers with a credential reference were configured
+            // with an API key before this intent flag was persisted.
+            provider->_ApiKeyRequired = !provider->_ApiKeyCredential.empty();
+        }
         JsonUtils::GetValueForKey(json, "models", provider->_Models);
         return *provider;
     }

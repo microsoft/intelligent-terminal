@@ -359,17 +359,35 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-openrouter" }, providers.GetAt(0).Id());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"https://openrouter.ai/api/v1" }, providers.GetAt(0).BaseUrl());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"openai-compatible" }, providers.GetAt(0).ApiContract());
+        VERIFY_IS_TRUE(providers.GetAt(0).ApiKeyRequired());
         VERIFY_ARE_EQUAL(2u, providers.GetAt(0).Models().Size());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"qwen/qwen3.5-9b" }, providers.GetAt(0).Models().GetAt(0).Id());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"provider-ollama" }, providers.GetAt(1).Id());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"http://localhost:11434/v1" }, providers.GetAt(1).Name());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"auto" }, providers.GetAt(1).Location());
+        VERIFY_IS_FALSE(providers.GetAt(1).ApiKeyRequired());
         VERIFY_ARE_EQUAL(1u, providers.GetAt(1).Models().Size());
 
         const auto copy = settings->Copy();
         const auto copyImpl = winrt::get_self<implementation::CascadiaSettings>(copy);
         copyImpl->GlobalSettings().CustomModelProviders().GetAt(0).Name(L"Changed");
         VERIFY_ARE_EQUAL(winrt::hstring{ L"OpenRouter" }, providers.GetAt(0).Name());
+
+        auto addedProviders = winrt::single_threaded_vector<CustomModelProvider>();
+        auto addedProvider = CustomModelProvider{ L"provider-added", L"Added", L"https://example.test/v1" };
+        addedProvider.Location(L"cloud");
+        addedProvider.ApiKeyCredential(L"{22222222-2222-2222-2222-222222222222}");
+        addedProvider.ApiKeyRequired(true);
+        addedProvider.Models().Append(CustomModel{ L"test-model", L"Test model" });
+        addedProviders.Append(addedProvider);
+        globals.CustomModelProviders(addedProviders);
+
+        const auto serialized = settings->ToJson();
+        const auto& serializedProviders = serialized["customModelProviders"];
+        VERIFY_IS_TRUE(serializedProviders.isArray());
+        VERIFY_ARE_EQUAL(Json::ArrayIndex{ 1 }, serializedProviders.size());
+        VERIFY_ARE_EQUAL(std::string{ "provider-added" }, serializedProviders[0]["id"].asString());
+        VERIFY_IS_TRUE(serializedProviders[0]["apiKeyRequired"].asBool());
     }
 
     void CustomAgentAndPolicyTests::AcpRuntimeModelsAreScopedByAgent()

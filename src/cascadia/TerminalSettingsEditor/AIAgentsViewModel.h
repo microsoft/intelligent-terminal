@@ -126,6 +126,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CurrentAcpModelEntry(const Editor::AcpModelEntry& value);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, AcpModel);
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> CustomModelProviders() const { return _customModelProviders; }
+        bool IsCustomModelProvidersExpanded() const { return _isCustomModelProvidersExpanded; }
+        void IsCustomModelProvidersExpanded(bool value);
         bool IsAddingCustomModelProvider() const { return _isAddingCustomModelProvider; }
         winrt::hstring NewCustomModelProviderBaseUrl() const { return _newCustomModelProviderBaseUrl; }
         void NewCustomModelProviderBaseUrl(const winrt::hstring& value);
@@ -226,6 +228,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };
+        bool _isCustomModelProvidersExpanded{ true };
         bool _isAddingCustomModelProvider{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;

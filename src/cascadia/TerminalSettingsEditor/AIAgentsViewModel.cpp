@@ -338,8 +338,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
+    void AIAgentsViewModel::IsCustomModelProvidersExpanded(const bool value)
+    {
+        if (_isCustomModelProvidersExpanded != value)
+        {
+            _isCustomModelProvidersExpanded = value;
+            _NotifyChanges(L"IsCustomModelProvidersExpanded");
+        }
+    }
+
     void AIAgentsViewModel::AddCustomModelProvider()
     {
+        IsCustomModelProvidersExpanded(true);
         _isAddingCustomModelProvider = true;
         _NotifyChanges(L"IsAddingCustomModelProvider");
     }
@@ -386,6 +396,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             id,
             baseUrl,
             baseUrl };
+        provider.Location(::Microsoft::Terminal::CustomModels::ResolvedLocation(provider));
         provider.Models().Append(Model::CustomModel{ modelId, modelId });
         if (!_newCustomModelApiKey.empty())
         {
@@ -394,6 +405,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 provider.ApiKeyCredential(::Microsoft::Terminal::CustomModels::StoreApiKey(
                     {},
                     _newCustomModelApiKey));
+                provider.ApiKeyRequired(true);
             }
             catch (...)
             {

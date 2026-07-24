@@ -80,6 +80,7 @@ namespace Microsoft.Terminal.Settings.Editor
         AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
         Windows.Foundation.Collections.IObservableVector<CustomModelProviderEntry> CustomModelProviders { get; };
+        Boolean IsCustomModelProvidersExpanded;
         Boolean IsAddingCustomModelProvider { get; };
         String NewCustomModelProviderBaseUrl;
         String NewCustomModelId;

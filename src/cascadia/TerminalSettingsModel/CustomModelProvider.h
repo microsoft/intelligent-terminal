@@ -43,6 +43,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         WINRT_PROPERTY(winrt::hstring, ApiContract, L"openai-compatible");
         WINRT_PROPERTY(winrt::hstring, Location, L"auto");
         WINRT_PROPERTY(winrt::hstring, ApiKeyCredential);
+        WINRT_PROPERTY(bool, ApiKeyRequired, false);
         WINRT_PROPERTY(
             winrt::Windows::Foundation::Collections::IVector<Model::CustomModel>,
             Models,

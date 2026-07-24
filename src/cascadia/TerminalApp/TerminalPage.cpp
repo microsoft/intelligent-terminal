@@ -1103,6 +1103,7 @@ namespace winrt::TerminalApp::implementation
             providerJson["api_contract"] = winrt::to_string(provider.ApiContract());
             providerJson["location"] = winrt::to_string(provider.Location());
             providerJson["credential_id"] = winrt::to_string(provider.ApiKeyCredential());
+            providerJson["api_key_required"] = provider.ApiKeyRequired();
             providerJson["models"] = Json::Value{ Json::arrayValue };
             for (const auto& model : provider.Models())
             {
@@ -1954,6 +1955,7 @@ namespace winrt::TerminalApp::implementation
             { L"WTA_CUSTOM_MODEL_BASE_URL", L"" },
             { L"WTA_CUSTOM_MODEL_ID", L"" },
             { L"WTA_CUSTOM_MODEL_CREDENTIAL_ID", L"" },
+            { L"WTA_CUSTOM_MODEL_API_KEY_REQUIRED", L"0" },
         };
         if (const auto custom = _FindSelectedCustomModel(globals))
         {
@@ -1961,6 +1963,7 @@ namespace winrt::TerminalApp::implementation
             environment[0].second = std::wstring{ provider.BaseUrl() };
             environment[1].second = std::wstring{ model.Id() };
             environment[2].second = std::wstring{ provider.ApiKeyCredential() };
+            environment[3].second = provider.ApiKeyRequired() ? L"1" : L"0";
         }
         return environment;
     }
