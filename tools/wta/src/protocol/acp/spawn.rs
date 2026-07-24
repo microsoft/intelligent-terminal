@@ -20,6 +20,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 const STARTUP_STDERR_MAX_LINES: usize = 32;
 const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
 const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StderrPhase {
@@ -336,7 +338,8 @@ fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> 
         .flatten();
     let script = wsl_agent_launch_script(&parts);
 
-    let child = tokio::process::Command::new("wsl.exe")
+    let mut command = tokio::process::Command::new("wsl.exe");
+    command
         .arg("-d")
         .arg(distro)
         .arg("--")
@@ -348,7 +351,11 @@ fn spawn_wsl_agent_process(agent_cmd: &str, distro: &str) -> Result<AgentSpawn> 
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let child = command
         .spawn()
         .map_err(|error| {
             anyhow!(
