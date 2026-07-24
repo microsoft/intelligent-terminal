@@ -511,6 +511,24 @@ fn delegate_source_args_require_a_valid_exact_target() {
     assert!(parse_delegate_source(Some("host"), Some("Ubuntu")).is_err());
     assert!(parse_delegate_source(None, Some("Ubuntu")).is_err());
     assert!(parse_delegate_source(Some("remote"), None).is_err());
+
+    // Any presence of --delegate-wsl-distro (even empty/whitespace-only) is
+    // rejected for an omitted source or an explicit --delegate-source host —
+    // the caller passed the flag, so a silently-ignored empty value would be
+    // misleading.
+    assert!(parse_delegate_source(None, Some("")).is_err());
+    assert!(parse_delegate_source(None, Some("   ")).is_err());
+    assert!(parse_delegate_source(Some("host"), Some("")).is_err());
+    assert!(parse_delegate_source(Some("host"), Some("   ")).is_err());
+
+    // --delegate-source wsl still trims and requires a non-empty distro.
+    assert!(parse_delegate_source(Some("wsl"), Some("   ")).is_err());
+    assert_eq!(
+        parse_delegate_source(Some("wsl"), Some("  Ubuntu  ")).unwrap(),
+        AgentSource::Wsl {
+            distro: "Ubuntu".to_string()
+        }
+    );
 }
 
 #[test]

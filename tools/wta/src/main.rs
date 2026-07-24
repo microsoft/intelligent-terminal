@@ -2235,14 +2235,14 @@ fn parse_delegate_source(
     match source.map(str::trim) {
         None => {
             anyhow::ensure!(
-                wsl_distro.map(str::trim).filter(|distro| !distro.is_empty()).is_none(),
+                wsl_distro.is_none(),
                 "--delegate-wsl-distro requires --delegate-source wsl"
             );
             Ok(AgentSource::Host)
         }
         Some(source) if source.eq_ignore_ascii_case(AgentSource::HOST_KIND) => {
             anyhow::ensure!(
-                wsl_distro.map(str::trim).filter(|distro| !distro.is_empty()).is_none(),
+                wsl_distro.is_none(),
                 "--delegate-wsl-distro is invalid with --delegate-source host"
             );
             Ok(AgentSource::Host)
@@ -2323,14 +2323,14 @@ fn cap_delegate_context(context: &str, max_bytes: usize) -> String {
 
 /// Selects the POSIX cwd to record/use for an explicit WSL delegate launch.
 ///
-/// A WSL session's cwd must be a POSIX path (`/…`) — an unbounded fallback to
-/// a Windows/UNC `--cwd` is misleading (the active pane may be a Windows pane
-/// when `--delegate-source wsl` is forced) and breaks downstream assumptions
-/// about WSL session cwd formatting (see PR #488 review). Trims whitespace off
-/// each candidate, requires an absolute POSIX path (`/…`), and rejects `"`
-/// (which would break the `wsl --cd "<cwd>"` quoting). Prefers the active
-/// pane's cwd over the explicit CLI `--cwd`; returns `None` if neither is a
-/// valid POSIX path.
+/// A WSL session's cwd must be a POSIX path (`/…`) — falling back without
+/// validation to a Windows/UNC `--cwd` is misleading (the active pane may be a
+/// Windows pane when `--delegate-source wsl` is forced) and breaks downstream
+/// assumptions about WSL session cwd formatting (see PR #488 review). Trims
+/// whitespace off each candidate, requires an absolute POSIX path (`/…`), and
+/// rejects `"` (which would break the `wsl --cd "<cwd>"` quoting). Prefers the
+/// active pane's cwd over the explicit CLI `--cwd`; returns `None` if neither
+/// is a valid POSIX path.
 fn select_wsl_delegate_cwd<'a>(
     active_pane_cwd: Option<&'a str>,
     explicit_cwd: Option<&'a str>,
