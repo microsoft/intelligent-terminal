@@ -623,7 +623,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (!_acpModelList) return nullptr;
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
         const auto current =
-            Reg::SupportsByok(std::wstring_view{ _GlobalSettings.AcpAgent() }) &&
+            Reg::SupportsByok(std::wstring_view{ _GlobalSettings.EffectiveAcpAgent() }) &&
                     !_GlobalSettings.CustomModelSelection().empty() ?
                 _GlobalSettings.CustomModelSelection() :
                 _GlobalSettings.AcpModel();
@@ -655,7 +655,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             return;
         }
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-        const bool supportsByok = Reg::SupportsByok(std::wstring_view{ _GlobalSettings.AcpAgent() });
+        const bool supportsByok = Reg::SupportsByok(std::wstring_view{ _GlobalSettings.EffectiveAcpAgent() });
         if (::Microsoft::Terminal::CustomModels::IsCustomSelection(value.Id()))
         {
             if (_GlobalSettings.CustomModelSelection() == value.Id() && _GlobalSettings.AcpModel().empty())

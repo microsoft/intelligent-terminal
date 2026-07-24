@@ -15612,13 +15612,28 @@ mod tests {
                 name: "OtherModel".into(),
                 description: None,
             },
+            AcpModelInfo {
+                id: "custom:provider-one:shared-model".into(),
+                name: "shared-model (BYOK)".into(),
+                description: None,
+            },
+            AcpModelInfo {
+                id: "custom:provider-two:shared-model".into(),
+                name: "shared-model (BYOK)".into(),
+                description: None,
+            },
         ];
         app.current_tab_mut().model_picker_open = true;
 
-        let text = render_to_text(&mut app, 80, 24);
+        let text = render_to_text(&mut app, 120, 24);
         assert!(
             text.contains("PickModelXYZ"),
             "the model picker must list the advertised models; rendered:\n{text}"
+        );
+        assert!(
+            text.contains("custom:provider-one:shared-model")
+                && text.contains("custom:provider-two:shared-model"),
+            "custom models with duplicate display names must show distinct ids; rendered:\n{text}"
         );
     }
 

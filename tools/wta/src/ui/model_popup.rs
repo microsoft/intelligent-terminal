@@ -57,8 +57,9 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
                 theme::INPUT_TEXT,
             )];
             // Show the raw id when it differs from the display name, plus the
-            // optional one-line description, both dimmed.
-            if !m.id.starts_with("custom:") && m.id != m.name {
+            // optional one-line description, both dimmed. Custom BYOK entries
+            // need their selection ids visible because display names can match.
+            if m.id != m.name {
                 spans.push(Span::styled(format!("  ({})", m.id), theme::DIM));
             }
             if let Some(desc) = m.description.as_deref().filter(|d| !d.is_empty()) {
