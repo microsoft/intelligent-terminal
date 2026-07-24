@@ -36,38 +36,38 @@ Describe 'Feature profile-scoped WSL agent backend' -Tag 'Feature' -Skip:(-not $
         }
 
         # Match the product's source probe: reject Windows executables leaked
-        # through WSL interop, and require npx for adapter-backed agents.
-        $agentProbeScript = @'
-for id in copilot gemini opencode claude codex; do
-    path="$(command -v "$id" 2>/dev/null || true)"
-    [ -n "$path" ] || continue
-    lower="$(printf '%s' "$path" | tr '[:upper:]' '[:lower:]')"
-    case "$lower" in
-        /mnt/*|*.exe|*.cmd|*.bat) continue ;;
-    esac
-    case "$id" in
-        claude|codex)
-            npx_path="$(command -v npx 2>/dev/null || true)"
-            npx_lower="$(printf '%s' "$npx_path" | tr '[:upper:]' '[:lower:]')"
-            case "$npx_lower" in
-                ''|/mnt/*|*.exe|*.cmd|*.bat) continue ;;
-            esac
-            ;;
-    esac
-    printf '%s\n' "$id"
-    break
-done
-'@
-        $agentProbe = Invoke-Native -FilePath 'wsl.exe' -Arguments @(
-            '-d', $script:distro, '--', 'bash', '-lc', $agentProbeScript
-        ) -TimeoutSec 45
+        # through WSL interop, and require native npx for adapter-backed agents.
+        # Probe one literal command at a time; wsl.exe's command-line expansion
+        # can consume loop variables in a compound bash script before bash runs.
         $knownAgents = @('copilot', 'gemini', 'opencode', 'claude', 'codex')
-        $script:agent = @(
-            $agentProbe.StdOut -split '\r?\n' |
-                ForEach-Object { $_.Trim() } |
-                Where-Object { $_ -in $knownAgents }
-        ) | Select-Object -First 1
-        if ($agentProbe.ExitCode -ne 0 -or -not $script:agent) {
+        $script:agent = $null
+        foreach ($candidate in $knownAgents) {
+            $pathProbe = Invoke-Native -FilePath 'wsl.exe' -Arguments @(
+                '-d', $script:distro, '--', 'sh', '-lc', "command -v $candidate 2>/dev/null"
+            ) -TimeoutSec 15
+            $path = $pathProbe.StdOut.Trim()
+            if ($pathProbe.ExitCode -ne 0 -or
+                -not $path -or
+                $path -match '(?i)^/mnt/[a-z]/|\.(exe|cmd|bat)$') {
+                continue
+            }
+
+            if ($candidate -in @('claude', 'codex')) {
+                $npxProbe = Invoke-Native -FilePath 'wsl.exe' -Arguments @(
+                    '-d', $script:distro, '--', 'sh', '-lc', 'command -v npx 2>/dev/null'
+                ) -TimeoutSec 15
+                $npxPath = $npxProbe.StdOut.Trim()
+                if ($npxProbe.ExitCode -ne 0 -or
+                    -not $npxPath -or
+                    $npxPath -match '(?i)^/mnt/[a-z]/|\.(exe|cmd|bat)$') {
+                    continue
+                }
+            }
+
+            $script:agent = $candidate
+            break
+        }
+        if (-not $script:agent) {
             $script:skipReason = "$($script:distro) has no supported native Linux ACP agent"
             return
         }
