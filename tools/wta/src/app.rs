@@ -7831,7 +7831,7 @@ impl App {
         // it, e.g. "/new"), and the Enter handler surfaces the reconnect hint.
         // Static command and move candidates borrow the tab's lists. Agent
         // candidates are filtered from the small cached available-agent list.
-        let agent_candidates = self.agent_command_candidates();
+        let agent_candidates: Vec<_> = self.agent_command_candidates().collect();
         let candidates = if self.transport_lost {
             let filtered: Vec<&'static crate::commands::CommandSpec> = tab
                 .command_popup_candidates
@@ -7896,7 +7896,7 @@ impl App {
     /// invisible popup.
     fn command_popup_visible(&self) -> bool {
         if !self.current_tab().command_popup_visible()
-            && self.agent_command_candidates().is_empty()
+            && self.agent_command_candidates().next().is_none()
         {
             return false;
         }
@@ -7912,31 +7912,33 @@ impl App {
         true
     }
 
-    fn agent_command_candidates(&self) -> Vec<&AvailableAgent> {
-        if self.transport_lost {
-            return Vec::new();
-        }
-        let Some(prefix) = commands::agent_id_prefix(&self.current_tab().input) else {
-            return Vec::new();
+    fn agent_command_candidates(&self) -> impl Iterator<Item = &AvailableAgent> {
+        let prefix = if self.transport_lost {
+            None
+        } else {
+            commands::agent_id_prefix(&self.current_tab().input)
         };
-        let prefix = prefix.to_ascii_lowercase();
         self.available_agents
             .iter()
-            .filter(|agent| agent.id.starts_with(&prefix))
-            .collect()
+            .filter(move |agent| {
+                prefix.is_some_and(|prefix| {
+                    agent
+                        .id
+                        .get(..prefix.len())
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+                })
+            })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
-        let candidates = self.agent_command_candidates();
-        let selected = self
-            .current_tab()
-            .command_popup_selected
-            .min(candidates.len().saturating_sub(1));
-        candidates.get(selected).copied()
+        let selected = self.current_tab().command_popup_selected;
+        self.agent_command_candidates()
+            .take(selected.saturating_add(1))
+            .last()
     }
 
     fn command_popup_candidate_count(&self) -> usize {
-        let agent_count = self.agent_command_candidates().len();
+        let agent_count = self.agent_command_candidates().count();
         if agent_count > 0 {
             agent_count
         } else {
