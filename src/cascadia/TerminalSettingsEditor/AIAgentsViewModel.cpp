@@ -273,7 +273,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             providers.Append(winrt::get_self<CustomModelProviderEntry>(entry)->Provider());
         }
         _GlobalSettings.CustomModelProviders(providers);
-        _RebuildAcpModelListFromCache();
+
+        // An agent launched with BYOK may advertise the injected model in its
+        // native catalog. Invalidate that snapshot when providers change so a
+        // removed model cannot survive as a stale runtime entry.
+        const auto agentId = _GlobalSettings.EffectiveAcpAgent();
+        Model::AcpRuntimeState::Current().SetAvailableModels(
+            agentId,
+            winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
+            L"");
+        _TriggerAcpModelProbe();
         _NotifyChanges(L"CustomModelProviders");
     }
 

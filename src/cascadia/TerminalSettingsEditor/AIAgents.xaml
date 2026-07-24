@@ -169,25 +169,36 @@
                 </Grid>
             </local:SettingContainer>
 
-            <muxc:Expander Margin="0,4,0,0"
-                           HorizontalAlignment="Stretch"
-                           HorizontalContentAlignment="Stretch">
-                <muxc:Expander.Header>
-                    <Grid MinHeight="64">
+            <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                    BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                    BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                    CornerRadius="{ThemeResource ControlCornerRadius}"
+                    MaxWidth="1000"
+                    HorizontalAlignment="Stretch"
+                    Margin="0,4,0,0">
+                <StackPanel>
+                    <Grid MinHeight="64"
+                          Padding="16,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock x:Uid="AIAgents_CustomModelsGroupHeader"
                                    VerticalAlignment="Center"
                                    FontWeight="SemiBold"
                                    TextWrapping="Wrap" />
+                        <Button Grid.Column="1"
+                                x:Uid="AIAgents_CustomProviderAdd"
+                                VerticalAlignment="Center"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
                     </Grid>
-                </muxc:Expander.Header>
-                <StackPanel Margin="16,4,16,16"
-                            Spacing="8">
             <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="local:CustomModelProviderEntry">
                         <Border BorderThickness="0,1,0,0"
                                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                Padding="0,16,0,16">
+                                Padding="16,12">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -212,16 +223,9 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <Button x:Uid="AIAgents_CustomProviderAdd"
-                    HorizontalAlignment="Left"
-                    Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                    Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}" />
-            <Border Background="{ThemeResource ExpanderHeaderBackground}"
-                    BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                    BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                    CornerRadius="{ThemeResource ControlCornerRadius}"
+            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0"
                     Padding="16"
-                    Margin="0,8,0,0"
                     Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
                 <StackPanel Spacing="8">
                     <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
@@ -244,7 +248,7 @@
                 </StackPanel>
             </Border>
                 </StackPanel>
-            </muxc:Expander>
+            </Border>
 
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
