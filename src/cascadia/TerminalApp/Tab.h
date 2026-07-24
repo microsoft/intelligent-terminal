@@ -140,6 +140,8 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& AgentCustomCommandOverride() const noexcept { return _agentCustomCommandOverride; }
         const winrt::hstring& AgentSourceOverride() const noexcept { return _agentSourceOverride; }
         const winrt::hstring& AgentWslDistroOverride() const noexcept { return _agentWslDistroOverride; }
+        std::optional<winrt::guid> AgentSourceProfileGuid() const noexcept { return _agentSourceProfileGuid; }
+        void AgentSourceProfileGuid(const winrt::guid& value) noexcept { _agentSourceProfileGuid = value; }
         bool HasAgentOverride() const noexcept { return !_agentIdOverride.empty(); }
         void SetAgentOverride(const winrt::hstring& agentId,
                               const winrt::hstring& model,
@@ -253,6 +255,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentCustomCommandOverride{};
         winrt::hstring _agentSourceOverride{};
         winrt::hstring _agentWslDistroOverride{};
+        std::optional<winrt::guid> _agentSourceProfileGuid;
 
         winrt::Microsoft::Terminal::Settings::Model::IconStyle _lastIconStyle;
         winrt::hstring _lastIconPath{};

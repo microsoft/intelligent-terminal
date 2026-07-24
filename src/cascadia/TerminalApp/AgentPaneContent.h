@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "AgentPaneContent.g.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
@@ -78,6 +80,13 @@ namespace winrt::TerminalApp::implementation
             const auto v = _pendingRenameFromTabId;
             _pendingRenameFromTabId = {};
             return v;
+        }
+        void SetPendingAgentSourceProfileGuid(const std::optional<winrt::guid>& value) noexcept { _pendingAgentSourceProfileGuid = value; }
+        std::optional<winrt::guid> TakePendingAgentSourceProfileGuid() noexcept
+        {
+            const auto value = _pendingAgentSourceProfileGuid;
+            _pendingAgentSourceProfileGuid.reset();
+            return value;
         }
 
         // Apply the provided background and foreground brushes to the
@@ -161,6 +170,7 @@ namespace winrt::TerminalApp::implementation
         // post-Tab-construction in `_InitializeTab`). Empty when no rename
         // is pending. See SetPendingRenameFromTabId / TakePendingRenameFromTabId.
         winrt::hstring _pendingRenameFromTabId{};
+        std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};
