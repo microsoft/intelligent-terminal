@@ -60,6 +60,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .width
         .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
     let viewport = input_viewport(&tab.input, tab.cursor_pos, text_width);
+    let ghost_suffix = app.command_ghost_suffix();
 
     // The caret is painted as a buffer cell (not the OS cursor) in every
     // state, but only when the input box is the live caret target: the pane
@@ -125,10 +126,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 // keep the OS cursor hidden in every state.
                 if input_active && i == viewport.cursor_row {
                     let mut spans = vec![prefix];
-                    push_caret_spans(&mut spans, line, viewport.cursor_col);
+                    push_caret_spans(&mut spans, line, viewport.cursor_col, ghost_suffix);
                     Line::from(spans)
                 } else {
-                    Line::from(vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)])
+                    let mut spans =
+                        vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)];
+                    if i == viewport.cursor_row {
+                        if let Some(suffix) = ghost_suffix {
+                            spans.push(Span::styled(suffix.to_string(), theme::DIM));
+                        }
+                    }
+                    Line::from(spans)
                 }
             })
             .collect()
@@ -152,7 +160,12 @@ pub(crate) fn input_height(input: &str, cursor_pos: usize, total_width: u16) -> 
 /// a space when the caret sits past the last char at end of line) painted as
 /// an inverse block, and the text after. `caret_col` is a display-cell column
 /// produced by `wrap_input`, so it always lands on a char boundary.
-fn push_caret_spans(spans: &mut Vec<Span<'static>>, line: &str, caret_col: usize) {
+fn push_caret_spans(
+    spans: &mut Vec<Span<'static>>,
+    line: &str,
+    caret_col: usize,
+    ghost_suffix: Option<&str>,
+) {
     let mut before = String::new();
     let mut col = 0usize;
     let mut chars = line.chars();
@@ -166,7 +179,16 @@ fn push_caret_spans(spans: &mut Vec<Span<'static>>, line: &str, caret_col: usize
         col += char_display_width(ch);
     }
     let after: String = chars.collect();
-    let caret_text = caret_ch.map(|c| c.to_string()).unwrap_or_else(|| " ".to_string());
+    let mut ghost_chars = ghost_suffix.unwrap_or_default().chars();
+    let ghost_caret = if caret_ch.is_none() {
+        ghost_chars.next()
+    } else {
+        None
+    };
+    let caret_text = caret_ch
+        .or(ghost_caret)
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| " ".to_string());
 
     if !before.is_empty() {
         spans.push(Span::styled(before, theme::INPUT_TEXT));
@@ -176,10 +198,18 @@ fn push_caret_spans(spans: &mut Vec<Span<'static>>, line: &str, caret_col: usize
     // light background once the pane follows the scheme — #234).
     spans.push(Span::styled(
         caret_text,
-        Style::new().add_modifier(Modifier::REVERSED),
+        if ghost_caret.is_some() {
+            theme::DIM.add_modifier(Modifier::REVERSED)
+        } else {
+            Style::new().add_modifier(Modifier::REVERSED)
+        },
     ));
     if !after.is_empty() {
         spans.push(Span::styled(after, theme::INPUT_TEXT));
+    }
+    let ghost_rest: String = ghost_chars.collect();
+    if !ghost_rest.is_empty() {
+        spans.push(Span::styled(ghost_rest, theme::DIM));
     }
 }
 
@@ -366,7 +396,7 @@ mod tests {
     fn caret_past_end_of_short_line_uses_blank_cell() {
         // Short line: the caret sits in the blank cell right after the text.
         let mut spans = Vec::new();
-        push_caret_spans(&mut spans, "ab", 2);
+        push_caret_spans(&mut spans, "ab", 2, None);
 
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].content.as_ref(), "ab");
@@ -376,11 +406,22 @@ mod tests {
     #[test]
     fn caret_in_middle_splits_before_glyph_after() {
         let mut spans = Vec::new();
-        push_caret_spans(&mut spans, "abcd", 1);
+        push_caret_spans(&mut spans, "abcd", 1, None);
 
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].content.as_ref(), "a");
         assert_eq!(spans[1].content.as_ref(), "b");
         assert_eq!(spans[2].content.as_ref(), "cd");
+    }
+
+    #[test]
+    fn ghost_suffix_starts_under_end_caret() {
+        let mut spans = Vec::new();
+        push_caret_spans(&mut spans, "/agent co", 9, Some("pilot"));
+
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content.as_ref(), "/agent co");
+        assert_eq!(spans[1].content.as_ref(), "p");
+        assert_eq!(spans[2].content.as_ref(), "ilot");
     }
 }
