@@ -15,13 +15,17 @@ mod cwd_util;
 mod event;
 mod helper;
 mod history_loader;
-mod logging;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
+mod logging;
 mod master;
+mod named_pipe_security;
 mod osc52;
 mod pane_context;
+mod proposal_channel;
+mod proposal_invocation;
+mod proposal_pipe;
 mod protocol;
 mod resolve_command;
 mod rtl;
@@ -32,6 +36,7 @@ mod session_registry;
 mod session_watcher;
 mod shell;
 mod telemetry;
+mod terminal_action_proposal;
 #[cfg(test)]
 mod test_support;
 mod theme;
@@ -562,8 +567,21 @@ enum Command {
         #[arg(long)]
         cli: Option<String>,
     },
-}
 
+    /// Submit a typed terminal-action proposal directly to the Helper that
+    /// owns the current turn. Intended to be run by an agent session using
+    /// the exact canonical command injected into its prompt.
+    ProposeTerminalActions {
+        /// Opaque per-turn channel from the Helper's runtime instruction.
+        #[arg(long)]
+        channel: String,
+
+        /// Compact versioned proposal JSON. stdin and payload files are
+        /// intentionally unsupported so permission matching has one form.
+        #[arg(long)]
+        payload_json: String,
+    },
+}
 
 /// Subcommands for `wta sessions`.
 #[derive(Subcommand, Debug)]
@@ -602,9 +620,9 @@ enum SessionsOriginArg {
 impl SessionsOriginArg {
     fn to_filter(self) -> agent_sessions::OriginFilter {
         match self {
-            SessionsOriginArg::Shell     => agent_sessions::OriginFilter::ShellOnly,
+            SessionsOriginArg::Shell => agent_sessions::OriginFilter::ShellOnly,
             SessionsOriginArg::AgentPane => agent_sessions::OriginFilter::AgentPaneOnly,
-            SessionsOriginArg::All       => agent_sessions::OriginFilter::All,
+            SessionsOriginArg::All => agent_sessions::OriginFilter::All,
         }
     }
 }
@@ -992,6 +1010,12 @@ async fn main() -> Result<()> {
         // ── WSL ACP history-scan probe (diagnostic) ──
         Some(Command::ProbeWslSessions { cli }) => run_probe_wsl_sessions(cli.as_deref()).await,
 
+        // ── Direct terminal-action proposal (agent session -> master) ──
+        Some(Command::ProposeTerminalActions {
+            channel,
+            payload_json,
+        }) => run_propose_terminal_actions(channel, payload_json).await,
+
         // ── No subcommand: a singleton-service mode, or an error. There
         //    is no standalone/default ACP TUI mode — the direct agent-spawn
         //    path was removed, so bare `wta` always runs as a WT-launched
@@ -1157,8 +1181,9 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
     // Resolve the CliSource from the agent command so the probe labels and
     // classifies rows the way production seeding does (which uses the real
     // `state.cli_source`), instead of assuming Copilot for every agent.
-    let cli_source =
-        CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(agent)));
+    let cli_source = CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(
+        agent,
+    )));
 
     let local = tokio::task::LocalSet::new();
     let rows = match local
@@ -1499,7 +1524,6 @@ async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<Strin
         .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_tabs_in_window", window_id = window_id)))
 }
 
-
 // ─── sessions CLI helpers ───────────────────────────────────────────────────
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
@@ -1533,16 +1557,30 @@ async fn run_sessions_list(
     Ok(())
 }
 
-async fn fetch_sessions_from_master(
+/// Open a named-pipe connection to `wta-master`, drive its ACP `initialize`
+/// handshake as a short-lived client, and return the ready [`ClientLink`]
+/// (its `handle_io` task is spawned onto the caller's `LocalSet` and left to
+/// run until the peer/EOF closes it).
+///
+/// `client_name` becomes both the ACP builder name (used in local logs) and
+/// the wire `InitializeRequest.client_info.name`. `telemetry_route` tags the
+/// emitted `AcpInitializeComplete` event so per-command latency can be
+/// attributed to its caller.
+///
+/// Shared by `wta sessions list` and delegate born-bound registration.
+/// Must be called inside a `tokio::task::LocalSet`.
+async fn connect_master_as(
     master_override: Option<String>,
-) -> Result<Vec<session_registry::SessionInfo>> {
+    client_name: &str,
+    telemetry_route: &str,
+) -> Result<crate::protocol::acp::conn::ClientLink> {
     let pipe_name = resolve_master_pipe(master_override).await?;
     let pipe = open_master_pipe_for_cli(&pipe_name).await?;
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
     let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
-        acp::Client.builder().name("wta-sessions"),
+        acp::Client.builder().name(client_name),
         crate::protocol::acp::conn::byte_streams(outgoing, incoming),
     );
     tokio::task::spawn_local(async move {
@@ -1550,19 +1588,20 @@ async fn fetch_sessions_from_master(
     });
 
     let init_started = std::time::Instant::now();
-    let init_result = conn.initialize(
-        acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-            .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-            .client_info(
-                acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
-                    .title("Windows Terminal Agent sessions CLI"),
-            ),
-    )
-    .await;
+    let init_result = conn
+        .initialize(
+            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+                .client_capabilities(acp::schema::v1::ClientCapabilities::new())
+                .client_info(
+                    acp::schema::v1::Implementation::new(client_name, env!("CARGO_PKG_VERSION"))
+                        .title("Windows Terminal Agent CLI client"),
+                ),
+        )
+        .await;
     telemetry::log_acp_initialize_complete(
         init_started.elapsed().as_secs_f64() * 1000.0,
         init_result.is_ok(),
-        "SessionsCli",
+        telemetry_route,
         if init_result.is_ok() { "" } else { "AcpError" },
         init_result
             .as_ref()
@@ -1571,7 +1610,13 @@ async fn fetch_sessions_from_master(
             .unwrap_or(0),
     );
     init_result.map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
+    Ok(conn)
+}
 
+async fn fetch_sessions_from_master(
+    master_override: Option<String>,
+) -> Result<Vec<session_registry::SessionInfo>> {
+    let conn = connect_master_as(master_override, "wta-sessions", "SessionsCli").await?;
     let req = session_registry::build_sessions_list_request(false);
     let resp = conn
         .ext_method(req)
@@ -1580,6 +1625,114 @@ async fn fetch_sessions_from_master(
     let parsed = session_registry::parse_sessions_list_response(&resp.0)
         .context("parse sessions/list response")?;
     Ok(parsed.sessions)
+}
+
+async fn run_propose_terminal_actions(channel: String, payload: String) -> Result<()> {
+    use tokio::io::{AsyncWriteExt, BufReader};
+
+    let channel = channel
+        .parse::<proposal_channel::ProposalChannel>()
+        .context("invalid --channel")?;
+    if payload.len() > terminal_action_proposal::MAX_PAYLOAD_BYTES {
+        anyhow::bail!(
+            "--payload-json exceeds the {}-byte inline limit",
+            terminal_action_proposal::MAX_PAYLOAD_BYTES
+        );
+    }
+    let pipe = open_proposal_pipe(&channel.pipe_name()).await?;
+    let (read_half, mut write_half) = tokio::io::split(pipe);
+    let request = proposal_pipe::ProposalPipeRequest {
+        version: proposal_pipe::PROTOCOL_VERSION,
+        channel: channel.to_string(),
+        payload,
+    };
+    let mut request_line = serde_json::to_vec(&request)?;
+    request_line.push(b'\n');
+    write_half
+        .write_all(&request_line)
+        .await
+        .context("write proposal request")?;
+    write_half.flush().await.context("flush proposal request")?;
+
+    let mut reader = BufReader::new(read_half);
+    let validation: proposal_pipe::ProposalValidationResponse =
+        read_proposal_response(&mut reader).await?;
+    println!("{}", serde_json::to_string(&validation)?);
+    std::io::Write::flush(&mut std::io::stdout()).context("flush validation response")?;
+    if validation.status != proposal_channel::ProposalValidationStatus::Accepted {
+        return Ok(());
+    }
+
+    let final_response: proposal_pipe::ProposalFinalResponse =
+        read_proposal_response(&mut reader).await?;
+    println!("{}", serde_json::to_string(&final_response)?);
+    Ok(())
+}
+
+async fn open_proposal_pipe(
+    pipe_name: &str,
+) -> Result<tokio::net::windows::named_pipe::NamedPipeClient> {
+    const ERROR_FILE_NOT_FOUND: i32 = 2;
+    const ERROR_PIPE_BUSY: i32 = 231;
+    const BACKOFF_MS: &[u64] = &[20, 50, 100, 200, 500, 1000];
+
+    for (attempt, wait_ms) in BACKOFF_MS.iter().enumerate() {
+        match tokio::net::windows::named_pipe::ClientOptions::new().open(pipe_name) {
+            Ok(pipe) => return Ok(pipe),
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(ERROR_FILE_NOT_FOUND | ERROR_PIPE_BUSY)
+                ) =>
+            {
+                tracing::debug!(
+                    target: "proposal_cli",
+                    pipe = %pipe_name,
+                    attempt = attempt + 1,
+                    wait_ms,
+                    "proposal pipe not ready"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(*wait_ms)).await;
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("open owning Helper pipe '{pipe_name}'"));
+            }
+        }
+    }
+    anyhow::bail!("owning Helper pipe is unavailable")
+}
+
+async fn read_proposal_response<R, T>(reader: &mut R) -> Result<T>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+    T: serde::de::DeserializeOwned,
+{
+    use tokio::io::AsyncBufReadExt;
+
+    let mut line = Vec::new();
+    loop {
+        let available = reader.fill_buf().await.context("read proposal response")?;
+        if available.is_empty() {
+            if line.is_empty() {
+                anyhow::bail!("owning Helper disconnected before responding");
+            }
+            anyhow::bail!("owning Helper response is not newline terminated");
+        }
+        let take = available
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(available.len(), |index| index + 1);
+        if line.len() + take > proposal_pipe::MAX_FRAME_BYTES {
+            anyhow::bail!("proposal response exceeds the frame limit");
+        }
+        line.extend_from_slice(&available[..take]);
+        reader.consume(take);
+        if line.last() == Some(&b'\n') {
+            break;
+        }
+    }
+    serde_json::from_slice(&line).context("decode proposal response")
 }
 
 /// Best-effort: register a WTA-launched CLI session with `wta-master` as a
@@ -1621,30 +1774,7 @@ async fn register_launched_session_with_master(
     let local = tokio::task::LocalSet::new();
     let result: Result<()> = local
         .run_until(async move {
-            let pipe_name = resolve_master_pipe(None).await?;
-            let pipe = open_master_pipe_for_cli(&pipe_name).await?;
-            let (read_half, write_half) = tokio::io::split(pipe);
-            let outgoing = write_half.compat_write();
-            let incoming = read_half.compat();
-            let (conn, handle_io) = crate::protocol::acp::conn::spawn_client(
-                acp::Client.builder().name("wta-delegate"),
-                crate::protocol::acp::conn::byte_streams(outgoing, incoming),
-            );
-            tokio::task::spawn_local(async move {
-                let _ = handle_io.await;
-            });
-
-            conn.initialize(
-                acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                    .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-                    .client_info(
-                        acp::schema::v1::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
-                            .title("Windows Terminal Agent delegate"),
-                    ),
-            )
-            .await
-            .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
-
+            let conn = connect_master_as(None, "wta-delegate", "DelegateCli").await?;
             conn.ext_method(req)
                 .await
                 .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
@@ -1665,7 +1795,6 @@ async fn resolve_master_pipe(master_override: Option<String>) -> Result<String> 
     if let Some(pipe) = master_override.filter(|s| !s.trim().is_empty()) {
         return Ok(pipe);
     }
-
     for attempt in 0..2 {
         if let Some(path) = runtime_paths::master_pipe_file_path() {
             if let Ok(contents) = std::fs::read_to_string(path) {
@@ -1718,7 +1847,11 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
     ));
     for (i, session) in sessions.iter().enumerate() {
         let sid = session.session_id.to_string();
-        let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
+        let short_sid = if sid.len() > 24 {
+            &sid[..24]
+        } else {
+            sid.as_str()
+        };
         out.push_str(&format!(
             "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
             i + 1,
@@ -1736,15 +1869,17 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
 }
 
 fn status_label(status: Option<&agent_sessions::AgentStatus>) -> String {
-    status.map(|s| format!("{s:?}")).unwrap_or_else(|| "-".to_string())
+    status
+        .map(|s| format!("{s:?}"))
+        .unwrap_or_else(|| "-".to_string())
 }
 
 fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
     match source {
-        Some(agent_sessions::CliSource::Claude)  => "Claude".to_string(),
-        Some(agent_sessions::CliSource::Codex)   => "Codex".to_string(),
+        Some(agent_sessions::CliSource::Claude) => "Claude".to_string(),
+        Some(agent_sessions::CliSource::Codex) => "Codex".to_string(),
         Some(agent_sessions::CliSource::Copilot) => "Copilot".to_string(),
-        Some(agent_sessions::CliSource::Gemini)  => "Gemini".to_string(),
+        Some(agent_sessions::CliSource::Gemini) => "Gemini".to_string(),
         Some(agent_sessions::CliSource::OpenCode) => "OpenCode".to_string(),
         Some(agent_sessions::CliSource::Unknown(s)) if !s.is_empty() => s.clone(),
         _ => "-".to_string(),
@@ -1759,8 +1894,8 @@ fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
 fn origin_label(origin: Option<&agent_sessions::SessionOrigin>) -> &'static str {
     match origin {
         Some(agent_sessions::SessionOrigin::AgentPane) => "AgentPane",
-        Some(agent_sessions::SessionOrigin::Unknown)   => "Shell",
-        None                                           => "-",
+        Some(agent_sessions::SessionOrigin::Unknown) => "Shell",
+        None => "-",
     }
 }
 
@@ -2068,7 +2203,11 @@ async fn run_delegate(
     cwd: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
-    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
+    tracing::info!(
+        prompt_chars = prompt.map(|p| p.chars().count()),
+        agent = agent_cmd,
+        "run_delegate started"
+    );
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
@@ -2533,7 +2672,8 @@ async fn delegate_with_context(
     tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
     let windows_home = std::env::var("USERPROFILE").ok();
-    let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+    let sanitized_cwd =
+        crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
 
     let create_resp = shell_mgr
         .wt_create_tab(Some(&commandline), sanitized_cwd.as_deref(), None, None)
@@ -2645,7 +2785,10 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
                 Some(t) => t,
                 None => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(&window_id)).await.ok()?;
+            let panes = shell_mgr
+                .wt_list_panes(&tab_id_str, Some(&window_id))
+                .await
+                .ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {
@@ -2913,9 +3056,7 @@ async fn run_info_mode() -> Result<()> {
 }
 
 fn spawn_restart_agent_stack_forwarder(
-    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
-        protocol::acp::client::RestartRequest,
-    >,
+    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<protocol::acp::client::RestartRequest>,
 ) {
     tokio::task::spawn_local(async move {
         while let Some(req) = restart_rx.recv().await {
@@ -2952,6 +3093,52 @@ async fn run_acp_app(
         .run_until(async move {
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let proposal_channels = Arc::new(proposal_channel::ProposalChannelManager::new());
+            let (proposal_pipe_tx, mut proposal_pipe_rx) =
+                tokio::sync::mpsc::unbounded_channel();
+            let proposal_server_manager = Arc::clone(&proposal_channels);
+            let proposal_server_lifecycle = Arc::clone(&proposal_channels);
+            tokio::task::spawn_local(async move {
+                if let Err(error) =
+                    proposal_pipe::run_server(proposal_server_manager, proposal_pipe_tx).await
+                {
+                    proposal_server_lifecycle.set_transport_available(false);
+                    tracing::error!(
+                        target: "proposal_pipe",
+                        error = %format!("{error:#}"),
+                        "proposal pipe server stopped"
+                    );
+                }
+            });
+            let proposal_event_tx = event_tx.clone();
+            tokio::task::spawn_local(async move {
+                while let Some(event) = proposal_pipe_rx.recv().await {
+                    let app_event = match event {
+                        proposal_pipe::ProposalPipeEvent::Validate {
+                            context,
+                            payload,
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposal {
+                            context,
+                            payload,
+                            responder,
+                        },
+                        proposal_pipe::ProposalPipeEvent::Commit { proposal_id } => {
+                            app::AppEvent::DirectTerminalActionProposalCommit { proposal_id }
+                        }
+                        proposal_pipe::ProposalPipeEvent::Invalidate {
+                            proposal_id,
+                            session_id,
+                        } => app::AppEvent::DirectTerminalActionProposalInvalidate {
+                            proposal_id,
+                            session_id,
+                        },
+                    };
+                    if proposal_event_tx.send(app_event).is_err() {
+                        break;
+                    }
+                }
+            });
 
             let evt_tx = event_tx.clone();
             tokio::task::spawn_local(event::read_crossterm_events(evt_tx));
@@ -3278,6 +3465,8 @@ async fn run_acp_app(
                 let agent_id = cli.agent_id.clone();
                 let owner_tab = cli.owner_tab_id.clone();
                 let initial_load_sid = cli.initial_load_session_id.clone();
+                let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
+                let direct_proposals_enabled = canonical_agent_id == "copilot";
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
@@ -3298,6 +3487,8 @@ async fn run_acp_app(
                         shell_mgr_for_pipe,
                         wt_connected,
                         false, // post_login_reconnect: first connection, no authenticate needed
+                        proposal_channels_for_pipe,
+                        direct_proposals_enabled,
                     )
                     .await
                     {
@@ -3352,6 +3543,7 @@ async fn run_acp_app(
 
             let autofix_enabled = !cli.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(cli.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to

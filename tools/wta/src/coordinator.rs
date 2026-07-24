@@ -632,7 +632,7 @@ async fn execute_choice(
     Ok(())
 }
 
-fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
+pub(crate) fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
     if !(1..=3).contains(&set.choices.len()) {
         bail!("expected 1 to 3 choices, got {}", set.choices.len());
     }

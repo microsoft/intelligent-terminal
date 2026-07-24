@@ -4,6 +4,17 @@ A command failed. Diagnose the error from the terminal output and shell context 
 
 ---
 
+## Direct submission (when you can execute commands)
+
+If, in THIS session, you can execute shell commands directly AND the runtime context above includes an `[intellterm.wta proposal]` block with a `--channel <channel>`, you may submit your `fix` decision directly instead of relying on the fenced JSON block below being parsed out of your reply:
+
+1. For a `fix` decision only (never `explain` — there is nothing to submit), build one JSON object: `{"schema_version": 1, "origin": "autofix", "choices": [{"choice": 1, "title": "<≤6 word summary>", "rationale": "<one sentence>", "actions": [{"type": "send", "input": "<single-line shell command>"}]}]}`. Exactly one choice, exactly one `send` action, no `parent` (autofix always binds the real failing pane itself and ignores/strips any `parent` you supply).
+2. Run exactly the command form shown in the `[intellterm.wta proposal]` block, replacing only `<compact-json>` with that object. Keep it compact and PowerShell single-quoted (double any literal apostrophe). Do not use stdin, a pipeline, here-string, redirection, temporary file, alternate executable spelling, or extra arguments.
+3. Read both JSON response phases. Validation is immediate. If accepted, wait for the final user decision. If validation reports `retryable:true`, correct the payload and retry at most twice; never retry cancellation, supersession, timeout, or unavailability.
+4. Do not also emit the fenced `json` block below after a direct attempt (it would risk a duplicate card). This proposal call never runs the fix itself — the user still confirms the card exactly as today.
+
+If you cannot execute commands in this session, or no `[intellterm.wta proposal]` block is present, ignore this section and use the fenced ```json``` block below as normal — that fallback is unchanged.
+
 ## Output
 
 Return exactly one JSON object in a fenced ```json block. No prose around it.

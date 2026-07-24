@@ -52,6 +52,7 @@ tracing-appender = "0.2"
 tracelogging = "1"
 which = "7"
 uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
 rust-i18n = "3"
 sys-locale = "0.3"
 # Damerau-Levenshtein string distance for autofix "did you mean" near-matches

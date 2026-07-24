@@ -67,7 +67,9 @@ fn sessions_list_cli_parses_json_and_master_override() {
 
     assert!(cli.json);
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { master, origin } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { master, origin },
+        }) => {
             assert_eq!(master.as_deref(), Some(r"\\.\pipe\wta-master-test"));
             // Default keeps the historical debug behavior — show
             // every origin. MVP sessions picker has its own default in
@@ -85,12 +87,11 @@ fn sessions_list_cli_parses_origin_shell() {
     let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "shell"])
         .expect("sessions list --origin shell parses");
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { origin, .. },
+        }) => {
             assert_eq!(origin, SessionsOriginArg::Shell);
-            assert_eq!(
-                origin.to_filter(),
-                agent_sessions::OriginFilter::ShellOnly,
-            );
+            assert_eq!(origin.to_filter(), agent_sessions::OriginFilter::ShellOnly,);
         }
         other => panic!("expected sessions list command, got {other:?}"),
     }
@@ -101,7 +102,9 @@ fn sessions_list_cli_parses_origin_agent_pane() {
     let cli = Cli::try_parse_from(["wta", "sessions", "list", "--origin", "agent-pane"])
         .expect("sessions list --origin agent-pane parses");
     match cli.command {
-        Some(Command::Sessions { action: SessionsAction::List { origin, .. } }) => {
+        Some(Command::Sessions {
+            action: SessionsAction::List { origin, .. },
+        }) => {
             assert_eq!(origin, SessionsOriginArg::AgentPane);
             assert_eq!(
                 origin.to_filter(),
@@ -153,10 +156,19 @@ fn sessions_table_prints_header_and_rows() {
     // operator can tell "legacy / unclassified" from "shell".
     assert!(out.contains("ORIGIN"));
     let body = out.lines().nth(1).expect("body row present");
-    assert!(body.contains(" - "), "untagged origin renders as '-' got: {body}");
+    assert!(
+        body.contains(" - "),
+        "untagged origin renders as '-' got: {body}"
+    );
     // Leading 1-based index column.
-    assert!(out.lines().next().expect("header").starts_with("#"), "header has # column");
-    assert!(body.starts_with("1"), "first row is numbered 1, got: {body}");
+    assert!(
+        out.lines().next().expect("header").starts_with("#"),
+        "header has # column"
+    );
+    assert!(
+        body.starts_with("1"),
+        "first row is numbered 1, got: {body}"
+    );
 }
 
 #[test]
@@ -174,7 +186,10 @@ fn sessions_table_renders_origin_labels() {
 
     let out = format_sessions_table(&[shell, pane]);
     assert!(out.contains("Shell"), "shell origin label present: {out}");
-    assert!(out.contains("AgentPane"), "agent-pane origin label present: {out}");
+    assert!(
+        out.contains("AgentPane"),
+        "agent-pane origin label present: {out}"
+    );
 }
 
 #[test]
@@ -188,12 +203,17 @@ fn sessions_table_renders_location_labels() {
         agent_client_protocol::schema::v1::SessionId::new("sid-wsl"),
         std::path::PathBuf::from("/home/u"),
     );
-    wsl.location = agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".into() };
+    wsl.location = agent_sessions::SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
 
     let out = format_sessions_table(&[host, wsl]);
     assert!(out.contains("LOCATION"), "LOCATION header present: {out}");
     assert!(out.contains("host"), "host location label present: {out}");
-    assert!(out.contains("wsl:Ubuntu"), "wsl distro label present: {out}");
+    assert!(
+        out.contains("wsl:Ubuntu"),
+        "wsl distro label present: {out}"
+    );
 }
 
 #[test]
@@ -402,7 +422,10 @@ fn active_pane_wsl_distro_rejects_non_wsl_shells() {
     assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("pwsh"))), None);
     assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("cmd"))), None);
     // A pane name that merely contains "wsl" is not the `wsl:` prefix.
-    assert_eq!(active_pane_wsl_distro(Some(&pane_with_shell("my-wsl"))), None);
+    assert_eq!(
+        active_pane_wsl_distro(Some(&pane_with_shell("my-wsl"))),
+        None
+    );
     // Bare `wsl:` with an empty distro name is not a valid WSL pane — shell
     // integration only emits `wsl:<distro>` when `$WSL_DISTRO_NAME` is set —
     // and would otherwise build an invalid `wsl -d "" …` command.
@@ -448,4 +471,44 @@ fn delegate_launchable_for_target_ors_host_and_wsl() {
     // Launchable on the host is always launchable, regardless of WSL.
     assert!(delegate_launchable_for_target(true, false));
     assert!(delegate_launchable_for_target(true, true));
+}
+
+#[test]
+fn propose_terminal_actions_cli_parses_channel_and_inline_payload() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "propose-terminal-actions",
+        "--channel",
+        "v1.0123456789abcdef0123456789abcdef.abcdef0123456789abcdef0123456789",
+        "--payload-json",
+        r#"{"schema_version":1}"#,
+    ])
+    .expect("propose-terminal-actions flags must parse");
+
+    match cli.command {
+        Some(Command::ProposeTerminalActions {
+            channel,
+            payload_json,
+        }) => {
+            assert_eq!(
+                channel,
+                "v1.0123456789abcdef0123456789abcdef.abcdef0123456789abcdef0123456789"
+            );
+            assert_eq!(payload_json, r#"{"schema_version":1}"#);
+        }
+        other => panic!("expected ProposeTerminalActions command, got {other:?}"),
+    }
+}
+
+#[test]
+fn propose_terminal_actions_cli_requires_channel_and_payload() {
+    Cli::try_parse_from(["wta", "propose-terminal-actions"])
+        .expect_err("channel and payload are required");
+    Cli::try_parse_from([
+        "wta",
+        "propose-terminal-actions",
+        "--channel",
+        "channel-only",
+    ])
+    .expect_err("payload is required");
 }

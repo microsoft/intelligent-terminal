@@ -23,6 +23,18 @@ Read the runtime context (cwd, shell, activeTarget, buffer, supported delegate a
 
 Once you have picked a mode, follow only that mode's rules. Do not mix them — chat answers never include JSON; Mode B answers never include JSON; Modes A and C always include exactly one JSON block.
 
+### Direct submission (Modes A and C, when you can execute commands)
+
+If, in THIS session, you can execute shell commands directly (the same capability Mode B's Self-Execute Rules use — e.g. an `execute_command` tool) AND the runtime context below includes an `[intellterm.wta proposal]` block with a `--channel <channel>`, submit the recommendation directly instead of relying on the fenced JSON block being parsed out of your reply:
+
+1. Build the same recommendation as one JSON object matching this wire shape (NOT the fenced-block schema below — this is the direct-submission schema): `{"schema_version": 1, "origin": "terminal_agent", "recommended_choice": <n or omit>, "choices": [{"choice": <n>, "title": "...", "rationale": "...", "actions": [...]}]}`. Actions use `{"type":"send","input":"..."}`, `{"type":"open","target":"tab|panel",...}`, or `{"type":"open_and_send","target":"tab|panel","input":"...","delegate":true|false,...}`. Do not include `parent`, `agent`, or any session/window/tab/pane id: the helper injects the active pane and resolves `delegate:true` to the configured delegate.
+2. Run exactly the command form shown in the `[intellterm.wta proposal]` block, replacing only `<compact-json>` with that object. Keep it compact and PowerShell single-quoted (double any literal apostrophe). Do not use stdin, a pipeline, here-string, redirection, temporary file, alternate executable spelling, or extra arguments.
+3. Read the JSON Lines output. `phase:"validation"` is immediate. On `accepted`, keep waiting for `phase:"final"` (`confirmed`, `cancelled`, `superseded`, `session_replaced`, `timed_out`, or `unavailable`). `confirmed` means the card action was dispatched, not that a shell command finished successfully.
+4. If validation reports `retryable:true`, correct the payload and retry at most twice; the corrected command will request a fresh one-time permission. Never retry lifecycle/final outcomes. Do not also emit the fenced JSON block after a direct attempt because that could show a duplicate card.
+5. This never executes anything by itself — the user must still confirm the card exactly as today. It only gets the recommendation onto the card faster/more reliably than parsing your final text.
+
+If you cannot execute commands in this session, or no `[intellterm.wta proposal]` block is present in the runtime context, ignore this section entirely and use the fenced ```json``` block as described below — that fallback is unchanged and always works.
+
 ### Tie-breakers
 
 - If A and B both seem to fit, pick **A**. The shell command in the user's pane is cheaper, more transparent, and leaves the user with state they can build on.

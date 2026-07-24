@@ -21,9 +21,8 @@
 
 use async_trait::async_trait;
 
-use super::client::{build_terminal_context_json, user_locale_tag};
+use super::client::user_locale_tag;
 use crate::coordinator::default_supported_delegate_agents;
-use crate::shell::ShellManager;
 
 /// Read-only inputs a [`ContextProvider`] may consult when deciding whether it
 /// applies and what section to emit.
@@ -38,9 +37,10 @@ pub(crate) struct ContextRequest<'a> {
     pub is_autofix: bool,
     /// Whether the WT protocol channel is live (pane queries are meaningful).
     pub wt_connected: bool,
-    /// Shell manager for providers that query WT directly (planner terminal
-    /// context).
-    pub shell_mgr: &'a ShellManager,
+    /// Planner only: terminal context JSON resolved once by the prompt
+    /// assembler. Keeping it here ensures the Helper-local channel target is
+    /// exactly the one shown to the agent in the prompt.
+    pub terminal_context_json: Option<&'a str>,
     /// Autofix only: the JSON of the pane whose shell/cwd describe the failing
     /// command (the source pane — for error-triggered autofix this can be a
     /// pane in a non-focused tab, not the active pane). `None` when WT is not
@@ -145,7 +145,7 @@ impl ContextProvider for TerminalContextProvider {
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let json = build_terminal_context_json(req.shell_mgr).await?;
+        let json = req.terminal_context_json?;
         Some(ContextSection {
             heading: "Terminal Context JSON",
             body: format!("```json\n{}\n```", json),
@@ -267,11 +267,11 @@ mod tests {
     use super::*;
     use crate::shell::ShellManager;
 
-    fn req_planner(mgr: &ShellManager, wt_connected: bool) -> ContextRequest<'_> {
+    fn req_planner(_mgr: &ShellManager, wt_connected: bool) -> ContextRequest<'_> {
         ContextRequest {
             is_autofix: false,
             wt_connected,
-            shell_mgr: mgr,
+            terminal_context_json: None,
             context_pane: None,
             shell_exe: None,
             terminal_output: None,

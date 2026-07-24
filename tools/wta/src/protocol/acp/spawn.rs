@@ -14,7 +14,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 const STARTUP_STDERR_MAX_LINES: usize = 32;
@@ -184,9 +184,7 @@ impl AgentSpawn {
     /// Human-readable agent label for error messages. Prefers the npx
     /// adapter package id when present.
     pub fn label(&self) -> &str {
-        self.adapter_package
-            .as_deref()
-            .unwrap_or(&self.raw_program)
+        self.adapter_package.as_deref().unwrap_or(&self.raw_program)
     }
 }
 
@@ -197,7 +195,10 @@ impl AgentSpawn {
 /// when its shell wrapper doesn't explicitly set one — starts in the user's
 /// project. None preserves the parent's cwd (probe path, where it doesn't
 /// matter).
-pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result<AgentSpawn> {
+pub(crate) fn spawn_agent_process(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -218,7 +219,11 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
         None
     };
 
-    let program = if needs_cmd { "cmd" } else { resolved_program.as_str() };
+    let program = if needs_cmd {
+        "cmd"
+    } else {
+        resolved_program.as_str()
+    };
     let mut cmd = tokio::process::Command::new(program);
     if needs_cmd {
         cmd.arg("/c").arg(&resolved_program);
@@ -253,6 +258,11 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     // Versioned dir (`logs\<pkgver>\`) via the shared resolver so the hooks'
     // `hook-trace.log` lands alongside this build's Rust + C++ logs.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
+
+    // Proposal commands must execute this exact trusted binary path.
+    let wta_cli_path =
+        std::env::current_exe().context("failed to resolve the running wta executable")?;
+    cmd.env("WTA_CLI_PATH", wta_cli_path);
 
     // Forward the user's locale to the agent process via standard POSIX
     // environment variables. Many agent CLIs (and the large language models
@@ -401,17 +411,11 @@ mod tests {
         let line = "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE + 1);
         let truncated = truncate_stderr_line(&line);
 
-        assert_eq!(
-            truncated.chars().count(),
-            STARTUP_STDERR_MAX_CHARS_PER_LINE
-        );
+        assert_eq!(truncated.chars().count(), STARTUP_STDERR_MAX_CHARS_PER_LINE);
         assert!(truncated.ends_with("..."));
         assert_eq!(
             truncated,
-            format!(
-                "{}...",
-                "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3)
-            )
+            format!("{}...", "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3))
         );
     }
 
@@ -420,16 +424,10 @@ mod tests {
         let line = "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE + 1);
         let truncated = truncate_stderr_line(&line);
 
-        assert_eq!(
-            truncated.chars().count(),
-            STARTUP_STDERR_MAX_CHARS_PER_LINE
-        );
+        assert_eq!(truncated.chars().count(), STARTUP_STDERR_MAX_CHARS_PER_LINE);
         assert_eq!(
             truncated,
-            format!(
-                "{}...",
-                "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3)
-            )
+            format!("{}...", "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3))
         );
     }
 
