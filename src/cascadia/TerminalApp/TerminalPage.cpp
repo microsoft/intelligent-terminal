@@ -8439,7 +8439,9 @@ namespace winrt::TerminalApp::implementation
 
         const auto control = _CreateNewControlAndContent(controlSettings, connection);
 
-        if (hasSessionId)
+        // The resumed CLI replays its own transcript. Restoring the terminal
+        // buffer as well would duplicate that conversation on every restart.
+        if (hasSessionId && !resumingAgentSession)
         {
             using namespace std::string_view_literals;
 
