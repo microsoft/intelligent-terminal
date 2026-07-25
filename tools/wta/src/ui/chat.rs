@@ -506,10 +506,7 @@ fn build_message_lines<'a>(
     let mut lines = Vec::new();
     match msg {
         ChatMessage::User(text) => {
-            lines.push(Line::from(vec![
-                Span::styled("> ", theme::USER_PROMPT),
-                Span::styled(truncate_render_text(text), theme::USER_PROMPT),
-            ]));
+            push_prompt_prefixed_lines(&mut lines, text, wrap_width);
             lines.push(Line::default());
         }
         ChatMessage::Agent(text) => {
@@ -639,6 +636,44 @@ fn push_dot_prefixed_lines<'a>(
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(piece_str, text_style),
+                ]));
+            }
+        }
+    }
+}
+
+/// Mirrors `push_dot_prefixed_lines`, but for the user's own submitted
+/// prompt: splits on embedded `\n` (from Shift+Enter multi-line input) and
+/// wraps each paragraph so every line is a real `ratatui::Line` — ratatui
+/// does not turn an embedded `\n` inside a single `Span`/`Line` into
+/// multiple rows, so without this split any line after the first would
+/// never appear in the rendered transcript (see issue #492). The first
+/// rendered row gets the `"> "` prompt marker; continuation rows get a
+/// matching 2-cell indent, consistent with `message_height`'s
+/// `wrap_count`-based row estimate for `ChatMessage::User`.
+fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &str, wrap_width: usize) {
+    let body_width = wrap_width.saturating_sub(2).max(1);
+    let mut first_row = true;
+
+    for paragraph in text.split('\n') {
+        if paragraph.is_empty() {
+            lines.push(Line::default());
+            continue;
+        }
+
+        let wrapped = textwrap::wrap(paragraph, body_width);
+        for piece in wrapped {
+            let piece_str = truncate_render_text(&piece).into_owned();
+            if first_row {
+                lines.push(Line::from(vec![
+                    Span::styled("> ", theme::USER_PROMPT),
+                    Span::styled(piece_str, theme::USER_PROMPT),
+                ]));
+                first_row = false;
+            } else {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(piece_str, theme::USER_PROMPT),
                 ]));
             }
         }
@@ -926,5 +961,36 @@ mod tests {
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
         );
+    }
+
+    // ── push_prompt_prefixed_lines (regression: issue #492) ─────────────────
+    //
+    // Multi-line prompts (Shift+Enter) must render as multiple ratatui Lines:
+    // ratatui does not split an embedded '\n' inside a single Span/Line into
+    // separate rows, so lines after the first were silently dropped from the
+    // transcript before this helper existed.
+
+    #[test]
+    fn prompt_prefix_renders_each_embedded_newline_as_its_own_line() {
+        let mut lines = Vec::new();
+        push_prompt_prefixed_lines(&mut lines, "line one\nline two", 40);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
+    }
+
+    #[test]
+    fn prompt_prefix_single_line_keeps_prior_rendering() {
+        let mut lines = Vec::new();
+        push_prompt_prefixed_lines(&mut lines, "hello", 40);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(line_text(&lines[0]), "> hello");
+    }
+
+    #[test]
+    fn prompt_prefix_preserves_blank_line_between_paragraphs() {
+        let mut lines = Vec::new();
+        push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
     }
 }
