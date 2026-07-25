@@ -257,11 +257,18 @@ fn build_completed_turn_lines<'a>(
     // together with no separator at all (e.g. "remember,And ..."), since
     // ratatui doesn't render embedded newlines as whitespace. Replace each
     // '\n' with a space so the collapsed preview stays readable.
+    // Only allocate when the collapse step actually rewrote the text (i.e.
+    // the prompt had an embedded '\n'); the common single-line, non-wrapped
+    // prompt stays a zero-copy borrow of `turn.prompt` for the `'a` lifetime.
     let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
+    let prompt_text: Cow<'a, str> = match collapsed_prompt {
+        Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
+        Cow::Owned(collapsed) => Cow::Owned(truncate_render_text(&collapsed).into_owned()),
+    };
     let mut lines = vec![Line::from(vec![
         Span::styled(chevron, chevron_style),
         Span::styled("> ", prompt_style),
-        Span::styled(truncate_render_text(&collapsed_prompt).into_owned(), prompt_style),
+        Span::styled(prompt_text, prompt_style),
     ])];
 
     // Index of the line that should receive an inline trailing marker (eg
@@ -665,7 +672,16 @@ fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &str, wrap_wi
 
     for paragraph in text.split('\n') {
         if paragraph.is_empty() {
-            lines.push(Line::default());
+            // Unlike `push_dot_prefixed_lines`, the prompt marker must never
+            // be dropped: an empty submitted prompt, or one starting with a
+            // newline, still needs a "> " row so the transcript shows the
+            // user turn happened at all.
+            if first_row {
+                lines.push(Line::from(Span::styled("> ", theme::USER_PROMPT)));
+                first_row = false;
+            } else {
+                lines.push(Line::default());
+            }
             continue;
         }
 
@@ -1010,6 +1026,25 @@ mod tests {
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+    }
+
+    #[test]
+    fn prompt_prefix_keeps_marker_on_empty_prompt() {
+        // Prompt submission doesn't validate non-empty input, so an empty
+        // `ChatMessage::User` must still render its "> " marker instead of
+        // silently disappearing from the transcript.
+        let mut lines = Vec::new();
+        push_prompt_prefixed_lines(&mut lines, "", 40);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(line_text(&lines[0]), "> ");
+    }
+
+    #[test]
+    fn prompt_prefix_keeps_marker_when_text_starts_with_newline() {
+        let mut lines = Vec::new();
+        push_prompt_prefixed_lines(&mut lines, "\nsecond line", 40);
+        let texts: Vec<String> = lines.iter().map(line_text).collect();
+        assert_eq!(texts, vec!["> ".to_string(), "  second line".to_string()]);
     }
 
     // ── collapse_newlines_for_preview ────────────────────────────────────────
