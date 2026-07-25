@@ -250,10 +250,18 @@ fn build_completed_turn_lines<'a>(
         theme::DIM
     };
 
+    // The collapsed header is always a single `Line` by design (see
+    // `turn_height`'s "Collapsed view = single Line" comment above), so a
+    // multi-line prompt (Shift+Enter) can't keep its line breaks here. Without
+    // this, the embedded '\n' would vanish invisibly and run the two lines
+    // together with no separator at all (e.g. "remember,And ..."), since
+    // ratatui doesn't render embedded newlines as whitespace. Replace each
+    // '\n' with a space so the collapsed preview stays readable.
+    let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
     let mut lines = vec![Line::from(vec![
         Span::styled(chevron, chevron_style),
         Span::styled("> ", prompt_style),
-        Span::styled(truncate_render_text(&turn.prompt), prompt_style),
+        Span::styled(truncate_render_text(&collapsed_prompt).into_owned(), prompt_style),
     ])];
 
     // Index of the line that should receive an inline trailing marker (eg
@@ -680,6 +688,16 @@ fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &str, wrap_wi
     }
 }
 
+/// Collapses embedded newlines (from a Shift+Enter multi-line prompt) into
+/// single spaces so a single-line preview (the folded completed-turn header)
+/// doesn't silently run separate lines together with no visible separator.
+fn collapse_newlines_for_preview(text: &str) -> Cow<'_, str> {
+    if !text.contains('\n') {
+        return Cow::Borrowed(text);
+    }
+    Cow::Owned(text.replace('\n', " "))
+}
+
 fn truncate_render_text(text: &str) -> Cow<'_, str> {
     let char_count = text.chars().count();
     if char_count <= MAX_RENDER_LINE_CHARS {
@@ -992,5 +1010,23 @@ mod tests {
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+    }
+
+    // ── collapse_newlines_for_preview ────────────────────────────────────────
+
+    #[test]
+    fn collapse_newlines_replaces_embedded_newline_with_space() {
+        assert_eq!(
+            collapse_newlines_for_preview("remember,\nAnd I would like"),
+            "remember, And I would like"
+        );
+    }
+
+    #[test]
+    fn collapse_newlines_borrows_when_no_newline_present() {
+        assert!(matches!(
+            collapse_newlines_for_preview("no newline here"),
+            Cow::Borrowed(_)
+        ));
     }
 }
