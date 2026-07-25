@@ -227,6 +227,10 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = InitialView::Chat)]
     initial_view: InitialView,
 
+    /// Initial per-tab agent pane position restored by Windows Terminal.
+    #[arg(long, hide = true)]
+    initial_pane_position: Option<String>,
+
     /// UI language override, passed by Windows Terminal from the
     /// `settings.json` `Language` field. When present, wta uses this
     /// directly for i18n instead of detecting the OS locale — ensuring
@@ -3503,6 +3507,13 @@ async fn run_acp_app(
                         .entry(owner_tab_id.clone())
                         .or_default();
                     tab.pane_open = !cli.start_stashed;
+                    tab.agent_pane_position = match cli.initial_pane_position.as_deref() {
+                        Some("left") => Some("left"),
+                        Some("right") => Some("right"),
+                        Some("top") | Some("up") => Some("up"),
+                        Some("bottom") => Some("bottom"),
+                        _ => None,
+                    };
                     app_state.tab_id = Some(owner_tab_id.clone());
                     app_state.owner_tab_id = Some(owner_tab_id.clone());
                 }

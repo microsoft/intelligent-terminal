@@ -418,6 +418,8 @@ pub enum ConnectionState {
 pub enum ChatMessage {
     User(String),
     Agent(String),
+    /// App-generated agent-style text that should stay literal.
+    AgentLiteral(String),
     System(String),
     ToolCall {
         id: String,
@@ -488,6 +490,14 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
         out.push('…');
     }
     out
+}
+
+fn replay_user_request(text: &str) -> &str {
+    const DELIMITER: &str = "## User Request\n";
+    text.rsplit_once(DELIMITER)
+        .map(|(_, request)| request.trim())
+        .filter(|request| !request.is_empty())
+        .unwrap_or_else(|| text.trim())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1439,6 +1449,9 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// Latched after the first prompt or session/load. A pre-warmed session/new
+    /// alone must not become durable; `/clear` keeps the same session durable.
+    pub has_meaningful_conversation: bool,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -1618,6 +1631,16 @@ impl TabSession {
         self.chat_scroll.offset = 0;
     }
 
+    fn durable_session_id(&self) -> Option<&str> {
+        self.has_meaningful_conversation
+            .then(|| {
+                self.loading_target_session_id
+                    .as_deref()
+                    .or(self.session_id.as_deref())
+            })
+            .flatten()
+    }
+
     /// Whether the input box is the live, enterable caret target. False when
     /// the user is browsing a completed turn, a recommendation card is showing,
     /// a permission card is up, a paste is pending, or a modal picker is open.
@@ -1725,11 +1748,10 @@ impl TabSession {
     /// from the `SessionAttached` handler.
     ///
     /// Algorithm: walk `self.messages` left-to-right; each `User` opens a
-    /// new turn. The turn's `prompt` is a SHORT single-line preview of
-    /// the user text (so the collapsed `▶ > <preview>` row stays at one
-    /// visual line even for huge system-prompt-as-user dumps); the full
-    /// original `User(text)` is stored as the first entry of `details`,
-    /// followed by subsequent non-User messages. Messages that come
+    /// new turn. ACP persists the fully composed planner prompt, so recover
+    /// the text after WTA's `## User Request` delimiter before building the
+    /// turn header. Agent recommendation JSON is parsed and formatted through
+    /// the same `RecommendationSet` display path used by live turns. Messages that come
     /// BEFORE the first User (e.g. the `System("Resuming session …")`
     /// marker, or a stray Agent dump) stay in `messages` as-is — only
     /// User-anchored turns get packed. Each packed turn has `expanded:
@@ -1741,39 +1763,47 @@ impl TabSession {
         }
         let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
         let mut kept: Vec<ChatMessage> = Vec::new();
-        // `details` always opens with the full original ChatMessage::User
-        // so expanding the turn shows the entire prompt text. `prompt`
-        // is the short preview used in the collapsed header row.
-        let mut current: Option<(String, Vec<ChatMessage>)> = None;
+        let mut current: Option<(String, Vec<ChatMessage>, bool)> = None;
         for msg in drained {
             match msg {
                 ChatMessage::User(text) => {
-                    if let Some((prompt, details)) = current.take() {
+                    if let Some((prompt, details, expanded)) = current.take() {
                         self.completed_turns.push(CompletedTurn {
                             prompt,
                             details,
-                            expanded: false,
+                            expanded,
                             trailing_marker: None,
                         });
                     }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
-                    current = Some((preview, details));
+                    let prompt = replay_user_request(&text);
+                    current = Some((collapsed_prompt_preview(prompt), Vec::new(), false));
                 }
                 other => {
-                    if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
+                    if let Some((_, details, expanded)) = current.as_mut() {
+                        match other {
+                            ChatMessage::Agent(text) => {
+                                if let Ok(recommendations) = parse_recommendation_set(&text) {
+                                    details.push(ChatMessage::AgentLiteral(
+                                        format_recommendations_for_chat(&recommendations),
+                                    ));
+                                    *expanded = true;
+                                } else {
+                                    details.push(ChatMessage::Agent(text));
+                                }
+                            }
+                            other => details.push(other),
+                        }
                     } else {
                         kept.push(other);
                     }
                 }
             }
         }
-        if let Some((prompt, details)) = current.take() {
+        if let Some((prompt, details, expanded)) = current.take() {
             self.completed_turns.push(CompletedTurn {
                 prompt,
                 details,
-                expanded: false,
+                expanded,
                 trailing_marker: None,
             });
         }
@@ -5201,6 +5231,7 @@ impl App {
                         .iter()
                         .any(|m| !matches!(m, ChatMessage::Disclaimer));
                 if !has_real_content
+                    && !tab.loading_session
                     && !tab
                         .messages
                         .iter()
@@ -5236,6 +5267,8 @@ impl App {
                     .map(|t| t == session_id.as_str())
                     .unwrap_or(false);
                 if tab.loading_session && is_load_target {
+                    tab.messages
+                        .retain(|message| !matches!(message, ChatMessage::Disclaimer));
                     tab.flush_load_replay_pending();
                     tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
@@ -5266,6 +5299,7 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
@@ -5275,6 +5309,7 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
+                tab.has_meaningful_conversation = false;
                 tab.progress_status = None;
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
@@ -5282,6 +5317,7 @@ impl App {
                 tab.turn = TurnState::Idle;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
@@ -6273,6 +6309,7 @@ impl App {
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
                         tab.session_id = None;
+                        tab.has_meaningful_conversation = true;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by
@@ -6296,9 +6333,7 @@ impl App {
                     // not-yet-active tab (e.g. WT just created a fresh tab
                     // and the `tab_changed` race still hasn't landed), the
                     // imminent `tab_changed` to that tab will project then.
-                    if tab_id == self.active_tab_key() {
-                        self.project_active_tab_state();
-                    }
+                    self.project_tab_state(tab_id);
                     let _ = self.load_session_tx.send(LoadSessionForTab {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),
@@ -8415,6 +8450,7 @@ impl App {
         tab.completed_turns.clear();
         tab.selected_completed_turn_idx = None;
         tab.session_id = None;
+        tab.has_meaningful_conversation = false;
         tab.scroll_to_bottom();
     }
 
@@ -8594,6 +8630,7 @@ impl App {
             tab.completed_turns.clear();
             tab.selected_completed_turn_idx = None;
             tab.session_id = None;
+            tab.has_meaningful_conversation = false;
         }
         let _ = self.restart_tx.send(RestartRequest { agent_cmd: None });
         self.publish_agent_status();
@@ -8991,6 +9028,7 @@ impl App {
             tab.selected_completed_turn_idx = None;
             tab.scroll_to_bottom();
             tab.session_id = None;
+            tab.has_meaningful_conversation = false;
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for
@@ -9251,6 +9289,7 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
+        tab.has_meaningful_conversation = true;
 
         // Submitting a new prompt dismisses any prior leftover card (the
         // `selected_recommendation = 0` + turn reset above). If the helper
@@ -9261,6 +9300,7 @@ impl App {
         // `turn_surface_*` callback once recommendations arrive.
         let owned_tab = tab_id.to_string();
         self.recompute_chip_override(&owned_tab);
+        self.project_tab_state(&owned_tab);
     }
 
     /// Observe a streamed chunk. Thought chunks only advance the state
@@ -10254,6 +10294,7 @@ impl App {
             View::Agents => "sessions",
             View::Chat => "chat",
         };
+        let durable_session_id = tab.durable_session_id();
         let evt = serde_json::json!({
             "type": "event",
             "method": "agent_state_changed",
@@ -10262,6 +10303,7 @@ impl App {
                 "view":      view,
                 "pane_open": tab.pane_open,
                 "pane_position": tab.agent_pane_position,
+                "agent_session_id": durable_session_id,
             }
         });
         send_wt_protocol_event(evt.to_string());
@@ -11995,6 +12037,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn agent_connected_does_not_add_disclaimer_while_resuming() {
+        let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+        app.tab_id = Some("OWNER-TAB".to_string());
+        app.tab_sessions
+            .insert("OWNER-TAB".to_string(), TabSession::default());
+        app.handle_event(AppEvent::WtEvent {
+            method: "load_session".to_string(),
+            pane_id: String::new(),
+            tab_id: None,
+            params: json!({
+                "tab_id": "OWNER-TAB",
+                "session_id": "sess-target",
+                "cwd": "",
+            }),
+        });
+
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Copilot".to_string(),
+            model: None,
+            version: None,
+            session_id: "sess-target".to_string(),
+            available_models: Vec::new(),
+            current_model_id: None,
+            load_session_supported: true,
+            image_supported: true,
+        });
+
+        assert!(!app.tab_sessions["OWNER-TAB"]
+            .messages
+            .iter()
+            .any(|message| matches!(message, ChatMessage::Disclaimer)));
+    }
+
     /// TabError must clear both flags so a subsequent load can re-open
     /// the window cleanly.
     #[test]
@@ -12027,19 +12103,17 @@ mod tests {
             .is_none());
     }
 
-    /// Replayed history must be packed into collapsed CompletedTurn rows
-    /// after session/load completes. Each User message opens a new turn;
-    /// the prompt header is a short preview (the full original User text
-    /// is kept as the first details entry so expanding shows everything).
-    /// Subsequent non-User messages become later details. Default
-    /// `expanded: false` so the resumed transcript doesn't dump as one
-    /// long wall.
+    /// Replayed history must be packed into CompletedTurn rows after
+    /// session/load completes. Each User message opens a new turn and WTA's
+    /// composed prompt is reduced back to the original user request.
     #[test]
     fn pack_replayed_messages_groups_into_collapsed_turns() {
         let mut tab = TabSession::default();
         tab.messages = vec![
             ChatMessage::System("Resuming session abc...".to_string()),
-            ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
+            ChatMessage::User(
+                "# Terminal Agent\nYou are...\n\n## User Request\nget time".to_string(),
+            ),
             ChatMessage::Agent("Hello, I am ready.".to_string()),
             ChatMessage::User("list files".to_string()),
             ChatMessage::ToolCall {
@@ -12060,24 +12134,60 @@ mod tests {
         assert_eq!(tab.completed_turns.len(), 2);
 
         let t0 = &tab.completed_turns[0];
-        // Preview shows first non-empty line + ellipsis (extra lines below).
-        assert_eq!(t0.prompt, "# Terminal Agent…");
-        // details = [original full User, Agent reply].
-        assert_eq!(t0.details.len(), 2);
-        assert!(matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are")));
-        assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
+        assert_eq!(t0.prompt, "get time");
+        assert_eq!(t0.details.len(), 1);
+        assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
         assert!(!t0.expanded, "replayed turn must default to collapsed");
         assert!(t0.trailing_marker.is_none());
 
         let t1 = &tab.completed_turns[1];
         // Short single-line prompt — no ellipsis.
         assert_eq!(t1.prompt, "list files");
-        // details = [original User, ToolCall, Agent].
-        assert_eq!(t1.details.len(), 3);
-        assert!(matches!(&t1.details[0], ChatMessage::User(s) if s == "list files"));
-        assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
-        assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
+        assert_eq!(t1.details.len(), 2);
+        assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
+        assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
         assert!(!t1.expanded);
+    }
+
+    #[test]
+    fn pack_replayed_recommendation_reuses_live_turn_formatting() {
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::User(
+                "# Terminal Agent\n...\n\n## User Request\nget time".to_string(),
+            ),
+            ChatMessage::Agent(
+                r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [{
+    "choice": 1,
+    "title": "Get the current time",
+    "rationale": "Displays the current time.",
+    "actions": [{
+      "type": "send",
+      "parent": "old-pane-id",
+      "input": "Get-Date -Format 'HH:mm:ss'"
+    }]
+  }]
+}
+```"#
+                    .to_string(),
+            ),
+        ];
+
+        tab.pack_replayed_messages_into_turns();
+
+        assert_eq!(tab.completed_turns.len(), 1);
+        let turn = &tab.completed_turns[0];
+        assert_eq!(turn.prompt, "get time");
+        assert!(turn.expanded);
+        assert_eq!(
+            turn.details,
+            vec![ChatMessage::AgentLiteral(
+                "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+            )]
+        );
     }
 
     /// Preview logic: huge single-line prompt must clip to the cap with
@@ -12149,6 +12259,7 @@ mod tests {
         });
         // Simulate replay chunks landing in messages.
         let tab = app.tab_sessions.get_mut("OWNER-TAB").unwrap();
+        tab.messages.push(ChatMessage::Disclaimer);
         tab.messages.push(ChatMessage::User("first prompt".to_string()));
         tab.messages.push(ChatMessage::Agent("first reply".to_string()));
         tab.messages.push(ChatMessage::User("second prompt".to_string()));
@@ -12176,7 +12287,7 @@ mod tests {
         // `messages`.
         assert!(
             tab.messages.is_empty(),
-            "resume must not leave any loose chat messages, got {:?}",
+            "resume must not leave a disclaimer or loose chat messages, got {:?}",
             tab.messages
         );
     }
@@ -16602,6 +16713,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn render_chat_resuming_activity_line() {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        let tab = app.current_tab_mut();
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("12345678-rest".to_string());
+
+        let text = render_to_text(&mut app, 80, 24);
+        let label = t!("system.resuming_session", session_id = "12345678").into_owned();
+        assert!(
+            text.contains(&label),
+            "chat must paint the resuming activity line ({label:?}); rendered:\n{text}"
+        );
+    }
+
     /// Render: the first-run welcome hint must paint its title when connected
     /// and `show_welcome_hint` is set. Lifts the welcome branch of
     /// `ui/chat.rs` + `ui/layout.rs`.
@@ -17708,6 +17835,35 @@ mod tests {
     fn known_cli_id_returns_none_for_unknown_variant() {
         use crate::agent_sessions::CliSource;
         assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    }
+
+    #[test]
+    fn durable_session_id_requires_a_meaningful_conversation() {
+        let mut tab = TabSession {
+            session_id: Some("fresh-session".into()),
+            ..Default::default()
+        };
+        assert_eq!(tab.durable_session_id(), None);
+
+        tab.turn = TurnState::Submitted(SubmittedPrompt {
+            id: 1,
+            text: "hello".into(),
+            submitted_at_unix_s: 0.0,
+            autofix: None,
+        });
+        tab.has_meaningful_conversation = true;
+        assert_eq!(tab.durable_session_id(), Some("fresh-session"));
+    }
+
+    #[test]
+    fn durable_session_id_uses_the_load_target_during_replay() {
+        let tab = TabSession {
+            loading_session: true,
+            loading_target_session_id: Some("loaded-session".into()),
+            has_meaningful_conversation: true,
+            ..Default::default()
+        };
+        assert_eq!(tab.durable_session_id(), Some("loaded-session"));
     }
 
     #[test]
