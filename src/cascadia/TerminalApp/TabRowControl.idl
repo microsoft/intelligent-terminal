@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
+import "TabStrip.idl";
 
 namespace TerminalApp
 {
@@ -8,6 +9,14 @@ namespace TerminalApp
     {
         TabRowControl();
         Microsoft.UI.Xaml.Controls.TabView TabView { get; };
+
+        // PROTOTYPE — see investigation-vertical-tabs.md. When
+        // IsVerticalLayout is true, TabStrip is the live strip and the MUX
+        // TabView is hidden. Toggled once at TerminalPage::Initialize via the
+        // WT_VERTICAL_TABS_PROTOTYPE env var; no live switching for v1.
+        TabStrip TabStrip { get; };
+        Boolean IsVerticalLayout;
+
         Boolean ShowElevationShield;
         Boolean ShowWorkspacesButton;
         String WorkspaceName;

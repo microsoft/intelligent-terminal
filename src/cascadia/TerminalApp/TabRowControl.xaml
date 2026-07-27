@@ -25,6 +25,14 @@
         tab row.
     -->
 
+    <!--
+        PROTOTYPE — see investigation-vertical-tabs.md. TabView (horizontal) and
+        TabStrip (vertical) coexist; only one is visible at a time, driven by
+        TabRowControl.IsVerticalLayout. Wrapping in a Grid preserves TabView's
+        VerticalAlignment="Bottom" behavior.
+    -->
+    <Grid>
+
     <mux:TabView x:Name="TabView"
                  VerticalAlignment="Bottom"
                  HorizontalContentAlignment="Stretch"
@@ -168,5 +176,19 @@
         </mux:TabView.TabStripFooter>
 
     </mux:TabView>
+
+    <!--
+        PROTOTYPE — visibility flipped by TabRowControl.IsVerticalLayout. The
+        vertical strip has no chrome slots wired in the prototype; the
+        elevation shield, workspaces button, and new-tab split button live in
+        TabView above. Wiring them to TabStrip.LeadingContent/TrailingContent
+        is Spec A work.
+    -->
+    <local:TabStrip x:Name="TabStrip"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Visibility="Collapsed" />
+
+    </Grid>
 
 </ContentPresenter>

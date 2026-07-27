@@ -23,6 +23,27 @@ namespace winrt::TerminalApp::implementation
     TabRowControl::TabRowControl()
     {
         InitializeComponent();
+        _applyLayoutVisibility();
+    }
+
+    void TabRowControl::IsVerticalLayout(bool value)
+    {
+        if (_isVerticalLayout == value)
+        {
+            return;
+        }
+        _isVerticalLayout = value;
+        _applyLayoutVisibility();
+        PropertyChanged.raise(*this, WUX::Data::PropertyChangedEventArgs{ L"IsVerticalLayout" });
+    }
+
+    void TabRowControl::_applyLayoutVisibility()
+    {
+        // PROTOTYPE — the horizontal TabView and vertical TabStrip both live
+        // in the XAML tree; only one is visible at a time. Full layout
+        // reshaping (moving the strip to a left column) is Spec A.
+        TabView().Visibility(_isVerticalLayout ? WUX::Visibility::Collapsed : WUX::Visibility::Visible);
+        TabStrip().Visibility(_isVerticalLayout ? WUX::Visibility::Visible : WUX::Visibility::Collapsed);
     }
 
     // Method Description:

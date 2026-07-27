@@ -924,6 +924,12 @@ namespace winrt::TerminalApp::implementation
 
         void _SendDesktopNotification(const winrt::hstring& tabTitle, const winrt::hstring& body, const winrt::com_ptr<Tab>& tab, const winrt::TerminalApp::IPaneContent& content);
 
+        // PROTOTYPE — see investigation-vertical-tabs.md. Populates the
+        // TabRow's TabStrip with mock TabViewItems so we can visually confirm
+        // ListView-hosts-TabViewItem behavior. Called from Create() only when
+        // WT_VERTICAL_TABS_PROTOTYPE=1.
+        void _seedVerticalTabsPrototype();
+
 #pragma region ActionHandlers
         // These are all defined in AppActionHandlers.cpp
 #define ON_ALL_ACTIONS(action) DECLARE_ACTION_HANDLER(action);

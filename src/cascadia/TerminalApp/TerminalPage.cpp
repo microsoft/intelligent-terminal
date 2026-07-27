@@ -422,6 +422,22 @@ namespace winrt::TerminalApp::implementation
         _tabView = _tabRow.TabView();
         _rearranging = false;
 
+        // PROTOTYPE — see investigation-vertical-tabs.md. When
+        // WT_VERTICAL_TABS_PROTOTYPE=1, flip TabRow to vertical layout and
+        // seed the TabStrip with mock TabViewItems so we can visually confirm
+        // that a ListView-backed strip renders TabViewItem correctly.
+        // Full integration with real Tab objects and cross-window tearoff is
+        // deferred until Spec A. This env-var path leaves the real MUX
+        // TabView code path untouched — it is *additive* prototype scaffolding.
+        {
+            //const auto proto = wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_VERTICAL_TABS_PROTOTYPE");
+            //if (proto == L"1")
+            {
+                _tabRow.IsVerticalLayout(true);
+                _seedVerticalTabsPrototype();
+            }
+        }
+
         const auto canDragDrop = CanDragDrop();
 
         _tabView.CanReorderTabs(canDragDrop);
@@ -649,6 +665,37 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
         return true;
+    }
+
+    // PROTOTYPE — see investigation-vertical-tabs.md. Seeds TabRow's TabStrip
+    // with three mock TabViewItems so we can visually verify that a
+    // ListView-based strip renders TabViewItem instances. Real Tab objects
+    // still flow into the MUX TabView; this prototype path is additive.
+    void TerminalPage::_seedVerticalTabsPrototype()
+    {
+        auto strip = _tabRow.TabStrip();
+        if (!strip)
+        {
+            return;
+        }
+
+        static constexpr std::wstring_view mockTitles[] = {
+            L"project-alpha",
+            L"updating-UI",
+            L"research for June",
+        };
+
+        for (const auto title : mockTitles)
+        {
+            MUX::Controls::TabViewItem item{};
+            item.Header(box_value(winrt::hstring{ title }));
+            // GH bodge from Tab::_MakeTabViewItem — every TabViewItem needs a
+            // non-null, non-shared Content or MUX's drag-start event returns
+            // the wrong item. Same applies here.
+            item.Content(WUX::Controls::Border{});
+            item.IsClosable(true);
+            strip.TabItems().Append(item);
+        }
     }
 
     // Method Description:
