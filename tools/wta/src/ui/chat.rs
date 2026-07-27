@@ -764,6 +764,36 @@ mod tests {
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
+        // "Exited (0)" is a success alias (distinct from the generic
+        // "exited (" failure prefix matched above) and carries no detail.
+        assert_tool_call(
+            "Exited (0)",
+            "✓ Run: cargo test",
+            theme::TOOL_CALL_SUCCESS,
+            None,
+        );
+        // Status matching is case-insensitive across the success paths.
+        assert_tool_call(
+            "COMPLETED",
+            "✓ Run: cargo test",
+            theme::TOOL_CALL_SUCCESS,
+            None,
+        );
+        assert_tool_call(
+            "eXiTeD (0)",
+            "✓ Run: cargo test",
+            theme::TOOL_CALL_SUCCESS,
+            None,
+        );
+        // Unknown/future statuses fall back to a dim marker with the raw
+        // status surfaced as dim detail text, instead of panicking or
+        // silently dropping the status.
+        assert_tool_call(
+            "SomeFutureStatus",
+            "• Run: cargo test · SomeFutureStatus",
+            theme::DIM,
+            Some(theme::DIM),
+        );
         assert_ne!(theme::TOOL_CALL_CANCELED, theme::DIM);
     }
 
