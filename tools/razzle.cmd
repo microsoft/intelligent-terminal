@@ -78,7 +78,14 @@ rem clause again -- this sidesteps it entirely.
 pushd "%TEMP%" >nul 2>nul
 set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
-for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set "MSBUILD=%%B")
+rem Guard the read: if the temp file never got created (e.g. %TEMP% unset/
+rem unwritable, or the vswhere invocation above failed outright), skip the
+rem for /f entirely instead of letting it print "The system cannot find the
+rem file specified." -- that noise would mask the real "Could not find
+rem MSBuild" error reported below.
+if exist "%VSWHERE_MSBUILD_TMP%" (
+    for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set "MSBUILD=%%B")
+)
 del /q "%VSWHERE_MSBUILD_TMP%" 2>nul
 set "VSWHERE_MSBUILD_TMP="
 popd >nul 2>nul
