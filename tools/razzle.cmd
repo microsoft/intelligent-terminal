@@ -49,37 +49,26 @@ if not defined VSWHERE (
 
 rem Add path to MSBuild Binaries
 rem
-rem We accept the latest prerelease of VS in the 17.x or 18.x range. The -version
-rem range [17.0,19.0) picks up both VS 2022 (17.x) and VS 18 (including previews)
-rem but not a still-newer major whose toolset may be incompatible. VS 18 uses our
-rem v145 PlatformToolset (see src\common.build.pre.props); older VS versions default
-rem to v143.
+rem We accept the latest prerelease of VS in the 17.x or 18.x range: -version
+rem "[17.0,19.0)" covers VS 2022 (17.x) and VS 18, but not a newer major whose
+rem toolset may be incompatible. VS 18 uses v145 PlatformToolset (see
+rem src\common.build.pre.props); older VS versions default to v143.
 rem
-rem NOTE: this does NOT use `for /f ... in (`command`)` to capture vswhere's
-rem output. cmd.exe's `for /f` parser finds the closing ')' of `in (...)` by
-rem naive character counting, so the ')' in "[17.0,19.0)" prematurely closes
-rem the clause and silently truncates the command (escaping or switching to
-rem "[17.0,19.0]" does not help). Instead we redirect vswhere's output to a
-rem temp file and read it back with `for /f ... in ("file")`, which has no
-rem command/paren to miscount. We `pushd` into %TEMP% first and use a plain
-rem relative filename so the temp path itself can't reintroduce a ')' (e.g.
-rem from a profile dir like "...\Jane (Admin)\..."). `pushd` can fail (TEMP
-rem unset/missing); we still try vswhere in that case (file lands in the
-rem current directory) and only `popd` if `pushd` actually succeeded
-rem (tracked via VSWHERE_TEMP_PUSHED), so a failed pushd can't disturb the
-rem caller's directory stack.
+rem Redirect vswhere's output to a temp file and read it back via for /f,
+rem instead of `for /f ... in (`vswhere ...`)`, to avoid cmd.exe miscounting
+rem the ')' in "[17.0,19.0)" as closing the for/f clause. pushd into %TEMP%
+rem and use a relative filename to keep any ')' in the %TEMP% path out of
+rem the for/f clause too; only popd if pushd succeeded, to avoid disturbing
+rem the caller's directory stack on failure.
 set "VSWHERE_TEMP_PUSHED=0"
 pushd "%TEMP%" >nul 2>nul
 if not errorlevel 1 set "VSWHERE_TEMP_PUSHED=1"
 
 rem Two %RANDOM% components avoid filename collisions between concurrent
-rem razzle.cmd runs. Set/read as plain sequential lines (not inside an
-rem `if ( ... )` block) since cmd.exe expands %VAR% in a parenthesized
-rem block at parse time, before any `set` inside it has run.
+rem razzle.cmd runs.
 set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
-rem `if exist` avoids a "system cannot find the file" message masking the
-rem "Could not find MSBuild" error below when vswhere itself failed.
+rem if exist avoids a spurious "file not found" message when vswhere failed.
 if exist "%VSWHERE_MSBUILD_TMP%" (
     for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set "MSBUILD=%%B")
 )
