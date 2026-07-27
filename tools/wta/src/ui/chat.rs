@@ -20,16 +20,16 @@ const MAX_RENDER_LINE_CHARS: usize = 4096;
 pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
-    // Fetch once and reuse below for both the reveal-catchup check and the
-    // pending-height calc. `pending_render_text` re-parses the streaming
-    // buffer on every call (and allocates on the JSON-wrapper path via
-    // `extract_json_string_field`), so calling it twice per frame here would
-    // be a redundant, measurable cost on the render hot path.
+    // Fetch once for the pending-height calculation. `pending_render_text`
+    // re-parses the streaming buffer on every call (and allocates on the
+    // JSON-wrapper path via `extract_json_string_field`).
     let pending_text = pending_render_text(tab);
 
-    // Reserve the row only while this prompt is still waiting for its first
-    // user-visible agent feedback; mirrors `build_activity_line` below.
-    let activity = if should_show_turn_activity(tab) {
+    // Connecting and Thinking both pin one activity row in `render`; reserve
+    // that same row here so the surrounding layout cannot jump or clip.
+    let activity = if matches!(app.state, crate::app::ConnectionState::Connecting(_))
+        || should_show_turn_activity(tab)
+    {
         1usize
     } else {
         0
@@ -156,10 +156,10 @@ fn permission_tool_call_id(tab: &crate::app::TabSession) -> Option<&str> {
 }
 
 fn breathing_dot(frame: usize) -> &'static str {
-    match frame % 16 {
-        0..=3 => "●",
-        4..=7 => "•",
-        8..=11 => "·",
+    match frame % crate::ui::ACTIVITY_CYCLE_FRAMES {
+        0..=4 => "●",
+        5..=8 => "•",
+        9..=13 => "·",
         _ => "•",
     }
 }
@@ -1089,10 +1089,13 @@ mod tests {
     #[test]
     fn breathing_dot_shrinks_then_grows() {
         assert_eq!(breathing_dot(0), "●");
-        assert_eq!(breathing_dot(4), "•");
-        assert_eq!(breathing_dot(8), "·");
-        assert_eq!(breathing_dot(12), "•");
-        assert_eq!(breathing_dot(16), "●");
+        assert_eq!(breathing_dot(5), "•");
+        assert_eq!(breathing_dot(9), "·");
+        assert_eq!(breathing_dot(14), "•");
+        assert_eq!(
+            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
+            "●"
+        );
     }
 
     #[test]
@@ -1109,8 +1112,8 @@ mod tests {
         };
 
         let matching_lines =
-            build_message_lines(&matching, false, false, Some("tool-2"), 8, 80);
-        let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 8, 80);
+            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
         assert_eq!(other_lines[0].spans[0].content, "✓");
@@ -1124,7 +1127,7 @@ mod tests {
                 title: "Find files".into(),
                 status: status.into(),
             };
-            let lines = build_message_lines(&message, false, false, None, 8, 80);
+            let lines = build_message_lines(&message, false, false, None, 9, 80);
             assert_eq!(lines[0].spans[0].content, "·", "{status} should breathe");
         }
     }

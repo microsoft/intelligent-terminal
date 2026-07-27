@@ -5979,6 +5979,21 @@ fn render_chat_welcome_hint() {
     );
 }
 
+#[test]
+fn connecting_activity_row_is_included_in_estimated_chat_height() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::User("hello".into()));
+
+    app.state = ConnectionState::Disconnected;
+    let without_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    app.state = ConnectionState::Connecting("Starting agent".into());
+    let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
+
+    assert_eq!(with_activity, without_activity + 1);
+}
+
 /// Render: when the pane is too short for a full permission card, the
 /// compact one-row fallback must paint the description and the `[Y/N]`
 /// hint. Lifts `render_compact` in `ui/permission.rs`. The compact path

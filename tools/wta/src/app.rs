@@ -1484,8 +1484,8 @@ pub struct TabSession {
     /// chunks and structured tokens that cannot yet render do not clear it.
     pub waiting_for_first_visible_activity: bool,
 
-    // Agent-supplied progress message (e.g. "Reading file foo.rs"). Falls
-    // back to the spinner label derived from `turn` when None.
+    // Agent-supplied progress message (e.g. "Reading file foo.rs"). Retained
+    // for turn lifecycle and activity-animation ticking.
     pub progress_status: Option<String>,
     pub activity_frame: usize,
     /// Typewriter reveal cursor: how many characters of the *user-visible*
