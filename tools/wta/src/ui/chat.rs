@@ -263,7 +263,13 @@ fn build_completed_turn_lines<'a>(
     let collapsed_prompt = collapse_newlines_for_preview(&turn.prompt);
     let prompt_text: Cow<'a, str> = match collapsed_prompt {
         Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
-        Cow::Owned(collapsed) => Cow::Owned(truncate_render_text(&collapsed).into_owned()),
+        // `collapsed` is already an owned `String`; only clone again if
+        // truncation actually shortens it, otherwise reuse it as-is instead
+        // of cloning a second time via `truncate_render_text(..).into_owned()`.
+        Cow::Owned(collapsed) => match truncate_render_text(&collapsed) {
+            Cow::Borrowed(_) => Cow::Owned(collapsed),
+            Cow::Owned(truncated) => Cow::Owned(truncated),
+        },
     };
     let mut lines = vec![Line::from(vec![
         Span::styled(chevron, chevron_style),
@@ -666,7 +672,7 @@ fn push_dot_prefixed_lines<'a>(
 /// rendered row gets the `"> "` prompt marker; continuation rows get a
 /// matching 2-cell indent, consistent with `message_height`'s
 /// `wrap_count`-based row estimate for `ChatMessage::User`.
-fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &str, wrap_width: usize) {
+fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &'a str, wrap_width: usize) {
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
 
@@ -685,9 +691,14 @@ fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &str, wrap_wi
             continue;
         }
 
+        // `textwrap::wrap` borrows from `paragraph` (itself borrowed from the
+        // `'a` input) whenever a piece needs no reflowing, so the typical
+        // short single-line prompt renders with zero allocations here;
+        // `truncate_render_cow` preserves that borrow unless the piece is
+        // actually rewrapped or exceeds `MAX_RENDER_LINE_CHARS`.
         let wrapped = textwrap::wrap(paragraph, body_width);
         for piece in wrapped {
-            let piece_str = truncate_render_text(&piece).into_owned();
+            let piece_str = truncate_render_cow(piece);
             if first_row {
                 lines.push(Line::from(vec![
                     Span::styled("> ", theme::USER_PROMPT),
@@ -701,6 +712,19 @@ fn push_prompt_prefixed_lines<'a>(lines: &mut Vec<Line<'a>>, text: &str, wrap_wi
                 ]));
             }
         }
+    }
+}
+
+/// Applies `truncate_render_text`'s length cap to an already-computed
+/// `Cow`, without forcing an allocation when the input is borrowed and
+/// under the limit (unlike `truncate_render_text(&cow).into_owned()`).
+fn truncate_render_cow<'a>(text: Cow<'a, str>) -> Cow<'a, str> {
+    match text {
+        Cow::Borrowed(s) => truncate_render_text(s),
+        Cow::Owned(s) => match truncate_render_text(&s) {
+            Cow::Borrowed(_) => Cow::Owned(s),
+            Cow::Owned(truncated) => Cow::Owned(truncated),
+        },
     }
 }
 
