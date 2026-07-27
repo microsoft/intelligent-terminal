@@ -68,11 +68,20 @@ rem (not `in (`command`)`, so no paren-counting issue) and let the loop body
 rem overwrite MSBUILD on every line, same as the original `for /f` did --
 rem this preserves "last match wins" if -find ever globs multiple paths,
 rem instead of the "first line wins" behavior a plain `set /p` would give.
-set VSWHERE_MSBUILD_TMP=%TEMP%\razzle-vswhere-msbuild-%RANDOM%.txt
+rem
+rem We `pushd` into %TEMP% and reference the temp file by a plain relative
+rem name (no directory component) so that the text inside `in (...)` never
+rem contains the expanded %TEMP% path. If %TEMP% itself contained a ')'
+rem (e.g. a profile directory like "C:\Users\Jane (Admin)\AppData\..."),
+rem that same naive paren-counting parser bug would truncate the `in (...)`
+rem clause again -- this sidesteps it entirely.
+pushd "%TEMP%" >nul 2>nul
+set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
-for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set MSBUILD=%%B)
-del "%VSWHERE_MSBUILD_TMP%" 2>nul
-set VSWHERE_MSBUILD_TMP=
+for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set "MSBUILD=%%B")
+del /q "%VSWHERE_MSBUILD_TMP%" 2>nul
+set "VSWHERE_MSBUILD_TMP="
+popd >nul 2>nul
 
 if not defined MSBUILD (
     echo Could not find MSBuild on your machine. Please set the MSBUILD variable to the location of MSBuild.exe and run razzle again.
