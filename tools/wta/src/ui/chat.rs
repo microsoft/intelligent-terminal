@@ -112,6 +112,12 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
     h
 }
 
+fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
+    value
+        .get(..prefix.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+}
+
 fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
     if status.eq_ignore_ascii_case("pending") {
         ("○", theme::TOOL_CALL_PENDING, None)
@@ -127,10 +133,10 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         } else {
             ("•", theme::DIM, Some(status))
         }
-    } else if status.starts_with("exited (") {
+    } else if starts_with_ignore_ascii_case(status, "exited (") {
         ("✗", theme::TOOL_CALL_FAILURE, Some(status))
     } else if status.eq_ignore_ascii_case("cancelled") || status.eq_ignore_ascii_case("canceled") {
-        ("−", theme::DIM, None)
+        ("−", theme::TOOL_CALL_CANCELED, None)
     } else {
         ("•", theme::DIM, Some(status))
     }
@@ -700,25 +706,65 @@ mod tests {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
-    fn tool_call_line(status: &str) -> String {
+    fn assert_tool_call(
+        status: &str,
+        expected_text: &str,
+        expected_marker_style: Style,
+        expected_detail_style: Option<Style>,
+    ) {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Run: cargo test".into(),
             status: status.into(),
         };
-        line_text(&build_message_lines(&message, false, false, 80)[0])
+        let lines = build_message_lines(&message, false, false, 80);
+        let line = &lines[0];
+
+        assert_eq!(line_text(line), expected_text);
+        assert_eq!(line.spans[0].style, expected_marker_style);
+        assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
+        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
     }
 
     #[test]
     fn tool_call_uses_semantic_status_markers() {
-        assert_eq!(tool_call_line("Pending"), "○ Run: cargo test");
-        assert_eq!(tool_call_line("running"), "● Run: cargo test");
-        assert_eq!(tool_call_line("Completed"), "✓ Run: cargo test");
-        assert_eq!(
-            tool_call_line("Failed: exit code 1"),
-            "✗ Run: cargo test · exit code 1"
+        assert_tool_call(
+            "Pending",
+            "○ Run: cargo test",
+            theme::TOOL_CALL_PENDING,
+            None,
         );
-        assert_eq!(tool_call_line("Canceled"), "− Run: cargo test");
+        assert_tool_call(
+            "running",
+            "● Run: cargo test",
+            theme::TOOL_CALL_RUNNING,
+            None,
+        );
+        assert_tool_call(
+            "Completed",
+            "✓ Run: cargo test",
+            theme::TOOL_CALL_SUCCESS,
+            None,
+        );
+        assert_tool_call(
+            "Failed: exit code 1",
+            "✗ Run: cargo test · exit code 1",
+            theme::TOOL_CALL_FAILURE,
+            Some(theme::DIM),
+        );
+        assert_tool_call(
+            "Canceled",
+            "− Run: cargo test",
+            theme::TOOL_CALL_CANCELED,
+            None,
+        );
+        assert_tool_call(
+            "Exited (1)",
+            "✗ Run: cargo test · Exited (1)",
+            theme::TOOL_CALL_FAILURE,
+            Some(theme::DIM),
+        );
+        assert_ne!(theme::TOOL_CALL_CANCELED, theme::DIM);
     }
 
     // ── extract_json_string_field: escape decoding ──────────────────────────
