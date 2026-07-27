@@ -6,6 +6,7 @@
 #include "DeleteProfileEventArgs.g.h"
 #include "BellSoundViewModel.g.h"
 #include "ProfileViewModel.g.h"
+#include "AIAgentsViewModel.h"
 #include "Utils.h"
 #include "ViewModelHelpers.h"
 
@@ -84,6 +85,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         hstring CurrentStartingDirectoryPreview() const;
         bool UseParentProcessDirectory() const;
         void UseParentProcessDirectory(const bool useParent);
+        Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> AgentPaneBackendList() const noexcept { return _agentPaneBackendList; }
+        Editor::AgentEntry CurrentAgentPaneBackend();
+        void CurrentAgentPaneBackend(const Editor::AgentEntry& value);
 
         // general profile knowledge
         winrt::guid OriginalProfileGuid() const noexcept;
@@ -125,6 +129,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         OBSERVABLE_PROJECTED_SETTING(_profile, Padding);
         OBSERVABLE_PROJECTED_SETTING(_profile, Commandline);
         OBSERVABLE_PROJECTED_SETTING(_profile, StartingDirectory);
+        OBSERVABLE_PROJECTED_SETTING(_profile, AgentPaneBackend);
         OBSERVABLE_PROJECTED_SETTING(_profile, AntialiasingMode);
         OBSERVABLE_PROJECTED_SETTING(_profile.DefaultAppearance(), Opacity);
         OBSERVABLE_PROJECTED_SETTING(_profile.DefaultAppearance(), UseAcrylic);
@@ -163,12 +168,19 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _lastStartingDirectoryPath;
         Editor::AppearanceViewModel _defaultAppearanceViewModel;
         Windows::UI::Core::CoreDispatcher _dispatcher;
+        Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _agentPaneBackendList;
+        uint64_t _agentPaneBackendProbeGeneration{ 0 };
 
         winrt::Windows::UI::Xaml::Thickness _parsedPadding;
 
         void _InitializeCurrentBellSounds();
         void _PrepareModelForBellSoundModification();
         void _MarkDuplicateBellSoundDirectories();
+        void _RebuildAgentPaneBackendList(std::wstring_view wslDistro,
+                                          const std::vector<std::wstring>& availableWslAgents);
+        void _RefreshAgentPaneBackendList();
+        winrt::fire_and_forget _ProbeWslAgentPaneBackendsAsync(std::wstring commandline,
+                                                               uint64_t generation);
         static Windows::Foundation::Collections::IObservableVector<Editor::Font> _MonospaceFontList;
         static Windows::Foundation::Collections::IObservableVector<Editor::Font> _FontList;
 

@@ -17,6 +17,7 @@ environment. Current status (run on the Store package):
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
+| `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation | 3 |
 | `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
@@ -24,13 +25,18 @@ environment. Current status (run on the Store package):
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
 | `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
-| `Feature.PerTabAgent.Tests.ps1` | C225-C228: `/agent` picker/direct selection, invalid-id safety, per-tab isolation/shared-master reuse, and global-default/override behavior | 6 |
+| `Feature.PerTabAgent.Tests.ps1` | C225-C228 + PR #487: `/agent` picker/prefix completion/direct selection, invalid-id safety, per-tab isolation/shared-master reuse, and global-default/override behavior | 8 |
+| `Feature.WslAgentBackend.Tests.ps1` | PR #481 profile-scoped WSL agent backend: settings hot reload, helper/master source routing, and authenticated chat | 2 (environment-gated) |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
-**Coverage: all 98 automatable `[E2E]` checklist items are implemented.**
-**Test status: 95 feature cases pass + 2 documented skips** (`wta sessions list` is
-identity-gated — see `Feature.SessionList.Tests.ps1`); the 98 checklist items map to these
-cases plus the deterministic settings/persistence assertions. Remaining
+**Coverage: 105 of 106 automatable `[E2E]` checklist items are implemented.**
+**Test status: 100 baseline feature cases pass + 2 documented skips** (`wta sessions list` is
+identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases that
+run only when a dev package, runnable distro, and native supported agent are available; the
+chat case also requires authentication. The 105 implemented checklist items map to the
+baseline cases plus the deterministic settings/persistence assertions. The remaining new
+item is the profile Agent pane agent picker UI; it stays explicit E2E work rather than being
+falsely credited by the JSON-level runtime tests. Other
 environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
 **other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
 auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,

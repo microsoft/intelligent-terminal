@@ -36,6 +36,11 @@
     # §1 settings
     'Model control appears'             = 'Model control / model changes apply'
     'Model changes apply'               = 'Model control / model changes apply'
+    # PR #481 profile-scoped WSL backend runtime. The profile picker UI is deliberately
+    # NOT mapped: Feature.WslAgentBackend writes the profile JSON directly and therefore
+    # cannot prove that the Settings picker renders or saves correctly.
+    'Profile WSL agent routing is strict' = 'Hot reload routes the profile agent through its WSL distro without host fallback'
+    'Profile WSL agent chat works'        = 'profile-selected WSL agent connects and answers a chat round trip'
 
     # §0 FRE auto-error (on/off both covered by the single off/on test)
     'Automatic error detection on'      = 'Automatic error detection off/on'
