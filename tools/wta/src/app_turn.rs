@@ -67,7 +67,6 @@ impl App {
             tab.messages.push(ChatMessage::User(user_text));
         }
         tab.scroll_to_bottom();
-        tab.progress_status = None;
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
@@ -105,11 +104,6 @@ impl App {
             }
         }
 
-        // `progress_status` (agent-supplied "Reading foo.rs" etc.) is left
-        // alone here — its natural lifetime is the whole turn. It's cleared
-        // at turn close (`turn_clear_agent_progress`) and overwritten by
-        // future `ProgressStatus` events. The old per-chunk wipe erased
-        // the value the moment a streaming agent would have it set.
         match (&mut tab.turn, kind) {
             // First message chunk: transition Submitted → Streaming.
             (TurnState::Submitted(_), ChunkKind::Message) => {
@@ -216,7 +210,7 @@ impl App {
                     current_gen,
                     "discarding stale autofix turn at close",
                 );
-                self.turn_clear_agent_progress(session_id);
+                self.turn_clear_agent_activity(session_id);
                 self.session_tab_mut(session_id).turn = TurnState::Idle;
                 return;
             }
@@ -228,7 +222,7 @@ impl App {
         } = &self.session_tab(session_id).turn
         {
             self.turn_release_end_pending_logged(session_id, "via=eager+end");
-            self.turn_clear_agent_progress(session_id);
+            self.turn_clear_agent_activity(session_id);
             return;
         }
 
@@ -250,7 +244,7 @@ impl App {
         } else {
             self.turn_close_finalize_planner(session_id, buf);
         }
-        self.turn_clear_agent_progress(session_id);
+        self.turn_clear_agent_activity(session_id);
     }
 
     /// Path (3): close a turn that received `AgentMessageEnd` with no
@@ -279,7 +273,7 @@ impl App {
             autofix.armed_at = None;
         }
         self.turn_release_end_pending(session_id);
-        self.turn_clear_agent_progress(session_id);
+        self.turn_clear_agent_activity(session_id);
     }
 
     /// Path (4a): autofix Streaming buffer reached `AgentMessageEnd` with
@@ -408,11 +402,10 @@ impl App {
         }
     }
 
-    /// Helper called at every turn-close path. Clears the agent-supplied
-    /// progress override, animation phase, and first-visible-activity latch.
-    fn turn_clear_agent_progress(&mut self, session_id: &str) {
+    /// Helper called at every turn-close path. Clears the animation phase and
+    /// first-visible-activity latch.
+    fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
-        tab.progress_status = None;
         tab.activity_frame = 0;
         tab.mark_visible_agent_activity();
     }
@@ -579,7 +572,6 @@ impl App {
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
         tab.rec_scroll.reset();
-        tab.progress_status = None;
         tab.activity_frame = 0;
         tab.mark_visible_agent_activity();
         tab.turn = TurnState::Idle;
@@ -629,7 +621,6 @@ impl App {
         tab.rec_scroll.reset();
         tab.selection_visible_pending = true;
         tab.selected_completed_turn_idx = None;
-        tab.progress_status = None;
         tab.activity_frame = 0;
         tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
@@ -709,7 +700,6 @@ impl App {
         tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
         tab.selection_visible_pending = true;
-        tab.progress_status = None;
         tab.activity_frame = 0;
         tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
@@ -795,7 +785,6 @@ impl App {
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
         tab.rec_scroll.reset();
-        tab.progress_status = None;
         tab.activity_frame = 0;
         tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {

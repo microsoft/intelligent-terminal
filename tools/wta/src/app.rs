@@ -1086,13 +1086,6 @@ pub enum AppEvent {
     /// focus-in/out (CSI I / CSI O) delivered through conpty.
     FocusChanged(bool),
     ConnectionStage(String),
-    /// `session_id` lets us route the status update to the originating tab
-    /// once an ACP session is bound to it. Pre-session statuses (startup
-    /// stages) carry None and fall through to the active tab.
-    ProgressStatus {
-        session_id: Option<String>,
-        status: String,
-    },
     AgentConnected {
         name: String,
         model: Option<String>,
@@ -1484,9 +1477,6 @@ pub struct TabSession {
     /// chunks and structured tokens that cannot yet render do not clear it.
     pub waiting_for_first_visible_activity: bool,
 
-    // Agent-supplied progress message (e.g. "Reading file foo.rs"). Retained
-    // for turn lifecycle and activity-animation ticking.
-    pub progress_status: Option<String>,
     pub activity_frame: usize,
     /// Typewriter reveal cursor: how many characters of the *user-visible*
     /// streaming text are currently shown. The full text lives in
@@ -1706,7 +1696,6 @@ impl TabSession {
         // Dropping pending responders signals `Cancelled` back to the
         // agent — appropriate when the user wipes chat history mid-turn.
         self.permission.clear();
-        self.progress_status = None;
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();
@@ -4778,7 +4767,6 @@ impl App {
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
-            AppEvent::ProgressStatus { .. } => "progress_status",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::TabError { .. } => "tab_error",
@@ -5222,11 +5210,13 @@ impl App {
         if self.mode == AppMode::Setup || self.mode == AppMode::Auth {
             return true; // spinner always ticks in setup/auth mode
         }
+        if matches!(self.state, ConnectionState::Connecting(_)) {
+            return true; // connecting shimmer
+        }
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
-        let tab = self.current_tab();
-        tab.turn.is_in_flight() || tab.progress_status.is_some()
+        self.current_tab().turn.is_in_flight()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).

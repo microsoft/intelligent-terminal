@@ -5992,6 +5992,10 @@ fn connecting_activity_row_is_included_in_estimated_chat_height() {
     let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
 
     assert_eq!(with_activity, without_activity + 1);
+    assert!(
+        app.has_activity_indicator(),
+        "Connecting must keep Tick redraws active for the shimmer"
+    );
 }
 
 /// Render: when the pane is too short for a full permission card, the
