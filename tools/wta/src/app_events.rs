@@ -41,7 +41,7 @@ impl App {
                 // prompt should keep its shimmer phase advancing so when the
                 // user switches back the animation is in step.
                 for tab in self.tab_sessions.values_mut() {
-                    if tab.turn.spinner_label().is_some() || tab.progress_status.is_some() {
+                    if tab.turn.is_in_flight() || tab.progress_status.is_some() {
                         tab.activity_frame =
                             (tab.activity_frame + 1) % crate::ui::ACTIVITY_CYCLE_FRAMES;
                     }
@@ -599,6 +599,7 @@ impl App {
                     .insert(id.clone(), (title.clone(), status.clone()));
                 tab.messages
                     .push(ChatMessage::ToolCall { id, title, status });
+                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
@@ -646,10 +647,12 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
+                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
                 session_id,
+                tool_call_id,
                 description,
                 options,
                 responder,
@@ -666,11 +669,13 @@ impl App {
                 // one rendered + key-handled); resolving the front pops
                 // it and exposes the next.
                 tab.permission.push_back(PermissionState {
+                    tool_call_id,
                     description,
                     options,
                     selected: 0,
                     responder: Some(responder),
                 });
+                tab.mark_visible_agent_activity();
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

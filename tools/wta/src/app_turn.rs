@@ -71,6 +71,7 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
+        tab.waiting_for_first_visible_activity = true;
 
         // Submitting a new prompt dismisses any prior leftover card (the
         // `selected_recommendation = 0` + turn reset above). If the helper
@@ -408,12 +409,12 @@ impl App {
     }
 
     /// Helper called at every turn-close path. Clears the agent-supplied
-    /// progress override and the shimmer animation phase; the UI spinner
-    /// otherwise drives off `tab.turn.spinner_label()`.
+    /// progress override, animation phase, and first-visible-activity latch.
     fn turn_clear_agent_progress(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.progress_status = None;
         tab.activity_frame = 0;
+        tab.mark_visible_agent_activity();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -580,6 +581,7 @@ impl App {
         tab.rec_scroll.reset();
         tab.progress_status = None;
         tab.activity_frame = 0;
+        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Idle;
 
         // Esc on a Send card or in-flight autofix exits the chip-override
@@ -629,6 +631,7 @@ impl App {
         tab.selected_completed_turn_idx = None;
         tab.progress_status = None;
         tab.activity_frame = 0;
+        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -708,6 +711,7 @@ impl App {
         tab.selection_visible_pending = true;
         tab.progress_status = None;
         tab.activity_frame = 0;
+        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -793,6 +797,7 @@ impl App {
         tab.rec_scroll.reset();
         tab.progress_status = None;
         tab.activity_frame = 0;
+        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,

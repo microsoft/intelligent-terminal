@@ -530,6 +530,7 @@ impl PermOption {
 }
 
 pub struct PermissionState {
+    pub tool_call_id: String,
     pub description: String,
     pub options: Vec<PermOption>,
     pub selected: usize,
@@ -1253,6 +1254,7 @@ pub enum AppEvent {
     },
     PermissionRequest {
         session_id: String,
+        tool_call_id: String,
         description: String,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
@@ -1473,6 +1475,14 @@ pub struct TabSession {
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
+    /// One-way latch for the Thinking indicator.
+    ///
+    /// Rule: a newly submitted prompt shows Thinking only while it is waiting
+    /// for the first user-visible agent feedback. The first revealed text,
+    /// tool item, plan, permission card, or surfaced result clears this latch,
+    /// and it must never become true again during the same turn. Hidden thought
+    /// chunks and structured tokens that cannot yet render do not clear it.
+    pub waiting_for_first_visible_activity: bool,
 
     // Agent-supplied progress message (e.g. "Reading file foo.rs"). Falls
     // back to the spinner label derived from `turn` when None.
@@ -1616,6 +1626,14 @@ struct InputHistory {
 impl TabSession {
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
+    }
+
+    pub(crate) fn mark_visible_agent_activity(&mut self) {
+        self.waiting_for_first_visible_activity = false;
+    }
+
+    pub(crate) fn should_show_thinking(&self) -> bool {
+        self.waiting_for_first_visible_activity && self.turn.is_in_flight()
     }
 
     /// Whether the input box is the live, enterable caret target. False when
@@ -5116,11 +5134,19 @@ impl App {
                 // Clamp down if the visible text shrank (e.g. a fenced JSON
                 // block replaced the streamed prose).
                 tab.reveal_chars = len;
+                if len > 0 {
+                    tab.mark_visible_agent_activity();
+                }
                 continue;
             }
             let backlog = len - tab.reveal_chars;
             let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
             tab.reveal_chars = (tab.reveal_chars + step).min(len);
+            if tab.reveal_chars > 0 {
+                // The first character is now actually visible, so Thinking
+                // hands off permanently to the streamed response for this turn.
+                tab.mark_visible_agent_activity();
+            }
         }
     }
 
@@ -5200,7 +5226,7 @@ impl App {
             return true; // agents-view "Loading" shimmer
         }
         let tab = self.current_tab();
-        tab.turn.spinner_label().is_some() || tab.progress_status.is_some()
+        tab.turn.is_in_flight() || tab.progress_status.is_some()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).

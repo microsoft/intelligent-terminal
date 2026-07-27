@@ -1541,6 +1541,7 @@ impl WtaClient {
             args.tool_call.fields.title
         ));
         let session_id = args.session_id.0.to_string();
+        let tool_call_id = args.tool_call.tool_call_id.to_string();
         let description = args
             .tool_call
             .fields
@@ -1565,6 +1566,7 @@ impl WtaClient {
 
         let _ = self.state.event_tx.send(AppEvent::PermissionRequest {
             session_id: session_id.clone(),
+            tool_call_id,
             description,
             options,
             responder: resp_tx,
