@@ -281,6 +281,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     auto host = std::make_shared<AppHost>(this, _app.Logic(), std::move(args));
     host->Initialize();
 
+    _hasCreatedWindow = true;
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
 
@@ -323,6 +324,8 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 void WindowEmperor::OpenWindow(const winrt::hstring& name)
 {
     _assertIsMainThread();
+
+    _restorePersistedWindows(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
 
     if (name.empty())
     {
@@ -598,25 +601,9 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
-        const auto env = stringFromDoubleNullTerminated(envMem.get());
-        const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
-        const auto showCmd = gsl::narrow_cast<uint32_t>(nCmdShow);
-
-        // Restore persisted windows.
-        const auto state = ApplicationState::SharedInstance();
-        const auto layouts = state.PersistedWindowLayouts();
-        if (layouts && layouts.Size() > 0)
-        {
-            _needsPersistenceCleanup = true;
-
-            uint32_t startIdx = 0;
-            for (const auto layout : layouts)
-            {
-                hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
-                startIdx += 1;
-            }
-        }
+        _startupEnvironment = stringFromDoubleNullTerminated(envMem.get());
+        _startupCurrentDirectory = wil::GetCurrentDirectoryW<std::wstring>();
+        _startupShowWindowCommand = gsl::narrow_cast<uint32_t>(nCmdShow);
 
         const auto args = commandlineToArgArray(GetCommandLineW());
 
@@ -629,11 +616,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         }
         else
         {
-            // Create another window if needed: There aren't any yet, OR we got an explicit command line.
-            if (_windows.empty() || args.size() != 1)
-            {
-                _dispatchCommandlineCommon(args, cwd, env, showCmd);
-            }
+            _dispatchCommandlineCommon(args, _startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
 
             // If we created no windows, e.g. because the args are "/?" we can just exit now.
             _postQuitMessageIfNeeded();
@@ -649,6 +632,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     {
         TerminalConnection::ConptyConnection::NewConnection([this](TerminalConnection::ConptyConnection conn) {
+            _restorePersistedWindows(_startupCurrentDirectory, _startupEnvironment, _startupShowWindowCommand);
+
             TerminalApp::CommandlineArgs args;
             args.ShowWindowCommand(conn.ShowWindow());
             args.Connection(std::move(conn));
@@ -893,12 +878,50 @@ void WindowEmperor::_dispatchCommandline(winrt::TerminalApp::CommandlineArgs arg
 
 void WindowEmperor::_dispatchCommandlineCommon(winrt::array_view<const winrt::hstring> args, wil::zwstring_view currentDirectory, wil::zwstring_view envString, uint32_t showWindowCommand)
 {
+    const auto restoredPersistedWindows = _restorePersistedWindows(currentDirectory, envString, showWindowCommand);
+    if (restoredPersistedWindows && args.size() == 1)
+    {
+        return;
+    }
+
     winrt::TerminalApp::CommandlineArgs c;
     c.Commandline(args);
     c.CurrentDirectory(currentDirectory);
     c.CurrentEnvironment(envString);
     c.ShowWindowCommand(showWindowCommand);
     _dispatchCommandline(std::move(c));
+}
+
+bool WindowEmperor::_restorePersistedWindows(wil::zwstring_view currentDirectory, wil::zwstring_view envString, uint32_t showWindowCommand)
+{
+    // COM activation only boots the process. Defer persisted UI until the
+    // first command line, named-window request, or ConPTY handoff needs a window.
+    if (_needsPersistenceCleanup)
+    {
+        return false;
+    }
+
+    const auto layouts = ApplicationState::SharedInstance().PersistedWindowLayouts();
+    if (!layouts || layouts.Size() == 0)
+    {
+        return false;
+    }
+
+    _needsPersistenceCleanup = true;
+    const auto previousWindowCount = _windows.size();
+
+    for (uint32_t index = 0; index < layouts.Size(); ++index)
+    {
+        hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(index) };
+        TerminalApp::CommandlineArgs commandline;
+        commandline.Commandline(args);
+        commandline.CurrentDirectory(currentDirectory);
+        commandline.CurrentEnvironment(envString);
+        commandline.ShowWindowCommand(showWindowCommand);
+        _dispatchCommandline(std::move(commandline));
+    }
+
+    return _windows.size() > previousWindowCount;
 }
 
 // This is an implementation-detail of _dispatchCommandline().
@@ -1352,6 +1375,13 @@ void WindowEmperor::_setupSessionPersistence(bool enabled)
 
 void WindowEmperor::_persistState(const ApplicationState& state) const
 {
+    // A protocol-only COM server must not consume or overwrite the layout that
+    // a later user-visible activation still needs to restore.
+    if (!_hasCreatedWindow)
+    {
+        return;
+    }
+
     // Calling an `ApplicationState` setter triggers a write to state.json.
     // With this if condition we avoid an unnecessary write when persistence is disabled.
     if (state.PersistedWindowLayouts())
@@ -1374,6 +1404,11 @@ void WindowEmperor::_persistState(const ApplicationState& state) const
 void WindowEmperor::_finalizeSessionPersistence() const
 {
     using namespace std::string_view_literals;
+
+    if (!_hasCreatedWindow)
+    {
+        return;
+    }
 
     if (_skipPersistence)
     {

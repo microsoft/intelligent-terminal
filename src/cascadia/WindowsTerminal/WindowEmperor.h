@@ -72,6 +72,7 @@ private:
     [[nodiscard]] static LRESULT __stdcall _wndProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) noexcept;
 
     AppHost* _mostRecentWindow() const noexcept;
+    bool _restorePersistedWindows(wil::zwstring_view currentDirectory, wil::zwstring_view envString, uint32_t showWindowCommand);
     void _createWindowMaybeRestoringWorkspace(uint64_t windowId, const winrt::hstring& windowName, winrt::TerminalApp::CommandlineArgs args);
     bool _summonWindow(const SummonWindowSelectionArgs& args) const;
     void _summonAllWindows() const;
@@ -109,7 +110,11 @@ private:
     bool _notificationIconShown = false;
     bool _skipPersistence = false;
     bool _needsPersistenceCleanup = false;
+    bool _hasCreatedWindow = false;
     SafeDispatcherTimer _persistStateTimer;
+    std::wstring _startupCurrentDirectory;
+    std::wstring _startupEnvironment;
+    uint32_t _startupShowWindowCommand = SW_SHOWDEFAULT;
     std::optional<bool> _currentSystemThemeIsDark;
     int32_t _windowCount = 0;
     int32_t _messageBoxCount = 0;
