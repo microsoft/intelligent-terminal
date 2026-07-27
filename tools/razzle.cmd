@@ -75,13 +75,31 @@ rem contains the expanded %TEMP% path. If %TEMP% itself contained a ')'
 rem (e.g. a profile directory like "C:\Users\Jane (Admin)\AppData\..."),
 rem that same naive paren-counting parser bug would truncate the `in (...)`
 rem clause again -- this sidesteps it entirely.
+rem
+rem `pushd` itself can fail (e.g. %TEMP% unset or unwritable), in which case
+rem it neither changes directory nor pushes anything onto the directory
+rem stack. Skip straight to :AFTER_TEMP_READ in that case -- and only
+rem `popd` when `pushd` actually succeeded -- so a failure here can't pop a
+rem pre-existing directory stack entry from the caller's shell and yank
+rem them to an unrelated directory.
+rem
+rem NOTE: this deliberately avoids wrapping the steps below in an
+rem `if not errorlevel 1 ( ... )` block. Without `setlocal
+rem enabledelayedexpansion`, cmd.exe expands all %VAR% references in a
+rem parenthesized block at parse time, before any `set` inside that same
+rem block has run -- so VSWHERE_MSBUILD_TMP would still resolve to its
+rem prior (unset) value everywhere it's used below. Using a plain
+rem `goto`/label sidesteps that, since each line is parsed and expanded
+rem only when reached.
 pushd "%TEMP%" >nul 2>nul
+if errorlevel 1 goto :AFTER_TEMP_READ
+
 set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
-rem Guard the read: if the temp file never got created (e.g. %TEMP% unset/
-rem unwritable, or the vswhere invocation above failed outright), skip the
-rem for /f entirely instead of letting it print "The system cannot find the
-rem file specified." -- that noise would mask the real "Could not find
+rem Guard the read: if the temp file never got created (e.g. the
+rem vswhere invocation above failed outright), skip the for /f entirely
+rem instead of letting it print "The system cannot find the file
+rem specified." -- that noise would mask the real "Could not find
 rem MSBuild" error reported below.
 if exist "%VSWHERE_MSBUILD_TMP%" (
     for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set "MSBUILD=%%B")
@@ -89,6 +107,8 @@ if exist "%VSWHERE_MSBUILD_TMP%" (
 del /q "%VSWHERE_MSBUILD_TMP%" 2>nul
 set "VSWHERE_MSBUILD_TMP="
 popd >nul 2>nul
+
+:AFTER_TEMP_READ
 
 if not defined MSBUILD (
     echo Could not find MSBuild on your machine. Please set the MSBUILD variable to the location of MSBuild.exe and run razzle again.
