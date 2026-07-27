@@ -112,6 +112,30 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
     h
 }
 
+fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
+    if status.eq_ignore_ascii_case("pending") {
+        ("○", theme::TOOL_CALL_PENDING, None)
+    } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
+        ("●", theme::TOOL_CALL_RUNNING, None)
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
+        ("✓", theme::TOOL_CALL_SUCCESS, None)
+    } else if status.eq_ignore_ascii_case("failed") {
+        ("✗", theme::TOOL_CALL_FAILURE, None)
+    } else if let Some((kind, reason)) = status.split_once(':') {
+        if kind.eq_ignore_ascii_case("failed") {
+            ("✗", theme::TOOL_CALL_FAILURE, Some(reason.trim()))
+        } else {
+            ("•", theme::DIM, Some(status))
+        }
+    } else if status.starts_with("exited (") {
+        ("✗", theme::TOOL_CALL_FAILURE, Some(status))
+    } else if status.eq_ignore_ascii_case("cancelled") || status.eq_ignore_ascii_case("canceled") {
+        ("−", theme::DIM, None)
+    } else {
+        ("•", theme::DIM, Some(status))
+    }
+}
+
 pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let render_started = std::time::Instant::now();
 
@@ -534,14 +558,19 @@ fn build_message_lines<'a>(
             lines.push(Line::default());
         }
         ChatMessage::ToolCall { title, status, .. } => {
-            lines.push(Line::from(Span::styled(
-                format!(
-                    "[{}] {}",
-                    truncate_render_text(title),
-                    truncate_render_text(status)
-                ),
-                theme::TOOL_CALL,
-            )));
+            let (marker, marker_style, detail) = tool_call_presentation(status);
+            let mut spans = vec![
+                Span::styled(marker, marker_style),
+                Span::raw(" "),
+                Span::styled(truncate_render_text(title), theme::TOOL_CALL_TITLE),
+            ];
+            if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
+                spans.push(Span::styled(
+                    format!(" · {}", truncate_render_text(detail)),
+                    theme::DIM,
+                ));
+            }
+            lines.push(Line::from(spans));
         }
         ChatMessage::Plan(entries) => {
             lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
@@ -669,6 +698,27 @@ mod tests {
 
     fn line_text(line: &Line) -> String {
         line.spans.iter().map(|s| s.content.as_ref()).collect()
+    }
+
+    fn tool_call_line(status: &str) -> String {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run: cargo test".into(),
+            status: status.into(),
+        };
+        line_text(&build_message_lines(&message, false, false, 80)[0])
+    }
+
+    #[test]
+    fn tool_call_uses_semantic_status_markers() {
+        assert_eq!(tool_call_line("Pending"), "○ Run: cargo test");
+        assert_eq!(tool_call_line("running"), "● Run: cargo test");
+        assert_eq!(tool_call_line("Completed"), "✓ Run: cargo test");
+        assert_eq!(
+            tool_call_line("Failed: exit code 1"),
+            "✗ Run: cargo test · exit code 1"
+        );
+        assert_eq!(tool_call_line("Canceled"), "− Run: cargo test");
     }
 
     // ── extract_json_string_field: escape decoding ──────────────────────────
