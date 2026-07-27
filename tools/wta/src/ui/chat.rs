@@ -264,7 +264,7 @@ fn build_completed_turn_lines<'a>(
     let prompt_text: Cow<'a, str> = match collapsed_prompt {
         Cow::Borrowed(_) => truncate_render_text(&turn.prompt),
         // `collapsed` is already an owned `String`; only clone again if
-        // truncation actually shortens it, otherwise reuse it as-is instead
+        // truncation actually shortens it; otherwise reuse it as-is instead
         // of cloning a second time via `truncate_render_text(..).into_owned()`.
         Cow::Owned(collapsed) => match truncate_render_text(&collapsed) {
             Cow::Borrowed(_) => Cow::Owned(collapsed),
@@ -1031,7 +1031,7 @@ mod tests {
     #[test]
     fn prompt_prefix_renders_each_embedded_newline_as_its_own_line() {
         let mut lines = Vec::new();
-        push_prompt_prefixed_lines(&mut lines, "line one\nline two", 40);
+        push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
     }
@@ -1066,7 +1066,7 @@ mod tests {
     #[test]
     fn prompt_prefix_keeps_marker_when_text_starts_with_newline() {
         let mut lines = Vec::new();
-        push_prompt_prefixed_lines(&mut lines, "\nsecond line", 40);
+        push_prompt_prefixed_lines(&mut lines, concat!("\n", "second line"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
         assert_eq!(texts, vec!["> ".to_string(), "  second line".to_string()]);
     }
