@@ -62,11 +62,15 @@ rem the -version range "[17.0,19.0)" is inside quotes, so it prematurely closes
 rem the `in (...)` clause and truncates the command, silently leaving MSBUILD
 rem unset even when a matching VS install exists. Escaping it (^)) or swapping
 rem to "[17.0,19.0]" does not help -- the same truncation still happens.
-rem Route through a temp file + `set /p` instead, which sidesteps backtick/paren
-rem parsing entirely.
+rem Route through a temp file instead, which sidesteps backtick/paren parsing
+rem entirely. We then read the file back with `for /f ... in ("file")`
+rem (not `in (`command`)`, so no paren-counting issue) and let the loop body
+rem overwrite MSBUILD on every line, same as the original `for /f` did --
+rem this preserves "last match wins" if -find ever globs multiple paths,
+rem instead of the "first line wins" behavior a plain `set /p` would give.
 set VSWHERE_MSBUILD_TMP=%TEMP%\razzle-vswhere-msbuild-%RANDOM%.txt
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
-set /p MSBUILD=<"%VSWHERE_MSBUILD_TMP%"
+for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set MSBUILD=%%B)
 del "%VSWHERE_MSBUILD_TMP%" 2>nul
 set VSWHERE_MSBUILD_TMP=
 
