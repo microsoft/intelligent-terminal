@@ -2042,7 +2042,7 @@ pub struct App {
     /// other key, on prompt activity, or after the window elapses.
     pub close_pane_armed_at: Option<std::time::Instant>,
     /// Transient one-line hint rendered at the bottom of the chat area
-    /// (e.g. "Press Ctrl+C again to close pane"). Auto-clears at the
+    /// (localized via `system.close_pane_hint`). Auto-clears at the
     /// recorded deadline.
     pub transient_hint: Option<(String, std::time::Instant)>,
     /// Mirror of master's authoritative live-session set, pushed via
@@ -2061,7 +2061,7 @@ pub struct App {
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
-/// How long the "Press Ctrl+C again to close pane" arm stays live. Long
+/// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -6818,7 +6818,7 @@ impl App {
                     } else {
                         self.close_pane_armed_at = Some(now);
                         self.transient_hint = Some((
-                            "Press Ctrl+C again to close pane".to_string(),
+                            t!("system.close_pane_hint").into_owned(),
                             now + CLOSE_PANE_ARM_WINDOW,
                         ));
                     }
