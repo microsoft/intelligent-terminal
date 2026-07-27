@@ -55,9 +55,20 @@ rem but not a still-newer major whose toolset may be incompatible. VS 18 uses ou
 rem v145 PlatformToolset (see src\common.build.pre.props); older VS versions default
 rem to v143.
 rem
-for /f "usebackq tokens=*" %%B in (`"%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do (
-    set MSBUILD=%%B
-)
+rem NOTE: this intentionally does NOT use `for /f ... in (`command`)` to capture
+rem vswhere's output. cmd.exe's parser scans for the closing ')' of a `for /f`
+rem block by naive character counting -- it does not understand that the ')' in
+rem the -version range "[17.0,19.0)" is inside quotes, so it prematurely closes
+rem the `in (...)` clause and truncates the command, silently leaving MSBUILD
+rem unset even when a matching VS install exists. Escaping it (^)) or swapping
+rem to "[17.0,19.0]" does not help -- the same truncation still happens.
+rem Route through a temp file + `set /p` instead, which sidesteps backtick/paren
+rem parsing entirely.
+set VSWHERE_MSBUILD_TMP=%TEMP%\razzle-vswhere-msbuild-%RANDOM%.txt
+"%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
+set /p MSBUILD=<"%VSWHERE_MSBUILD_TMP%"
+del "%VSWHERE_MSBUILD_TMP%" 2>nul
+set VSWHERE_MSBUILD_TMP=
 
 if not defined MSBUILD (
     echo Could not find MSBuild on your machine. Please set the MSBUILD variable to the location of MSBuild.exe and run razzle again.
