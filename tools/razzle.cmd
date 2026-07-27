@@ -76,23 +76,27 @@ rem (e.g. a profile directory like "C:\Users\Jane (Admin)\AppData\..."),
 rem that same naive paren-counting parser bug would truncate the `in (...)`
 rem clause again -- this sidesteps it entirely.
 rem
-rem `pushd` itself can fail (e.g. %TEMP% unset or unwritable), in which case
-rem it neither changes directory nor pushes anything onto the directory
-rem stack. Skip straight to :AFTER_TEMP_READ in that case -- and only
-rem `popd` when `pushd` actually succeeded -- so a failure here can't pop a
-rem pre-existing directory stack entry from the caller's shell and yank
-rem them to an unrelated directory.
+rem `pushd` itself can fail (e.g. %TEMP% unset or pointing at a directory
+rem that no longer exists), in which case it neither changes directory nor
+rem pushes anything onto the directory stack. We still attempt vswhere
+rem discovery in that case -- the temp file simply lands in the current
+rem directory instead of %TEMP% -- rather than giving up on finding
+rem MSBuild entirely just because %TEMP% is misconfigured. We only call
+rem `popd` when the matching `pushd` actually succeeded, tracked via
+rem VSWHERE_TEMP_PUSHED, so a failed pushd can't pop a preexisting
+rem directory stack entry from the caller's shell and yank them to an
+rem unrelated directory.
 rem
-rem NOTE: this deliberately avoids wrapping the steps below in an
-rem `if not errorlevel 1 ( ... )` block. Without `setlocal
-rem enabledelayedexpansion`, cmd.exe expands all %VAR% references in a
-rem parenthesized block at parse time, before any `set` inside that same
-rem block has run -- so VSWHERE_MSBUILD_TMP would still resolve to its
-rem prior (unset) value everywhere it's used below. Using a plain
-rem `goto`/label sidesteps that, since each line is parsed and expanded
-rem only when reached.
+rem NOTE: none of the steps below are wrapped in an `if ( ... )` block.
+rem Without `setlocal enabledelayedexpansion`, cmd.exe expands all %VAR%
+rem references in a parenthesized block at parse time, before any `set`
+rem inside that same block has run -- so VSWHERE_MSBUILD_TMP would still
+rem resolve to its prior (unset) value everywhere it's used below. Plain
+rem sequential lines sidestep that, since each is parsed and expanded only
+rem when reached.
+set "VSWHERE_TEMP_PUSHED=0"
 pushd "%TEMP%" >nul 2>nul
-if errorlevel 1 goto :AFTER_TEMP_READ
+if not errorlevel 1 set "VSWHERE_TEMP_PUSHED=1"
 
 set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
@@ -106,9 +110,8 @@ if exist "%VSWHERE_MSBUILD_TMP%" (
 )
 del /q "%VSWHERE_MSBUILD_TMP%" 2>nul
 set "VSWHERE_MSBUILD_TMP="
-popd >nul 2>nul
-
-:AFTER_TEMP_READ
+if "%VSWHERE_TEMP_PUSHED%"=="1" popd >nul 2>nul
+set "VSWHERE_TEMP_PUSHED="
 
 if not defined MSBUILD (
     echo Could not find MSBuild on your machine. Please set the MSBUILD variable to the location of MSBuild.exe and run razzle again.
