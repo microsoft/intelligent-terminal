@@ -458,6 +458,17 @@ code it describes.
 - Canonical report runner: 13 passed, 0 failed; HTML/XML/Markdown artifacts generated under the
   ignored artifacts directory.
 - Bootstrap `-Check`: exit 0; winapp, Pester 6.0.1, Dev package, and module import succeeded.
+- Windows PowerShell 5.1 module import was rejected by the 7.2 requirement.
+- Both policy setup tools rejected Windows PowerShell before UAC or registry work.
+- ACP mock probe launched through the canonical host and completed initialize, tokens-only Usage,
+  chat marker, and `end_turn` with exit 0.
+
+**Committed files**
+
+- Existing ItE2E module/host helpers, FRE helper, bootstrap, unit self-test, and runner docs.
+- `doc/investigation/acp-price-calc-track.md`
+- Current-state update in `doc/investigation/acp-price-calc.md`
+- Local Usage mock launcher remains git-ignored.
 
 ### Step 13 - OpenCode Native ACP Usage POC
 
@@ -516,17 +527,54 @@ code it describes.
 - `doc/investigation/acp-price-calc-track.md`
 - No package cache, OpenCode binary, raw wire, local capture harness, credentials, or user-global
   OpenCode configuration.
-- Windows PowerShell 5.1 module import was rejected by the 7.2 requirement.
-- Both policy setup tools rejected Windows PowerShell before UAC or registry work.
-- ACP mock probe launched through the canonical host and completed initialize, tokens-only Usage,
-  chat marker, and `end_turn` with exit 0.
+
+### Step 14 - OpenCode Cost Currency Investigation
+
+**Deterministic reproduction**
+
+- Ran real `opencode acp` 1.18.3 against a local deterministic OpenAI-compatible HTTP provider;
+  no mock ACP agent, external network, credentials, Maestro, or real LLM participated.
+- The source contract declared `30 EUR / 1,000,000 input tokens`; the provider returned exactly
+  1,000,000 input tokens and one output token.
+- OpenCode emitted standard ACP `cost={amount:30,currency:"USD"}`. Independent assertions recorded
+  amount PASS (`30 == 30`) and currency FAIL (`EUR != USD`). Missing or incorrect amount/currency
+  fields are reported independently rather than filtered by the observed signature.
+- A second manual two-terminal flow runs the local provider and a thin ACP console client. The user
+  enters any prompt, receives `mock response`, and sees the provider contract beside the raw
+  `usage_update`.
+
+**Root cause and upstream**
+
+- Custom-provider model cost has numeric input/output/cache rates but no currency.
+- Assistant messages, step settlement, session projection, and aggregate cost preserve only a bare
+  number.
+- Both ACP Usage emitters attach the literal currency `USD`; the normal CLI money formatter also
+  assumes USD.
+- The built-in GitHub Copilot provider explicitly converts AIC rates to USD before entering this
+  model, but generic providers cannot express EUR or another currency.
+- Filed upstream issue
+  [anomalyco/opencode#38667](https://github.com/anomalyco/opencode/issues/38667); it is open and
+  assigned at the time of this update.
+
+**Product decision**
+
+- Intelligent Terminal does not special-case, rewrite, or infer OpenCode currency. It displays the
+  valid standard ACP report as sent.
+- When OpenCode ships a fix, the provider-neutral normalizer will display the corrected ISO 4217
+  code without an IT update.
+- Keep a generic EUR standard-ACP test to prove Intelligent Terminal itself remains currency-neutral.
+
+**Local-only evidence**
+
+- `test/e2e/artifacts/repro-opencode-cost-calc/` contains the scripts, input contract, sanitized
+  HTTP request/response, raw/pretty ACP wire, machine-readable result, manual repro, and bug report.
+- The directory remains git-ignored. No credential, provider token, raw wire, local server, or
+  reproduction harness is committed.
 
 **Committed files**
 
-- Existing ItE2E module/host helpers, FRE helper, bootstrap, unit self-test, and runner docs.
+- `doc/investigation/acp-price-calc.md`
 - `doc/investigation/acp-price-calc-track.md`
-- Current-state update in `doc/investigation/acp-price-calc.md`
-- Local Usage mock launcher remains git-ignored.
 
 ### Step 4 - Session Usage Lifecycle
 

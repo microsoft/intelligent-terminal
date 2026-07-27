@@ -520,6 +520,39 @@ normalizer 可以直接消费；`opencode` private adapter 继续保持 `Standar
 reporter allowlist 和 no-op，不需要新增 runtime dispatch、私有 schema parser 或 provider API
 访问。
 
+#### Non-USD cost limitation and upstream issue
+
+后续 deterministic real-process E2E 使用真实 `opencode acp` 与本地 OpenAI-compatible HTTP
+provider，给定明确合同 `30 EUR / 1,000,000 input tokens`，并让 provider 返回恰好
+`1,000,000` input tokens。OpenCode `1.18.3` 最终发送：
+
+```json
+{
+  "sessionUpdate": "usage_update",
+  "used": 1000000,
+  "size": 2000000,
+  "cost": { "amount": 30, "currency": "USD" }
+}
+```
+
+金额检查通过（expected `30`, actual `30`），currency 检查失败（expected `EUR`, actual
+`USD`）。根因不是 ACP parser：OpenCode 的 custom-provider model cost、assistant-message cost、
+step cost 与 session aggregate 都是无 currency 的裸数字，两个 ACP projection 实现再固定附加
+`currency: "USD"`。OpenCode 内置 GitHub Copilot integration 会先把 AIC pricing 转成 USD；
+generic/custom provider 则无法表达 EUR 等其他单位。
+
+上游 issue：[anomalyco/opencode#38667](https://github.com/anomalyco/opencode/issues/38667)。完整
+repro、输入合同、去敏 provider request/response、raw/pretty ACP wire 和 bug report 草稿保存在
+本地 ignored 目录：
+
+```text
+test/e2e/artifacts/repro-opencode-cost-calc/
+```
+
+Intelligent Terminal 首版不修补或重算 OpenCode 报告的 currency。标准 ACP normalizer 继续原样
+校验并显示 agent 报告的 ISO 4217 code；OpenCode 修复并发布新安装包后，IT 将自然显示修复后的
+currency。测试必须保留通用 EUR fixture，证明 IT 自身没有硬编码 USD。
+
 ### 2.6 Gemini 暂停，后续迁移到 Antigravity
 
 这是产品范围决策，不是对 Gemini 当前 ACP 能力的技术否定：Google 已发布新的 agent tool
