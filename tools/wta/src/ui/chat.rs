@@ -197,7 +197,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let tab = app.current_tab();
     let permission_tool_call_id = permission_tool_call_id(tab);
     for (idx, msg) in tab.messages.iter().enumerate().rev() {
-        let is_last_message = idx + 1 == app.current_tab().messages.len();
+        let is_last_message = idx + 1 == tab.messages.len();
         let mut message_lines = build_message_lines(
             msg,
             is_last_message,
@@ -686,24 +686,6 @@ fn push_dot_prefixed_lines<'a>(
     dot_style: Style,
     text_style: Style,
 ) {
-    push_dot_prefixed_lines_with_marker(
-        lines,
-        text,
-        wrap_width,
-        "●",
-        dot_style,
-        text_style,
-    );
-}
-
-fn push_dot_prefixed_lines_with_marker<'a>(
-    lines: &mut Vec<Line<'a>>,
-    text: &str,
-    wrap_width: usize,
-    dot: &str,
-    dot_style: Style,
-    text_style: Style,
-) {
     // Reserve 2 cells for either "● " or the continuation indent.
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
@@ -726,7 +708,7 @@ fn push_dot_prefixed_lines_with_marker<'a>(
             let piece_str = truncate_render_text(&piece).into_owned();
             if first_row {
                 lines.push(Line::from(vec![
-                    Span::styled(format!("{dot} "), dot_style),
+                    Span::styled("● ", dot_style),
                     Span::styled(piece_str, text_style),
                 ]));
                 first_row = false;
