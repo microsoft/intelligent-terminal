@@ -55,61 +55,31 @@ rem but not a still-newer major whose toolset may be incompatible. VS 18 uses ou
 rem v145 PlatformToolset (see src\common.build.pre.props); older VS versions default
 rem to v143.
 rem
-rem NOTE: this intentionally does NOT use `for /f ... in (`command`)` to capture
-rem vswhere's output. cmd.exe's parser scans for the closing ')' of a `for /f`
-rem block by naive character counting -- it does not understand that the ')' in
-rem the -version range "[17.0,19.0)" is inside quotes, so it prematurely closes
-rem the `in (...)` clause and truncates the command, silently leaving MSBUILD
-rem unset even when a matching VS install exists. Escaping it (^)) or swapping
-rem to "[17.0,19.0]" does not help -- the same truncation still happens.
-rem Route through a temp file instead, which sidesteps backtick/paren parsing
-rem entirely. We then read the file back with `for /f ... in ("file")`
-rem (not `in (`command`)`, so no paren-counting issue) and let the loop body
-rem overwrite MSBUILD on every line, same as the original `for /f` did --
-rem this preserves "last match wins" if -find ever globs multiple paths,
-rem instead of the "first line wins" behavior a plain `set /p` would give.
-rem
-rem We `pushd` into %TEMP% and reference the temp file by a plain relative
-rem name (no directory component) so that the text inside `in (...)` never
-rem contains the expanded %TEMP% path. If %TEMP% itself contained a ')'
-rem (e.g. a profile directory like "C:\Users\Jane (Admin)\AppData\..."),
-rem that same naive paren-counting parser bug would truncate the `in (...)`
-rem clause again -- this sidesteps it entirely.
-rem
-rem `pushd` itself can fail (e.g. %TEMP% unset or pointing at a directory
-rem that no longer exists), in which case it neither changes directory nor
-rem pushes anything onto the directory stack. We still attempt vswhere
-rem discovery in that case -- the temp file simply lands in the current
-rem directory instead of %TEMP% -- rather than giving up on finding
-rem MSBuild entirely just because %TEMP% is misconfigured. We only call
-rem `popd` when the matching `pushd` actually succeeded, tracked via
-rem VSWHERE_TEMP_PUSHED, so a failed pushd can't pop a preexisting
-rem directory stack entry from the caller's shell and yank them to an
-rem unrelated directory.
-rem
-rem NOTE: VSWHERE_TEMP_PUSHED and VSWHERE_MSBUILD_TMP above are deliberately
-rem set and read as plain sequential lines, not inside an `if ( ... )`
-rem block. Without `setlocal enabledelayedexpansion`, cmd.exe expands all
-rem %VAR% references in a parenthesized block at parse time, before any
-rem `set` inside that same block has run -- so setting a variable and then
-rem reading it later within the same block would still see its prior
-rem value. The `if exist ( ... )` block below is fine despite being
-rem parenthesized: it only *sets* MSBUILD inside the block and never reads
-rem it back within that same block, so the pitfall doesn't apply there.
+rem NOTE: this does NOT use `for /f ... in (`command`)` to capture vswhere's
+rem output. cmd.exe's `for /f` parser finds the closing ')' of `in (...)` by
+rem naive character counting, so the ')' in "[17.0,19.0)" prematurely closes
+rem the clause and silently truncates the command (escaping or switching to
+rem "[17.0,19.0]" does not help). Instead we redirect vswhere's output to a
+rem temp file and read it back with `for /f ... in ("file")`, which has no
+rem command/paren to miscount. We `pushd` into %TEMP% first and use a plain
+rem relative filename so the temp path itself can't reintroduce a ')' (e.g.
+rem from a profile dir like "...\Jane (Admin)\..."). `pushd` can fail (TEMP
+rem unset/missing); we still try vswhere in that case (file lands in the
+rem current directory) and only `popd` if `pushd` actually succeeded
+rem (tracked via VSWHERE_TEMP_PUSHED), so a failed pushd can't disturb the
+rem caller's directory stack.
 set "VSWHERE_TEMP_PUSHED=0"
 pushd "%TEMP%" >nul 2>nul
 if not errorlevel 1 set "VSWHERE_TEMP_PUSHED=1"
 
-rem Two %RANDOM% components (cmd.exe's %RANDOM% is only 0-32767) make an
-rem accidental filename collision between concurrent razzle.cmd instances
-rem astronomically unlikely, so one run can't read or delete another's file.
+rem Two %RANDOM% components avoid filename collisions between concurrent
+rem razzle.cmd runs. Set/read as plain sequential lines (not inside an
+rem `if ( ... )` block) since cmd.exe expands %VAR% in a parenthesized
+rem block at parse time, before any `set` inside it has run.
 set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
-rem Guard the read: if the temp file never got created (e.g. the
-rem vswhere invocation above failed outright), skip the for /f entirely
-rem instead of letting it print "The system cannot find the file
-rem specified." -- that noise would mask the real "Could not find
-rem MSBuild" error reported below.
+rem `if exist` avoids a "system cannot find the file" message masking the
+rem "Could not find MSBuild" error below when vswhere itself failed.
 if exist "%VSWHERE_MSBUILD_TMP%" (
     for /f "usebackq delims=" %%B in ("%VSWHERE_MSBUILD_TMP%") do (set "MSBUILD=%%B")
 )
