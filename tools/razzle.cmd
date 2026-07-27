@@ -87,18 +87,23 @@ rem VSWHERE_TEMP_PUSHED, so a failed pushd can't pop a preexisting
 rem directory stack entry from the caller's shell and yank them to an
 rem unrelated directory.
 rem
-rem NOTE: none of the steps below are wrapped in an `if ( ... )` block.
-rem Without `setlocal enabledelayedexpansion`, cmd.exe expands all %VAR%
-rem references in a parenthesized block at parse time, before any `set`
-rem inside that same block has run -- so VSWHERE_MSBUILD_TMP would still
-rem resolve to its prior (unset) value everywhere it's used below. Plain
-rem sequential lines sidestep that, since each is parsed and expanded only
-rem when reached.
+rem NOTE: VSWHERE_TEMP_PUSHED and VSWHERE_MSBUILD_TMP above are deliberately
+rem set and read as plain sequential lines, not inside an `if ( ... )`
+rem block. Without `setlocal enabledelayedexpansion`, cmd.exe expands all
+rem %VAR% references in a parenthesized block at parse time, before any
+rem `set` inside that same block has run -- so setting a variable and then
+rem reading it later within the same block would still see its prior
+rem value. The `if exist ( ... )` block below is fine despite being
+rem parenthesized: it only *sets* MSBUILD inside the block and never reads
+rem it back within that same block, so the pitfall doesn't apply there.
 set "VSWHERE_TEMP_PUSHED=0"
 pushd "%TEMP%" >nul 2>nul
 if not errorlevel 1 set "VSWHERE_TEMP_PUSHED=1"
 
-set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%.txt"
+rem Two %RANDOM% components (cmd.exe's %RANDOM% is only 0-32767) make an
+rem accidental filename collision between concurrent razzle.cmd instances
+rem astronomically unlikely, so one run can't read or delete another's file.
+set "VSWHERE_MSBUILD_TMP=razzle-vswhere-msbuild-%RANDOM%%RANDOM%.txt"
 "%VSWHERE%" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -version "[17.0,19.0)" -find MSBuild\**\Bin\MSBuild.exe > "%VSWHERE_MSBUILD_TMP%" 2>nul
 rem Guard the read: if the temp file never got created (e.g. the
 rem vswhere invocation above failed outright), skip the for /f entirely
