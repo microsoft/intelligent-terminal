@@ -15,8 +15,7 @@
 //! * origin-aware policy (`ProposalOrigin::TerminalAgent` vs `::Autofix`);
 //! * size/count bounds enforced *before* `serde_json` ever sees the bytes;
 //! * conversion into [`crate::coordinator::RecommendationSet`], which then
-//!   flows through the exact same card-surfacing / execution code as the
-//!   long-standing assistant-text JSON fallback.
+//!   flows through the shared card-surfacing and execution pipeline.
 //!
 //! The proposal travels over the owning Helper's direct proposal pipe; Master
 //! is not involved. The Helper invokes this module from App's direct proposal
@@ -42,8 +41,8 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// slow parse.
 pub const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
 
-/// Max choices per proposal — matches the long-standing fallback-JSON
-/// policy in [`crate::coordinator::validate_recommendation_set`] (1..=3).
+/// Max choices per proposal, enforced consistently by
+/// [`crate::coordinator::validate_recommendation_set`] (1..=3).
 pub const MAX_CHOICES: usize = 3;
 /// Max actions per choice.
 pub const MAX_ACTIONS_PER_CHOICE: usize = 3;
@@ -65,9 +64,8 @@ pub const MAX_INPUT_CHARS: usize = 8000;
 pub enum ProposalStatus {
     /// The recommendation card is now visible in the agent pane.
     Presented,
-    /// A card was already showing for this turn (eager text-fallback
-    /// surface, or an earlier proposal) — this proposal was not the one
-    /// that ended up on screen.
+    /// A card was already showing for this turn, so this proposal was not
+    /// surfaced.
     Duplicate,
     /// The route/turn was valid when minted but is no longer current by
     /// the time the proposal arrived (token expired/consumed already, or
@@ -240,8 +238,7 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
 }
 
 /// Convert a decoded [`ProposalWire`] into a [`RecommendationSet`], applying
-/// origin policy and the shared count/length/coordinator-target validation
-/// that the assistant-text fallback path already enforces.
+/// origin policy and shared count, length, and coordinator-target validation.
 ///
 /// * `is_autofix_turn` — the owning turn's OWN `TurnState::is_autofix()`
 ///   (never taken from the payload). A mismatch against `wire.origin` is a
@@ -253,8 +250,7 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
 ///   falling back to "no agent" (which would defeat the point of asking
 ///   for the delegate).
 /// * `coordinator_target` — this pane's own id, filtered out of `Send`
-///   targets exactly as [`crate::coordinator::validate_recommendation_set_for_coordinator_target`]
-///   already does for the text-fallback path.
+///   targets by [`crate::coordinator::validate_recommendation_set_for_coordinator_target`].
 pub fn build_recommendation_set(
     wire: &ProposalWire,
     is_autofix_turn: bool,
@@ -321,9 +317,8 @@ pub fn build_recommendation_set(
         return Ok(set);
     }
 
-    // Terminal Agent origin: "current policies" — same 1..=3 choices /
-    // 1..=3 actions / Send+Open+OpenAndSend shape as the text-fallback
-    // path, converted 1:1 apart from `delegate` resolution.
+    // Terminal Agent origin: 1..=3 choices, 1..=3 actions, and the
+    // Send+Open+OpenAndSend shape consumed by the shared card pipeline.
     let mut choices = Vec::with_capacity(wire.choices.len());
     for choice in &wire.choices {
         if choice.actions.is_empty() || choice.actions.len() > MAX_ACTIONS_PER_CHOICE {
