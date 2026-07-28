@@ -120,6 +120,7 @@ connection.connecting_activity: "[Çöññéçţïñğ ţö åğéñţ…!!]"
 connection.lost: "[Çöññéçţïöñ ţö ţĥé åğéñţ ŵåś ĺöśţ. Ţýṗé /restart ţö ŕéçöññéçţ.!!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "[Ṗŕéśś Ctrl+C åğåïñ ţö çĺöśé ṗåñé!!!! !!!!]"  # {Locked="Ctrl+C"}
 system.cancelled: "[Çåñçéĺĺéď.!!]"
 system.no_prompt_in_flight: "[Ñö ṗŕöḿṗţ ïñ ƒĺïğĥţ.!!!! !!!!]"
 system.authentication_failed: "[Àûţĥéñţïçåţïöñ ƒåïĺéď!!!! !!!!]"

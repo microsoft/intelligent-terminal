@@ -20,19 +20,16 @@ const MAX_RENDER_LINE_CHARS: usize = 4096;
 pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
-    // Fetch once and reuse below for both the reveal-catchup check and the
-    // pending-height calc. `pending_render_text` re-parses the streaming
-    // buffer on every call (and allocates on the JSON-wrapper path via
-    // `extract_json_string_field`), so calling it twice per frame here would
-    // be a redundant, measurable cost on the render hot path.
+    // Fetch once for the pending-height calculation. `pending_render_text`
+    // re-parses the streaming buffer on every call (and allocates on the
+    // JSON-wrapper path via `extract_json_string_field`).
     let pending_text = pending_render_text(tab);
 
-    // Reserve the row only when the shimmer will actually render; mirrors
-    // the suppression rule in `build_activity_line` below.
-    let reveal_catching_up = pending_text
-        .as_deref()
-        .is_some_and(|text| tab.reveal_chars < text.chars().count());
-    let activity = if tab.turn.spinner_label().is_some() && !reveal_catching_up {
+    // Connecting and Thinking both pin one activity row in `render`; reserve
+    // that same row here so the surrounding layout cannot jump or clip.
+    let activity = if matches!(app.state, crate::app::ConnectionState::Connecting(_))
+        || should_show_turn_activity(tab)
+    {
         1usize
     } else {
         0
@@ -142,6 +139,31 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
     }
 }
 
+fn is_active_tool_call_status(status: &str) -> bool {
+    status.eq_ignore_ascii_case("pending")
+        || status.eq_ignore_ascii_case("inprogress")
+        || status.eq_ignore_ascii_case("running")
+}
+
+fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
+    tab.should_show_thinking()
+}
+
+fn permission_tool_call_id(tab: &crate::app::TabSession) -> Option<&str> {
+    tab.permission
+        .front()
+        .map(|permission| permission.tool_call_id.as_str())
+}
+
+fn breathing_dot(frame: usize) -> &'static str {
+    match frame % crate::ui::ACTIVITY_CYCLE_FRAMES {
+        0..=4 => "●",
+        5..=8 => "•",
+        9..=13 => "·",
+        _ => "•",
+    }
+}
+
 pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let render_started = std::time::Instant::now();
 
@@ -172,9 +194,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let mut truncated = false;
 
-    for (idx, msg) in app.current_tab().messages.iter().enumerate().rev() {
-        let is_last_message = idx + 1 == app.current_tab().messages.len();
-        let mut message_lines = build_message_lines(msg, is_last_message, app.current_tab().turn.is_streaming(), wrap_width);
+    let tab = app.current_tab();
+    let permission_tool_call_id = permission_tool_call_id(tab);
+    for (idx, msg) in tab.messages.iter().enumerate().rev() {
+        let is_last_message = idx + 1 == tab.messages.len();
+        let mut message_lines = build_message_lines(
+            msg,
+            is_last_message,
+            tab.turn.is_streaming(),
+            permission_tool_call_id,
+            tab.activity_frame,
+            wrap_width,
+        );
         reversed_lines.extend(message_lines.drain(..).rev());
         if reversed_lines.len() >= requested_lines {
             truncated = true;
@@ -324,7 +355,7 @@ fn build_completed_turn_lines<'a>(
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
-            lines.extend(build_message_lines(msg, false, false, wrap_width));
+            lines.extend(build_message_lines(msg, false, false, None, 0, wrap_width));
         }
     }
 
@@ -358,17 +389,7 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
     }
     let tab = app.current_tab();
-    if tab.turn.spinner_label().is_none() {
-        return None;
-    }
-    // While the reveal is still catching up, the growing text is itself the
-    // activity signal, so skip the shimmer to avoid a duplicate. Once it
-    // catches up (e.g. the model narrated a step, then went quiet for a
-    // tool call / permission round-trip), the text goes static with no
-    // cursor of its own, so fall back to the shimmer so busy always shows
-    // *something* (issue #189 covered the empty-buffer case; this covers
-    // the non-empty-but-stalled one).
-    if is_reveal_catching_up(tab) {
+    if !should_show_turn_activity(tab) {
         return None;
     }
     let label = activity_label();
@@ -376,16 +397,6 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
         &label,
         tab.activity_frame,
     )))
-}
-
-/// True while the reveal cursor hasn't caught up to the pending stream text,
-/// i.e. the growing text is still its own activity signal. `false` when
-/// there's no pending text, or the reveal has fully caught up.
-fn is_reveal_catching_up(tab: &crate::app::TabSession) -> bool {
-    match pending_render_text(tab) {
-        Some(text) => tab.reveal_chars < text.chars().count(),
-        None => false,
-    }
 }
 
 /// Incrementally extracts a JSON string field's decoded value from a
@@ -552,6 +563,8 @@ fn build_message_lines<'a>(
     msg: &'a ChatMessage,
     is_last_message: bool,
     agent_streaming: bool,
+    permission_tool_call_id: Option<&str>,
+    activity_frame: usize,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
@@ -581,8 +594,19 @@ fn build_message_lines<'a>(
             }
             lines.push(Line::default());
         }
-        ChatMessage::ToolCall { title, status, .. } => {
+        ChatMessage::ToolCall {
+            id,
+            title,
+            status,
+        } => {
             let (marker, marker_style, detail) = tool_call_presentation(status);
+            let marker = if permission_tool_call_id == Some(id.as_str())
+                || is_active_tool_call_status(status)
+            {
+                breathing_dot(activity_frame)
+            } else {
+                marker
+            };
             let mut spans = vec![
                 Span::styled(marker, marker_style),
                 Span::raw(" "),
@@ -810,7 +834,7 @@ mod tests {
             title: "Run: cargo test".into(),
             status: status.into(),
         };
-        let lines = build_message_lines(&message, false, false, 80);
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
 
         assert_eq!(line_text(line), expected_text);
@@ -823,7 +847,7 @@ mod tests {
     fn tool_call_uses_semantic_status_markers() {
         assert_tool_call(
             "Pending",
-            "○ Run: cargo test",
+            "● Run: cargo test",
             theme::TOOL_CALL_PENDING,
             None,
         );
@@ -1012,8 +1036,6 @@ mod tests {
         assert_eq!(user_visible_stream_text("   \n  "), None);
     }
 
-    // ── is_reveal_catching_up ────────────────────────────────────────────────
-
     fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
         let mut tab = crate::app::TabSession::default();
         tab.turn = crate::app::TurnState::Streaming {
@@ -1030,42 +1052,84 @@ mod tests {
     }
 
     #[test]
-    fn reveal_catching_up_true_while_behind_visible_length() {
-        // "hello" is 5 chars; reveal_chars=2 means the typewriter is still
-        // mid-reveal, so the growing text is still its own activity signal.
-        let tab = streaming_tab("hello", 2);
-        assert!(is_reveal_catching_up(&tab));
+    fn thinking_activity_is_a_one_way_per_prompt_latch() {
+        let mut tab = streaming_tab("", 0);
+        tab.waiting_for_first_visible_activity = true;
+        assert!(should_show_turn_activity(&tab));
+
+        tab.mark_visible_agent_activity();
+        assert!(!should_show_turn_activity(&tab));
+
+        tab.tool_calls
+            .insert("tool".into(), ("Run tests".into(), "Completed".into()));
+        assert!(
+            !should_show_turn_activity(&tab),
+            "later activity changes must not re-enable Thinking"
+        );
     }
 
     #[test]
-    fn reveal_catching_up_false_once_reveal_equals_visible_length() {
-        // reveal_chars caught up exactly to the visible length: the boundary
-        // case (`<` vs `>=`) that must flip to false, not stay true.
-        let tab = streaming_tab("hello", 5);
-        assert!(!is_reveal_catching_up(&tab));
+    fn breathing_dot_shrinks_then_grows() {
+        assert_eq!(breathing_dot(0), "●");
+        assert_eq!(breathing_dot(5), "•");
+        assert_eq!(breathing_dot(9), "·");
+        assert_eq!(breathing_dot(14), "•");
+        assert_eq!(
+            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
+            "●"
+        );
     }
 
     #[test]
-    fn reveal_catching_up_false_once_reveal_exceeds_visible_length() {
-        let tab = streaming_tab("hello", 99);
-        assert!(!is_reveal_catching_up(&tab));
+    fn permission_animates_only_its_matching_tool_call() {
+        let matching = ChatMessage::ToolCall {
+            id: "tool-2".into(),
+            title: "Read Cargo.toml".into(),
+            status: "Completed".into(),
+        };
+        let other = ChatMessage::ToolCall {
+            id: "tool-1".into(),
+            title: "Find files".into(),
+            status: "Completed".into(),
+        };
+
+        let matching_lines =
+            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
+
+        assert_eq!(matching_lines[0].spans[0].content, "·");
+        assert_eq!(other_lines[0].spans[0].content, "✓");
     }
 
     #[test]
-    fn reveal_catching_up_false_when_buffer_empty() {
-        // Empty buffer (no narration streamed yet) has no pending text to
-        // catch up to — the empty-buffer case fixed for issue #189 must not
-        // be treated as "still revealing".
-        let tab = streaming_tab("", 0);
-        assert!(!is_reveal_catching_up(&tab));
+    fn active_tool_call_breathes_without_permission() {
+        for status in ["Pending", "InProgress", "running"] {
+            let message = ChatMessage::ToolCall {
+                id: "tool".into(),
+                title: "Find files".into(),
+                status: status.into(),
+            };
+            let lines = build_message_lines(&message, false, false, None, 9, 80);
+            assert_eq!(lines[0].spans[0].content, "·", "{status} should breathe");
+        }
     }
 
     #[test]
-    fn reveal_catching_up_false_when_not_streaming() {
-        // Idle (no turn in flight) has no `buffer()` at all: `pending_render_text`
-        // returns None, so there's nothing to catch up to.
-        let tab = crate::app::TabSession::default();
-        assert!(!is_reveal_catching_up(&tab));
+    fn permission_animation_follows_fifo_front() {
+        let mut tab = streaming_tab("", 0);
+        for id in ["tool-1", "tool-2"] {
+            tab.permission.push_back(crate::app::PermissionState {
+                tool_call_id: id.into(),
+                description: "Allow access?".into(),
+                options: Vec::new(),
+                selected: 0,
+                responder: None,
+            });
+        }
+
+        assert_eq!(permission_tool_call_id(&tab), Some("tool-1"));
+        tab.permission.pop_front();
+        assert_eq!(permission_tool_call_id(&tab), Some("tool-2"));
     }
 
     // ── truncate_render_text ────────────────────────────────────────────────

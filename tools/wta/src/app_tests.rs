@@ -4667,6 +4667,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 
     // PermissionState index helpers pick the first matching option.
     let perm = PermissionState {
+        tool_call_id: "tool".into(),
         description: String::new(),
         options: vec![opt("AllowOnce"), opt("RejectOnce")],
         selected: 0,
@@ -4676,20 +4677,9 @@ fn perm_option_kind_matching_is_case_insensitive() {
     assert_eq!(perm.reject_index(), Some(1));
 }
 
-/// Regression (issue #189): while the agent has queued a permission request
-/// but `AgentMessageEnd` has not yet arrived (turn is
-/// `Surfaced{end_pending:true}`), the thinking/activity indicator must
-/// remain visible. Previously `spinner_label()` returned `None` for any
-/// `Surfaced` variant, making the pane look frozen between the eager surface
-/// and the permission card appearing.
 #[test]
-fn thinking_indicator_visible_while_permission_pending_and_end_pending() {
+fn permission_request_permanently_clears_thinking_latch() {
     let mut app = test_app();
-
-    // Put the tab in `Surfaced{end_pending:true}` — the state that exists
-    // between an eager surface (recommendation / chat turn visible) and the
-    // `AgentMessageEnd` event that releases the UI gate. A permission
-    // request can arrive in this window.
     let prompt = SubmittedPrompt {
         id: 1,
         text: "test".into(),
@@ -4701,38 +4691,26 @@ fn thinking_indicator_visible_while_permission_pending_and_end_pending() {
         outcome: TurnOutcome::Empty,
         end_pending: true,
     };
-
-    // The spinner must be active while end_pending=true.
-    assert!(
-        app.current_tab().turn.spinner_label().is_some(),
-        "spinner_label must be Some while Surfaced{{end_pending:true}} (issue #189)"
-    );
-    assert!(
-        app.has_activity_indicator(),
-        "has_activity_indicator must be true while Surfaced{{end_pending:true}} (issue #189)"
-    );
-
-    // Simulate the PermissionRequest arriving in this window.
     app.tab_mut(DEFAULT_TAB_ID)
-        .permission
-        .push_back(PermissionState {
-            description: "Allow tool X?".into(),
-            options: vec![
-                PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
-                PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
-            ],
-            selected: 0,
-            responder: None,
-        });
+        .waiting_for_first_visible_activity = true;
 
-    // With a queued permission AND end_pending=true the spinner must still be on.
+    let (responder, _response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::PermissionRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        tool_call_id: "tool".into(),
+        description: "Allow tool X?".into(),
+        options: vec![
+            PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
+            PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
+        ],
+        responder,
+    });
+
+    assert!(!app.current_tab().should_show_thinking());
+    app.current_tab_mut().permission.pop_front();
     assert!(
-        app.current_tab().turn.spinner_label().is_some(),
-        "spinner_label must remain Some after PermissionRequest queued while end_pending=true"
-    );
-    assert!(
-        app.has_activity_indicator(),
-        "has_activity_indicator must remain true after PermissionRequest queued"
+        !app.current_tab().should_show_thinking(),
+        "resolving permission must not re-enable Thinking in the same turn"
     );
 }
 
@@ -5091,6 +5069,7 @@ fn render_permission_card_shows_options() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().permission.push_back(PermissionState {
+        tool_call_id: "tool".into(),
         description: "Run: echo PERM_XYZ".into(),
         options: vec![
             PermOption {
@@ -6000,6 +5979,25 @@ fn render_chat_welcome_hint() {
     );
 }
 
+#[test]
+fn connecting_activity_row_is_included_in_estimated_chat_height() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::User("hello".into()));
+
+    app.state = ConnectionState::Disconnected;
+    let without_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    app.state = ConnectionState::Connecting("Starting agent".into());
+    let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
+
+    assert_eq!(with_activity, without_activity + 1);
+    assert!(
+        app.has_activity_indicator(),
+        "Connecting must keep Tick redraws active for the shimmer"
+    );
+}
+
 /// Render: when the pane is too short for a full permission card, the
 /// compact one-row fallback must paint the description and the `[Y/N]`
 /// hint. Lifts `render_compact` in `ui/permission.rs`. The compact path
@@ -6010,6 +6008,7 @@ fn render_permission_compact_shows_hint() {
     app.state = ConnectionState::Connected;
     app.terminal_rows = 7; // ceiling = 4 < CARD_MIN_SIZE(5) → compact fallback
     app.current_tab_mut().permission.push_back(PermissionState {
+        tool_call_id: "tool".into(),
         description: "Run: echo PERM_COMPACT_XYZ".into(),
         options: vec![
             PermOption {
@@ -6130,11 +6129,17 @@ fn submit_clears_messages_and_pushes_user_bubble() {
 fn first_message_chunk_transitions_to_streaming_with_buf() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
+    assert!(app.current_tab().should_show_thinking());
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "partial");
     assert!(advanced, "first message chunk must advance the buffer");
-    let tab = app.current_tab();
-    assert_eq!(tab.turn.buffer(), Some("partial"));
-    assert!(tab.turn.is_streaming());
+    assert_eq!(app.current_tab().turn.buffer(), Some("partial"));
+    assert!(app.current_tab().turn.is_streaming());
+    assert!(
+        app.current_tab().should_show_thinking(),
+        "Thinking remains until text is actually revealed"
+    );
+    app.advance_reveal();
+    assert!(!app.current_tab().should_show_thinking());
 }
 
 #[test]
@@ -6146,6 +6151,54 @@ fn thought_chunk_first_transitions_with_empty_buf() {
     let tab = app.current_tab();
     assert!(tab.turn.is_streaming());
     assert_eq!(tab.turn.buffer(), Some(""));
+    assert!(
+        tab.should_show_thinking(),
+        "hidden thought chunks are not user-visible feedback"
+    );
+}
+
+#[test]
+fn hidden_structured_tokens_keep_thinking_until_explanation_is_visible() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    app.turn_observe_chunk(
+        DEFAULT_TAB_ID,
+        ChunkKind::Message,
+        r#"{"kind":"explanation""#,
+    );
+    app.advance_reveal();
+    assert!(app.current_tab().should_show_thinking());
+
+    app.turn_observe_chunk(
+        DEFAULT_TAB_ID,
+        ChunkKind::Message,
+        r#","explanation":"Visible answer"}"#,
+    );
+    app.advance_reveal();
+    assert!(!app.current_tab().should_show_thinking());
+}
+
+#[test]
+fn tool_call_permanently_clears_thinking_latch() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "inspect");
+    app.handle_event(AppEvent::ToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        title: "Find files".into(),
+        status: "InProgress".into(),
+    });
+    assert!(!app.current_tab().should_show_thinking());
+
+    app.handle_event(AppEvent::ToolCallUpdate {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "tool".into(),
+        status: "Completed".into(),
+    });
+    assert!(
+        !app.current_tab().should_show_thinking(),
+        "tool completion must not re-enable Thinking"
+    );
 }
 
 #[test]
@@ -6378,6 +6431,7 @@ use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
 fn perm_with(desc: &str) -> PermissionState {
     PermissionState {
+        tool_call_id: "tool".into(),
         description: desc.to_string(),
         options: vec![PermOption {
             id: "allow_once".into(),

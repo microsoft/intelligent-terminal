@@ -118,6 +118,7 @@ connection.connecting_activity: "Ag ceangal leis an ngníomhaire…"
 connection.lost: "Cailleadh an ceangal leis an ngníomhaire. Clóscríobh /restart chun athcheangal."  # {Locked="/restart"}
 
 # ── Teachtaireachtaí córais (src/app.rs) ────────────────────────────────────
+system.close_pane_hint: "Brúigh Ctrl+C arís chun an pána a dhúnadh"  # {Locked="Ctrl+C"}
 system.cancelled: "Cealaithe."
 system.no_prompt_in_flight: "Níl aon leid ar siúl."
 system.authentication_failed: "Theip ar fhíordheimhniú"

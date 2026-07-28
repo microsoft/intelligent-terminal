@@ -530,6 +530,7 @@ impl PermOption {
 }
 
 pub struct PermissionState {
+    pub tool_call_id: String,
     pub description: String,
     pub options: Vec<PermOption>,
     pub selected: usize,
@@ -1085,13 +1086,6 @@ pub enum AppEvent {
     /// focus-in/out (CSI I / CSI O) delivered through conpty.
     FocusChanged(bool),
     ConnectionStage(String),
-    /// `session_id` lets us route the status update to the originating tab
-    /// once an ACP session is bound to it. Pre-session statuses (startup
-    /// stages) carry None and fall through to the active tab.
-    ProgressStatus {
-        session_id: Option<String>,
-        status: String,
-    },
     AgentConnected {
         name: String,
         model: Option<String>,
@@ -1253,6 +1247,7 @@ pub enum AppEvent {
     },
     PermissionRequest {
         session_id: String,
+        tool_call_id: String,
         description: String,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
@@ -1473,10 +1468,15 @@ pub struct TabSession {
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
+    /// One-way latch for the Thinking indicator.
+    ///
+    /// Rule: a newly submitted prompt shows Thinking only while it is waiting
+    /// for the first user-visible agent feedback. The first revealed text,
+    /// tool item, plan, permission card, or surfaced result clears this latch,
+    /// and it must never become true again during the same turn. Hidden thought
+    /// chunks and structured tokens that cannot yet render do not clear it.
+    pub waiting_for_first_visible_activity: bool,
 
-    // Agent-supplied progress message (e.g. "Reading file foo.rs"). Falls
-    // back to the spinner label derived from `turn` when None.
-    pub progress_status: Option<String>,
     pub activity_frame: usize,
     /// Typewriter reveal cursor: how many characters of the *user-visible*
     /// streaming text are currently shown. The full text lives in
@@ -1618,6 +1618,14 @@ impl TabSession {
         self.chat_scroll.offset = 0;
     }
 
+    pub(crate) fn mark_visible_agent_activity(&mut self) {
+        self.waiting_for_first_visible_activity = false;
+    }
+
+    pub(crate) fn should_show_thinking(&self) -> bool {
+        self.waiting_for_first_visible_activity && self.turn.is_in_flight()
+    }
+
     /// Whether the input box is the live, enterable caret target. False when
     /// the user is browsing a completed turn, a recommendation card is showing,
     /// a permission card is up, a paste is pending, or a modal picker is open.
@@ -1688,7 +1696,6 @@ impl TabSession {
         // Dropping pending responders signals `Cancelled` back to the
         // agent — appropriate when the user wipes chat history mid-turn.
         self.permission.clear();
-        self.progress_status = None;
         self.activity_frame = 0;
         self.pending_agent_response.clear();
         self.pending_user_replay.clear();
@@ -2264,7 +2271,7 @@ pub struct App {
     /// other key, on prompt activity, or after the window elapses.
     pub close_pane_armed_at: Option<std::time::Instant>,
     /// Transient one-line hint rendered at the bottom of the chat area
-    /// (e.g. "Press Ctrl+C again to close pane"). Auto-clears at the
+    /// (localized via `system.close_pane_hint`). Auto-clears at the
     /// recorded deadline.
     pub transient_hint: Option<(String, std::time::Instant)>,
     /// Mirror of master's authoritative live-session set, pushed via
@@ -2283,7 +2290,7 @@ pub struct App {
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
-/// How long the "Press Ctrl+C again to close pane" arm stays live. Long
+/// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -4760,7 +4767,6 @@ impl App {
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
-            AppEvent::ProgressStatus { .. } => "progress_status",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::TabError { .. } => "tab_error",
@@ -5116,11 +5122,19 @@ impl App {
                 // Clamp down if the visible text shrank (e.g. a fenced JSON
                 // block replaced the streamed prose).
                 tab.reveal_chars = len;
+                if len > 0 {
+                    tab.mark_visible_agent_activity();
+                }
                 continue;
             }
             let backlog = len - tab.reveal_chars;
             let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
             tab.reveal_chars = (tab.reveal_chars + step).min(len);
+            if tab.reveal_chars > 0 {
+                // The first character is now actually visible, so Thinking
+                // hands off permanently to the streamed response for this turn.
+                tab.mark_visible_agent_activity();
+            }
         }
     }
 
@@ -5196,11 +5210,13 @@ impl App {
         if self.mode == AppMode::Setup || self.mode == AppMode::Auth {
             return true; // spinner always ticks in setup/auth mode
         }
+        if matches!(self.state, ConnectionState::Connecting(_)) {
+            return true; // connecting shimmer
+        }
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
         }
-        let tab = self.current_tab();
-        tab.turn.spinner_label().is_some() || tab.progress_status.is_some()
+        self.current_tab().turn.is_in_flight()
     }
 
     /// Get the most recent unacknowledged notification (for the banner).

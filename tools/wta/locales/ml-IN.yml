@@ -131,6 +131,7 @@ connection.connecting_activity: "ഏജന്റുമായി കണക്റ�
 connection.lost: "ഏജന്റുമായുള്ള കണക്ഷൻ നഷ്ടപ്പെട്ടു. വീണ്ടും കണക്റ്റ് ചെയ്യാൻ /restart ടൈപ്പ് ചെയ്യുക."  # {Locked="/restart"}
 
 # ── സിസ്റ്റം സന്ദേശങ്ങള്‍ (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "പേന്‍ അടയ്ക്കാൻ Ctrl+C വീണ്ടും അമർത്തുക."  # {Locked="Ctrl+C"}
 system.cancelled: "റദ്ദാക്കി."
 system.no_prompt_in_flight: "പുരോഗതിയില്‍ പ്രോംപ്റ്റ് ഇല്ല."
 system.authentication_failed: "പ്രമാണീകരണം പരാജയപ്പെട്ടു"

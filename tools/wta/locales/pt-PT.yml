@@ -118,6 +118,7 @@ connection.connecting_activity: "A estabelecer ligação ao agente…"
 connection.lost: "A ligação ao agente foi perdida. Escreva /restart para restabelecer a ligação."  # {Locked="/restart"}
 
 # ── Mensagens do sistema (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Prima Ctrl+C novamente para fechar o painel"  # {Locked="Ctrl+C"}
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Nenhum pedido em curso."
 system.authentication_failed: "Falha na autenticação"

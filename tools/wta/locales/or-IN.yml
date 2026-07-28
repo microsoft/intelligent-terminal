@@ -131,6 +131,7 @@ connection.connecting_activity: "ଏଜେଣ୍ଟ ସହ ସଂଯୋଗ ହ�
 connection.lost: "ଏଜେଣ୍ଟ ସହିତ ସଂଯୋଗ ହରାଇଗଲା। ପୁଣି ସଂଯୋଗ କରିବାକୁ /restart ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="/restart"}
 
 # ── ସିଷ୍ଟମ ସନ୍ଦେଶ (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "ପେନ୍ ବନ୍ଦ କରିବା ପାଇଁ Ctrl+C ପୁଣିଥରେ ଦବାନ୍ତୁ"  # {Locked="Ctrl+C"}
 system.cancelled: "ବାତିଲ ହୋଇଛି।"
 system.no_prompt_in_flight: "ପ୍ରଗତିରେ କୌଣସି ପ୍ରମ୍ପ୍ଟ ନାହିଁ।"
 system.authentication_failed: "ପ୍ରମାଣୀକରଣ ବିଫଳ"

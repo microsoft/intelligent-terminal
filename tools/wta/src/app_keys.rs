@@ -595,7 +595,7 @@ impl App {
                     } else {
                         self.close_pane_armed_at = Some(now);
                         self.transient_hint = Some((
-                            "Press Ctrl+C again to close pane".to_string(),
+                            t!("system.close_pane_hint").into_owned(),
                             now + CLOSE_PANE_ARM_WINDOW,
                         ));
                     }
