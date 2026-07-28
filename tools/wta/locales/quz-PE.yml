@@ -118,6 +118,7 @@ connection.connecting_activity: "Agente-man t'inkichkan…"
 connection.lost: "Agente-man t'inkiy chinkarun. Watiqmanta t'inkinapaq /restart qillqay."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "K'itita wichq'anaykipaq Ctrl+C yapay ñit'iy."  # {Locked="Ctrl+C"}
 system.cancelled: "Chinkachisqa."
 system.no_prompt_in_flight: "Mana tapukuy purichkanchu."
 system.authentication_failed: "Yaykuy mana allinchu"

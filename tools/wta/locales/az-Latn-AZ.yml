@@ -132,6 +132,7 @@ connection.connecting_activity: "Agentə qoşulur…"
 connection.lost: "Agentlə bağlantı itdi. Yenidən qoşulmaq üçün /restart yazın."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Paneli bağlamaq üçün Ctrl+C-ni yenidən basın"  # {Locked="Ctrl+C"}
 system.cancelled: "Ləğv edildi."
 system.no_prompt_in_flight: "İcra olunan sorğu yoxdur."
 system.authentication_failed: "Kimlik doğrulaması uğursuz oldu"

@@ -1799,11 +1799,13 @@ async fn request_permission_returns_selected_option() {
             let responder = match rx.recv().await {
                 Some(AppEvent::PermissionRequest {
                     session_id,
+                    tool_call_id,
                     description,
                     options,
                     responder,
                 }) => {
                     assert_eq!(session_id, "s1");
+                    assert_eq!(tool_call_id, "mock-tool-1");
                     assert_eq!(description, "Run: echo hi");
                     assert_eq!(options.len(), 1);
                     assert_eq!(options[0].id, "allow-once");

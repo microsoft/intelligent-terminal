@@ -118,6 +118,7 @@ connection.connecting_activity: "Verbindung mam Agent gëtt hiergestallt…"
 connection.lost: "D'Verbindung mam Agent ass verluer gaangen. Tippt /restart fir nei ze verbannen."  # {Locked="/restart"}
 
 # ── System-Messagen (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Dréckt Ctrl+C nach eng Kéier fir de Panell zouzemaachen."  # {Locked="Ctrl+C"}
 system.cancelled: "Ofgebrach."
 system.no_prompt_in_flight: "Keen Prompt ënnerwee."
 system.authentication_failed: "Authentifizéierung gescheitert"

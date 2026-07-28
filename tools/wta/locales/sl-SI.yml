@@ -127,6 +127,7 @@ connection.connecting_activity: "Vzpostavljanje povezave z agentom…"
 connection.lost: "Povezava z agentom je bila izgubljena. Vnesite /restart za ponovno povezavo."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Pritisnite Ctrl+C še enkrat, da zaprete podokno"  # {Locked="Ctrl+C"}
 system.cancelled: "Preklicano."
 system.no_prompt_in_flight: "Nobena zahteva ni v teku."
 system.authentication_failed: "Preverjanje pristnosti ni uspelo"

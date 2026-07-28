@@ -118,6 +118,7 @@ connection.connecting_activity: "Savienojas ar aģentu…"
 connection.lost: "Savienojums ar aģentu tika zaudēts. Ierakstiet /restart, lai izveidotu savienojumu atkārtoti."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Nospiediet Ctrl+C vēlreiz, lai aizvērtu paneli."  # {Locked="Ctrl+C"}
 system.cancelled: "Atcelts."
 system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
 system.authentication_failed: "Autentifikācija neizdevās"

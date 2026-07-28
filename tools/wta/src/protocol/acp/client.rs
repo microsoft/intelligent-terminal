@@ -1709,6 +1709,7 @@ impl WtaClient {
 
         let _ = self.state.event_tx.send(AppEvent::PermissionRequest {
             session_id: session_id.clone(),
+            tool_call_id,
             description,
             options,
             responder: resp_tx,
@@ -3916,10 +3917,6 @@ async fn dispatch_prompt_body(
         include_template,
         &text,
     );
-    let _ = event_tx_task.send(AppEvent::ProgressStatus {
-        session_id: Some(prompt_session_id_str.clone()),
-        status: "Thinking...".to_string(),
-    });
     prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
 
     // Telemetry: prompt dispatched over ACP. WTA emits `AgentPromptSent`

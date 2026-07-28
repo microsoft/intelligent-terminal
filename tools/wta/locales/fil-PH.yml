@@ -118,6 +118,7 @@ connection.connecting_activity: "Kumokonekta sa agent…"
 connection.lost: "Nawala ang koneksyon sa agent. I-type ang /restart para kumonektang muli."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Pindutin muli ang Ctrl+C para isara ang pane"  # {Locked="Ctrl+C"}
 system.cancelled: "Kinansela."
 system.no_prompt_in_flight: "Walang prompt na kasalukuyang pinapatakbo."
 system.authentication_failed: "Nabigo ang authentication"

@@ -41,7 +41,7 @@ impl App {
                 // prompt should keep its shimmer phase advancing so when the
                 // user switches back the animation is in step.
                 for tab in self.tab_sessions.values_mut() {
-                    if tab.turn.spinner_label().is_some() || tab.progress_status.is_some() {
+                    if tab.turn.is_in_flight() {
                         tab.activity_frame =
                             (tab.activity_frame + 1) % crate::ui::ACTIVITY_CYCLE_FRAMES;
                     }
@@ -85,14 +85,6 @@ impl App {
             AppEvent::ConnectionStage(stage) => {
                 self.state = ConnectionState::Connecting(stage);
                 self.publish_agent_status();
-            }
-            AppEvent::ProgressStatus { session_id, status } => {
-                let tab = match session_id {
-                    Some(sid) => self.session_tab_mut(&sid),
-                    None => self.current_tab_mut(),
-                };
-                tab.progress_status = Some(status);
-                tab.scroll_to_bottom();
             }
             AppEvent::AgentConnected {
                 name,
@@ -225,7 +217,6 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
-                tab.progress_status = None;
                 tab.pending_agent_response.clear();
                 tab.pending_user_replay.clear();
                 tab.timing_note = None;
@@ -360,7 +351,6 @@ impl App {
                         Some(sid) => self.session_tab_mut(sid),
                         None => self.current_tab_mut(),
                     };
-                    tab.progress_status = None;
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
@@ -535,7 +525,6 @@ impl App {
                     let text = std::mem::take(&mut tab.pending_user_replay);
                     tab.messages.push(ChatMessage::User(text));
                 }
-                tab.progress_status = None;
                 tab.pending_agent_response.push_str(&text);
 
                 // Append to the streaming buffer. The state machine drops
@@ -593,6 +582,7 @@ impl App {
                     .insert(id.clone(), (title.clone(), status.clone()));
                 tab.messages
                     .push(ChatMessage::ToolCall { id, title, status });
+                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
@@ -647,10 +637,12 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
+                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
                 session_id,
+                tool_call_id,
                 description,
                 options,
                 responder,
@@ -667,11 +659,13 @@ impl App {
                 // one rendered + key-handled); resolving the front pops
                 // it and exposes the next.
                 tab.permission.push_back(PermissionState {
+                    tool_call_id,
                     description,
                     options,
                     selected: 0,
                     responder: Some(responder),
                 });
+                tab.mark_visible_agent_activity();
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

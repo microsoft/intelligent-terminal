@@ -119,6 +119,7 @@ connection.connecting_activity: "Opretter forbindelse til agenten…"
 connection.lost: "Forbindelsen til agenten gik tabt. Skriv /restart for at oprette forbindelse igen."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Tryk på Ctrl+C igen for at lukke panelet"  # {Locked="Ctrl+C"}
 system.cancelled: "Annulleret."
 system.no_prompt_in_flight: "Ingen forespørgsel i gang."
 system.authentication_failed: "Godkendelse mislykkedes"

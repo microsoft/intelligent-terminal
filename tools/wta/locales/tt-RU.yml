@@ -131,6 +131,7 @@ connection.connecting_activity: "Агентка тоташу…"
 connection.lost: "Агент белән тоташу югалды. Яңадан тоташу өчен /restart дип языгыз."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Панельне ябу өчен Ctrl+C төймәләренә тагын бер кат басыгыз."  # {Locked="Ctrl+C"}
 system.cancelled: "Баш тартылды."
 system.no_prompt_in_flight: "Башкарылучы сорау юк."
 system.authentication_failed: "Аутентификация уңышсыз булды"
