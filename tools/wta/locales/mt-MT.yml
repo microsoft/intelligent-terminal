@@ -118,6 +118,7 @@ connection.connecting_activity: "Qed tikkonnettja mal-aġent…"
 connection.lost: "Il-konnessjoni mal-aġent intilfet. Ittajpja /restart biex terġa' tikkonnettja."  # {Locked="/restart"}
 
 # ── Messaġġi tas-sistema (src/app.rs) ────────────────────────────────────────
+system.close_pane_hint: "Agħfas Ctrl+C għal darb'oħra biex tagħlaq il-pannell."  # {Locked="Ctrl+C"}
 system.cancelled: "Ikkanċellat."
 system.no_prompt_in_flight: "L-ebda prompt fl-arja."
 system.authentication_failed: "L-awtentikazzjoni falliet"

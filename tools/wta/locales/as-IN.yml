@@ -132,6 +132,7 @@ connection.connecting_activity: "এজেণ্টলৈ সংযোগ হৈ
 connection.lost: "এজেণ্টৰ সৈতে সংযোগ হেৰাই গ'ল। পুনৰ সংযোগ কৰিবলৈ /restart টাইপ কৰক।"  # {Locked="/restart"}
 
 # ── ছিষ্টেম বাৰ্তা (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "পেন বন্ধ কৰিবলৈ Ctrl+C আকৌ টিপক"  # {Locked="Ctrl+C"}
 system.cancelled: "বাতিল কৰা হৈছে।"
 system.no_prompt_in_flight: "প্ৰগতিত কোনো প্ৰমপ্ট নাই।"
 system.authentication_failed: "প্ৰমাণীকৰণ বিফল"

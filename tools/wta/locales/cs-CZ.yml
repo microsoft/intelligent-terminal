@@ -128,6 +128,7 @@ connection.connecting_activity: "Připojování k agentovi…"
 connection.lost: "Připojení k agentovi bylo ztraceno. Zadáním /restart se znovu připojíte."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Stiskněte Ctrl+C znovu pro zavření panelu"  # {Locked="Ctrl+C"}
 system.cancelled: "Zrušeno."
 system.no_prompt_in_flight: "Žádný dotaz neprobíhá."
 system.authentication_failed: "Ověření se nezdařilo"

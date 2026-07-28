@@ -131,6 +131,7 @@ connection.connecting_activity: "در حال اتصال به عامل هوش م�
 connection.lost: "اتصال به عامل هوش مصنوعی قطع شد. برای اتصال مجدد، /restart را تایپ کنید."  # {Locked="/restart"}
 
 # ── پیام‌های سیستم (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "برای بستن پنل، دوباره Ctrl+C را فشار دهید"  # {Locked="Ctrl+C"}
 system.cancelled: "لغو شد."
 system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
 system.authentication_failed: "احراز هویت ناموفق بود"

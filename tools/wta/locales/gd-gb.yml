@@ -118,6 +118,7 @@ connection.connecting_activity: "A' ceangal ris an àidseant…"
 connection.lost: "Chaidh an ceangal ris an àidseant a chall. Sgrìobh /restart gus ath-cheangal."  # {Locked="/restart"}
 
 # ── Teachdaireachdan siostam (src/app.rs) ────────────────────────────────────
+system.close_pane_hint: "Brùth Ctrl+C a-rithist gus a’ phanail a dhùnadh"  # {Locked="Ctrl+C"}
 system.cancelled: "Air a sgur dheth."
 system.no_prompt_in_flight: "Chan eil brodadh air an t-slighe."
 system.authentication_failed: "Dh'fhàillig an dearbhadh"

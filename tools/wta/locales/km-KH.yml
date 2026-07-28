@@ -132,6 +132,7 @@ connection.connecting_activity: "កំពុងភ្ជាប់ទៅ AI អ�
 connection.lost: "ការតភ្ជាប់ទៅ AI អេជេន្ត់បានបាត់បង់។ វាយ /restart ដើម្បីភ្ជាប់ឡើងវិញ។"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────────
+system.close_pane_hint: "ចុច Ctrl+C ម្តងទៀត ដើម្បីបិទផ្តាំង"  # {Locked="Ctrl+C"}
 system.cancelled: "បានបោះបង់។"
 system.no_prompt_in_flight: "គ្មានសំណើកំពុងដំណើរការ។"
 system.authentication_failed: "ការផ្ទៀងផ្ទាត់បរាជ័យ"

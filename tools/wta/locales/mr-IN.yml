@@ -131,6 +131,7 @@ connection.connecting_activity: "एजंटशी कनेक्ट होत
 connection.lost: "एजंटशी कनेक्शन तुटले. पुन्हा कनेक्ट करण्यासाठी /restart टाइप करा."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "पेन बंद करण्यासाठी Ctrl+C पुन्हा दाबा."  # {Locked="Ctrl+C"}
 system.cancelled: "रद्द केले."
 system.no_prompt_in_flight: "प्रगतीत कोणताही प्रॉम्प्ट नाही."
 system.authentication_failed: "प्रमाणीकरण अयशस्वी"

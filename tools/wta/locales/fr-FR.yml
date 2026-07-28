@@ -118,6 +118,7 @@ connection.connecting_activity: "Connexion à l'agent…"
 connection.lost: "La connexion à l'agent a été perdue. Tapez /restart pour vous reconnecter."  # {Locked="/restart"}
 
 # ── Messages système (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Appuyez de nouveau sur Ctrl+C pour fermer le volet"  # {Locked="Ctrl+C"}
 system.cancelled: "Annulé."
 system.no_prompt_in_flight: "Aucune invite en cours."
 system.authentication_failed: "Échec de l'authentification"

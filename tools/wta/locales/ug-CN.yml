@@ -140,6 +140,7 @@ connection.connecting_activity: "AI ئاگېنتىغا باغلىنىۋاتىد�
 connection.lost: "AI ئاگېنتى بىلەن بولغان باغلىنىش ئۈزۈلدى. قايتا باغلىنىش ئۈچۈن /restart دەپ كىرگۈزۈڭ."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────
+system.close_pane_hint: "تاختىنى تاقاش ئۈچۈن Ctrl+C نى يەنە بىر قېتىم بېسىڭ."  # {Locked="Ctrl+C"}
 system.cancelled: "بېكىت قىلىندى."
 system.no_prompt_in_flight: "ئېۋەتىلىۋاتقان سوراق يوق."
 system.authentication_failed: "تونۇقتۇرۇش مەغلۇب بولدى"

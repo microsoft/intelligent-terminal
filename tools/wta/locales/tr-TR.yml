@@ -131,6 +131,7 @@ connection.connecting_activity: "Aracıya bağlanılıyor…"
 connection.lost: "Aracı bağlantısı kesildi. Yeniden bağlanmak için /restart yazın."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Paneli kapatmak için Ctrl+C tuşlarına tekrar basın."  # {Locked="Ctrl+C"}
 system.cancelled: "İptal edildi."
 system.no_prompt_in_flight: "Devam eden istem yok."
 system.authentication_failed: "Kimlik doğrulama başarısız"
