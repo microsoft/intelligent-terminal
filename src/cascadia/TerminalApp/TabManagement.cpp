@@ -168,7 +168,7 @@ namespace winrt::TerminalApp::implementation
         });
 
         auto tabViewItem = newTabImpl->TabViewItem();
-        _tabView.TabItems().InsertAt(insertPosition, tabViewItem);
+        _tabItems().InsertAt(insertPosition, tabViewItem);
 
         // Set this tab's icon to the icon from the content
         _UpdateTabIcon(*newTabImpl);
@@ -210,7 +210,7 @@ namespace winrt::TerminalApp::implementation
         // we'll attach the terminal's Xaml control to the Xaml root.
         if (!openInBackground)
         {
-            _tabView.SelectedItem(tabViewItem);
+            _selectedTabItem(tabViewItem);
         }
         else
         {
@@ -798,7 +798,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _tabs.RemoveAt(tabIndex);
-        _tabView.TabItems().RemoveAt(tabIndex);
+        _tabItems().RemoveAt(tabIndex);
         _UpdateTabIndices();
 
         // To close the window here, we need to close the hosting window.
@@ -819,7 +819,7 @@ namespace winrt::TerminalApp::implementation
 
             const auto newSelectedTab = _mruTabs.GetAt(0);
             _UpdatedSelectedTab(newSelectedTab);
-            _tabView.SelectedItem(newSelectedTab.TabViewItem());
+            _selectedTabItem(newSelectedTab.TabViewItem());
 
             // Flush any deferred agent settings rebuild now that a
             // terminal tab is active. Per-tab model — no shared pane
@@ -888,7 +888,7 @@ namespace winrt::TerminalApp::implementation
         // GH#11107 - Always just set the item directly first so that if
         // tab movement is done as part of multiple actions following calls
         // to _GetFocusedTab will return the correct tab.
-        _tabView.SelectedItem(tab.TabViewItem());
+        _selectedTabItem(tab.TabViewItem());
 
         if (_startupState == StartupState::InStartup)
         {
@@ -918,6 +918,37 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    // Spec A §4.1 routing helpers. See TerminalPage.h for context. Phase 2
+    // forwards unconditionally to _tabView; Phase 3 flips the vertical branch
+    // to _tabStrip once TabStrip is populated with real Tab objects.
+    IVector<IInspectable> TerminalPage::_tabItems() const
+    {
+        // Phase 3: real branching. TabStrip.TabItems is an IObservableVector,
+        // which derives from IVector, so the return-type conversion is safe.
+        if (_isVerticalLayout)
+        {
+            return _tabStrip.TabItems().as<IVector<IInspectable>>();
+        }
+        return _tabView.TabItems();
+    }
+
+    IInspectable TerminalPage::_selectedTabItem() const
+    {
+        return _isVerticalLayout ? _tabStrip.SelectedItem() : _tabView.SelectedItem();
+    }
+
+    void TerminalPage::_selectedTabItem(const IInspectable& item)
+    {
+        if (_isVerticalLayout)
+        {
+            _tabStrip.SelectedItem(item);
+        }
+        else
+        {
+            _tabView.SelectedItem(item);
+        }
+    }
+
     // Method Description:
     // - Returns the index in our list of tabs of the currently focused tab. If
     //      no tab is currently selected, returns nullopt.
@@ -928,7 +959,7 @@ namespace winrt::TerminalApp::implementation
         // GH#1117: This is a workaround because _tabView.SelectedIndex()
         //          sometimes return incorrect result after removing some tabs
         uint32_t focusedIndex;
-        if (_tabView.TabItems().IndexOf(_tabView.SelectedItem(), focusedIndex))
+        if (_tabItems().IndexOf(_selectedTabItem(), focusedIndex))
         {
             return focusedIndex;
         }
@@ -980,7 +1011,7 @@ namespace winrt::TerminalApp::implementation
     winrt::TerminalApp::Tab TerminalPage::_GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept
     {
         uint32_t tabIndexFromControl{};
-        const auto items{ _tabView.TabItems() };
+        const auto items{ _tabItems() };
         if (items.IndexOf(tabViewItem, tabIndexFromControl) && tabIndexFromControl < _tabs.Size())
         {
             // If IndexOf returns true, we've actually got an index
@@ -1016,7 +1047,7 @@ namespace winrt::TerminalApp::implementation
             uint32_t tabIndex{};
             if (_tabs.IndexOf(tab, tabIndex))
             {
-                _tabView.SelectedItem(tab.TabViewItem());
+                _selectedTabItem(tab.TabViewItem());
             }
         }
     }
@@ -1464,16 +1495,33 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - sender: the control that originated this event
     // - eventArgs: the event's constituent arguments
-    void TerminalPage::_OnTabSelectionChanged(const IInspectable& sender, const WUX::Controls::SelectionChangedEventArgs& /*eventArgs*/)
+    void TerminalPage::_OnTabSelectionChanged(const IInspectable& /*sender*/, const WUX::Controls::SelectionChangedEventArgs& /*eventArgs*/)
+    {
+        _OnSelectionChangedCore();
+    }
+
+    // Spec A §4.2: TabStrip's SelectionChanged uses custom args (TabStripSelectionChangedEventArgs),
+    // so it needs its own wrapper. Both wrappers dispatch to the same core method,
+    // which uses the routing helpers instead of asking sender for its selection.
+    void TerminalPage::_OnTabStripSelectionChanged(const IInspectable& /*sender*/, const TerminalApp::TabStripSelectionChangedEventArgs& /*eventArgs*/)
+    {
+        _OnSelectionChangedCore();
+    }
+
+    void TerminalPage::_OnSelectionChangedCore()
     {
         if (!_rearranging && !_removing)
         {
-            auto tabView = sender.as<MUX::Controls::TabView>();
-            auto selectedIndex = tabView.SelectedIndex();
-            if (selectedIndex >= 0 && selectedIndex < gsl::narrow_cast<int32_t>(_tabs.Size()))
+            // Look up selection via the router — works for both TabView and
+            // TabStrip because _selectedTabItem and _tabItems both branch on
+            // _isVerticalLayout.
+            if (const auto selectedItem = _selectedTabItem())
             {
-                const auto tab{ _tabs.GetAt(selectedIndex) };
-                _UpdatedSelectedTab(tab);
+                uint32_t selectedIndex{};
+                if (_tabItems().IndexOf(selectedItem, selectedIndex) && selectedIndex < _tabs.Size())
+                {
+                    _UpdatedSelectedTab(_tabs.GetAt(selectedIndex));
+                }
             }
             // Flush any deferred agent-stack rebuild now that a real
             // terminal tab is active. Per-tab model — no shared pane
@@ -1537,9 +1585,9 @@ namespace winrt::TerminalApp::implementation
             _tabs.InsertAt(newTabIndex, tab);
             _UpdateTabIndices();
 
-            _tabView.TabItems().RemoveAt(currentTabIndex);
-            _tabView.TabItems().InsertAt(newTabIndex, tabViewItem);
-            _tabView.SelectedItem(tabViewItem);
+            _tabItems().RemoveAt(currentTabIndex);
+            _tabItems().InsertAt(newTabIndex, tabViewItem);
+            _selectedTabItem(tabViewItem);
 
             if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
             {

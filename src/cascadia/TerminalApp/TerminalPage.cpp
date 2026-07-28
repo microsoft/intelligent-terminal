@@ -420,23 +420,23 @@ namespace winrt::TerminalApp::implementation
         _tabContent = this->TabContent();
         _tabRow = this->TabRow();
         _tabView = _tabRow.TabView();
+        _tabStrip = _tabRow.TabStrip();
         _rearranging = false;
 
-        // PROTOTYPE — see investigation-vertical-tabs.md. When
-        // WT_VERTICAL_TABS_PROTOTYPE=1, flip TabRow to vertical layout and
-        // seed the TabStrip with mock TabViewItems so we can visually confirm
-        // that a ListView-backed strip renders TabViewItem correctly.
-        // Full integration with real Tab objects and cross-window tearoff is
-        // deferred until Spec A. This env-var path leaves the real MUX
-        // TabView code path untouched — it is *additive* prototype scaffolding.
+        // Dev toggle for Spec A implementation. While the tabLayout setting
+        // and its wiring don't exist yet (Phase 7), setting
+        // WT_VERTICAL_TABS_PROTOTYPE=1 flips the TabRow to vertical so devs
+        // can exercise the incremental TabStrip work in phases 3–6. The env
+        // var goes away when the real setting lands.
+        //if (wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_VERTICAL_TABS_PROTOTYPE") == L"1")
         {
-            //const auto proto = wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_VERTICAL_TABS_PROTOTYPE");
-            //if (proto == L"1")
-            {
-                _tabRow.IsVerticalLayout(true);
-                _seedVerticalTabsPrototype();
-            }
+            _tabRow.IsVerticalLayout(true);
         }
+        // Cache the layout mode so the routing helpers (_tabItems /
+        // _selectedTabItem) don't have to reach into _tabRow on every call.
+        _isVerticalLayout = _tabRow.IsVerticalLayout();
+
+        _ApplyVerticalLayoutReshape();
 
         const auto canDragDrop = CanDragDrop();
 
@@ -463,7 +463,11 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
-        if (_settings.GlobalSettings().ShowTabsInTitlebar())
+        // Spec A §1: vertical layout silently overrides showTabsInTitlebar to
+        // false — the rail lives inside the page, not stapled to the titlebar.
+        // Phase 7 formalizes this via the settings model; for now the check
+        // just short-circuits on _isVerticalLayout.
+        if (_settings.GlobalSettings().ShowTabsInTitlebar() && !_isVerticalLayout)
         {
             // Remove the TabView from the page. We'll hang on to it, we need to
             // put it in the titlebar.
@@ -493,6 +497,17 @@ namespace winrt::TerminalApp::implementation
             const auto transparent = Media::SolidColorBrush();
             transparent.Color(Windows::UI::Colors::Transparent());
             _tabRow.Background(transparent);
+        }
+        else if (_isVerticalLayout && _settings.GlobalSettings().ShowTabsInTitlebar())
+        {
+            // Vertical mode: TabRow stays in the page, but hand shield +
+            // workspaces to the titlebar so they sit next to min/max/close.
+            // TabRowControl::_reparentChromeToVertical built the panel during
+            // IsVerticalLayout(true) above.
+            if (const auto content = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent())
+            {
+                SetTitleBarContent.raise(*this, content);
+            }
         }
         _updateThemeColors();
 
@@ -545,6 +560,25 @@ namespace winrt::TerminalApp::implementation
         _tabView.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
         _tabView.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
         _tabView.TabDroppedOutside({ this, &TerminalPage::_onTabDroppedOutside });
+
+        // Vertical strip: hook the TabStrip's equivalent events. The generic
+        // ones (TabItemsChanged, TabDragCompleted, drag-over/drop) reuse the
+        // same handlers as TabView; the ones with MUX-typed args have thin
+        // TabStrip-typed wrappers that call a shared *Core method.
+        if (_isVerticalLayout)
+        {
+            _tabStrip.CanReorderTabs(canDragDrop);
+            _tabStrip.CanDragTabs(canDragDrop);
+            _tabStrip.TabDragStarting({ get_weak(), &TerminalPage::_TabDragStarted });
+            _tabStrip.TabDragCompleted({ get_weak(), &TerminalPage::_TabDragCompleted });
+            _tabStrip.SelectionChanged({ this, &TerminalPage::_OnTabStripSelectionChanged });
+            _tabStrip.TabCloseRequested({ this, &TerminalPage::_OnTabStripCloseRequested });
+            _tabStrip.TabItemsChanged({ this, &TerminalPage::_OnTabItemsChanged });
+            _tabStrip.TabDragStarting({ this, &TerminalPage::_OnTabStripDragStarting });
+            _tabStrip.TabStripDragOver({ this, &TerminalPage::_onTabStripDragOver });
+            _tabStrip.TabStripDrop({ this, &TerminalPage::_onTabStripDrop });
+            _tabStrip.TabDroppedOutside({ this, &TerminalPage::_OnTabStripDroppedOutside });
+        }
 
         _CreateNewTabFlyout();
 
@@ -665,37 +699,6 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
         return true;
-    }
-
-    // PROTOTYPE — see investigation-vertical-tabs.md. Seeds TabRow's TabStrip
-    // with three mock TabViewItems so we can visually verify that a
-    // ListView-based strip renders TabViewItem instances. Real Tab objects
-    // still flow into the MUX TabView; this prototype path is additive.
-    void TerminalPage::_seedVerticalTabsPrototype()
-    {
-        auto strip = _tabRow.TabStrip();
-        if (!strip)
-        {
-            return;
-        }
-
-        static constexpr std::wstring_view mockTitles[] = {
-            L"project-alpha",
-            L"updating-UI",
-            L"research for June",
-        };
-
-        for (const auto title : mockTitles)
-        {
-            MUX::Controls::TabViewItem item{};
-            item.Header(box_value(winrt::hstring{ title }));
-            // GH bodge from Tab::_MakeTabViewItem — every TabViewItem needs a
-            // non-null, non-shared Content or MUX's drag-start event returns
-            // the wrong item. Same applies here.
-            item.Content(WUX::Controls::Border{});
-            item.IsClosable(true);
-            strip.TabItems().Append(item);
-        }
     }
 
     // Method Description:
@@ -3220,6 +3223,186 @@ namespace winrt::TerminalApp::implementation
 
             _CompleteInitialization();
         }
+    }
+
+    // Spec A §5.1: give the vertical rail its column width and re-anchor
+    // TabRow + the primary content children so the strip owns column 0 (full
+    // height, including under the bottom bar) and everything else stacks in
+    // column 1. BottomBarRoot drops its ColumnSpan so the bar only sits under
+    // the terminal content, per the spec mock.
+    void TerminalPage::_ApplyVerticalLayoutReshape()
+    {
+        if (!_isVerticalLayout)
+        {
+            return;
+        }
+
+        // Spec A §5.2: rail width comes from settings (default 220, clamped
+        // 140..480). Persisted on drag-end via _OnRailSplitterPointerReleased.
+        constexpr double railMin = 140.0;
+        constexpr double railMax = 480.0;
+        const double persistedWidth = static_cast<double>(_settings.GlobalSettings().TabLayoutVerticalWidth());
+        const double railWidth = std::clamp(persistedWidth, railMin, railMax);
+        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(railWidth, GridUnitType::Pixel));
+
+        Grid::SetRow(_tabRow, 0);
+        Grid::SetRowSpan(_tabRow, 4);
+        Grid::SetColumn(_tabRow, 0);
+        Grid::SetColumnSpan(_tabRow, 1);
+
+        Grid::SetColumn(InfoBarsPanel(), 1);
+        Grid::SetColumnSpan(InfoBarsPanel(), 1);
+
+        Grid::SetColumn(TabContentFiller(), 1);
+        Grid::SetColumnSpan(TabContentFiller(), 1);
+
+        Grid::SetColumn(_tabContent, 1);
+        Grid::SetColumnSpan(_tabContent, 1);
+
+        Grid::SetColumn(BottomBarRoot(), 1);
+        Grid::SetColumnSpan(BottomBarRoot(), 1);
+
+        _InstallVerticalRailSplitter();
+    }
+
+    // Spec A §5.2: hand-rolled splitter mirroring the Pane splitter idiom
+    // (Pane.cpp:3704). Lives in column 1 of Root, HorizontalAlignment=Left
+    // with a negative left margin so the hit strip (8px total) straddles the
+    // column boundary. Transparent Background so it visually disappears but
+    // still receives pointer hit-tests.
+    void TerminalPage::_InstallVerticalRailSplitter()
+    {
+        if (_verticalRailSplitter)
+        {
+            return;
+        }
+
+        constexpr double splitterHitThickness = 8.0;
+        constexpr double half = splitterHitThickness / 2.0;
+
+        _verticalRailSplitter = Controls::Border{};
+        _verticalRailSplitter.Background(Media::SolidColorBrush{ Windows::UI::Colors::Transparent() });
+        _verticalRailSplitter.IsHitTestVisible(true);
+        _verticalRailSplitter.Width(splitterHitThickness);
+        _verticalRailSplitter.HorizontalAlignment(HorizontalAlignment::Left);
+        _verticalRailSplitter.VerticalAlignment(VerticalAlignment::Stretch);
+        _verticalRailSplitter.Margin(Thickness{ -half, 0, 0, 0 });
+
+        Grid::SetColumn(_verticalRailSplitter, 1);
+        Grid::SetRow(_verticalRailSplitter, 0);
+        Grid::SetRowSpan(_verticalRailSplitter, 4);
+
+        _verticalRailSplitter.PointerEntered({ this, &TerminalPage::_OnRailSplitterPointerEntered });
+        _verticalRailSplitter.PointerExited({ this, &TerminalPage::_OnRailSplitterPointerExited });
+        _verticalRailSplitter.PointerPressed({ this, &TerminalPage::_OnRailSplitterPointerPressed });
+        _verticalRailSplitter.PointerMoved({ this, &TerminalPage::_OnRailSplitterPointerMoved });
+        _verticalRailSplitter.PointerReleased({ this, &TerminalPage::_OnRailSplitterPointerReleased });
+        _verticalRailSplitter.PointerCaptureLost({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+        _verticalRailSplitter.PointerCanceled({ this, &TerminalPage::_OnRailSplitterPointerCaptureLost });
+
+        Root().Children().Append(_verticalRailSplitter);
+    }
+
+    void TerminalPage::_SetRailSplitterCursor()
+    {
+        const auto cw = CoreWindow::GetForCurrentThread();
+        if (!cw)
+        {
+            return;
+        }
+        if (!_railSplitterPriorCursor)
+        {
+            _railSplitterPriorCursor = cw.PointerCursor();
+        }
+        cw.PointerCursor(CoreCursor{ CoreCursorType::SizeWestEast, 0 });
+    }
+
+    void TerminalPage::_RestoreRailSplitterCursor()
+    {
+        if (!_railSplitterPriorCursor)
+        {
+            return;
+        }
+        if (const auto cw = CoreWindow::GetForCurrentThread())
+        {
+            cw.PointerCursor(_railSplitterPriorCursor);
+        }
+        _railSplitterPriorCursor = nullptr;
+    }
+
+    void TerminalPage::_OnRailSplitterPointerEntered(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    {
+        _SetRailSplitterCursor();
+    }
+
+    void TerminalPage::_OnRailSplitterPointerExited(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    {
+        if (!_railSplitterDragging)
+        {
+            _RestoreRailSplitterCursor();
+        }
+    }
+
+    void TerminalPage::_OnRailSplitterPointerPressed(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (!_verticalRailSplitter)
+        {
+            return;
+        }
+        const auto point = e.GetCurrentPoint(Root());
+        if (point.Properties().IsRightButtonPressed() || point.Properties().IsMiddleButtonPressed())
+        {
+            return;
+        }
+        _railSplitterDragging = _verticalRailSplitter.CapturePointer(e.Pointer());
+        if (!_railSplitterDragging)
+        {
+            return;
+        }
+        _railSplitterStartWidth = VerticalRailColumn().ActualWidth();
+        _railSplitterStartPointer = point.Position();
+        _SetRailSplitterCursor();
+        e.Handled(true);
+    }
+
+    void TerminalPage::_OnRailSplitterPointerMoved(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (!_railSplitterDragging)
+        {
+            return;
+        }
+        constexpr double railMin = 140.0;
+        constexpr double railMax = 480.0;
+        const auto point = e.GetCurrentPoint(Root()).Position();
+        const auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
+        const auto requested = std::clamp(_railSplitterStartWidth + delta, railMin, railMax);
+        VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(requested, GridUnitType::Pixel));
+        e.Handled(true);
+    }
+
+    void TerminalPage::_OnRailSplitterPointerReleased(const IInspectable&, const WUX::Input::PointerRoutedEventArgs& e)
+    {
+        if (_railSplitterDragging && _verticalRailSplitter)
+        {
+            _verticalRailSplitter.ReleasePointerCapture(e.Pointer());
+        }
+        _railSplitterDragging = false;
+        _RestoreRailSplitterCursor();
+
+        // Persist. Read back the ActualWidth to catch any layout snapping.
+        const auto finalWidth = static_cast<int32_t>(std::lround(VerticalRailColumn().ActualWidth()));
+        if (finalWidth != _settings.GlobalSettings().TabLayoutVerticalWidth())
+        {
+            _settings.GlobalSettings().TabLayoutVerticalWidth(finalWidth);
+            _settings.WriteSettingsToDisk();
+        }
+        e.Handled(true);
+    }
+
+    void TerminalPage::_OnRailSplitterPointerCaptureLost(const IInspectable&, const WUX::Input::PointerRoutedEventArgs&)
+    {
+        _railSplitterDragging = false;
+        _RestoreRailSplitterCursor();
     }
 
     // Method Description:
@@ -7506,7 +7689,18 @@ namespace winrt::TerminalApp::implementation
     // - eventArgs: the event's constituent arguments
     void TerminalPage::_OnTabCloseRequested(const IInspectable& /*sender*/, const MUX::Controls::TabViewTabCloseRequestedEventArgs& eventArgs)
     {
-        const auto tabViewItem = eventArgs.Tab();
+        _HandleTabCloseRequestedCore(eventArgs.Tab());
+    }
+
+    // Spec A §4.2: TabStrip's TabCloseRequested uses custom args (TabStripCloseRequestedEventArgs).
+    // Both wrappers unpack the TabViewItem and dispatch to the shared core.
+    void TerminalPage::_OnTabStripCloseRequested(const IInspectable& /*sender*/, const TerminalApp::TabStripCloseRequestedEventArgs& eventArgs)
+    {
+        _HandleTabCloseRequestedCore(eventArgs.Tab());
+    }
+
+    void TerminalPage::_HandleTabCloseRequestedCore(const MUX::Controls::TabViewItem& tabViewItem)
+    {
         if (auto tab{ _GetTabByTabViewItem(tabViewItem) })
         {
             _HandleCloseTabRequested(tab);
@@ -10044,8 +10238,25 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_onTabDragStarting(const winrt::Microsoft::UI::Xaml::Controls::TabView&,
                                           const winrt::Microsoft::UI::Xaml::Controls::TabViewTabDragStartingEventArgs& e)
     {
+        _OnTabDragStartingCore(e.Tab(), e.Data());
+    }
+
+    // Spec A §4.2: TabStrip's TabDragStarting uses custom args
+    // (TabStripDragStartingEventArgs). Both wrappers unpack the TabViewItem +
+    // DataPackage and dispatch to the shared core.
+    void TerminalPage::_OnTabStripDragStarting(const winrt::Windows::Foundation::IInspectable&,
+                                                const TerminalApp::TabStripDragStartingEventArgs& e)
+    {
+        if (const auto tab = e.Tab())
+        {
+            _OnTabDragStartingCore(tab, e.Data());
+        }
+    }
+
+    void TerminalPage::_OnTabDragStartingCore(const MUX::Controls::TabViewItem& eventTab,
+                                              const winrt::Windows::ApplicationModel::DataTransfer::DataPackage& data)
+    {
         // Get the tab impl from this event.
-        const auto eventTab = e.Tab();
         const auto tabBase = _GetTabByTabViewItem(eventTab);
         winrt::com_ptr<Tab> tabImpl;
         tabImpl.copy_from(winrt::get_self<Tab>(tabBase));
@@ -10071,9 +10282,9 @@ namespace winrt::TerminalApp::implementation
             // Get our PID
             const auto pid{ GetCurrentProcessId() };
 
-            e.Data().Properties().Insert(L"windowId", winrt::box_value(id));
-            e.Data().Properties().Insert(L"pid", winrt::box_value<uint32_t>(pid));
-            e.Data().RequestedOperation(DataPackageOperation::Move);
+            data.Properties().Insert(L"windowId", winrt::box_value(id));
+            data.Properties().Insert(L"pid", winrt::box_value<uint32_t>(pid));
+            data.RequestedOperation(DataPackageOperation::Move);
 
             // The next thing that will happen:
             //  * Another TerminalPage will get a TabStripDragOver, then get a
@@ -10141,18 +10352,26 @@ namespace winrt::TerminalApp::implementation
         // index to the request. This is largely taken from the WinUI sample
         // app.
 
-        // First we need to get the position in the List to drop to
+        // First we need to get the position in the List to drop to.
+        // Route the iteration + container lookup through the layout-aware
+        // helpers so vertical strips (Spec A) compute drop indices correctly
+        // on the Y axis. The container-cast is FrameworkElement so it works
+        // for TabView (returns TabViewItem) and TabStrip (returns ListViewItem
+        // wrapping the TabViewItem) alike.
         auto index = -1;
-
-        // Determine which items in the list our pointer is between.
-        for (auto i = 0u; i < _tabView.TabItems().Size(); i++)
+        const auto count = _tabItems().Size();
+        for (uint32_t i = 0; i < count; ++i)
         {
-            if (const auto& item{ _tabView.ContainerFromIndex(i).try_as<winrt::MUX::Controls::TabViewItem>() })
+            const auto container = _isVerticalLayout
+                                       ? _tabStrip.ContainerFromIndex(i)
+                                       : _tabView.ContainerFromIndex(i);
+            if (const auto& element{ container.try_as<winrt::Windows::UI::Xaml::FrameworkElement>() })
             {
-                const auto posX{ e.GetPosition(item).X }; // The point of the drop, relative to the tab
-                const auto itemWidth{ item.ActualWidth() }; // The right of the tab
-                // If the drag point is on the left half of the tab, then insert here.
-                if (posX < itemWidth / 2)
+                const auto pos = e.GetPosition(element);
+                const auto axisPos = _isVerticalLayout ? pos.Y : pos.X;
+                const auto axisDim = _isVerticalLayout ? element.ActualHeight() : element.ActualWidth();
+                // If the drag point is on the near half of the item, insert here.
+                if (axisPos < axisDim / 2)
                 {
                     index = i;
                     break;
@@ -10193,6 +10412,19 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_onTabDroppedOutside(winrt::IInspectable /*sender*/,
                                             winrt::MUX::Controls::TabViewTabDroppedOutsideEventArgs /*e*/)
+    {
+        _OnTabDroppedOutsideCore();
+    }
+
+    // Spec A §4.2: TabStrip's TabDroppedOutside uses custom args
+    // (TabStripDroppedOutsideEventArgs); the body doesn't use them either.
+    void TerminalPage::_OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& /*sender*/,
+                                                  const TerminalApp::TabStripDroppedOutsideEventArgs& /*e*/)
+    {
+        _OnTabDroppedOutsideCore();
+    }
+
+    void TerminalPage::_OnTabDroppedOutsideCore()
     {
         // Get the current pointer point from the CoreWindow
         const auto& pointerPoint{ CoreWindow::GetForCurrentThread().PointerPosition() };

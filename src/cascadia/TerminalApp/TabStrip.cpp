@@ -143,35 +143,30 @@ namespace winrt::TerminalApp::implementation
 
     void TabStrip::_hookCloseRequested(MUX::Controls::TabViewItem const& item)
     {
-        void* key = winrt::get_abi(item);
-        if (_closeRequestedTokens.count(key))
-        {
-            return;
-        }
-        // TabViewItem.CloseRequested fires when the little X is clicked. In MUX
-        // TabView, the parent TabView re-raises this as TabCloseRequested; here
-        // we do the same manually since our parent is a ListView.
-        auto token = item.CloseRequested([weakThis = get_weak()](auto&& sender, auto&& /*args*/) {
-            if (auto self = weakThis.get())
-            {
-                auto tab = sender.try_as<MUX::Controls::TabViewItem>();
-                if (tab)
-                {
-                    auto args = winrt::make_self<TabStripCloseRequestedEventArgs>(tab);
-                    self->TabCloseRequested.raise(*self, *args);
-                }
-            }
-        });
-        _closeRequestedTokens[key] = token;
+        // The rail renders its own X in the DataTemplate wrapper (see
+        // TabStrip.xaml, OnCustomCloseClick). MUX's built-in CloseButton on
+        // TabViewItem only shows when the item lives inside a TabView (via
+        // TabView.CloseButtonOverlayMode), so we suppress it here — this
+        // prevents both a stale hidden button and any double-X if MUX ever
+        // changes its default.
+        item.IsClosable(false);
+        _closeRequestedTokens[winrt::get_abi(item)] = {};
     }
 
     void TabStrip::_unhookCloseRequested(MUX::Controls::TabViewItem const& item)
     {
-        void* key = winrt::get_abi(item);
-        if (auto it = _closeRequestedTokens.find(key); it != _closeRequestedTokens.end())
+        _closeRequestedTokens.erase(winrt::get_abi(item));
+    }
+
+    void TabStrip::OnCustomCloseClick(IInspectable const& sender, WUX::RoutedEventArgs const&)
+    {
+        if (const auto button = sender.try_as<WUX::Controls::Button>())
         {
-            item.CloseRequested(it->second);
-            _closeRequestedTokens.erase(it);
+            if (const auto tab = button.DataContext().try_as<MUX::Controls::TabViewItem>())
+            {
+                auto args = winrt::make_self<TabStripCloseRequestedEventArgs>(tab);
+                TabCloseRequested.raise(*this, *args);
+            }
         }
     }
 
@@ -208,11 +203,35 @@ namespace winrt::TerminalApp::implementation
         // ListView packs the dragged items into e.Items(); for SelectionMode=Single
         // there's at most one. Wrap it in a TabView-shaped args object so
         // TerminalPage's tearoff-setup code can look identical to the horizontal path.
-        IInspectable draggedItem = e.Items().Size() > 0 ? e.Items().GetAt(0) : nullptr;
-        _draggingItem = draggedItem;
+        // Load-bearing lookup: ListView.DragItemsStartingEventArgs.Items() surfaces
+        // the *Content* of each ContentControl-based item rather than the item
+        // itself. Since each TabViewItem has a unique empty Border as its Content
+        // (the GH bodge from Tab::_MakeTabViewItem), what we get is a Border, not
+        // the TabViewItem. Recover the actual TabViewItem by finding the one in
+        // _tabItems whose Content is this Border — Content uniqueness makes that
+        // lookup unambiguous.
+        IInspectable surfacedItem = e.Items().Size() > 0 ? e.Items().GetAt(0) : nullptr;
+        MUX::Controls::TabViewItem tab{ nullptr };
+        if (surfacedItem)
+        {
+            const auto surfacedAbi = winrt::get_abi(surfacedItem);
+            for (uint32_t i = 0; i < _tabItems.Size(); ++i)
+            {
+                if (const auto candidate = _tabItems.GetAt(i).try_as<MUX::Controls::TabViewItem>())
+                {
+                    if (winrt::get_abi(candidate.Content()) == surfacedAbi)
+                    {
+                        tab = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+        // Stash the resolved TabViewItem (not the surfaced Border) so
+        // OnDragItemsCompleted's tearoff path also gets the right identity.
+        _draggingItem = tab ? IInspectable{ tab } : surfacedItem;
 
-        auto tab = draggedItem.try_as<MUX::Controls::TabViewItem>();
-        auto args = winrt::make_self<TabStripDragStartingEventArgs>(tab, draggedItem, e.Data());
+        auto args = winrt::make_self<TabStripDragStartingEventArgs>(tab, _draggingItem, e.Data());
         TabDragStarting.raise(*this, *args);
 
         if (args->Cancel())

@@ -105,6 +105,8 @@ namespace winrt::TerminalApp::implementation
                              winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnListDrop(winrt::Windows::Foundation::IInspectable const& sender,
                          winrt::Windows::UI::Xaml::DragEventArgs const& e);
+        void OnCustomCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
+                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
 
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripSelectionChangedEventArgs> SelectionChanged;
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripCloseRequestedEventArgs> TabCloseRequested;

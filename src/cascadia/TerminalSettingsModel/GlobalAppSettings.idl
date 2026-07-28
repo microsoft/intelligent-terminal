@@ -133,6 +133,11 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(String, AiConfirmationCreateOps);
         INHERITABLE_SETTING(String, AiConfirmationInputOps);
 
+        // Appended at the end of the interface (rather than grouped with
+        // TabWidthMode) to keep the ABI stable — inserting in the middle
+        // shifts every subsequent method's vtable slot.
+        INHERITABLE_SETTING(Int32, TabLayoutVerticalWidth);
+
         // Policy-aware effective getters — return the setting value after
         // applying GPO overrides. Consumers should prefer these over the
         // raw INHERITABLE_SETTING properties for runtime decisions.

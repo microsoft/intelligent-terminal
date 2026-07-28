@@ -30,9 +30,17 @@ namespace winrt::TerminalApp::implementation
         bool IsVerticalLayout() const noexcept { return _isVerticalLayout; }
         void IsVerticalLayout(bool value);
 
+        // Spec A §5.1: in vertical mode the shield + workspaces button ride
+        // in the titlebar (same bar as min/max/close). Returns the container
+        // that TerminalPage passes to SetTitleBarContent; null in horizontal.
+        winrt::Windows::UI::Xaml::UIElement VerticalTitleBarContent() const noexcept { return _verticalTitleBarContent; }
+
     private:
         bool _isVerticalLayout{ false };
+        bool _chromeReparentedToVertical{ false };
+        winrt::Windows::UI::Xaml::UIElement _verticalTitleBarContent{ nullptr };
         void _applyLayoutVisibility();
+        void _reparentChromeToVertical();
     };
 }
 

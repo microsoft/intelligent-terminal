@@ -52,9 +52,35 @@
                   SelectionMode="Single">
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <ContentPresenter HorizontalAlignment="Stretch"
-                                      HorizontalContentAlignment="Stretch"
-                                      Content="{Binding}" />
+                    <!--
+                        MUX's built-in CloseButton on TabViewItem is only
+                        driven visible when the item lives inside a TabView
+                        (via TabView.CloseButtonOverlayMode). Ours don't, so
+                        we suppress it with IsClosable=false (set in code)
+                        and render our own X in an adjacent column.
+                    -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ContentPresenter Grid.Column="0"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          Content="{Binding}" />
+                        <Button Grid.Column="1"
+                                Width="24"
+                                Height="24"
+                                Margin="0,0,4,0"
+                                Padding="0"
+                                VerticalAlignment="Center"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Content="&#xE711;"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                FontSize="10"
+                                Click="OnCustomCloseClick" />
+                    </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
             <ListView.ItemContainerStyle>
