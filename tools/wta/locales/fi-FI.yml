@@ -118,6 +118,7 @@ connection.connecting_activity: "Yhdistetään agenttiin…"
 connection.lost: "Yhteys agenttiin katkesi. Muodosta yhteys uudelleen kirjoittamalla /restart."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Sulje paneeli painamalla Ctrl+C uudelleen"  # {Locked="Ctrl+C"}
 system.cancelled: "Peruutettu."
 system.no_prompt_in_flight: "Ei käynnissä olevaa kehotetta."
 system.authentication_failed: "Todennus epäonnistui"

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "AgentPaneContent.g.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
@@ -20,7 +22,8 @@ namespace winrt::TerminalApp::implementation
         void UpdateAgentStatus(const winrt::hstring& name,
                                const winrt::hstring& version,
                                const winrt::hstring& model,
-                               const winrt::hstring& state);
+                               const winrt::hstring& state,
+                               const winrt::hstring& backend);
 
         void SetSessionsView(bool active);
         // Whether the agent pane is currently displaying its sessions view
@@ -77,6 +80,13 @@ namespace winrt::TerminalApp::implementation
             const auto v = _pendingRenameFromTabId;
             _pendingRenameFromTabId = {};
             return v;
+        }
+        void SetPendingAgentSourceProfileGuid(const std::optional<winrt::guid>& value) noexcept { _pendingAgentSourceProfileGuid = value; }
+        std::optional<winrt::guid> TakePendingAgentSourceProfileGuid() noexcept
+        {
+            const auto value = _pendingAgentSourceProfileGuid;
+            _pendingAgentSourceProfileGuid.reset();
+            return value;
         }
 
         // Apply the provided background and foreground brushes to the
@@ -137,6 +147,7 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _agentVersion{};
         winrt::hstring _agentModel{};
         winrt::hstring _agentState{};
+        winrt::hstring _agentBackend{};
 
         // When true, the bar replaces "<agent> <version>" with "Agent sessions"
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
@@ -159,6 +170,7 @@ namespace winrt::TerminalApp::implementation
         // post-Tab-construction in `_InitializeTab`). Empty when no rename
         // is pending. See SetPendingRenameFromTabId / TakePendingRenameFromTabId.
         winrt::hstring _pendingRenameFromTabId{};
+        std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

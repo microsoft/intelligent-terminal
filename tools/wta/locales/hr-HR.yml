@@ -127,6 +127,7 @@ connection.connecting_activity: "Povezivanje s agentom…"
 connection.lost: "Veza s agentom je izgubljena. Upišite /restart za ponovno povezivanje."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Ponovno pritisnite Ctrl+C da biste zatvorili okno"  # {Locked="Ctrl+C"}
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog upita."
 system.authentication_failed: "Provjera autentičnosti nije uspjela"

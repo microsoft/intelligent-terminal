@@ -6,6 +6,7 @@
 #include "../TerminalSettingsModel/ColorScheme.h"
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/resource.h"
+#include "../inc/AgentPaneBackend.h"
 #include "JsonTestClass.h"
 
 using namespace Microsoft::Console;
@@ -35,6 +36,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(SettingInheritanceFallback);
         TEST_METHOD(ClearSettingRestoresInheritance);
         TEST_METHOD(HasSettingAtSpecificLayer);
+        TEST_METHOD(AgentPaneBackendDefaultsAndInherits);
     };
 
     void ProfileTests::ProfileGeneratesGuid()
@@ -661,5 +663,49 @@ namespace SettingsModelUnitTests
         // ProfileDefaults: historySize is set
         VERIFY_IS_TRUE(settings->ProfileDefaults().HasHistorySize());
         VERIFY_ARE_EQUAL(5000, settings->ProfileDefaults().HistorySize());
+    }
+
+    void ProfileTests::AgentPaneBackendDefaultsAndInherits()
+    {
+        static constexpr std::string_view userSettings{ R"({
+            "profiles": {
+                "defaults": {
+                    "agentPaneBackend": "host:claude"
+                },
+                "list": [
+                    {
+                        "name": "inherits",
+                        "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}"
+                    },
+                    {
+                        "name": "wsl",
+                        "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                        "agentPaneBackend": "wsl:Ubuntu:copilot"
+                    }
+                ]
+            }
+        })" };
+
+        const auto settings = winrt::make_self<implementation::CascadiaSettings>(userSettings);
+        const auto profiles = settings->AllProfiles();
+
+        VERIFY_ARE_EQUAL(L"host:claude", profiles.GetAt(0).AgentPaneBackend());
+        VERIFY_IS_FALSE(profiles.GetAt(0).HasAgentPaneBackend());
+        VERIFY_ARE_EQUAL(L"wsl:Ubuntu:copilot", profiles.GetAt(1).AgentPaneBackend());
+        VERIFY_IS_TRUE(profiles.GetAt(1).HasAgentPaneBackend());
+
+        profiles.GetAt(1).ClearAgentPaneBackend();
+        VERIFY_ARE_EQUAL(L"host:claude", profiles.GetAt(1).AgentPaneBackend());
+
+        using ::Microsoft::Terminal::Settings::Model::AgentPaneBackend;
+        using ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource;
+        const auto parsed = AgentPaneBackend::Parse(L"wsl:Ubuntu:copilot");
+        VERIFY_IS_TRUE(parsed.has_value());
+        VERIFY_ARE_EQUAL(
+            static_cast<int>(AgentPaneBackendSource::Wsl),
+            static_cast<int>(parsed->source));
+        VERIFY_ARE_EQUAL(L"Ubuntu", parsed->wslDistro);
+        VERIFY_ARE_EQUAL(L"copilot", parsed->agentId);
+        VERIFY_IS_FALSE(AgentPaneBackend::Parse(L"wsl::copilot").has_value());
     }
 }

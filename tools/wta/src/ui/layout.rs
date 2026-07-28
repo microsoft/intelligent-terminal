@@ -36,6 +36,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             .split(area);
         setup::render(frame, app, chunks[0]);
         input::render(frame, app, chunks[1]);
+        if let Some(agent_state) = app.agent_popup_state() {
+            agent_popup::render_popup(frame, agent_state, chunks[1]);
+        }
         return;
     }
 

@@ -1237,6 +1237,22 @@
     <value>Si l’option est activée, ce profil sera généré dynamiquement dans le répertoire depuis lequel le Terminal a été lancé.</value>
     <comment>A description for what the supplementary "use parent process directory" setting does. Presented near "Profile_StartingDirectoryUseParentCheckbox".</comment>
   </data>
+  <data name="Profile_AgentPaneBackend.Header" xml:space="preserve">
+    <value>Agent pour le volet de l’agent</value>
+    <comment>Header for choosing which AI agent backend is used by this profile.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
+    <value>Choisissez l’agent compatible avec ACP à utiliser dans le volet de l’agent. Pour ce profil, ce choix est prioritaire sur la sélection globale du volet de l’agent.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
+    <value>{0} · {1}</value>
+    <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
+  </data>
+  <data name="Profile_AgentPaneBackend_UnavailableSuffix" xml:space="preserve">
+    <value> (indisponible)</value>
+    <comment>Suffix for a saved per-profile agent backend that is no longer installed.</comment>
+  </data>
   <data name="Profile_SuppressApplicationTitle.Header" xml:space="preserve">
     <value>Annuler les modifications apportées au titre</value>
     <comment>Header for a control to toggle changes in the app title.</comment>

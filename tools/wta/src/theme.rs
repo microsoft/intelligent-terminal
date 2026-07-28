@@ -10,7 +10,12 @@ pub const INPUT_TEXT: Style = Style::new().fg(Color::Reset);
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
-pub const TOOL_CALL: Style = Style::new().fg(Color::DarkGray);
+pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset);
+pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_SUCCESS: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_FAILURE: Style = Style::new().fg(Color::Red).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_CANCELED: Style = Style::new().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
 pub const PLAN_STYLE: Style = Style::new().fg(Color::Cyan);
 pub const ERROR_STYLE: Style = Style::new().fg(Color::Red);
 pub const IN_PROGRESS: Style = Style::new()

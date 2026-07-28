@@ -20,6 +20,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 const STARTUP_STDERR_MAX_LINES: usize = 32;
 const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
 const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StderrPhase {
@@ -246,6 +248,7 @@ fn spawn_agent_process_impl(
     if needs_cmd {
         cmd.arg("/c").arg(&resolved_program);
     }
+
     // The claude-code-acp adapter refuses to start when its recursion-
     // guard env var is set — that guard exists to block recursive
     // `claude` shells from sharing runtime, but doesn't apply to an
@@ -346,6 +349,138 @@ fn resolve_spawn_profile(
     crate::agent_registry::lookup_profile_by_id(agent_id)
 }
 
+/// Spawn an ACP agent in the selected per-tab execution source.
+pub(crate) fn spawn_agent_process_for_source(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+) -> Result<AgentSpawn> {
+    match source {
+        crate::agent_source::AgentSource::Host => spawn_agent_process(agent_cmd, cwd, agent_id),
+        crate::agent_source::AgentSource::Wsl { distro } => {
+            spawn_wsl_agent_process(agent_cmd, distro, agent_id)
+        }
+    }
+}
+
+fn spawn_wsl_agent_process(
+    agent_cmd: &str,
+    distro: &str,
+    agent_id: Option<&str>,
+) -> Result<AgentSpawn> {
+    let parts = crate::coordinator::split_windows_commandline(agent_cmd);
+    let raw_program = parts
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow!("empty agent command"))?;
+    let is_npx = ["npx", "npx.cmd", "npx.exe"]
+        .iter()
+        .any(|name| raw_program.eq_ignore_ascii_case(name));
+    let adapter_package = is_npx
+        .then(|| parts.iter().find(|arg| arg.starts_with('@')).cloned())
+        .flatten();
+    let script = wsl_agent_launch_script(&parts);
+
+    let mut command = tokio::process::Command::new("wsl.exe");
+    command
+        .arg("-d")
+        .arg(distro)
+        .arg("--")
+        .arg("bash")
+        .arg("--noprofile")
+        .arg("--norc")
+        .arg("-c")
+        .arg(script)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let byok_mode = resolve_spawn_profile(agent_cmd, agent_id).byok_mode;
+    crate::custom_model_provider::configure_child(&mut command, byok_mode)?;
+    if crate::custom_model_provider::is_configured() {
+        forward_byok_environment_to_wsl(&mut command, byok_mode);
+    }
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let child = command
+        .spawn()
+        .map_err(|error| {
+            anyhow!(
+                "failed to spawn agent '{}' in WSL distro '{}': {}",
+                agent_cmd,
+                distro,
+                error
+            )
+        })?;
+
+    Ok(AgentSpawn {
+        child,
+        raw_program,
+        resolved_program: format!("wsl.exe -d {distro}"),
+        is_npx,
+        adapter_package,
+    })
+}
+
+fn forward_byok_environment_to_wsl(
+    command: &mut tokio::process::Command,
+    byok_mode: crate::agent_registry::ByokMode,
+) {
+    let names: &[&str] = match byok_mode {
+        crate::agent_registry::ByokMode::Unsupported => &[],
+        crate::agent_registry::ByokMode::CopilotProviderEnvironment => &[
+            "COPILOT_PROVIDER_BASE_URL",
+            "COPILOT_PROVIDER_API_KEY",
+            "COPILOT_PROVIDER_TYPE",
+            "COPILOT_MODEL",
+            "COPILOT_OFFLINE",
+        ],
+        crate::agent_registry::ByokMode::CodexConfigEnvironment => &[
+            "CODEX_CONFIG",
+            "MODEL_PROVIDER",
+            "INTELLIGENT_TERMINAL_MODEL_API_KEY",
+        ],
+        crate::agent_registry::ByokMode::OpenCodeConfigContent => &[
+            "OPENCODE_CONFIG_CONTENT",
+            "INTELLIGENT_TERMINAL_MODEL_API_KEY",
+        ],
+    };
+    if names.is_empty() {
+        return;
+    }
+
+    let mut entries = std::env::var("WSLENV")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|entry| !entry.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    for name in names {
+        if !entries
+            .iter()
+            .any(|entry| entry.split('/').next() == Some(*name))
+        {
+            entries.push((*name).to_string());
+        }
+    }
+    command.env("WSLENV", entries.join(":"));
+}
+
+fn wsl_agent_launch_script(parts: &[String]) -> String {
+    let invocation = parts
+        .iter()
+        .map(|part| crate::coordinator::sh_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let inner = format!("exec 1>&3 3>&-; unset CLAUDECODE; exec {invocation}");
+    format!(
+        "bash -lc {} 3>&1 >/dev/null",
+        crate::coordinator::sh_quote(&inner)
+    )
+}
+
 /// Convert a BCP-47 locale tag (e.g. `zh-CN`, `gd-gb`) to the POSIX
 /// `LANG`/`LC_ALL` form (e.g. `zh_CN.UTF-8`, `gd_GB.UTF-8`).
 ///
@@ -395,6 +530,20 @@ mod tests {
         assert_eq!(
             resolve_spawn_profile("copilot --acp --stdio", Some("custom:test-agent")).byok_mode,
             crate::agent_registry::ByokMode::Unsupported
+        );
+    }
+
+    #[test]
+    fn wsl_launch_script_quotes_every_agent_argument() {
+        let parts = vec![
+            "copilot".to_string(),
+            "--model".to_string(),
+            "model; touch /tmp/nope".to_string(),
+        ];
+        assert_eq!(
+            wsl_agent_launch_script(&parts),
+            "bash -lc 'exec 1>&3 3>&-; unset CLAUDECODE; exec '\\''copilot'\\'' \
+             '\\''--model'\\'' '\\''model; touch /tmp/nope'\\''' 3>&1 >/dev/null"
         );
     }
 
