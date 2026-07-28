@@ -7382,6 +7382,7 @@ fn stage_direct_proposal_with_manager(
     sid: &str,
 ) -> (
     String,
+    crate::proposal_channel::ProposalChannel,
     tokio::sync::oneshot::Receiver<crate::proposal_channel::ProposalFinalStatus>,
 ) {
     let channel = manager
@@ -7406,7 +7407,7 @@ fn stage_direct_proposal_with_manager(
     );
     let (final_tx, final_rx) = tokio::sync::oneshot::channel();
     assert!(manager.accept_validation(&proposal_id, final_tx));
-    (proposal_id, final_rx)
+    (proposal_id, channel, final_rx)
 }
 
 #[test]
@@ -7419,7 +7420,8 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     let sid = "sess-direct-confirm";
     stage_proposal_session(&mut app, sid);
     submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, final_rx) = stage_direct_proposal_with_manager(&mut app, &manager, sid);
+    let (proposal_id, channel, final_rx) =
+        stage_direct_proposal_with_manager(&mut app, &manager, sid);
 
     app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
         proposal_id: proposal_id.clone(),
@@ -7438,6 +7440,43 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
         crate::proposal_channel::ProposalFinalStatus::Confirmed
     );
     assert!(recommendation_rx.try_recv().is_ok());
+    assert_eq!(
+        manager
+            .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
+            .unwrap_err()
+            .status,
+        crate::proposal_channel::ProposalValidationStatus::AlreadyConsumed
+    );
+}
+
+#[test]
+fn direct_proposal_enqueue_failure_is_unavailable_to_cli_and_channel_lookup() {
+    let mut app = test_app();
+    let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    drop(recommendation_rx);
+    app.recommendation_tx = recommendation_tx;
+    let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+    app.set_proposal_channels(Arc::clone(&manager));
+    let sid = "sess-direct-enqueue-failure";
+    stage_proposal_session(&mut app, sid);
+    submit_prompt_for_session(&mut app, sid, "restart it", None);
+    let (proposal_id, channel, final_rx) =
+        stage_direct_proposal_with_manager(&mut app, &manager, sid);
+
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+    app.turn_execute_card(sid);
+
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::proposal_channel::ProposalFinalStatus::Unavailable
+    );
+    assert_eq!(
+        manager
+            .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
+            .unwrap_err()
+            .status,
+        crate::proposal_channel::ProposalValidationStatus::Unavailable
+    );
 }
 
 #[test]
@@ -7448,7 +7487,8 @@ fn direct_proposal_cancel_between_validation_and_commit_does_not_surface() {
     let sid = "sess-direct-cancel-before-commit";
     stage_proposal_session(&mut app, sid);
     submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, final_rx) = stage_direct_proposal_with_manager(&mut app, &manager, sid);
+    let (proposal_id, _channel, final_rx) =
+        stage_direct_proposal_with_manager(&mut app, &manager, sid);
 
     app.turn_cancel(sid);
     app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
@@ -7468,7 +7508,8 @@ fn direct_proposal_cancel_resolves_waiting_cli() {
     let sid = "sess-direct-cancel";
     stage_proposal_session(&mut app, sid);
     submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, final_rx) = stage_direct_proposal_with_manager(&mut app, &manager, sid);
+    let (proposal_id, _channel, final_rx) =
+        stage_direct_proposal_with_manager(&mut app, &manager, sid);
 
     app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
     app.turn_cancel(sid);
@@ -7698,7 +7739,25 @@ fn direct_proposal_rejects_unsupported_schema_version() {
         decision.status,
         crate::proposal_channel::ProposalValidationStatus::InvalidSchema
     );
+    assert!(decision.retryable);
     assert!(decision.reason.unwrap().contains("schema_version"));
+}
+
+#[test]
+fn direct_proposal_rejects_malformed_schema_as_retryable() {
+    let mut app = test_app();
+    let sid = "sess-proposal-malformed";
+    stage_proposal_session(&mut app, sid);
+    submit_prompt_for_session(&mut app, sid, "please help", None);
+
+    let (decision, _) =
+        evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), r#"{"schema_version":"#);
+    assert_eq!(
+        decision.status,
+        crate::proposal_channel::ProposalValidationStatus::InvalidSchema
+    );
+    assert!(decision.retryable);
+    assert!(decision.reason.unwrap().contains("malformed payload"));
 }
 
 #[test]
@@ -7712,9 +7771,28 @@ fn direct_proposal_rejects_origin_mismatch_with_live_turn() {
     let (decision, _) = evaluate_direct_proposal(&mut app, sid, 99, None, &payload);
     assert_eq!(
         decision.status,
-        crate::proposal_channel::ProposalValidationStatus::InvalidSchema
+        crate::proposal_channel::ProposalValidationStatus::Rejected
     );
+    assert!(!decision.retryable);
     assert!(decision.reason.unwrap().contains("does not match"));
+}
+
+#[test]
+fn direct_proposal_rejects_policy_violation_as_nonretryable() {
+    let mut app = test_app();
+    let sid = "sess-proposal-policy";
+    stage_proposal_session(&mut app, sid);
+    submit_prompt_for_session(&mut app, sid, "please help", None);
+
+    let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[]}"#;
+    let (decision, _) =
+        evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), payload);
+    assert_eq!(
+        decision.status,
+        crate::proposal_channel::ProposalValidationStatus::Rejected
+    );
+    assert!(!decision.retryable);
+    assert!(decision.reason.unwrap().contains("expected 1 to"));
 }
 
 #[test]

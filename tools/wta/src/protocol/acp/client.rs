@@ -1582,7 +1582,64 @@ fn proposal_permission_command_candidate(
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
-    command.contains("propose-terminal-actions")
+    fn segment_invokes_proposal(segment: &str) -> bool {
+        let segment = segment.trim_start();
+        let segment = segment
+            .strip_prefix('&')
+            .map(str::trim_start)
+            .unwrap_or(segment);
+        let mut words = segment.split_whitespace();
+        let Some(executable) = words.next() else {
+            return false;
+        };
+        let executable = executable.trim_matches(['"', '\'']);
+        let executable_name = executable
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or(executable);
+        let is_wta = executable.eq_ignore_ascii_case("$env:WTA_CLI_PATH")
+            || executable_name.eq_ignore_ascii_case("wta")
+            || executable_name.eq_ignore_ascii_case("wta.exe");
+        is_wta && words.next() == Some("propose-terminal-actions")
+    }
+
+    let mut segment_start = 0;
+    let mut quote = None;
+    let mut chars = command.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if ch == '`' && quote != Some('\'') {
+            chars.next();
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if ch == delimiter {
+                if delimiter == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            }
+            continue;
+        }
+        if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+            continue;
+        }
+
+        let separator_len = if matches!(ch, '|' | ';' | '\r' | '\n') {
+            ch.len_utf8()
+        } else if ch == '&' && chars.peek().is_some_and(|(_, next)| *next == '&') {
+            chars.next();
+            2
+        } else {
+            continue;
+        };
+        if segment_invokes_proposal(&command[segment_start..index]) {
+            return true;
+        }
+        segment_start = index + separator_len;
+    }
+    segment_invokes_proposal(&command[segment_start..])
 }
 
 impl WtaClient {
@@ -4003,8 +4060,9 @@ mod tests {
     use super::acp;
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
-        post_login_authenticate_error, shell_from_active, timeout_result_failure_fields,
-        user_locale_tag, ClientState, PromptTimingState, SoftStopReason, WtaClient,
+        looks_like_proposal_command, post_login_authenticate_error, shell_from_active,
+        timeout_result_failure_fields, user_locale_tag, ClientState, PromptTimingState,
+        SoftStopReason, WtaClient,
     };
     use crate::app::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4848,6 +4906,66 @@ mod tests {
                 PermissionOptionKind::AllowOnce,
             )],
         )
+    }
+
+    #[test]
+    fn proposal_command_detection_requires_a_wta_invocation() {
+        assert!(!looks_like_proposal_command(
+            "echo propose-terminal-actions"
+        ));
+        assert!(!looks_like_proposal_command(
+            "rg propose-terminal-actions tools/wta"
+        ));
+        assert!(!looks_like_proposal_command(
+            r#"echo '& "$env:WTA_CLI_PATH" propose-terminal-actions --channel channel'"#
+        ));
+        assert!(looks_like_proposal_command(
+            r#"& "$env:WTA_CLI_PATH" propose-terminal-actions --channel channel"#
+        ));
+        assert!(looks_like_proposal_command(
+            r#"'{}' | & "$env:WTA_CLI_PATH" propose-terminal-actions --channel channel"#
+        ));
+    }
+
+    #[tokio::test]
+    async fn unrelated_proposal_mention_uses_normal_permission_ui() {
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async {
+                let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+                let client = WtaClient {
+                    state: Arc::new(ClientState {
+                        event_tx,
+                        shell_mgr: Arc::new(ShellManager::new()),
+                        prompt_timing: Arc::new(PromptTimingState::default()),
+                        proposal_channels: Arc::new(
+                            crate::proposal_channel::ProposalChannelManager::new(),
+                        ),
+                        hidden_tool_calls: Mutex::new(HashSet::new()),
+                    }),
+                };
+                let handle = tokio::task::spawn_local(async move {
+                    client
+                        .request_permission(proposal_permission_request(
+                            "echo propose-terminal-actions",
+                        ))
+                        .await
+                });
+
+                let responder = match event_rx.recv().await {
+                    Some(AppEvent::PermissionRequest { responder, .. }) => responder,
+                    _ => panic!("expected normal PermissionRequest"),
+                };
+                responder.send("allow-once".to_string()).unwrap();
+
+                let response = handle.await.unwrap().unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(_)
+                ));
+                assert!(event_rx.try_recv().is_err());
+            })
+            .await;
     }
 
     #[tokio::test]

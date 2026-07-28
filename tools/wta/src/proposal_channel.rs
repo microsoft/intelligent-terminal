@@ -173,8 +173,13 @@ struct ActiveChannel {
 #[derive(Debug, Clone, Copy)]
 struct Tombstone {
     channel_hash: [u8; 32],
-    status: ProposalFinalStatus,
+    status: Option<ProposalFinalStatus>,
     created_at: Instant,
+}
+
+pub struct ConfirmationClaim {
+    channel_hash: [u8; 32],
+    final_responder: oneshot::Sender<ProposalFinalStatus>,
 }
 
 struct ChannelState {
@@ -419,10 +424,7 @@ impl ProposalChannelManager {
         can_retry
     }
 
-    pub fn claim_confirmation(
-        &self,
-        proposal_id: &str,
-    ) -> Option<oneshot::Sender<ProposalFinalStatus>> {
+    pub fn claim_confirmation(&self, proposal_id: &str) -> Option<ConfirmationClaim> {
         let mut state = self.lock_state();
         let active = state.active.as_ref()?;
         if active.state != ProposalChannelState::AwaitingUser
@@ -432,14 +434,40 @@ impl ProposalChannelManager {
             return None;
         }
         let mut active = state.active.take()?;
-        let responder = active.final_responder.take()?;
+        let final_responder = active.final_responder.take()?;
+        let channel_hash = channel_hash(&active.channel);
         state.tombstones.push_back(Tombstone {
-            channel_hash: channel_hash(&active.channel),
-            status: ProposalFinalStatus::Confirmed,
+            channel_hash,
+            status: None,
             created_at: Instant::now(),
         });
         self.prune_tombstones(&mut state);
-        Some(responder)
+        Some(ConfirmationClaim {
+            channel_hash,
+            final_responder,
+        })
+    }
+
+    pub fn finalize_confirmation(&self, claim: ConfirmationClaim, status: ProposalFinalStatus) {
+        let mut state = self.lock_state();
+        if let Some(tombstone) = state
+            .tombstones
+            .iter_mut()
+            .rev()
+            .find(|item| item.channel_hash == claim.channel_hash)
+        {
+            tombstone.status = Some(status);
+            tombstone.created_at = Instant::now();
+        } else {
+            state.tombstones.push_back(Tombstone {
+                channel_hash: claim.channel_hash,
+                status: Some(status),
+                created_at: Instant::now(),
+            });
+        }
+        self.prune_tombstones(&mut state);
+        drop(state);
+        let _ = claim.final_responder.send(status);
     }
 
     pub fn resolve_final(&self, proposal_id: &str, status: ProposalFinalStatus) -> bool {
@@ -499,15 +527,15 @@ impl ProposalChannelManager {
             .find(|item| item.channel_hash == hash)
         {
             let (status, reason) = match tombstone.status {
-                ProposalFinalStatus::Superseded => (
+                Some(ProposalFinalStatus::Superseded) => (
                     ProposalValidationStatus::Superseded,
                     "channel was superseded by a newer turn",
                 ),
-                ProposalFinalStatus::SessionReplaced => (
+                Some(ProposalFinalStatus::SessionReplaced) => (
                     ProposalValidationStatus::Stale,
                     "channel belongs to a replaced session",
                 ),
-                ProposalFinalStatus::Unavailable => (
+                None | Some(ProposalFinalStatus::Unavailable) => (
                     ProposalValidationStatus::Unavailable,
                     "owning Helper became unavailable",
                 ),
@@ -534,7 +562,7 @@ impl ProposalChannelManager {
         }
         state.tombstones.push_back(Tombstone {
             channel_hash: channel_hash(&active.channel),
-            status,
+            status: Some(status),
             created_at: Instant::now(),
         });
         self.prune_tombstones(state);

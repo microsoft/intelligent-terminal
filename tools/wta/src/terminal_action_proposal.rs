@@ -95,9 +95,8 @@ impl ProposalStatus {
 
 /// Why a proposal failed before ever reaching the "did the helper accept
 /// it" decision. Distinct from [`ProposalStatus`]: this is the *local*
-/// (CLI or master, pre-relay) or *decode* failure classification;
-/// `to_status` collapses it onto the wire disposition so callers don't
-/// need two vocabularies.
+/// (CLI or master, pre-relay) or *decode* failure classification. Callers
+/// retain the variant when deciding whether a rejection is retryable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProposalError {
     /// Raw payload exceeded [`MAX_PAYLOAD_BYTES`] — rejected before parsing.
@@ -115,15 +114,6 @@ pub enum ProposalError {
 }
 
 impl ProposalError {
-    /// Collapse onto the wire disposition. Every variant here maps to
-    /// `Rejected` except the size cap, which is its own thing conceptually
-    /// but still a policy rejection from the caller's point of view — no
-    /// separate status exists for it in the five-way table the spec
-    /// defines, so it also reports `Rejected` with a specific reason.
-    pub fn to_status(&self) -> ProposalStatus {
-        ProposalStatus::Rejected
-    }
-
     pub fn reason(&self) -> String {
         match self {
             ProposalError::TooLarge { size } => {

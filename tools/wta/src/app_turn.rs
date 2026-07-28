@@ -5,6 +5,14 @@
 
 use super::*;
 
+enum DirectProposalEvaluation {
+    Presented,
+    Duplicate(String),
+    Stale(String),
+    Rejected(crate::terminal_action_proposal::ProposalError),
+    Unavailable(String),
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // TurnState transition methods
 //
@@ -162,48 +170,39 @@ impl App {
     /// Apply the Helper's authoritative turn, schema, origin, and action policy
     /// checks, then stage an accepted proposal until the direct pipe completes
     /// its validation handshake and posts `DirectTerminalActionProposalCommit`.
-    pub(super) fn validate_and_stage_terminal_action_proposal(
+    fn validate_and_stage_terminal_action_proposal(
         &mut self,
         sid: &str,
         prompt_id: u64,
         active_target: Option<&str>,
         payload: &str,
         proposal_id: &str,
-    ) -> (
-        crate::terminal_action_proposal::ProposalStatus,
-        Option<String>,
-    ) {
-        use crate::terminal_action_proposal::{
-            build_recommendation_set, parse_proposal_payload, ProposalStatus,
-        };
+    ) -> DirectProposalEvaluation {
+        use crate::terminal_action_proposal::{build_recommendation_set, parse_proposal_payload};
 
         if !self.session_to_tab.contains_key(sid) {
-            return (
-                ProposalStatus::Unavailable,
-                Some("session is not bound to this helper".to_string()),
+            return DirectProposalEvaluation::Unavailable(
+                "session is not bound to this helper".to_string(),
             );
         }
 
         match &self.session_tab(sid).turn {
             TurnState::Surfaced { .. } => {
-                return (
-                    ProposalStatus::Duplicate,
-                    Some("a card is already showing for this turn".to_string()),
+                return DirectProposalEvaluation::Duplicate(
+                    "a card is already showing for this turn".to_string(),
                 );
             }
             TurnState::Idle => {
-                return (
-                    ProposalStatus::Stale,
-                    Some("no turn is in flight for this session".to_string()),
+                return DirectProposalEvaluation::Stale(
+                    "no turn is in flight for this session".to_string(),
                 );
             }
             TurnState::Submitted(_) | TurnState::Streaming { .. } => {}
         }
 
         if self.session_tab(sid).turn.prompt().map(|prompt| prompt.id) != Some(prompt_id) {
-            return (
-                ProposalStatus::Stale,
-                Some("proposal belongs to an earlier prompt".to_string()),
+            return DirectProposalEvaluation::Stale(
+                "proposal belongs to an earlier prompt".to_string(),
             );
         }
 
@@ -212,16 +211,13 @@ impl App {
             let turn_gen = self.session_tab(sid).turn.autofix_generation();
             let current_gen = self.session_tab(sid).autofix.generation;
             if turn_gen != Some(current_gen) {
-                return (
-                    ProposalStatus::Stale,
-                    Some("autofix turn was superseded".to_string()),
-                );
+                return DirectProposalEvaluation::Stale("autofix turn was superseded".to_string());
             }
         }
 
         let wire = match parse_proposal_payload(payload.as_bytes()) {
             Ok(wire) => wire,
-            Err(err) => return (err.to_status(), Some(err.reason())),
+            Err(err) => return DirectProposalEvaluation::Rejected(err),
         };
 
         let configured_delegate_id = self
@@ -238,7 +234,7 @@ impl App {
             self.pane_id.as_deref(),
         ) {
             Ok(set) => set,
-            Err(err) => return (err.to_status(), Some(err.reason())),
+            Err(err) => return DirectProposalEvaluation::Rejected(err),
         };
 
         self.session_tab_mut(sid).pending_terminal_action_proposal =
@@ -249,7 +245,7 @@ impl App {
                 is_autofix,
                 recommendations,
             });
-        (ProposalStatus::Presented, None)
+        DirectProposalEvaluation::Presented
     }
 
     pub(super) fn evaluate_direct_terminal_action_proposal(
@@ -258,40 +254,58 @@ impl App {
         payload: &str,
     ) -> crate::proposal_pipe::ProposalValidationDecision {
         use crate::proposal_channel::ProposalValidationStatus;
-        use crate::terminal_action_proposal::ProposalStatus;
+        use crate::terminal_action_proposal::ProposalError;
 
         let binding = &context.binding;
-        let (status, reason) = self.validate_and_stage_terminal_action_proposal(
+        let evaluation = self.validate_and_stage_terminal_action_proposal(
             &binding.session_id,
             binding.prompt_id,
             binding.active_target.as_deref(),
             payload,
             &context.proposal_id,
         );
-        match status {
-            ProposalStatus::Presented => {
+        match evaluation {
+            DirectProposalEvaluation::Presented => {
                 crate::proposal_pipe::ProposalValidationDecision::accepted()
             }
-            ProposalStatus::Duplicate => crate::proposal_pipe::ProposalValidationDecision {
-                status: ProposalValidationStatus::AlreadyConsumed,
-                reason,
-                retryable: false,
-            },
-            ProposalStatus::Stale => crate::proposal_pipe::ProposalValidationDecision {
-                status: ProposalValidationStatus::Stale,
-                reason,
-                retryable: false,
-            },
-            ProposalStatus::Rejected => crate::proposal_pipe::ProposalValidationDecision {
-                status: ProposalValidationStatus::InvalidSchema,
-                reason,
-                retryable: true,
-            },
-            ProposalStatus::Unavailable => crate::proposal_pipe::ProposalValidationDecision {
-                status: ProposalValidationStatus::Unavailable,
-                reason,
-                retryable: false,
-            },
+            DirectProposalEvaluation::Duplicate(reason) => {
+                crate::proposal_pipe::ProposalValidationDecision {
+                    status: ProposalValidationStatus::AlreadyConsumed,
+                    reason: Some(reason),
+                    retryable: false,
+                }
+            }
+            DirectProposalEvaluation::Stale(reason) => {
+                crate::proposal_pipe::ProposalValidationDecision {
+                    status: ProposalValidationStatus::Stale,
+                    reason: Some(reason),
+                    retryable: false,
+                }
+            }
+            DirectProposalEvaluation::Rejected(error) => {
+                let (status, retryable) = match &error {
+                    ProposalError::TooLarge { .. }
+                    | ProposalError::Malformed(_)
+                    | ProposalError::UnsupportedSchemaVersion(_) => {
+                        (ProposalValidationStatus::InvalidSchema, true)
+                    }
+                    ProposalError::PolicyViolation(_) => {
+                        (ProposalValidationStatus::Rejected, false)
+                    }
+                };
+                crate::proposal_pipe::ProposalValidationDecision {
+                    status,
+                    reason: Some(error.reason()),
+                    retryable,
+                }
+            }
+            DirectProposalEvaluation::Unavailable(reason) => {
+                crate::proposal_pipe::ProposalValidationDecision {
+                    status: ProposalValidationStatus::Unavailable,
+                    reason: Some(reason),
+                    retryable: false,
+                }
+            }
         }
     }
 
@@ -594,12 +608,12 @@ impl App {
             .prompt()
             .and_then(|p| p.autofix.as_ref())
             .map(|a| a.target_pane_id.clone());
-        let final_responder = if let Some(proposal_id) = direct_proposal_id.as_deref() {
-            let Some(responder) = self.proposal_channels.claim_confirmation(proposal_id) else {
+        let confirmation_claim = if let Some(proposal_id) = direct_proposal_id.as_deref() {
+            let Some(claim) = self.proposal_channels.claim_confirmation(proposal_id) else {
                 self.turn_cancel(session_id);
                 return;
             };
-            Some(responder)
+            Some(claim)
         } else {
             None
         };
@@ -610,13 +624,13 @@ impl App {
                 insert_only,
             })
             .is_ok();
-        if let Some(responder) = final_responder {
+        if let Some(claim) = confirmation_claim {
             let status = if dispatched {
                 crate::proposal_channel::ProposalFinalStatus::Confirmed
             } else {
                 crate::proposal_channel::ProposalFinalStatus::Unavailable
             };
-            let _ = responder.send(status);
+            self.proposal_channels.finalize_confirmation(claim, status);
             if !dispatched {
                 self.turn_cancel(session_id);
                 return;
