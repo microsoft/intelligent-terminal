@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -1072,6 +1072,7 @@ pub struct DispatchedCommand {
 
 pub enum AppEvent {
     Key(KeyEvent),
+    Mouse(MouseEvent),
     Tick,
     /// High-frequency (~30Hz) reveal animation tick. Drives the typewriter
     /// smoothing of the streaming agent response (advances `reveal_chars`).
@@ -4763,6 +4764,7 @@ impl App {
     fn event_name(event: &AppEvent) -> &'static str {
         match event {
             AppEvent::Key(_) => "key",
+            AppEvent::Mouse(_) => "mouse",
             AppEvent::Tick => "tick",
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",

@@ -11,6 +11,24 @@ impl App {
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
+            AppEvent::Mouse(mouse) => {
+                if self.mode == AppMode::Chat && self.current_tab().current_view == View::Chat {
+                    let lines = if mouse.modifiers.contains(KeyModifiers::ALT) {
+                        1
+                    } else {
+                        3
+                    };
+                    match mouse.kind {
+                        crossterm::event::MouseEventKind::ScrollUp => {
+                            self.current_tab_mut().chat_scroll.by(lines);
+                        }
+                        crossterm::event::MouseEventKind::ScrollDown => {
+                            self.current_tab_mut().chat_scroll.by(-lines);
+                        }
+                        _ => {}
+                    }
+                }
+            }
             AppEvent::AgentPasteTextReady {
                 tab_id,
                 generation,

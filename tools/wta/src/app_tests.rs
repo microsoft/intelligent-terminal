@@ -6651,6 +6651,63 @@ fn rec_card_height_matches_predict_and_render_paths() {
 // ─── Per-tab input history ──────────────────────────────────────────
 
 #[test]
+fn mouse_wheel_scrolls_chat_without_changing_input_history() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().record_input_history("previous prompt");
+    app.current_tab_mut().chat_scroll.set_max(20);
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 3);
+    assert!(app.current_tab().input.is_empty());
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+    assert!(app.current_tab().input.is_empty());
+}
+
+#[test]
+fn alt_mouse_wheel_scrolls_chat_one_line() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().chat_scroll.set_max(20);
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::ALT,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 1);
+}
+
+#[test]
+fn mouse_wheel_does_not_scroll_hidden_chat() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().chat_scroll.set_max(20);
+    app.current_tab_mut().current_view = View::Agents;
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+}
+
+#[test]
 fn input_history_navigates_newest_first_and_restores_draft() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
