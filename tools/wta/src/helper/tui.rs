@@ -233,7 +233,6 @@ async fn run_acp_tui_mode(
 async fn connect_to_wt_protocol(
     debug_tx: tokio::sync::mpsc::UnboundedSender<app::DebugMessage>,
 ) -> Result<shell::wt_channel::CliChannel> {
-    use shell::wt_channel::CliChannel;
     let channel = CliChannel::connect().await?;
     Ok(channel.with_debug_sender(debug_tx))
 }
