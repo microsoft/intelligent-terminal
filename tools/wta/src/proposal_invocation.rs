@@ -109,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_extra_tokens_and_noncompact_json() {
+    fn rejects_extra_tokens_and_non_compact_json() {
         let manager = ProposalChannelManager::new();
         let channel = manager.issue("session".into(), 1, None, false).unwrap();
         let command = render(&channel, payload()).unwrap();
