@@ -35,6 +35,7 @@ mod shell;
 mod telemetry;
 #[cfg(test)]
 mod test_support;
+mod text_selection;
 mod theme;
 mod ui;
 mod ui_trace;

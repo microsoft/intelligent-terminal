@@ -121,6 +121,7 @@ connection.lost: "[Çöññéçţïöñ ţö ţĥé åğéñţ ŵåś ĺöśţ. 
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "[Ṗŕéśś Ctrl+C åğåïñ ţö çĺöśé ṗåñé!!!! !!!!]"  # {Locked="Ctrl+C"}
+system.selection_copied: "[Çöṗïéð!!!]"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "[Çåñçéĺĺéď.!!]"
 system.no_prompt_in_flight: "[Ñö ṗŕöḿṗţ ïñ ƒĺïğĥţ.!!!! !!!!]"
 system.authentication_failed: "[Àûţĥéñţïçåţïöñ ƒåïĺéď!!!! !!!!]"

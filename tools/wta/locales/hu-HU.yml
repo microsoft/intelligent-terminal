@@ -119,6 +119,7 @@ connection.lost: "Megszakadt a kapcsolat az ügynökkel. Az újrakapcsolódásho
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Nyomja meg újra a Ctrl+C billentyűkombinációt a panel bezárásához"  # {Locked="Ctrl+C"}
+system.selection_copied: "Másolva"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Megszakítva."
 system.no_prompt_in_flight: "Nincs folyamatban lévő kérés."
 system.authentication_failed: "A hitelesítés sikertelen"

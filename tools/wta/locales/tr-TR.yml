@@ -132,6 +132,7 @@ connection.lost: "Aracı bağlantısı kesildi. Yeniden bağlanmak için /restar
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Paneli kapatmak için Ctrl+C tuşlarına tekrar basın."  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopyalandı"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "İptal edildi."
 system.no_prompt_in_flight: "Devam eden istem yok."
 system.authentication_failed: "Kimlik doğrulama başarısız"

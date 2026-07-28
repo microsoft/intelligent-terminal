@@ -119,6 +119,7 @@ connection.lost: "Lidhja me agjentin u humb. Shkruani /restart për t'u rilidhur
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Shtypni sërish Ctrl+C për të mbyllur panelin"  # {Locked="Ctrl+C"}
+system.selection_copied: "U kopjua"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "U anulua."
 system.no_prompt_in_flight: "Asnjë kërkesë nuk është në proces."
 system.authentication_failed: "Vërtetimi dështoi"

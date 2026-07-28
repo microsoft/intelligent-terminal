@@ -132,6 +132,7 @@ connection.lost: "החיבור לסוכן אבד. הקלד /restart כדי לה�
 
 # ── הודעות מערכת (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "לחץ שוב על Ctrl+C כדי לסגור את החלונית"  # {Locked="Ctrl+C"}
+system.selection_copied: "הועתק"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "בוטל."
 system.no_prompt_in_flight: "אין בקשה בתהליך."
 system.authentication_failed: "האימות נכשל"

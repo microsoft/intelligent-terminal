@@ -2162,6 +2162,7 @@ pub struct App {
     pub debug_messages: Vec<DebugMessage>,
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
+    pub(crate) text_selection: crate::text_selection::TextSelection,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -2295,6 +2296,8 @@ pub struct App {
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
+    std::time::Duration::from_millis(1500);
 
 /// Top-level UI view selector. Toggled with Ctrl+Shift+/.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2464,6 +2467,7 @@ impl App {
             debug_messages: Vec::new(),
             show_debug_panel: false,
             debug_scroll: 0,
+            text_selection: crate::text_selection::TextSelection::default(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -4726,6 +4730,7 @@ impl App {
 
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
+        self.text_selection.snapshot_and_render(frame.buffer_mut());
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
         // The text caret is painted as an inverse buffer cell by `ui::input`

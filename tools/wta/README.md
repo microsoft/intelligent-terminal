@@ -112,10 +112,11 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 | Key | Action |
 |-----|--------|
 | Type + Enter | Send prompt to agent |
-| Ctrl+C | Cancel streaming / quit |
+| Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Shift + mouse drag | Use the terminal's native text selection |
+| Mouse drag | Select a continuous text range |
+| Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |
 | F12 | Toggle debug panel (pipe traffic viewer) |
 | Shift+PageUp/Down | Scroll debug panel |

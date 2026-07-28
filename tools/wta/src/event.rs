@@ -1,4 +1,4 @@
-use crossterm::event::{Event, EventStream, MouseEventKind};
+use crossterm::event::{Event, EventStream, MouseButton, MouseEventKind};
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration, MissedTickBehavior};
@@ -21,7 +21,11 @@ fn map_crossterm_event(event: Event) -> Option<AppEvent> {
         Event::Mouse(mouse)
             if matches!(
                 mouse.kind,
-                MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                MouseEventKind::ScrollUp
+                    | MouseEventKind::ScrollDown
+                    | MouseEventKind::Down(MouseButton::Left)
+                    | MouseEventKind::Drag(MouseButton::Left)
+                    | MouseEventKind::Up(MouseButton::Left)
             ) =>
         {
             Some(AppEvent::Mouse(mouse))
@@ -196,7 +200,27 @@ mod tests {
     }
 
     #[test]
-    fn non_wheel_mouse_and_paste_events_are_dropped() {
+    fn left_button_selection_events_are_forwarded() {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Drag(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            let mouse = MouseEvent {
+                kind,
+                column: 4,
+                row: 7,
+                modifiers: KeyModifiers::NONE,
+            };
+            assert!(matches!(
+                map_crossterm_event(Event::Mouse(mouse)),
+                Some(AppEvent::Mouse(mapped)) if mapped == mouse
+            ));
+        }
+    }
+
+    #[test]
+    fn unsupported_mouse_and_paste_events_are_dropped() {
         let mouse = MouseEvent {
             kind: MouseEventKind::Moved,
             column: 4,
