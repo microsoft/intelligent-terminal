@@ -3470,7 +3470,6 @@ async fn run_acp_app(
                 let owner_tab = cli.owner_tab_id.clone();
                 let initial_load_sid = cli.initial_load_session_id.clone();
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
-                let direct_proposals_enabled = canonical_agent_id == "copilot";
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
@@ -3494,7 +3493,6 @@ async fn run_acp_app(
                         wt_connected,
                         false, // post_login_reconnect: first connection, no authenticate needed
                         proposal_channels_for_pipe,
-                        direct_proposals_enabled,
                     )
                     .await
                     {

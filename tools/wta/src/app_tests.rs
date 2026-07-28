@@ -4737,16 +4737,15 @@ fn perm_option_kind_matching_is_case_insensitive() {
 /// but `AgentMessageEnd` has not yet arrived (turn is
 /// `Surfaced{end_pending:true}`), the thinking/activity indicator must
 /// remain visible. Previously `spinner_label()` returned `None` for any
-/// `Surfaced` variant, making the pane look frozen between the eager surface
-/// and the permission card appearing.
+/// `Surfaced` variant, making the pane look frozen between the direct proposal
+/// surface and the permission card appearing.
 #[test]
 fn thinking_indicator_visible_while_permission_pending_and_end_pending() {
     let mut app = test_app();
 
     // Put the tab in `Surfaced{end_pending:true}` — the state that exists
-    // between an eager surface (recommendation / chat turn visible) and the
-    // `AgentMessageEnd` event that releases the UI gate. A permission
-    // request can arrive in this window.
+    // between a direct proposal surface and the `AgentMessageEnd` event that
+    // releases the UI gate. A permission request can arrive in this window.
     let prompt = SubmittedPrompt {
         id: 1,
         text: "test".into(),
@@ -4987,6 +4986,36 @@ async fn tool_call_completion_updates_card_status() {
             );
         })
         .await;
+}
+
+#[test]
+fn hide_tool_call_removes_internal_proposal_card() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "list files");
+
+    app.handle_event(AppEvent::ToolCall {
+        session_id: "0".to_string(),
+        id: "proposal-tool".to_string(),
+        title: "Propose listing active directory".to_string(),
+        status: "Pending".to_string(),
+    });
+    assert!(app
+        .current_tab()
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")));
+
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "0".to_string(),
+        id: "proposal-tool".to_string(),
+    });
+
+    assert!(!app.current_tab().tool_calls.contains_key("proposal-tool"));
+    assert!(!app
+        .current_tab()
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")));
 }
 
 /// Plan: a `Plan` notification must surface as a plan card with its entries.
@@ -6255,10 +6284,9 @@ fn thought_chunk_first_transitions_with_empty_buf() {
 }
 
 #[test]
-fn end_with_no_eager_chat_fallback_commits_completed_turn() {
+fn assistant_prose_commits_completed_chat_turn() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "why blue?");
-    // Pure prose — won't parse as a RecommendationSet, falls to chat.
     app.turn_observe_chunk(
         DEFAULT_TAB_ID,
         ChunkKind::Message,
@@ -6280,7 +6308,7 @@ fn end_with_no_eager_chat_fallback_commits_completed_turn() {
     );
     assert!(
         tab.turn.accepts_new_prompt(),
-        "chat fallback unblocks input"
+        "completed chat turn unblocks input"
     );
     assert_eq!(tab.completed_turns.len(), 1);
     assert_eq!(tab.completed_turns[0].prompt, "why blue?");
@@ -6401,19 +6429,11 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
 }
 
 #[test]
-fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
-    // A buffer that's pure JSON (no `explanation` field, no prose
-    // prefix) renders as nothing during streaming. We must NOT commit
-    // raw JSON as agent prose, but we still record a completed_turn
-    // with the canceled marker so the user knows the prompt was sent
-    // and cancelled.
+fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "kill pid 1234");
-    app.turn_observe_chunk(
-        DEFAULT_TAB_ID,
-        ChunkKind::Message,
-        r#"{"recommended_choice":1,"choices":[{"choice":1,"#,
-    );
+    let json = r#"{"recommended_choice":1,"choices":[{"choice":1,"#;
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
     app.turn_cancel(DEFAULT_TAB_ID);
     let tab = app.current_tab();
     assert!(tab.turn.is_idle());
@@ -6421,11 +6441,11 @@ fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
     let committed = &tab.completed_turns[0];
     assert_eq!(committed.prompt, "kill pid 1234");
     assert!(
-        !committed
+        committed
             .details
             .iter()
-            .any(|m| matches!(m, ChatMessage::Agent(_))),
-        "JSON-only buffer must not be committed as agent prose"
+            .any(|m| matches!(m, ChatMessage::Agent(text) if text == json)),
+        "raw JSON must remain visible assistant text"
     );
     assert!(
         committed
@@ -6440,38 +6460,55 @@ fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
 }
 
 #[test]
-fn end_pending_blocks_new_prompts_until_message_end() {
-    // Eager-surface path: user submits → JSON streams → recommendation
-    // surfaces before AgentMessageEnd. While end_pending=true the UI
-    // gate must hold. AgentMessageEnd then releases it.
+fn raw_json_assistant_text_commits_as_chat_turn() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "first");
-    // RecommendationSet shape that survives `validate_recommendation_set`.
+    let json = r#"{"recommended_choice":1,"choices":[]}"#;
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
+    app.turn_close(DEFAULT_TAB_ID);
+
+    let tab = app.current_tab();
+    assert!(matches!(
+        tab.turn,
+        TurnState::Surfaced {
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: false,
+            ..
+        }
+    ));
+    assert!(tab.completed_turns[0]
+        .details
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
+}
+
+#[test]
+fn fenced_json_assistant_text_commits_as_chat_turn() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "first");
     let json = r#"```json
 {"recommended_choice":1,"choices":[{"choice":1,"title":"do it","rationale":"r","actions":[{"type":"send","parent":"pane-X","input":"ls"}]}]}
 ```"#;
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
-    app.turn_try_eager_surface(DEFAULT_TAB_ID);
-    let tab = app.current_tab();
     assert!(
-        matches!(
-            tab.turn,
-            TurnState::Surfaced {
-                outcome: TurnOutcome::Recommendation(_),
-                end_pending: true,
-                ..
-            }
-        ),
-        "expected eager surface, got {:?}",
-        tab.turn
+        matches!(app.current_tab().turn, TurnState::Streaming { .. }),
+        "assistant text must not surface a recommendation card"
     );
-    assert!(
-        !tab.turn.accepts_new_prompt(),
-        "end_pending=true must hold the UI gate"
-    );
-    // AgentMessageEnd flips end_pending=false.
+
     app.turn_close(DEFAULT_TAB_ID);
-    assert!(app.current_tab().turn.accepts_new_prompt());
+    let tab = app.current_tab();
+    assert!(matches!(
+        tab.turn,
+        TurnState::Surfaced {
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: false,
+            ..
+        }
+    ));
+    assert!(tab.completed_turns[0]
+        .details
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
 }
 
 // ─── card / panel height math ───────────────────────────────────────────
@@ -7486,7 +7523,7 @@ fn direct_proposal_for_an_earlier_prompt_is_stale() {
 }
 
 #[test]
-fn direct_proposal_after_eager_text_fallback_surface_is_duplicate() {
+fn direct_proposal_preserves_assistant_text_before_and_after_card() {
     let mut app = test_app();
     let sid = "sess-proposal-dup";
     stage_proposal_session(&mut app, sid);
@@ -7495,9 +7532,12 @@ fn direct_proposal_after_eager_text_fallback_surface_is_duplicate() {
 {"recommended_choice":1,"choices":[{"choice":1,"title":"do it","rationale":"r","actions":[{"type":"send","parent":"pane-X","input":"ls"}]}]}
 ```"#;
     app.turn_observe_chunk(sid, ChunkKind::Message, json);
-    app.turn_try_eager_surface(sid);
+    assert!(
+        matches!(app.session_tab(sid).turn, TurnState::Streaming { .. }),
+        "assistant JSON must remain ordinary streaming text"
+    );
 
-    let (decision, _) = evaluate_direct_proposal(
+    let (decision, proposal_id) = evaluate_direct_proposal(
         &mut app,
         sid,
         99,
@@ -7506,8 +7546,27 @@ fn direct_proposal_after_eager_text_fallback_surface_is_duplicate() {
     );
     assert_eq!(
         decision.status,
-        crate::proposal_channel::ProposalValidationStatus::AlreadyConsumed
+        crate::proposal_channel::ProposalValidationStatus::Accepted
     );
+    assert!(app.commit_terminal_action_proposal(&proposal_id));
+
+    let trailing = "\ntrailing explanation";
+    app.turn_observe_chunk(sid, ChunkKind::Message, trailing);
+    app.turn_close(sid);
+
+    let completed = app
+        .session_tab(sid)
+        .completed_turns
+        .last()
+        .expect("direct proposal should commit a completed turn");
+    assert!(completed
+        .details
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
+    assert!(completed
+        .details
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Agent(text) if text == trailing)));
 }
 
 #[test]

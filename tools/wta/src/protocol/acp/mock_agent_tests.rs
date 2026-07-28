@@ -303,7 +303,7 @@ fn connect_with(
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
         proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
-        direct_proposals_enabled: false,
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     let wta = WtaClient { state };
 
@@ -557,7 +557,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
         proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
-        direct_proposals_enabled: false,
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     let wta = WtaClient { state };
 
@@ -1554,7 +1554,7 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
         proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
-        direct_proposals_enabled: false,
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     (WtaClient { state }, event_rx)
 }
@@ -1850,5 +1850,3 @@ async fn request_permission_cancelled_when_responder_dropped() {
         })
         .await;
 }
-
-

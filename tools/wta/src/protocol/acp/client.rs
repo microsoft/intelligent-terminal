@@ -1531,7 +1531,7 @@ struct ClientState {
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
     proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
-    direct_proposals_enabled: bool,
+    hidden_tool_calls: Mutex<HashSet<(String, String)>>,
 }
 
 /// Our Client trait implementation — handles incoming agent requests and notifications.
@@ -1551,7 +1551,9 @@ fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str 
     }
 }
 
-fn copilot_permission_command(args: &acp::schema::v1::RequestPermissionRequest) -> Option<&str> {
+fn canonical_proposal_permission_command(
+    args: &acp::schema::v1::RequestPermissionRequest,
+) -> Option<&str> {
     if args.tool_call.fields.kind != Some(acp::schema::v1::ToolKind::Execute) {
         return None;
     }
@@ -1584,6 +1586,26 @@ fn looks_like_proposal_command(command: &str) -> bool {
 }
 
 impl WtaClient {
+    fn hide_proposal_tool_call(&self, session_id: &str, tool_call_id: &str) {
+        self.state
+            .hidden_tool_calls
+            .lock()
+            .unwrap()
+            .insert((session_id.to_string(), tool_call_id.to_string()));
+        let _ = self.state.event_tx.send(AppEvent::HideToolCall {
+            session_id: session_id.to_string(),
+            id: tool_call_id.to_string(),
+        });
+    }
+
+    fn tool_call_is_hidden(&self, session_id: &str, tool_call_id: &str) -> bool {
+        self.state
+            .hidden_tool_calls
+            .lock()
+            .unwrap()
+            .contains(&(session_id.to_string(), tool_call_id.to_string()))
+    }
+
     async fn request_permission(
         &self,
         args: acp::schema::v1::RequestPermissionRequest,
@@ -1595,6 +1617,11 @@ impl WtaClient {
             args.tool_call.fields.title
         ));
         let session_id = args.session_id.0.to_string();
+        let tool_call_id = args.tool_call.tool_call_id.to_string();
+        let proposal_command_candidate = proposal_permission_command_candidate(&args);
+        if proposal_command_candidate.is_some_and(looks_like_proposal_command) {
+            self.hide_proposal_tool_call(&session_id, &tool_call_id);
+        }
         let description = args
             .tool_call
             .fields
@@ -1605,69 +1632,67 @@ impl WtaClient {
             .prompt_timing
             .permission_requested(&session_id, &description);
 
-        if self.state.direct_proposals_enabled {
-            if let Some(command) = copilot_permission_command(&args) {
-                match crate::proposal_invocation::parse(command) {
-                    Ok(invocation) => {
-                        let Some(option) = args.options.iter().find(|option| {
-                            option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce
-                        }) else {
-                            self.state
-                                .prompt_timing
-                                .permission_resolved(&session_id, "proposal_cancelled");
-                            return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                                acp::schema::v1::RequestPermissionOutcome::Cancelled,
-                            ));
-                        };
-                        let arm_result = self.state.proposal_channels.arm(
-                            &session_id,
-                            &invocation.channel,
-                            invocation.payload.as_bytes(),
-                        );
-                        tracing::info!(
-                            target: "proposal_permission",
-                            session_id = %session_id,
-                            armed = arm_result.is_ok(),
-                            status = ?arm_result.as_ref().err().map(|failure| failure.status),
-                            "silently resolving canonical proposal permission"
-                        );
+        if let Some(command) = canonical_proposal_permission_command(&args) {
+            match crate::proposal_invocation::parse(command) {
+                Ok(invocation) => {
+                    let Some(option) = args.options.iter().find(|option| {
+                        option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce
+                    }) else {
                         self.state
                             .prompt_timing
-                            .permission_resolved(&session_id, "proposal_allow_once");
-                        return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                            acp::schema::v1::RequestPermissionOutcome::Selected(
-                                acp::schema::v1::SelectedPermissionOutcome::new(
-                                    option.option_id.clone(),
-                                ),
-                            ),
-                        ));
-                    }
-                    Err(reason) if looks_like_proposal_command(command) => {
-                        tracing::info!(
-                            target: "proposal_permission",
-                            session_id = %session_id,
-                            reason,
-                            "silently cancelled non-canonical proposal command"
-                        );
-                        self.state
-                            .prompt_timing
-                            .permission_resolved(&session_id, "proposal_noncanonical");
+                            .permission_resolved(&session_id, "proposal_cancelled");
                         return Ok(acp::schema::v1::RequestPermissionResponse::new(
                             acp::schema::v1::RequestPermissionOutcome::Cancelled,
                         ));
-                    }
-                    Err(_) => {}
+                    };
+                    let arm_result = self.state.proposal_channels.arm(
+                        &session_id,
+                        &invocation.channel,
+                        invocation.payload.as_bytes(),
+                    );
+                    tracing::info!(
+                        target: "proposal_permission",
+                        session_id = %session_id,
+                        armed = arm_result.is_ok(),
+                        status = ?arm_result.as_ref().err().map(|failure| failure.status),
+                        "silently resolving canonical proposal permission"
+                    );
+                    self.state
+                        .prompt_timing
+                        .permission_resolved(&session_id, "proposal_allow_once");
+                    return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                        acp::schema::v1::RequestPermissionOutcome::Selected(
+                            acp::schema::v1::SelectedPermissionOutcome::new(
+                                option.option_id.clone(),
+                            ),
+                        ),
+                    ));
                 }
-            } else if proposal_permission_command_candidate(&args)
-                .is_some_and(looks_like_proposal_command)
-            {
-                self.state
-                    .prompt_timing
-                    .permission_resolved(&session_id, "proposal_noncanonical");
-                return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                    acp::schema::v1::RequestPermissionOutcome::Cancelled,
-                ));
+                Err(reason) if looks_like_proposal_command(command) => {
+                    tracing::info!(
+                        target: "proposal_permission",
+                        session_id = %session_id,
+                        reason,
+                        "silently cancelled non-canonical proposal command"
+                    );
+                    self.state
+                        .prompt_timing
+                        .permission_resolved(&session_id, "proposal_noncanonical");
+                    return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                        acp::schema::v1::RequestPermissionOutcome::Cancelled,
+                    ));
+                }
+                Err(_) => {}
             }
+        } else if proposal_permission_command_candidate(&args)
+            .is_some_and(looks_like_proposal_command)
+        {
+            self.state
+                .prompt_timing
+                .permission_resolved(&session_id, "proposal_noncanonical");
+            return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                acp::schema::v1::RequestPermissionOutcome::Cancelled,
+            ));
         }
 
         let options: Vec<PermOption> = args
@@ -1760,17 +1785,25 @@ impl WtaClient {
                 }
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
+                let tool_call_id = tool_call.tool_call_id.to_string();
+                if self.tool_call_is_hidden(&sid, &tool_call_id) {
+                    return Ok(());
+                }
                 self.state
                     .prompt_timing
                     .observe_first_tool_call(&sid, Some(tool_call.title.as_str()));
                 let _ = self.state.event_tx.send(AppEvent::ToolCall {
                     session_id: sid,
-                    id: tool_call.tool_call_id.to_string(),
+                    id: tool_call_id,
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
                 });
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
+                let tool_call_id = update.tool_call_id.to_string();
+                if self.tool_call_is_hidden(&sid, &tool_call_id) {
+                    return Ok(());
+                }
                 if let Some(status) = &update.fields.status {
                     // Failed updates frequently carry a `raw_output.message`
                     // explaining *why* (e.g. Copilot in non-interactive ACP
@@ -1793,7 +1826,7 @@ impl WtaClient {
                     };
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
-                        id: update.tool_call_id.to_string(),
+                        id: tool_call_id,
                         status: status_str,
                     });
                 }
@@ -2237,7 +2270,6 @@ pub async fn run_acp_client_over_pipe(
     wt_connected: bool,
     post_login_reconnect: bool,
     proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
-    direct_proposals_enabled: bool,
 ) -> Result<()> {
     let startup_probe = StartupProbe::new();
     startup_probe.log(&format!(
@@ -2339,7 +2371,7 @@ pub async fn run_acp_client_over_pipe(
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
         proposal_channels: Arc::clone(&proposal_channels),
-        direct_proposals_enabled,
+        hidden_tool_calls: Mutex::new(HashSet::new()),
     });
 
     let client = WtaClient {
@@ -2991,7 +3023,6 @@ pub async fn run_acp_client_over_pipe(
                     wt_connected,
                     is_agent_pane,
                     &proposal_channels,
-                    direct_proposals_enabled,
                 );
             }
             else => break,
@@ -3654,7 +3685,6 @@ fn dispatch_prompt_with_proposals(
     wt_connected: bool,
     is_agent_pane: bool,
     proposal_channels: &Arc<crate::proposal_channel::ProposalChannelManager>,
-    direct_proposals_enabled: bool,
 ) {
     let tab_key = prompt
         .pane_context
@@ -3697,7 +3727,6 @@ fn dispatch_prompt_with_proposals(
         wt_connected,
         is_agent_pane,
         proposal_channels_task,
-        direct_proposals_enabled,
     ));
 }
 
@@ -3728,7 +3757,6 @@ fn dispatch_prompt(
         wt_connected,
         is_agent_pane,
         &Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
-        false,
     );
 }
 
@@ -3750,7 +3778,6 @@ async fn dispatch_prompt_body(
     wt_connected: bool,
     is_agent_pane: bool,
     proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
-    direct_proposals_enabled: bool,
 ) {
     // Resolve (or lazily create) the ACP session for this tab.
     let prompt_session_id = {
@@ -3837,33 +3864,31 @@ async fn dispatch_prompt_body(
             prompt.pane_context.as_ref(),
         )
         .await;
-    if direct_proposals_enabled {
-        match proposal_channels.issue(
-            prompt_session_id_str.clone(),
-            prompt.id,
-            active_target.clone(),
-            prompt.is_autofix,
-        ) {
-            Ok(channel) => {
-                text.push_str(&format!(
-                    "\n\n[intellterm.wta proposal]\n\
-                     To present terminal actions, run exactly one command in this form:\n\
-                     & \"$env:WTA_CLI_PATH\" propose-terminal-actions --channel {channel} \
-                     --payload-json '<compact-json>'\n\
-                     Replace only <compact-json>. Do not use stdin, a pipeline, a here-string, \
-                     redirection, a temporary file, or another executable spelling. Read both \
-                     JSON response lines: validation is immediate; final reports the user's \
-                     confirm or cancel decision."
-                ));
-            }
-            Err(error) => {
-                tracing::warn!(
-                    target: "proposal_channel",
-                    status = ?error.status,
-                    reason = error.reason,
-                    "failed to issue proposal channel for prompt"
-                );
-            }
+    match proposal_channels.issue(
+        prompt_session_id_str.clone(),
+        prompt.id,
+        active_target.clone(),
+        prompt.is_autofix,
+    ) {
+        Ok(channel) => {
+            text.push_str(&format!(
+                "\n\n[intellterm.wta proposal]\n\
+                 To present terminal actions, run exactly one command in this form:\n\
+                 & \"$env:WTA_CLI_PATH\" propose-terminal-actions --channel {channel} \
+                 --payload-json '<compact-json>'\n\
+                 Replace only <compact-json>. Do not use stdin, a pipeline, a here-string, \
+                 redirection, a temporary file, or another executable spelling. Read both \
+                 JSON response lines: validation is immediate; final reports the user's \
+                 confirm or cancel decision."
+            ));
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "proposal_channel",
+                status = ?error.status,
+                reason = error.reason,
+                "failed to issue proposal channel for prompt"
+            );
         }
     }
     // A manual `/fix` resolved its working pane in build_prompt_text (it had no
@@ -3987,7 +4012,8 @@ mod tests {
     use crate::app::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;
-    use std::sync::Arc;
+    use std::collections::HashSet;
+    use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
 
     /// `shell_from_active` resolves our own pid to a real exe name (the test
@@ -4842,7 +4868,7 @@ mod tests {
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(PromptTimingState::default()),
                 proposal_channels: Arc::clone(&manager),
-                direct_proposals_enabled: true,
+                hidden_tool_calls: Mutex::new(HashSet::new()),
             }),
         };
 
@@ -4854,10 +4880,11 @@ mod tests {
             response.outcome,
             acp::schema::v1::RequestPermissionOutcome::Selected(_)
         ));
-        assert!(
-            event_rx.try_recv().is_err(),
-            "canonical proposal permission must not reach the TUI"
-        );
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "proposal-session" && id == "proposal-tool"
+        ));
         assert!(manager
             .begin_validation(&channel, payload.as_bytes())
             .is_ok());
@@ -4879,7 +4906,7 @@ mod tests {
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(PromptTimingState::default()),
                 proposal_channels: manager,
-                direct_proposals_enabled: true,
+                hidden_tool_calls: Mutex::new(HashSet::new()),
             }),
         };
 
@@ -4891,7 +4918,10 @@ mod tests {
             response.outcome,
             acp::schema::v1::RequestPermissionOutcome::Cancelled
         ));
-        assert!(event_rx.try_recv().is_err());
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { .. })
+        ));
     }
 
     #[tokio::test]
@@ -4911,7 +4941,7 @@ mod tests {
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(PromptTimingState::default()),
                 proposal_channels: Arc::clone(&manager),
-                direct_proposals_enabled: true,
+                hidden_tool_calls: Mutex::new(HashSet::new()),
             }),
         };
 
@@ -4927,7 +4957,10 @@ mod tests {
                 .status,
             crate::proposal_channel::ProposalValidationStatus::NotArmed
         );
-        assert!(event_rx.try_recv().is_err());
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { .. })
+        ));
     }
 
     #[tokio::test]
@@ -4955,7 +4988,7 @@ mod tests {
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(PromptTimingState::default()),
                 proposal_channels: Arc::clone(&manager),
-                direct_proposals_enabled: true,
+                hidden_tool_calls: Mutex::new(HashSet::new()),
             }),
         };
 
@@ -4971,7 +5004,10 @@ mod tests {
                 .status,
             crate::proposal_channel::ProposalValidationStatus::NotArmed
         );
-        assert!(event_rx.try_recv().is_err());
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { .. })
+        ));
     }
 
     // ── json_str_or_num ─────────────────────────────────────────────────────
@@ -5016,7 +5052,8 @@ mod tests {
         use crate::shell::ShellManager;
         use agent_client_protocol::{self as acp};
         use std::path::PathBuf;
-        use std::sync::Arc;
+        use std::collections::HashSet;
+        use std::sync::{Arc, Mutex};
         use tokio::sync::mpsc;
 
         fn make_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
@@ -5026,7 +5063,7 @@ mod tests {
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
                 proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
-                direct_proposals_enabled: false,
+                hidden_tool_calls: Mutex::new(HashSet::new()),
             });
             (WtaClient { state }, rx)
         }

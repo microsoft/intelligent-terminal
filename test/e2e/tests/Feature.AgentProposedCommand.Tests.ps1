@@ -1,12 +1,11 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §2 "Insert into pane works" / "Run in pane works" / "Command target is
-# correct" via the NON-autofix chat path: ask Copilot to propose a specific command, which
-# surfaces the same Run/Insert recommendation card the autofix flow uses, then Insert / Run it
-# into the active shell pane. Distinct trigger from Feature.AutofixPane.Tests.ps1 (which arrives
-# via a command failure); this is the agent proposing a command in normal chat.
+# correct" via the Direct Helper Proposal path: ask Copilot to submit a specific command through
+# the canonical WTA CLI, then Insert / Run it into the active shell pane. Distinct trigger from
+# Feature.AutofixPane.Tests.ps1 (which arrives via a command failure).
 #
-# LLM nondeterminism is tamed by (a) a UNIQUE marker we fully control, so the card text and the
-# pane assertion are exact, and (b) cross-retry + skip if Copilot explains instead of carding.
+# A UNIQUE marker makes the card text and pane assertion exact. Missing cards fail the test so
+# canonical command, permission arming, and direct-pipe regressions remain visible.
 # IMPORTANT: Insert and Run each use their OWN fresh terminal (like Feature.AutofixPane). With a
 # shared terminal a prior card's "Run command"/"Insert in Terminal" text lingers in the
 # scrollback and could co-occur with the next case's marker (which appears in the prompt echo)
@@ -15,7 +14,7 @@
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue)) }
 
-Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §2 Direct Helper Proposal — Insert' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
@@ -27,20 +26,14 @@ Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Featu
         if (-not $script:CardRunRegex) { $script:CardRunRegex = 'Run command' }
         $script:CardInsertRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
         if (-not $script:CardInsertRegex) { $script:CardInsertRegex = 'Insert in Terminal' }
-        # Ask Copilot to propose `echo <marker>`; return $true once the recommendation card
-        # renders BOTH the Run AND Insert actions AND our exact marker.
-        $script:GetCommandCard = {
+        $script:GetDirectProposalCard = {
             param($marker)
-            for ($try = 0; $try -lt 3; $try++) {
-                Clear-AgentInput -App $script:app | Out-Null
-                Send-AgentPrompt -App $script:app -Text "Propose the exact shell command: echo $marker -- as a runnable command for my terminal so I can Run or Insert it. Do not just explain it." | Out-Null
-                $ok = Test-Until -TimeoutSec 35 -IntervalSec 2 -Condition {
-                    $t = Get-AgentPaneText -App $script:app -MaxLines 60
-                    ($t -match $script:CardRunRegex) -and ($t -match $script:CardInsertRegex) -and ($t -match [regex]::Escape($marker))
-                }
-                if ($ok) { return $true }
+            Clear-AgentInput -App $script:app | Out-Null
+            Send-AgentPrompt -App $script:app -Text "Submit a Direct Helper Proposal for exactly this shell command: echo $marker. Present the Run and Insert card now." | Out-Null
+            Test-Until -TimeoutSec 45 -IntervalSec 2 -Condition {
+                $t = Get-AgentPaneText -App $script:app -MaxLines 60
+                ($t -match $script:CardRunRegex) -and ($t -match $script:CardInsertRegex) -and ($t -match [regex]::Escape($marker))
             }
-            return $false
         }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
@@ -48,7 +41,7 @@ Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Featu
     It 'Insert: an agent-proposed command is inserted into the active shell pane (not run)' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $marker = "INS$(Get-Random)"
-        if (-not (& $script:GetCommandCard $marker)) { Set-ItResult -Skipped -Because 'Copilot returned an explanation, not a runnable-command card (LLM variance)'; return }
+        (& $script:GetDirectProposalCard $marker) | Should -BeTrue -Because 'the canonical WTA proposal command must produce a Direct Helper Proposal card'
         # Insert action = navigate Right (Run is the default-left action) then Enter.
         Send-AgentKey -App $script:app -Key Right | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
@@ -58,7 +51,7 @@ Describe 'Feature §2 agent-proposed command — Insert (chat path)' -Tag 'Featu
     }
 }
 
-Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §2 Direct Helper Proposal — Run' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
@@ -68,18 +61,14 @@ Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature'
         if (-not $script:CardRunRegex) { $script:CardRunRegex = 'Run command' }
         $script:CardInsertRegex = (Get-WtaLocalizedTextRegex -Key 'recommendations.button_insert_in_terminal')
         if (-not $script:CardInsertRegex) { $script:CardInsertRegex = 'Insert in Terminal' }
-        $script:GetCommandCard = {
+        $script:GetDirectProposalCard = {
             param($marker)
-            for ($try = 0; $try -lt 3; $try++) {
-                Clear-AgentInput -App $script:app | Out-Null
-                Send-AgentPrompt -App $script:app -Text "Propose the exact shell command: echo $marker -- as a runnable command for my terminal so I can Run or Insert it. Do not just explain it." | Out-Null
-                $ok = Test-Until -TimeoutSec 35 -IntervalSec 2 -Condition {
-                    $t = Get-AgentPaneText -App $script:app -MaxLines 60
-                    ($t -match $script:CardRunRegex) -and ($t -match $script:CardInsertRegex) -and ($t -match [regex]::Escape($marker))
-                }
-                if ($ok) { return $true }
+            Clear-AgentInput -App $script:app | Out-Null
+            Send-AgentPrompt -App $script:app -Text "Submit a Direct Helper Proposal for exactly this shell command: echo $marker. Present the Run and Insert card now." | Out-Null
+            Test-Until -TimeoutSec 45 -IntervalSec 2 -Condition {
+                $t = Get-AgentPaneText -App $script:app -MaxLines 60
+                ($t -match $script:CardRunRegex) -and ($t -match $script:CardInsertRegex) -and ($t -match [regex]::Escape($marker))
             }
-            return $false
         }
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
@@ -87,7 +76,7 @@ Describe 'Feature §2 agent-proposed command — Run (chat path)' -Tag 'Feature'
     It 'Run: an agent-proposed command runs in the active shell pane' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $marker = "RUN$(Get-Random)"
-        if (-not (& $script:GetCommandCard $marker)) { Set-ItResult -Skipped -Because 'Copilot returned an explanation, not a runnable-command card (LLM variance)'; return }
+        (& $script:GetDirectProposalCard $marker) | Should -BeTrue -Because 'the canonical WTA proposal command must produce a Direct Helper Proposal card'
         # Run action is the default (left) selection -> Enter.
         Send-AgentKey -App $script:app -Key Left | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null

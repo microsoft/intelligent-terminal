@@ -1,6 +1,6 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist: Autofix with agent pane (Copilot) + Autofix across layout changes.
-# Observable: a failed command makes the agent pane render a suggestion card with
+# Release checklist: Direct Helper Autofix proposals + Autofix across layout changes.
+# Observable: a failed command makes the agent submit a typed proposal and render a card with
 # `[ Run command ]` / `Insert in Terminal` actions. IMPORTANT: autofix throttles/dedups
 # repeated identical corrections within one session, so tests that need a FRESH card each
 # (Insert / Run / Stashed) use their own fresh terminal and trigger exactly once.
@@ -33,34 +33,18 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
 
     It 'Visible agent pane autofix works (suggestion card renders)' {
         $sid = (Get-ActivePane -App $script:app).session_id
-        # Autofix sometimes returns "explain" (no card) or drops the first failure; retry
-        # distinct typos until a runnable-fix card renders.
-        $typos = @("ggit status","gti status","got status","gitt status")
-        $gotCard = $false
-        foreach ($cmd in $typos) {
-            $listener = Start-WtEventListener -App $script:app
-            try {
-                Start-Sleep -Milliseconds 400
-                Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
-                Wait-WtEvent -Listener $listener -TimeoutSec 45 -Predicate { $_.method -eq 'agent_event' } | Out-Null
-            } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { & $script:CardShown }) { $gotCard = $true; break }
-        }
-        # When the LLM returns an explanation (not a runnable-fix card) for ALL retried typos,
-        # that's model variance, not a product failure — skip like the WSL autofix case below.
-        if (-not $gotCard) {
-            Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'
-            return
-        }
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 400
+            Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
+            Wait-WtEvent -Listener $listener -TimeoutSec 45 -Predicate { $_.method -eq 'agent_event' } | Out-Null
+        } finally { Stop-WtEventListener -Listener $listener }
+        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { & $script:CardShown }) |
+            Should -BeTrue -Because 'Autofix must submit a valid Direct Helper Proposal for an obvious typo'
         (& $script:CardShown) | Should -BeTrue
     }
     It 'Autofix suggests a runnable fix (AI oracle on the card)' {
-        # Depends on the card from the previous case; if model variance produced no card this
-        # run, skip rather than fail the AI oracle on a card-less pane.
-        if (-not (& $script:CardShown)) {
-            Set-ItResult -Skipped -Because 'no autofix card rendered this run (LLM variance; see the card-render case)'
-            return
-        }
+        (& $script:CardShown) | Should -BeTrue -Because 'the previous case requires a Direct Helper Proposal card'
         Assert-AI -Claim 'The displayed card presents a shell command that the user can Run or Insert into the terminal (it has Run and Insert action buttons).' -Context (Get-AgentPaneText -App $script:app -MaxLines 60)
     }
     It 'Reject/dismiss works (Esc closes the card)' {
@@ -88,20 +72,14 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
 
     It 'Insert suggestion types the fix into the shell pane' {
         $sid = (Get-ActivePane -App $script:app).session_id
-        # Autofix may return an "explain" (no card) for some failures; retry distinct typos
-        # until a runnable-fix card with the Insert action appears.
-        $typos = @("ggit status","gti status","got status","gitt status")
-        $gotCard = $false
-        foreach ($cmd in $typos) {
-            $listener = Start-WtEventListener -App $script:app
-            try {
-                Start-Sleep -Milliseconds 400
-                Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
-                Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) { $gotCard = $true; break }
-        }
-        if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 400
+            Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
+            Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
+        } finally { Stop-WtEventListener -Listener $listener }
+        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+            Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Insert'
         Send-AgentKey -App $script:app -Key Right | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
         # No fixed settle: Assert-Pane polls (Verify.ps1) and returns as soon as the
@@ -122,18 +100,14 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
 
     It 'Run suggestion executes the fix in the shell pane' {
         $sid = (Get-ActivePane -App $script:app).session_id
-        $typos = @("ggit status","gti status","got status","gitt status")
-        $gotCard = $false
-        foreach ($cmd in $typos) {
-            $listener = Start-WtEventListener -App $script:app
-            try {
-                Start-Sleep -Milliseconds 400
-                Invoke-FailingCommand -App $script:app -SessionId $sid -Command $cmd | Out-Null
-                Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) { $gotCard = $true; break }
-        }
-        if (-not $gotCard) { Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'; return }
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 400
+            Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
+            Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
+        } finally { Stop-WtEventListener -Listener $listener }
+        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+            Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Run'
         Send-AgentKey -App $script:app -Key Left | Out-Null
         Send-AgentKey -App $script:app -Key Enter | Out-Null
         # No fixed settle: Assert-Pane polls (Verify.ps1) and returns as soon as the
@@ -255,29 +229,19 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
             Set-ItResult -Skipped -Because 'WSL shell integration not installed; autofix has no WSL shell context to read'
             return
         }
-        # bash-typos whose correct form is unmistakably Linux (ls/grep/cat), so the AI
-        # oracle can tell a bash fix from a PowerShell one (Get-ChildItem etc.). The
-        # whole point of the fix under test: with shell=wsl:<distro> in the prompt the
-        # agent must NOT fall back to PowerShell syntax.
-        $typos = @('sl -la', 'lll', 'grpe root /etc/hostname', 'caat /etc/hostname')
-        $gotCard = $false
-        foreach ($cmd in $typos) {
-            $listener = Start-WtEventListener -App $script:app
-            try {
-                Start-Sleep -Milliseconds 400
-                Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command $cmd | Out-Null
-                Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
-            } catch { } finally { Stop-WtEventListener -Listener $listener }
-            if (Test-Until -TimeoutSec 18 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) { $gotCard = $true; break }
-        }
-        if (-not $gotCard) {
-            Set-ItResult -Skipped -Because 'autofix returned explain (no runnable-fix card) for all typos this run (LLM variance)'
-            return
-        }
+        # An obvious bash typo ensures the direct proposal can be judged against
+        # the WSL shell context instead of PowerShell syntax.
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Start-Sleep -Milliseconds 400
+            Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command 'sl -la' | Out-Null
+            Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
+        } finally { Stop-WtEventListener -Listener $listener }
+        (Test-Until -TimeoutSec 30 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
+            Should -BeTrue -Because 'WSL Autofix must submit a Direct Helper Proposal'
         Assert-AI -Claim 'The suggested fix command uses Linux/bash shell syntax (e.g. ls, grep, cat, forward-slash paths). It is NOT a Windows PowerShell command (no Get-ChildItem / Select-String / cmdlet-style Verb-Noun).' -Context (Get-AgentPaneText -App $script:app -MaxLines 60)
     }
 }
-
 
 
 

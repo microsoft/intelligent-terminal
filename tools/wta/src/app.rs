@@ -107,9 +107,7 @@ use crate::commands::{
     self, CommandKind, CommandSpec, MovePositionSpec, ParseOutcome, ParsedCommand,
 };
 use crate::coordinator::{
-    parse_autofix_response, parse_recommendation_set, recommended_choice_index,
-    validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
-    RecommendationSet,
+    recommended_choice_index, RecommendationChoice, RecommendationSet,
 };
 use crate::pane_context::PaneContext;
 
@@ -1251,6 +1249,10 @@ pub enum AppEvent {
         session_id: String,
         id: String,
         status: String,
+    },
+    HideToolCall {
+        session_id: String,
+        id: String,
     },
     Plan {
         session_id: String,
@@ -2693,7 +2695,6 @@ impl App {
                     let recovery_agent_id = self.current_agent_id.clone();
                     let event_tx_for_pipe = event_tx.clone();
                     let proposal_channels = Arc::clone(&self.proposal_channels);
-                    let direct_proposals_enabled = self.current_agent_id == "copilot";
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
                             pipe_name,
@@ -2717,7 +2718,6 @@ impl App {
                             wt_connected,
                             post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                            direct_proposals_enabled,
                         )
                         .await
                         {
@@ -4827,6 +4827,7 @@ impl App {
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
+            AppEvent::HideToolCall { .. } => "hide_tool_call",
             AppEvent::Plan { .. } => "plan",
             AppEvent::PermissionRequest { .. } => "permission_request",
             AppEvent::SystemMessage(_) => "system_message",
@@ -5164,8 +5165,8 @@ impl App {
                 continue;
             };
             if tab.reveal_chars >= len {
-                // Clamp down if the visible text shrank (e.g. a fenced JSON
-                // block replaced the streamed prose).
+                // Clamp down if a turn/state replacement shortened the
+                // visible streaming text.
                 tab.reveal_chars = len;
                 continue;
             }

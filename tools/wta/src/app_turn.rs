@@ -87,8 +87,7 @@ impl App {
 
     /// Observe a streamed chunk. Thought chunks only advance the state
     /// (Submitted→Streaming with empty buffer); message chunks append to the
-    /// streaming buffer. Returns true if the buffer changed (so the caller
-    /// can decide whether to attempt an eager surface).
+    /// streaming buffer. Returns true if the user-visible buffer changed.
     pub fn turn_observe_chunk(&mut self, session_id: &str, kind: ChunkKind, text: &str) -> bool {
         // Stale-autofix check: if the chunk belongs to an autofix turn whose
         // generation no longer matches the tab's counter, drop it.
@@ -148,53 +147,20 @@ impl App {
             }
             // Thought chunks during Streaming: no buffer change.
             (TurnState::Streaming { .. }, ChunkKind::Thought) => false,
-            // Trailing chunks after the card has surfaced: drop them.
+            // A direct proposal may complete before the agent emits its final
+            // message chunks. Keep those chunks visible alongside the card.
+            (TurnState::Surfaced { .. }, ChunkKind::Message)
+                if tab.active_direct_proposal_id.is_some() =>
+            {
+                match tab.messages.last_mut() {
+                    Some(ChatMessage::Agent(existing)) => existing.push_str(text),
+                    _ => tab.messages.push(ChatMessage::Agent(text.to_string())),
+                }
+                true
+            }
             (TurnState::Surfaced { .. }, _) => false,
             // Chunks while Idle: shouldn't happen; defensive drop.
             (TurnState::Idle, _) => false,
-        }
-    }
-
-    /// Attempt to parse the streaming buffer and surface a card / chat turn
-    /// without waiting for `AgentMessageEnd`. No-op if state isn't
-    /// `Streaming`, buffer hasn't opened a fence yet, or parsing fails.
-    pub fn turn_try_eager_surface(&mut self, session_id: &str) {
-        let tab = self.session_tab(session_id);
-        let TurnState::Streaming { buf, .. } = &tab.turn else {
-            return;
-        };
-        if !buf.contains("```") {
-            return;
-        }
-        let buf = buf.clone();
-        let is_autofix = tab.turn.is_autofix();
-
-        if is_autofix {
-            match parse_autofix_response(&buf) {
-                AutofixDecision::Fix(recommendations) => {
-                    self.turn_surface_fix(session_id, recommendations, "autofix_fix_eager");
-                }
-                AutofixDecision::Explain { title, explanation } => {
-                    self.turn_surface_explain(
-                        session_id,
-                        title,
-                        explanation,
-                        "autofix_explain_eager",
-                    );
-                }
-                AutofixDecision::Ignore => {}
-            }
-        } else {
-            let parsed = parse_recommendation_set(&buf).and_then(|r| {
-                validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-            });
-            if let Ok(recommendations) = parsed {
-                self.turn_surface_recommendation(
-                    session_id,
-                    recommendations,
-                    "selection_ready_eager",
-                );
-            }
         }
     }
 
@@ -393,10 +359,9 @@ impl App {
     /// four termination paths:
     ///
     /// 1. Stale-autofix discard (newer trigger or Esc cancelled this turn).
-    /// 2. Eager surface already fired — just release the UI gate.
+    /// 2. A direct proposal already surfaced — just release the UI gate.
     /// 3. `Submitted` with no chunks — model returned nothing.
-    /// 4. `Streaming` with a buffer — final parse via the autofix or
-    ///    planner finalize helper.
+    /// 4. `Streaming` with a buffer — commit it as assistant text.
     pub fn turn_close(&mut self, session_id: &str) {
         // (1) Stale-autofix discard.
         let current_gen = self.session_tab(session_id).autofix.generation;
@@ -414,12 +379,13 @@ impl App {
             }
         }
 
-        // (2) Eager surface already fired.
+        // (2) A direct proposal already surfaced.
         if let TurnState::Surfaced {
             end_pending: true, ..
         } = &self.session_tab(session_id).turn
         {
-            self.turn_release_end_pending_logged(session_id, "via=eager+end");
+            self.turn_commit_trailing_direct_proposal_details(session_id);
+            self.turn_release_end_pending_logged(session_id, "via=direct+end");
             self.turn_clear_agent_progress(session_id);
             return;
         }
@@ -436,11 +402,12 @@ impl App {
             _ => return,
         };
 
-        // (4) Final parse on the streaming buffer.
+        // (4) Commit assistant text. Typed action cards are surfaced only by
+        // the direct proposal channel.
         if is_autofix {
-            self.turn_close_finalize_autofix(session_id, &buf);
+            self.turn_close_finalize_autofix_text(session_id, &buf);
         } else {
-            self.turn_close_finalize_planner(session_id, buf);
+            self.turn_close_finalize_chat(session_id, buf);
         }
         self.turn_clear_agent_progress(session_id);
     }
@@ -474,115 +441,91 @@ impl App {
         self.turn_clear_agent_progress(session_id);
     }
 
-    /// Path (4a): autofix Streaming buffer reached `AgentMessageEnd` with
-    /// no eager surface. Parse and route to Fix / Explain / Ignore.
-    fn turn_close_finalize_autofix(&mut self, session_id: &str, buf: &str) {
-        match parse_autofix_response(buf) {
-            AutofixDecision::Fix(recommendations) => {
-                self.turn_surface_fix(session_id, recommendations, "autofix_fix");
-                self.turn_release_end_pending(session_id);
-            }
-            AutofixDecision::Explain { title, explanation } => {
-                self.turn_surface_explain(session_id, title, explanation, "autofix_explain");
-                self.turn_release_end_pending(session_id);
-            }
-            AutofixDecision::Ignore => {
-                let target_tab = self.tab_for_session(session_id);
-                let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
-                self.log_selection_phase_for(
-                    session_id,
-                    "autofix_ignore",
-                    &format!("pane={:?}", pane_id),
-                );
-                if pane_id.is_some() {
-                    self.emit_autofix_state_cleared(&target_tab);
-                }
-                let autofix = &mut self.session_tab_mut(session_id).autofix;
-                autofix.pane_id = None;
-                autofix.armed_at = None;
-                let tab = self.session_tab_mut(session_id);
-                let prompt = tab.turn.prompt().cloned().expect("prompt set");
-                // Preserve only what the user actually saw streaming (prose
-                // or extracted `explanation`) — not the raw JSON wrapper.
-                // Any tool calls / plans that streamed during the turn are
-                // included regardless; an empty-buf+prose ignore still
-                // records them so they don't get stranded on screen.
-                let visible = ui::chat::user_visible_stream_text(buf).map(|c| c.into_owned());
-                let mut details = tab.current_turn_details();
-                if let Some(visible) = visible {
-                    details.push(ChatMessage::Agent(visible));
-                }
-                if !details.is_empty() {
-                    tab.completed_turns.push(CompletedTurn {
-                        prompt: t!("chat.autofix_prompt_label").into_owned(),
-                        details,
-                        expanded: true,
-                        trailing_marker: None,
-                    });
-                }
-                // Always clear in-flight UI state on Ignore — even if there
-                // was nothing to commit, lingering tool-call rows would look
-                // like an active turn.
-                tab.messages.clear();
-                tab.tool_calls.clear();
-                tab.scroll_to_bottom();
-                tab.turn = TurnState::Surfaced {
-                    prompt,
-                    outcome: TurnOutcome::Empty,
-                    end_pending: false,
-                };
-            }
+    /// Path (4a): Autofix assistant text is an explanation, never an action
+    /// proposal. A non-empty response is surfaced as chat; an empty response
+    /// clears the pending Autofix state.
+    fn turn_close_finalize_autofix_text(&mut self, session_id: &str, buf: &str) {
+        if !buf.trim().is_empty() {
+            self.turn_surface_autofix_text(session_id, buf.to_string(), "autofix_text");
+            self.turn_release_end_pending(session_id);
+            return;
         }
+
+        let target_tab = self.tab_for_session(session_id);
+        let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
+        self.log_selection_phase_for(
+            session_id,
+            "autofix_empty",
+            &format!("pane={:?}", pane_id),
+        );
+        if pane_id.is_some() {
+            self.emit_autofix_state_cleared(&target_tab);
+        }
+        let autofix = &mut self.session_tab_mut(session_id).autofix;
+        autofix.pane_id = None;
+        autofix.armed_at = None;
+        let tab = self.session_tab_mut(session_id);
+        let prompt = tab.turn.prompt().cloned().expect("prompt set");
+        let details = tab.current_turn_details();
+        if !details.is_empty() {
+            tab.completed_turns.push(CompletedTurn {
+                prompt: t!("chat.autofix_prompt_label").into_owned(),
+                details,
+                expanded: true,
+                trailing_marker: None,
+            });
+        }
+        tab.messages.clear();
+        tab.tool_calls.clear();
+        tab.scroll_to_bottom();
+        tab.turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::Empty,
+            end_pending: false,
+        };
     }
 
-    /// Path (4b): non-autofix Streaming buffer. Try `RecommendationSet`
-    /// parse first; on failure, commit as a chat turn (chat-mode answer).
-    fn turn_close_finalize_planner(&mut self, session_id: &str, buf: String) {
-        let parsed = parse_recommendation_set(&buf).and_then(|r| {
-            validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
+    /// Path (4b): non-Autofix assistant text is always committed as chat.
+    fn turn_close_finalize_chat(&mut self, session_id: &str, buf: String) {
+        self.log_selection_phase_for(
+            session_id,
+            "assistant_text",
+            &format!("response_chars={}", buf.chars().count()),
+        );
+        let tab = self.session_tab_mut(session_id);
+        let prompt = tab.turn.prompt().cloned().expect("prompt set");
+        let mut details = tab.current_turn_details();
+        details.push(ChatMessage::Agent(buf));
+        tab.completed_turns.push(CompletedTurn {
+            prompt: prompt.text.clone(),
+            details,
+            expanded: true,
+            trailing_marker: None,
         });
-        match parsed {
-            Ok(recommendations) => {
-                self.turn_surface_recommendation(session_id, recommendations, "selection_ready");
-                self.turn_release_end_pending(session_id);
-            }
-            Err(err) => {
-                let chars = buf.chars().count();
-                let error_text = format!("{:#}", err).replace('\n', " | ");
-                self.log_selection_phase_for(
-                    session_id,
-                    "selection_parse_failed",
-                    &format!("response_chars={} error={:?}", chars, error_text),
-                );
-                let tab = self.session_tab_mut(session_id);
-                let prompt = tab.turn.prompt().cloned().expect("prompt set");
-                let mut details = tab.current_turn_details();
-                details.push(ChatMessage::Agent(buf));
-                tab.completed_turns.push(CompletedTurn {
-                    prompt: prompt.text.clone(),
-                    details,
-                    expanded: true,
-                    trailing_marker: None,
-                });
-                tab.messages.clear();
-                tab.tool_calls.clear();
-                tab.scroll_to_bottom();
-                // Route through `turn_release_end_pending` so
-                // `prompt_complete` fires on this terminal path too.
-                tab.turn = TurnState::Surfaced {
-                    prompt,
-                    outcome: TurnOutcome::ChatTurn,
-                    end_pending: true,
-                };
-                self.turn_release_end_pending(session_id);
-            }
-        }
+        tab.messages.clear();
+        tab.tool_calls.clear();
+        tab.scroll_to_bottom();
+        tab.turn = TurnState::Surfaced {
+            prompt,
+            outcome: TurnOutcome::ChatTurn,
+            end_pending: true,
+        };
+        self.turn_release_end_pending(session_id);
     }
 
-    /// Variant of `turn_release_end_pending` with a custom `via=` log tag
-    /// for the eager-surface path. `turn_release_end_pending` uses
-    /// `via=end_only`; `via=eager+end` lets `prompt_timing` consumers
-    /// distinguish.
+    fn turn_commit_trailing_direct_proposal_details(&mut self, session_id: &str) {
+        let tab = self.session_tab_mut(session_id);
+        let trailing = tab.current_turn_details();
+        if let Some(completed) = tab.completed_turns.last_mut() {
+            completed.details.extend(trailing);
+        }
+        tab.messages.clear();
+        tab.tool_calls.clear();
+        tab.scroll_to_bottom();
+    }
+
+    /// Variant of `turn_release_end_pending` with a custom `via=` log tag for
+    /// the direct-proposal path.
     fn turn_release_end_pending_logged(&mut self, session_id: &str, via: &str) {
         let tab = self.session_tab_mut(session_id);
         if let TurnState::Surfaced {
@@ -710,7 +653,7 @@ impl App {
             let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
             last.trailing_marker = Some(marker);
         }
-        // commit pending turn (in case eager surface staged one).
+        // Preserve the surfaced turn until the matching AgentMessageEnd.
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Empty,
@@ -820,7 +763,7 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    // ── Internal surface helpers (shared between eager and end-of-turn). ──
+    // ── Internal surface helpers. ──
 
     /// Surface a planner-mode recommendation card.
     fn turn_surface_recommendation(
@@ -844,6 +787,14 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
+        if let Some(text) = tab
+            .turn
+            .buffer()
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_string)
+        {
+            details.push(ChatMessage::Agent(text));
+        }
         details.push(ChatMessage::Agent(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: prompt.text.clone(),
@@ -926,6 +877,14 @@ impl App {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let mut details = tab.current_turn_details();
+        if let Some(text) = tab
+            .turn
+            .buffer()
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_string)
+        {
+            details.push(ChatMessage::Agent(text));
+        }
         details.push(ChatMessage::Agent(summary));
         tab.completed_turns.push(CompletedTurn {
             prompt: turn_prompt_label,
@@ -952,13 +911,13 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// Surface an autofix Explain answer as a chat turn + bottom-bar
-    /// Suggested indicator.
-    fn turn_surface_explain(
+    /// Surface Autofix assistant text as a chat turn plus bottom-bar
+    /// Suggested indicator. Action cards arrive through the direct proposal
+    /// channel and do not use this path.
+    fn turn_surface_autofix_text(
         &mut self,
         session_id: &str,
-        title: String,
-        explanation: String,
+        text: String,
         phase_name: &str,
     ) {
         let target_pane_id = self
@@ -978,17 +937,14 @@ impl App {
         self.log_selection_phase_for(
             session_id,
             phase_name,
-            &format!(
-                "pane={bar_pane:?} title={title:?} chars={}",
-                explanation.chars().count()
-            ),
+            &format!("pane={bar_pane:?} chars={}", text.chars().count()),
         );
 
         let turn_prompt_label = t!("chat.autofix_prompt_label").into_owned();
         {
             let tab = self.session_tab_mut(session_id);
             let mut details = tab.current_turn_details();
-            details.push(ChatMessage::Agent(explanation));
+            details.push(ChatMessage::Agent(text));
             // Auto-expand the auto-diagnosed-error turn: when the user
             // clicks the Suggested pill they came here specifically to
             // read the explanation, so showing the collapsed preview
@@ -1032,8 +988,7 @@ impl App {
         };
     }
 
-    /// Flip `end_pending=false` after a final-path surface. Mirrors the
-    /// `prompt_complete` log used by the eager path.
+    /// Flip `end_pending=false` after a final-path surface.
     fn turn_release_end_pending(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         if let TurnState::Surfaced {

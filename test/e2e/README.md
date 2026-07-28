@@ -7,8 +7,9 @@ Design rationale is captured in the inline notes below and in each suite's heade
 ## Release-checklist coverage
 
 The `tests/` folder implements the `[E2E]` items from
-`doc/release-check-list.md` that are automatable in a single-machine, Copilot-only
-environment. Current status (run on the Store package):
+`doc/release-check-list.md` that are automatable on one machine. Copilot drives
+the baseline suites, while the agent matrix covers other installed and
+authenticated ACP agents. Current status (run on the Store package):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
@@ -18,12 +19,12 @@ environment. Current status (run on the Store package):
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation | 3 |
-| `Feature.AutofixPane.Tests.ps1` | autofix card render/insert/run/reject/target/stashed + across layout | 10 |
+| `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.AgentRestart.Tests.ps1` | agent restart after a settings change (/restart reconnects and answers) | 1 |
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
-| `Feature.AgentProposedCommand.Tests.ps1` | §2 agent-proposed command Insert/Run into the shell pane (non-autofix chat path) | 2 |
+| `Feature.AgentProposedCommand.Tests.ps1` | §2 Direct Helper Proposal Insert/Run into the shell pane | 2 |
 | `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.PerTabAgent.Tests.ps1` | C225-C228 + PR #487: `/agent` picker/prefix completion/direct selection, invalid-id safety, per-tab isolation/shared-master reuse, and global-default/override behavior | 8 |
 | `Feature.WslAgentBackend.Tests.ps1` | PR #481 profile-scoped WSL agent backend: settings hot reload, helper/master source routing, and authenticated chat | 2 (environment-gated) |

@@ -539,16 +539,8 @@ impl App {
                 tab.pending_agent_response.push_str(&text);
 
                 // Append to the streaming buffer. The state machine drops
-                // late chunks and handles the stale-autofix generation check
-                // before returning whether the buffer actually grew.
-                let advanced = self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
-
-                // Surface the card the moment the streamed JSON parses,
-                // instead of waiting for AgentMessageEnd (gated behind
-                // Copilot's Stop/SessionEnd hooks, ~8s on Windows).
-                if advanced {
-                    self.turn_try_eager_surface(&session_id);
-                }
+                // late chunks and handles the stale-autofix generation check.
+                self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
                 // Replayed historical user prompt from a `session/load`
@@ -628,6 +620,13 @@ impl App {
                         }
                     }
                 }
+            }
+            AppEvent::HideToolCall { session_id, id } => {
+                let tab = self.session_tab_mut(&session_id);
+                tab.tool_calls.remove(&id);
+                tab.messages.retain(
+                    |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
+                );
             }
             AppEvent::Plan {
                 session_id,

@@ -2,10 +2,8 @@
 
 ## Status
 
-Implemented design. This document supersedes the MCP-based work in PR #428 and
-the CLI-to-master routing originally implemented for PR #484. MCP is not part
-of the repository architecture. Terminal-action proposals do not transit
-through wta-master.
+Implemented direct-only design. Terminal-action proposals travel from a
+short-lived WTA CLI to the owning Helper.
 
 ## Summary
 
@@ -25,6 +23,9 @@ The proposal command cannot mutate Windows Terminal. It can only ask the
 owning Helper to display a recommendation card. The existing card confirmation
 remains the sole mutation boundary.
 
+ACP Assistant text is always chat content. It is rendered verbatim and is never
+parsed into terminal actions or recommendation cards.
+
 wta-master remains responsible for the shared agent process, ACP multiplexing,
 session-to-Helper routing, and forwarding permission requests to the Helper
 that owns the ACP session. It does not mint proposal tokens, receive proposal
@@ -40,13 +41,13 @@ payloads, correlate proposal results, or acknowledge cards.
 - Give the agent immediate validation feedback and final user-decision feedback.
 - Preserve the existing Run, Insert, Open, Split, and Delegate card UI.
 - Preserve exactly one visible user confirmation before terminal mutation.
-- Keep assistant-text parsing as a compatibility fallback during rollout.
 
 ## Non-goals
 
 - Reintroducing MCP or adding another shared server.
 - Using wta-master as a proposal router.
 - Letting the proposal CLI execute terminal actions.
+- Parsing terminal actions from ACP Assistant text.
 - Treating arbitrary model-authored shell commands as trusted.
 - Proving that arbitrary proposed shell input is non-destructive.
 - Reporting whether a confirmed shell command eventually succeeded.
@@ -116,6 +117,11 @@ argument, or alternate executable spelling.
 The Helper uses one renderer/parser implementation for prompt generation and
 permission matching. It does not infer safety from the agent-authored tool
 title.
+
+The permission request must describe one execute operation with a `command`
+field and a single-entry `commands` array containing the same canonical command.
+Agent adapters that emit another permission envelope fail arming and therefore
+surface their integration gap instead of falling back to Assistant text.
 
 Permission policy has three outcomes:
 
@@ -316,11 +322,12 @@ The direct-pipe design does not claim process attestation. This residual risk
 is bounded because the CLI only proposes a visible card and user confirmation
 is still required before mutation.
 
-## Rollout and validation
+## Validation
 
-Direct Helper routing is enabled for Copilot first. Assistant-text parsing
-remains the fallback until each built-in agent proves canonical command,
-permission, and Windows/WSL reachability behavior.
+Direct Helper routing is the only card-producing path for every configured ACP
+agent. Integrations must prove canonical command execution, permission routing,
+and Windows/WSL reachability directly; Assistant text cannot mask a broken
+proposal path.
 
 Automated and live coverage must include:
 
@@ -332,7 +339,8 @@ Automated and live coverage must include:
 - card confirm, cancel, supersede, timeout, and Helper shutdown;
 - `/stop`, `/new`, session load, `/restart`, stash/restore, tab/window close;
 - multi-tab and multi-window isolation;
-- no Permission UI for an exact canonical Copilot proposal;
+- no Permission UI for an exact canonical proposal;
+- Assistant JSON remains visible chat text and never surfaces a card;
 - no terminal mutation before card confirmation;
 - explicit Windows-target WTA build and packaged live verification.
 
