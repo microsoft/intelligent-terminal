@@ -2833,6 +2833,10 @@ impl App {
     pub fn set_custom_models(&mut self, models: Vec<CustomModelOption>) {
         self.custom_models = models
             .into_iter()
+            .map(|model| CustomModelOption {
+                selection_id: model.selection_id.trim().to_string(),
+                model_id: model.model_id.trim().to_string(),
+            })
             .filter(|model| !model.selection_id.is_empty() && !model.model_id.is_empty())
             .collect();
         let advertised = std::mem::take(&mut self.available_models);

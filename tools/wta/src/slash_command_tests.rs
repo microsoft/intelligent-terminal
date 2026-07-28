@@ -296,6 +296,38 @@ fn custom_provider_models_replace_agent_duplicates_and_keep_byok_identity() {
 }
 
 #[test]
+fn custom_provider_models_normalize_metadata_and_drop_empty_entries() {
+    let mut app = test_app();
+    app.set_custom_model_selection(Some("  custom:provider:model  ".into()));
+    app.set_custom_models(vec![
+        CustomModelOption {
+            selection_id: "  custom:provider:model  ".into(),
+            model_id: "  provider/model  ".into(),
+        },
+        CustomModelOption {
+            selection_id: "   ".into(),
+            model_id: "  ignored/model  ".into(),
+        },
+        CustomModelOption {
+            selection_id: "  custom:provider:ignored  ".into(),
+            model_id: "   ".into(),
+        },
+    ]);
+
+    assert_eq!(
+        app.custom_models,
+        vec![CustomModelOption {
+            selection_id: "custom:provider:model".into(),
+            model_id: "provider/model".into(),
+        }]
+    );
+    assert_eq!(app.available_models.len(), 1);
+    assert_eq!(app.available_models[0].id, "custom:provider:model");
+    assert_eq!(app.available_models[0].name, "provider/model (BYOK)");
+    assert_eq!(app.current_model_id.as_deref(), Some("custom:provider:model"));
+}
+
+#[test]
 fn cloud_and_byok_models_with_the_same_id_remain_distinct() {
     let mut app = test_app();
     app.set_cloud_models(vec![AcpModelInfo {
