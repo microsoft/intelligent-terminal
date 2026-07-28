@@ -1,3 +1,5 @@
+//! Per-pane helper runtime bootstrap and orchestration.
+
 use anyhow::Result;
 use crossterm::{
     cursor::{SetCursorStyle, Show},

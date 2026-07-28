@@ -8,18 +8,18 @@
 // is passed in and speaks ACP JSON-RPC over it. From the helper's
 // perspective, master IS the agent.
 //
-// The helper implementation lives in `helper/tui.rs`: WT connection,
+// The helper implementation lives in `helper/runtime.rs`: WT connection,
 // terminal lifecycle, channel wiring, and the event loop.
 
 use anyhow::Result;
 
 use crate::Cli;
 
-mod tui;
+mod runtime;
 
 /// Helper-mode entry point. Routes the ACP traffic through a named pipe
 /// to the wta-master singleton instead of spawning a private agent CLI
 /// subprocess.
 pub async fn run_helper_mode(cli: Cli, pipe_name: String) -> Result<()> {
-    tui::run_default_tui_over_pipe(cli, pipe_name).await
+    runtime::run_default_tui_over_pipe(cli, pipe_name).await
 }
