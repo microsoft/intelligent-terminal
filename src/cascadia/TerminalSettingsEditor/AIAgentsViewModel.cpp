@@ -679,7 +679,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 _GlobalSettings.CustomModelSelection(L"");
             }
         }
-        _NotifyChanges(L"AcpModel");
+        _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
     }
 
     bool AIAgentsViewModel::ShowAcpModel()

@@ -53,7 +53,7 @@ async fn probe_models_impl(
     let mut spawned = if without_byok {
         spawn_agent_process_without_byok(agent_cmd, None, agent_id)?
     } else {
-        spawn_agent_process(agent_cmd, None, None)?
+        spawn_agent_process(agent_cmd, None, agent_id)?
     };
     tracing::debug!(
         "probe spawned: program={} is_npx={} pid={:?}",

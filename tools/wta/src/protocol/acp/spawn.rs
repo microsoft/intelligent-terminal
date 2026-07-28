@@ -251,15 +251,7 @@ fn spawn_agent_process_impl(
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
-    let inferred_agent_id;
-    let agent_id = match agent_id {
-        Some(id) => id,
-        None => {
-            inferred_agent_id = crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd);
-            inferred_agent_id
-        }
-    };
-    let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
+    let profile = resolve_spawn_profile(agent_cmd, agent_id);
     let byok_mode = if apply_byok {
         profile.byok_mode
     } else {
@@ -345,6 +337,15 @@ fn spawn_agent_process_impl(
     })
 }
 
+fn resolve_spawn_profile(
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+) -> &'static crate::agent_registry::AgentProfile {
+    let agent_id =
+        agent_id.unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    crate::agent_registry::lookup_profile_by_id(agent_id)
+}
+
 /// Convert a BCP-47 locale tag (e.g. `zh-CN`, `gd-gb`) to the POSIX
 /// `LANG`/`LC_ALL` form (e.g. `zh_CN.UTF-8`, `gd_GB.UTF-8`).
 ///
@@ -384,6 +385,18 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_agent_id_overrides_command_inference() {
+        assert_eq!(
+            resolve_spawn_profile("copilot --acp --stdio", None).byok_mode,
+            crate::agent_registry::ByokMode::CopilotProviderEnvironment
+        );
+        assert_eq!(
+            resolve_spawn_profile("copilot --acp --stdio", Some("custom:test-agent")).byok_mode,
+            crate::agent_registry::ByokMode::Unsupported
+        );
+    }
 
     #[test]
     fn stderr_log_promotes_only_failed_startup_lines() {
