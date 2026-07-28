@@ -7729,7 +7729,7 @@ fn direct_proposal_stale_when_autofix_generation_diverges() {
 #[test]
 fn direct_proposal_rejects_unsupported_schema_version() {
     let mut app = test_app();
-    let sid = "sess-proposal-badschema";
+    let sid = "sess-proposal-bad-schema";
     stage_proposal_session(&mut app, sid);
     submit_prompt_for_session(&mut app, sid, "please help", None);
 
@@ -7763,7 +7763,7 @@ fn direct_proposal_rejects_malformed_schema_as_retryable() {
 #[test]
 fn direct_proposal_rejects_origin_mismatch_with_live_turn() {
     let mut app = test_app();
-    let sid = "sess-proposal-originmismatch";
+    let sid = "sess-proposal-origin-mismatch";
     stage_proposal_session(&mut app, sid);
     submit_prompt_for_session(&mut app, sid, "please help", None);
 
@@ -7778,7 +7778,7 @@ fn direct_proposal_rejects_origin_mismatch_with_live_turn() {
 }
 
 #[test]
-fn direct_proposal_rejects_policy_violation_as_nonretryable() {
+fn direct_proposal_rejects_policy_violation_as_non_retryable() {
     let mut app = test_app();
     let sid = "sess-proposal-policy";
     stage_proposal_session(&mut app, sid);
