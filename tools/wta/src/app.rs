@@ -3043,9 +3043,8 @@ impl App {
         self.current_tab().model_picker_open
     }
 
-    /// `/model [id]` — switch this pane's model. With an argument, match it
-    /// against the agent's advertised list and apply directly; bare `/model`
-    /// opens the interactive picker.
+    /// `/model [id]` — live-switch this pane's model. Models that require an
+    /// agent restart remain visible but can only be selected in Settings.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
         if self.available_models.is_empty() {
@@ -3071,7 +3070,8 @@ impl App {
             })
             .map(|m| m.id.clone());
         match matched {
-            Some(id) => self.apply_model_pick(id),
+            Some(id) if self.model_pick_enabled(&id) => self.apply_model_pick(id),
+            Some(_) => self.open_model_picker(),
             None => {
                 let tab = self.current_tab_mut();
                 tab.messages.push(ChatMessage::System(
@@ -3092,14 +3092,14 @@ impl App {
         if self.available_models.is_empty() {
             return;
         }
-        let current = self
-            .current_tab()
-            .model_override
-            .clone()
-            .or_else(|| self.current_model_id.clone())
-            .or_else(|| self.acp_model.clone());
+        let current = self.current_model_id_for_picker().map(str::to_string);
         let selected = current
             .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
+            .or_else(|| {
+                self.available_models
+                    .iter()
+                    .position(|model| self.model_pick_enabled(&model.id))
+            })
             .unwrap_or(0);
         let tab = self.current_tab_mut();
         tab.agent_picker_open = false;
@@ -3112,19 +3112,21 @@ impl App {
     }
 
     fn model_picker_up(&mut self) {
-        let tab = self.current_tab_mut();
-        if tab.model_picker_selected > 0 {
-            tab.model_picker_selected -= 1;
+        let selected = self.current_tab().model_picker_selected;
+        if let Some(next) = (0..selected)
+            .rev()
+            .find(|&index| self.model_pick_enabled(&self.available_models[index].id))
+        {
+            self.current_tab_mut().model_picker_selected = next;
         }
     }
 
     fn model_picker_down(&mut self) {
-        // `saturating_sub` keeps this safe if the model list is empty while
-        // the picker is somehow open (len 0 -> last index clamps to 0).
-        let last = self.available_models.len().saturating_sub(1);
-        let tab = self.current_tab_mut();
-        if tab.model_picker_selected < last {
-            tab.model_picker_selected += 1;
+        let selected = self.current_tab().model_picker_selected;
+        if let Some(next) = ((selected + 1)..self.available_models.len())
+            .find(|&index| self.model_pick_enabled(&self.available_models[index].id))
+        {
+            self.current_tab_mut().model_picker_selected = next;
         }
     }
 
@@ -3132,10 +3134,39 @@ impl App {
     fn commit_model_pick(&mut self) {
         let idx = self.current_tab().model_picker_selected;
         let id = self.available_models.get(idx).map(|m| m.id.clone());
-        self.close_model_picker();
-        if let Some(id) = id {
+        if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
+            self.close_model_picker();
             self.apply_model_pick(id);
         }
+    }
+
+    fn current_model_id_for_picker(&self) -> Option<&str> {
+        let selected_custom = self.custom_model_selection.as_deref().and_then(|selected| {
+            self.custom_models
+                .iter()
+                .find(|model| model.selection_id == selected)
+                .map(|model| model.selection_id.as_str())
+        });
+        self.current_tab()
+            .model_override
+            .as_deref()
+            .or(selected_custom)
+            .or(self.current_model_id.as_deref())
+            .or(self.acp_model.as_deref())
+    }
+
+    fn is_custom_model(&self, model_id: &str) -> bool {
+        self.custom_models
+            .iter()
+            .any(|model| model.selection_id == model_id)
+    }
+
+    /// `/model` is a live-switch surface only. Cloud sessions may switch
+    /// between cloud models. Entering, leaving, or changing BYOK requires a
+    /// process restart and is therefore reserved for Settings.
+    fn model_pick_enabled(&self, model_id: &str) -> bool {
+        self.current_model_id_for_picker() == Some(model_id)
+            || (self.custom_model_selection.is_none() && !self.is_custom_model(model_id))
     }
 
     /// Pin the active pane to `model_id`: record the per-pane override, mirror
@@ -3144,39 +3175,10 @@ impl App {
     /// and `/model <id>`. If no session is live yet, the override is stored
     /// and `SessionAttached` applies it via `effective_model_for_tab`.
     fn apply_model_pick(&mut self, model_id: String) {
-        if self
-            .custom_models
-            .iter()
-            .any(|model| model.selection_id == model_id)
-        {
-            let (Some(window_id), Some(tab_id)) =
-                (self.window_id.as_deref(), self.owner_tab_id.as_deref())
-            else {
-                self.push_agent_switch_unavailable();
-                return;
-            };
-            send_wt_protocol_event(build_switch_custom_model_event(
-                window_id,
-                tab_id,
-                &self.current_agent_id,
-                &model_id,
-            ));
+        if self.current_model_id_for_picker() == Some(model_id.as_str()) {
             return;
         }
-
-        if self.custom_model_selection.is_some() {
-            let (Some(window_id), Some(tab_id)) =
-                (self.window_id.as_deref(), self.owner_tab_id.as_deref())
-            else {
-                self.push_agent_switch_unavailable();
-                return;
-            };
-            send_wt_protocol_event(build_switch_cloud_model_event(
-                window_id,
-                tab_id,
-                &self.current_agent_id,
-                &model_id,
-            ));
+        if !self.model_pick_enabled(&model_id) {
             return;
         }
 
@@ -8016,23 +8018,17 @@ impl App {
         // Same precedence as `current_model_display`: override → agent's
         // reported model → global `acpModel`, so the picker marks the pane's
         // effective model even before the agent reports `current_model_id`.
-        let selected_custom = self.custom_model_selection.as_deref().and_then(|selected| {
-            self.custom_models
-                .iter()
-                .find(|model| model.selection_id == selected)
-                .map(|model| model.selection_id.as_str())
-        });
-        let current_id = tab
-            .model_override
-            .as_deref()
-            .or(selected_custom)
-            .or(self.current_model_id.as_deref())
-            .or(self.acp_model.as_deref());
+        let current_id = self.current_model_id_for_picker();
         Some(crate::ui::ModelPopupState {
             models: &self.available_models,
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
             current_id,
+            disabled: self
+                .available_models
+                .iter()
+                .map(|model| !self.model_pick_enabled(&model.id))
+                .collect(),
         })
     }
 
@@ -10138,44 +10134,6 @@ fn build_switch_agent_event(window_id: &str, tab_id: &str, agent_id: &str) -> St
             "window_id": window_id,
             "tab_id": tab_id,
             "agent_id": agent_id,
-        }
-    })
-    .to_string()
-}
-
-fn build_switch_custom_model_event(
-    window_id: &str,
-    tab_id: &str,
-    agent_id: &str,
-    selection_id: &str,
-) -> String {
-    serde_json::json!({
-        "type": "event",
-        "method": "switch_agent",
-        "params": {
-            "window_id": window_id,
-            "tab_id": tab_id,
-            "agent_id": agent_id,
-            "custom_model_selection": selection_id,
-        }
-    })
-    .to_string()
-}
-
-fn build_switch_cloud_model_event(
-    window_id: &str,
-    tab_id: &str,
-    agent_id: &str,
-    model_id: &str,
-) -> String {
-    serde_json::json!({
-        "type": "event",
-        "method": "switch_agent",
-        "params": {
-            "window_id": window_id,
-            "tab_id": tab_id,
-            "agent_id": agent_id,
-            "model_id": model_id,
         }
     })
     .to_string()

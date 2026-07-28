@@ -358,6 +358,106 @@ fn slash_model_direct_switch_sets_override() {
 }
 
 #[test]
+fn slash_model_disables_byok_choices_while_cloud_is_active() {
+    let mut app = test_app();
+    app.available_models = vec![
+        AcpModelInfo { id: "cloud".into(), name: "Cloud".into(), description: None },
+        AcpModelInfo {
+            id: "custom:provider:local".into(),
+            name: "Local (BYOK)".into(),
+            description: None,
+        },
+    ];
+    app.set_custom_models(vec![CustomModelOption {
+        selection_id: "custom:provider:local".into(),
+        model_id: "local".into(),
+    }]);
+    app.current_model_id = Some("cloud".into());
+
+    let state = {
+        app.open_model_picker();
+        app.model_popup_state().expect("picker state")
+    };
+    assert_eq!(state.disabled, vec![false, true]);
+
+    run_slash_args(&mut app, "model", "custom:provider:local");
+    assert_eq!(app.current_tab().model_override, None);
+    assert!(app.current_tab().model_picker_open);
+}
+
+#[test]
+fn slash_model_locks_non_current_choices_while_byok_is_active() {
+    let mut app = test_app();
+    let selected = "custom:provider:local";
+    app.available_models = vec![
+        AcpModelInfo { id: "cloud".into(), name: "Cloud".into(), description: None },
+        AcpModelInfo {
+            id: selected.into(),
+            name: "Local (BYOK)".into(),
+            description: None,
+        },
+        AcpModelInfo {
+            id: "custom:provider:other".into(),
+            name: "Other (BYOK)".into(),
+            description: None,
+        },
+    ];
+    app.set_custom_models(vec![
+        CustomModelOption { selection_id: selected.into(), model_id: "local".into() },
+        CustomModelOption {
+            selection_id: "custom:provider:other".into(),
+            model_id: "other".into(),
+        },
+    ]);
+    app.set_custom_model_selection(Some(selected.into()));
+
+    app.open_model_picker();
+    let state = app.model_popup_state().expect("picker state");
+    assert_eq!(state.current_id, Some(selected));
+    assert_eq!(state.disabled, vec![true, false, true]);
+
+    run_slash_args(&mut app, "model", "cloud");
+    assert_eq!(app.current_tab().model_override, None);
+    assert!(app.current_tab().model_picker_open);
+}
+
+#[test]
+fn model_picker_navigation_skips_restart_required_choices() {
+    let mut app = test_app();
+    app.set_custom_models(vec![CustomModelOption {
+        selection_id: "custom:provider:local".into(),
+        model_id: "local".into(),
+    }]);
+    app.available_models = vec![
+        AcpModelInfo { id: "cloud-one".into(), name: "Cloud One".into(), description: None },
+        AcpModelInfo {
+            id: "custom:provider:local".into(),
+            name: "Local (BYOK)".into(),
+            description: None,
+        },
+        AcpModelInfo { id: "cloud-two".into(), name: "Cloud Two".into(), description: None },
+    ];
+    app.current_model_id = Some("cloud-one".into());
+
+    app.open_model_picker();
+    app.model_picker_down();
+    assert_eq!(app.current_tab().model_picker_selected, 2);
+    app.model_picker_up();
+    assert_eq!(app.current_tab().model_picker_selected, 0);
+
+    app.set_custom_model_selection(Some("custom:provider:local".into()));
+    app.open_model_picker();
+    assert_eq!(app.current_tab().model_picker_selected, 1);
+    app.model_picker_down();
+    app.model_picker_up();
+    assert_eq!(
+        app.current_tab().model_picker_selected,
+        1,
+        "BYOK mode must stay locked to its current model"
+    );
+}
+
+#[test]
 fn slash_move_changes_only_the_active_tab() {
     let mut app = test_app();
     app.tab_sessions
@@ -434,37 +534,6 @@ fn switch_agent_event_is_scoped_to_window_and_tab() {
     assert_eq!(event["params"]["window_id"], "42");
     assert_eq!(event["params"]["tab_id"], "{tab-guid}");
     assert_eq!(event["params"]["agent_id"], "claude");
-}
-
-#[test]
-fn switch_custom_model_event_carries_validated_selection_metadata() {
-    let payload = build_switch_custom_model_event(
-        "42",
-        "{tab-guid}",
-        "opencode",
-        "custom:provider-one:qwen/qwen3.5-9b",
-    );
-    let event: serde_json::Value = serde_json::from_str(&payload).expect("valid event json");
-    assert_eq!(event["method"], "switch_agent");
-    assert_eq!(event["params"]["window_id"], "42");
-    assert_eq!(event["params"]["tab_id"], "{tab-guid}");
-    assert_eq!(event["params"]["agent_id"], "opencode");
-    assert_eq!(
-        event["params"]["custom_model_selection"],
-        "custom:provider-one:qwen/qwen3.5-9b"
-    );
-}
-
-#[test]
-fn switch_cloud_model_event_carries_model_metadata() {
-    let payload =
-        build_switch_cloud_model_event("42", "{tab-guid}", "copilot", "claude-sonnet-5");
-    let event: serde_json::Value = serde_json::from_str(&payload).expect("valid event json");
-    assert_eq!(event["method"], "switch_agent");
-    assert_eq!(event["params"]["window_id"], "42");
-    assert_eq!(event["params"]["tab_id"], "{tab-guid}");
-    assert_eq!(event["params"]["agent_id"], "copilot");
-    assert_eq!(event["params"]["model_id"], "claude-sonnet-5");
 }
 
 // ---- Degraded (transport-lost) gating: only /restart runs ----

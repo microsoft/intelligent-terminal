@@ -1,9 +1,10 @@
 //! `/model` picker modal.
 //!
 //! Opened by the `/model` slash command (`App::cmd_model`), this overlay
-//! lists the models the connected ACP agent advertised for the session and
-//! lets the user pin *this pane* to one of them — a per-pane override that
-//! wins over the global `acpModel` setting. Modeled on the slash-command
+//! lists the models available to the connected ACP agent. Only models the
+//! current process can apply live are selectable; restart-required choices
+//! remain visible but dimmed and must be changed in Settings. Modeled on the
+//! slash-command
 //! autocomplete popup (`command_popup.rs`): anchored above the input box,
 //! arrow keys move the highlight, Enter commits, Esc dismisses (all handled
 //! in `App::handle_key`).
@@ -28,6 +29,8 @@ pub struct ModelPopupState<'a> {
     /// Id of the model the pane is currently effectively on, if any — drawn
     /// with a leading marker so the user can see "where we are".
     pub current_id: Option<&'a str>,
+    /// Rows that require an agent restart and can only be changed in Settings.
+    pub disabled: Vec<bool>,
 }
 
 /// Render the model picker just above `input_area`, falling back to below
@@ -45,8 +48,10 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
     let items: Vec<ListItem> = state
         .models
         .iter()
-        .map(|m| {
+        .enumerate()
+        .map(|(index, m)| {
             let is_current = state.current_id == Some(m.id.as_str());
+            let disabled = state.disabled.get(index).copied().unwrap_or(false);
             let marker = if is_current {
                 CURRENT_MARKER
             } else {
@@ -54,7 +59,7 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
             };
             let mut spans = vec![Span::styled(
                 format!(" {marker}{}", m.name),
-                theme::INPUT_TEXT,
+                if disabled { theme::DIM } else { theme::INPUT_TEXT },
             )];
             // Show the raw id when it differs from the display name, plus the
             // optional one-line description, both dimmed. Custom BYOK entries
