@@ -1141,6 +1141,26 @@ namespace winrt::TerminalApp::implementation
         return Json::writeString(writer, options);
     }
 
+    static std::string _SerializeCloudModelOptions(const winrt::hstring& agentId)
+    {
+        Json::Value options{ Json::arrayValue };
+        for (const auto& model :
+             winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current().AvailableModels(agentId))
+        {
+            Json::Value option{ Json::objectValue };
+            option["id"] = winrt::to_string(model.Id());
+            option["name"] = winrt::to_string(model.DisplayName());
+            if (!model.Description().empty())
+            {
+                option["description"] = winrt::to_string(model.Description());
+            }
+            options.append(std::move(option));
+        }
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        return Json::writeString(writer, options);
+    }
+
     static bool _IsAgentByokConfigured(
         const winrt::hstring& agentId,
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals) noexcept
@@ -2171,6 +2191,9 @@ namespace winrt::TerminalApp::implementation
             namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
             if (Reg::SupportsByok(std::wstring_view{ effectiveAgentId }))
             {
+                appendHelperFlagValue(
+                    L"--cloud-models",
+                    winrt::to_hstring(_SerializeCloudModelOptions(effectiveAgentId)));
                 appendHelperFlagValue(
                     L"--custom-models",
                     winrt::to_hstring(_SerializeCustomModelOptions(globals)));
@@ -4643,7 +4666,8 @@ namespace winrt::TerminalApp::implementation
                 {
                     description = winrt::to_hstring(m["description"].asString());
                 }
-                if (!id.empty())
+                if (!id.empty() &&
+                    !::Microsoft::Terminal::CustomModels::IsCustomSelection(id))
                 {
                     entries.push_back(winrt::Microsoft::Terminal::Settings::Model::AcpModelInfo{
                         id,
@@ -4656,11 +4680,15 @@ namespace winrt::TerminalApp::implementation
             {
                 currentId = winrt::to_hstring(params["current_model_id"].asString());
             }
-            winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current()
-                .SetAvailableModels(
-                    agentId,
-                    winrt::single_threaded_vector(std::move(entries)).GetView(),
-                    currentId);
+            const auto& globals = _settings.GlobalSettings();
+            if (!entries.empty() || !_IsAgentByokConfigured(agentId, globals))
+            {
+                winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current()
+                    .SetAvailableModels(
+                        agentId,
+                        winrt::single_threaded_vector(std::move(entries)).GetView(),
+                        currentId);
+            }
         }
 
         // Route by tab_id when present; otherwise fan out to every
@@ -5008,6 +5036,46 @@ namespace winrt::TerminalApp::implementation
         if (!allowed)
         {
             _agentPaneLog("OnAgentSwitchRequested: unknown or policy-blocked agent");
+            return;
+        }
+
+        if (params.isMember("model_id") && params["model_id"].isString())
+        {
+            const auto modelId = winrt::to_hstring(params["model_id"].asString());
+            bool found = false;
+            for (const auto& model :
+                 winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current().AvailableModels(agentId))
+            {
+                if (model.Id() == modelId)
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                _agentPaneLog("OnAgentSwitchRequested: unknown cloud model");
+                return;
+            }
+
+            auto globals = _settings.GlobalSettings();
+            if (globals.CustomModelSelection().empty() && globals.AcpModel() == modelId)
+            {
+                return;
+            }
+            globals.CustomModelSelection(L"");
+            globals.AcpModel(modelId);
+            try
+            {
+                _settings.WriteSettingsToDisk();
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+                return;
+            }
+            _agentPaneLog("OnAgentSwitchRequested: persisted cloud model selection");
+            _RebuildAgentStack();
             return;
         }
 

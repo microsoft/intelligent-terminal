@@ -296,6 +296,28 @@ fn custom_provider_models_replace_agent_duplicates_and_keep_byok_identity() {
 }
 
 #[test]
+fn cloud_and_byok_models_with_the_same_id_remain_distinct() {
+    let mut app = test_app();
+    app.set_cloud_models(vec![AcpModelInfo {
+        id: "shared-model".into(),
+        name: "Shared cloud model".into(),
+        description: None,
+    }]);
+    app.set_custom_models(vec![CustomModelOption {
+        selection_id: "custom:provider-one:shared-model".into(),
+        model_id: "shared-model".into(),
+    }]);
+
+    assert_eq!(app.available_models.len(), 2);
+    assert!(app.available_models.iter().any(|model| model.id == "shared-model"));
+    assert!(app
+        .available_models
+        .iter()
+        .any(|model| model.id == "custom:provider-one:shared-model"
+            && model.name == "shared-model (BYOK)"));
+}
+
+#[test]
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
     app.available_models =
@@ -431,6 +453,18 @@ fn switch_custom_model_event_carries_validated_selection_metadata() {
         event["params"]["custom_model_selection"],
         "custom:provider-one:qwen/qwen3.5-9b"
     );
+}
+
+#[test]
+fn switch_cloud_model_event_carries_model_metadata() {
+    let payload =
+        build_switch_cloud_model_event("42", "{tab-guid}", "copilot", "claude-sonnet-5");
+    let event: serde_json::Value = serde_json::from_str(&payload).expect("valid event json");
+    assert_eq!(event["method"], "switch_agent");
+    assert_eq!(event["params"]["window_id"], "42");
+    assert_eq!(event["params"]["tab_id"], "{tab-guid}");
+    assert_eq!(event["params"]["agent_id"], "copilot");
+    assert_eq!(event["params"]["model_id"], "claude-sonnet-5");
 }
 
 // ---- Degraded (transport-lost) gating: only /restart runs ----

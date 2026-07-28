@@ -64,6 +64,78 @@ pub(crate) fn models_from_new_session(
     (Vec::new(), None)
 }
 
+pub(crate) fn merge_models_into_new_session(
+    resp: &mut acp::schema::v1::NewSessionResponse,
+    models: &[AcpModelInfo],
+) {
+    if models.is_empty() {
+        return;
+    }
+
+    if let Some(options) = resp.config_options.as_mut() {
+        if let Some(select) = options.iter_mut().find_map(|option| {
+            let is_model = matches!(
+                option.category,
+                Some(acp::schema::v1::SessionConfigOptionCategory::Model)
+            ) || option.id.0.as_ref() == "model";
+            match (&mut option.kind, is_model) {
+                (acp::schema::v1::SessionConfigKind::Select(select), true) => Some(select),
+                _ => None,
+            }
+        }) {
+            let existing = match &select.options {
+                acp::schema::v1::SessionConfigSelectOptions::Ungrouped(options) => options
+                    .iter()
+                    .map(|option| option.value.0.to_string())
+                    .collect::<std::collections::HashSet<_>>(),
+                acp::schema::v1::SessionConfigSelectOptions::Grouped(groups) => groups
+                    .iter()
+                    .flat_map(|group| group.options.iter())
+                    .map(|option| option.value.0.to_string())
+                    .collect(),
+                _ => std::collections::HashSet::new(),
+            };
+            let missing = models
+                .iter()
+                .filter(|model| !existing.contains(&model.id))
+                .map(model_to_select_option)
+                .collect::<Vec<_>>();
+            if missing.is_empty() {
+                return;
+            }
+            match &mut select.options {
+                acp::schema::v1::SessionConfigSelectOptions::Ungrouped(options) => {
+                    options.extend(missing);
+                }
+                acp::schema::v1::SessionConfigSelectOptions::Grouped(groups) => {
+                    if let Some(group) = groups.first_mut() {
+                        group.options.extend(missing);
+                    }
+                }
+                _ => return,
+            }
+            return;
+        }
+    }
+
+    let current = models[0].id.clone();
+    let options = models
+        .iter()
+        .map(model_to_select_option)
+        .collect::<Vec<_>>();
+    let model_option =
+        acp::schema::v1::SessionConfigOption::select("model", "Model", current, options)
+            .category(acp::schema::v1::SessionConfigOptionCategory::Model);
+    resp.config_options
+        .get_or_insert_default()
+        .push(model_option);
+}
+
+fn model_to_select_option(model: &AcpModelInfo) -> acp::schema::v1::SessionConfigSelectOption {
+    acp::schema::v1::SessionConfigSelectOption::new(model.id.clone(), model.name.clone())
+        .description(model.description.clone())
+}
+
 /// Find the model selector among a session's config options and flatten it
 /// into `(config_id, models, current_model_id)`.
 fn model_option_from_config(
@@ -281,6 +353,60 @@ mod tests {
             ModelSwitchChannel::Config {
                 config_id: "llm".to_string()
             }
+        );
+    }
+
+    #[test]
+    fn cloud_models_are_added_to_a_byok_session_catalog() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let cloud = vec![
+            AcpModelInfo {
+                id: "gpt-5.5".to_string(),
+                name: "GPT-5.5".to_string(),
+                description: None,
+            },
+            AcpModelInfo {
+                id: "gpt-5.4".to_string(),
+                name: "GPT-5.4".to_string(),
+                description: Some("Cloud model".to_string()),
+            },
+        ];
+
+        let mut bare: acp::schema::v1::NewSessionResponse =
+            serde_json::from_str(r#"{"sessionId":"byok"}"#).expect("valid response");
+        merge_models_into_new_session(&mut bare, &cloud);
+        let (models, current) = models_from_new_session(&bare);
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-5.5", "gpt-5.4"]
+        );
+        assert_eq!(current.as_deref(), Some("gpt-5.5"));
+
+        let mut partial: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId":"partial",
+                "configOptions":[{
+                    "id":"model",
+                    "name":"Model",
+                    "category":"model",
+                    "type":"select",
+                    "currentValue":"gpt-5.5",
+                    "options":[{"value":"gpt-5.5","name":"GPT-5.5"}]
+                }]
+            }"#,
+        )
+        .expect("valid response");
+        merge_models_into_new_session(&mut partial, &cloud);
+        let (models, _) = models_from_new_session(&partial);
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-5.5", "gpt-5.4"]
         );
     }
 

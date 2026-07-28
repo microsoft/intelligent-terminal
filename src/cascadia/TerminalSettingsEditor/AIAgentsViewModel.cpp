@@ -274,14 +274,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         _GlobalSettings.CustomModelProviders(providers);
 
-        // An agent launched with BYOK may advertise the injected model in its
-        // native catalog. Invalidate that snapshot when providers change so a
-        // removed model cannot survive as a stale runtime entry.
-        const auto agentId = _GlobalSettings.EffectiveAcpAgent();
-        Model::AcpRuntimeState::Current().SetAvailableModels(
-            agentId,
-            winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
-            L"");
+        // Refresh the cloud catalog without discarding the last successful
+        // snapshot. Some agents return no native models after BYOK is enabled,
+        // so clearing first would leave only the configured BYOK entries when
+        // a probe times out.
         _TriggerAcpModelProbe();
         _NotifyChanges(L"CustomModelProviders");
     }
@@ -480,20 +476,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                         model.Id());
                     const auto location = ::Microsoft::Terminal::CustomModels::ResolvedLocation(provider);
                     bool alreadyPresent = false;
-                    for (uint32_t i = _acpModelList.Size(); i > 0; --i)
+                    for (uint32_t i = 0; i < _acpModelList.Size(); ++i)
                     {
-                        const auto existingId = _acpModelList.GetAt(i - 1).Id();
+                        const auto existingId = _acpModelList.GetAt(i).Id();
                         if (existingId == id)
                         {
                             alreadyPresent = true;
                             break;
-                        }
-                        if (existingId == model.Id())
-                        {
-                            // A BYOK-configured agent may advertise the injected
-                            // model as if it were a native model. Keep the BYOK
-                            // entry so selecting it retains the provider metadata.
-                            _acpModelList.RemoveAt(i - 1);
                         }
                     }
                     if (alreadyPresent)

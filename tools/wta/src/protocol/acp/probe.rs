@@ -24,7 +24,9 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app::AcpModelInfo;
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
+use crate::protocol::acp::spawn::{
+    spawn_agent_process, spawn_agent_process_without_byok, AgentStderrLog,
+};
 
 #[derive(Serialize)]
 pub struct ProbeResult {
@@ -36,7 +38,23 @@ pub struct ProbeResult {
 /// pane (e.g. `"copilot --acp --stdio"`,
 /// `"npx -y @zed-industries/claude-code-acp"`).
 pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None, None)?;
+    probe_models_impl(agent_cmd, None, false).await
+}
+
+pub async fn probe_cloud_models(agent_cmd: &str, agent_id: Option<&str>) -> Result<ProbeResult> {
+    probe_models_impl(agent_cmd, agent_id, true).await
+}
+
+async fn probe_models_impl(
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    without_byok: bool,
+) -> Result<ProbeResult> {
+    let mut spawned = if without_byok {
+        spawn_agent_process_without_byok(agent_cmd, None, agent_id)?
+    } else {
+        spawn_agent_process(agent_cmd, None, None)?
+    };
     tracing::debug!(
         "probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,
@@ -113,8 +131,9 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
 
     let cwd = std::env::current_dir().unwrap_or_default();
     let session_started = std::time::Instant::now();
+    let session_timeout_secs = if without_byok { 20 } else { 10 };
     let session_result = tokio::time::timeout(
-        Duration::from_secs(10),
+        Duration::from_secs(session_timeout_secs),
         conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
     )
     .await;
@@ -139,7 +158,12 @@ pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
         },
     );
     let session_resp = session_result
-        .map_err(|_| anyhow!("new_session timed out after 10s during probe"))?
+        .map_err(|_| {
+            anyhow!(
+                "new_session timed out after {}s during probe",
+                session_timeout_secs
+            )
+        })?
         .map_err(|e| anyhow!("new_session failed: {}", e))?;
 
     let (available_models, current_model_id) =

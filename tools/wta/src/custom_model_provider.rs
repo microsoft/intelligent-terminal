@@ -71,6 +71,10 @@ impl Config {
     }
 }
 
+pub(crate) fn is_configured() -> bool {
+    Config::shared_from_env().is_complete()
+}
+
 /// Scrub shared provider metadata and the injected secret from every child,
 /// then adapt a complete shared configuration only for an agent that supports it.
 pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<()> {

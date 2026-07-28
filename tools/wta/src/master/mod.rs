@@ -346,6 +346,10 @@ struct AgentCli {
     /// returns empty `agent_info` on most backends, which blanks the
     /// XAML agent bar). Per-agent so each tab's bar shows ITS agent.
     cached_init_resp: acp::schema::v1::InitializeResponse,
+    /// Native cloud models discovered without the selected BYOK environment.
+    /// Replayed into every session response so all helpers sharing this CLI
+    /// see the same cloud + BYOK catalog.
+    cloud_models: Vec<crate::app::AcpModelInfo>,
     /// The CLI provider, resolved from this agent's id/command line.
     /// Stamped on every SessionInfo this agent's sessions upsert so the
     /// F2 view labels each row with its real CLI (Gemini vs Claude),
@@ -1040,15 +1044,17 @@ impl HelperHandler {
             pane_session_id = ?wta_meta.pane_session_id,
             "forwarding new_session"
         );
-        let resp = self
+        let agent = self.resolved_agent("new_session")?;
+        let mut resp = self
             .forward_new_session_to_agent(
                 args,
                 std::time::Duration::from_secs(SESSION_NEW_TIMEOUT_SECS),
             )
             .await?;
-        // Resolve the bound agent for `cli_source` stamping below (cheap
-        // Arc clone; the forward above already used it for the RPC).
-        let agent = self.resolved_agent("new_session")?;
+        crate::protocol::acp::model_select::merge_models_into_new_session(
+            &mut resp,
+            &agent.cloud_models,
+        );
         let forwarder = self.forwarder_for_route("new_session")?;
         // Record routing entry BEFORE returning so the helper can't
         // race a session/update notification.
@@ -2178,6 +2184,45 @@ async fn spawn_one_agent(
     agent_cmd: &str,
     agent_id: Option<&str>,
 ) -> Result<Arc<AgentCli>> {
+    let resolved_agent_id = agent_id
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
+    let profile = crate::agent_registry::lookup_profile_by_id(&resolved_agent_id);
+    let cloud_models = if crate::custom_model_provider::is_configured()
+        && profile.byok_mode != crate::agent_registry::ByokMode::Unsupported
+    {
+        tracing::info!(
+            target: "cloud_models",
+            %agent_cmd,
+            agent_id = %resolved_agent_id,
+            "probing cloud model catalog before BYOK agent startup"
+        );
+        match crate::protocol::acp::probe::probe_cloud_models(
+            agent_cmd,
+            Some(&resolved_agent_id),
+        )
+        .await
+        {
+            Ok(result) => {
+                tracing::info!(
+                    target: "cloud_models",
+                    count = result.available_models.len(),
+                    "cloud model catalog probe completed"
+                );
+                result.available_models
+            }
+            Err(error) => {
+                tracing::warn!(
+                    target: "cloud_models",
+                    %error,
+                    "cloud model catalog probe failed; continuing with BYOK catalog"
+                );
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
     let mut spawn_result = spawn_agent_process(agent_cmd, None, agent_id)
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
@@ -2443,6 +2488,7 @@ async fn spawn_one_agent(
     Ok(Arc::new(AgentCli {
         conn,
         cached_init_resp: init_resp,
+        cloud_models,
         cli_source,
         cmd_key: key.clone(),
     }))
@@ -4192,6 +4238,7 @@ mod tests {
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
                         acp::schema::ProtocolVersion::V1,
                     ),
+                    cloud_models: Vec::new(),
                     cli_source: None,
                     cmd_key: "copilot --acp --stdio".to_string(),
                 }));
@@ -4466,6 +4513,7 @@ mod tests {
                     cached_init_resp: acp::schema::v1::InitializeResponse::new(
                         acp::schema::ProtocolVersion::V1,
                     ),
+                    cloud_models: Vec::new(),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                     cmd_key: "copilot --acp --stdio".to_string(),
                 }));

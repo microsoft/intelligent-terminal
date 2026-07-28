@@ -197,6 +197,9 @@ struct Cli {
     /// JSON metadata only; provider credentials remain master-only.
     #[arg(long, hide = true)]
     custom_models: Option<String>,
+    /// Last known cloud/native model catalog retained by Windows Terminal.
+    #[arg(long, hide = true)]
+    cloud_models: Option<String>,
 
     /// Delegate agent CLI command (e.g. "codex")
     #[arg(long)]
@@ -3205,6 +3208,21 @@ async fn run_acp_app(
                 None => None,
             };
             let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
+            let cloud_models = cli
+                .cloud_models
+                .as_deref()
+                .and_then(|models| match serde_json::from_str(models) {
+                    Ok(models) => Some(models),
+                    Err(error) => {
+                        tracing::error!(
+                            target: "cloud_models",
+                            %error,
+                            "invalid --cloud-models metadata"
+                        );
+                        None
+                    }
+                })
+                .unwrap_or_default();
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
@@ -3373,6 +3391,7 @@ async fn run_acp_app(
                 cli.agent.clone(),
                 cli.acp_model.clone(),
             );
+            app_state.set_cloud_models(cloud_models);
             app_state.set_custom_model_selection(cli.custom_model_selection.clone());
             if let Some(custom_models) = cli.custom_models.as_deref() {
                 match serde_json::from_str(custom_models) {

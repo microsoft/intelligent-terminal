@@ -1008,7 +1008,7 @@ pub fn classify_wt_event(
 /// One entry of an ACP agent's advertised model list, mirrored into the
 /// `agent_status` event so the XAML settings page can populate a real
 /// dropdown instead of asking the user to type a free-form string.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct AcpModelInfo {
     pub id: String,
     pub name: String,
@@ -2231,6 +2231,8 @@ pub struct App {
     custom_model_selection: Option<String>,
     /// Every configured shared-provider model exposed through `/model`.
     custom_models: Vec<CustomModelOption>,
+    /// Last successful cloud/native model catalog supplied by Windows Terminal.
+    cloud_models: Vec<AcpModelInfo>,
     /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -2469,6 +2471,7 @@ impl App {
             acp_model: None,
             custom_model_selection: None,
             custom_models: Vec::new(),
+            cloud_models: Vec::new(),
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -2785,6 +2788,12 @@ impl App {
             .filter(|id| !id.is_empty());
     }
 
+    pub fn set_cloud_models(&mut self, models: Vec<AcpModelInfo>) {
+        self.cloud_models = models;
+        let advertised = std::mem::take(&mut self.available_models);
+        self.available_models = self.merge_custom_models(advertised);
+    }
+
     pub fn set_custom_models(&mut self, models: Vec<CustomModelOption>) {
         self.custom_models = models
             .into_iter()
@@ -2796,20 +2805,25 @@ impl App {
         self.current_model_id = self.resolve_current_model_id(current_model_id);
     }
 
-    fn merge_custom_models(&self, mut advertised: Vec<AcpModelInfo>) -> Vec<AcpModelInfo> {
+    fn merge_custom_models(&self, advertised: Vec<AcpModelInfo>) -> Vec<AcpModelInfo> {
+        let mut merged = self.cloud_models.clone();
+        for model in advertised {
+            if !merged.iter().any(|existing| existing.id == model.id) {
+                merged.push(model);
+            }
+        }
         for custom in &self.custom_models {
-            advertised.retain(|model| {
+            merged.retain(|model| {
                 model.id != custom.selection_id
-                    && model.id != custom.model_id
                     && model.id != format!("intelligent-terminal/{}", custom.model_id)
             });
-            advertised.push(AcpModelInfo {
+            merged.push(AcpModelInfo {
                 id: custom.selection_id.clone(),
                 name: format!("{} (BYOK)", custom.model_id),
                 description: None,
             });
         }
-        advertised
+        merged
     }
 
     fn resolve_current_model_id(&self, agent_model_id: Option<String>) -> Option<String> {
@@ -3142,6 +3156,22 @@ impl App {
                 return;
             };
             send_wt_protocol_event(build_switch_custom_model_event(
+                window_id,
+                tab_id,
+                &self.current_agent_id,
+                &model_id,
+            ));
+            return;
+        }
+
+        if self.custom_model_selection.is_some() {
+            let (Some(window_id), Some(tab_id)) =
+                (self.window_id.as_deref(), self.owner_tab_id.as_deref())
+            else {
+                self.push_agent_switch_unavailable();
+                return;
+            };
+            send_wt_protocol_event(build_switch_cloud_model_event(
                 window_id,
                 tab_id,
                 &self.current_agent_id,
@@ -10127,6 +10157,25 @@ fn build_switch_custom_model_event(
             "tab_id": tab_id,
             "agent_id": agent_id,
             "custom_model_selection": selection_id,
+        }
+    })
+    .to_string()
+}
+
+fn build_switch_cloud_model_event(
+    window_id: &str,
+    tab_id: &str,
+    agent_id: &str,
+    model_id: &str,
+) -> String {
+    serde_json::json!({
+        "type": "event",
+        "method": "switch_agent",
+        "params": {
+            "window_id": window_id,
+            "tab_id": tab_id,
+            "agent_id": agent_id,
+            "model_id": model_id,
         }
     })
     .to_string()

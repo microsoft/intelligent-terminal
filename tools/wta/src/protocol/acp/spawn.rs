@@ -204,6 +204,23 @@ pub(crate) fn spawn_agent_process(
     cwd: Option<&Path>,
     agent_id: Option<&str>,
 ) -> Result<AgentSpawn> {
+    spawn_agent_process_impl(agent_cmd, cwd, agent_id, true)
+}
+
+pub(crate) fn spawn_agent_process_without_byok(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+) -> Result<AgentSpawn> {
+    spawn_agent_process_impl(agent_cmd, cwd, agent_id, false)
+}
+
+fn spawn_agent_process_impl(
+    agent_cmd: &str,
+    cwd: Option<&Path>,
+    agent_id: Option<&str>,
+    apply_byok: bool,
+) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
         .first()
@@ -243,7 +260,12 @@ pub(crate) fn spawn_agent_process(
         }
     };
     let profile = crate::agent_registry::lookup_profile_by_id(agent_id);
-    crate::custom_model_provider::configure_child(&mut cmd, profile.byok_mode)?;
+    let byok_mode = if apply_byok {
+        profile.byok_mode
+    } else {
+        crate::agent_registry::ByokMode::Unsupported
+    };
+    crate::custom_model_provider::configure_child(&mut cmd, byok_mode)?;
 
     // Give the agent CLI a PATH rebuilt from the Windows registry. Windows
     // Terminal — and thus this wta-master / wta child — snapshots its
