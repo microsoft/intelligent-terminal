@@ -134,7 +134,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // filler, optional one-row transient hint, optional one-row rec nav
     // hint, a permanently reserved activity row directly above the input,
     // and input at the bottom. Cap chat at
-    // `pane_height - rec - input - activity - hints`
+    // `pane_height - rec - permission - input - activity - hints`
     // so the recommendation card always renders in full — chat_scroll lets
     // the user reach older history if it overflows.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding

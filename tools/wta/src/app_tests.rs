@@ -6204,18 +6204,24 @@ fn tool_call_keeps_thinking_while_turn_is_in_flight() {
 
 #[test]
 fn thinking_is_pinned_one_row_above_input() {
+    const WIDTH: u16 = 80;
+    const HEIGHT: u16 = 24;
+
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     submit_test_prompt(&mut app, "inspect");
 
-    let text = render_to_text(&mut app, 80, 24);
+    let input_height =
+        crate::ui::input_height(&app.current_tab().input, app.current_tab().cursor_pos, WIDTH);
+    let text = render_to_text(&mut app, WIDTH, HEIGHT);
     let label = t!("chat.activity_thinking").into_owned();
     let row = text
         .lines()
         .position(|line| line.contains(&label))
         .expect("Thinking row must render");
+    let expected_row = usize::from(HEIGHT - input_height - 1);
 
-    assert_eq!(row, 20, "Thinking must sit directly above the 3-row input box");
+    assert_eq!(row, expected_row, "Thinking must sit directly above the input box");
 }
 
 #[test]
