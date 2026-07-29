@@ -132,6 +132,7 @@ connection.lost: "Агентпен байланыс жоғалды. Қайта �
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Панельді жабу үшін Ctrl+C пернелерін қайта басыңыз"  # {Locked="Ctrl+C"}
+system.selection_copied: "Көшірілді"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Бас тартылды."
 system.no_prompt_in_flight: "Орындалып жатқан сұрау жоқ."
 system.authentication_failed: "Аутентификация сәтсіз аяқталды"

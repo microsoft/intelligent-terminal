@@ -133,6 +133,7 @@ connection.lost: "এজেণ্টৰ সৈতে সংযোগ হেৰ�
 
 # ── ছিষ্টেম বাৰ্তা (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "পেন বন্ধ কৰিবলৈ Ctrl+C আকৌ টিপক"  # {Locked="Ctrl+C"}
+system.selection_copied: "কপি কৰা হৈছে"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "বাতিল কৰা হৈছে।"
 system.no_prompt_in_flight: "প্ৰগতিত কোনো প্ৰমপ্ট নাই।"
 system.authentication_failed: "প্ৰমাণীকৰণ বিফল"

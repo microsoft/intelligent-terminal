@@ -146,6 +146,7 @@ connection.lost: "Ագենտի հետ կապը կորել է։ Մուտքագր�
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────────────────────────────
 system.close_pane_hint: "Սեղմեք Ctrl+C կրկին՝ վահանակը փակելու համար"  # {Locked="Ctrl+C"}
+system.selection_copied: "Պատճենված է"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Չեղարկված է։"
 system.no_prompt_in_flight: "Գործընթացում գտնվող հարցում չկա։"
 system.authentication_failed: "Նույնականացումը ձախողվեց"

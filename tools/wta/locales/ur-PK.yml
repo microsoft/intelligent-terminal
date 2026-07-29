@@ -132,6 +132,7 @@ connection.lost: "ایجنٹ سے کنیکشن ختم ہو گیا۔ دوبارہ
 
 # ── نظام پیغامات (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "پین بند کرنے کے لیے Ctrl+C دوبارہ دبائیں۔"  # {Locked="Ctrl+C"}
+system.selection_copied: "کاپی ہو گیا"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "منسوخ کیا گیا۔"
 system.no_prompt_in_flight: "کوئی پرامپٹ زیر عمل نہیں ہے۔"
 system.authentication_failed: "تصدیق ناکام"

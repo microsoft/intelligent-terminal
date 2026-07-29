@@ -190,6 +190,7 @@ connection.lost: "Connection to the agent was lost. Type /restart to reconnect."
 # Shown as a one-line hint when the user presses Ctrl+C once with empty input — the second press closes the pane.
 # {Locked="Ctrl+C"} - key name, do not translate
 system.close_pane_hint: "Press Ctrl+C again to close pane"
+system.selection_copied: "Copied"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"

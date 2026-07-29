@@ -1,9 +1,10 @@
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
 
 use super::{AcpModelInfo, AvailableAgent, DebugMessage, PermOption, PlanEntry, PreflightResult};
 
 pub enum AppEvent {
     Key(KeyEvent),
+    Mouse(MouseEvent),
     Tick,
     RevealTick,
     Resize(u16, u16),

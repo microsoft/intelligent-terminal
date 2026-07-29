@@ -132,6 +132,7 @@ connection.lost: "ଏଜେଣ୍ଟ ସହିତ ସଂଯୋଗ ହରାଇ�
 
 # ── ସିଷ୍ଟମ ସନ୍ଦେଶ (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "ପେନ୍ ବନ୍ଦ କରିବା ପାଇଁ Ctrl+C ପୁଣିଥରେ ଦବାନ୍ତୁ"  # {Locked="Ctrl+C"}
+system.selection_copied: "କପି ହୋଇଛି"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ବାତିଲ ହୋଇଛି।"
 system.no_prompt_in_flight: "ପ୍ରଗତିରେ କୌଣସି ପ୍ରମ୍ପ୍ଟ ନାହିଁ।"
 system.authentication_failed: "ପ୍ରମାଣୀକରଣ ବିଫଳ"

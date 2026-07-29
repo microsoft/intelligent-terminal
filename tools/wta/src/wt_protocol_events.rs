@@ -31,7 +31,7 @@ fn publish_blocking(json_payload: &str) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     command
         .stdout(std::process::Stdio::null())

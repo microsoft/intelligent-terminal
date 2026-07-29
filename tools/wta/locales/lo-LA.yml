@@ -119,6 +119,7 @@ connection.lost: "ການເຊື່ອມຕໍ່ຫາ agent ຂາດຫ�
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "ກົດ Ctrl+C ອີກຄັ້ງເພື່ອປິດ pane."  # {Locked="Ctrl+C"}
+system.selection_copied: "ສຳເນົາແລ້ວ"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"

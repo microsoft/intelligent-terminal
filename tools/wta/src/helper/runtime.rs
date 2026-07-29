@@ -3,11 +3,12 @@
 use anyhow::Result;
 use crossterm::{
     cursor::{SetCursorStyle, Show},
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
-use std::io::{self, Write};
+use std::io;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -150,11 +151,9 @@ impl Drop for TuiRestoreGuard {
 
         let _ = disable_raw_mode();
         let mut stdout = io::stdout();
-        // Agent panes start with alternate-scroll enabled, so restore that known state.
-        let _ = write!(stdout, "\x1b[?1007h");
-        let _ = stdout.flush();
         let _ = execute!(
             stdout,
+            DisableMouseCapture,
             SetCursorStyle::DefaultUserShape,
             LeaveAlternateScreen,
             Show
@@ -175,12 +174,9 @@ async fn run_acp_tui_mode(
     enable_raw_mode()?;
     let mut restore_guard = TuiRestoreGuard::new();
     let mut stdout = io::stdout();
-    // Keep mouse capture off so native click-drag selection continues to work.
-    // Disable xterm alternate-scroll mode while the TUI is active so wheel
-    // events are not translated into the Up/Down keys used by input history.
-    execute!(stdout, EnterAlternateScreen)?;
-    write!(stdout, "\x1b[?1007l")?;
-    stdout.flush()?;
+    // Mouse tracking gives the app real wheel events instead of overloading
+    // Up/Down, which remain dedicated to prompt-history navigation.
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     // Deliberately do NOT emit `OSC 11` to force a background color: the pane
     // must inherit the profile's color scheme background so it tracks the
     // user's theme like any other pane (#234). Cells render on the terminal's
@@ -205,11 +201,9 @@ async fn run_acp_tui_mode(
     .await;
 
     disable_raw_mode()?;
-    // WT does not implement xterm private-mode save/restore (`?1007s`/`?1007r`).
-    // Agent panes start with alternate-scroll enabled, so restore that known state.
-    write!(terminal.backend_mut(), "\x1b[?1007h")?;
     execute!(
         terminal.backend_mut(),
+        DisableMouseCapture,
         SetCursorStyle::DefaultUserShape,
         LeaveAlternateScreen
     )?;
