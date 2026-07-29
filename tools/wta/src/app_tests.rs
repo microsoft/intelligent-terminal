@@ -4678,7 +4678,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 }
 
 #[test]
-fn permission_request_permanently_clears_thinking_latch() {
+fn permission_request_keeps_thinking_until_turn_ends() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
@@ -4691,9 +4691,6 @@ fn permission_request_permanently_clears_thinking_latch() {
         outcome: TurnOutcome::Empty,
         end_pending: true,
     };
-    app.tab_mut(DEFAULT_TAB_ID)
-        .waiting_for_first_visible_activity = true;
-
     let (responder, _response) = tokio::sync::oneshot::channel();
     app.handle_event(AppEvent::PermissionRequest {
         session_id: DEFAULT_TAB_ID.into(),
@@ -4706,12 +4703,14 @@ fn permission_request_permanently_clears_thinking_latch() {
         responder,
     });
 
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
     app.current_tab_mut().permission.pop_front();
-    assert!(
-        !app.current_tab().should_show_thinking(),
-        "resolving permission must not re-enable Thinking in the same turn"
-    );
+    assert!(app.current_tab().should_show_thinking());
+    let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn else {
+        panic!("expected surfaced turn");
+    };
+    *end_pending = false;
+    assert!(!app.current_tab().should_show_thinking());
 }
 
 /// Tool-call card: when the mock proposes a command (a `ToolCall`
@@ -5944,9 +5943,8 @@ fn render_chat_completed_turn_expanded_with_marker() {
     }
 }
 
-/// Render: while the helper is still connecting, the chat must paint the
-/// animated "Connecting…" activity line. Lifts the `Connecting` branch of
-/// `build_activity_line` in `ui/chat.rs`.
+/// Render: while the helper is still connecting, the fixed activity row must
+/// paint the animated "Connecting…" label.
 #[test]
 fn render_chat_connecting_activity_line() {
     let mut app = test_app();
@@ -5980,7 +5978,7 @@ fn render_chat_welcome_hint() {
 }
 
 #[test]
-fn connecting_activity_row_is_included_in_estimated_chat_height() {
+fn fixed_activity_row_does_not_change_estimated_chat_height() {
     let mut app = test_app();
     app.current_tab_mut()
         .messages
@@ -5991,7 +5989,7 @@ fn connecting_activity_row_is_included_in_estimated_chat_height() {
     app.state = ConnectionState::Connecting("Starting agent".into());
     let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
 
-    assert_eq!(with_activity, without_activity + 1);
+    assert_eq!(with_activity, without_activity);
     assert!(
         app.has_activity_indicator(),
         "Connecting must keep Tick redraws active for the shimmer"
@@ -6136,10 +6134,13 @@ fn first_message_chunk_transitions_to_streaming_with_buf() {
     assert!(app.current_tab().turn.is_streaming());
     assert!(
         app.current_tab().should_show_thinking(),
-        "Thinking remains until text is actually revealed"
+        "Thinking remains throughout the in-flight turn"
     );
     app.advance_reveal();
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(
+        app.current_tab().should_show_thinking(),
+        "revealing response text must not hide Thinking before turn end"
+    );
 }
 
 #[test]
@@ -6158,7 +6159,7 @@ fn thought_chunk_first_transitions_with_empty_buf() {
 }
 
 #[test]
-fn hidden_structured_tokens_keep_thinking_until_explanation_is_visible() {
+fn structured_stream_keeps_thinking_after_explanation_is_visible() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     app.turn_observe_chunk(
@@ -6175,11 +6176,11 @@ fn hidden_structured_tokens_keep_thinking_until_explanation_is_visible() {
         r#","explanation":"Visible answer"}"#,
     );
     app.advance_reveal();
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
 }
 
 #[test]
-fn tool_call_permanently_clears_thinking_latch() {
+fn tool_call_keeps_thinking_while_turn_is_in_flight() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.handle_event(AppEvent::ToolCall {
@@ -6188,7 +6189,7 @@ fn tool_call_permanently_clears_thinking_latch() {
         title: "Find files".into(),
         status: "InProgress".into(),
     });
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
@@ -6196,9 +6197,25 @@ fn tool_call_permanently_clears_thinking_latch() {
         status: "Completed".into(),
     });
     assert!(
-        !app.current_tab().should_show_thinking(),
-        "tool completion must not re-enable Thinking"
+        app.current_tab().should_show_thinking(),
+        "tool completion does not end the agent turn"
     );
+}
+
+#[test]
+fn thinking_is_pinned_one_row_above_input() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "inspect");
+
+    let text = render_to_text(&mut app, 80, 24);
+    let label = t!("chat.activity_thinking").into_owned();
+    let row = text
+        .lines()
+        .position(|line| line.contains(&label))
+        .expect("Thinking row must render");
+
+    assert_eq!(row, 20, "Thinking must sit directly above the 3-row input box");
 }
 
 #[test]

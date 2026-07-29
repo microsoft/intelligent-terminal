@@ -644,7 +644,6 @@ impl App {
                     .insert(id.clone(), (title.clone(), status.clone()));
                 tab.messages
                     .push(ChatMessage::ToolCall { id, title, status });
-                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
@@ -692,7 +691,6 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
-                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
@@ -720,7 +718,6 @@ impl App {
                     selected: 0,
                     responder: Some(responder),
                 });
-                tab.mark_visible_agent_activity();
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

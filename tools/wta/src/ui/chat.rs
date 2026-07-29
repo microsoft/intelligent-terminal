@@ -13,8 +13,8 @@ fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 
 /// Estimate the chat block's natural height (in visual rows) given the
-/// rendering width. Counts wraps for each message + completed turn plus the
-/// pinned activity row when active. Used by `layout::render` to size the
+/// rendering width. Counts wraps for each message + completed turn. Used by
+/// `layout::render` to size the
 /// chat area so the rec panel sits directly below content instead of being
 /// pushed to the pane bottom by a `Min(1)` spacer.
 pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
@@ -24,16 +24,6 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // re-parses the streaming buffer on every call (and allocates on the
     // JSON-wrapper path via `extract_json_string_field`).
     let pending_text = pending_render_text(tab);
-
-    // Connecting and Thinking both pin one activity row in `render`; reserve
-    // that same row here so the surrounding layout cannot jump or clip.
-    let activity = if matches!(app.state, crate::app::ConnectionState::Connecting(_))
-        || should_show_turn_activity(tab)
-    {
-        1usize
-    } else {
-        0
-    };
 
     let messages: usize = tab.messages.iter().map(|m| message_height(m, wrap_width)).sum();
     let turns: usize = tab.completed_turns.iter().map(|t| turn_height(t, wrap_width)).sum();
@@ -57,7 +47,7 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
         0
     };
 
-    (activity + messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
+    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
 }
 
 fn wrap_count(text: &str, width: usize) -> usize {
@@ -167,20 +157,8 @@ fn breathing_dot(frame: usize) -> &'static str {
 pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     let render_started = std::time::Instant::now();
 
-    // Pin the activity indicator to a dedicated bottom row when active so a
-    // long user prompt that wraps past the chat height can never push it
-    // off-screen. The remaining rows scroll normally.
-    let activity_line = build_activity_line(app);
-    let (chat_area, activity_area) = match (&activity_line, area.height) {
-        (Some(_), h) if h > 0 => (
-            Rect { height: h - 1, ..area },
-            Some(Rect { x: area.x, y: area.y + h - 1, width: area.width, height: 1 }),
-        ),
-        _ => (area, None),
-    };
-
     let inner = Block::default().borders(Borders::NONE);
-    let inner_area = inner.inner(chat_area);
+    let inner_area = inner.inner(area);
     let visible_height = inner_area.height as usize;
     let wrap_width = inner_area.width as usize;
     let requested_lines = visible_height
@@ -254,11 +232,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .wrap(Wrap { trim: false })
         .scroll((scroll as u16, 0));
 
-    frame.render_widget(paragraph, chat_area);
-
-    if let (Some(line), Some(act_area)) = (activity_line, activity_area) {
-        frame.render_widget(Paragraph::new(line), act_area);
-    }
+    frame.render_widget(paragraph, area);
 
     // Update the scroll bound only when the build saw all of history;
     // otherwise the true max is still unknown and the stored value (possibly
@@ -376,7 +350,7 @@ fn build_completed_turn_lines<'a>(
     lines
 }
 
-fn build_activity_line(app: &App) -> Option<Line<'static>> {
+pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
     // While the helper is still establishing its connection to the agent,
     // show an animated "Connecting to agent…" line (F7). The handshake
     // (pipe connect → ACP init → session/new) can take tens of seconds on a
@@ -386,17 +360,20 @@ fn build_activity_line(app: &App) -> Option<Line<'static>> {
     // turn spinner because no turn can be in flight before we're connected.
     if matches!(app.state, crate::app::ConnectionState::Connecting(_)) {
         let label = t!("connection.connecting_activity").into_owned();
-        return Some(Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize)));
+        let line = Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize));
+        frame.render_widget(Paragraph::new(line), area);
+        return;
     }
     let tab = app.current_tab();
     if !should_show_turn_activity(tab) {
-        return None;
+        return;
     }
     let label = activity_label();
-    Some(Line::from(shimmer::shimmer_spans(
+    let line = Line::from(shimmer::shimmer_spans(
         &label,
         tab.activity_frame,
-    )))
+    ));
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 /// Incrementally extracts a JSON string field's decoded value from a
@@ -1052,20 +1029,12 @@ mod tests {
     }
 
     #[test]
-    fn thinking_activity_is_a_one_way_per_prompt_latch() {
+    fn thinking_activity_follows_turn_lifecycle() {
         let mut tab = streaming_tab("", 0);
-        tab.waiting_for_first_visible_activity = true;
         assert!(should_show_turn_activity(&tab));
 
-        tab.mark_visible_agent_activity();
+        tab.turn = crate::app::TurnState::Idle;
         assert!(!should_show_turn_activity(&tab));
-
-        tab.tool_calls
-            .insert("tool".into(), ("Run tests".into(), "Completed".into()));
-        assert!(
-            !should_show_turn_activity(&tab),
-            "later activity changes must not re-enable Thinking"
-        );
     }
 
     #[test]
