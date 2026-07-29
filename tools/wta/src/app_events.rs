@@ -651,7 +651,6 @@ impl App {
                     location,
                     location_is_command,
                 });
-                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
@@ -710,7 +709,6 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
-                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
@@ -746,7 +744,6 @@ impl App {
                     selected: 0,
                     responder: Some(responder),
                 });
-                tab.mark_visible_agent_activity();
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

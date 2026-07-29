@@ -1081,15 +1081,6 @@ pub struct TabSession {
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
-    /// One-way latch for the Thinking indicator.
-    ///
-    /// Rule: a newly submitted prompt shows Thinking only while it is waiting
-    /// for the first user-visible agent feedback. The first revealed text,
-    /// tool item, plan, permission card, or surfaced result clears this latch,
-    /// and it must never become true again during the same turn. Hidden thought
-    /// chunks and structured tokens that cannot yet render do not clear it.
-    pub waiting_for_first_visible_activity: bool,
-
     pub activity_frame: usize,
     /// Typewriter reveal cursor: how many characters of the *user-visible*
     /// streaming text are currently shown. The full text lives in
@@ -1231,12 +1222,8 @@ impl TabSession {
         self.chat_scroll.offset = 0;
     }
 
-    pub(crate) fn mark_visible_agent_activity(&mut self) {
-        self.waiting_for_first_visible_activity = false;
-    }
-
     pub(crate) fn should_show_thinking(&self) -> bool {
-        self.waiting_for_first_visible_activity && self.turn.is_in_flight()
+        self.turn.is_in_flight()
     }
 
     /// Whether the input box is the live, enterable caret target. False when
@@ -4741,19 +4728,11 @@ impl App {
                 // Clamp down if the visible text shrank (e.g. a fenced JSON
                 // block replaced the streamed prose).
                 tab.reveal_chars = len;
-                if len > 0 {
-                    tab.mark_visible_agent_activity();
-                }
                 continue;
             }
             let backlog = len - tab.reveal_chars;
             let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
             tab.reveal_chars = (tab.reveal_chars + step).min(len);
-            if tab.reveal_chars > 0 {
-                // The first character is now actually visible, so Thinking
-                // hands off permanently to the streamed response for this turn.
-                tab.mark_visible_agent_activity();
-            }
         }
     }
 
