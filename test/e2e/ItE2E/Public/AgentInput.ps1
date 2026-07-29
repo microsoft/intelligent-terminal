@@ -135,6 +135,87 @@ function Send-AgentAltV {
     process { Send-AgentWin32Key -App $App -Vk 0x56 -Sc 0x2F -Uc 0 -Modifiers 0x02 -PaneSessionId $PaneSessionId }
 }
 
+function ConvertTo-AgentMouseSequence {
+    param(
+        [Parameter(Mandatory)][ValidateSet('Down', 'Drag', 'Up', 'ScrollUp', 'ScrollDown')][string]$Kind,
+        [Parameter(Mandatory)][int]$Column,
+        [Parameter(Mandatory)][int]$Row,
+        [switch]$Alt
+    )
+
+    $buttonCode = switch ($Kind) {
+        'Down'       { 0 }
+        'Drag'       { 32 }
+        'Up'         { 0 }
+        'ScrollUp'   { 64 }
+        'ScrollDown' { 65 }
+    }
+    if ($Alt) { $buttonCode += 8 }
+    $suffix = if ($Kind -eq 'Up') { 'm' } else { 'M' }
+    $x = $Column + 1
+    $y = $Row + 1
+    "$script:ItEsc[<$buttonCode;$x;$y$suffix"
+}
+
+function Send-AgentMouseEvent {
+    <#
+    .SYNOPSIS
+        Send xterm SGR mouse input through the agent pane's ConPTY so crossterm receives
+        the same zero-based event coordinates as it does for physical mouse input.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][ValidateSet('Down', 'Drag', 'Up', 'ScrollUp', 'ScrollDown')][string]$Kind,
+        [int]$Column = 0,
+        [int]$Row = 0,
+        [int]$Count = 1,
+        [switch]$Alt,
+        [string]$PaneSessionId
+    )
+    process {
+        if (-not $PaneSessionId) {
+            $PaneSessionId = (Wait-Until -TimeoutSec 20 -Because 'agent pane session id' -Condition { Get-AgentPaneSession -App $App }).PaneSessionId
+        }
+        $sequence = ConvertTo-AgentMouseSequence -Kind $Kind -Column $Column -Row $Row -Alt:$Alt
+        $payload = ($sequence * $Count) -join ''
+        Invoke-WtCli -App $App -Arguments @(
+            'send-keys', '--raw', '-t', $PaneSessionId, '--', $payload
+        ) | Out-Null
+        Start-Sleep -Milliseconds 150
+        $App
+    }
+}
+
+function Send-AgentMouseClick {
+    <#
+    .SYNOPSIS
+        Send one or more complete left-button clicks as one ConPTY write. Keeping a double
+        click in one write ensures WTA receives both clicks inside its multi-click window.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][int]$Column,
+        [Parameter(Mandatory)][int]$Row,
+        [ValidateRange(1, 3)][int]$Count = 1,
+        [string]$PaneSessionId
+    )
+    process {
+        if (-not $PaneSessionId) {
+            $PaneSessionId = (Wait-Until -TimeoutSec 20 -Because 'agent pane session id' -Condition { Get-AgentPaneSession -App $App }).PaneSessionId
+        }
+        $down = ConvertTo-AgentMouseSequence -Kind Down -Column $Column -Row $Row
+        $up = ConvertTo-AgentMouseSequence -Kind Up -Column $Column -Row $Row
+        $payload = ("$down$up" * $Count) -join ''
+        Invoke-WtCli -App $App -Arguments @(
+            'send-keys', '--raw', '-t', $PaneSessionId, '--', $payload
+        ) | Out-Null
+        Start-Sleep -Milliseconds 150
+        $App
+    }
+}
+
 function Open-AgentCommandMenu {
     <#
     .SYNOPSIS
