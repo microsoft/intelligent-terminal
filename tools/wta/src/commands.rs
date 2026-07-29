@@ -56,6 +56,11 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Enable "yolo mode" (auto-approve tool calls) for this tab's *current*
+    /// ACP session only. Does not persist across `/new` (a fresh session_id
+    /// is not in the auto-approve set) and is refused when the
+    /// `AllowYoloMode` admin policy blocks it. See `App::cmd_yolo`.
+    Yolo,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -146,6 +151,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
         takes_args: true,
+    },
+    CommandSpec {
+        name: "yolo",
+        summary_key: "commands.yolo.summary",
+        kind: CommandKind::Yolo,
+        takes_args: false,
     },
 ];
 

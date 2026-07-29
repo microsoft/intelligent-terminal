@@ -73,6 +73,9 @@ pub(super) fn test_app() -> App {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        false,
+        Arc::new(Mutex::new(HashSet::new())),
+        false,
     )
 }
 
@@ -812,6 +815,9 @@ fn test_app_with_master_rx() -> (
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        false,
+        Arc::new(Mutex::new(HashSet::new())),
+        false,
     );
     (app, master_rx)
 }
@@ -1044,6 +1050,9 @@ fn tab_renamed_sends_rename_session_request_to_acp_client() {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        false,
+        Arc::new(Mutex::new(HashSet::new())),
+        false,
     );
 
     app.tab_id = Some("AAAA".to_string());
@@ -1102,6 +1111,9 @@ fn tab_renamed_noop_does_not_send_rename_session_request() {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        false,
+        Arc::new(Mutex::new(HashSet::new())),
+        false,
     );
 
     app.tab_id = Some("AAAA".to_string());
@@ -1192,6 +1204,9 @@ fn make_app_with_load_session_channel() -> (
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
+        false,
+        Arc::new(Mutex::new(HashSet::new())),
+        false,
     );
     (app, load_session_rx)
 }

@@ -154,6 +154,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} ਸੈਸ਼ਨ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} load ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
 system.fallback.this_agent: "ਇਹ agent"
 system.fallback.connected_agent: "ਜੁੜਿਆ agent"
+system.yolo_blocked_by_policy: "ਤੁਹਾਡੀ ਸੰਸਥਾ ਦੀ ਨੀਤੀ ਕਾਰਨ yolo mode ਅਯੋਗ ਹੈ।"
+
 
 # ── ਰਨਟਾਈਮ CLI ਆਉਟਪੁੱਟ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ਕੋਈ ਵਿੰਡੋ ਨਹੀਂ ਮਿਲੀ।"
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "ਵਿੰਡੋਜ਼ ਟਰਮੀਨਲ ਟ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ ਚੁਣੋ (ਸਿੱਧਾ ਬਦਲਣ ਲਈ /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ਇਸ ਟੈബ ਦੇ ਏਜੰट ਪੈਨ ਨੂੰ ਹਿਲਾਓ (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "ਕੇਵਲ ਇਸ session ਲਈ tool call ਨੂੰ auto-approve ਕਰੋ (/new ਤੱਕ)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "ਮਾਡਲ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਚੁਣਨਯੋਗ ਮਾਡਲ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"
 system.model_set: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ %{model} 'ਤੇ ਸੈੱਟ ਕੀਤਾ ਗਿਆ।"  # {Locked="%{model}"}

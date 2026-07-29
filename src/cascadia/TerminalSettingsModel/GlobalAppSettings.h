@@ -95,12 +95,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         hstring EffectiveDelegateAgent() const;
         bool EffectiveAutoErrorDetectionEnabled() const;
         bool EffectiveAutoFixEnabled() const;
+        bool EffectiveAgentPaneYoloMode() const;
 
         // Whether GPO policy is actively restricting these settings.
         bool IsAgentPolicyLocked() const;
         bool IsCustomAgentPolicyLocked() const;
         bool IsAutoFixPolicyLocked() const;
         bool IsAgentSessionHooksPolicyLocked() const;
+        bool IsYoloModePolicyLocked() const;
 
         // ── Test-only seam ──────────────────────────────────────────────
         // Replace the SettingsModel DLL's cached AgentPolicy snapshot

@@ -154,6 +154,8 @@ system.cannot_resume_phantom_via_flag: "לא ניתן לחדש את ההפעלה
 system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} ידחה את הטעינה. מסיר את השורה."
 system.fallback.this_agent: "סוכן זה"
 system.fallback.connected_agent: "הסוכן המחובר"
+system.yolo_blocked_by_policy: "מצב yolo מושבת על-ידי מדיניות הארגון שלך."
+
 
 # ── פלט CLI בזמן ריצה (src/main.rs) ────────────────────────────────────────
 output.no_windows: "לא נמצאו חלונות."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
 commands.move.summary: "העבר את חלונית הסוכן של כרטיסייה זו (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "אשר אוטומטית קריאות לכלים עבור הפעלה זו בלבד (עד /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}

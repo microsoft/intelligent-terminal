@@ -155,6 +155,8 @@ system.cannot_resume_phantom_via_flag: "មិនអាចបន្តវគ្�
 system.cannot_resume_phantom_via_load: "មិនអាចបន្តវគ្គ %{agent} %{session_id} បានទេ: វាត្រូវបានចាប់ផ្តើម ប៉ុន្តែមិនដែលមានការសន្ទនាណាមួយទេ ដូច្នេះ %{agent} នឹងបដិសេធការផ្ទុក។ កំពុងលុបជួរដេក។"
 system.fallback.this_agent: "អេជេន្ត់នេះ"
 system.fallback.connected_agent: "អេជេន្ត់ដែលបានភ្ជាប់"
+system.yolo_blocked_by_policy: "Yolo mode ត្រូវបានបិទដោយគោលនយោបាយរបស់ស្ថាប័នអ្នក។"
+
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "រកមិនឃើញបង្អូច។"
@@ -232,6 +234,8 @@ system.agent_switch_unavailable: "ការផ្លាស់ប្តូរភ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
 commands.move.summary: "ផ្លាស់ទីផ្ទាំងភ្នាក់ងារនៃផ្ទាំងនេះ (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "អនុម័ត tool call ដោយស្វ័យប្រវត្តិ សម្រាប់ session នេះប៉ុណ្ណោះ (រហូតដល់ /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}

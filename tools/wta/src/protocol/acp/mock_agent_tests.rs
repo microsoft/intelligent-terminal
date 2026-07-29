@@ -302,6 +302,8 @@ fn connect_with(
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        global_auto_approve_tools: false,
+        yolo_sessions: Arc::new(Mutex::new(HashSet::new())),
     });
     let wta = WtaClient { state };
 
@@ -554,6 +556,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        global_auto_approve_tools: false,
+        yolo_sessions: Arc::new(Mutex::new(HashSet::new())),
     });
     let wta = WtaClient { state };
 
@@ -1544,11 +1548,28 @@ async fn dispatch_master_ext_session_focus_completes() {
 /// directly and assert the `SessionUpdate → AppEvent` translation without
 /// spinning up the ACP I/O loop.
 fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
+    bare_client_with_yolo(false, &[])
+}
+
+/// Like [`bare_client`], but lets tests configure the yolo-mode auto-approve
+/// state exercised by `request_permission`: `global` mirrors the
+/// `--auto-approve-tools` helper flag, and `yolo_session_ids` seeds the
+/// per-session `/yolo` override set (as if `/yolo` had already been run in
+/// those sessions).
+fn bare_client_with_yolo(
+    global: bool,
+    yolo_session_ids: &[&str],
+) -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let yolo_sessions = Arc::new(Mutex::new(
+        yolo_session_ids.iter().map(|s| s.to_string()).collect::<HashSet<_>>(),
+    ));
     let state = Arc::new(ClientState {
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        global_auto_approve_tools: global,
+        yolo_sessions,
     });
     (WtaClient { state }, event_rx)
 }
@@ -1847,4 +1868,105 @@ async fn request_permission_cancelled_when_responder_dropped() {
         .await;
 }
 
+// ── yolo mode (auto-approve tool calls) ──────────────────────────────────
 
+/// Global `--auto-approve-tools` yolo mode: `request_permission` must
+/// resolve immediately with the offered `AllowOnce` option, without ever
+/// emitting a `PermissionRequest` event (i.e. no UI prompt at all).
+#[tokio::test]
+async fn request_permission_global_yolo_auto_approves_without_prompt() {
+    let (client, mut rx) = bare_client_with_yolo(true, &[]);
+    let resp = client
+        .request_permission(permission_request("s1"))
+        .await
+        .unwrap();
+    match resp.outcome {
+        acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
+            assert_eq!(sel.option_id.to_string(), "allow-once");
+        }
+        _ => panic!("expected Selected outcome"),
+    }
+    // Auto-approval is silent — no chat notification, no PermissionRequest.
+    assert!(
+        rx.try_recv().is_err(),
+        "no event should ever be sent in yolo mode"
+    );
+}
+
+/// Per-session `/yolo`: a session_id present in `yolo_sessions` is
+/// auto-approved even when the global flag is off; a session_id NOT in the
+/// set still goes through the normal interactive `PermissionRequest` flow.
+#[tokio::test]
+async fn request_permission_session_yolo_is_scoped_to_that_session_only() {
+    let (client, mut rx) = bare_client_with_yolo(false, &["s1"]);
+
+    // s1 is in the yolo set → auto-approved, no prompt.
+    let resp = client
+        .request_permission(permission_request("s1"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        resp.outcome,
+        acp::schema::v1::RequestPermissionOutcome::Selected(_)
+    ));
+    // Silent auto-approval — no chat notification sent for s1.
+    assert!(rx.try_recv().is_err());
+
+    // s2 is NOT in the yolo set → falls back to the normal blocking prompt.
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(permission_request("s2")).await });
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest { session_id, responder, .. }) => {
+                    assert_eq!(session_id, "s2");
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                other => panic!(
+                    "expected PermissionRequest for the non-yolo session, got is_some={}",
+                    other.is_some()
+                ),
+            }
+            let resp = handle.await.unwrap().unwrap();
+            assert!(matches!(
+                resp.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(_)
+            ));
+        })
+        .await;
+}
+
+/// When an `allow_always` option is offered alongside `allow_once`, yolo
+/// mode prefers `allow_always` (fewer future prompts for the rest of this
+/// session), matching what a user manually clicking through would pick.
+#[tokio::test]
+async fn request_permission_yolo_prefers_allow_always_over_allow_once() {
+    let (client, _rx) = bare_client_with_yolo(true, &[]);
+    let req = acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new("s1"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("mock-tool-1"),
+            acp::schema::v1::ToolCallUpdateFields::new().title("Run: echo hi"),
+        ),
+        vec![
+            acp::schema::v1::PermissionOption::new(
+                acp::schema::v1::PermissionOptionId::new("allow-once"),
+                "Allow once",
+                acp::schema::v1::PermissionOptionKind::AllowOnce,
+            ),
+            acp::schema::v1::PermissionOption::new(
+                acp::schema::v1::PermissionOptionId::new("allow-always"),
+                "Allow always",
+                acp::schema::v1::PermissionOptionKind::AllowAlways,
+            ),
+        ],
+    );
+    let resp = client.request_permission(req).await.unwrap();
+    match resp.outcome {
+        acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
+            assert_eq!(sel.option_id.to_string(), "allow-always");
+        }
+        _ => panic!("expected Selected outcome"),
+    }
+}

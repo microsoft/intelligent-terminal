@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "[!!_Cannot resume %{agent} session %{ses
 system.cannot_resume_phantom_via_load: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row._!!]"
 system.fallback.this_agent: "[!!_this agent_!!]"
 system.fallback.connected_agent: "[!!_the connected agent_!!]"
+system.yolo_blocked_by_policy: "[!!_Yolo mode is disabled by your organization's policy._!!]"
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!!_No windows found._!!]"
@@ -214,6 +216,8 @@ system.agent_switch_unavailable: "[!!_Agent switching is unavailable outside a W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!!_Pick the model for this pane (/model <id> to switch directly)_!!]"  # {Locked="/model","<id>"}
 commands.move.summary: "[!!_Move this tab's agent pane (/move <position>)_!!]"  # {Locked="/move","<position>"}
+commands.yolo.summary: "[!!_Auto-approve tool calls for this session only (until /new)_!!]"  # {Locked="/yolo","/new"}
+
 model_picker.title: "[!!_Select model (↑ ↓ • Enter • Esc)_!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!!_The connected agent did not advertise any selectable models._!!]"
 system.model_set: "[!!_Model for this pane set to %{model}._!!]"  # {Locked="%{model}"}

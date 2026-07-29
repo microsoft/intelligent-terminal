@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Tidak dapat menyambung semula sesi %{age
 system.cannot_resume_phantom_via_load: "Tidak dapat menyambung semula sesi %{agent} %{session_id}: sesi ini telah dimulakan tetapi tidak pernah mengumpulkan sebarang perbualan, jadi %{agent} akan menolak pemuatan. Mengalih keluar baris."
 system.fallback.this_agent: "ejen ini"
 system.fallback.connected_agent: "ejen yang disambungkan"
+system.yolo_blocked_by_policy: "Mod yolo dilumpuhkan oleh dasar organisasi anda."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tiada tetingkap ditemui."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "Peralihan ejen tidak tersedia di luar tab Wind
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
 commands.move.summary: "Alihkan anak tetingkap ejen tab ini (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Luluskan panggilan alat secara automatik untuk sesi ini sahaja (hingga /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}

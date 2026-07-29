@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Nuk mund të rifillohet sesioni %{agent}
 system.cannot_resume_phantom_via_load: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj %{agent} do ta refuzonte ngarkimin. Po hiqet rreshti."
 system.fallback.this_agent: "ky agjent"
 system.fallback.connected_agent: "agjenti i lidhur"
+system.yolo_blocked_by_policy: "Modaliteti yolo është çaktivizuar nga politika e organizatës suaj."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nuk u gjetën dritare."
@@ -215,6 +217,8 @@ system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponuesh�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
 commands.move.summary: "Lëvizni panelin e agjentit të kësaj skede (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Mirato automatikisht thirrjet e veglave vetëm për këtë sesion (deri në /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
 system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}

@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "[!! Can_not resume %{agent} session %{se
 system.cannot_resume_phantom_via_load: "[!! Can_not resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row. !!]"
 system.fallback.this_agent: "[!! thi_s agent !!]"
 system.fallback.connected_agent: "[!! the_ connected agent !!]"
+system.yolo_blocked_by_policy: "[!! Yol_o mode is dis_abled by your org_anization's policy. !!]"
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[!! No_ windows found. !!]"
@@ -214,6 +216,8 @@ system.agent_switch_unavailable: "[!! Ag_ent switching is unavailable outside a 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}
 commands.move.summary: "[!! Mo_ve this tab's agent pane (/move <position>) !!]"  # {Locked="/move","<position>"}
+commands.yolo.summary: "[!! Aut_o-approve tool calls for this ses_sion only (until /new) !!]"  # {Locked="/yolo","/new"}
+
 model_picker.title: "[!! Sel_ect model (↑ ↓ • Enter • Esc) !!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!! The_ connected agent did not advertise any selectable models. !!]"
 system.model_set: "[!! Mod_el for this pane set to %{model}. !!]"  # {Locked="%{model}"}

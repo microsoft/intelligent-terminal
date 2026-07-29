@@ -154,6 +154,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} სესიის %{session_id
 system.cannot_resume_phantom_via_load: "%{agent} სესიის %{session_id} გაგრძელება შეუძლებელია: ის დაიწყო, მაგრამ არცერთი საუბარი არ დაუგროვებია, ამიტომ %{agent} უარყოფს ჩატვირთვას. მწკრივის წაშლა."
 system.fallback.this_agent: "ეს agent"
 system.fallback.connected_agent: "დაკავშირებული agent"
+system.yolo_blocked_by_policy: "Yolo რეჟიმი თქვენი ორგანიზაციის პოლიტიკით გამორთულია."
+
 
 # ── CLI გამოსავალი რანტაიმში (src/main.rs) ────────────────────────────────────
 output.no_windows: "ფანჯრები ვერ მოიძებნა."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "აგენტის გადართვა
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}
 commands.move.summary: "ამ ჩანართის აგენტის პანელის გადატანა (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Tool call-ების ავტომატურად დამტკიცება მხოლოდ ამ session-ისთვის (/new-მდე)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}

@@ -905,6 +905,65 @@ work:
 - **Pre-warming**: not implemented. First user toggle creates the
   helper on demand.
 
+### Z-R9. Yolo mode (auto-approve tool-call permission requests)
+
+Implements GitHub issue #326 ("Allow agent pane to run with options such
+as `--allow-all`"). Rather than passing agent-CLI-specific flags
+(`--allow-all`/`--yolo`, which differ per agent and don't exist for all
+of them), auto-approve is implemented once at the ACP client layer
+(`WtaClient::request_permission` in `tools/wta/src/protocol/acp/client.rs`),
+so it works uniformly across Copilot/Claude/Gemini/Codex/custom agents
+without depending on each CLI's own flag surface.
+
+Two independent, additive enable paths, both gated by the same
+`AllowYoloMode` admin policy (`src/cascadia/inc/AgentPolicy.h`):
+
+1. **Global Settings toggle** — "Auto-approve tool calls" in the Settings
+   UI (`AIAgents.xaml`, backed by `agentPane.yoloMode` /
+   `GlobalAppSettings::EffectiveAgentPaneYoloMode()`). When on (and not
+   policy-blocked), `TerminalPage.cpp` appends `--auto-approve-tools` to
+   the helper's command line, which every ACP session on every tab of
+   every window inherits for the lifetime of the setting.
+2. **Per-session `/yolo` slash command** — scoped to the *current tab's
+   current* ACP `session_id` only. Implemented as a shared
+   `Arc<Mutex<HashSet<String>>>` (`App::yolo_sessions`, also held by
+   `WtaClient`'s `ClientState`): `/yolo` inserts the active session_id;
+   `request_permission` checks membership. Keying by `session_id` rather
+   than `tab_id` means the override does **not** persist across `/new`
+   (a fresh session_id is simply absent from the set) — the user must
+   run `/yolo` again after starting a new conversation. `/restart` clears
+   the whole set (every session is being torn down anyway).
+
+Policy enforcement on the Rust side: since wta has no direct registry
+access, `TerminalPage.cpp` also passes `--yolo-command-blocked` whenever
+`AllowYoloMode` is `Blocked`, independent of whatever the global toggle
+happens to be — this lets `/yolo` itself refuse with a clear
+"disabled by your organization's policy" message (`cmd_yolo` in
+`tools/wta/src/app.rs`) even when the global setting is off.
+
+When either path is active for a given request, `request_permission`
+skips the blocking `PermissionRequest` UI event entirely and picks the
+best "allow" option (`allow_always` preferred over `allow_once` — see
+`pick_allow_option`), responding immediately with no user-visible
+notification: auto-approval is deliberately silent so tool calls don't
+clutter the conversation with a message per approval.
+
+**Agent-native allow-all (preferred over client-side interception, when
+available).** Some agents' ACP servers advertise a per-session
+`config_options` entry (category `permissions`, id `allow_all`) in their
+`session/new` response — confirmed for Copilot CLI's ACP server.
+`permission_select.rs` detects this and, whenever a session is (or
+becomes) in yolo mode, calls `session/set_config_option(allow_all, "on")`
+for that `session_id` so the agent itself stops sending
+`session/request_permission` entirely, rather than WTA intercepting and
+auto-answering each request. This is applied at every session-creation
+call site in `client.rs`, plus retroactively via
+`MasterExtRequest::SetSessionAllowAll` when `/yolo` is typed on an
+already-live session. Agents without this option (Claude/Gemini/Codex
+adapters, as far as tested) are unaffected — the client-side
+`request_permission` interception above remains the unconditional
+fallback for every agent.
+
 ## What this does NOT solve (out of scope)
 
 - **Cross-process Terminal instances**: if WT is configured for

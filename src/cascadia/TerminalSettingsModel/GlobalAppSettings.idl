@@ -124,6 +124,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(IVector<String>, SafeUriSchemes);
         INHERITABLE_SETTING(String, DelegateCustomCommand);
         INHERITABLE_SETTING(String, AgentPanePosition);
+        INHERITABLE_SETTING(Boolean, AgentPaneYoloMode);
 
         // AI Integration settings
         INHERITABLE_SETTING(Boolean, AiCoordinatorEnabled);
@@ -140,6 +141,7 @@ namespace Microsoft.Terminal.Settings.Model
         String EffectiveDelegateAgent { get; };
         Boolean EffectiveAutoErrorDetectionEnabled { get; };
         Boolean EffectiveAutoFixEnabled { get; };
+        Boolean EffectiveAgentPaneYoloMode { get; };
 
         // Whether GPO policy is actively restricting these settings.
         // GPO policy indicators.
@@ -152,6 +154,7 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
         Boolean IsAgentSessionHooksPolicyLocked { get; };
+        Boolean IsYoloModePolicyLocked { get; };
 
         Windows.Foundation.Collections.IMapView<String, ColorScheme> ColorSchemes();
         void AddColorScheme(ColorScheme scheme);

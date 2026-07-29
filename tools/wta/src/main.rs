@@ -208,6 +208,22 @@ struct Cli {
     #[arg(long)]
     no_autofix: bool,
 
+    /// Auto-approve all agent tool-call permission requests for the
+    /// lifetime of this helper process ("yolo mode"). Set by
+    /// TerminalPage.cpp when the global "Auto-approve tool calls" setting
+    /// is on (and not blocked by the `AllowYoloMode` admin policy). Hidden
+    /// because it's plumbed by Terminal, not meant for manual use.
+    #[arg(long, hide = true)]
+    auto_approve_tools: bool,
+
+    /// The `AllowYoloMode` admin policy blocks auto-approve entirely — set
+    /// by TerminalPage.cpp so the helper can also refuse the per-session
+    /// `/yolo` command (which `--auto-approve-tools` alone cannot express,
+    /// since that flag only reflects the global toggle's current value).
+    /// Hidden because it's plumbed by Terminal, not meant for manual use.
+    #[arg(long, hide = true)]
+    yolo_command_blocked: bool,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]

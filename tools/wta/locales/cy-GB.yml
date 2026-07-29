@@ -143,6 +143,8 @@ system.cannot_resume_phantom_via_flag: "Methu ailddechrau sesiwn %{agent} %{sess
 system.cannot_resume_phantom_via_load: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} yn gwrthod y llwytho. Yn tynnu’r rhes."
 system.fallback.this_agent: "yr asiant hwn"
 system.fallback.connected_agent: "yr asiant cysylltiedig"
+system.yolo_blocked_by_policy: "Mae modd yolo wedi’i analluogi gan bolisi eich sefydliad."
+
 
 # ── Allbwn CLI amser rhedeg (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ni chanfuwyd unrhyw ffenestri."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "Nid yw newid asiant ar gael y tu allan i dab W
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Dewiswch y model ar gyfer y paen hwn (/model <id> i newid yn uniongyrchol)"  # {Locked="/model","<id>"}
 commands.move.summary: "Symud paen asiant y tab hwn (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Cymeradwyo galwadau offer yn awtomatig ar gyfer y sesiwn hon yn unig (tan /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."
 system.model_set: "Gosodwyd y model ar gyfer y paen hwn i %{model}."  # {Locked="%{model}"}

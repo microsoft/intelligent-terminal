@@ -16,6 +16,11 @@
 //   AllowCustomAgents  REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAutoFix       REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAgentSessionHooks REG_DWORD  0 = blocked, 1 = allowed. Absent = allowed.
+//   AllowYoloMode      REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
+//                                    Gates BOTH the global agentPane.yoloMode
+//                                    setting AND the per-session `/yolo` slash
+//                                    command — when blocked, neither path may
+//                                    enable unattended tool-call auto-approval.
 
 #pragma once
 
@@ -62,6 +67,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         PolicyState customAgents{ PolicyState::NotConfigured };
         PolicyState autoFix{ PolicyState::NotConfigured };
         PolicyState agentSessionHooks{ PolicyState::NotConfigured };
+        PolicyState yoloMode{ PolicyState::NotConfigured };
     };
 
     // ── Private implementation details ──────────────────────────────────
@@ -139,6 +145,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         snap->customAgents = _DwordToPolicyState(_ReadDwordPolicy(L"AllowCustomAgents"));
         snap->autoFix = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAutoFix"));
         snap->agentSessionHooks = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAgentSessionHooks"));
+        snap->yoloMode = _DwordToPolicyState(_ReadDwordPolicy(L"AllowYoloMode"));
 
         {
             std::lock_guard lock{ s_policyMutex };
@@ -188,6 +195,11 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         return _GetSnapshot()->agentSessionHooks != PolicyState::Blocked;
     }
 
+    inline bool IsYoloModeAllowed()
+    {
+        return _GetSnapshot()->yoloMode != PolicyState::Blocked;
+    }
+
     // Expose raw policy state for UI to distinguish "not configured" from "allowed".
     inline PolicyState GetCustomAgentPolicy()
     {
@@ -229,6 +241,11 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     inline PolicyState GetAgentSessionHooksPolicy()
     {
         return _GetSnapshot()->agentSessionHooks;
+    }
+
+    inline PolicyState GetYoloModePolicy()
+    {
+        return _GetSnapshot()->yoloMode;
     }
 
     // Whether AllowedAgents policy is configured at all (for UI lock indicators).

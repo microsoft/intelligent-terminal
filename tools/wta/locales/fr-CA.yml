@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Impossible de reprendre la session %{age
 system.cannot_resume_phantom_via_load: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation; %{agent} rejetterait donc le chargement. Suppression de la ligne."
 system.fallback.this_agent: "cet agent"
 system.fallback.connected_agent: "l’agent connecté"
+system.yolo_blocked_by_policy: "Le mode yolo est désactivé par la stratégie de votre organisation."
+
 
 # ── Sortie CLI d'exécution (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aucune fenêtre trouvée."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "Le changement d'agent n'est pas disponible en 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Choisissez le modèle pour ce volet (/model <id> pour changer directement)"  # {Locked="/model","<id>"}
 commands.move.summary: "Déplacer le volet de l'agent de cet onglet (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Approuver automatiquement les appels d’outil pour cette session seulement (jusqu’à /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Sélectionner le modèle (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L'agent connecté n'a annoncé aucun modèle sélectionnable."
 system.model_set: "Le modèle pour ce volet est défini sur %{model}."  # {Locked="%{model}"}

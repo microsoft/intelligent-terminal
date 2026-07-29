@@ -810,6 +810,16 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Left</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve">
+    <value>Auto-approve tool calls (Yolo mode)</value>
+    <comment>Header for the global setting that makes every agent pane skip its permission prompt and auto-approve tool calls. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve">
+    <value>The agent runs commands and edits files without asking for confirmation. Only enable this if you trust the agent and the environment it's running in.</value>
+    <comment>Supplementary risk-warning description for the Yolo mode setting, shown under the toggle. 
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Agent session tracking (hooks)</value>
     <comment>{Locked="hooks","Hook","Hooks"} Header for the expandable Agent Hooks section in the Agent pane group. Wording matches the design ask: this UX exists so the agent pane can track agent sessions through installed hooks.

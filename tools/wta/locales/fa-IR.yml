@@ -154,6 +154,8 @@ system.cannot_resume_phantom_via_flag: "نمی‌توان جلسه %{agent} %{se
 system.cannot_resume_phantom_via_load: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین %{agent} بارگذاری را رد می‌کند. در حال حذف ردیف."
 system.fallback.this_agent: "این عامل"
 system.fallback.connected_agent: "عامل متصل"
+system.yolo_blocked_by_policy: "حالت yolo توسط سیاست سازمان شما غیرفعال شده است."
+
 
 # ── خروجی CLI در زمان اجرا (src/main.rs) ────────────────────────────────────────
 output.no_windows: "هیچ پنجره‌ای یافت نشد."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "تغییر عامل در خارج از برگ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "مدل این پنل را انتخاب کنید (/model <id> برای تغییر مستقیم)"  # {Locked="/model","<id>"}
 commands.move.summary: "انتقال پنل عامل این زبانه (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "تأیید خودکار فراخوانی‌های ابزار فقط برای این نشست (تا /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "انتخاب مدل (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "عامل هوش مصنوعی متصل هیچ مدل قابل انتخابی را اعلام نکرد."
 system.model_set: "مدل این پنل روی %{model} تنظیم شد."  # {Locked="%{model}"}

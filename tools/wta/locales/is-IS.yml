@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Ekki er hægt að halda áfram með %{ag
 system.cannot_resume_phantom_via_load: "Ekki er hægt að halda áfram með %{agent}-setu %{session_id}: hún var ræst en safnaði aldrei neinu samtali, þannig að %{agent} myndi hafna hleðslunni. Fjarlægi röðina."
 system.fallback.this_agent: "þessi agent"
 system.fallback.connected_agent: "tengdi agentinn"
+system.yolo_blocked_by_policy: "Yolo-hamur er óvirkur samkvæmt stefnu fyrirtækis þíns."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Engir gluggar fundust."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "Ekki er hægt að skipta um fulltrúa utan Win
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Veldu líkanið fyrir þetta spjald (/model <id> til að skipta beint)"  # {Locked="/model","<id>"}
 commands.move.summary: "Færa agentspjald þessa flipa (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Samþykktu verkfæraköll sjálfkrafa aðeins fyrir þessa lotu (þar til /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}

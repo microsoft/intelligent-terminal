@@ -2172,6 +2172,26 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
+        // Global "Yolo mode" — auto-approve every ACP permission request on
+        // this pane without prompting. Policy-gated via
+        // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
+        // a GPO-blocked org never spawns a helper with this flag set even if
+        // the user's settings.json has agentPane.yoloMode: true. This is
+        // independent from the per-session `/yolo` slash command, which the
+        // helper enforces itself at runtime against the same policy.
+        if (globals.EffectiveAgentPaneYoloMode())
+        {
+            helperCmd.append(L" --auto-approve-tools");
+        }
+        // Independent of the global toggle above: tell the helper whether
+        // org policy blocks yolo mode outright, so its own `/yolo` slash
+        // command (a per-session override the user can flip at runtime) can
+        // refuse and explain why, instead of silently enabling unattended
+        // tool-call approval in a GPO-managed environment.
+        if (globals.IsYoloModePolicyLocked())
+        {
+            helperCmd.append(L" --yolo-command-blocked");
+        }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             appendHelperFlagValue(L"--language", lang);

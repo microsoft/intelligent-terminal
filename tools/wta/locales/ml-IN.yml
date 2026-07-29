@@ -154,6 +154,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} സെഷൻ %{session_id} പ�
 system.cannot_resume_phantom_via_load: "%{agent} സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: അത് തുടങ്ങിയിരുന്നു, പക്ഷേ ഒരു സംഭാഷണവും ശേഖരിച്ചിട്ടില്ല; അതിനാൽ %{agent} load നിരസിക്കും. വരി നീക്കം ചെയ്യുന്നു."
 system.fallback.this_agent: "ഈ agent"
 system.fallback.connected_agent: "കണക്റ്റുചെയ്‌ത agent"
+system.yolo_blocked_by_policy: "നിങ്ങളുടെ സംഘടനയുടെ നയം കാരണം yolo mode പ്രവർത്തനരഹിതമാണ്."
+
 
 # ── റണ്‍ടൈം CLI ഔട്ട്പുട്ട് (src/main.rs) ────────────────────────────────────────
 output.no_windows: "വിന്‍ഡോകള്‍ കണ്ടെത്തിയില്ല."
@@ -217,6 +219,8 @@ system.agent_switch_unavailable: "വിൻഡോസ് ടെർമിനൽ �
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
 commands.move.summary: "ഈ ടാബിന്റെ ഏജന്റ് പേൻ നീക്കുക (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "ഈ session-നു മാത്രം tool call-കൾ auto-approve ചെയ്യുക (/new വരെ)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}

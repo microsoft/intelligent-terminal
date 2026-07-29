@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Hindi maipagpatuloy ang %{agent} session
 system.cannot_resume_phantom_via_load: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} ang load. Inaalis ang row."
 system.fallback.this_agent: "ang agent na ito"
 system.fallback.connected_agent: "ang nakakonektang agent"
+system.yolo_blocked_by_policy: "Na-disable ang yolo mode ng patakaran ng iyong organisasyon."
+
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Walang nahanap na window."
@@ -216,6 +218,8 @@ system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}
 commands.move.summary: "Ilipat ang agent pane ng tab na ito (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Awtomatikong aprubahan ang mga tawag sa tool para sa sesyong ito lamang (hanggang /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}

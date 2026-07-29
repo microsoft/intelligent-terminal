@@ -141,6 +141,8 @@ system.cannot_resume_phantom_via_flag: "Cha ghabh seisean %{agent} %{session_id}
 system.cannot_resume_phantom_via_load: "Cha ghabh seisean %{agent} %{session_id} ath-thòiseachadh: chaidh a thòiseachadh ach cha do chruinnich e còmhradh sam bith, mar sin dhiùltadh %{agent} an luchdadh. A’ toirt air falbh an ràigh."
 system.fallback.this_agent: "an t-àidseant seo"
 system.fallback.connected_agent: "an t-àidseant ceangailte"
+system.yolo_blocked_by_policy: "Tha modh yolo à comas le poileasaidh na buidhne agad."
+
 
 # ── Toradh CLI àm-ruith (src/main.rs) ────────────────────────────────────
 output.no_windows: "Cha deach uinneagan a lorg."
@@ -215,6 +217,8 @@ system.agent_switch_unavailable: "Chan eil atharrachadh àidhent ri fhaighinn b�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Tagh am modail airson a' phana seo (/model <id> gus atharrachadh gu dìreach)"  # {Locked="/model","<id>"}
 commands.move.summary: "Gluais panail àidseant an taba seo (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "Fèin-aontaich gairmean inneil airson an t-seisein seo a-mhàin (gu /new)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "Tagh modail (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Cha do dh'ainmich an t-àidseant ceangailte modail sam bith a ghabhas taghadh."
 system.model_set: "Chaidh modail a' phana seo a shuidheachadh gu %{model}."  # {Locked="%{model}"}

@@ -137,6 +137,8 @@ system.cannot_resume_phantom_via_flag: "%{agent} セッション %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} セッション %{session_id} を再開できません: 開始されましたが会話が一度も蓄積されていないため、%{agent} が読み込みを拒否します。行を削除します。"
 system.fallback.this_agent: "このエージェント"
 system.fallback.connected_agent: "接続中のエージェント"
+system.yolo_blocked_by_policy: "yolo モードは組織のポリシーによって無効になっています。"
+
 
 # ── ランタイム CLI 出力 (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ウィンドウが見つかりません。"
@@ -211,6 +213,8 @@ system.agent_switch_unavailable: "Windows Terminal タブの外ではエージ�
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "このペインのモデルを選択（直接切り替えるには /model <id>）"  # {Locked="/model","<id>"}
 commands.move.summary: "このタブのエージェント ペインを移動 (/move <position>)"  # {Locked="/move","<position>"}
+commands.yolo.summary: "このセッションのみツール呼び出しを自動承認する (/new まで)"  # {Locked="/yolo","/new"}
+
 model_picker.title: "モデルを選択 (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "接続中のエージェントは選択可能なモデルを通知しませんでした。"
 system.model_set: "このペインのモデルを %{model} に設定しました。"  # {Locked="%{model}"}

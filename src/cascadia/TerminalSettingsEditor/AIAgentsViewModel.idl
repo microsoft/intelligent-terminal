@@ -79,6 +79,14 @@ namespace Microsoft.Terminal.Settings.Editor
         // on and the auto-fix GPO must not be locking it off.
         Boolean CanSuggestErrors { get; };
 
+        // Global "Yolo mode" — when on, every agent pane on this machine
+        // auto-approves tool-call permission requests without prompting.
+        // Getter/setter route through EffectiveAgentPaneYoloMode /
+        // IsYoloModePolicyLocked so the toggle reads Off and rejects writes
+        // when org policy blocks it.
+        Boolean AgentPaneYoloMode;
+        Boolean HasAgentPaneYoloMode { get; };
+
         // GPO policy lock indicators.
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent
         //   dropdown options are filtered, but the control stays enabled.
@@ -89,6 +97,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
         Boolean IsAgentSessionHooksPolicyLocked { get; };
+        Boolean IsYoloModePolicyLocked { get; };
 
         event Windows.Foundation.TypedEventHandler<AIAgentsViewModel, Microsoft.Terminal.Settings.Model.ShellIntegrationTarget> InitShellIntegrationRequested;
 
