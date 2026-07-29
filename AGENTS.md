@@ -357,36 +357,22 @@ cmd.exe //c "tools\razzle.cmd && bcz no_clean"
 
 ### Safe Debug deployment
 
-Intelligent Terminal and Windows Terminal both run as `WindowsTerminal.exe`.
-Never stop terminals by process name during deployment (`Stop-Process -Name
-WindowsTerminal`, `taskkill /im WindowsTerminal.exe`, and equivalents are
-forbidden): that can close the normal Windows Terminal hosting the agent.
-
-After a Debug Terminal build has produced
-`CascadiaPackage.build.appxrecipe`, use the package-aware Debug deployment
-wrapper whenever C++, XAML, IDL, `wtcli`, manifest, resource, packaging, or
-mixed changes need to be deployed:
+After a Debug Terminal build, use this wrapper to deploy C++, XAML, IDL,
+`wtcli`, manifest, resource, packaging, or mixed changes:
 
 ```powershell
 .\build\scripts\Invoke-IntelligentTerminalDebugDeployment.ps1 `
     -AppxRecipePath src\cascadia\CascadiaPackage\bin\x64\Debug\CascadiaPackage.build.appxrecipe
 ```
 
-The script does **not** build anything. It accepts only a Debug recipe, targets
-only the dev-sideload family `IntelligentTerminal_rd9vj3e6a2mbr`, and verifies
-that the installed loose package points to the recipe's adjacent `AppX`
-directory. It closes the host and every same-package child process by exact
-path/PID, deploys the loose layout, and reopens Intelligent Terminal only if it
-was running. Active panes and agent sessions are terminated. Ordinary Windows
-Terminal processes are ignored.
+The script validates the dev package and loose Debug layout, closes only exact
+PIDs running from that layout, deploys it, and reopens Intelligent Terminal if
+needed. It terminates IT panes and agent sessions but never ordinary Windows
+Terminal. Never stop `WindowsTerminal.exe` by name; use `-WhatIf -Verbose` when
+process selection is uncertain.
 
-Do not use this full package deployment for a change whose only packaged output
-is `wta.exe`; use the WTA-only build/hot-refresh flow instead. Static WTA assets
-such as `wt-agent-hooks` are not `wta.exe`-only changes. Before first use, or
-whenever process selection is in doubt, add `-WhatIf -Verbose`; ordinary
-Windows Terminal processes must appear only as ignored PIDs. If package
-identity or the Debug layout cannot be confirmed, leave processes running
-rather than guessing.
+Do not use full deployment for `wta.exe`-only changes; use the WTA hot-refresh
+flow. Static assets such as `wt-agent-hooks` are not `wta.exe`-only changes.
 
 ### Full rebuild flow (typical dev cycle)
 
