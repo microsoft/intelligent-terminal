@@ -40,6 +40,7 @@ mod telemetry;
 mod terminal_action_proposal;
 #[cfg(test)]
 mod test_support;
+mod text_selection;
 mod theme;
 mod ui;
 mod ui_trace;

@@ -132,6 +132,7 @@ connection.lost: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਸ਼ਨ ਟੁੱਟ ਗ�
 
 # ── ਸਿਸਟਮ ਸੁਨੇਹੇ (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "ਪੈਨ ਨੂੰ ਬੰਦ ਕਰਨ ਲਈ Ctrl+C ਦੁਬਾਰਾ ਦਬਾਓ"  # {Locked="Ctrl+C"}
+system.selection_copied: "ਕਾਪੀ ਕੀਤਾ"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ਰੱਦ ਕੀਤਾ ਗਿਆ।"
 system.no_prompt_in_flight: "ਕੋਈ ਪ੍ਰੋਮਪਟ ਚੱਲ ਨਹੀਂ ਰਿਹਾ।"
 system.authentication_failed: "ਪ੍ਰਮਾਣਿਕਤਾ ਅਸਫਲ"

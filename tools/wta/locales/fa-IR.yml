@@ -132,6 +132,7 @@ connection.lost: "اتصال به عامل هوش مصنوعی قطع شد. بر
 
 # ── پیام‌های سیستم (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "برای بستن پنل، دوباره Ctrl+C را فشار دهید"  # {Locked="Ctrl+C"}
+system.selection_copied: "کپی شد"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "لغو شد."
 system.no_prompt_in_flight: "هیچ درخواستی در حال اجرا نیست."
 system.authentication_failed: "احراز هویت ناموفق بود"

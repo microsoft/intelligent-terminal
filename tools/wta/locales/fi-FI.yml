@@ -119,6 +119,7 @@ connection.lost: "Yhteys agenttiin katkesi. Muodosta yhteys uudelleen kirjoittam
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Sulje paneeli painamalla Ctrl+C uudelleen"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopioitu"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Peruutettu."
 system.no_prompt_in_flight: "Ei käynnissä olevaa kehotetta."
 system.authentication_failed: "Todennus epäonnistui"
