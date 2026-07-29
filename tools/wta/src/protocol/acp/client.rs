@@ -13,7 +13,7 @@ use std::sync::{
 use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::app::{AppEvent, PermOption, PlanEntry, PlanEntryStatus};
+use crate::app_contracts::{AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEntryStatus};
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
@@ -2533,7 +2533,7 @@ pub async fn run_acp_client_over_pipe(
             let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
             (
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
-                Vec::<crate::app::AcpModelInfo>::new(),
+                Vec::<AcpModelInfo>::new(),
                 None,
                 false,
             )
@@ -2758,7 +2758,7 @@ pub async fn run_acp_client_over_pipe(
                 // the user sees a fresh session.
                 //
                 // Signal travels: helper → `wtcli publish` (see
-                // `app::send_wt_protocol_event`) → `IProtocolServer::SendEvent`
+                // `wt_protocol_events::send`) → `IProtocolServer::SendEvent`
                 // (route `RestartAgentStack`) →
                 // `TerminalPage::OnRestartAgentStackRequested`.
                 tracing::info!(
@@ -2771,7 +2771,7 @@ pub async fn run_acp_client_over_pipe(
                     "method": "restart_agent_stack",
                     "params": {},
                 });
-                crate::app::send_wt_protocol_event(evt.to_string());
+                crate::wt_protocol_events::send(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
                 dispatch_cancel(req, &conn, &cancel_signals);
@@ -3748,7 +3748,7 @@ mod tests {
     };
     use super::acp;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    use crate::app::AppEvent;
+    use crate::app_contracts::AppEvent;
     use tokio::sync::mpsc;
 
     /// `shell_from_active` resolves our own pid to a real exe name (the test
@@ -4597,7 +4597,7 @@ mod tests {
     /// not tear down the connection).
     mod ext_notification_tests {
         use super::super::{ClientState, WtaClient};
-        use crate::app::AppEvent;
+        use crate::app_contracts::AppEvent;
         use crate::session_registry::{
             build_session_added_notification, build_session_removed_notification,
             INTELLTERM_METHOD_SESSION_REMOVED,

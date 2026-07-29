@@ -19,7 +19,7 @@ use super::{
     CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
     PromptSubmission, RenameSessionRequest, TemplateMemo,
 };
-use crate::app::AppEvent;
+use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
 use crate::protocol::acp::conn;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
@@ -1744,17 +1744,17 @@ async fn session_notification_routes_plan_with_status_mapping() {
             assert_eq!(
                 entries,
                 vec![
-                    crate::app::PlanEntry {
+                    PlanEntry {
                         content: "Step one".to_string(),
-                        status: crate::app::PlanEntryStatus::InProgress,
+                        status: PlanEntryStatus::InProgress,
                     },
-                    crate::app::PlanEntry {
+                    PlanEntry {
                         content: "Step two".to_string(),
-                        status: crate::app::PlanEntryStatus::Completed,
+                        status: PlanEntryStatus::Completed,
                     },
-                    crate::app::PlanEntry {
+                    PlanEntry {
                         content: "Step three".to_string(),
-                        status: crate::app::PlanEntryStatus::Pending,
+                        status: PlanEntryStatus::Pending,
                     },
                 ]
             );
@@ -1846,5 +1846,4 @@ async fn request_permission_cancelled_when_responder_dropped() {
         })
         .await;
 }
-
 

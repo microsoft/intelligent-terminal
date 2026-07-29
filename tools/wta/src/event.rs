@@ -3,7 +3,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration, MissedTickBehavior};
 
-use crate::app::AppEvent;
+use crate::app_contracts::AppEvent;
 
 /// Pure translation of a crossterm input `Event` into the `AppEvent` the TUI
 /// consumes, or `None` for events we deliberately drop.
