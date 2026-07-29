@@ -231,8 +231,10 @@
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" />
-                    <TextBox Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBox Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                             Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox x:Uid="AIAgents_CustomModelId"
+                             Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
                                  Password="{x:Bind ViewModel.NewCustomModelApiKey, Mode=TwoWay}" />
                     <TextBlock Foreground="{ThemeResource SystemControlErrorTextForegroundBrush}"

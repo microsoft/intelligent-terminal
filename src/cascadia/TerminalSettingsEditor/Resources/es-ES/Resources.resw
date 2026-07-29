@@ -2931,6 +2931,14 @@
     <value>Quitar</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
+    <value>URL base</value>
+    <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
+    <value>ID de modelo</value>
+    <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
   <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
     <value>Clave de API (opcional para proveedores locales)</value>
     <comment>Placeholder for a custom provider API key. {Locked="API"}</comment>
