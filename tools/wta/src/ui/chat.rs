@@ -87,15 +87,20 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
         ChatMessage::ToolCall { location, location_is_command, .. } => {
-            // Command targets get an extra `$ command` line (see the
-            // render arm below) — must count it here too, or the chat
-            // area's height budget undercounts by one row per
-            // command-kind tool call, clipping the scrollback.
-            if *location_is_command && location.as_deref().is_some_and(|l| !l.is_empty()) {
-                2
+            // Command targets render one line per split statement (see
+            // the render arm below, and `command_format`) — must count
+            // the same number of rows here, or the chat area's height
+            // budget undercounts and clips the scrollback.
+            let command_lines = if *location_is_command {
+                location
+                    .as_deref()
+                    .filter(|l| !l.is_empty())
+                    .map(|l| crate::ui::command_format::command_display_lines(l).len())
+                    .unwrap_or(0)
             } else {
-                1
-            }
+                0
+            };
+            1 + command_lines
         }
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
         // Disclaimer is a single dim row — terminal min-width guarantees the
@@ -646,18 +651,29 @@ fn build_message_lines<'a>(
                 ));
             }
             lines.push(Line::from(spans));
-            // A command hint can be a long one-liner (e.g. a full
-            // PowerShell pipeline) — cramming it into the title's line
-            // would either overflow or force an awkward mid-sentence
-            // wrap, so it gets its own indented, code-styled line
-            // instead (mirrors how `execute`-kind cards look in Zed /
-            // opencode).
+            // A command target can be several `;`-chained PowerShell
+            // statements crammed into one `raw_input.command` (agents
+            // commonly batch multiple checks into a single tool call) —
+            // rendering that as one long line, which then wraps at the
+            // terminal edge with no hanging indent, reads as an
+            // unreadable wall of text. Splitting on top-level `;`
+            // restores the sequence of discrete steps, one per code-
+            // styled line (mirrors how `execute`-kind cards look in Zed /
+            // opencode); a long remainder folds into a single "+N more"
+            // row instead of growing the card unboundedly.
             if *location_is_command {
                 if let Some(command) = location {
-                    lines.push(Line::from(Span::styled(
-                        format!("    $ {}", truncate_render_text(command)),
-                        theme::CARD_CODE,
-                    )));
+                    for entry in crate::ui::command_format::command_display_lines(command) {
+                        let text = match entry {
+                            crate::ui::command_format::CommandLine::Statement(s) => {
+                                format!("    $ {s}")
+                            }
+                            crate::ui::command_format::CommandLine::Folded { remaining } => {
+                                format!("    … (+{remaining} more)")
+                            }
+                        };
+                        lines.push(Line::from(Span::styled(text, theme::CARD_CODE)));
+                    }
                 }
             }
         }
@@ -931,6 +947,42 @@ mod tests {
             message_height(&message, 80),
             2,
             "the height budget must account for the extra command line"
+        );
+    }
+
+    /// A multi-statement command (`;`-chained, the pattern agents commonly
+    /// emit when batching several checks into one tool call) must render
+    /// as one code-styled line **per statement**, not one giant crammed
+    /// line — this was the exact bug reported: `winget list ...; winget
+    /// list ...` rendered as a single unreadable wrapped line with
+    /// misaligned continuation.
+    #[test]
+    fn tool_call_multi_statement_command_renders_one_line_per_statement() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Check installed PowerToys and Foundry Local packages".into(),
+            status: "Completed".into(),
+            location: Some(
+                "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
+            ),
+            location_is_command: true,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+
+        assert_eq!(lines.len(), 3, "expected a title line plus one line per statement");
+        assert_eq!(
+            line_text(&lines[1]),
+            "    $ winget list --name PowerToys 2>$null"
+        );
+        assert_eq!(
+            line_text(&lines[2]),
+            "    $ winget list --name Foundry 2>$null"
+        );
+
+        assert_eq!(
+            message_height(&message, 80),
+            3,
+            "the height budget must count one row per split statement"
         );
     }
 

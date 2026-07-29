@@ -40,15 +40,26 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         };
         let mut lines = vec![Line::styled(header, theme::CARD_DESCRIPTION)];
         if let Some(target) = &perm.target {
-            // Commands get a `$` shell-prompt prefix (universally
-            // understood, no translation needed); paths are shown as-is —
-            // the code styling alone distinguishes it from the title.
-            let target_text = if perm.target_is_command {
-                format!("$ {target}")
+            if perm.target_is_command {
+                // A command target can be several `;`-chained statements
+                // (agents commonly batch multiple checks into one tool
+                // call) — split it the same way as the chat tool-call
+                // card so it doesn't render as an unreadable wall of
+                // text (see `ui/command_format.rs`).
+                for entry in crate::ui::command_format::command_display_lines(target) {
+                    let text = match entry {
+                        crate::ui::command_format::CommandLine::Statement(s) => format!("$ {s}"),
+                        crate::ui::command_format::CommandLine::Folded { remaining } => {
+                            format!("… (+{remaining} more)")
+                        }
+                    };
+                    lines.push(Line::styled(text, theme::CARD_CODE));
+                }
             } else {
-                target.clone()
-            };
-            lines.push(Line::styled(target_text, theme::CARD_CODE));
+                // Paths are shown as-is — the code styling alone
+                // distinguishes it from the title.
+                lines.push(Line::styled(target.clone(), theme::CARD_CODE));
+            }
         }
         let content = Paragraph::new(lines)
             .alignment(crate::rtl::text_alignment())

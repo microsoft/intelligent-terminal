@@ -6119,10 +6119,11 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
 
 /// Computes the rendered height (in terminal rows) of the embedded
 /// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
-/// a header line (`{kind_label} {title}` or just `title`) plus an optional
-/// second line for `target` — NOT `description`, which is only the
-/// fallback text for the 1-row compact card. No inter-card gap — only one
-/// card is ever shown.
+/// a header line (`{kind_label} {title}` or just `title`) plus, for a
+/// path target, one wrapped line, or for a command target, one line per
+/// split statement (see `ui::command_format`) — NOT `description`, which
+/// is only the fallback text for the 1-row compact card. No inter-card
+/// gap — only one card is ever shown.
 pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
     let inner_width = ui::card::card_content_width(panel_width);
     let wrap_lines = |text: &str| -> usize {
@@ -6145,12 +6146,11 @@ pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -
     };
     let mut content_lines = wrap_lines(&header);
     if let Some(target) = &perm.target {
-        let target_text = if perm.target_is_command {
-            format!("$ {target}")
+        if perm.target_is_command {
+            content_lines += ui::command_format::command_display_lines(target).len();
         } else {
-            target.clone()
-        };
-        content_lines += wrap_lines(&target_text);
+            content_lines += wrap_lines(target);
+        }
     }
     // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
     ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)

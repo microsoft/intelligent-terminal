@@ -3,6 +3,7 @@ pub mod agents_view;
 mod auth;
 pub(crate) mod card;
 pub(crate) mod chat;
+pub(crate) mod command_format;
 mod command_popup;
 mod debug_panel;
 mod input;
