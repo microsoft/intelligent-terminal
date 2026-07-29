@@ -5,8 +5,8 @@ mod agent_check;
 mod agent_hooks_installer;
 mod agent_pane_origin;
 mod agent_registry;
-mod agent_source;
 mod agent_sessions;
+mod agent_source;
 mod app;
 mod clipboard_image;
 mod command_recall;
@@ -17,10 +17,10 @@ mod cwd_util;
 mod event;
 mod helper;
 mod history_loader;
-mod logging;
 #[cfg(test)]
 #[path = "locale_parity_tests.rs"]
 mod locale_parity_tests;
+mod logging;
 mod master;
 mod osc52;
 mod pane_context;
@@ -203,15 +203,23 @@ struct Cli {
     /// agents may use their own --model flag in `agent`.
     #[arg(long)]
     acp_model: Option<String>,
+    /// This helper inherited `acp_model` from the global agent settings rather
+    /// than a per-tab/profile pin. Hidden because TerminalPage is the
+    /// authoritative source of this scope.
+    #[arg(long, hide = true)]
+    follows_global_acp_model: bool,
     /// Model configured through an Intelligent Terminal custom provider.
-    /// Helper-only UI metadata; provider credentials remain master-only.
+    /// Bounded helper bootstrap metadata; provider credentials remain
+    /// master-only and the full catalog arrives over the protocol.
     #[arg(long, hide = true)]
     custom_model_selection: Option<String>,
-    /// All Intelligent Terminal custom-provider models available to `/model`.
-    /// JSON metadata only; provider credentials remain master-only.
+    /// Legacy compatibility flag for old hosts that placed the full
+    /// credential-free custom-provider catalog on argv. New hosts deliver it
+    /// after helper connection over `agent_config_changed`.
     #[arg(long, hide = true)]
     custom_models: Option<String>,
-    /// Last known cloud/native model catalog retained by Windows Terminal.
+    /// Legacy compatibility flag for old hosts that placed the cloud/native
+    /// model catalog on argv. New hosts deliver it after helper connection.
     #[arg(long, hide = true)]
     cloud_models: Option<String>,
 
@@ -598,7 +606,6 @@ enum Command {
     },
 }
 
-
 /// Subcommands for `wta sessions`.
 #[derive(Subcommand, Debug)]
 enum SessionsAction {
@@ -636,9 +643,9 @@ enum SessionsOriginArg {
 impl SessionsOriginArg {
     fn to_filter(self) -> agent_sessions::OriginFilter {
         match self {
-            SessionsOriginArg::Shell     => agent_sessions::OriginFilter::ShellOnly,
+            SessionsOriginArg::Shell => agent_sessions::OriginFilter::ShellOnly,
             SessionsOriginArg::AgentPane => agent_sessions::OriginFilter::AgentPaneOnly,
-            SessionsOriginArg::All       => agent_sessions::OriginFilter::All,
+            SessionsOriginArg::All => agent_sessions::OriginFilter::All,
         }
     }
 }
@@ -1018,7 +1025,7 @@ async fn main() -> Result<()> {
         Some(Command::ProbeModels { agent }) => run_probe_models(&agent).await,
         Some(Command::ProbeAgentSources { wsl_distro }) => {
             run_probe_agent_sources(&wsl_distro).await
-        },
+        }
 
         // ── ACP session/list probe (diagnostic) ──
         Some(Command::ProbeSessions { agent }) => run_probe_sessions(&agent).await,
@@ -1237,14 +1244,19 @@ async fn run_probe_host_sessions(agent: &str) -> Result<()> {
     // Resolve the CliSource from the agent command so the probe labels and
     // classifies rows the way production seeding does (which uses the real
     // `state.cli_source`), instead of assuming Copilot for every agent.
-    let cli_source =
-        CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(agent)));
+    let cli_source = CliSource::parse(Some(crate::agent_registry::resolve_agent_id_from_cmd(
+        agent,
+    )));
 
     let local = tokio::task::LocalSet::new();
     let rows = match local
         .run_until(async {
-            let mut spawned =
-                crate::protocol::acp::spawn::spawn_agent_process(agent, None, None)?;
+            let mut spawned = crate::protocol::acp::spawn::spawn_agent_process(
+                agent,
+                None,
+                None,
+                crate::protocol::acp::spawn::ChildEnvironmentPolicy::ApplySharedProvider,
+            )?;
             let label = format!("host:{}", crate::session_history::cli_label(&cli_source));
             let init_timeout = Duration::from_secs(if spawned.is_npx { 25 } else { 10 });
             let result = crate::protocol::acp::session_list::fetch_session_list(
@@ -1580,7 +1592,6 @@ async fn get_first_tab_id(channel: &CliChannel, window_id: &str) -> Result<Strin
         .ok_or_else(|| anyhow::anyhow!("{}", t!("output.no_tabs_in_window", window_id = window_id)))
 }
 
-
 // ─── sessions CLI helpers ───────────────────────────────────────────────────
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
@@ -1631,15 +1642,16 @@ async fn fetch_sessions_from_master(
     });
 
     let init_started = std::time::Instant::now();
-    let init_result = conn.initialize(
-        acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-            .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-            .client_info(
-                acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
-                    .title("Windows Terminal Agent sessions CLI"),
-            ),
-    )
-    .await;
+    let init_result = conn
+        .initialize(
+            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+                .client_capabilities(acp::schema::v1::ClientCapabilities::new())
+                .client_info(
+                    acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
+                        .title("Windows Terminal Agent sessions CLI"),
+                ),
+        )
+        .await;
     telemetry::log_acp_initialize_complete(
         init_started.elapsed().as_secs_f64() * 1000.0,
         init_result.is_ok(),
@@ -1719,8 +1731,11 @@ async fn register_launched_session_with_master(
                 acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
                     .client_capabilities(acp::schema::v1::ClientCapabilities::new())
                     .client_info(
-                        acp::schema::v1::Implementation::new("wta-delegate", env!("CARGO_PKG_VERSION"))
-                            .title("Windows Terminal Agent delegate"),
+                        acp::schema::v1::Implementation::new(
+                            "wta-delegate",
+                            env!("CARGO_PKG_VERSION"),
+                        )
+                        .title("Windows Terminal Agent delegate"),
                     ),
             )
             .await
@@ -1799,7 +1814,11 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
     ));
     for (i, session) in sessions.iter().enumerate() {
         let sid = session.session_id.to_string();
-        let short_sid = if sid.len() > 24 { &sid[..24] } else { sid.as_str() };
+        let short_sid = if sid.len() > 24 {
+            &sid[..24]
+        } else {
+            sid.as_str()
+        };
         out.push_str(&format!(
             "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
             i + 1,
@@ -1817,15 +1836,17 @@ fn format_sessions_table(sessions: &[session_registry::SessionInfo]) -> String {
 }
 
 fn status_label(status: Option<&agent_sessions::AgentStatus>) -> String {
-    status.map(|s| format!("{s:?}")).unwrap_or_else(|| "-".to_string())
+    status
+        .map(|s| format!("{s:?}"))
+        .unwrap_or_else(|| "-".to_string())
 }
 
 fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
     match source {
-        Some(agent_sessions::CliSource::Claude)  => "Claude".to_string(),
-        Some(agent_sessions::CliSource::Codex)   => "Codex".to_string(),
+        Some(agent_sessions::CliSource::Claude) => "Claude".to_string(),
+        Some(agent_sessions::CliSource::Codex) => "Codex".to_string(),
         Some(agent_sessions::CliSource::Copilot) => "Copilot".to_string(),
-        Some(agent_sessions::CliSource::Gemini)  => "Gemini".to_string(),
+        Some(agent_sessions::CliSource::Gemini) => "Gemini".to_string(),
         Some(agent_sessions::CliSource::OpenCode) => "OpenCode".to_string(),
         Some(agent_sessions::CliSource::Unknown(s)) if !s.is_empty() => s.clone(),
         _ => "-".to_string(),
@@ -1840,8 +1861,8 @@ fn cli_source_label(source: Option<&agent_sessions::CliSource>) -> String {
 fn origin_label(origin: Option<&agent_sessions::SessionOrigin>) -> &'static str {
     match origin {
         Some(agent_sessions::SessionOrigin::AgentPane) => "AgentPane",
-        Some(agent_sessions::SessionOrigin::Unknown)   => "Shell",
-        None                                           => "-",
+        Some(agent_sessions::SessionOrigin::Unknown) => "Shell",
+        None => "-",
     }
 }
 
@@ -2149,7 +2170,11 @@ async fn run_delegate(
     cwd: Option<&str>,
 ) -> Result<()> {
     // Log the prompt length, not the text — the prompt is user content.
-    tracing::info!(prompt_chars = prompt.map(|p| p.chars().count()), agent = agent_cmd, "run_delegate started");
+    tracing::info!(
+        prompt_chars = prompt.map(|p| p.chars().count()),
+        agent = agent_cmd,
+        "run_delegate started"
+    );
     tracing::trace!(target: "delegate.content", prompt = ?prompt, "run_delegate prompt");
 
     let (debug_tx, _) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
@@ -2534,7 +2559,8 @@ async fn delegate_with_context(
     tracing::trace!(target: "delegate.content", commandline, "delegate_with_context commandline");
 
     let windows_home = std::env::var("USERPROFILE").ok();
-    let sanitized_cwd = crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
+    let sanitized_cwd =
+        crate::coordinator::sanitize_windows_agent_cwd(cwd, windows_home.as_deref());
 
     let create_resp = shell_mgr
         .wt_create_tab(Some(&commandline), sanitized_cwd.as_deref(), None, None)
@@ -2572,11 +2598,9 @@ pub(crate) async fn run_default_tui_over_pipe(mut cli: Cli, pipe_name: String) -
         cli.agent_source.as_deref(),
         cli.agent_wsl_distro.as_deref(),
     );
-    cli.agent_source_cwd = crate::agent_source::resolve_source_cwd(
-        &agent_source,
-        cli.agent_source_cwd.as_deref(),
-    )
-    .await;
+    cli.agent_source_cwd =
+        crate::agent_source::resolve_source_cwd(&agent_source, cli.agent_source_cwd.as_deref())
+            .await;
 
     // Debug channel for the helper TUI.
     let (debug_tx, debug_rx) = tokio::sync::mpsc::unbounded_channel::<app::DebugMessage>();
@@ -2655,7 +2679,10 @@ async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, Str
                 Some(t) => t,
                 None => continue,
             };
-            let panes = shell_mgr.wt_list_panes(&tab_id_str, Some(&window_id)).await.ok()?;
+            let panes = shell_mgr
+                .wt_list_panes(&tab_id_str, Some(&window_id))
+                .await
+                .ok()?;
             let panes_arr = panes.get("panes")?.as_array()?;
 
             for pane in panes_arr {
@@ -2923,9 +2950,7 @@ async fn run_info_mode() -> Result<()> {
 }
 
 fn spawn_restart_agent_stack_forwarder(
-    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<
-        protocol::acp::client::RestartRequest,
-    >,
+    mut restart_rx: tokio::sync::mpsc::UnboundedReceiver<protocol::acp::client::RestartRequest>,
 ) {
     tokio::task::spawn_local(async move {
         while let Some(req) = restart_rx.recv().await {
@@ -3210,21 +3235,30 @@ async fn run_acp_app(
                 None => None,
             };
             let start_in_initial_auth = initial_auth_agent.as_deref() == Some("copilot");
-            let cloud_models = cli
-                .cloud_models
-                .as_deref()
-                .and_then(|models| match serde_json::from_str(models) {
-                    Ok(models) => Some(models),
-                    Err(error) => {
-                        tracing::error!(
-                            target: "cloud_models",
-                            %error,
-                            "invalid --cloud-models metadata"
-                        );
-                        None
-                    }
-                })
-                .unwrap_or_default();
+            let is_host_agent_source = matches!(
+                &agent_source,
+                crate::agent_source::AgentSource::Host
+            );
+            // This snapshot was probed by the Windows host. A WSL agent must
+            // advertise/probe its own catalog rather than inheriting Host models.
+            let cloud_models = if is_host_agent_source {
+                cli.cloud_models
+                    .as_deref()
+                    .and_then(|models| match serde_json::from_str(models) {
+                        Ok(models) => Some(models),
+                        Err(error) => {
+                            tracing::error!(
+                                target: "cloud_models",
+                                %error,
+                                "invalid --cloud-models metadata"
+                            );
+                            None
+                        }
+                    })
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
@@ -3301,6 +3335,7 @@ async fn run_acp_app(
                 let event_tx_for_pipe = event_tx.clone();
                 let shell_mgr_for_pipe = Arc::clone(&shell_mgr);
                 let acp_model = cli.acp_model.clone();
+                let cloud_models_for_client = cloud_models.clone();
                 // Per-tab agent identity passed through to the multi-agent
                 // master via the initialize handshake. The helper has had
                 // this on its `Cli` all along; pre-multi-agent it dropped
@@ -3314,6 +3349,7 @@ async fn run_acp_app(
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
                         acp_model,
+                        cloud_models_for_client,
                         agent_id,
                         agent_source_for_client,
                         source_cwd,
@@ -3396,19 +3432,41 @@ async fn run_acp_app(
                 Arc::clone(&delegate_agents),
                 cli.agent.clone(),
                 cli.acp_model.clone(),
+                cli.follows_global_acp_model,
             );
             app_state.set_cloud_models(cloud_models);
-            app_state.set_custom_model_selection(cli.custom_model_selection.clone());
-            if let Some(custom_models) = cli.custom_models.as_deref() {
-                match serde_json::from_str(custom_models) {
-                    Ok(models) => app_state.set_custom_models(models),
-                    Err(error) => tracing::error!(
-                        target: "custom_models",
-                        %error,
-                        "invalid --custom-models metadata"
-                    ),
+            if is_host_agent_source {
+                match cli.custom_models.as_deref() {
+                    Some(custom_models) => match serde_json::from_str(custom_models) {
+                        Ok(models) => app_state.set_custom_model_config(
+                            models,
+                            cli.custom_model_selection.clone(),
+                        ),
+                        Err(error) => tracing::error!(
+                            target: "custom_models",
+                            %error,
+                            "invalid --custom-models metadata"
+                        ),
+                    },
+                    None => app_state
+                        .set_custom_model_config(Vec::new(), cli.custom_model_selection.clone()),
                 }
+            } else {
+                if cli.custom_models.is_some() || cli.custom_model_selection.is_some() {
+                    tracing::warn!(
+                        target: "custom_models",
+                        agent_source = %agent_source,
+                        "ignoring Host custom-provider startup metadata for WSL helper"
+                    );
+                }
+                app_state.set_custom_model_config(Vec::new(), None);
             }
+            // Backward compatibility: older Terminal builds supplied the full
+            // custom catalog on argv. New builds deliver it after Connected
+            // over agent_config_changed, so the initial status requests it.
+            app_state.set_host_catalog_ready(
+                !is_host_agent_source || cli.custom_models.is_some(),
+            );
             app_state.set_session_hook_tx(session_hook_tx);
 
             // Pipe-mode reconnect pre-stash. In helper mode the initial

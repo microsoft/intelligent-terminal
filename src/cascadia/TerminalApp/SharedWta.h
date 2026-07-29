@@ -46,6 +46,11 @@ namespace winrt::TerminalApp::implementation
                    name.find(L'\0') == std::wstring_view::npos &&
                    value.find(L'\0') == std::wstring_view::npos;
         }
+
+        // A present empty string means CreateProcess should inherit the parent
+        // environment; nullopt means the requested block could not be built.
+        std::optional<std::wstring> BuildEnvironmentBlock(
+            std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept;
     }
 
     class SharedWta

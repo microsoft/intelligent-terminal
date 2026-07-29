@@ -37,9 +37,11 @@ impl App {
             "version": self.agent_version,
             "model": display_model,
             "backend": self.current_agent_source.display_suffix(),
+            "agent_source": self.current_agent_source.kind(),
             "state": state_str,
             "available_models": self.available_models,
             "current_model_id": self.current_model_id,
+            "host_catalog_ready": self.host_catalog_ready,
         });
         if let Some(agent_id) = selected {
             params["selected_agent"] = serde_json::Value::String(agent_id);

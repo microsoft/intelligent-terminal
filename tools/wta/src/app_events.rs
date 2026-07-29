@@ -86,6 +86,21 @@ impl App {
                 self.state = ConnectionState::Connecting(stage);
                 self.publish_agent_status();
             }
+            AppEvent::CloudModelsAvailable(models) => {
+                if matches!(
+                    &self.current_agent_source,
+                    crate::agent_source::AgentSource::Host
+                ) {
+                    self.set_cloud_models(models);
+                    self.publish_agent_status();
+                } else {
+                    tracing::warn!(
+                        target: "cloud_models",
+                        agent_source = %self.current_agent_source,
+                        "ignoring Host cloud catalog delivery for WSL helper"
+                    );
+                }
+            }
             AppEvent::AgentConnected {
                 name,
                 model,
@@ -100,8 +115,9 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
-                self.available_models = self.merge_custom_models(available_models.clone());
-                self.current_model_id = self.resolve_current_model_id(current_model_id.clone());
+                self.agent_models = available_models;
+                self.agent_current_model_id = current_model_id;
+                self.rebuild_model_catalog();
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -189,11 +205,17 @@ impl App {
                 // this session in the future. For now we keep
                 // App.available_models pointing at the active session's
                 // models so the existing settings UI stays correct.
+                let mut model_state_changed = false;
                 if !available_models.is_empty() {
-                    self.available_models = self.merge_custom_models(available_models);
+                    self.agent_models = available_models;
+                    model_state_changed = true;
                 }
                 if current_model_id.is_some() {
-                    self.current_model_id = self.resolve_current_model_id(current_model_id);
+                    self.agent_current_model_id = current_model_id;
+                    model_state_changed = true;
+                }
+                if model_state_changed {
+                    self.rebuild_model_catalog();
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -869,9 +891,7 @@ impl App {
                 if self
                     .master_request_tx
                     .send(
-                        crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
-                            event,
-                        },
+                        crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event },
                     )
                     .is_err()
                 {
@@ -957,10 +977,7 @@ impl App {
                 if method == "agent_prompt" {
                     // Command palette `?<prompt>` delegation. Not a WT
                     // notification — has nothing to do with banner/queue.
-                    let prompt = params
-                        .get("prompt")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                    let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
                     tracing::info!(target: "autofix", prompt_len = prompt.len(), "agent_prompt: delegating");
                     if !prompt.is_empty() {
                         self.delegate_to_tab_agent(prompt);
@@ -982,9 +999,16 @@ impl App {
                     // — all in place, with NO agent-pane teardown/restart.
                     // (Agent *identity* changes go through a master respawn
                     // on the C++ side, not this event.)
-                    if let Some(enabled) =
-                        params.get("autofix_enabled").and_then(|v| v.as_bool())
-                    {
+                    let target_tab = params
+                        .get("tab_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
+                    if !target_tab.is_empty() && !owner_tab.is_empty() && target_tab != owner_tab {
+                        return;
+                    }
+
+                    if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
                         tracing::info!(
                             target: "autofix",
                             old = self.autofix_enabled,
@@ -1010,20 +1034,101 @@ impl App {
                         self.apply_delegate_config(delegate_agent, delegate_model);
                     }
 
-                    // acp-model: a global settings change is authoritative. It
-                    // overrides every pane's local `/model` pick, redirects the
-                    // shared current-model display, hot-swaps the model on all
-                    // live sessions, and republishes status — so every pane
-                    // visibly follows the new model (see apply_global_acp_model).
-                    // Storing it also keeps future sessions (/new, lazy-first-
-                    // prompt) on the new model via the SessionAttached re-apply.
+                    // acp-model is scoped by both the authoritative global agent
+                    // id and this helper's spawn-time follow mode. Helpers pinned
+                    // to another agent/profile, and panes with a local `/model`
+                    // override, keep their existing model.
                     if let Some(raw) = params.get("acp_model").and_then(|v| v.as_str()) {
+                        if let Some(target_agent_id) =
+                            params.get("target_agent_id").and_then(|v| v.as_str())
+                        {
+                            tracing::info!(
+                                target: "autofix",
+                                model = raw,
+                                target_agent_id,
+                                "scoped acp-model hot-update requested from settings change",
+                            );
+                            self.apply_global_acp_model(target_agent_id, Some(raw.to_string()));
+                        } else {
+                            tracing::warn!(
+                                target: "autofix",
+                                "ignoring acp-model hot-update without target_agent_id"
+                            );
+                        }
+                    }
+                    let host_catalog_fields_present = params.get("cloud_models").is_some()
+                        || params.get("custom_models").is_some()
+                        || params.get("custom_model_selection").is_some();
+                    let accepts_host_catalog = matches!(
+                        &self.current_agent_source,
+                        crate::agent_source::AgentSource::Host
+                    );
+                    let catalog_delivery = accepts_host_catalog
+                        && (params.get("cloud_models").is_some()
+                            || params.get("custom_models").is_some());
+                    if accepts_host_catalog {
+                        if let Some(value) = params.get("cloud_models") {
+                            match serde_json::from_value::<Vec<AcpModelInfo>>(value.clone()) {
+                                Ok(models) => self.set_cloud_models(models),
+                                Err(error) => {
+                                    tracing::error!(
+                                        target: "cloud_models",
+                                        %error,
+                                        "invalid cloud model catalog in agent_config_changed"
+                                    );
+                                    return;
+                                }
+                            }
+                        }
+                        if params.get("custom_models").is_some()
+                            || params.get("custom_model_selection").is_some()
+                        {
+                            if crate::agent_registry::lookup_profile_by_id(&self.current_agent_id)
+                                .byok_mode
+                                == crate::agent_registry::ByokMode::Unsupported
+                            {
+                                self.set_custom_model_config(Vec::new(), None);
+                            } else {
+                                let models = match params.get("custom_models") {
+                                    Some(value) => {
+                                        match serde_json::from_value::<Vec<CustomModelCatalogEntry>>(
+                                            value.clone(),
+                                        ) {
+                                            Ok(models) => models,
+                                            Err(error) => {
+                                                tracing::error!(
+                                                    target: "custom_models",
+                                                    %error,
+                                                    "invalid custom model catalog in agent_config_changed"
+                                                );
+                                                return;
+                                            }
+                                        }
+                                    }
+                                    None => self.custom_model_catalog.clone(),
+                                };
+                                let selection = params
+                                    .get("custom_model_selection")
+                                    .and_then(|value| value.as_str())
+                                    .map(str::to_string)
+                                    .or_else(|| self.custom_model_selection.clone());
+                                self.set_custom_model_config(models, selection);
+                            }
+                        }
+                    } else if host_catalog_fields_present {
                         tracing::info!(
-                            target: "autofix",
-                            model = raw,
-                            "acp-model hot-update requested from settings change",
+                            target: "cloud_models",
+                            agent_source = %self.current_agent_source,
+                            "ignoring Host cloud/custom catalog hot update for WSL helper"
                         );
-                        self.apply_global_acp_model(Some(raw.to_string()));
+                    }
+                    if catalog_delivery {
+                        self.host_catalog_ready = true;
+                    }
+                    if catalog_delivery
+                        || (accepts_host_catalog && params.get("custom_model_selection").is_some())
+                    {
+                        self.publish_agent_status();
                     }
                     return;
                 }
@@ -1418,9 +1523,7 @@ impl App {
                             // Capture the key BEFORE PaneClosed clears
                             // the pane→key binding, so the log can report
                             // which row was demoted.
-                            let key_before = self
-                                .agent_sessions
-                                .key_for_pane(&pane_id);
+                            let key_before = self.agent_sessions.key_for_pane(&pane_id);
                             let event = crate::agent_sessions::SessionEvent::PaneClosed {
                                 pane_session_id: pane_id.clone(),
                             };
@@ -1499,7 +1602,8 @@ impl App {
                     // keeps working for its original shell-pane use
                     // case without nuking agent panes.
                     let origin = self.agent_sessions.origin_for_pane(&pane_id);
-                    let is_shell_agent = matches!(origin, Some(crate::agent_sessions::SessionOrigin::Unknown));
+                    let is_shell_agent =
+                        matches!(origin, Some(crate::agent_sessions::SessionOrigin::Unknown));
                     if seq == "osc:133;A" && is_shell_agent {
                         tracing::info!(
                             target: "agent_session_registry",
@@ -1523,14 +1627,10 @@ impl App {
                 // this helper's concern. Drop notifications whose tab_id
                 // doesn't match our owner_tab_id; empty/missing tab_id falls
                 // through (no per-tab scope).
-                if let (Some(event_tab), Some(self_tab)) = (
-                    notification.tab_id.as_deref(),
-                    self.owner_tab_id.as_deref(),
-                ) {
-                    if !event_tab.is_empty()
-                        && !self_tab.is_empty()
-                        && event_tab != self_tab
-                    {
+                if let (Some(event_tab), Some(self_tab)) =
+                    (notification.tab_id.as_deref(), self.owner_tab_id.as_deref())
+                {
+                    if !event_tab.is_empty() && !self_tab.is_empty() && event_tab != self_tab {
                         // Per-cross-tab-event (very high volume in multi-tab
                         // windows) — trace-only.
                         tracing::trace!(
@@ -1554,11 +1654,7 @@ impl App {
                         WtEventSeverity::Informational => None,
                     };
                     if let Some(severity_str) = severity_str {
-                        crate::telemetry::log_error_detected(
-                            severity_str,
-                            &method,
-                            &pane_id,
-                        );
+                        crate::telemetry::log_error_detected(severity_str, &method, &pane_id);
                     }
                 }
 
@@ -1620,9 +1716,8 @@ impl App {
                                         .trigger_echo_pane
                                         .clone();
                                     if echo.as_deref() == Some(pane_id.as_str()) {
-                                        self.tab_mut(&t.to_string())
-                                            .autofix
-                                            .trigger_echo_pane = None;
+                                        self.tab_mut(&t.to_string()).autofix.trigger_echo_pane =
+                                            None;
                                         false
                                     } else {
                                         true
@@ -1648,11 +1743,8 @@ impl App {
                                 // command exited cleanly — the user's problem resolved.
                                 // Elapsed is monotonic (`Instant::elapsed`) from arm to
                                 // clean exit, not wall-clock.
-                                if let Some(armed) = self
-                                    .tab_mut(&target_tab)
-                                    .autofix
-                                    .armed_at
-                                    .take()
+                                if let Some(armed) =
+                                    self.tab_mut(&target_tab).autofix.armed_at.take()
                                 {
                                     let elapsed_ms = armed.elapsed().as_secs_f64() * 1000.0;
                                     crate::telemetry::log_error_fix_resolved(
@@ -1829,8 +1921,16 @@ impl App {
                     }
                 }
             }
-            AppEvent::LoginComplete { success, error, agent_id } => {
-                tracing::info!("LoginComplete received: success={} deferred_acp={}", success, self.deferred_acp.is_some());
+            AppEvent::LoginComplete {
+                success,
+                error,
+                agent_id,
+            } => {
+                tracing::info!(
+                    "LoginComplete received: success={} deferred_acp={}",
+                    success,
+                    self.deferred_acp.is_some()
+                );
                 // Ignore stale/late completions: only act on a completion that
                 // matches the currently active auth attempt. After the user
                 // escapes the auth screen (auth = None) or switches agents, a
@@ -1861,7 +1961,10 @@ impl App {
                     // try_start_acp can spawn a new ACP client.
                     if self.deferred_acp.is_none() {
                         let new_cmd = self.build_agent_cmd(&agent_id);
-                        tracing::info!("LoginComplete: creating deferred_acp for reconnect cmd={}", new_cmd);
+                        tracing::info!(
+                            "LoginComplete: creating deferred_acp for reconnect cmd={}",
+                            new_cmd
+                        );
                         self.deferred_acp = Some(DeferredAcpParams {
                             agent_cmd: new_cmd,
                             acp_model: None,

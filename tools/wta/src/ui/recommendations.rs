@@ -21,7 +21,9 @@ use crate::ui::card::{self, CARD_MIN_SIZE};
 /// fit. This avoids the previous "tall card in squashed pane → nothing
 /// renders" failure mode.
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let Some(recs) = app.current_tab().turn.recommendations() else { return };
+    let Some(recs) = app.current_tab().turn.recommendations() else {
+        return;
+    };
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -157,11 +159,17 @@ fn extract_card_content(
             } => {
                 let fallback = t!("recommendations.agent_fallback").into_owned();
                 let agent_label = agent.as_deref().unwrap_or(&fallback);
-                let display = t!("recommendations.open_and_send_display",
-                    agent = agent_label, input = input.as_str()).into_owned();
+                let display = t!(
+                    "recommendations.open_and_send_display",
+                    agent = agent_label,
+                    input = input.as_str()
+                )
+                .into_owned();
                 let target_label = match target {
                     OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
-                    OpenTarget::Panel => t!("recommendations.button_open_in_new_panel").into_owned(),
+                    OpenTarget::Panel => {
+                        t!("recommendations.button_open_in_new_panel").into_owned()
+                    }
                 };
                 return (display, vec![target_label], CardBodyKind::Code);
             }
@@ -176,24 +184,32 @@ fn extract_card_content(
                     OpenTarget::Tab => t!("recommendations.open_kind_tab").into_owned(),
                     OpenTarget::Panel => match direction.as_deref() {
                         Some(d) if !d.is_empty() => {
-                            t!("recommendations.open_kind_panel_direction", direction = d).into_owned()
+                            t!("recommendations.open_kind_panel_direction", direction = d)
+                                .into_owned()
                         }
                         _ => t!("recommendations.open_kind_panel").into_owned(),
                     },
                 };
                 let display = match (title.as_deref(), cwd.as_deref()) {
-                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                        t!("recommendations.open_new_with_title_and_cwd",
-                            kind = kind.as_str(), title = t, cwd = c).into_owned()
-                    }
-                    (Some(t), _) if !t.is_empty() => {
-                        t!("recommendations.open_new_with_title",
-                            kind = kind.as_str(), title = t).into_owned()
-                    }
-                    (_, Some(c)) if !c.is_empty() => {
-                        t!("recommendations.open_new_with_cwd",
-                            kind = kind.as_str(), cwd = c).into_owned()
-                    }
+                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => t!(
+                        "recommendations.open_new_with_title_and_cwd",
+                        kind = kind.as_str(),
+                        title = t,
+                        cwd = c
+                    )
+                    .into_owned(),
+                    (Some(t), _) if !t.is_empty() => t!(
+                        "recommendations.open_new_with_title",
+                        kind = kind.as_str(),
+                        title = t
+                    )
+                    .into_owned(),
+                    (_, Some(c)) if !c.is_empty() => t!(
+                        "recommendations.open_new_with_cwd",
+                        kind = kind.as_str(),
+                        cwd = c
+                    )
+                    .into_owned(),
                     _ => t!("recommendations.open_new_empty", kind = kind.as_str()).into_owned(),
                 };
                 let button = match target {

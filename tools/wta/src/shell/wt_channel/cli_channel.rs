@@ -557,10 +557,7 @@ impl WtChannel for CliChannel {
                     .get("direction")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let profile = params
-                    .get("profile")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let profile = params.get("profile").and_then(|v| v.as_str()).unwrap_or("");
                 let cmd_owned;
                 let dir_owned;
                 let profile_owned;

@@ -20,6 +20,15 @@ fn run_slash(app: &mut App, name: &str) {
     });
 }
 
+fn custom_model(selection_id: &str, model_id: &str) -> CustomModelCatalogEntry {
+    CustomModelCatalogEntry {
+        selection_id: selection_id.into(),
+        api_contract: crate::custom_model_provider::CANONICAL_API_CONTRACT.into(),
+        model_id: model_id.into(),
+        ..Default::default()
+    }
+}
+
 // ---- commands::classify — the pure input → intent mapping ----
 
 #[test]
@@ -64,7 +73,10 @@ fn classify_not_a_command() {
     assert_eq!(commands::classify("/"), ParseOutcome::NotCommand);
     assert_eq!(commands::classify("/  "), ParseOutcome::NotCommand);
     // A `/` in the middle of a prompt is not an attempt.
-    assert_eq!(commands::classify("run cmd /flag"), ParseOutcome::NotCommand);
+    assert_eq!(
+        commands::classify("run cmd /flag"),
+        ParseOutcome::NotCommand
+    );
 }
 
 // ---- App dispatch — state effects via handle_slash_command ----
@@ -240,10 +252,10 @@ fn slash_model_without_models_notes_none() {
 #[test]
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
-    app.available_models = vec![
-        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None },
-        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None },
-    ];
+    app.set_custom_model_config(
+        vec![custom_model("custom:provider:local", "local")],
+        None,
+    );
 
     run_slash(&mut app, "model");
 
@@ -254,21 +266,36 @@ fn slash_model_bare_opens_picker_when_models_present() {
 }
 
 #[test]
+fn slash_model_hides_cloud_models() {
+    let mut app = test_app();
+    app.set_cloud_models(vec![AcpModelInfo {
+        id: "cloud".into(),
+        name: "Cloud".into(),
+        description: None,
+    }]);
+
+    run_slash(&mut app, "model");
+
+    assert!(!app.current_tab().model_picker_open);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
+}
+
+#[test]
 fn custom_provider_models_replace_agent_duplicates_and_keep_byok_identity() {
     let mut app = test_app();
-    app.set_custom_model_selection(Some(
-        "custom:provider-two:deepseek/deepseek-v4-flash".into(),
-    ));
-    app.set_custom_models(vec![
-        CustomModelOption {
-            selection_id: "custom:provider-one:qwen/qwen3.5-9b".into(),
-            model_id: "qwen/qwen3.5-9b".into(),
-        },
-        CustomModelOption {
-            selection_id: "custom:provider-two:deepseek/deepseek-v4-flash".into(),
-            model_id: "deepseek/deepseek-v4-flash".into(),
-        },
-    ]);
+    app.set_custom_model_config(
+        vec![
+            custom_model("custom:provider-one:qwen/qwen3.5-9b", "qwen/qwen3.5-9b"),
+            custom_model(
+                "custom:provider-two:deepseek/deepseek-v4-flash",
+                "deepseek/deepseek-v4-flash",
+            ),
+        ],
+        Some("custom:provider-two:deepseek/deepseek-v4-flash".into()),
+    );
 
     let merged = app.merge_custom_models(vec![
         AcpModelInfo {
@@ -276,14 +303,17 @@ fn custom_provider_models_replace_agent_duplicates_and_keep_byok_identity() {
             name: "deepseek/deepseek-v4-flash".into(),
             description: None,
         },
-        AcpModelInfo { id: "native".into(), name: "Native".into(), description: None },
+        AcpModelInfo {
+            id: "native".into(),
+            name: "Native".into(),
+            description: None,
+        },
     ]);
 
     assert_eq!(merged.len(), 3);
     assert!(merged.iter().any(|model| model.id == "native"));
     assert!(merged.iter().any(|model| {
-        model.id == "custom:provider-one:qwen/qwen3.5-9b"
-            && model.name == "qwen/qwen3.5-9b (BYOK)"
+        model.id == "custom:provider-one:qwen/qwen3.5-9b" && model.name == "qwen/qwen3.5-9b (BYOK)"
     }));
     assert!(merged.iter().any(|model| {
         model.id == "custom:provider-two:deepseek/deepseek-v4-flash"
@@ -298,62 +328,119 @@ fn custom_provider_models_replace_agent_duplicates_and_keep_byok_identity() {
 #[test]
 fn custom_provider_models_normalize_metadata_and_drop_empty_entries() {
     let mut app = test_app();
-    app.set_custom_model_selection(Some("  custom:provider:model  ".into()));
-    app.set_custom_models(vec![
-        CustomModelOption {
-            selection_id: "  custom:provider:model  ".into(),
-            model_id: "  provider/model  ".into(),
-        },
-        CustomModelOption {
-            selection_id: "   ".into(),
-            model_id: "  ignored/model  ".into(),
-        },
-        CustomModelOption {
-            selection_id: "  custom:provider:ignored  ".into(),
-            model_id: "   ".into(),
-        },
-    ]);
+    app.set_custom_model_config(
+        vec![
+            custom_model("  custom:provider:model  ", "  provider/model  "),
+            custom_model("   ", "  ignored/model  "),
+            custom_model("  custom:provider:ignored  ", "   "),
+        ],
+        Some("  custom:provider:model  ".into()),
+    );
 
     assert_eq!(
-        app.custom_models,
-        vec![CustomModelOption {
-            selection_id: "custom:provider:model".into(),
-            model_id: "provider/model".into(),
-        }]
+        app.custom_model_catalog,
+        vec![custom_model("custom:provider:model", "provider/model")]
     );
     assert_eq!(app.available_models.len(), 1);
     assert_eq!(app.available_models[0].id, "custom:provider:model");
     assert_eq!(app.available_models[0].name, "provider/model (BYOK)");
-    assert_eq!(app.current_model_id.as_deref(), Some("custom:provider:model"));
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:provider:model")
+    );
 }
 
 #[test]
-fn cloud_and_byok_models_with_the_same_id_remain_distinct() {
+fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
     let mut app = test_app();
     app.set_cloud_models(vec![AcpModelInfo {
         id: "shared-model".into(),
         name: "Shared cloud model".into(),
         description: None,
     }]);
-    app.set_custom_models(vec![CustomModelOption {
-        selection_id: "custom:provider-one:shared-model".into(),
-        model_id: "shared-model".into(),
-    }]);
+    app.set_custom_model_config(
+        vec![custom_model(
+            "custom:provider-one:shared-model",
+            "shared-model",
+        )],
+        None,
+    );
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Test Agent".into(),
+        model: None,
+        version: None,
+        session_id: "session-1".into(),
+        available_models: vec![AcpModelInfo {
+            id: "agent-only".into(),
+            name: "Agent model".into(),
+            description: None,
+        }],
+        current_model_id: Some("agent-only".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
 
-    assert_eq!(app.available_models.len(), 2);
-    assert!(app.available_models.iter().any(|model| model.id == "shared-model"));
+    assert_eq!(app.available_models.len(), 3);
+    assert!(app
+        .available_models
+        .iter()
+        .any(|model| model.id == "shared-model"));
+    assert!(app
+        .available_models
+        .iter()
+        .any(|model| model.id == "agent-only"));
     assert!(app
         .available_models
         .iter()
         .any(|model| model.id == "custom:provider-one:shared-model"
             && model.name == "shared-model (BYOK)"));
+    assert_eq!(app.model_picker_models.len(), 1);
+    assert_eq!(
+        app.model_picker_models[0].id,
+        "custom:provider-one:shared-model"
+    );
+}
+
+#[test]
+fn private_cloud_catalog_survives_bare_agent_model_response() {
+    let mut app = test_app();
+    app.set_custom_model_config(vec![custom_model("custom:provider:byok", "byok")], None);
+    app.handle_event(AppEvent::CloudModelsAvailable(vec![AcpModelInfo {
+        id: "cloud-native".into(),
+        name: "Cloud Native".into(),
+        description: None,
+    }]));
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Test Agent".into(),
+        model: None,
+        version: None,
+        session_id: "session-1".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    assert_eq!(app.cloud_models.len(), 1);
+    assert_eq!(app.cloud_models[0].id, "cloud-native");
+    assert!(
+        app.agent_models.is_empty(),
+        "private cloud metadata must not be reclassified as an ACP selector"
+    );
+    assert!(app
+        .available_models
+        .iter()
+        .any(|model| model.id == "cloud-native"));
+    assert!(app
+        .available_models
+        .iter()
+        .any(|model| model.id == "custom:provider:byok"));
 }
 
 #[test]
 fn agent_and_model_pickers_are_mutually_exclusive() {
     let mut app = test_app();
-    app.available_models =
-        vec![AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None }];
+    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
 
     app.open_model_picker();
     assert!(app.current_tab().model_picker_open);
@@ -369,48 +456,48 @@ fn agent_and_model_pickers_are_mutually_exclusive() {
 }
 
 #[test]
-fn slash_model_direct_switch_sets_override() {
+fn slash_model_direct_current_byok_is_a_noop() {
     let mut app = test_app();
-    app.available_models = vec![
-        AcpModelInfo { id: "fast".into(), name: "Fast".into(), description: None },
-        AcpModelInfo { id: "smart".into(), name: "Smart".into(), description: None },
-    ];
+    let selected = "custom:provider:smart";
+    app.set_custom_model_config(
+        vec![custom_model(selected, "smart")],
+        Some(selected.into()),
+    );
 
-    run_slash_args(&mut app, "model", "smart");
+    run_slash_args(&mut app, "model", selected);
 
     assert_eq!(
         app.current_tab().model_override.as_deref(),
-        Some("smart"),
-        "/model <id> must pin the active tab's per-pane model override"
+        None,
+        "confirming the current BYOK row must not create a pane override"
     );
     assert!(
         !app.current_tab().model_picker_open,
-        "a direct /model <id> switch must not leave the picker open"
+        "confirming the current BYOK model must not leave the picker open"
     );
 }
 
 #[test]
-fn slash_model_disables_byok_choices_while_cloud_is_active() {
+fn slash_model_only_shows_disabled_byok_choices_while_cloud_is_active() {
     let mut app = test_app();
-    app.available_models = vec![
-        AcpModelInfo { id: "cloud".into(), name: "Cloud".into(), description: None },
-        AcpModelInfo {
-            id: "custom:provider:local".into(),
-            name: "Local (BYOK)".into(),
-            description: None,
-        },
-    ];
-    app.set_custom_models(vec![CustomModelOption {
-        selection_id: "custom:provider:local".into(),
-        model_id: "local".into(),
+    app.set_cloud_models(vec![AcpModelInfo {
+        id: "cloud".into(),
+        name: "Cloud".into(),
+        description: None,
     }]);
+    app.set_custom_model_config(
+        vec![custom_model("custom:provider:local", "local")],
+        None,
+    );
     app.current_model_id = Some("cloud".into());
 
     let state = {
         app.open_model_picker();
         app.model_popup_state().expect("picker state")
     };
-    assert_eq!(state.disabled, vec![false, true]);
+    assert_eq!(state.models.len(), 1);
+    assert_eq!(state.models[0].id, "custom:provider:local");
+    assert_eq!(state.disabled, vec![true]);
 
     run_slash_args(&mut app, "model", "custom:provider:local");
     assert_eq!(app.current_tab().model_override, None);
@@ -421,72 +508,33 @@ fn slash_model_disables_byok_choices_while_cloud_is_active() {
 fn slash_model_locks_non_current_choices_while_byok_is_active() {
     let mut app = test_app();
     let selected = "custom:provider:local";
-    app.available_models = vec![
-        AcpModelInfo { id: "cloud".into(), name: "Cloud".into(), description: None },
-        AcpModelInfo {
-            id: selected.into(),
-            name: "Local (BYOK)".into(),
-            description: None,
-        },
-        AcpModelInfo {
-            id: "custom:provider:other".into(),
-            name: "Other (BYOK)".into(),
-            description: None,
-        },
-    ];
-    app.set_custom_models(vec![
-        CustomModelOption { selection_id: selected.into(), model_id: "local".into() },
-        CustomModelOption {
-            selection_id: "custom:provider:other".into(),
-            model_id: "other".into(),
-        },
-    ]);
-    app.set_custom_model_selection(Some(selected.into()));
+    app.set_cloud_models(vec![AcpModelInfo {
+        id: "cloud".into(),
+        name: "Cloud".into(),
+        description: None,
+    }]);
+    app.set_custom_model_config(
+        vec![
+            custom_model(selected, "local"),
+            custom_model("custom:provider:other", "other"),
+        ],
+        Some(selected.into()),
+    );
 
     app.open_model_picker();
     let state = app.model_popup_state().expect("picker state");
     assert_eq!(state.current_id, Some(selected));
-    assert_eq!(state.disabled, vec![true, false, true]);
+    assert_eq!(state.models.len(), 2);
+    assert_eq!(state.disabled, vec![false, true]);
 
+    app.close_model_picker();
     run_slash_args(&mut app, "model", "cloud");
     assert_eq!(app.current_tab().model_override, None);
-    assert!(app.current_tab().model_picker_open);
-}
-
-#[test]
-fn model_picker_navigation_skips_restart_required_choices() {
-    let mut app = test_app();
-    app.set_custom_models(vec![CustomModelOption {
-        selection_id: "custom:provider:local".into(),
-        model_id: "local".into(),
-    }]);
-    app.available_models = vec![
-        AcpModelInfo { id: "cloud-one".into(), name: "Cloud One".into(), description: None },
-        AcpModelInfo {
-            id: "custom:provider:local".into(),
-            name: "Local (BYOK)".into(),
-            description: None,
-        },
-        AcpModelInfo { id: "cloud-two".into(), name: "Cloud Two".into(), description: None },
-    ];
-    app.current_model_id = Some("cloud-one".into());
-
-    app.open_model_picker();
-    app.model_picker_down();
-    assert_eq!(app.current_tab().model_picker_selected, 2);
-    app.model_picker_up();
-    assert_eq!(app.current_tab().model_picker_selected, 0);
-
-    app.set_custom_model_selection(Some("custom:provider:local".into()));
-    app.open_model_picker();
-    assert_eq!(app.current_tab().model_picker_selected, 1);
-    app.model_picker_down();
-    app.model_picker_up();
-    assert_eq!(
-        app.current_tab().model_picker_selected,
-        1,
-        "BYOK mode must stay locked to its current model"
-    );
+    assert!(!app.current_tab().model_picker_open);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::System(_))
+    ));
 }
 
 #[test]
@@ -503,8 +551,7 @@ fn slash_move_changes_only_the_active_tab() {
         "/move l must normalize to the canonical left position"
     );
     assert_eq!(
-        app.tab_sessions["other-tab"].agent_pane_position,
-        None,
+        app.tab_sessions["other-tab"].agent_pane_position, None,
         "/move must not alter another tab's pane position"
     );
 }

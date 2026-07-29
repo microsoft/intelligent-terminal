@@ -46,10 +46,7 @@ pub struct AvailableAgent {
     pub source: crate::agent_source::AgentSource,
 }
 
-fn agent_command_on_enter(
-    input: &str,
-    selected: Option<&AvailableAgent>,
-) -> Option<ParsedCommand> {
+fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
     commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
         kind: CommandKind::Agent,
@@ -58,8 +55,8 @@ fn agent_command_on_enter(
     })
 }
 
-mod turn_state;
 mod autofix;
+mod turn_state;
 use autofix::*;
 
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
@@ -340,9 +337,7 @@ fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFail
 /// was missing. Login succeeds in the browser, but reconnecting to the saved
 /// pipe fails before initialize/authenticate/new_session can run. The right
 /// recovery is still the same fresh-master restart used for stale auth state.
-fn is_post_login_master_unavailable(
-    failure: &crate::protocol::acp::failure::AgentFailure,
-) -> bool {
+fn is_post_login_master_unavailable(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     matches!(
         failure,
@@ -519,13 +514,17 @@ impl PermOption {
     /// Prefix-checked (not lowercased) to stay allocation-free on the render /
     /// key-handling hot path.
     pub fn is_allow(&self) -> bool {
-        self.kind.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("allow"))
+        self.kind
+            .get(..5)
+            .is_some_and(|p| p.eq_ignore_ascii_case("allow"))
     }
 
     /// True if this is a "reject" option. Allocation-free, case-insensitive —
     /// see [`PermOption::is_allow`].
     pub fn is_reject(&self) -> bool {
-        self.kind.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("reject"))
+        self.kind
+            .get(..6)
+            .is_some_and(|p| p.eq_ignore_ascii_case("reject"))
     }
 }
 
@@ -781,13 +780,19 @@ where
                 .unwrap_or("")
                 .to_string();
             if crate::agent_sessions::is_user_input_tool(&tool_name) {
-                let tool_event = SessionEvent::ToolStarting { key: key.clone(), tool_name };
+                let tool_event = SessionEvent::ToolStarting {
+                    key: key.clone(),
+                    tool_name,
+                };
                 reg.apply(tool_event.clone());
                 hook_sink(tool_event);
-                let message = payload.get("tool_input")
-                    .and_then(|ti| ti.get("question")
+                let message = payload
+                    .get("tool_input")
+                    .and_then(|ti| {
+                        ti.get("question")
                         .or_else(|| ti.get("prompt"))
-                        .or_else(|| ti.get("message")))
+                            .or_else(|| ti.get("message"))
+                    })
                     .and_then(|v| v.as_str())
                     .unwrap_or("waiting for user input")
                     .to_string();
@@ -931,7 +936,7 @@ pub fn classify_wt_event(
                         summary: String::new(),
                         acknowledged: true, // auto-acknowledge so it never shows
                         age_ticks: 100,     // will be auto-dismissed immediately
-                    }
+                    };
                 }
                 _ => WtNotification {
                     severity: WtEventSeverity::Informational,
@@ -1035,10 +1040,43 @@ pub struct AcpModelInfo {
     pub description: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
-pub struct CustomModelOption {
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomModelCatalogEntry {
     pub selection_id: String,
+    #[serde(default)]
+    pub provider_id: String,
+    #[serde(default)]
+    pub provider_name: String,
+    #[serde(
+        default = "default_custom_model_api_contract",
+        deserialize_with = "deserialize_custom_model_api_contract"
+    )]
+    pub api_contract: String,
+    #[serde(default)]
+    pub location: String,
     pub model_id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+fn default_custom_model_api_contract() -> String {
+    crate::custom_model_provider::CANONICAL_API_CONTRACT.to_string()
+}
+
+fn deserialize_custom_model_api_contract<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::custom_model_provider::normalize_api_contract(&value)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "unsupported custom model API contract {value:?}; expected {:?}",
+                crate::custom_model_provider::CANONICAL_API_CONTRACT
+            ))
+        })
 }
 
 /// Test-visible record of a wtcli command the App fired through the
@@ -1092,6 +1130,10 @@ pub enum AppEvent {
     /// focus-in/out (CSI I / CSI O) delivered through conpty.
     FocusChanged(bool),
     ConnectionStage(String),
+    /// Native cloud catalog carried over the private helper↔master channel.
+    /// Kept separate from the current session's ACP-advertised models so a
+    /// BYOK session that reports no selector cannot erase clean-probed models.
+    CloudModelsAvailable(Vec<AcpModelInfo>),
     AgentConnected {
         name: String,
         model: Option<String>,
@@ -1423,7 +1465,6 @@ impl Scroll {
     }
 }
 
-
 /// Everything that conceptually belongs to one tab's conversation: the
 /// message history, the streaming buffer of the in-flight prompt, the
 /// pending tool calls, the recommendations panel state, etc.
@@ -1522,7 +1563,6 @@ pub struct TabSession {
     /// actually changes.
     pub last_emitted_chip_override: Option<String>,
 
-
     // Input editor state — per-tab so each tab keeps its own draft text,
     // cursor, and slash-command popup across switches.
     pub input: String,
@@ -1558,11 +1598,10 @@ pub struct TabSession {
     /// Per-pane ACP model override, set by the `/model` picker. `None` means
     /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
     /// specific model and survives `/new` (re-applied to fresh sessions in the
-    /// `SessionAttached` handler via `effective_model_for_tab`). It is a
-    /// transient per-pane tweak: a global `acpModel` settings change is
-    /// authoritative and clears it (see `apply_global_acp_model`). In-memory
-    /// only — not persisted across pane close / Terminal restart. See
-    /// `App::commit_model_pick`.
+    /// `SessionAttached` handler via `effective_model_for_tab`). Global
+    /// `acpModel` changes update only unpinned panes, so this override remains
+    /// authoritative for the pane. In-memory only — not persisted across pane
+    /// close / Terminal restart. See `App::commit_model_pick`.
     pub model_override: Option<String>,
     /// True while the `/model` picker modal is up for this tab. Drives both
     /// the key-event intercept in `handle_key` and the popup render.
@@ -1936,11 +1975,18 @@ impl TabSession {
         if input.is_empty() {
             return;
         }
-        if let Some(index) = self.input_history.entries.iter().position(|entry| entry == input) {
+        if let Some(index) = self
+            .input_history
+            .entries
+            .iter()
+            .position(|entry| entry == input)
+        {
             self.input_history.entries.remove(index);
         }
         self.input_history.entries.push_front(input.to_string());
-        self.input_history.entries.truncate(INPUT_HISTORY_MAX_ENTRIES);
+        self.input_history
+            .entries
+            .truncate(INPUT_HISTORY_MAX_ENTRIES);
     }
 
     fn input_history_is_browsing(&self) -> bool {
@@ -2121,6 +2167,9 @@ pub struct App {
     /// first AgentConnected event with non-empty data; published into the
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
+    /// BYOK-only projection used by the `/model` command. Cloud/native models
+    /// remain in `available_models` for Settings but are not shown in-pane.
+    model_picker_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
     pub prompt_name: Option<String>,
     pub session_id: String,
@@ -2239,8 +2288,7 @@ pub struct App {
     /// `agent_config_changed` settings event so the configured delegate
     /// agent/model can change without restarting the agent pane. None in
     /// tests / manual runs where no executor is wired.
-    delegate_agents:
-        Option<Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>>,
+    delegate_agents: Option<Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>>,
     /// The helper's own `--agent` cmdline. Needed to re-derive the delegate
     /// runtime commandline when only the delegate agent/model change.
     delegate_base_agent_cmd: String,
@@ -2250,14 +2298,29 @@ pub struct App {
     /// lazy-first-prompt sessions stay on the configured model, not just the
     /// bootstrap one. None = "agent default" (no override).
     acp_model: Option<String>,
+    /// Whether this helper was created from the global ACP agent/model
+    /// settings. Per-tab/profile-pinned helpers keep this false so a hot
+    /// global model update cannot inject another tab's model into their CLI.
+    follows_global_acp_model: bool,
+    /// True after the host has delivered its credential-free cloud/custom
+    /// catalogs over `agent_config_changed`. Published in `agent_status` so
+    /// C++ can send the catalog once after each helper reaches Connected.
+    host_catalog_ready: bool,
     /// Shared-provider selection id supplied directly to this helper by WT.
     /// Kept separate from the master-only provider environment because this
     /// process owns the `/model` UI but never receives provider credentials.
     custom_model_selection: Option<String>,
-    /// Every configured shared-provider model exposed through `/model`.
-    custom_models: Vec<CustomModelOption>,
+    /// Credential-free provider/model metadata exposed through `/model`.
+    custom_model_catalog: Vec<CustomModelCatalogEntry>,
     /// Last successful cloud/native model catalog supplied by Windows Terminal.
     cloud_models: Vec<AcpModelInfo>,
+    /// Native model catalog advertised by the current ACP session. Kept
+    /// separate from the merged picker rows so hot catalog removal cannot
+    /// accidentally preserve stale custom entries.
+    agent_models: Vec<AcpModelInfo>,
+    /// Current model last reported or successfully selected for the ACP
+    /// session, before the configured custom selection is projected on top.
+    agent_current_model_id: Option<String>,
     /// Test-only: last command issued via the agent session view's Enter
     /// dispatch (`dispatch_resume` / focus). Used by unit tests in
     /// place of a live wtcli; not compiled into release builds.
@@ -2453,6 +2516,7 @@ impl App {
             agent_model: None,
             agent_version: None,
             available_models: Vec::new(),
+            model_picker_models: Vec::new(),
             current_model_id: None,
             prompt_name: None,
             session_id: String::new(),
@@ -2496,9 +2560,13 @@ impl App {
             delegate_agents: None,
             delegate_base_agent_cmd: String::new(),
             acp_model: None,
+            follows_global_acp_model: false,
+            host_catalog_ready: false,
             custom_model_selection: None,
-            custom_models: Vec::new(),
+            custom_model_catalog: Vec::new(),
             cloud_models: Vec::new(),
+            agent_models: Vec::new(),
+            agent_current_model_id: None,
             #[cfg(test)]
             last_dispatched_command: None,
             source_session_id: None,
@@ -2587,6 +2655,7 @@ impl App {
         self.needs_post_login_authenticate = false;
         tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
+        let cloud_models = self.cloud_models.clone();
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
             // Also update all sender fields on self so the App routes to the new ACP client.
@@ -2677,10 +2746,10 @@ impl App {
                     let recovery_agent_id = self.current_agent_id.clone();
                     let event_tx_for_pipe = event_tx.clone();
                     tokio::task::spawn_local(async move {
-                        if let Err(e) =
-                            crate::protocol::acp::client::run_acp_client_over_pipe(
+                        if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
                                 pipe_name,
                                 acp_model,
+                            cloud_models,
                                 agent_id_opt,
                                 agent_source,
                                 source_cwd,
@@ -2812,37 +2881,61 @@ impl App {
         delegate_agents: Arc<std::sync::Mutex<Vec<crate::coordinator::DelegateAgentRuntime>>>,
         base_agent_cmd: String,
         acp_model: Option<String>,
+        follows_global_acp_model: bool,
     ) {
         self.delegate_agents = Some(delegate_agents);
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
+        self.follows_global_acp_model = follows_global_acp_model;
     }
 
-    pub fn set_custom_model_selection(&mut self, selection_id: Option<String>) {
-        self.custom_model_selection = selection_id
-            .map(|id| id.trim().to_string())
-            .filter(|id| !id.is_empty());
+    pub fn set_host_catalog_ready(&mut self, ready: bool) {
+        self.host_catalog_ready = ready;
     }
 
     pub fn set_cloud_models(&mut self, models: Vec<AcpModelInfo>) {
         self.cloud_models = models;
-        let advertised = std::mem::take(&mut self.available_models);
-        self.available_models = self.merge_custom_models(advertised);
+        self.rebuild_model_catalog();
     }
 
-    pub fn set_custom_models(&mut self, models: Vec<CustomModelOption>) {
-        self.custom_models = models
+    pub fn set_custom_model_config(
+        &mut self,
+        models: Vec<CustomModelCatalogEntry>,
+        selection_id: Option<String>,
+    ) {
+        self.seed_agent_models_from_available_if_needed();
+        let requested_selection = selection_id
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty());
+        self.custom_model_catalog = models
             .into_iter()
-            .map(|model| CustomModelOption {
+            .filter_map(|model| {
+                let api_contract =
+                    crate::custom_model_provider::normalize_api_contract(&model.api_contract)?;
+                Some(CustomModelCatalogEntry {
                 selection_id: model.selection_id.trim().to_string(),
+                    provider_id: model.provider_id.trim().to_string(),
+                    provider_name: model.provider_name.trim().to_string(),
+                    api_contract: api_contract.to_string(),
+                    location: model.location.trim().to_string(),
                 model_id: model.model_id.trim().to_string(),
+                    name: model.name.trim().to_string(),
+                })
             })
             .filter(|model| !model.selection_id.is_empty() && !model.model_id.is_empty())
             .collect();
-        let advertised = std::mem::take(&mut self.available_models);
-        self.available_models = self.merge_custom_models(advertised);
-        let current_model_id = self.current_model_id.take();
-        self.current_model_id = self.resolve_current_model_id(current_model_id);
+        self.custom_model_selection = requested_selection.filter(|selection| {
+            self.custom_model_catalog
+                .iter()
+                .any(|model| model.selection_id == *selection)
+        });
+        self.rebuild_model_catalog();
+    }
+
+    fn seed_agent_models_from_available_if_needed(&mut self) {
+        if self.agent_models.is_empty() && !self.available_models.is_empty() {
+            self.agent_models = self.available_models.clone();
+        }
     }
 
     fn merge_custom_models(&self, advertised: Vec<AcpModelInfo>) -> Vec<AcpModelInfo> {
@@ -2852,30 +2945,124 @@ impl App {
                 merged.push(model);
             }
         }
-        for custom in &self.custom_models {
+        for custom in &self.custom_model_catalog {
             merged.retain(|model| {
                 model.id != custom.selection_id
                     && model.id != format!("intelligent-terminal/{}", custom.model_id)
             });
+            let display_name = Some(custom.name.as_str())
+                .filter(|name| !name.is_empty())
+                .unwrap_or(custom.model_id.as_str());
             merged.push(AcpModelInfo {
                 id: custom.selection_id.clone(),
-                name: format!("{} (BYOK)", custom.model_id),
-                description: None,
+                name: format!("{display_name} (BYOK)"),
+                description: Some(custom.provider_name.as_str())
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string),
             });
         }
         merged
     }
 
+    fn selected_custom_model_id(&self) -> Option<&str> {
+        self.custom_model_selection.as_deref().and_then(|selected| {
+            self.custom_model_catalog
+                .iter()
+                .find(|model| model.selection_id == selected)
+                .map(|model| model.selection_id.as_str())
+        })
+    }
+
     fn resolve_current_model_id(&self, agent_model_id: Option<String>) -> Option<String> {
-        self.custom_model_selection
-            .as_deref()
-            .and_then(|selection_id| {
-                self.custom_models
-                    .iter()
-                    .find(|model| model.selection_id == selection_id)
-                    .map(|model| model.selection_id.clone())
-            })
+        self.selected_custom_model_id()
+            .map(str::to_string)
             .or(agent_model_id)
+    }
+
+    fn capture_model_picker_selections(&self) -> HashMap<String, Option<String>> {
+        self.tab_sessions
+            .iter()
+            .map(|(tab_id, tab)| {
+                let selected = self
+                    .model_picker_models
+                    .get(tab.model_picker_selected)
+                    .map(|model| model.id.clone());
+                (tab_id.clone(), selected)
+            })
+            .collect()
+    }
+
+    fn recompute_current_model_id(&mut self) {
+        let pane_override = self.current_tab().model_override.clone();
+        let previous_current = self.current_model_id.take().filter(|id| {
+            !id.starts_with("custom:")
+                && (self.available_models.is_empty()
+                    || self.available_models.iter().any(|model| model.id == *id))
+        });
+        self.current_model_id = self.resolve_current_model_id(
+            pane_override
+                .or_else(|| self.acp_model.clone())
+                .or_else(|| self.agent_current_model_id.clone())
+                .or(previous_current),
+        );
+    }
+
+    fn reconcile_model_picker_selections(
+        &mut self,
+        old_selected_ids: HashMap<String, Option<String>>,
+    ) {
+        let selected_custom = self.selected_custom_model_id().map(str::to_string);
+        let current_model = self.current_model_id.clone();
+        let model_ids = self
+            .model_picker_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>();
+
+        for (tab_id, tab) in &mut self.tab_sessions {
+            if self.model_picker_models.is_empty() {
+                tab.model_picker_open = false;
+                tab.model_picker_selected = 0;
+                continue;
+            }
+
+            let effective_current = tab
+                .model_override
+                .as_deref()
+                .or(selected_custom.as_deref())
+                .or(current_model.as_deref())
+                .or(self.acp_model.as_deref());
+            let enabled = |id: &str| effective_current == Some(id);
+            let selected = old_selected_ids
+                .get(tab_id)
+                .and_then(|id| id.as_deref())
+                .and_then(|id| {
+                    model_ids
+                        .iter()
+                        .position(|candidate| *candidate == id && enabled(candidate))
+                })
+                .or_else(|| {
+                    effective_current
+                        .and_then(|id| model_ids.iter().position(|candidate| *candidate == id))
+                })
+                .or_else(|| model_ids.iter().position(|id| enabled(id)))
+                .unwrap_or(0);
+            tab.model_picker_selected = selected;
+        }
+    }
+
+    fn rebuild_model_catalog(&mut self) {
+        let old_selected_ids = self.capture_model_picker_selections();
+        self.available_models = self.merge_custom_models(self.agent_models.clone());
+        let model_picker_models = self
+            .available_models
+            .iter()
+            .filter(|model| self.is_custom_model(&model.id))
+            .cloned()
+            .collect();
+        self.model_picker_models = model_picker_models;
+        self.recompute_current_model_id();
+        self.reconcile_model_picker_selections(old_selected_ids);
     }
 
     /// Low-level: ask the ACP client task to apply `model` via
@@ -2907,42 +3094,39 @@ impl App {
             .filter(|s| !s.trim().is_empty())
     }
 
-    /// Push the global `acpModel` to *every* tab's live session. A global
-    /// settings change is authoritative — it overrides per-pane `/model`
-    /// picks too (see `apply_global_acp_model`, which clears the overrides
-    /// first), so this no longer skips overridden tabs.
+    /// Push the global `acpModel` to each live session that has not been pinned
+    /// by the pane-local `/model` picker.
     fn send_acp_model_update(&self) {
         let Some(model) = self.acp_model.as_ref().filter(|s| !s.trim().is_empty()) else {
             return;
         };
         for tab in self.tab_sessions.values() {
+            if tab.model_override.is_some() {
+                continue;
+            }
             if let Some(sid) = tab.session_id.clone() {
                 self.send_session_model(Some(sid), model.clone());
             }
         }
     }
 
-    /// Apply a global `acpModel` settings change. This is authoritative over
-    /// per-pane `/model` picks: it
-    ///   1. clears every tab's local override (so all panes — now and on
-    ///      their next `/new` session — follow the new global model),
-    ///   2. points the shared current-model display at the new value so the
-    ///      title bar / settings dropdown / `/model` row update on every pane,
-    ///   3. pushes the model to every live session, and
-    ///   4. republishes agent status.
-    /// An empty value means "agent default": overrides still clear and the
-    /// sessions fall back on their next attach, but we send nothing (the
-    /// default can't be expressed as `set_session_model`).
-    fn apply_global_acp_model(&mut self, new_model: Option<String>) {
+    /// Apply a global `acpModel` settings change only when this helper follows
+    /// that exact global agent. Pane/profile-pinned helpers and pane-local
+    /// `/model` overrides remain untouched. An empty value means "agent
+    /// default"; no live switch is sent because ACP has no portable reset
+    /// operation.
+    fn apply_global_acp_model(&mut self, target_agent_id: &str, new_model: Option<String>) -> bool {
+        if !self.follows_global_acp_model
+            || !self.current_agent_id.eq_ignore_ascii_case(target_agent_id)
+        {
+            return false;
+        }
+
         self.acp_model = new_model.filter(|s| !s.trim().is_empty());
-        for tab in self.tab_sessions.values_mut() {
-            tab.model_override = None;
-        }
-        if self.acp_model.is_some() {
-            self.current_model_id = self.acp_model.clone();
-        }
+        self.recompute_current_model_id();
         self.send_acp_model_update();
         self.publish_agent_status();
+        true
     }
 
     // ── /agent picker ───────────────────────────────────────────────────
@@ -2973,11 +3157,7 @@ impl App {
                 let source = crate::agent_source::AgentSource::Host;
                 AvailableAgent {
                     id: profile.id.to_string(),
-                    display_name: format!(
-                        "{} — {}",
-                        profile.display_name,
-                        source.display_suffix()
-                    ),
+                    display_name: format!("{} — {}", profile.display_name, source.display_suffix()),
                     source,
                 }
             })
@@ -2996,8 +3176,8 @@ impl App {
         let allowlist_present = self.host_agent_allowlist_present;
         tokio::task::spawn_local(async move {
             let active_pane = shell_mgr.wt_get_active_pane().await.ok();
-            let Some(distro) =
-                crate::agent_source::active_pane_wsl_distro(active_pane.as_ref()).map(str::to_string)
+            let Some(distro) = crate::agent_source::active_pane_wsl_distro(active_pane.as_ref())
+                .map(str::to_string)
             else {
                 let _ = event_tx.send(AppEvent::AgentSourcesDiscovered {
                     generation,
@@ -3010,8 +3190,7 @@ impl App {
             let candidates = crate::agent_registry::KNOWN_AGENTS
                 .iter()
                 .filter(|profile| {
-                    !allowlist_present
-                        || allowed_agent_ids.iter().any(|id| id == profile.id)
+                    !allowlist_present || allowed_agent_ids.iter().any(|id| id == profile.id)
                 })
                 .map(|profile| (profile.id, profile.display_name));
             let wsl_sources = futures::stream::iter(candidates)
@@ -3021,8 +3200,7 @@ impl App {
                         crate::agent_check::wsl_agent_available(&distro, id)
                             .await
                             .then(|| {
-                                let source =
-                                    crate::agent_source::AgentSource::Wsl { distro };
+                                let source = crate::agent_source::AgentSource::Wsl { distro };
                                 AvailableAgent {
                                     id: id.to_string(),
                                     display_name: format!(
@@ -3071,8 +3249,7 @@ impl App {
         }
 
         self.refresh_available_agents();
-        let selected =
-            Self::find_host_agent_for_command(&self.available_agents, arg).cloned();
+        let selected = Self::find_host_agent_for_command(&self.available_agents, arg).cloned();
         match selected {
             Some(agent) => self.apply_agent_pick(agent),
             None => {
@@ -3153,11 +3330,11 @@ impl App {
         self.current_tab().model_picker_open
     }
 
-    /// `/model [id]` — live-switch this pane's model. Models that require an
-    /// agent restart remain visible but can only be selected in Settings.
+    /// `/model [id]` — show the pane's configured BYOK models. Cloud/native
+    /// models are intentionally available only through Settings.
     fn cmd_model(&mut self, arg: String) {
         let arg = arg.trim().to_string();
-        if self.available_models.is_empty() {
+        if self.model_picker_models.is_empty() {
             let tab = self.current_tab_mut();
             tab.messages
                 .push(ChatMessage::System(t!("system.no_models").into_owned()));
@@ -3170,11 +3347,11 @@ impl App {
         }
         // Direct switch: exact id first, then case-insensitive id/name.
         let matched = self
-            .available_models
+            .model_picker_models
             .iter()
             .find(|m| m.id == arg)
             .or_else(|| {
-                self.available_models
+                self.model_picker_models
                     .iter()
                     .find(|m| m.id.eq_ignore_ascii_case(&arg) || m.name.eq_ignore_ascii_case(&arg))
             })
@@ -3199,14 +3376,14 @@ impl App {
     /// the global `acpModel` (so a pane following the global value preselects
     /// it before the agent reports `current_model_id`).
     fn open_model_picker(&mut self) {
-        if self.available_models.is_empty() {
+        if self.model_picker_models.is_empty() {
             return;
         }
         let current = self.current_model_id_for_picker().map(str::to_string);
         let selected = current
-            .and_then(|cur| self.available_models.iter().position(|m| m.id == cur))
+            .and_then(|cur| self.model_picker_models.iter().position(|m| m.id == cur))
             .or_else(|| {
-                self.available_models
+                self.model_picker_models
                     .iter()
                     .position(|model| self.model_pick_enabled(&model.id))
             })
@@ -3225,7 +3402,7 @@ impl App {
         let selected = self.current_tab().model_picker_selected;
         if let Some(next) = (0..selected)
             .rev()
-            .find(|&index| self.model_pick_enabled(&self.available_models[index].id))
+            .find(|&index| self.model_pick_enabled(&self.model_picker_models[index].id))
         {
             self.current_tab_mut().model_picker_selected = next;
         }
@@ -3233,8 +3410,8 @@ impl App {
 
     fn model_picker_down(&mut self) {
         let selected = self.current_tab().model_picker_selected;
-        if let Some(next) = ((selected + 1)..self.available_models.len())
-            .find(|&index| self.model_pick_enabled(&self.available_models[index].id))
+        if let Some(next) = ((selected + 1)..self.model_picker_models.len())
+            .find(|&index| self.model_pick_enabled(&self.model_picker_models[index].id))
         {
             self.current_tab_mut().model_picker_selected = next;
         }
@@ -3243,7 +3420,7 @@ impl App {
     /// Commit the highlighted row in the open picker.
     fn commit_model_pick(&mut self) {
         let idx = self.current_tab().model_picker_selected;
-        let id = self.available_models.get(idx).map(|m| m.id.clone());
+        let id = self.model_picker_models.get(idx).map(|m| m.id.clone());
         if let Some(id) = id.filter(|id| self.model_pick_enabled(id)) {
             self.close_model_picker();
             self.apply_model_pick(id);
@@ -3251,32 +3428,24 @@ impl App {
     }
 
     fn current_model_id_for_picker(&self) -> Option<&str> {
-        let selected_custom = self.custom_model_selection.as_deref().and_then(|selected| {
-            self.custom_models
-                .iter()
-                .find(|model| model.selection_id == selected)
-                .map(|model| model.selection_id.as_str())
-        });
         self.current_tab()
             .model_override
             .as_deref()
-            .or(selected_custom)
+            .or_else(|| self.selected_custom_model_id())
             .or(self.current_model_id.as_deref())
             .or(self.acp_model.as_deref())
     }
 
     fn is_custom_model(&self, model_id: &str) -> bool {
-        self.custom_models
+        self.custom_model_catalog
             .iter()
             .any(|model| model.selection_id == model_id)
     }
 
-    /// `/model` is a live-switch surface only. Cloud sessions may switch
-    /// between cloud models. Entering, leaving, or changing BYOK requires a
-    /// process restart and is therefore reserved for Settings.
+    /// `/model` only exposes BYOK rows. A selected BYOK model is visible as the
+    /// current row, but entering or changing BYOK still requires Settings.
     fn model_pick_enabled(&self, model_id: &str) -> bool {
         self.current_model_id_for_picker() == Some(model_id)
-            || (self.custom_model_selection.is_none() && !self.is_custom_model(model_id))
     }
 
     /// Pin the active pane to `model_id`: record the per-pane override, mirror
@@ -3308,6 +3477,7 @@ impl App {
             tab.session_id.clone()
         };
         self.current_model_id = Some(model_id.clone());
+        self.agent_current_model_id = Some(model_id.clone());
         if let Some(sid) = session_id {
             self.send_session_model(Some(sid), model_id);
         }
@@ -3500,8 +3670,7 @@ impl App {
                 };
                 let msg = match reason {
                     NotResumableReason::LiveWithoutPane => {
-                        t!("system.cannot_focus_session", session_id = s.key.as_str())
-                            .into_owned()
+                        t!("system.cannot_focus_session", session_id = s.key.as_str()).into_owned()
                     }
                     NotResumableReason::LoadSessionNotSupported => {
                         let agent: String = if self.agent_name.is_empty() {
@@ -3748,8 +3917,7 @@ impl App {
                 format!("Resuming {cli_id} session {short_key}...")
             }
         };
-        let launch_commandline =
-            format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
+        let launch_commandline = format!("cmd /c echo \x1b[2;37m{banner}\x1b[0m && {commandline}");
         let mut argv = vec![
             "new-tab".to_string(),
             "-c".to_string(),
@@ -3767,7 +3935,8 @@ impl App {
         // second Enter on the same row sees a non-terminal status and
         // skips this branch (idempotent: ResumeDispatched no-ops on live
         // rows). See `agent_sessions::SessionEvent::ResumeDispatched`.
-        let resume_event = crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
+        let resume_event =
+            crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
         self.publish_session_hook(resume_event);
         self.dispatch_session_resume_dispatched_rpc(&key);
@@ -3903,15 +4072,22 @@ impl App {
 
         // Mirror dispatch_resume's optimistic state flip so a rapid
         // double press doesn't double-dispatch.
-        let resume_event = crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
+        let resume_event =
+            crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
         self.publish_session_hook(resume_event);
         self.dispatch_session_resume_dispatched_rpc(&key);
 
         let mut params = serde_json::Map::new();
-        params.insert("session_id".to_string(), serde_json::Value::String(key.clone()));
+        params.insert(
+            "session_id".to_string(),
+            serde_json::Value::String(key.clone()),
+        );
         if !cwd_string.is_empty() {
-            params.insert("cwd".to_string(), serde_json::Value::String(cwd_string.clone()));
+            params.insert(
+                "cwd".to_string(),
+                serde_json::Value::String(cwd_string.clone()),
+            );
         }
         let evt = serde_json::json!({
             "type": "event",
@@ -4158,8 +4334,9 @@ impl App {
             .and_then(|sid| rows.iter().position(|row| row.key == sid.0.as_ref()))
             .unwrap_or_else(|| old_selected.min(rows.len() - 1));
         tab.agents_list_state.select(Some(idx));
-        tab.agents_view.focused_sid =
-            Some(agent_client_protocol::schema::v1::SessionId::new(rows[idx].key.clone()));
+        tab.agents_view.focused_sid = Some(agent_client_protocol::schema::v1::SessionId::new(
+            rows[idx].key.clone(),
+        ));
     }
 
     fn update_agents_focus_for_tab(&mut self, tab_id: &str) {
@@ -4458,7 +4635,10 @@ impl App {
                         "login failed"
                     );
                 }
-                tracing::info!("login: spawn_blocking returned, sending LoginComplete success={}", success);
+                tracing::info!(
+                    "login: spawn_blocking returned, sending LoginComplete success={}",
+                    success
+                );
                 let send_result = tx.send(AppEvent::LoginComplete {
                     agent_id: id,
                     success,
@@ -4882,6 +5062,7 @@ impl App {
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
             AppEvent::ConnectionStage(_) => "connection_stage",
+            AppEvent::CloudModelsAvailable(_) => "cloud_models_available",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
             AppEvent::TabError { .. } => "tab_error",
@@ -4995,9 +5176,7 @@ impl App {
                     CheckStatus::Failed(t!("agent.status.not_found").into_owned())
                 },
                 cli_path: agent_status.cli_path.clone(),
-                auth_status: CheckStatus::Failed(
-                    t!("system.authentication_failed").into_owned(),
-                ),
+                auth_status: CheckStatus::Failed(t!("system.authentication_failed").into_owned()),
                 install_hint: profile.install_hint.to_string(),
                 install_url: String::new(),
                 auth_hint: profile.auth_hint.to_string(),
@@ -5008,11 +5187,9 @@ impl App {
             options,
             title: t!("setup.title.sign_in").into_owned(),
             subtitle: if profile.id == "copilot" {
-                t!("setup.subtitle.copilot_auth", agent = profile.display_name)
-                    .into_owned()
+                t!("setup.subtitle.copilot_auth", agent = profile.display_name).into_owned()
             } else {
-                t!("setup.subtitle.agent_auth", agent = profile.display_name)
-                    .into_owned()
+                t!("setup.subtitle.agent_auth", agent = profile.display_name).into_owned()
             },
         });
         let tab = self.current_tab_mut();
@@ -5060,7 +5237,8 @@ impl App {
         };
         tokio::task::spawn_local(async move {
             let tab_for_result = target_tab.clone();
-            let result = tokio::task::spawn_blocking(crate::win32::read_paste_string_from_clipboard).await;
+            let result =
+                tokio::task::spawn_blocking(crate::win32::read_paste_string_from_clipboard).await;
             let event = match result {
                 Ok(Ok(text)) => AppEvent::AgentPasteTextReady {
                     tab_id: tab_for_result,
@@ -5083,7 +5261,10 @@ impl App {
     }
 
     fn agent_paste_target_tab<'a>(&self, params: &'a serde_json::Value) -> Option<&'a str> {
-        let target_window = params.get("window_id").and_then(|v| v.as_str()).unwrap_or("");
+        let target_window = params
+            .get("window_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let target_tab = params.get("tab_id").and_then(|v| v.as_str()).unwrap_or("");
         let our_window = self.window_id.as_deref().unwrap_or("");
         let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
@@ -5178,14 +5359,12 @@ impl App {
             "inserted pasted text into agent input"
         );
     }
-
 }
 
 #[path = "app_events.rs"]
 mod app_events;
 
 impl App {
-
     fn event_requires_redraw(&self, event: &AppEvent) -> bool {
         match event {
             AppEvent::Tick => self.has_activity_indicator() || self.show_notification_banner,
@@ -5252,14 +5431,12 @@ impl App {
             }
         }
     }
-
 }
 
 #[path = "app_keys.rs"]
 mod app_keys;
 
 impl App {
-
     fn scroll_to_bottom(&mut self) {
         self.current_tab_mut().scroll_to_bottom();
     }
@@ -5469,9 +5646,7 @@ impl App {
         } else {
             commands::agent_id_prefix(&self.current_tab().input)
         };
-        self.available_agents
-            .iter()
-            .filter(move |agent| {
+        self.available_agents.iter().filter(move |agent| {
                 prefix.is_some_and(|prefix| {
                     agent
                         .id
@@ -5532,25 +5707,28 @@ impl App {
         }
         let prefix = commands::agent_id_prefix(&tab.input)?;
         let candidate = self.selected_agent_command_candidate()?;
-        candidate.id.get(prefix.len()..).filter(|suffix| !suffix.is_empty())
+        candidate
+            .id
+            .get(prefix.len()..)
+            .filter(|suffix| !suffix.is_empty())
     }
 
     /// Per-frame state for the `/model` picker modal, or `None` when it's not
-    /// open on the active tab. Sources the list from the agent's advertised
-    /// `available_models` and marks the pane's currently-effective model.
+    /// open on the active tab. Cloud/native models are excluded from this
+    /// in-pane surface and remain selectable through Settings.
     pub fn model_popup_state(&self) -> Option<crate::ui::ModelPopupState<'_>> {
         let tab = self.current_tab();
-        if !tab.model_picker_open || self.available_models.is_empty() {
+        if !tab.model_picker_open || self.model_picker_models.is_empty() {
             return None;
         }
         let current_id = self.current_model_id_for_picker();
         Some(crate::ui::ModelPopupState {
-            models: &self.available_models,
+            models: &self.model_picker_models,
             selected: tab.model_picker_selected,
             pane_focused: self.pane_focused,
             current_id,
             disabled: self
-                .available_models
+                .model_picker_models
                 .iter()
                 .map(|model| !self.model_pick_enabled(&model.id))
                 .collect(),
@@ -5680,7 +5858,9 @@ impl App {
     /// down (reuses the existing `connection.lost` string).
     fn push_degraded_command_hint(&mut self) {
         let msg = t!("connection.lost").into_owned();
-        self.current_tab_mut().messages.push(ChatMessage::System(msg));
+        self.current_tab_mut()
+            .messages
+            .push(ChatMessage::System(msg));
     }
 
     /// Dispatch a parsed slash-command. The Enter handler is responsible
@@ -5765,9 +5945,8 @@ impl App {
     fn cmd_new(&mut self, in_flight: bool) {
         if in_flight {
             let tab = self.current_tab_mut();
-            tab.messages.push(ChatMessage::System(
-                t!("system.busy_use_stop").into_owned(),
-            ));
+            tab.messages
+                .push(ChatMessage::System(t!("system.busy_use_stop").into_owned()));
             tab.scroll_to_bottom();
             return;
         }
@@ -5775,9 +5954,7 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        let _ = self
-            .new_session_tx
-            .send(NewSessionForTab {
+        let _ = self.new_session_tx.send(NewSessionForTab {
                 tab_id,
                 cwd: self.source_cwd.clone(),
             });
@@ -6422,7 +6599,6 @@ impl App {
         let _ = cmd.spawn();
     }
 
-
     /// Ask WT to tear down this agent pane. Wired to the second tap of the
     /// double-Ctrl+C close sequence. WT closes the Pane, which causes its
     /// ConPty to SIGKILL us — so the natural side effect of pane teardown
@@ -6453,7 +6629,6 @@ impl App {
         tracing::info!(target: "close_pane", "double-Ctrl+C → asking WT to close agent pane");
         send_wt_protocol_event(evt.to_string());
     }
-
 
     /// Recompute the chip-target override for the tab and, if it changed
     /// since the last emit, publish a `set_agent_chip_target` event so the
@@ -6734,7 +6909,6 @@ fn build_switch_agent_event(
     })
     .to_string()
 }
-
 
 /// Tell WT which pane in `tab_id` should display the blue "Agent" chip.
 /// `pane_session_id = None` releases the override and lets the C++ side

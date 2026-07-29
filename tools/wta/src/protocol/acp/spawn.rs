@@ -1,13 +1,10 @@
 //! Shared agent-process spawn logic for the ACP layer.
 //!
 //! Both [`crate::master`] (spawning the shared agent CLI) and
-//! [`super::probe::probe_models`] need to spawn an ACP agent the same
-//! way: parse the user-facing cmdline, resolve bare names via
-//! [`crate::agent_registry`], optionally wrap in `cmd /c`, scrub the
-//! claude-code-acp guard env var, and pipe stdio with `kill_on_drop`.
-//! They diverge only after `spawn()` — master drives a full prompt loop
-//! over the helper pipes; the probe attaches raw stdio, runs `initialize`
-//! + `new_session`, and exits.
+//! [`super::probe::probe_models`] share command parsing, executable
+//! resolution, stdio, and lifecycle setup. They choose different explicit
+//! child-environment policies: normal master startup may apply the shared
+//! provider, while cloud model discovery removes every provider override.
 
 use std::collections::VecDeque;
 use std::path::Path;
@@ -22,6 +19,18 @@ const STARTUP_STDERR_MAX_CHARS_PER_LINE: usize = 1024;
 const STARTUP_STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Provider configuration inherited by an ACP child.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChildEnvironmentPolicy {
+    /// Normal agent startup: scrub WTA-only metadata, then inject a complete
+    /// shared provider configuration when the authoritative agent supports it.
+    ApplySharedProvider,
+    /// Cloud catalog discovery: remove both shared and agent-native provider
+    /// overrides so the probe cannot rediscover the selected shared provider.
+    CleanCloudDiscovery,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StderrPhase {
@@ -186,9 +195,7 @@ impl AgentSpawn {
     /// Human-readable agent label for error messages. Prefers the npx
     /// adapter package id when present.
     pub fn label(&self) -> &str {
-        self.adapter_package
-            .as_deref()
-            .unwrap_or(&self.raw_program)
+        self.adapter_package.as_deref().unwrap_or(&self.raw_program)
     }
 }
 
@@ -205,23 +212,7 @@ pub(crate) fn spawn_agent_process(
     agent_cmd: &str,
     cwd: Option<&Path>,
     agent_id: Option<&str>,
-) -> Result<AgentSpawn> {
-    spawn_agent_process_impl(agent_cmd, cwd, agent_id, true)
-}
-
-pub(crate) fn spawn_agent_process_without_byok(
-    agent_cmd: &str,
-    cwd: Option<&Path>,
-    agent_id: Option<&str>,
-) -> Result<AgentSpawn> {
-    spawn_agent_process_impl(agent_cmd, cwd, agent_id, false)
-}
-
-fn spawn_agent_process_impl(
-    agent_cmd: &str,
-    cwd: Option<&Path>,
-    agent_id: Option<&str>,
-    apply_byok: bool,
+    environment_policy: ChildEnvironmentPolicy,
 ) -> Result<AgentSpawn> {
     let parts: Vec<&str> = agent_cmd.split_whitespace().collect();
     let raw_program = parts
@@ -243,7 +234,11 @@ fn spawn_agent_process_impl(
         None
     };
 
-    let program = if needs_cmd { "cmd" } else { resolved_program.as_str() };
+    let program = if needs_cmd {
+        "cmd"
+    } else {
+        resolved_program.as_str()
+    };
     let mut cmd = tokio::process::Command::new(program);
     if needs_cmd {
         cmd.arg("/c").arg(&resolved_program);
@@ -254,13 +249,7 @@ fn spawn_agent_process_impl(
     // `claude` shells from sharing runtime, but doesn't apply to an
     // ACP host. Scrub unconditionally; other agents don't care.
     cmd.env_remove("CLAUDECODE");
-    let profile = resolve_spawn_profile(agent_cmd, agent_id);
-    let byok_mode = if apply_byok {
-        profile.byok_mode
-    } else {
-        crate::agent_registry::ByokMode::Unsupported
-    };
-    crate::custom_model_provider::configure_child(&mut cmd, byok_mode)?;
+    configure_child_environment(&mut cmd, agent_cmd, agent_id, environment_policy)?;
 
     // Give the agent CLI a PATH rebuilt from the Windows registry. Windows
     // Terminal — and thus this wta-master / wta child — snapshots its
@@ -349,17 +338,38 @@ fn resolve_spawn_profile(
     crate::agent_registry::lookup_profile_by_id(agent_id)
 }
 
+fn configure_child_environment(
+    command: &mut tokio::process::Command,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
+) -> Result<Option<crate::agent_registry::ByokMode>> {
+    match environment_policy {
+        ChildEnvironmentPolicy::ApplySharedProvider => {
+            let profile = resolve_spawn_profile(agent_cmd, agent_id);
+            crate::custom_model_provider::configure_child(command, profile.byok_mode)
+        }
+        ChildEnvironmentPolicy::CleanCloudDiscovery => {
+            crate::custom_model_provider::scrub_child_for_cloud_discovery(command);
+            Ok(None)
+        }
+    }
+}
+
 /// Spawn an ACP agent in the selected per-tab execution source.
 pub(crate) fn spawn_agent_process_for_source(
     agent_cmd: &str,
     cwd: Option<&Path>,
     agent_id: Option<&str>,
     source: &crate::agent_source::AgentSource,
+    environment_policy: ChildEnvironmentPolicy,
 ) -> Result<AgentSpawn> {
     match source {
-        crate::agent_source::AgentSource::Host => spawn_agent_process(agent_cmd, cwd, agent_id),
+        crate::agent_source::AgentSource::Host => {
+            spawn_agent_process(agent_cmd, cwd, agent_id, environment_policy)
+        }
         crate::agent_source::AgentSource::Wsl { distro } => {
-            spawn_wsl_agent_process(agent_cmd, distro, agent_id)
+            spawn_wsl_agent_process(agent_cmd, distro, agent_id, environment_policy)
         }
     }
 }
@@ -367,7 +377,8 @@ pub(crate) fn spawn_agent_process_for_source(
 fn spawn_wsl_agent_process(
     agent_cmd: &str,
     distro: &str,
-    agent_id: Option<&str>,
+    _agent_id: Option<&str>,
+    environment_policy: ChildEnvironmentPolicy,
 ) -> Result<AgentSpawn> {
     let parts = crate::coordinator::split_windows_commandline(agent_cmd);
     let raw_program = parts
@@ -380,7 +391,7 @@ fn spawn_wsl_agent_process(
     let adapter_package = is_npx
         .then(|| parts.iter().find(|arg| arg.starts_with('@')).cloned())
         .flatten();
-    let script = wsl_agent_launch_script(&parts);
+    let script = wsl_agent_launch_script(&parts, environment_policy);
 
     let mut command = tokio::process::Command::new("wsl.exe");
     command
@@ -396,24 +407,24 @@ fn spawn_wsl_agent_process(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    let byok_mode = resolve_spawn_profile(agent_cmd, agent_id).byok_mode;
-    crate::custom_model_provider::configure_child(&mut command, byok_mode)?;
-    if crate::custom_model_provider::is_configured() {
-        forward_byok_environment_to_wsl(&mut command, byok_mode);
-    }
+    // Shared-provider configuration is Host-only. Remove any Windows-side
+    // provider variables (including pre-existing WSLENV forwarding) while
+    // leaving the distro's own environment untouched for normal launches.
+    // Clean probes additionally unset provider keys inside the Linux shell via
+    // `wsl_agent_launch_script`.
+    crate::custom_model_provider::scrub_child_for_cloud_discovery(&mut command);
+    scrub_provider_environment_from_wslenv(&mut command);
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    let child = command
-        .spawn()
-        .map_err(|error| {
-            anyhow!(
-                "failed to spawn agent '{}' in WSL distro '{}': {}",
-                agent_cmd,
-                distro,
-                error
-            )
-        })?;
+    let child = command.spawn().map_err(|error| {
+        anyhow!(
+            "failed to spawn agent '{}' in WSL distro '{}': {}",
+            agent_cmd,
+            distro,
+            error
+        )
+    })?;
 
     Ok(AgentSpawn {
         child,
@@ -424,57 +435,53 @@ fn spawn_wsl_agent_process(
     })
 }
 
-fn forward_byok_environment_to_wsl(
-    command: &mut tokio::process::Command,
-    byok_mode: crate::agent_registry::ByokMode,
-) {
-    let names: &[&str] = match byok_mode {
-        crate::agent_registry::ByokMode::Unsupported => &[],
-        crate::agent_registry::ByokMode::CopilotProviderEnvironment => &[
-            "COPILOT_PROVIDER_BASE_URL",
-            "COPILOT_PROVIDER_API_KEY",
-            "COPILOT_PROVIDER_TYPE",
-            "COPILOT_MODEL",
-            "COPILOT_OFFLINE",
-        ],
-        crate::agent_registry::ByokMode::CodexConfigEnvironment => &[
-            "CODEX_CONFIG",
-            "MODEL_PROVIDER",
-            "INTELLIGENT_TERMINAL_MODEL_API_KEY",
-        ],
-        crate::agent_registry::ByokMode::OpenCodeConfigContent => &[
-            "OPENCODE_CONFIG_CONTENT",
-            "INTELLIGENT_TERMINAL_MODEL_API_KEY",
-        ],
-    };
-    if names.is_empty() {
-        return;
-    }
+fn scrub_provider_environment_from_wslenv(command: &mut tokio::process::Command) {
+    let wslenv = remove_wslenv_names(
+        &std::env::var("WSLENV").unwrap_or_default(),
+        crate::custom_model_provider::cloud_discovery_environment_keys(),
+    );
+    command.env("WSLENV", wslenv);
+}
 
-    let mut entries = std::env::var("WSLENV")
-        .unwrap_or_default()
+fn remove_wslenv_names(current: &str, names: &[&str]) -> String {
+    wslenv_entries(current)
+        .into_iter()
+        .filter(|entry| {
+            !names
+                .iter()
+                .any(|name| wslenv_name(entry).eq_ignore_ascii_case(name))
+        })
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+fn wslenv_entries(current: &str) -> Vec<String> {
+    current
         .split(':')
         .filter(|entry| !entry.is_empty())
         .map(str::to_string)
-        .collect::<Vec<_>>();
-    for name in names {
-        if !entries
-            .iter()
-            .any(|entry| entry.split('/').next() == Some(*name))
-        {
-            entries.push((*name).to_string());
-        }
-    }
-    command.env("WSLENV", entries.join(":"));
+        .collect()
 }
 
-fn wsl_agent_launch_script(parts: &[String]) -> String {
+fn wslenv_name(entry: &str) -> &str {
+    entry.split('/').next().unwrap_or(entry)
+}
+
+fn wsl_agent_launch_script(parts: &[String], environment_policy: ChildEnvironmentPolicy) -> String {
     let invocation = parts
         .iter()
         .map(|part| crate::coordinator::sh_quote(part))
         .collect::<Vec<_>>()
         .join(" ");
-    let inner = format!("exec 1>&3 3>&-; unset CLAUDECODE; exec {invocation}");
+    let mut unset_names = vec!["CLAUDECODE"];
+    if environment_policy == ChildEnvironmentPolicy::CleanCloudDiscovery {
+        unset_names
+            .extend_from_slice(crate::custom_model_provider::cloud_discovery_environment_keys());
+    }
+    let inner = format!(
+        "exec 1>&3 3>&-; unset {}; exec {invocation}",
+        unset_names.join(" ")
+    );
     format!(
         "bash -lc {} 3>&1 >/dev/null",
         crate::coordinator::sh_quote(&inner)
@@ -534,6 +541,48 @@ mod tests {
     }
 
     #[test]
+    fn normal_wsl_launch_preserves_only_the_distros_provider_environment() {
+        let script = wsl_agent_launch_script(
+            &["copilot".to_string(), "--acp".to_string()],
+            ChildEnvironmentPolicy::ApplySharedProvider,
+        );
+
+        assert!(script.contains("unset CLAUDECODE"));
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert!(
+                !script.contains(key),
+                "normal WSL launch must preserve the distro's own {key}: {script}"
+            );
+        }
+    }
+
+    #[test]
+    fn clean_cloud_policy_scrubs_builtin_provider_environment() {
+        let mut command = tokio::process::Command::new("cloud-probe");
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            command.env(key, "must-not-leak");
+        }
+
+        let applied = configure_child_environment(
+            &mut command,
+            "copilot --acp --stdio",
+            Some("copilot"),
+            ChildEnvironmentPolicy::CleanCloudDiscovery,
+        )
+        .expect("clean cloud policy should not require shared configuration");
+
+        assert_eq!(applied, None);
+        let configured_env: std::collections::HashMap<_, _> = command.as_std().get_envs().collect();
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(key)),
+                Some(&None),
+                "cloud policy must scrub {key}"
+            );
+        }
+    }
+
+    #[test]
     fn wsl_launch_script_quotes_every_agent_argument() {
         let parts = vec![
             "copilot".to_string(),
@@ -541,10 +590,91 @@ mod tests {
             "model; touch /tmp/nope".to_string(),
         ];
         assert_eq!(
-            wsl_agent_launch_script(&parts),
+            wsl_agent_launch_script(&parts, ChildEnvironmentPolicy::ApplySharedProvider),
             "bash -lc 'exec 1>&3 3>&-; unset CLAUDECODE; exec '\\''copilot'\\'' \
              '\\''--model'\\'' '\\''model; touch /tmp/nope'\\''' 3>&1 >/dev/null"
         );
+    }
+
+    #[test]
+    fn wsl_forwarding_names_match_each_shared_provider_mode() {
+        use crate::agent_registry::ByokMode;
+
+        let cases = [
+            (
+                ByokMode::CopilotProviderEnvironment,
+                vec![
+                    "COPILOT_PROVIDER_BASE_URL",
+                    "COPILOT_PROVIDER_API_KEY",
+                    "COPILOT_PROVIDER_TYPE",
+                    "COPILOT_MODEL",
+                    "COPILOT_OFFLINE",
+                ],
+            ),
+            (
+                ByokMode::CodexConfigEnvironment,
+                vec![
+                    "CODEX_CONFIG",
+                    "MODEL_PROVIDER",
+                    "INTELLIGENT_TERMINAL_MODEL_API_KEY",
+                ],
+            ),
+            (
+                ByokMode::OpenCodeConfigContent,
+                vec![
+                    "OPENCODE_CONFIG_CONTENT",
+                    "INTELLIGENT_TERMINAL_MODEL_API_KEY",
+                ],
+            ),
+            (ByokMode::Unsupported, Vec::new()),
+        ];
+
+        for (mode, expected) in cases {
+            assert_eq!(
+                crate::custom_model_provider::shared_provider_environment_keys(mode),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn wslenv_host_isolation_removes_shared_provider_forwarding() {
+        let current = "PATH/p:CODEX_CONFIG/u:copilot_provider_base_url:\
+                       INTELLIGENT_TERMINAL_MODEL_API_KEY:KEEP/u";
+        let isolated = remove_wslenv_names(
+            current,
+            crate::custom_model_provider::cloud_discovery_environment_keys(),
+        );
+
+        assert_eq!(isolated, "PATH/p:KEEP/u");
+    }
+
+    #[test]
+    fn wslenv_clean_cloud_discovery_removes_all_provider_forwarding() {
+        let current = "PATH/p:WTA_CUSTOM_MODEL_BASE_URL:CODEX_CONFIG/u:\
+                       COPILOT_PROVIDER_API_KEY:OPENCODE_CONFIG_CONTENT:KEEP/u";
+        let cleaned = remove_wslenv_names(
+            current,
+            crate::custom_model_provider::cloud_discovery_environment_keys(),
+        );
+
+        assert_eq!(cleaned, "PATH/p:KEEP/u");
+    }
+
+    #[test]
+    fn clean_cloud_wsl_script_unsets_provider_configuration() {
+        let script = wsl_agent_launch_script(
+            &["copilot".to_string(), "--acp".to_string()],
+            ChildEnvironmentPolicy::CleanCloudDiscovery,
+        );
+
+        for key in crate::custom_model_provider::cloud_discovery_environment_keys() {
+            assert!(
+                script.contains(key),
+                "clean WSL probe must unset {key}: {script}"
+            );
+        }
+        assert!(script.contains("unset CLAUDECODE"));
     }
 
     #[test]
@@ -601,17 +731,11 @@ mod tests {
         let line = "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE + 1);
         let truncated = truncate_stderr_line(&line);
 
-        assert_eq!(
-            truncated.chars().count(),
-            STARTUP_STDERR_MAX_CHARS_PER_LINE
-        );
+        assert_eq!(truncated.chars().count(), STARTUP_STDERR_MAX_CHARS_PER_LINE);
         assert!(truncated.ends_with("..."));
         assert_eq!(
             truncated,
-            format!(
-                "{}...",
-                "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3)
-            )
+            format!("{}...", "a".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3))
         );
     }
 
@@ -620,16 +744,10 @@ mod tests {
         let line = "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE + 1);
         let truncated = truncate_stderr_line(&line);
 
-        assert_eq!(
-            truncated.chars().count(),
-            STARTUP_STDERR_MAX_CHARS_PER_LINE
-        );
+        assert_eq!(truncated.chars().count(), STARTUP_STDERR_MAX_CHARS_PER_LINE);
         assert_eq!(
             truncated,
-            format!(
-                "{}...",
-                "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3)
-            )
+            format!("{}...", "界".repeat(STARTUP_STDERR_MAX_CHARS_PER_LINE - 3))
         );
     }
 

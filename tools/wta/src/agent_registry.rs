@@ -519,7 +519,9 @@ mod tests {
     #[test]
     fn is_cli_available_returns_false_for_obviously_bogus_name() {
         // A 64-char random-looking name will not exist on any sane PATH.
-        assert!(!is_cli_available("zzzzz_does_not_exist_anywhere_qqqqq_82h3kf9"));
+        assert!(!is_cli_available(
+            "zzzzz_does_not_exist_anywhere_qqqqq_82h3kf9"
+        ));
     }
 
     #[test]
@@ -547,8 +549,14 @@ mod tests {
 
     #[test]
     fn resolve_agent_id_from_cmd_recognises_bare_names_with_flags() {
-        assert_eq!(resolve_agent_id_from_cmd("copilot --acp --stdio"), "copilot");
-        assert_eq!(resolve_agent_id_from_cmd("gemini --experimental-acp"), "gemini");
+        assert_eq!(
+            resolve_agent_id_from_cmd("copilot --acp --stdio"),
+            "copilot"
+        );
+        assert_eq!(
+            resolve_agent_id_from_cmd("gemini --experimental-acp"),
+            "gemini"
+        );
         assert_eq!(resolve_agent_id_from_cmd("opencode acp"), "opencode");
         assert_eq!(resolve_agent_id_from_cmd("claude --resume foo"), "claude");
     }
@@ -669,9 +677,9 @@ mod tests {
 
     #[test]
     fn resolve_agent_id_from_cmd_falls_back_to_unknown() {
-        assert_eq!(resolve_agent_id_from_cmd(""),           "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("   "),        "unknown");
-        assert_eq!(resolve_agent_id_from_cmd("npx"),        "unknown");
+        assert_eq!(resolve_agent_id_from_cmd(""), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("   "), "unknown");
+        assert_eq!(resolve_agent_id_from_cmd("npx"), "unknown");
         assert_eq!(resolve_agent_id_from_cmd("my-bot --x"), "unknown");
     }
 

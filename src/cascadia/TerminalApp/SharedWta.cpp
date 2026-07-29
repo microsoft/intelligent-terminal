@@ -11,75 +11,73 @@
 #include "../inc/WtaProcess.h"
 #include "AgentPaneLog.h"
 
-namespace
+namespace winrt::TerminalApp::implementation::details
 {
-    std::wstring _BuildEnvironmentBlock(std::span<const std::pair<std::wstring, std::wstring>> overrides)
+    std::optional<std::wstring> BuildEnvironmentBlock(
+        const std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept
     {
-        if (overrides.empty())
+        try
         {
-            return {};
-        }
-
-        std::vector<const std::pair<std::wstring, std::wstring>*> validOverrides;
-        validOverrides.reserve(overrides.size());
-        for (const auto& override : overrides)
-        {
-            if (winrt::TerminalApp::implementation::details::IsValidEnvironmentOverride(override.first, override.second))
+            if (overrides.empty())
             {
-                validOverrides.emplace_back(&override);
+                return std::wstring{};
             }
-            else
+
+            for (const auto& override : overrides)
             {
-                winrt::TerminalApp::implementation::_agentPaneLog(
-                    "skipping invalid wta-master environment override name_length=" + std::to_string(override.first.size()));
+                if (!IsValidEnvironmentOverride(override.first, override.second))
+                {
+                    _agentPaneLog(
+                        "rejecting invalid wta-master environment override name_length=" + std::to_string(override.first.size()));
+                    return std::nullopt;
+                }
             }
-        }
 
-        if (validOverrides.empty())
-        {
-            return {};
-        }
+            const auto isOverridden = [&](const std::wstring_view name) {
+                return std::ranges::any_of(overrides, [&](const auto& item) {
+                    return _wcsicmp(std::wstring{ name }.c_str(), item.first.c_str()) == 0;
+                });
+            };
 
-        const auto isOverridden = [&](const std::wstring_view name) {
-            return std::ranges::any_of(validOverrides, [&](const auto* item) {
-                return _wcsicmp(std::wstring{ name }.c_str(), item->first.c_str()) == 0;
+            std::vector<std::wstring> entries;
+            const auto environment = GetEnvironmentStringsW();
+            THROW_LAST_ERROR_IF_NULL(environment);
+            const auto freeEnvironment = wil::scope_exit([&]() noexcept { FreeEnvironmentStringsW(environment); });
+
+            for (const wchar_t* current = environment; *current;)
+            {
+                const std::wstring_view entry{ current };
+                const auto separator = entry.find(L'=', entry.starts_with(L'=') ? 1 : 0);
+                const auto name = separator == std::wstring_view::npos ? entry : entry.substr(0, separator);
+                if (!isOverridden(name))
+                {
+                    entries.emplace_back(entry);
+                }
+                current += entry.size() + 1;
+            }
+
+            for (const auto& [name, value] : overrides)
+            {
+                entries.emplace_back(name + L'=' + value);
+            }
+            std::ranges::sort(entries, [](const auto& left, const auto& right) {
+                return _wcsicmp(left.c_str(), right.c_str()) < 0;
             });
-        };
 
-        std::vector<std::wstring> entries;
-        const auto environment = GetEnvironmentStringsW();
-        THROW_LAST_ERROR_IF_NULL(environment);
-        const auto freeEnvironment = wil::scope_exit([&]() noexcept { FreeEnvironmentStringsW(environment); });
-
-        for (const wchar_t* current = environment; *current;)
-        {
-            const std::wstring_view entry{ current };
-            const auto separator = entry.find(L'=', entry.starts_with(L'=') ? 1 : 0);
-            const auto name = separator == std::wstring_view::npos ? entry : entry.substr(0, separator);
-            if (!isOverridden(name))
+            std::wstring block;
+            for (const auto& entry : entries)
             {
-                entries.emplace_back(entry);
+                block.append(entry);
+                block.push_back(L'\0');
             }
-            current += entry.size() + 1;
-        }
-
-        for (const auto* override : validOverrides)
-        {
-            const auto& [name, value] = *override;
-            entries.emplace_back(name + L'=' + value);
-        }
-        std::ranges::sort(entries, [](const auto& left, const auto& right) {
-            return _wcsicmp(left.c_str(), right.c_str()) < 0;
-        });
-
-        std::wstring block;
-        for (const auto& entry : entries)
-        {
-            block.append(entry);
             block.push_back(L'\0');
+            return block;
         }
-        block.push_back(L'\0');
-        return block;
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return std::nullopt;
+        }
     }
 }
 
@@ -403,9 +401,10 @@ namespace winrt::TerminalApp::implementation
         // Refresh the current process's PATH from the Windows registry
         // so the master (which inherits our env) sees PATH entries added
         // after Terminal launched (e.g. WinGet\Links after FRE installs
-        // copilot). Using RefreshProcessPath + lpEnvironment=nullptr
-        // preserves all process-only variables (WT_COM_CLSID, etc.)
-        // that regenerate() would drop.
+        // copilot). With no overrides, lpEnvironment=nullptr inherits it
+        // directly; with overrides, BuildEnvironmentBlock clones it first.
+        // Both preserve process-only variables (WT_COM_CLSID, etc.) that
+        // regenerate() would drop.
         try
         {
             ::Microsoft::Terminal::WtaProcess::RefreshProcessPath();
@@ -415,16 +414,13 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
+        auto environmentBlock = details::BuildEnvironmentBlock(environment);
+        if (!environmentBlock)
+        {
+            return false;
+        }
+
         std::wstring mutableCmdLine{ commandline };
-        std::wstring environmentBlock;
-        try
-        {
-            environmentBlock = _BuildEnvironmentBlock(environment);
-        }
-        catch (...)
-        {
-            LOG_CAUGHT_EXCEPTION();
-        }
         if (!CreateProcessW(
                 /* lpApplicationName    */ nullptr,
                 /* lpCommandLine        */ mutableCmdLine.data(),
@@ -432,7 +428,7 @@ namespace winrt::TerminalApp::implementation
                 /* lpThreadAttributes   */ nullptr,
                 /* bInheritHandles      */ FALSE,
                 /* dwCreationFlags      */ creationFlags,
-                /* lpEnvironment        */ environmentBlock.empty() ? nullptr : environmentBlock.data(),
+                /* lpEnvironment        */ environmentBlock->empty() ? nullptr : environmentBlock->data(),
                 /* lpCurrentDirectory   */ nullptr,
                 /* lpStartupInfo        */ &si,
                 /* lpProcessInformation */ &pi))

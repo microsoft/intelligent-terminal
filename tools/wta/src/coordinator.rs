@@ -300,9 +300,9 @@ pub fn validate_recommendation_set_for_coordinator_target(
     }
 
     // Adjust recommended_choice if the original was filtered out.
-    let recommended_choice = set.recommended_choice.filter(|rc| {
-        filtered.iter().any(|c| c.choice == *rc)
-    });
+    let recommended_choice = set
+        .recommended_choice
+        .filter(|rc| filtered.iter().any(|c| c.choice == *rc));
 
     Ok(RecommendationSet {
         recommended_choice,
@@ -523,9 +523,7 @@ async fn execute_choice(
                     "Opened {} pane {}.",
                     target_label, pane_id
                 )));
-                if let (Some(session_id), Some(runtime)) =
-                    (pinned_session_id.as_deref(), runtime)
-                {
+                if let (Some(session_id), Some(runtime)) = (pinned_session_id.as_deref(), runtime) {
                     let event = crate::agent_sessions::SessionEvent::SessionStarted {
                         key: session_id.to_string(),
                         cli_source: crate::agent_sessions::CliSource::from(
@@ -593,7 +591,12 @@ async fn execute_choice(
                 let pane_id = match target {
                     OpenTarget::Tab => {
                         let result = shell_mgr
-                            .wt_create_tab(None, cwd.as_deref(), title.as_deref(), profile.as_deref())
+                            .wt_create_tab(
+                                None,
+                                cwd.as_deref(),
+                                title.as_deref(),
+                                profile.as_deref(),
+                            )
                             .await
                             .context("failed to create tab")?;
                         coordinator_log(&format!(
@@ -605,7 +608,14 @@ async fn execute_choice(
                     OpenTarget::Panel => {
                         let parent = required_parent(parent.as_deref(), "open")?;
                         let result = shell_mgr
-                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None, profile.as_deref())
+                            .wt_split_pane(
+                                parent,
+                                None,
+                                cwd.as_deref(),
+                                direction.as_deref(),
+                                None,
+                                profile.as_deref(),
+                            )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
                         coordinator_log(&format!(
@@ -1097,8 +1107,14 @@ fn needs_cmd_wrapper(command: &str) -> bool {
     if lower.ends_with(".exe") || lower.ends_with(".com") {
         return false;
     }
-    let basename = lower.rsplit(|ch: char| ch == '\\' || ch == '/').next().unwrap_or(&lower);
-    if matches!(basename, "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe") {
+    let basename = lower
+        .rsplit(|ch: char| ch == '\\' || ch == '/')
+        .next()
+        .unwrap_or(&lower);
+    if matches!(
+        basename,
+        "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+    ) {
         return false;
     }
 
@@ -1123,7 +1139,6 @@ fn needs_cmd_wrapper(command: &str) -> bool {
     // No .exe found on PATH — likely a .cmd/.bat shim, needs wrapping.
     true
 }
-
 
 pub fn split_windows_commandline(commandline: &str) -> Vec<String> {
     let mut args = Vec::new();
@@ -1282,9 +1297,8 @@ pub(crate) fn build_wsl_delegate_commandline(
     if agent_cmd.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
-    let profile = agent_registry::lookup_profile_by_id(
-        agent_registry::resolve_agent_id_from_cmd(agent_cmd),
-    );
+    let profile =
+        agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
 
     // Agent invocation: the CLI tokens plus model / session-id flags, each
     // single-quoted for the inner bash.
@@ -1663,8 +1677,8 @@ mod tests {
         is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
         pinned_session_id_for_runtime, pwsh_available, resolve_agent_profile,
         resolve_created_pane_id, sanitize_windows_agent_cwd,
-        validate_recommendation_set_for_coordinator_target, AutofixDecision,
-        DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget, RecommendedAction,
+        validate_recommendation_set_for_coordinator_target, AutofixDecision, DelegateAgentRuntime,
+        DelegatePromptDelivery, OpenTarget, RecommendedAction,
     };
     use serde_json::json;
     use std::os::windows::process::CommandExt;
@@ -1690,9 +1704,12 @@ mod tests {
             .find(|runtime| runtime.id == "copilot")
             .expect("copilot runtime should exist");
 
-        let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Fix the build and report back"), None)
-                .unwrap();
+        let commandline = build_delegate_launch_commandline(
+            &runtime,
+            Some("Fix the build and report back"),
+            None,
+        )
+        .unwrap();
 
         assert!(!commandline.contains("--model"));
         // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
@@ -1932,8 +1949,8 @@ mod tests {
             model: None,
         };
 
-        let session_id = pinned_session_id_for_runtime(&runtime, true)
-            .expect("copilot should support pinning");
+        let session_id =
+            pinned_session_id_for_runtime(&runtime, true).expect("copilot should support pinning");
         assert!(uuid::Uuid::parse_str(&session_id).is_ok());
     }
 
@@ -1992,9 +2009,12 @@ mod tests {
         .find(|runtime| runtime.id == "copilot")
         .expect("copilot runtime should exist");
 
-        let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Inspect the repo and summarize"), None)
-                .unwrap();
+        let commandline = build_delegate_launch_commandline(
+            &runtime,
+            Some("Inspect the repo and summarize"),
+            None,
+        )
+        .unwrap();
 
         assert_eq!(
             commandline,
@@ -2332,18 +2352,27 @@ mod tests {
         // No Windows home available → drop the unusable cwd (None), letting WT
         // pick a default rather than crashing the agent CLI on a POSIX path.
         assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), None), None);
-        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")), None);
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")),
+            None
+        );
     }
 
     #[test]
     fn sanitize_cwd_keeps_unc_path() {
         // Forward-slash and backslash UNC paths are valid Windows paths — keep.
         assert_eq!(
-            sanitize_windows_agent_cwd(Some("//wsl.localhost/Ubuntu/home/user"), Some(r"C:\Users\me")),
+            sanitize_windows_agent_cwd(
+                Some("//wsl.localhost/Ubuntu/home/user"),
+                Some(r"C:\Users\me")
+            ),
             Some("//wsl.localhost/Ubuntu/home/user".to_string())
         );
         assert_eq!(
-            sanitize_windows_agent_cwd(Some(r"\\wsl.localhost\Ubuntu\home\user"), Some(r"C:\Users\me")),
+            sanitize_windows_agent_cwd(
+                Some(r"\\wsl.localhost\Ubuntu\home\user"),
+                Some(r"C:\Users\me")
+            ),
             Some(r"\\wsl.localhost\Ubuntu\home\user".to_string())
         );
     }
@@ -2351,7 +2380,10 @@ mod tests {
     #[test]
     fn sanitize_cwd_none_and_blank_stay_none() {
         assert_eq!(sanitize_windows_agent_cwd(None, Some(r"C:\Users\me")), None);
-        assert_eq!(sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")), None);
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")),
+            None
+        );
     }
 
     #[test]
@@ -2754,7 +2786,10 @@ mod tests {
         let cmd = build_wsl_delegate_commandline(&runtime, Some(prompt), None).expect("cmd");
 
         // The whole command is a single line — no raw newline rides the commandline.
-        assert!(!cmd.contains('\n'), "commandline must be single-line: {cmd}");
+        assert!(
+            !cmd.contains('\n'),
+            "commandline must be single-line: {cmd}"
+        );
         // The raw prompt and its shell syntax characters never appear literally.
         assert!(!cmd.contains("$(whoami)"));
         assert!(!cmd.contains("%TEMP%"));
@@ -2764,14 +2799,20 @@ mod tests {
         assert!(cmd.contains("base64 -d <<<"));
         // The decode wrapper is escaped for the wsl.exe expansion pass.
         assert!(cmd.contains("\\$(base64 -d"), "escaped $() missing: {cmd}");
-        assert!(cmd.contains("exec 'claude' \"\\$prompt\""), "exec form: {cmd}");
+        assert!(
+            cmd.contains("exec 'claude' \"\\$prompt\""),
+            "exec form: {cmd}"
+        );
     }
 
     #[test]
     fn wsl_delegate_uses_prompt_flag_for_flag_agents() {
         let runtime = base64_runtime("copilot"); // -i flag agent
         let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
-        assert!(cmd.contains("'-i' \"\\$prompt\""), "flag prompt form: {cmd}");
+        assert!(
+            cmd.contains("'-i' \"\\$prompt\""),
+            "flag prompt form: {cmd}"
+        );
     }
 
     #[test]

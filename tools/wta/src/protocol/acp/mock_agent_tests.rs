@@ -12,13 +12,13 @@
 //! The constructors are `pub(crate)` so app-module scenarios can borrow the
 //! harness and assert on real `App` state (see the spec, "option 2").
 
-use super::{ClientState, PromptTimingState, WtaClient};
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_new_session, dispatch_prompt, dispatch_rename_session,
-    CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, TemplateMemo,
+    dispatch_new_session, dispatch_prompt, dispatch_rename_session, CancelRequest,
+    DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
+    RenameSessionRequest, TemplateMemo,
 };
+use super::{ClientState, PromptTimingState, WtaClient};
 use crate::app::AppEvent;
 use crate::protocol::acp::conn;
 use crate::shell::ShellManager;
@@ -94,8 +94,12 @@ impl MockAgent {
         &self,
         args: acp::schema::v1::InitializeRequest,
     ) -> acp::Result<acp::schema::v1::InitializeResponse> {
-        Ok(acp::schema::v1::InitializeResponse::new(args.protocol_version)
-            .agent_info(acp::schema::v1::Implementation::new("mock-acp-agent", "0.0.0").title("Mock ACP Agent")))
+        Ok(
+            acp::schema::v1::InitializeResponse::new(args.protocol_version).agent_info(
+                acp::schema::v1::Implementation::new("mock-acp-agent", "0.0.0")
+                    .title("Mock ACP Agent"),
+            ),
+        )
     }
 
     async fn new_session(
@@ -105,7 +109,9 @@ impl MockAgent {
         if self.fail_new_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock new_session failure".to_string()));
         }
-        Ok(acp::schema::v1::NewSessionResponse::new(acp::schema::v1::SessionId::new("mock-session-1")))
+        Ok(acp::schema::v1::NewSessionResponse::new(
+            acp::schema::v1::SessionId::new("mock-session-1"),
+        ))
     }
 
     async fn authenticate(
@@ -115,14 +121,19 @@ impl MockAgent {
         Ok(acp::schema::v1::AuthenticateResponse::default())
     }
 
-    async fn prompt(&self, args: acp::schema::v1::PromptRequest) -> acp::Result<acp::schema::v1::PromptResponse> {
+    async fn prompt(
+        &self,
+        args: acp::schema::v1::PromptRequest,
+    ) -> acp::Result<acp::schema::v1::PromptResponse> {
         let text = first_text(&args.prompt);
         self.seen_prompts.lock().unwrap().push(text.clone());
         let images: Vec<(String, String)> = args
             .prompt
             .iter()
             .filter_map(|b| match b {
-                acp::schema::v1::ContentBlock::Image(img) => Some((img.mime_type.clone(), img.data.clone())),
+                acp::schema::v1::ContentBlock::Image(img) => {
+                    Some((img.mime_type.clone(), img.data.clone()))
+                }
                 _ => None,
             })
             .collect();
@@ -142,9 +153,9 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
-                                    reply.as_str().into(),
-                                )),
+                                acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                                    acp::schema::v1::ContentChunk::new(reply.as_str().into()),
+                                ),
                             ))
                             .await;
                     });
@@ -178,7 +189,9 @@ impl MockAgent {
                                 acp::schema::v1::RequestPermissionOutcome::Selected(sel) => {
                                     sel.option_id.to_string()
                                 }
-                                acp::schema::v1::RequestPermissionOutcome::Cancelled => "cancelled".to_string(),
+                                acp::schema::v1::RequestPermissionOutcome::Cancelled => {
+                                    "cancelled".to_string()
+                                }
                                 _ => "unknown".to_string(),
                             };
                             *outcome_slot.lock().unwrap() = Some(chosen);
@@ -190,10 +203,12 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    "Run: echo hi",
-                                )),
+                                acp::schema::v1::SessionUpdate::ToolCall(
+                                    acp::schema::v1::ToolCall::new(
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        "Run: echo hi",
+                                    ),
+                                ),
                             ))
                             .await;
                     });
@@ -203,20 +218,24 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid.clone(),
-                                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    "Run: echo hi",
-                                )),
+                                acp::schema::v1::SessionUpdate::ToolCall(
+                                    acp::schema::v1::ToolCall::new(
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        "Run: echo hi",
+                                    ),
+                                ),
                             ))
                             .await;
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
-                                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
-                                    acp::schema::v1::ToolCallUpdateFields::new()
-                                        .status(acp::schema::v1::ToolCallStatus::Completed),
-                                )),
+                                acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                                    acp::schema::v1::ToolCallUpdate::new(
+                                        acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                                        acp::schema::v1::ToolCallUpdateFields::new()
+                                            .status(acp::schema::v1::ToolCallStatus::Completed),
+                                    ),
+                                ),
                             ))
                             .await;
                     });
@@ -226,18 +245,20 @@ impl MockAgent {
                         let _ = conn
                             .session_notification(acp::schema::v1::SessionNotification::new(
                                 sid,
-                                acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(vec![
-                                    acp::schema::v1::PlanEntry::new(
-                                        "Step one",
-                                        acp::schema::v1::PlanEntryPriority::Medium,
-                                        acp::schema::v1::PlanEntryStatus::InProgress,
-                                    ),
-                                    acp::schema::v1::PlanEntry::new(
-                                        "Step two",
-                                        acp::schema::v1::PlanEntryPriority::Low,
-                                        acp::schema::v1::PlanEntryStatus::Pending,
-                                    ),
-                                ])),
+                                acp::schema::v1::SessionUpdate::Plan(acp::schema::v1::Plan::new(
+                                    vec![
+                                        acp::schema::v1::PlanEntry::new(
+                                            "Step one",
+                                            acp::schema::v1::PlanEntryPriority::Medium,
+                                            acp::schema::v1::PlanEntryStatus::InProgress,
+                                        ),
+                                        acp::schema::v1::PlanEntry::new(
+                                            "Step two",
+                                            acp::schema::v1::PlanEntryPriority::Low,
+                                            acp::schema::v1::PlanEntryStatus::Pending,
+                                        ),
+                                    ],
+                                )),
                             ))
                             .await;
                     });
@@ -248,9 +269,9 @@ impl MockAgent {
                             let _ = conn
                                 .session_notification(acp::schema::v1::SessionNotification::new(
                                     sid.clone(),
-                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(acp::schema::v1::ContentChunk::new(
-                                        part.into(),
-                                    )),
+                                    acp::schema::v1::SessionUpdate::AgentMessageChunk(
+                                        acp::schema::v1::ContentChunk::new(part.into()),
+                                    ),
                                 ))
                                 .await;
                         }
@@ -259,7 +280,9 @@ impl MockAgent {
             }
         }
 
-        Ok(acp::schema::v1::PromptResponse::new(acp::schema::v1::StopReason::EndTurn))
+        Ok(acp::schema::v1::PromptResponse::new(
+            acp::schema::v1::StopReason::EndTurn,
+        ))
     }
 
     async fn cancel(&self, _args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
@@ -338,55 +361,145 @@ fn spawn_mock_pair(
     let client_builder = acp::Client
         .builder()
         .name("mock-wta")
-        .on_receive_request({ let c = wta.clone(); move |req: acp::schema::v1::AgentRequest, responder, _cx| { let c = c.clone(); async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
-                Q::RequestPermissionRequest(a) => conn::respond_enum(responder, c.request_permission(a).await.map(R::RequestPermissionResponse)),
-                Q::CreateTerminalRequest(a) => conn::respond_enum(responder, c.create_terminal(a).await.map(R::CreateTerminalResponse)),
-                Q::TerminalOutputRequest(a) => conn::respond_enum(responder, c.terminal_output(a).await.map(R::TerminalOutputResponse)),
-                Q::WaitForTerminalExitRequest(a) => conn::respond_enum(responder, c.wait_for_terminal_exit(a).await.map(R::WaitForTerminalExitResponse)),
-                Q::ReleaseTerminalRequest(a) => conn::respond_enum(responder, c.release_terminal(a).await.map(R::ReleaseTerminalResponse)),
-                Q::KillTerminalRequest(a) => conn::respond_enum(responder, c.kill_terminal(a).await.map(R::KillTerminalResponse)),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let c = wta.clone(); move |notif: acp::schema::v1::AgentNotification, _cx| { let c = c.clone(); async move {
-            if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif { let _ = c.session_notification(n).await; }
-            Ok(())
-        } } }, acp::on_receive_notification!());
-    let (client_conn, client_io) =
-        conn::spawn_client(client_builder, conn::byte_streams(wta_w.compat_write(), wta_r.compat()));
+        .on_receive_request(
+            {
+                let c = wta.clone();
+                move |req: acp::schema::v1::AgentRequest, responder, _cx| {
+                    let c = c.clone();
+                    async move {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
+                            Q::RequestPermissionRequest(a) => conn::respond_enum(
+                                responder,
+                                c.request_permission(a)
+                                    .await
+                                    .map(R::RequestPermissionResponse),
+                            ),
+                            Q::CreateTerminalRequest(a) => conn::respond_enum(
+                                responder,
+                                c.create_terminal(a).await.map(R::CreateTerminalResponse),
+                            ),
+                            Q::TerminalOutputRequest(a) => conn::respond_enum(
+                                responder,
+                                c.terminal_output(a).await.map(R::TerminalOutputResponse),
+                            ),
+                            Q::WaitForTerminalExitRequest(a) => conn::respond_enum(
+                                responder,
+                                c.wait_for_terminal_exit(a)
+                                    .await
+                                    .map(R::WaitForTerminalExitResponse),
+                            ),
+                            Q::ReleaseTerminalRequest(a) => conn::respond_enum(
+                                responder,
+                                c.release_terminal(a).await.map(R::ReleaseTerminalResponse),
+                            ),
+                            Q::KillTerminalRequest(a) => conn::respond_enum(
+                                responder,
+                                c.kill_terminal(a).await.map(R::KillTerminalResponse),
+                            ),
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let c = wta.clone();
+                move |notif: acp::schema::v1::AgentNotification, _cx| {
+                    let c = c.clone();
+                    async move {
+                        if let acp::schema::v1::AgentNotification::SessionNotification(n) = notif {
+                            let _ = c.session_notification(n).await;
+                        }
+                        Ok(())
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
+    let (client_conn, client_io) = conn::spawn_client(
+        client_builder,
+        conn::byte_streams(wta_w.compat_write(), wta_r.compat()),
+    );
 
     let agent_builder = acp::Agent
         .builder()
         .name("mock-agent")
-        .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
-            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
-            match req {
-                Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
-                Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
-                Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
-                Q::LoadSessionRequest(a) => conn::respond_enum(responder, m.load_session(a).await.map(R::LoadSessionResponse)),
-                Q::PromptRequest(a) => conn::respond_enum(responder, m.prompt(a).await.map(R::PromptResponse)),
-                Q::ExtMethodRequest(_) => conn::respond_enum(
-                    responder,
-                    Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
-                        serde_json::value::to_raw_value(&serde_json::Value::Null).unwrap().into(),
-                    ))),
-                ),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let m = mock.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let m = m.clone(); async move {
-            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = m.cancel(n).await; }
-            Ok(())
-        } } }, acp::on_receive_notification!());
-    let (agent_conn, agent_io) =
-        conn::spawn_agent(agent_builder, conn::byte_streams(mock_w.compat_write(), mock_r.compat()));
+        .on_receive_request(
+            {
+                let m = mock.clone();
+                move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                    let m = m.clone();
+                    async move {
+                        use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
+                        match req {
+                            Q::InitializeRequest(a) => conn::respond_enum(
+                                responder,
+                                m.initialize(a).await.map(R::InitializeResponse),
+                            ),
+                            Q::AuthenticateRequest(a) => conn::respond_enum(
+                                responder,
+                                m.authenticate(a).await.map(R::AuthenticateResponse),
+                            ),
+                            Q::NewSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.new_session(a).await.map(R::NewSessionResponse),
+                            ),
+                            Q::LoadSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.load_session(a).await.map(R::LoadSessionResponse),
+                            ),
+                            Q::PromptRequest(a) => conn::respond_enum(
+                                responder,
+                                m.prompt(a).await.map(R::PromptResponse),
+                            ),
+                            Q::ExtMethodRequest(_) => conn::respond_enum(
+                                responder,
+                                Ok(R::ExtMethodResponse(acp::schema::v1::ExtResponse::new(
+                                    serde_json::value::to_raw_value(&serde_json::Value::Null)
+                                        .unwrap()
+                                        .into(),
+                                ))),
+                            ),
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let m = mock.clone();
+                move |notif: acp::schema::v1::ClientNotification, _cx| {
+                    let m = m.clone();
+                    async move {
+                        if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
+                            let _ = m.cancel(n).await;
+                        }
+                        Ok(())
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
+    let (agent_conn, agent_io) = conn::spawn_agent(
+        agent_builder,
+        conn::byte_streams(mock_w.compat_write(), mock_r.compat()),
+    );
 
-    assert!(conn_cell.set(agent_conn).is_ok(), "mock agent connection cell must be set exactly once");
-    tokio::task::spawn_local(async move { let _ = client_io.await; });
-    tokio::task::spawn_local(async move { let _ = agent_io.await; });
+    assert!(
+        conn_cell.set(agent_conn).is_ok(),
+        "mock agent connection cell must be set exactly once"
+    );
+    tokio::task::spawn_local(async move {
+        let _ = client_io.await;
+    });
+    tokio::task::spawn_local(async move {
+        let _ = agent_io.await;
+    });
     client_conn
 }
 
@@ -416,38 +529,30 @@ pub(crate) fn connect_mock_agent_asking_permission() -> (
 
 /// Tool-call harness: the mock streams a `ToolCall` (a proposed command) on each
 /// prompt. Returns the client connection and the `AppEvent` receiver.
-pub(crate) fn connect_mock_agent_proposing_tool() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_proposing_tool(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposeToolCall);
     (conn, event_rx)
 }
 
 /// Tool-call lifecycle harness: streams a `ToolCall` then a
 /// `ToolCallUpdate(Completed)`.
-pub(crate) fn connect_mock_agent_completing_tool() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_completing_tool(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ToolThenComplete);
     (conn, event_rx)
 }
 
 /// Plan harness: the mock streams a `Plan` with two entries.
-pub(crate) fn connect_mock_agent_proposing_plan() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_proposing_plan(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::ProposePlan);
     (conn, event_rx)
 }
 
 /// Streaming harness: the mock streams the reply in two chunks.
-pub(crate) fn connect_mock_agent_streaming_two_chunks() -> (
-    conn::ClientLink,
-    mpsc::UnboundedReceiver<AppEvent>,
-) {
+pub(crate) fn connect_mock_agent_streaming_two_chunks(
+) -> (conn::ClientLink, mpsc::UnboundedReceiver<AppEvent>) {
     let (conn, event_rx, _seen, _outcome) = connect_with(MockBehavior::StreamTwoChunks);
     (conn, event_rx)
 }
@@ -476,7 +581,9 @@ async fn happy_path_chat_round_trip_surfaces_mock_reply() {
             let (client_conn, mut event_rx, seen_prompts) = connect_mock_agent();
 
             client_conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
             let session = client_conn
@@ -675,7 +782,9 @@ async fn dispatch_prompt_round_trips_through_agent() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             // Handshake so the lazy `new_session` inside the dispatcher succeeds.
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
 
@@ -765,7 +874,9 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
     // Capture the screenshot off the live clipboard up front (all sync). The
     // clipboard lock is held only for set+read, never across an `.await`.
     let pasted = {
-        let _guard = CLIPBOARD_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         let dib = sample_screenshot_dib();
         if !unsafe { set_clipboard_dib(&dib) } {
             eprintln!(
@@ -782,7 +893,9 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
 
@@ -846,7 +959,9 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
             // Make the mock reject session establishment.
@@ -901,7 +1016,9 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
                 .await
                 .expect("initialize failed");
 
@@ -978,7 +1095,10 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
-            assert!(rekeyed, "old-tab must be rekeyed to new-tab with same SessionId");
+            assert!(
+                rekeyed,
+                "old-tab must be rekeyed to new-tab with same SessionId"
+            );
 
             // No-op: renaming a ghost tab leaves the map untouched.
             dispatch_rename_session(
@@ -994,11 +1114,13 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
             }
             let g = tab_to_session.lock().await;
             assert!(!g.contains_key("phantom"), "missing old id must be a no-op");
-            assert!(g.contains_key("new-tab"), "existing binding must survive the no-op");
+            assert!(
+                g.contains_key("new-tab"),
+                "existing binding must survive the no-op"
+            );
         })
         .await;
 }
-
 
 /// `dispatch_cancel` must fire the local per-session cancel oneshot (so an
 /// in-flight prompt task drops out of `conn.prompt().await`) and remove the
@@ -1067,10 +1189,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 .await
                 .insert("t1".to_string(), sid.clone());
             let (tx, rx) = oneshot::channel::<()>();
-            cancel_signals
-                .lock()
-                .unwrap()
-                .insert(sid.to_string(), tx);
+            cancel_signals.lock().unwrap().insert(sid.to_string(), tx);
 
             dispatch_drop_session(
                 DropSessionRequest {
@@ -1483,7 +1602,10 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
             let mut event_rx = h.event_rx;
 
             dispatch_master_ext_request(
-                MasterExtRequest::SessionsList { request_id: 7, rescan: false },
+                MasterExtRequest::SessionsList {
+                    request_id: 7,
+                    rescan: false,
+                },
                 &h.conn,
                 &h.event_tx,
                 &tab_to_session,
@@ -1553,7 +1675,10 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
     (WtaClient { state }, event_rx)
 }
 
-fn notif(sid: &str, update: acp::schema::v1::SessionUpdate) -> acp::schema::v1::SessionNotification {
+fn notif(
+    sid: &str,
+    update: acp::schema::v1::SessionUpdate,
+) -> acp::schema::v1::SessionNotification {
     acp::schema::v1::SessionNotification::new(acp::schema::v1::SessionId::new(sid), update)
 }
 
@@ -1565,7 +1690,9 @@ async fn session_notification_routes_agent_thought_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::schema::v1::ContentChunk::new("thinking".into())),
+            acp::schema::v1::SessionUpdate::AgentThoughtChunk(acp::schema::v1::ContentChunk::new(
+                "thinking".into(),
+            )),
         ))
         .await
         .unwrap();
@@ -1586,7 +1713,9 @@ async fn session_notification_routes_user_message_replay_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new("prior prompt".into())),
+            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new(
+                "prior prompt".into(),
+            )),
         ))
         .await
         .unwrap();
@@ -1639,7 +1768,8 @@ async fn session_notification_routes_tool_call_update_status_only() {
             "s1",
             acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
                 acp::schema::v1::ToolCallId::new("tc-1"),
-                acp::schema::v1::ToolCallUpdateFields::new().status(acp::schema::v1::ToolCallStatus::Completed),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Completed),
             )),
         ))
         .await
@@ -1739,7 +1869,10 @@ async fn session_notification_routes_plan_with_status_mapping() {
         .await
         .unwrap();
     match rx.try_recv() {
-        Ok(AppEvent::Plan { session_id, entries }) => {
+        Ok(AppEvent::Plan {
+            session_id,
+            entries,
+        }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(
                 entries,
@@ -1846,5 +1979,3 @@ async fn request_permission_cancelled_when_responder_dropped() {
         })
         .await;
 }
-
-

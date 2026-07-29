@@ -135,8 +135,8 @@ Claude Code uses:
 The shared provider currently marks Claude as unsupported. That is correct for
 the current **generic OpenAI-compatible** provider shape, but it must not be
 described as "Claude Code does not support BYOK." Claude Code has extensive
-native BYOK support; it requires a different provider contract and additional
-provider-specific fields.
+native BYOK support; it requires a separate provider-specific integration and
+additional fields rather than another value in the shared contract field.
 
 The ACP adapter uses the official Claude Agent SDK and inherits the process
 environment when it launches the agent subprocess. It adds deployment-oriented
@@ -249,8 +249,9 @@ OpenAI protocol.
 
 The shared provider currently marks Gemini as unsupported. That is correct for
 the current generic OpenAI-compatible provider contract. A future Gemini
-integration would need a Gemini/Vertex-specific contract, authentication mode,
-and project/location fields instead of reusing the current API-key-only shape.
+integration would need a separate Gemini/Vertex-specific configuration surface,
+authentication mode, and project/location fields instead of another shared
+contract value.
 
 ### Official sources
 
@@ -320,7 +321,9 @@ may use environment variables, CLI flags, a config file, an ACP authentication
 method, or no configurable provider at all.
 
 Intelligent Terminal should not inject the shared provider into a custom
-command unless the user explicitly selects a known contract and mapping.
+command. The persisted shared-provider contract is the canonical
+`openai-compatible` value, but custom ACP commands have no defined adapter
+mapping for it.
 
 ## Implementation review findings
 
@@ -341,26 +344,24 @@ Reviewed branch: `dev/vanzue/byok-model-runtime` at
 
 ### Issues and limitations
 
-#### 1. The API contract is ambiguous
+#### 1. The persisted API contract is canonical
 
-`CustomModelProvider.ApiContract` defaults to `openai-compatible`, is persisted,
-and is serialized to WTA, but it does not participate in provider selection or
-validation.
+`CustomModelProvider.ApiContract` has one accepted persisted value:
+`openai-compatible`. Missing or blank legacy values normalize to that value.
+Unsupported values are not shown in Settings or model pickers and cannot
+populate the launch environment; WTA applies the same validation to
+helper/master model metadata.
 
-The same configured provider is shown for three agents with incompatible
-requirements:
+This is a provider compatibility contract, not a user-selectable wire-format
+switch. Agent adapters render the same provider through the API shape they
+support:
 
-- Copilot: Chat Completions
-- OpenCode: Chat Completions in the current implementation, although upstream
-  can also use a different package for Responses
-- Codex: Responses
+- Copilot and OpenCode use Chat Completions-compatible configuration.
+- Codex uses its Responses `wire_api`.
 
-An endpoint that supports only one contract is presented as selectable for
-agents that require the other contract. The failure occurs only after launch.
-
-**Recommended fix:** make the contract explicit (`openai-chat-completions`,
-`openai-responses`, or both), filter the model picker per agent, and reject an
-incompatible selection before restarting the agent stack.
+Separate `openai-chat-completions` and `openai-responses` persisted values would
+incorrectly expose adapter implementation details as different provider
+contracts.
 
 #### 2. "Unsupported" describes the integration, not the upstream agent
 

@@ -200,9 +200,7 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         .unwrap_or(false);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
     let managed = managed_js || managed_support;
-    let complete = managed_js
-        && managed_support
-        && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    let complete = managed_js && managed_support && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
     out.marketplace_registered = managed;
     out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
     out.marketplace_path_valid = complete;
@@ -815,12 +813,7 @@ fn install_for_codex(_home: &Path) -> bool {
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
-        "codex",
-        &["plugin", "add", &plugin_ref],
-        "agent_hooks",
-        &[],
-    ) {
+    match run_plugin_cli("codex", &["plugin", "add", &plugin_ref], "agent_hooks", &[]) {
         Ok(()) => true,
         Err(e) => {
             tracing::warn!(
@@ -1106,8 +1099,7 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
         false
     };
     if support_dir.exists() {
-        let managed_support =
-            opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
+        let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
             || installed_js_managed;
         if !managed_support {
             return Err(std::io::Error::new(
@@ -1283,8 +1275,8 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
     let mkt_ok = join_or_run_plugin_cli(mkt_handle, "copilot", &["plugin", "marketplace", "list"])
-    .filter(|o| o.success)
-    .map(|o| parse_copilot_marketplace_list(&o.stdout));
+        .filter(|o| o.success)
+        .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_ok, mkt_ok) {
         out.plugin_installed = p;
@@ -1472,8 +1464,8 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
 
     let plugin_json =
         join_or_run_plugin_cli(plugin_handle, "claude", &["plugin", "list", "--json"])
-    .filter(|o| o.success)
-    .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
+            .filter(|o| o.success)
+            .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
     let mkt_json = join_or_run_plugin_cli(
         mkt_handle,
         "claude",
@@ -1845,25 +1837,25 @@ fn parse_gemini_extensions_list_json(stdout: &str) -> Option<PluginPresence> {
 /// exists, and `root_path` is the remainder of that row trimmed.
 fn parse_codex_marketplace_list(stdout: &str) -> (bool, Option<String>) {
     for line in stdout.lines() {
-       let line = line.trim();
-       // Skip header and blank lines.
-       if line.is_empty() || line.starts_with("MARKETPLACE") {
-           continue;
-       }
-       let mut split = line.splitn(2, char::is_whitespace);
-       let name = match split.next() {
-           Some(s) => s.trim(),
-           None => continue,
-       };
-       if name == MARKETPLACE_NAME {
-           let rest = split.next().unwrap_or("").trim();
+        let line = line.trim();
+        // Skip header and blank lines.
+        if line.is_empty() || line.starts_with("MARKETPLACE") {
+            continue;
+        }
+        let mut split = line.splitn(2, char::is_whitespace);
+        let name = match split.next() {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        if name == MARKETPLACE_NAME {
+            let rest = split.next().unwrap_or("").trim();
             let path = if rest.is_empty() {
                 None
             } else {
                 Some(rest.to_string())
             };
-           return (true, path);
-       }
+            return (true, path);
+        }
     }
     (false, None)
 }
@@ -1876,34 +1868,34 @@ fn parse_codex_plugin_list(stdout: &str) -> bool {
     // We accept either the qualified or bare form (forward-compat).
     let qualified = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
     for line in stdout.lines() {
-       let line = line.trim_end();
-       if line.is_empty()
-           || line.starts_with("PLUGIN")
-           || line.starts_with("Marketplace ")
-           || line.starts_with("C:\\")
-           || line.starts_with('/')
-           || line.starts_with('.')
-       {
-           continue;
-       }
-       let mut cols = line.split_whitespace();
-       let name = match cols.next() {
-           Some(s) => s,
-           None => continue,
-       };
-       let matches = name == PLUGIN_NAME || name == qualified;
-       if !matches {
-           continue;
-       }
-       let rest: Vec<&str> = cols.collect();
-       if rest.is_empty() {
-           return false;
-       }
-       // Status column starts here. Only an "installed*" status
-       // (installed / installed, enabled / installed, disabled)
-       // counts as installed — "not installed", "available", and
-       // any other status mean the plugin is not active.
-       return rest[0].starts_with("installed");
+        let line = line.trim_end();
+        if line.is_empty()
+            || line.starts_with("PLUGIN")
+            || line.starts_with("Marketplace ")
+            || line.starts_with("C:\\")
+            || line.starts_with('/')
+            || line.starts_with('.')
+        {
+            continue;
+        }
+        let mut cols = line.split_whitespace();
+        let name = match cols.next() {
+            Some(s) => s,
+            None => continue,
+        };
+        let matches = name == PLUGIN_NAME || name == qualified;
+        if !matches {
+            continue;
+        }
+        let rest: Vec<&str> = cols.collect();
+        if rest.is_empty() {
+            return false;
+        }
+        // Status column starts here. Only an "installed*" status
+        // (installed / installed, enabled / installed, disabled)
+        // counts as installed — "not installed", "available", and
+        // any other status mean the plugin is not active.
+        return rest[0].starts_with("installed");
     }
     false
 }
@@ -2228,11 +2220,8 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
         if support_dir_empty {
             if let Err(e) = fs::remove_dir(&support_dir) {
                 removed = false;
-                out.messages.push(format!(
-                    "failed to remove {}: {}",
-                    support_dir.display(),
-                    e
-                ));
+                out.messages
+                    .push(format!("failed to remove {}: {}", support_dir.display(), e));
             }
         }
     }
@@ -3069,8 +3058,8 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
     );
 
     let mkt = join_or_run_plugin_cli(mkt_handle, "codex", &["plugin", "marketplace", "list"])
-    .filter(|o| o.success)
-    .map(|o| parse_codex_marketplace_list(&o.stdout));
+        .filter(|o| o.success)
+        .map(|o| parse_codex_marketplace_list(&o.stdout));
     let plugin = join_or_run_plugin_cli(
         plugin_handle,
         "codex",
@@ -3400,8 +3389,7 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
         .and_then(|entries| {
             entries.iter().find(|entry| {
                 entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
-                    && entry.get("marketplace").and_then(Value::as_str)
-                        == Some(MARKETPLACE_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str) == Some(MARKETPLACE_NAME)
             })
         })
     else {
@@ -3702,12 +3690,7 @@ impl UpgradeState {
         }
     }
 
-    fn record_completed(
-        &mut self,
-        cli: CliKind,
-        version: Option<String>,
-        completed: bool,
-    ) -> bool {
+    fn record_completed(&mut self, cli: CliKind, version: Option<String>, completed: bool) -> bool {
         if !completed {
             return false;
         }

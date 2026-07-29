@@ -72,9 +72,15 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         const auto id = JsonUtils::GetValueForKey<winrt::hstring>(json, "id");
         const auto name = JsonUtils::GetValueForKey<winrt::hstring>(json, "name");
         const auto baseUrl = JsonUtils::GetValueForKey<winrt::hstring>(json, "baseUrl");
-        const auto displayName = name.empty() ? (baseUrl.empty() ? id : baseUrl) : name;
+        const auto displayName = name.empty() || name == baseUrl ?
+                                     ::Microsoft::Terminal::CustomModels::ProviderDisplayNameFromEndpoint(
+                                         std::wstring_view{ baseUrl },
+                                         std::wstring_view{ id }) :
+                                     name;
         auto provider = winrt::make_self<CustomModelProvider>(id, displayName, baseUrl);
         JsonUtils::GetValueForKey(json, "apiContract", provider->_ApiContract);
+        provider->_ApiContract = winrt::hstring{
+            ::Microsoft::Terminal::CustomModels::NormalizeApiContract(provider->_ApiContract) };
         JsonUtils::GetValueForKey(json, "location", provider->_Location);
         JsonUtils::GetValueForKey(json, "apiKeyCredential", provider->_ApiKeyCredential);
         if (json.isMember("apiKeyRequired"))

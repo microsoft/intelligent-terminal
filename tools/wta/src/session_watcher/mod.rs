@@ -85,10 +85,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
             if entry.gemini_key.is_none() {
                 entry.gemini_key = read_gemini_session_id(path);
             }
-            let key = entry
-                .gemini_key
-                .clone()
-                .unwrap_or_else(|| disc.key.clone());
+            let key = entry.gemini_key.clone().unwrap_or_else(|| disc.key.clone());
 
             let from = entry.offset;
             let Ok((text, len)) = read_appended(path, from) else {
@@ -157,7 +154,11 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                     _ => Vec::new(),
                 };
                 for event in events {
-                    out.push(Emitted { cli: disc.cli.clone(), key: disc.key.clone(), event });
+                    out.push(Emitted {
+                        cli: disc.cli.clone(),
+                        key: disc.key.clone(),
+                        event,
+                    });
                 }
             }
         }
@@ -380,8 +381,15 @@ mod tests {
             .write_all(b"_end\",\"data\":{\"turnId\":\"0\"}}\n")
             .unwrap();
         let second = process_change(&path, &mut progress);
-        assert_eq!(second.len(), 1, "the completed record must now classify (not be lost)");
-        assert!(matches!(second[0].event, SessionEvent::ToolCompleted { .. }));
+        assert_eq!(
+            second.len(),
+            1,
+            "the completed record must now classify (not be lost)"
+        );
+        assert!(matches!(
+            second[0].event,
+            SessionEvent::ToolCompleted { .. }
+        ));
     }
 
     #[test]
@@ -468,7 +476,11 @@ mod tests {
 
         let mut progress = HashMap::new();
         let out = process_change(&path, &mut progress);
-        assert!(out.is_empty(), "subagent rollout must emit nothing, got {:?}", out);
+        assert!(
+            out.is_empty(),
+            "subagent rollout must emit nothing, got {:?}",
+            out
+        );
 
         // Even after the subagent does work, it stays ignored.
         std::fs::OpenOptions::new()

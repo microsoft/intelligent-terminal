@@ -65,7 +65,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::hstring Id() const { return _provider.Id(); }
         winrt::hstring BaseUrl() const { return _provider.BaseUrl(); }
-        winrt::hstring ModelId() const { return _provider.Models().Size() == 0 ? winrt::hstring{} : _provider.Models().GetAt(0).Id(); }
+        winrt::hstring ModelsDisplayText() const;
         void Remove();
 
         Model::CustomModelProvider Provider() const { return _provider; }
@@ -222,6 +222,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> _acpModelList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::CustomModelProviderEntry> _customModelProviders;
+        std::vector<Model::CustomModelProvider> _originalCustomModelProviders;
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
         winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionMap;

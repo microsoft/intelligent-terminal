@@ -129,8 +129,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                     push_caret_spans(&mut spans, line, viewport.cursor_col, ghost_suffix);
                     Line::from(spans)
                 } else {
-                    let mut spans =
-                        vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)];
+                    let mut spans = vec![prefix, Span::styled(line.clone(), theme::INPUT_TEXT)];
                     if i == viewport.cursor_row {
                         if let Some(suffix) = ghost_suffix {
                             spans.push(Span::styled(suffix.to_string(), theme::DIM));

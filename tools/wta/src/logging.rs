@@ -56,7 +56,11 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
 fn logs_root() -> std::path::PathBuf {
     crate::runtime_paths::intelligent_terminal_local_root()
         .map(|r| r.join("logs"))
-        .unwrap_or_else(|| std::env::temp_dir().join("IntelligentTerminal").join("logs"))
+        .unwrap_or_else(|| {
+            std::env::temp_dir()
+                .join("IntelligentTerminal")
+                .join("logs")
+        })
 }
 
 /// The directory log files are written to: `<root>/logs/<pkgver>` when
@@ -168,7 +172,10 @@ pub(crate) fn package_version() -> Option<String> {
         let id = &*(buf.as_ptr() as *const PACKAGE_ID);
         // PACKAGE_VERSION { Anonymous: union { Version: u64, Anonymous: { Revision, Build, Minor, Major } } }
         let v = id.version.Anonymous.Anonymous;
-        Some(format!("{}.{}.{}.{}", v.Major, v.Minor, v.Build, v.Revision))
+        Some(format!(
+            "{}.{}.{}.{}",
+            v.Major, v.Minor, v.Build, v.Revision
+        ))
     }
 }
 
@@ -231,8 +238,8 @@ pub fn shutdown_flush() {
 pub fn install_ctrl_handler() {
     use windows_sys::Win32::Foundation::{GetLastError, ERROR_INVALID_HANDLE};
     use windows_sys::Win32::System::Console::{
-        SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
-        CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
+        SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT, CTRL_LOGOFF_EVENT,
+        CTRL_SHUTDOWN_EVENT,
     };
 
     // Returns `windows_sys`' `BOOL` (an `i32` alias) to match the
@@ -415,9 +422,9 @@ fn prune_old_version_dirs(logs_root: &Path, current: &str) {
 /// accumulate as tabs open/close and are not part of any appender's rotation
 /// set, so retention has to be done by hand.
 fn prune_stale_helper_logs(log_dir: &Path) {
-    let Some(cutoff) = std::time::SystemTime::now()
-        .checked_sub(std::time::Duration::from_secs(HELPER_RETENTION_DAYS * 24 * 60 * 60))
-    else {
+    let Some(cutoff) = std::time::SystemTime::now().checked_sub(std::time::Duration::from_secs(
+        HELPER_RETENTION_DAYS * 24 * 60 * 60,
+    )) else {
         return;
     };
 
@@ -505,7 +512,10 @@ mod tests {
         assert!(root.join(current).exists());
         assert!(root.join("terminal-agent-pane.log").exists());
         for v in ["0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.5"] {
-            assert!(!root.join(v).exists(), "old version dir {v} must be deleted");
+            assert!(
+                !root.join(v).exists(),
+                "old version dir {v} must be deleted"
+            );
         }
         let dir_count = std::fs::read_dir(&root)
             .unwrap()

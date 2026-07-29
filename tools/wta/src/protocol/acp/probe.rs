@@ -4,7 +4,9 @@
 //! the model dropdown can populate before any agent pane rebuild.
 //! Does the minimum work — `initialize` + `new_session` — reads the
 //! agent-advertised model list off the `NewSessionResponse`, prints
-//! it as a single JSON object to stdout, then drops the child.
+//! it as a single JSON object to stdout, then drops the child. The
+//! child runs with provider overrides scrubbed so this catalog remains
+//! the agent's native cloud catalog rather than the selected shared provider.
 //!
 //! Output shape (stdout, one JSON object — caller reads the whole
 //! stream and `serde_json::from_str`s it):
@@ -24,9 +26,10 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::app::AcpModelInfo;
 use crate::protocol::acp::conn;
-use crate::protocol::acp::spawn::{
-    spawn_agent_process, spawn_agent_process_without_byok, AgentStderrLog,
-};
+use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog, ChildEnvironmentPolicy};
+
+const MODEL_PROBE_ENVIRONMENT_POLICY: ChildEnvironmentPolicy =
+    ChildEnvironmentPolicy::CleanCloudDiscovery;
 
 #[derive(Serialize)]
 pub struct ProbeResult {
@@ -38,23 +41,13 @@ pub struct ProbeResult {
 /// pane (e.g. `"copilot --acp --stdio"`,
 /// `"npx -y @zed-industries/claude-code-acp"`).
 pub async fn probe_models(agent_cmd: &str) -> Result<ProbeResult> {
-    probe_models_impl(agent_cmd, None, false).await
+    probe_models_impl(agent_cmd, MODEL_PROBE_ENVIRONMENT_POLICY).await
 }
-
-pub async fn probe_cloud_models(agent_cmd: &str, agent_id: Option<&str>) -> Result<ProbeResult> {
-    probe_models_impl(agent_cmd, agent_id, true).await
-}
-
 async fn probe_models_impl(
     agent_cmd: &str,
-    agent_id: Option<&str>,
-    without_byok: bool,
+    environment_policy: ChildEnvironmentPolicy,
 ) -> Result<ProbeResult> {
-    let mut spawned = if without_byok {
-        spawn_agent_process_without_byok(agent_cmd, None, agent_id)?
-    } else {
-        spawn_agent_process(agent_cmd, None, agent_id)?
-    };
+    let mut spawned = spawn_agent_process(agent_cmd, None, None, environment_policy)?;
     tracing::debug!(
         "probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,
@@ -62,7 +55,12 @@ async fn probe_models_impl(
         spawned.child.id()
     );
 
-    let outgoing = spawned.child.stdin.take().expect("stdin piped").compat_write();
+    let outgoing = spawned
+        .child
+        .stdin
+        .take()
+        .expect("stdin piped")
+        .compat_write();
     let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
     let stderr_log = AgentStderrLog::new(spawned.label().to_string());
     let stderr_task = spawned
@@ -71,8 +69,10 @@ async fn probe_models_impl(
         .take()
         .map(|stderr| stderr_log.drain(stderr));
 
-    let (conn, handle_io) =
-        conn::spawn_client(acp::Client.builder().name("wta-probe"), conn::byte_streams(outgoing, incoming));
+    let (conn, handle_io) = conn::spawn_client(
+        acp::Client.builder().name("wta-probe"),
+        conn::byte_streams(outgoing, incoming),
+    );
 
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
@@ -131,7 +131,7 @@ async fn probe_models_impl(
 
     let cwd = std::env::current_dir().unwrap_or_default();
     let session_started = std::time::Instant::now();
-    let session_timeout_secs = if without_byok { 20 } else { 10 };
+    let session_timeout_secs = 10;
     let session_result = tokio::time::timeout(
         Duration::from_secs(session_timeout_secs),
         conn.new_session(acp::schema::v1::NewSessionRequest::new(cwd)),
@@ -166,14 +166,13 @@ async fn probe_models_impl(
         })?
         .map_err(|e| anyhow!("new_session failed: {}", e))?;
 
-    let (available_models, current_model_id) =
-        crate::protocol::acp::model_select::models_from_new_session(&session_resp);
+    let model_state = crate::protocol::acp::model_select::models_from_new_session(&session_resp);
 
     drop(spawned.child);
 
     Ok(ProbeResult {
-        available_models,
-        current_model_id,
+        available_models: model_state.available_models,
+        current_model_id: model_state.current_model_id,
     })
 }
 
@@ -213,7 +212,12 @@ pub struct SessionProbeResult {
 /// preamble (kept inline rather than shared so the probe stays a
 /// self-contained diagnostic).
 pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
-    let mut spawned = spawn_agent_process(agent_cmd, None, None)?;
+    let mut spawned = spawn_agent_process(
+        agent_cmd,
+        None,
+        None,
+        ChildEnvironmentPolicy::ApplySharedProvider,
+    )?;
     tracing::debug!(
         "session probe spawned: program={} is_npx={} pid={:?}",
         spawned.resolved_program,
@@ -221,7 +225,12 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
         spawned.child.id()
     );
 
-    let outgoing = spawned.child.stdin.take().expect("stdin piped").compat_write();
+    let outgoing = spawned
+        .child
+        .stdin
+        .take()
+        .expect("stdin piped")
+        .compat_write();
     let incoming = spawned.child.stdout.take().expect("stdout piped").compat();
     let stderr_log = AgentStderrLog::new(spawned.label().to_string());
     let stderr_task = spawned
@@ -230,8 +239,10 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
         .take()
         .map(|stderr| stderr_log.drain(stderr));
 
-    let (conn, handle_io) =
-        conn::spawn_client(acp::Client.builder().name("wta-probe-sessions"), conn::byte_streams(outgoing, incoming));
+    let (conn, handle_io) = conn::spawn_client(
+        acp::Client.builder().name("wta-probe-sessions"),
+        conn::byte_streams(outgoing, incoming),
+    );
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {
             tracing::warn!("session probe handle_io failed: {:#}", e);
@@ -305,4 +316,17 @@ pub async fn probe_sessions(agent_cmd: &str) -> Result<SessionProbeResult> {
         list_sessions_error,
         sessions,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_catalog_probe_uses_clean_cloud_environment() {
+        assert_eq!(
+            MODEL_PROBE_ENVIRONMENT_POLICY,
+            ChildEnvironmentPolicy::CleanCloudDiscovery
+        );
+    }
 }

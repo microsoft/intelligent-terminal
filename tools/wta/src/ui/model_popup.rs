@@ -1,9 +1,9 @@
 //! `/model` picker modal.
 //!
 //! Opened by the `/model` slash command (`App::cmd_model`), this overlay
-//! lists the models available to the connected ACP agent. Only models the
-//! current process can apply live are selectable; restart-required choices
-//! remain visible but dimmed and must be changed in Settings. Modeled on the
+//! lists the configured BYOK models. Cloud/native models are intentionally
+//! omitted; restart-required choices remain visible but dimmed and must be
+//! changed in Settings. Modeled on the
 //! slash-command
 //! autocomplete popup (`command_popup.rs`): anchored above the input box,
 //! arrow keys move the highlight, Enter commits, Esc dismisses (all handled
@@ -59,7 +59,11 @@ pub fn render_popup(frame: &mut Frame, state: ModelPopupState<'_>, input_area: R
             };
             let mut spans = vec![Span::styled(
                 format!(" {marker}{}", m.name),
-                if disabled { theme::DIM } else { theme::INPUT_TEXT },
+                if disabled {
+                    theme::DIM
+                } else {
+                    theme::INPUT_TEXT
+                },
             )];
             // Show the raw id when it differs from the display name, plus the
             // optional one-line description, both dimmed. Custom BYOK entries

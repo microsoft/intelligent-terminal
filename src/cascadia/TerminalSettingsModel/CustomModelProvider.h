@@ -6,6 +6,7 @@
 #include "CustomModel.g.h"
 #include "CustomModelProvider.g.h"
 #include "JsonUtils.h"
+#include "../inc/CustomModelProviderContract.h"
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
@@ -40,7 +41,10 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         WINRT_PROPERTY(winrt::hstring, Id);
         WINRT_PROPERTY(winrt::hstring, Name);
         WINRT_PROPERTY(winrt::hstring, BaseUrl);
-        WINRT_PROPERTY(winrt::hstring, ApiContract, L"openai-compatible");
+        WINRT_PROPERTY(
+            winrt::hstring,
+            ApiContract,
+            winrt::hstring{ ::Microsoft::Terminal::CustomModels::CanonicalApiContract });
         WINRT_PROPERTY(winrt::hstring, Location, L"auto");
         WINRT_PROPERTY(winrt::hstring, ApiKeyCredential);
         WINRT_PROPERTY(bool, ApiKeyRequired, false);

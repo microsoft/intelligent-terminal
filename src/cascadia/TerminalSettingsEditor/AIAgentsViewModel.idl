@@ -29,7 +29,7 @@ namespace Microsoft.Terminal.Settings.Editor
     {
         String Id { get; };
         String BaseUrl { get; };
-        String ModelId { get; };
+        String ModelsDisplayText { get; };
         void Remove();
     }
 

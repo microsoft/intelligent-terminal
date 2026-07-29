@@ -2983,17 +2983,13 @@
     <value>BYOK 공급자</value>
     <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
-  <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://openrouter.ai/api/v1</value>
-    <comment>{Locked} Example OpenAI-compatible provider endpoint.</comment>
+  <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
+    <value>OpenAI 호환 Chat Completions API 엔드포인트를 사용하세요. Codex에는 Responses API가 필요합니다.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","Codex","Responses API"} Explains which OpenAI-compatible API shape each supported agent requires when adding a BYOK provider.</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>제거</value>
     <comment>Button that removes a custom model provider.</comment>
-  </data>
-  <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
-    <value>qwen/qwen3.5-9b</value>
-    <comment>{Locked} Example provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
     <value>API 키(로컬 공급자의 경우 선택 사항)</value>

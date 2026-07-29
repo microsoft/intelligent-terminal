@@ -250,7 +250,9 @@ fn copy_opencode_bundle_preserves_non_managed_support_directory() {
         fs::read_to_string(support_dir.join("user.txt")).unwrap(),
         "keep"
     );
-    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+    assert!(!opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .exists());
 }
 
 #[test]
@@ -266,12 +268,18 @@ fn copy_opencode_bundle_rolls_back_partial_first_install() {
 
     assert!(copy_opencode_bundle(&source, &home).is_err());
     assert!(!opencode_support_dir(&home).exists());
-    assert!(!opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).exists());
+    assert!(!opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .exists());
 
     fs::write(source.join(OPENCODE_BRIDGE_PS1), "bridge").unwrap();
     copy_opencode_bundle(&source, &home).unwrap();
-    assert!(opencode_support_dir(&home).join(OPENCODE_MANIFEST).is_file());
-    assert!(opencode_plugins_dir(&home).join(OPENCODE_PLUGIN_JS).is_file());
+    assert!(opencode_support_dir(&home)
+        .join(OPENCODE_MANIFEST)
+        .is_file());
+    assert!(opencode_plugins_dir(&home)
+        .join(OPENCODE_PLUGIN_JS)
+        .is_file());
 }
 
 #[test]
@@ -282,7 +290,11 @@ fn copy_opencode_bundle_repairs_managed_install_with_bad_manifest() {
     let installed = opencode_plugins_dir(&home);
     let support = opencode_support_dir(&home);
     fs::create_dir_all(&support).unwrap();
-    fs::write(installed.join(OPENCODE_PLUGIN_JS), OPENCODE_PLUGIN_JS_CONTENT).unwrap();
+    fs::write(
+        installed.join(OPENCODE_PLUGIN_JS),
+        OPENCODE_PLUGIN_JS_CONTENT,
+    )
+    .unwrap();
     fs::write(support.join(OPENCODE_MANIFEST), "incomplete").unwrap();
 
     copy_opencode_bundle(&source, &home).unwrap();
@@ -500,8 +512,7 @@ const CLAUDE_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/hooks/hooks.json");
 const COPILOT_HOOKS_JSON: &str =
     include_str!("../wt-agent-hooks/copilot/wt-agent-hooks/hooks/hooks.json");
-const GEMINI_HOOKS_JSON: &str =
-    include_str!("../wt-agent-hooks/gemini-extension/hooks/hooks.json");
+const GEMINI_HOOKS_JSON: &str = include_str!("../wt-agent-hooks/gemini-extension/hooks/hooks.json");
 
 const CLAUDE_PLUGIN_JSON: &str =
     include_str!("../wt-agent-hooks/claude/wt-agent-hooks/.claude-plugin/plugin.json");
@@ -524,8 +535,7 @@ const GEMINI_SEND_EVENT_PS1: &str =
 const OPENCODE_SEND_EVENT_PS1: &str = include_str!("../wt-agent-hooks/opencode/send-event.ps1");
 const OPENCODE_PLUGIN_JS_CONTENT: &str =
     include_str!("../wt-agent-hooks/opencode/wt-agent-hooks.js");
-const OPENCODE_PLUGIN_JSON: &str =
-    include_str!("../wt-agent-hooks/opencode/plugin.json");
+const OPENCODE_PLUGIN_JSON: &str = include_str!("../wt-agent-hooks/opencode/plugin.json");
 
 /// `hooks.json` files must reference `${CLAUDE_PLUGIN_ROOT}` (Claude/
 /// Copilot) or `${extensionPath}` (Gemini), and `send-event.ps1` must
@@ -614,7 +624,7 @@ fn claude_and_copilot_hooks_json_are_parity_identical() {
             // Find the closing `],` and then the next newline
             if let Some(rel_end) = normalized_copilot[start..].find("],") {
                 let mut block_end = start + rel_end + 2; // past `],`
-                // Consume trailing whitespace/newline
+                                                         // Consume trailing whitespace/newline
                 while block_end < normalized_copilot.len()
                     && matches!(normalized_copilot.as_bytes()[block_end], b'\r' | b'\n')
                 {
@@ -920,9 +930,8 @@ fn cleanup_stale_copilot_marketplace_rewrites_sibling_worktree_path() {
     }));
     fs::write(&path, serde_json::to_string_pretty(&before).unwrap()).unwrap();
 
-    let expected = PathBuf::from(
-        "C:\\repo\\.worktree\\track-copilot-cleanup\\wta\\wt-agent-hooks\\copilot",
-    );
+    let expected =
+        PathBuf::from("C:\\repo\\.worktree\\track-copilot-cleanup\\wta\\wt-agent-hooks\\copilot");
     cleanup_stale_copilot_marketplace(&path, &expected).unwrap();
 
     let after: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -1099,7 +1108,8 @@ fn claude_plugin_list_json_parser_extracts_enabled_flag() {
 
 #[test]
 fn claude_plugin_list_json_parser_reports_disabled() {
-    let stdout = r#"[{"id":"wt-agent-hooks@wt-local","version":"0.1.0","scope":"user","enabled":false}]"#;
+    let stdout =
+        r#"[{"id":"wt-agent-hooks@wt-local","version":"0.1.0","scope":"user","enabled":false}]"#;
     let p = parse_claude_plugin_list_json(stdout).expect("parses");
     assert!(p.installed);
     assert!(!p.enabled);
@@ -1132,8 +1142,7 @@ fn claude_marketplace_list_json_parser_misses_when_only_others() {
 /// Real `gemini extensions list -o json` output (Gemini 0.41.2).
 #[test]
 fn gemini_extensions_list_json_parser_extracts_active_flag() {
-    let stdout =
-        r#"[{"name":"wt-agent-hooks","version":"0.1.0","isActive":true,"path":"..."}]"#;
+    let stdout = r#"[{"name":"wt-agent-hooks","version":"0.1.0","isActive":true,"path":"..."}]"#;
     let p = parse_gemini_extensions_list_json(stdout).expect("parses");
     assert!(p.installed);
     assert!(p.enabled);
@@ -1755,8 +1764,8 @@ fn bundle_resolves_codex_dir_in_dev_tree() {
     // Dev-tree lookup walks up from CARGO_MANIFEST_DIR to find
     // tools/wta/wt-agent-hooks/<dir_name>/. Task 2 puts a real
     // directory at that path, so this should resolve.
-    let resolved = bundle::resolve_cli_dir(CliKind::Codex)
-        .expect("codex bundle should resolve in dev tree");
+    let resolved =
+        bundle::resolve_cli_dir(CliKind::Codex).expect("codex bundle should resolve in dev tree");
     assert!(
         resolved
             .join(".agents")
@@ -2414,8 +2423,7 @@ fn failed_upgrade_does_not_advance_cached_version() {
     let mut state = UpgradeState::default();
     state.set(CliKind::OpenCode, Some("0.1.2".into()));
 
-    let changed =
-        state.record_completed(CliKind::OpenCode, Some("0.1.3".into()), false);
+    let changed = state.record_completed(CliKind::OpenCode, Some("0.1.3".into()), false);
 
     assert!(!changed);
     assert_eq!(state.get(CliKind::OpenCode), Some("0.1.2"));

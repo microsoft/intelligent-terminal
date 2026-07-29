@@ -17,6 +17,7 @@
 #include "../../types/inc/ColorFix.hpp"
 #include "../../types/inc/utils.hpp"
 #include "../WinRTUtils/inc/WtExeUtils.h"
+#include "../inc/AcpModelUtils.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
@@ -1080,6 +1081,11 @@ namespace winrt::TerminalApp::implementation
             {
                 continue;
             }
+            if (!::Microsoft::Terminal::CustomModels::IsSupportedApiContract(
+                    std::wstring_view{ provider.ApiContract() }))
+            {
+                return std::nullopt;
+            }
             for (const auto& model : provider.Models())
             {
                 if (model.Id() == modelId)
@@ -1091,58 +1097,21 @@ namespace winrt::TerminalApp::implementation
         return std::nullopt;
     }
 
-    static std::string _SerializeCustomModelProviders(
+    static std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> _CaptureCustomModelLaunchConfiguration(
         const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
     {
-        Json::Value providers{ Json::arrayValue };
-        for (const auto& provider : globals.CustomModelProviders())
+        if (const auto custom = _FindSelectedCustomModel(globals))
         {
-            Json::Value providerJson{ Json::objectValue };
-            providerJson["id"] = winrt::to_string(provider.Id());
-            providerJson["name"] = winrt::to_string(provider.Name());
-            providerJson["base_url"] = winrt::to_string(provider.BaseUrl());
-            providerJson["api_contract"] = winrt::to_string(provider.ApiContract());
-            providerJson["location"] = winrt::to_string(provider.Location());
-            providerJson["credential_id"] = winrt::to_string(provider.ApiKeyCredential());
-            providerJson["api_key_required"] = provider.ApiKeyRequired();
-            providerJson["models"] = Json::Value{ Json::arrayValue };
-            for (const auto& model : provider.Models())
-            {
-                Json::Value modelJson{ Json::objectValue };
-                modelJson["id"] = winrt::to_string(model.Id());
-                modelJson["name"] = winrt::to_string(model.Name());
-                providerJson["models"].append(std::move(modelJson));
-            }
-            providers.append(std::move(providerJson));
+            const auto& [provider, model] = *custom;
+            return ::Microsoft::Terminal::CustomModels::MakeLaunchConfiguration(
+                std::wstring_view{ globals.CustomModelSelection() },
+                provider,
+                model);
         }
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
-        return Json::writeString(writer, providers);
+        return std::nullopt;
     }
 
-    static std::string _SerializeCustomModelOptions(
-        const winrt::Microsoft::Terminal::Settings::Model::GlobalAppSettings& globals)
-    {
-        Json::Value options{ Json::arrayValue };
-        for (const auto& provider : globals.CustomModelProviders())
-        {
-            for (const auto& model : provider.Models())
-            {
-                Json::Value option{ Json::objectValue };
-                option["selection_id"] = winrt::to_string(
-                    ::Microsoft::Terminal::CustomModels::SelectionId(
-                        provider.Id(),
-                        model.Id()));
-                option["model_id"] = winrt::to_string(model.Id());
-                options.append(std::move(option));
-            }
-        }
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
-        return Json::writeString(writer, options);
-    }
-
-    static std::string _SerializeCloudModelOptions(const winrt::hstring& agentId)
+    static Json::Value _CloudModelOptionsToJson(const winrt::hstring& agentId)
     {
         Json::Value options{ Json::arrayValue };
         for (const auto& model :
@@ -1157,9 +1126,7 @@ namespace winrt::TerminalApp::implementation
             }
             options.append(std::move(option));
         }
-        Json::StreamWriterBuilder writer;
-        writer["indentation"] = "";
-        return Json::writeString(writer, options);
+        return options;
     }
 
     static bool _IsAgentByokConfigured(
@@ -1169,54 +1136,6 @@ namespace winrt::TerminalApp::implementation
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
         return Reg::SupportsByok(std::wstring_view{ agentId }) &&
                _FindSelectedCustomModel(globals).has_value();
-    }
-
-    // Build a launchable command line from a bare agent id (e.g. "copilot"
-    // → "copilot --acp --stdio").  This is the single source of truth for
-    // id-to-commandline mapping; both the settings path and the auto-detect
-    // fallback route through here.
-    static winrt::hstring _BuildAgentCommandLine(
-        const winrt::hstring& agentId,
-        const winrt::hstring& model)
-    {
-        const auto lower = winrt::to_string(agentId);
-
-        // Adapter-style launches: claude/codex CLIs don't speak ACP themselves.
-        if (lower == "claude")
-        {
-            return winrt::hstring{ L"npx -y @agentclientprotocol/claude-agent-acp" };
-        }
-        if (lower == "codex")
-        {
-            return winrt::hstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.0" };
-        }
-        if (lower == "opencode")
-        {
-            return winrt::hstring{ L"opencode acp" };
-        }
-
-        std::wstring cmd{ agentId };
-        if (lower == "copilot")
-        {
-            cmd += L" --acp --stdio";
-        }
-        else if (lower == "gemini")
-        {
-            cmd += L" --experimental-acp";
-        }
-
-        if (lower == "copilot" || lower == "gemini")
-        {
-            if (!model.empty())
-            {
-                cmd += L" --model ";
-                cmd += std::wstring_view{ model };
-            }
-            return winrt::hstring{ cmd };
-        }
-
-        // Unknown agent — return the bare id as-is.
-        return agentId;
     }
 
     static winrt::hstring _ResolveEffectiveAgentCliPath(
@@ -1238,7 +1157,11 @@ namespace winrt::TerminalApp::implementation
                     const auto model = _IsAgentByokConfigured(detected, globals) ?
                                            winrt::hstring{} :
                                            globals.AcpModel();
-                    return _BuildAgentCommandLine(detected, model);
+                    return winrt::hstring{
+                        ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
+                            std::wstring_view{ detected },
+                            std::wstring_view{ model })
+                    };
                 }
             }
             return winrt::hstring{};
@@ -1254,7 +1177,11 @@ namespace winrt::TerminalApp::implementation
         const auto model = _IsAgentByokConfigured(acpAgent, globals) ?
                                winrt::hstring{} :
                                globals.AcpModel();
-        return _BuildAgentCommandLine(acpAgent, model);
+        return winrt::hstring{
+            ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
+                std::wstring_view{ acpAgent },
+                std::wstring_view{ model })
+        };
     }
 
     // Resolve a launchable agent command line for a SPECIFIC agent id +
@@ -1284,7 +1211,11 @@ namespace winrt::TerminalApp::implementation
         {
             return winrt::hstring{};
         }
-        return _BuildAgentCommandLine(agentId, model);
+        return winrt::hstring{
+            ::Microsoft::Terminal::AcpModels::BuildAgentCommandLine(
+                std::wstring_view{ agentId },
+                std::wstring_view{ model })
+        };
     }
 
     static winrt::Microsoft::Terminal::Settings::Model::Profile _GetAgentSourceProfile(
@@ -1579,13 +1510,8 @@ namespace winrt::TerminalApp::implementation
         const auto& globals = _settings.GlobalSettings();
         AgentSettingsSnapshot snapshot{
             std::wstring{ globals.AcpAgent() },
-            std::wstring{ globals.AcpModel() },
-            std::wstring{ globals.CustomModelSelection() },
-            _SerializeCustomModelProviders(globals),
             std::wstring{ globals.AcpCustomCommand() },
-            std::wstring{ globals.DelegateAgent() },
-            std::wstring{ globals.DelegateModel() },
-            std::wstring{ globals.DelegateCustomCommand() },
+            _CaptureCustomModelLaunchConfiguration(globals),
         };
         for (const auto& profile : _settings.AllProfiles())
         {
@@ -1604,15 +1530,13 @@ namespace winrt::TerminalApp::implementation
         // Agent identity changes rebuild helpers. acp-model and delegate-*
         // fields are hot-updated over the protocol and must not trigger a
         // teardown. A profile backend is part of identity because it changes
-        // both the agent id and the execution source for that profile. Custom
-        // provider changes restart the master so its isolated environment is
-        // rebuilt with the selected provider and credential metadata.
-        const bool customModelProvidersChanged =
-            a.customModelProviders != b.customModelProviders ||
-            a.customModelSelection != b.customModelSelection;
+        // both the agent id and the execution source for that profile. Only
+        // selected-provider fields consumed by the master launch environment
+        // participate in identity. The helper-safe full catalog is hot-updated
+        // separately.
         return a.acpAgent != b.acpAgent ||
                a.acpCustomCommand != b.acpCustomCommand ||
-               customModelProvidersChanged ||
+               a.customModelLaunch != b.customModelLaunch ||
                a.profileBackends != b.profileBackends;
     }
 
@@ -1620,10 +1544,13 @@ namespace winrt::TerminalApp::implementation
     {
         const auto& globals = _settings.GlobalSettings();
         const bool providerConfigured = _IsAgentByokConfigured(globals.EffectiveAcpAgent(), globals);
+        const auto customModelLaunch = _CaptureCustomModelLaunchConfiguration(globals);
         return AgentRuntimeConfigSnapshot{
             providerConfigured ? std::wstring{} : std::wstring{ globals.AcpModel() },
             std::wstring{ _ResolveEffectiveDelegateAgent(globals) },
             std::wstring{ globals.DelegateModel() },
+            customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
+            ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
             globals.EffectiveAutoFixEnabled(),
         };
     }
@@ -1634,17 +1561,18 @@ namespace winrt::TerminalApp::implementation
     // without tearing down the agent pane. A single consolidated
     // `agent_config_changed` event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
-    //   - acp_model        : the main ACP agent's model override
-    //   - delegate_agent + delegate_model : the delegate-tab agent identity;
-    //     both travel together so the helper can rebuild its delegate
-    //     runtime table in one shot.
+    //   - acp_model + target_agent_id : the global ACP agent's scoped model
+    //   - delegate_agent + delegate_model : the delegate-tab agent identity
+    //   - cloud_models + custom_models + custom_model_selection :
+    //     credential-free picker metadata and its restart-required selection.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
 
         // First call just seeds the baseline — there's no running helper to
-        // notify yet, and on first load the helper picks these values up
-        // from its spawn cmdline.
+        // notify yet. Each helper requests the full catalog after its ACP
+        // connection reaches Connected; argv carries only bounded bootstrap
+        // identity/selection data.
         if (!_agentRuntimeConfigInitialized)
         {
             _lastAgentRuntimeConfig = current;
@@ -1657,8 +1585,11 @@ namespace winrt::TerminalApp::implementation
         const bool acpModelChanged = last.acpModel != current.acpModel;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
+        const bool customModelsChanged =
+            last.customModelSelection != current.customModelSelection ||
+            last.customModels != current.customModels;
 
-        if (!autofixChanged && !acpModelChanged && !delegateChanged)
+        if (!autofixChanged && !acpModelChanged && !delegateChanged && !customModelsChanged)
         {
             return;
         }
@@ -1671,11 +1602,19 @@ namespace winrt::TerminalApp::implementation
         if (acpModelChanged)
         {
             params["acp_model"] = winrt::to_string(current.acpModel);
+            params["target_agent_id"] =
+                winrt::to_string(_settings.GlobalSettings().EffectiveAcpAgent());
         }
         if (delegateChanged)
         {
             params["delegate_agent"] = winrt::to_string(current.delegateAgent);
             params["delegate_model"] = winrt::to_string(current.delegateModel);
+        }
+        if (customModelsChanged)
+        {
+            params["custom_model_selection"] = winrt::to_string(current.customModelSelection);
+            params["custom_models"] =
+                ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
         }
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -2054,13 +1993,12 @@ namespace winrt::TerminalApp::implementation
             { L"WTA_CUSTOM_MODEL_CREDENTIAL_ID", L"" },
             { L"WTA_CUSTOM_MODEL_API_KEY_REQUIRED", L"0" },
         };
-        if (const auto custom = _FindSelectedCustomModel(globals))
+        if (const auto custom = _CaptureCustomModelLaunchConfiguration(globals))
         {
-            const auto& [provider, model] = *custom;
-            environment[0].second = std::wstring{ provider.BaseUrl() };
-            environment[1].second = std::wstring{ model.Id() };
-            environment[2].second = std::wstring{ provider.ApiKeyCredential() };
-            environment[3].second = provider.ApiKeyRequired() ? L"1" : L"0";
+            environment[0].second = custom->endpoint;
+            environment[1].second = custom->modelId;
+            environment[2].second = custom->credentialId;
+            environment[3].second = custom->apiKeyRequired ? L"1" : L"0";
         }
         return environment;
     }
@@ -2198,6 +2136,7 @@ namespace winrt::TerminalApp::implementation
         {
             effectiveModel.clear();
         }
+        const bool followsGlobalAcpModel = !hasAgentOverride && !hasProfileBackend;
 
         if ((hasAgentOverride || hasProfileBackend) && agentCliPath.empty())
         {
@@ -2255,7 +2194,7 @@ namespace winrt::TerminalApp::implementation
         // child; it connects to the master pipe and speaks ACP JSON-RPC.
         // Per-process settings (--agent, --acp-model, ...) live on the
         // master cmdline; the helper only needs identity (--agent-id,
-        // --owner-tab-id) plus a handful of view/behavior flags.
+        // --owner-tab-id), bounded model selection, and view/behavior flags.
         std::wstring helperCmd;
         helperCmd.reserve(wtaPath.size() + masterPipeName.size() + 256);
         helperCmd.push_back(L'"');
@@ -2299,6 +2238,10 @@ namespace winrt::TerminalApp::implementation
         appendHelperFlagValue(L"--agent-id", effectiveAgentId);
         appendHelperFlagValue(L"--agent-source", effectiveAgentSource);
         appendHelperFlagValue(L"--agent-wsl-distro", effectiveAgentWslDistro);
+        if (followsGlobalAcpModel)
+        {
+            helperCmd.append(L" --follows-global-acp-model");
+        }
         {
             namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
             std::wstring allowedIds;
@@ -2328,15 +2271,16 @@ namespace winrt::TerminalApp::implementation
             namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
             if (Reg::SupportsByok(std::wstring_view{ effectiveAgentId }))
             {
-                appendHelperFlagValue(
-                    L"--cloud-models",
-                    winrt::to_hstring(_SerializeCloudModelOptions(effectiveAgentId)));
-                appendHelperFlagValue(
-                    L"--custom-models",
-                    winrt::to_hstring(_SerializeCustomModelOptions(globals)));
-                if (_FindSelectedCustomModel(globals))
+                const auto customModels =
+                    ::Microsoft::Terminal::CustomModels::CaptureCatalog(
+                        globals.CustomModelProviders());
+                for (const auto& [flag, value] :
+                     ::Microsoft::Terminal::CustomModels::BuildHelperModelBootstrapArguments(
+                         std::wstring_view{ globals.CustomModelSelection() },
+                         customModels,
+                         effectiveAgentSource == L"host"))
                 {
-                    appendHelperFlagValue(L"--custom-model-selection", globals.CustomModelSelection());
+                    appendHelperFlagValue(flag, value);
                 }
             }
         }
@@ -3094,12 +3038,11 @@ namespace winrt::TerminalApp::implementation
             (til::starts_with(_lastAgentSettings.acpAgent, L"custom:") || til::starts_with(current.acpAgent, L"custom:")) &&
             (_lastAgentSettings.acpAgent != current.acpAgent ||
              _lastAgentSettings.acpCustomCommand != current.acpCustomCommand);
-        const bool customModelProvidersChanged =
-            _lastAgentSettings.customModelProviders != current.customModelProviders ||
-            _lastAgentSettings.customModelSelection != current.customModelSelection;
+        const bool customModelLaunchChanged =
+            _lastAgentSettings.customModelLaunch != current.customModelLaunch;
         const bool masterConfigurationChanged =
             customMasterArgsChanged ||
-            customModelProvidersChanged;
+            customModelLaunchChanged;
         const bool globalAgentChanged =
             _lastAgentSettings.acpAgent != current.acpAgent ||
             _lastAgentSettings.acpCustomCommand != current.acpCustomCommand;
@@ -3164,8 +3107,9 @@ namespace winrt::TerminalApp::implementation
         _agentPaneLog("_RebuildAgentStack: agent settings changed, rebuilding");
 
         // Rebuild only tabs whose effective agent identity changed. A custom
-        // command or provider change restarts the shared master, so every local
-        // helper is collected even when its tab has a runtime override.
+        // command or selected provider launch change restarts the shared master,
+        // so every local helper is collected even when its tab has a runtime
+        // override. Unselected provider metadata changes stay on the hot path.
         bool hadAny = false;
         std::vector<winrt::com_ptr<Tab>> tabsThatHadAgentPane;
         for (const auto& t : _tabs)
@@ -3236,9 +3180,10 @@ namespace winrt::TerminalApp::implementation
         // affected (non-override) tabs' helpers is enough: each fresh
         // helper declares the new global agent and the master lazily
         // spawns/reuses the matching CLI, leaving overridden tabs' CLIs
-        // (and other windows) untouched. Custom commands and provider metadata
-        // are the exceptions: both are supplied only on the master's trusted
-        // launch configuration, so refresh it after affected helpers are down.
+        // (and other windows) untouched. Custom commands and selected provider
+        // launch fields are the exceptions: both are supplied only on the
+        // master's trusted launch configuration, so refresh it after affected
+        // helpers are down.
         if (masterConfigurationChanged)
         {
             const auto wtaPath = _DetectWtaPath();
@@ -4802,6 +4747,7 @@ namespace winrt::TerminalApp::implementation
         const auto model = pickStr("model");
         const auto state = pickStr("state");
         const auto backend = pickStr("backend");
+        const auto statusTabId = pickStr("tab_id");
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
 
@@ -4814,9 +4760,9 @@ namespace winrt::TerminalApp::implementation
         // behavior); a missing tab_id (broadcast context) also persists.
         const auto selectedAgent = pickStr("selected_agent");
         bool emittingTabHasOverride = false;
-        if (const auto srcTabId = pickStr("tab_id"); !srcTabId.empty())
+        if (!statusTabId.empty())
         {
-            if (const auto srcTab = _FindTabByStableId(srcTabId))
+            if (const auto srcTab = _FindTabByStableId(statusTabId))
             {
                 emittingTabHasOverride = srcTab->HasAgentOverride();
             }
@@ -4847,70 +4793,80 @@ namespace winrt::TerminalApp::implementation
         // AIAgentsViewModel reads from this on construction, so any new
         // dropdown opened after this point sees the freshest list.
         const auto agentId = pickStr("agent_id");
-        if (state == L"connected" &&
-            !agentId.empty() &&
-            params.isMember("available_models") &&
-            params["available_models"].isArray())
+        const bool usesHostCatalog =
+            ::Microsoft::Terminal::AcpModels::StatusUsesHostCatalog(params);
+        if (usesHostCatalog && state == L"connected" && !agentId.empty())
         {
-            _agentPaneLog("OnAgentStatusChanged: available_models has " +
-                          std::to_string(params["available_models"].size()) + " entries");
-            std::vector<winrt::Microsoft::Terminal::Settings::Model::AcpModelInfo> entries;
-            for (const auto& m : params["available_models"])
+            const auto catalog = ::Microsoft::Terminal::AcpModels::ParseModelCatalog(
+                params,
+                { .excludeCustomSelectionIds = true });
+            if (catalog)
             {
-                if (!m.isObject())
-                {
-                    continue;
-                }
-                winrt::hstring id;
-                winrt::hstring name;
-                winrt::hstring description;
-                if (m.isMember("id") && m["id"].isString())
-                {
-                    id = winrt::to_hstring(m["id"].asString());
-                }
-                if (m.isMember("name") && m["name"].isString())
-                {
-                    name = winrt::to_hstring(m["name"].asString());
-                }
-                if (m.isMember("description") && m["description"].isString())
-                {
-                    description = winrt::to_hstring(m["description"].asString());
-                }
-                if (!id.empty() &&
-                    !::Microsoft::Terminal::CustomModels::IsCustomSelection(id))
+                _agentPaneLog("OnAgentStatusChanged: parsed available_models has " +
+                              std::to_string(catalog->availableModels.size()) + " entries");
+                std::vector<winrt::Microsoft::Terminal::Settings::Model::AcpModelInfo> entries;
+                entries.reserve(catalog->availableModels.size());
+                for (const auto& model : catalog->availableModels)
                 {
                     entries.push_back(winrt::Microsoft::Terminal::Settings::Model::AcpModelInfo{
-                        id,
-                        name.empty() ? id : name,
-                        description });
+                        winrt::to_hstring(model.id),
+                        winrt::to_hstring(model.name),
+                        winrt::to_hstring(model.description) });
+                }
+
+                const auto currentId = catalog->currentModelId ?
+                                           winrt::to_hstring(*catalog->currentModelId) :
+                                           winrt::hstring{};
+                const auto& globals = _settings.GlobalSettings();
+                if (!entries.empty() || !_IsAgentByokConfigured(agentId, globals))
+                {
+                    winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current()
+                        .SetAvailableModels(
+                            agentId,
+                            winrt::single_threaded_vector(std::move(entries)).GetView(),
+                            currentId);
                 }
             }
-            winrt::hstring currentId;
-            if (params.isMember("current_model_id") && params["current_model_id"].isString())
-            {
-                currentId = winrt::to_hstring(params["current_model_id"].asString());
-            }
+        }
+
+        // Full model catalogs are intentionally not placed on the helper
+        // command line. Once this specific helper reports Connected without a
+        // host catalog, deliver the credential-free catalogs over the existing
+        // protocol event channel. The tab id scopes the broadcast to the
+        // requesting helper; its follow-up status marks the catalog ready and
+        // prevents a response loop.
+        const bool hostCatalogReady =
+            params.isMember("host_catalog_ready") &&
+            params["host_catalog_ready"].isBool() &&
+            params["host_catalog_ready"].asBool();
+        if (usesHostCatalog &&
+            state == L"connected" &&
+            !hostCatalogReady &&
+            !agentId.empty() &&
+            !statusTabId.empty() &&
+            _FindTabByStableId(statusTabId))
+        {
             const auto& globals = _settings.GlobalSettings();
-            if (!entries.empty() || !_IsAgentByokConfigured(agentId, globals))
-            {
-                winrt::Microsoft::Terminal::Settings::Model::AcpRuntimeState::Current()
-                    .SetAvailableModels(
-                        agentId,
-                        winrt::single_threaded_vector(std::move(entries)).GetView(),
-                        currentId);
-            }
+            const auto customModels =
+                ::Microsoft::Terminal::CustomModels::CaptureCatalog(
+                    globals.CustomModelProviders());
+            Json::Value config{ Json::objectValue };
+            config["tab_id"] = winrt::to_string(statusTabId);
+            config["target_agent_id"] = winrt::to_string(agentId);
+            config["cloud_models"] = _CloudModelOptionsToJson(agentId);
+            config["custom_models"] =
+                ::Microsoft::Terminal::CustomModels::CatalogToJson(customModels);
+            config["custom_model_selection"] =
+                _FindSelectedCustomModel(globals) ?
+                    winrt::to_string(globals.CustomModelSelection()) :
+                    std::string{};
+            _agentPaneLog("OnAgentStatusChanged: delivering model catalogs over protocol");
+            _RaiseProtocolEvent("agent_config_changed", config);
         }
 
         // Route by tab_id when present; otherwise fan out to every
         // agent pane in this window (e.g. settings broadcasts).
-        const auto pickTabId = [&]() -> winrt::hstring {
-            if (params.isMember("tab_id") && params["tab_id"].isString())
-            {
-                return winrt::to_hstring(params["tab_id"].asString());
-            }
-            return {};
-        };
-        const auto tabId = pickTabId();
+        const auto tabId = statusTabId;
         const auto update = [&](const winrt::com_ptr<Tab>& tabImpl) {
             if (const auto content = tabImpl->FindAgentPaneContent())
             {
@@ -5360,6 +5316,11 @@ namespace winrt::TerminalApp::implementation
                 if (provider.Id() != providerId)
                 {
                     continue;
+                }
+                if (!::Microsoft::Terminal::CustomModels::IsSupportedApiContract(
+                        std::wstring_view{ provider.ApiContract() }))
+                {
+                    break;
                 }
                 for (const auto& model : provider.Models())
                 {

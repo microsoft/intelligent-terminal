@@ -2966,17 +2966,13 @@
     <value>Provedores BYOK</value>
     <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
-  <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://openrouter.ai/api/v1</value>
-    <comment>{Locked} Example OpenAI-compatible provider endpoint.</comment>
+  <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
+    <value>Use um ponto de extremidade da API Chat Completions compatível com OpenAI. O Codex requer a API Responses.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","Codex","Responses API"} Explains which OpenAI-compatible API shape each supported agent requires when adding a BYOK provider.</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Remover</value>
     <comment>Button that removes a custom model provider.</comment>
-  </data>
-  <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
-    <value>qwen/qwen3.5-9b</value>
-    <comment>{Locked} Example provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
     <value>Chave de API (opcional para provedores locais)</value>

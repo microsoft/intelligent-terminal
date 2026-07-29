@@ -111,7 +111,10 @@ fn agent_paste_text_inserts_into_owner_chat_input_without_submitting() {
     let tab = app.tab_sessions.get("tab-a").expect("target tab exists");
     assert_eq!(tab.input, expected);
     assert_eq!(tab.cursor_pos, tab.input.len());
-    assert!(tab.messages.iter().all(|m| !matches!(m, ChatMessage::User(_))));
+    assert!(tab
+        .messages
+        .iter()
+        .all(|m| !matches!(m, ChatMessage::User(_))));
 }
 
 #[test]
@@ -143,8 +146,14 @@ fn agent_paste_text_ignores_wrong_window_and_non_owner_helpers() {
     app.tab_id = Some("tab-a".into());
     app.tab_mut("tab-a");
 
-    assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w2", "tab-a")), None);
-    assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w1", "tab-b")), None);
+    assert_eq!(
+        app.agent_paste_target_tab(&agent_paste_params("w2", "tab-a")),
+        None
+    );
+    assert_eq!(
+        app.agent_paste_target_tab(&agent_paste_params("w1", "tab-b")),
+        None
+    );
 
     assert!(app.tab_sessions.get("tab-a").unwrap().input.is_empty());
     assert!(
@@ -161,8 +170,15 @@ fn agent_paste_text_ignores_missing_owner_or_window() {
     let mut app = test_app();
     app.window_id = Some("w1".into());
     app.owner_tab_id = None;
-    assert_eq!(app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")), None);
-    assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+    assert_eq!(
+        app.agent_paste_target_tab(&agent_paste_params("w1", "tab-a")),
+        None
+    );
+    assert!(app
+        .tab_sessions
+        .get("tab-a")
+        .map(|t| t.input.is_empty())
+        .unwrap_or(true));
 
     app.owner_tab_id = Some("tab-a".into());
     let missing_window = json!({ "tab_id": "tab-a" });
@@ -268,7 +284,10 @@ fn stale_agent_paste_completion_is_ignored() {
 
     let tab = app.tab_sessions.get("tab-a").unwrap();
     assert!(tab.input.is_empty());
-    assert!(tab.paste_pending, "stale completion must not clear a newer pending paste");
+    assert!(
+        tab.paste_pending,
+        "stale completion must not clear a newer pending paste"
+    );
 }
 
 #[test]
@@ -285,7 +304,11 @@ fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
         tab_id: Some("tab-a".into()),
         params: agent_paste_params("w1", "tab-a"),
     });
-    assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+    assert!(app
+        .tab_sessions
+        .get("tab-a")
+        .map(|t| t.input.is_empty())
+        .unwrap_or(true));
 
     app.mode = AppMode::Setup;
     app.handle_event(AppEvent::WtEvent {
@@ -294,7 +317,11 @@ fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
         tab_id: Some("tab-a".into()),
         params: agent_paste_params("w1", "tab-a"),
     });
-    assert!(app.tab_sessions.get("tab-a").map(|t| t.input.is_empty()).unwrap_or(true));
+    assert!(app
+        .tab_sessions
+        .get("tab-a")
+        .map(|t| t.input.is_empty())
+        .unwrap_or(true));
 }
 
 #[test]
@@ -317,12 +344,18 @@ fn copilot_sidekick_hook_session_is_ignored() {
         |event| published.push(event),
     );
 
-    assert!(!dirty, "an internal sidekick event must not dirty the registry");
+    assert!(
+        !dirty,
+        "an internal sidekick event must not dirty the registry"
+    );
     assert!(
         reg.iter_sorted().is_empty(),
         "an internal sidekick must not create a session row"
     );
-    assert!(published.is_empty(), "an internal sidekick event must not reach master");
+    assert!(
+        published.is_empty(),
+        "an internal sidekick event must not reach master"
+    );
 }
 
 /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
@@ -341,9 +374,7 @@ fn copilot_sidekick_hook_session_is_ignored() {
 /// `Attention` locally AND a real-key event is published to master.
 #[test]
 fn sessionless_notification_falls_back_to_recent_live_cli_session() {
-    use crate::agent_sessions::{
-        AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
-    };
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     // One live Copilot session bound to a known pane.
     reg.apply(SessionEvent::SessionStarted {
@@ -367,15 +398,14 @@ fn sessionless_notification_falls_back_to_recent_live_cli_session() {
     });
 
     let mut published: Vec<SessionEvent> = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(
-        &mut reg,
-        unrelated_pane,
-        &params,
-        |ev| published.push(ev),
-    );
+    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |ev| {
+        published.push(ev)
+    });
 
     // Local reducer flipped the real row to Attention.
-    let s = reg.get(&"real-copilot-sid".to_string()).expect("row preserved");
+    let s = reg
+        .get(&"real-copilot-sid".to_string())
+        .expect("row preserved");
     assert_eq!(
         s.status,
         AgentStatus::Attention,
@@ -410,9 +440,7 @@ fn sessionless_notification_falls_back_to_recent_live_cli_session() {
 /// multi-tool turn flickers to (and sits at) Idle while the agent is busy.
 #[test]
 fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
-    use crate::agent_sessions::{
-        AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
-    };
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     let pane = "11111111-1111-1111-1111-111111111111";
     let sid = "copilot-sid";
@@ -437,13 +465,19 @@ fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
 
     // User prompt → Working (turn start).
     route(&mut reg, "agent.prompt.submit");
-    assert_eq!(reg.get(&sid.to_string()).unwrap().status, AgentStatus::Working);
+    assert_eq!(
+        reg.get(&sid.to_string()).unwrap().status,
+        AgentStatus::Working
+    );
 
     // A parallel batch: three starts, then three finishes.
     route(&mut reg, "agent.tool.starting");
     route(&mut reg, "agent.tool.starting");
     route(&mut reg, "agent.tool.starting");
-    assert_eq!(reg.get(&sid.to_string()).unwrap().status, AgentStatus::Working);
+    assert_eq!(
+        reg.get(&sid.to_string()).unwrap().status,
+        AgentStatus::Working
+    );
     route(&mut reg, "agent.tool.finished");
     assert_eq!(
         reg.get(&sid.to_string()).unwrap().status,
@@ -472,9 +506,7 @@ fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
 /// wins over the heuristic.
 #[test]
 fn notification_with_real_session_id_skips_fallback() {
-    use crate::agent_sessions::{
-        AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
-    };
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     // Two Copilot sessions; `target` is the explicit one in the hook,
     // `other` is the most-recently-active and would win the fallback.
@@ -502,9 +534,7 @@ fn notification_with_real_session_id_skips_fallback() {
         "payload": { "message": "explicit" }
     });
     let unrelated_pane = "99999999-9999-9999-9999-999999999999";
-    route_agent_event_to_registry_with_hook_sink(
-        &mut reg, unrelated_pane, &params, |_| {},
-    );
+    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |_| {});
 
     assert_eq!(
         reg.get(&"target".to_string()).unwrap().status,
@@ -524,9 +554,7 @@ fn notification_with_real_session_id_skips_fallback() {
 /// the most recent across ALL CLIs.
 #[test]
 fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
-    use crate::agent_sessions::{
-        AgentSessionRegistry, AgentStatus, CliSource, SessionEvent,
-    };
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     reg.apply(SessionEvent::SessionStarted {
         key: "copilot".into(),
@@ -779,7 +807,10 @@ fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
             other => panic!("unexpected event: {:?}", other),
         }
     }
-    assert!(count >= 1, "at least one real-keyed event must reach master");
+    assert!(
+        count >= 1,
+        "at least one real-keyed event must reach master"
+    );
 }
 
 fn test_app_with_master_rx() -> (
@@ -1444,7 +1475,9 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
     assert_eq!(t0.prompt, "# Terminal Agent…");
     // details = [original full User, Agent reply].
     assert_eq!(t0.details.len(), 2);
-    assert!(matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are")));
+    assert!(
+        matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are"))
+    );
     assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
     assert!(!t0.expanded, "replayed turn must default to collapsed");
     assert!(t0.trailing_marker.is_none());
@@ -1529,10 +1562,14 @@ fn session_attached_for_load_target_packs_replayed_history() {
     });
     // Simulate replay chunks landing in messages.
     let tab = app.tab_sessions.get_mut("OWNER-TAB").unwrap();
-    tab.messages.push(ChatMessage::User("first prompt".to_string()));
-    tab.messages.push(ChatMessage::Agent("first reply".to_string()));
-    tab.messages.push(ChatMessage::User("second prompt".to_string()));
-    tab.messages.push(ChatMessage::Agent("second reply".to_string()));
+    tab.messages
+        .push(ChatMessage::User("first prompt".to_string()));
+    tab.messages
+        .push(ChatMessage::Agent("first reply".to_string()));
+    tab.messages
+        .push(ChatMessage::User("second prompt".to_string()));
+    tab.messages
+        .push(ChatMessage::Agent("second reply".to_string()));
 
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
@@ -1916,9 +1953,9 @@ fn born_bound_registration_uses_current_master_request_sender() {
         .try_recv()
         .expect("registration should use the replacement sender")
     {
-        crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
-            event: actual,
-        } => assert_eq!(actual, event),
+        crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event: actual } => {
+            assert_eq!(actual, event)
+        }
         other => panic!("expected SessionBornBound, got {other:?}"),
     }
 }
@@ -1945,7 +1982,7 @@ fn sessions_changed_with_closed_agents_view_is_noop() {
     assert!(master_rx.try_recv().is_err(), "closed UI must not refetch");
 }
 
-// ─── /model per-pane override ───────────────────────────────────────────
+// ─── /model and Settings model updates ──────────────────────────────────
 
 fn model_info(id: &str) -> AcpModelInfo {
     AcpModelInfo {
@@ -1955,75 +1992,184 @@ fn model_info(id: &str) -> AcpModelInfo {
     }
 }
 
-/// `/model <id>` records a per-pane override and hot-applies it to *that*
-/// tab's live session (a targeted `SetSessionModel`, not a fan-out).
+/// Cloud/native models remain available to Settings but are not exposed
+/// through `/model`, so the command cannot create a live pane override.
 #[test]
-fn model_pick_overrides_and_applies_to_live_session() {
-    use crate::protocol::acp::client::MasterExtRequest;
+fn slash_model_does_not_apply_cloud_model_to_live_session() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
-    app.available_models = vec![model_info("gpt-5.5"), model_info("gpt-5.4")];
+    app.set_cloud_models(vec![model_info("gpt-5.5"), model_info("gpt-5.4")]);
     app.current_tab_mut().session_id = Some("sid-1".into());
 
     app.cmd_model("gpt-5.4".into());
 
+    assert!(
+        app.current_tab().model_override.is_none(),
+        "cloud models must not create a pane-local override"
+    );
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the command must not send SetSessionModel for a hidden cloud model"
+    );
+}
+
+/// A pane-local `/model` pick remains authoritative when the matching global
+/// agent changes its default model.
+#[test]
+fn global_settings_change_preserves_local_pick() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_agent_id = "copilot".into();
+    app.follows_global_acp_model = true;
+    app.available_models = vec![model_info("local"), model_info("globalv2")];
+    app.current_tab_mut().session_id = Some("sid-1".into());
+
+    // Preserve a pre-existing pane override while applying a Settings update.
+    app.current_tab_mut().model_override = Some("local".into());
+    app.current_model_id = Some("local".into());
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));
+
+    app.apply_global_acp_model("copilot", Some("globalv2".into()));
+
     assert_eq!(
         app.current_tab().model_override.as_deref(),
-        Some("gpt-5.4"),
-        "the pane records its per-pane override"
+        Some("local"),
+        "a global change must preserve the per-pane override"
     );
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("local"),
+        "the visible current model remains the pane override"
+    );
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the global model must not be sent to a locally overridden pane"
+    );
+}
+
+#[test]
+fn fresh_session_model_replaces_stale_agent_default() {
+    let mut app = test_app();
+    app.current_model_id = Some("stale".into());
+    app.agent_current_model_id = Some("stale".into());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("stale"), model_info("fresh")],
+        current_model_id: Some("fresh".into()),
+    });
+
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("fresh"),
+        "a fresh agent-reported default must replace stale state when no override applies"
+    );
+}
+
+#[test]
+fn fresh_agent_connection_model_replaces_stale_agent_default() {
+    let mut app = test_app();
+    app.current_model_id = Some("stale".into());
+    app.agent_current_model_id = Some("stale".into());
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".into(),
+        model: None,
+        version: None,
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("stale"), model_info("fresh")],
+        current_model_id: Some("fresh".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("fresh"));
+}
+
+#[test]
+fn fresh_session_model_does_not_replace_global_override() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.acp_model = Some("global".into());
+    app.current_model_id = Some("global".into());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("agent-default"), model_info("global")],
+        current_model_id: Some("agent-default".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("global"));
     match master_rx
         .try_recv()
-        .expect("a live session gets set_session_model")
+        .expect("the global override must be re-applied to the fresh session")
     {
         MasterExtRequest::SetSessionModel { session_id, model } => {
-            assert_eq!(model, "gpt-5.4");
-            assert_eq!(
-                session_id.expect("targets just this session").0.to_string(),
-                "sid-1"
-            );
+            assert_eq!(session_id.unwrap().0.to_string(), "sid-fresh");
+            assert_eq!(model, "global");
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
 }
 
-/// A global `acpModel` settings change is authoritative: it overrides a
-/// pane's local `/model` pick — clearing the override, redirecting the
-/// shared current model, and pushing the new model to the pane's session.
 #[test]
-fn global_settings_change_overrides_local_pick() {
+fn fresh_session_model_does_not_replace_pane_override_on_new() {
     use crate::protocol::acp::client::MasterExtRequest;
+
     let (mut app, mut master_rx) = test_app_with_master_rx();
-    app.available_models = vec![model_info("local"), model_info("globalv2")];
-    app.current_tab_mut().session_id = Some("sid-1".into());
+    app.current_tab_mut().model_override = Some("pane-picked".into());
+    app.current_model_id = Some("pane-picked".into());
 
-    // Pane pins a local model first.
-    app.cmd_model("local".into());
-    let _ = master_rx.try_recv(); // drain the pick's own apply
-    assert_eq!(app.current_tab().model_override.as_deref(), Some("local"));
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-new".into(),
+        available_models: vec![model_info("agent-default"), model_info("pane-picked")],
+        current_model_id: Some("agent-default".into()),
+    });
 
-    // Global settings change to a different model — authoritative.
-    app.apply_global_acp_model(Some("globalv2".into()));
-
+    assert_eq!(app.current_model_id.as_deref(), Some("pane-picked"));
     assert_eq!(
-        app.current_tab().model_override,
-        None,
-        "a global change clears the per-pane override"
-    );
-    assert_eq!(
-        app.current_model_id.as_deref(),
-        Some("globalv2"),
-        "the shared current model follows the new global value"
+        app.current_tab().model_override.as_deref(),
+        Some("pane-picked"),
+        "/new must retain the pane's explicit model override"
     );
     match master_rx
         .try_recv()
-        .expect("the previously-overridden pane still gets the new global model")
+        .expect("the pane override must be re-applied to the /new session")
     {
         MasterExtRequest::SetSessionModel { session_id, model } => {
-            assert_eq!(model, "globalv2");
-            assert_eq!(session_id.unwrap().0.to_string(), "sid-1");
+            assert_eq!(session_id.unwrap().0.to_string(), "sid-new");
+            assert_eq!(model, "pane-picked");
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
+}
+
+#[test]
+fn fresh_session_model_does_not_replace_custom_selection() {
+    let mut app = test_app();
+    app.set_custom_model_config(
+        vec![CustomModelCatalogEntry {
+            selection_id: "custom:provider:model".into(),
+            provider_id: "provider".into(),
+            model_id: "model".into(),
+            ..Default::default()
+        }],
+        Some("custom:provider:model".into()),
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-fresh".into(),
+        available_models: vec![model_info("agent-default")],
+        current_model_id: Some("agent-default".into()),
+    });
+
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:provider:model")
+    );
 }
 
 /// A pane with no local pick follows the global `acpModel` on hot-reload.
@@ -2046,6 +2192,428 @@ fn non_overridden_pane_follows_global_model() {
         }
         other => panic!("expected SetSessionModel, got {other:?}"),
     }
+}
+
+#[test]
+fn global_model_hot_update_is_scoped_to_matching_global_followers() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_agent_id = "gemini".into();
+    app.follows_global_acp_model = true;
+    app.current_tab_mut().session_id = Some("gemini-session".into());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "acp_model": "copilot-only-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert!(app.acp_model.is_none());
+    assert!(master_rx.try_recv().is_err());
+
+    app.current_agent_id = "copilot".into();
+    app.follows_global_acp_model = false;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "acp_model": "copilot-only-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert!(
+        app.acp_model.is_none(),
+        "a per-profile/per-tab pinned helper must not follow the global model"
+    );
+    assert!(master_rx.try_recv().is_err());
+
+    app.follows_global_acp_model = true;
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "acp_model": "copilot-only-model",
+            "target_agent_id": "copilot"
+        }),
+    });
+    assert_eq!(app.acp_model.as_deref(), Some("copilot-only-model"));
+    match master_rx
+        .try_recv()
+        .expect("matching global-following helper should receive the model")
+    {
+        MasterExtRequest::SetSessionModel { session_id, model } => {
+            assert_eq!(session_id.unwrap().0.to_string(), "gemini-session");
+            assert_eq!(model, "copilot-only-model");
+        }
+        other => panic!("expected SetSessionModel, got {other:?}"),
+    }
+}
+
+#[test]
+fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Copilot".into(),
+        model: None,
+        version: None,
+        session_id: "sid-1".into(),
+        available_models: vec![model_info("cloud")],
+        current_model_id: Some("cloud".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
+    app.set_custom_model_config(
+        vec![
+            CustomModelCatalogEntry {
+                selection_id: "custom:selected:model-a".into(),
+                provider_name: "Selected Provider".into(),
+                model_id: "model-a".into(),
+                name: "Selected Model".into(),
+                ..Default::default()
+            },
+            CustomModelCatalogEntry {
+                selection_id: "custom:old:model-b".into(),
+                provider_name: "Old Provider".into(),
+                model_id: "model-b".into(),
+                name: "Old Model".into(),
+                ..Default::default()
+            },
+        ],
+        Some("custom:selected:model-a".into()),
+    );
+    app.open_model_picker();
+    let stale_index = app.model_picker_models.len() - 1;
+    app.current_tab_mut().model_picker_selected = stale_index;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "custom_model_selection": "custom:selected:model-a",
+            "custom_models": [
+                {
+                    "selection_id": "custom:selected:model-a",
+                    "provider_id": "selected",
+                    "provider_name": "Selected Provider",
+                    "api_contract": "openai-compatible",
+                    "location": "cloud",
+                    "model_id": "model-a",
+                    "name": "Selected Model"
+                },
+                {
+                    "selection_id": "custom:new:model-c",
+                    "provider_id": "new",
+                    "provider_name": "Renamed Provider",
+                    "api_contract": "openai-compatible",
+                    "location": "local",
+                    "model_id": "model-c",
+                    "name": "Renamed Model"
+                }
+            ]
+        }),
+    });
+
+    assert_eq!(
+        app.custom_model_selection.as_deref(),
+        Some("custom:selected:model-a")
+    );
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:selected:model-a")
+    );
+    assert!(app
+        .available_models
+        .iter()
+        .all(|model| model.id != "custom:old:model-b"));
+    assert!(app.available_models.iter().any(|model| {
+        model.id == "custom:new:model-c"
+            && model.name == "Renamed Model (BYOK)"
+            && model.description.as_deref() == Some("Renamed Provider")
+    }));
+    let new_provider = app
+        .custom_model_catalog
+        .iter()
+        .find(|model| model.selection_id == "custom:new:model-c")
+        .expect("hot update retains full provider metadata");
+    assert_eq!(new_provider.api_contract, "openai-compatible");
+    assert_eq!(new_provider.location, "local");
+    assert!(app.current_tab().model_picker_selected < app.model_picker_models.len());
+    assert_eq!(
+        app.model_picker_models[app.current_tab().model_picker_selected].id,
+        "custom:selected:model-a"
+    );
+}
+
+#[test]
+fn targeted_catalog_delivery_recomputes_stashed_helper_picker() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.owner_tab_id = Some("tab-stashed".into());
+    app.current_tab_mut().pane_open = false;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "tab_id": "other-tab",
+            "target_agent_id": "copilot",
+            "cloud_models": [{"id":"ignored","name":"Ignored"}],
+            "custom_models": []
+        }),
+    });
+    assert!(app.available_models.is_empty());
+    assert!(!app.host_catalog_ready);
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "tab_id": "tab-stashed",
+            "target_agent_id": "copilot",
+            "cloud_models": [{"id":"cloud","name":"Cloud"}],
+            "custom_model_selection": "custom:provider:byok",
+            "custom_models": [{
+                "selection_id": "custom:provider:byok",
+                "provider_id": "provider",
+                "provider_name": "Provider",
+                "api_contract": "openai-compatible",
+                "location": "cloud",
+                "model_id": "byok",
+                "name": "BYOK"
+            }]
+        }),
+    });
+
+    assert!(app.host_catalog_ready);
+    assert!(
+        !app.current_tab().pane_open,
+        "catalog delivery must not unstash the pane"
+    );
+    assert_eq!(
+        app.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cloud", "custom:provider:byok"]
+    );
+    assert_eq!(
+        app.current_model_id.as_deref(),
+        Some("custom:provider:byok")
+    );
+}
+
+#[test]
+fn custom_model_catalog_contract_parsing_normalizes_legacy_and_rejects_unsupported() {
+    let missing: Vec<CustomModelCatalogEntry> = serde_json::from_value(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "model_id": "model-a"
+    }]))
+    .expect("legacy metadata without api_contract should remain valid");
+    assert_eq!(
+        missing[0].api_contract,
+        crate::custom_model_provider::CANONICAL_API_CONTRACT
+    );
+
+    let blank: Vec<CustomModelCatalogEntry> = serde_json::from_value(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "api_contract": " \t ",
+        "model_id": "model-a"
+    }]))
+    .expect("blank legacy api_contract should normalize");
+    assert_eq!(
+        blank[0].api_contract,
+        crate::custom_model_provider::CANONICAL_API_CONTRACT
+    );
+
+    let unsupported = serde_json::from_value::<Vec<CustomModelCatalogEntry>>(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "api_contract": "openai-responses",
+        "model_id": "model-a"
+    }]));
+    assert!(unsupported.is_err());
+
+    let padded = serde_json::from_value::<Vec<CustomModelCatalogEntry>>(serde_json::json!([{
+        "selection_id": "custom:provider:model-a",
+        "api_contract": " openai-compatible ",
+        "model_id": "model-a"
+    }]));
+    assert!(padded.is_err());
+}
+
+#[test]
+fn unsupported_custom_model_contract_cannot_be_selected() {
+    let mut app = test_app();
+    app.set_custom_model_config(
+        vec![CustomModelCatalogEntry {
+            selection_id: "custom:provider:model-a".into(),
+            api_contract: "openai-responses".into(),
+            model_id: "model-a".into(),
+            ..Default::default()
+        }],
+        Some("custom:provider:model-a".into()),
+    );
+
+    assert!(app.custom_model_catalog.is_empty());
+    assert!(app.custom_model_selection.is_none());
+    assert!(app.selected_custom_model_id().is_none());
+}
+
+#[test]
+fn same_agent_host_and_wsl_keep_host_catalogs_isolated() {
+    let connect = |app: &mut App| {
+        app.current_agent_id = "copilot".into();
+        app.handle_event(AppEvent::AgentConnected {
+            name: "Copilot".into(),
+            model: None,
+            version: None,
+            session_id: "sid".into(),
+            available_models: vec![model_info("agent-advertised")],
+            current_model_id: Some("agent-advertised".into()),
+            load_session_supported: false,
+            image_supported: false,
+        });
+    };
+    let host_catalog = || AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "target_agent_id": "copilot",
+            "cloud_models": [{"id":"host-cloud","name":"Host Cloud"}],
+            "custom_model_selection": "custom:provider:byok",
+            "custom_models": [{
+                "selection_id": "custom:provider:byok",
+                "provider_id": "provider",
+                "provider_name": "Provider",
+                "api_contract": "openai-compatible",
+                "location": "cloud",
+                "model_id": "byok",
+                "name": "BYOK"
+            }]
+        }),
+    };
+
+    let mut host = test_app();
+    host.current_agent_source = crate::agent_source::AgentSource::Host;
+    connect(&mut host);
+    host.handle_event(host_catalog());
+    assert_eq!(
+        host.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["host-cloud", "agent-advertised", "custom:provider:byok"]
+    );
+    assert!(host.host_catalog_ready);
+    host.handle_event(AppEvent::CloudModelsAvailable(vec![AcpModelInfo {
+        id: "probe-cloud".into(),
+        name: "Probe Cloud".into(),
+        description: None,
+    }]));
+    assert_eq!(
+        host.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["probe-cloud", "agent-advertised", "custom:provider:byok"],
+        "the asynchronous clean probe must recompute cloud+agent+BYOK rows"
+    );
+
+    let mut wsl = test_app();
+    wsl.current_agent_source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    connect(&mut wsl);
+    wsl.handle_event(host_catalog());
+    wsl.handle_event(AppEvent::CloudModelsAvailable(vec![AcpModelInfo {
+        id: "probe-cloud".into(),
+        name: "Probe Cloud".into(),
+        description: None,
+    }]));
+    assert_eq!(
+        wsl.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["agent-advertised"],
+        "the WSL helper for the same agent must retain only its own ACP catalog"
+    );
+    assert!(wsl.cloud_models.is_empty());
+    assert!(wsl.custom_model_catalog.is_empty());
+    assert!(wsl.custom_model_selection.is_none());
+    assert!(!wsl.host_catalog_ready);
+}
+
+#[test]
+fn custom_model_hot_update_is_ignored_for_unsupported_profile_backend() {
+    let mut app = test_app();
+    app.current_agent_id = "claude".into();
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Claude".into(),
+        model: None,
+        version: None,
+        session_id: "sid-1".into(),
+        available_models: vec![model_info("cloud")],
+        current_model_id: Some("cloud".into()),
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "custom_model_selection": "custom:provider:model",
+            "custom_models": [{
+                "selection_id": "custom:provider:model",
+                "model_id": "model"
+            }]
+        }),
+    });
+
+    assert!(app.custom_model_catalog.is_empty());
+    assert!(app.custom_model_selection.is_none());
+    assert_eq!(
+        app.available_models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cloud"]
+    );
+}
+
+#[test]
+fn custom_model_hot_update_rejects_credential_fields() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_config_changed".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({
+            "custom_model_selection": "custom:provider:model",
+            "custom_models": [{
+                "selection_id": "custom:provider:model",
+                "model_id": "model",
+                "credential_id": "must-not-enter-helper-contract"
+            }]
+        }),
+    });
+
+    assert!(app.custom_model_catalog.is_empty());
+    assert!(app.custom_model_selection.is_none());
 }
 
 /// `/model` with an unrecognized argument warns and changes nothing.
@@ -2131,7 +2699,8 @@ fn shell_only_filter_applies_to_registry_fallback_path() {
         cwd: PathBuf::from("/x"),
         title: "pane".into(),
     });
-    app.agent_sessions.set_origin("pane-key", SessionOrigin::AgentPane);
+    app.agent_sessions
+        .set_origin("pane-key", SessionOrigin::AgentPane);
 
     let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
     assert_eq!(rows.len(), 1);
@@ -2158,7 +2727,9 @@ fn agents_rows_snapshot_preserves_wsl_location() {
 
     let mut info = session_info_for_test("wsl-1");
     info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
-    info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+    info.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
@@ -2172,7 +2743,9 @@ fn agents_rows_snapshot_preserves_wsl_location() {
     );
     assert_eq!(
         rows[0].location,
-        SessionLocation::Wsl { distro: "Ubuntu".into() },
+        SessionLocation::Wsl {
+            distro: "Ubuntu".into()
+        },
         "distro name must round-trip through session_info_to_agent_session"
     );
 }
@@ -2196,7 +2769,9 @@ fn render_sessions_view_paints_wsl_distro_tag() {
     let mut info = session_info_for_test("wsl-render-1");
     info.title = Some("hack on wsl".into());
     info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
-    info.location = SessionLocation::Wsl { distro: "Ubuntu".into() };
+    info.location = SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_view.snapshot = Some(vec![info]);
@@ -2224,17 +2799,29 @@ fn resolve_sessions_origin_filter_respects_env_override() {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     std::env::remove_var("WTA_SESSIONS_SHOW_AGENT_PANE");
-    assert_eq!(crate::app::resolve_sessions_origin_filter(), MVP_SESSIONS_ORIGIN_FILTER);
+    assert_eq!(
+        crate::app::resolve_sessions_origin_filter(),
+        MVP_SESSIONS_ORIGIN_FILTER
+    );
     assert_eq!(MVP_SESSIONS_ORIGIN_FILTER, OriginFilter::ShellOnly);
 
     std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "1");
-    assert_eq!(crate::app::resolve_sessions_origin_filter(), OriginFilter::All);
+    assert_eq!(
+        crate::app::resolve_sessions_origin_filter(),
+        OriginFilter::All
+    );
 
     std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "true");
-    assert_eq!(crate::app::resolve_sessions_origin_filter(), OriginFilter::All);
+    assert_eq!(
+        crate::app::resolve_sessions_origin_filter(),
+        OriginFilter::All
+    );
 
     std::env::set_var("WTA_SESSIONS_SHOW_AGENT_PANE", "0");
-    assert_eq!(crate::app::resolve_sessions_origin_filter(), MVP_SESSIONS_ORIGIN_FILTER);
+    assert_eq!(
+        crate::app::resolve_sessions_origin_filter(),
+        MVP_SESSIONS_ORIGIN_FILTER
+    );
 
     std::env::remove_var("WTA_SESSIONS_SHOW_AGENT_PANE");
 }
@@ -2498,7 +3085,10 @@ fn agents_view_loading_shows_during_f5_rescan() {
     // First snapshot landed: rows present, fetch settled — not loading.
     app.current_tab_mut().agents_view.snapshot = Some(vec![session_info_for_test("a")]);
     app.current_tab_mut().agents_view.refetch_in_flight = false;
-    assert!(!app.agents_view_awaiting_snapshot(), "a settled list is not loading");
+    assert!(
+        !app.agents_view_awaiting_snapshot(),
+        "a settled list is not loading"
+    );
 
     // F5 dispatches a rescan: the loading shimmer must show even though the
     // list already has rows, so the refresh is visible.
@@ -2605,24 +3195,21 @@ fn session_search_filters_navigation_and_enter_dispatch() {
     let mut title_match = session_info_for_test("title-match");
     title_match.title = Some("PowerShell repair".into());
     title_match.cwd = std::path::PathBuf::from(r"C:\Windows");
-    title_match.pane_session_id =
-        Some("00000000-0000-0000-0000-0000000000a1".into());
+    title_match.pane_session_id = Some("00000000-0000-0000-0000-0000000000a1".into());
     title_match.origin = Some(SessionOrigin::Unknown);
     title_match.last_activity_at_ms = Some(300);
 
     let mut unrelated = session_info_for_test("unrelated");
     unrelated.title = Some("fix the build".into());
     unrelated.cwd = std::path::PathBuf::from(r"C:\Windows");
-    unrelated.pane_session_id =
-        Some("00000000-0000-0000-0000-0000000000b2".into());
+    unrelated.pane_session_id = Some("00000000-0000-0000-0000-0000000000b2".into());
     unrelated.origin = Some(SessionOrigin::Unknown);
     unrelated.last_activity_at_ms = Some(200);
 
     let mut second_title_match = session_info_for_test("second-title-match");
     second_title_match.title = Some("portal review".into());
     second_title_match.cwd = std::path::PathBuf::from(r"C:\repos\portal");
-    second_title_match.pane_session_id =
-        Some("00000000-0000-0000-0000-0000000000c3".into());
+    second_title_match.pane_session_id = Some("00000000-0000-0000-0000-0000000000c3".into());
     second_title_match.origin = Some(SessionOrigin::Unknown);
     second_title_match.last_activity_at_ms = Some(100);
 
@@ -2690,7 +3277,6 @@ fn session_search_is_hidden_until_slash_and_escape_clears_it() {
         View::Agents,
         "the first Esc dismisses search instead of closing session management"
     );
-
 }
 
 // Esc out of the session-management (Agents) view restores the pane
@@ -2729,7 +3315,8 @@ fn esc_from_session_view_refolds_when_entered_from_folded_pane() {
         "fold-restore must not switch to chat (would flash before stashing)"
     );
     assert_eq!(
-        app.current_tab().agents_view_prev_pane_open, None,
+        app.current_tab().agents_view_prev_pane_open,
+        None,
         "the snapshot must be cleared after Esc so a re-entry re-captures"
     );
 }
@@ -2871,7 +3458,9 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
         argv
     );
     assert!(
-        cmd.argv.windows(2).any(|args| args == ["--title", "Fix the build"]),
+        cmd.argv
+            .windows(2)
+            .any(|args| args == ["--title", "Fix the build"]),
         "resume tab must use the session title: {:?}",
         cmd.argv
     );
@@ -2886,9 +3475,7 @@ fn enter_on_history_row_dispatches_new_tab_with_resume() {
     // low-contrast tone similar to the cwd line in a typical
     // Copilot-CLI shell prompt.)
     assert!(
-        argv.contains(
-            "cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"
-        ),
+        argv.contains("cmd /c echo \x1b[2;37mResuming claude session abc-123...\x1b[0m"),
         "expected dim-white Resuming banner echo; argv: {:?}",
         argv
     );
@@ -3556,15 +4143,19 @@ fn post_login_auth_failure_matches_auth_required_and_handshake_new_session() {
     }));
     // An authenticate-RPC rejection/timeout must NOT trigger auth recovery
     // (a master restart can't fix bad credentials) — it routes to sign-in.
-    assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+    assert!(!is_post_login_auth_failure(
+        &AgentFailure::HandshakeFailed {
         stage: HandshakeStage::Authenticate,
         detail: "authenticate rejected/timed out".to_string()
-    }));
+        }
+    ));
     // A non-auth handshake stage must NOT trigger auth recovery.
-    assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
+    assert!(!is_post_login_auth_failure(
+        &AgentFailure::HandshakeFailed {
         stage: HandshakeStage::Initialize,
         detail: "boom".to_string()
-    }));
+        }
+    ));
 }
 
 #[test]
@@ -3624,19 +4215,11 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
         detail: "pipe missing".to_string(),
     };
     assert!(
-        should_trigger_post_login_recovery(
-            true,
-            false,
-            &pipe_connect
-        ),
+        should_trigger_post_login_recovery(true, false, &pipe_connect),
         "post-login master-unavailable recovery must not be gated on External auth flow"
     );
     assert!(
-        !should_trigger_post_login_recovery(
-            false,
-            false,
-            &pipe_connect
-        ),
+        !should_trigger_post_login_recovery(false, false, &pipe_connect),
         "non-post-login pipe failures should surface normally"
     );
 
@@ -3802,8 +4385,7 @@ fn auth_error_routes_to_signin_not_connection_lost() {
         failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
             message: "authentication required".to_string(),
         },
-        message: "new_session over master pipe failed: authentication required"
-            .to_string(),
+        message: "new_session over master pipe failed: authentication required".to_string(),
     });
     assert_eq!(
         app.mode,
@@ -3991,7 +4573,10 @@ fn ghost_agent_binding_does_not_suppress_shell_failure() {
         cwd: PathBuf::from("/work"),
         title: "t".into(),
     });
-    assert!(app.agent_sessions.is_agent_pane(pane), "precondition: pane is registered as agent-bound");
+    assert!(
+        app.agent_sessions.is_agent_pane(pane),
+        "precondition: pane is registered as agent-bound"
+    );
 
     app.handle_event(AppEvent::WtEvent {
         method: "vt_sequence".to_string(),
@@ -4378,8 +4963,7 @@ fn osc133_prompt_start_in_agent_pane_origin_is_ignored() {
         .expect("row exists");
     assert!(matches!(
         before.status,
-        crate::agent_sessions::AgentStatus::Idle
-            | crate::agent_sessions::AgentStatus::Working
+        crate::agent_sessions::AgentStatus::Idle | crate::agent_sessions::AgentStatus::Working
     ));
     assert_eq!(before.origin, SessionOrigin::AgentPane);
 
@@ -4405,8 +4989,7 @@ fn osc133_prompt_start_in_agent_pane_origin_is_ignored() {
     assert!(
         matches!(
             after.status,
-            crate::agent_sessions::AgentStatus::Idle
-                | crate::agent_sessions::AgentStatus::Working
+            crate::agent_sessions::AgentStatus::Idle | crate::agent_sessions::AgentStatus::Working
         ),
         "agent-pane row must stay Live on OSC 133;A; got {:?}",
         after.status,
@@ -4448,14 +5031,15 @@ async fn mock_agent_reply_streams_into_app_chat() {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
     use agent_client_protocol as acp;
 
-
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             // Borrow the acp-module harness: deterministic mock wired to a
             // real WtaClient over an in-memory duplex.
             let (conn, mut event_rx, _seen) = connect_mock_agent();
-            conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+            conn.initialize(acp::schema::v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::LATEST,
+            ))
                 .await
                 .expect("initialize failed");
             let session = conn
@@ -4492,7 +5076,10 @@ async fn mock_agent_reply_streams_into_app_chat() {
                 }
             })
             .await;
-            assert!(pumped.is_ok(), "timed out waiting for the agent message chunk");
+            assert!(
+                pumped.is_ok(),
+                "timed out waiting for the agent message chunk"
+            );
 
             // "What the chat shows" while streaming: the mock's reply is in
             // the active tab's streaming buffer.
@@ -4516,9 +5103,10 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
     use agent_client_protocol as acp;
 
-
     let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
-    conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+    conn.initialize(acp::schema::v1::InitializeRequest::new(
+        acp::schema::ProtocolVersion::LATEST,
+    ))
         .await
         .expect("initialize failed");
     let session = conn
@@ -4552,7 +5140,10 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
         }
     })
     .await;
-    assert!(pumped.is_ok(), "timed out waiting for the permission request");
+    assert!(
+        pumped.is_ok(),
+        "timed out waiting for the permission request"
+    );
 
     // Display assertion: the permission card is queued with allow/reject,
     // allow selected by default.
@@ -4625,10 +5216,7 @@ async fn permission_reject_round_trips_to_agent() {
 async fn permission_quick_allow_key_round_trips_to_agent() {
     let local = tokio::task::LocalSet::new();
     local
-        .run_until(run_permission_scenario(
-            &[KeyCode::Char('y')],
-            "allow-once",
-        ))
+        .run_until(run_permission_scenario(&[KeyCode::Char('y')], "allow-once"))
         .await;
 }
 
@@ -4700,8 +5288,16 @@ fn permission_request_permanently_clears_thinking_latch() {
         tool_call_id: "tool".into(),
         description: "Allow tool X?".into(),
         options: vec![
-            PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
-            PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
+            PermOption {
+                id: "allow-once".into(),
+                name: "Allow".into(),
+                kind: "AllowOnce".into(),
+            },
+            PermOption {
+                id: "reject-once".into(),
+                name: "Deny".into(),
+                kind: "RejectOnce".into(),
+            },
         ],
         responder,
     });
@@ -4723,12 +5319,13 @@ async fn tool_call_surfaces_card_in_chat() {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
     use agent_client_protocol as acp;
 
-
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
-            conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+            conn.initialize(acp::schema::v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::LATEST,
+            ))
                 .await
                 .expect("initialize failed");
             let session = conn
@@ -4763,9 +5360,9 @@ async fn tool_call_surfaces_card_in_chat() {
             assert!(pumped.is_ok(), "timed out waiting for the tool call");
 
             // Display assertion: the proposed command shows as a tool-call card.
-            let has_card = app.current_tab().messages.iter().any(|m| {
-                matches!(m, ChatMessage::ToolCall { title, .. } if title == "Run: echo hi")
-            });
+            let has_card = app.current_tab().messages.iter().any(
+                |m| matches!(m, ChatMessage::ToolCall { title, .. } if title == "Run: echo hi"),
+            );
             assert!(
                 has_card,
                 "a tool-call card must surface in the chat; got {:?}",
@@ -4804,12 +5401,12 @@ async fn pump_until(
 /// leaving an in-flight turn whose streamed notifications the caller pumps
 /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
 /// owns the `App`.
-async fn app_after_prompt(
-    conn: &crate::protocol::acp::conn::ClientLink,
-) {
+async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     use agent_client_protocol as acp;
 
-    conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+    conn.initialize(acp::schema::v1::InitializeRequest::new(
+        acp::schema::ProtocolVersion::LATEST,
+    ))
         .await
         .expect("initialize failed");
     let session = conn
@@ -4887,9 +5484,16 @@ async fn tool_call_completion_updates_card_status() {
                     _ => None,
                 })
                 .collect();
-            assert_eq!(cards.len(), 1, "the update must edit in place, not add a card");
+            assert_eq!(
+                cards.len(),
+                1,
+                "the update must edit in place, not add a card"
+            );
             assert_eq!(cards[0].0, "mock-tool-1");
-            assert_eq!(cards[0].1, "Completed", "card status must reflect the update");
+            assert_eq!(
+                cards[0].1, "Completed",
+                "card status must reflect the update"
+            );
         })
         .await;
 }
@@ -4908,7 +5512,10 @@ async fn plan_surfaces_card_in_chat() {
             let mut app = test_app();
             submit_test_prompt(&mut app, "go");
 
-            pump_until(&mut app, &mut event_rx, |ev| matches!(ev, AppEvent::Plan { .. })).await;
+            pump_until(&mut app, &mut event_rx, |ev| {
+                matches!(ev, AppEvent::Plan { .. })
+            })
+            .await;
 
             let plan = app.current_tab().messages.iter().find_map(|m| match m {
                 ChatMessage::Plan(entries) => Some(entries.clone()),
@@ -5132,40 +5739,40 @@ fn render_help_overlay_lists_commands() {
     );
 }
 
-/// Render: the `/model` picker must list the advertised models. Lifts
+/// Render: the `/model` picker must list BYOK models and omit cloud models. Lifts
 /// `ui/model_popup.rs`.
 #[test]
 fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.available_models = vec![
-        AcpModelInfo {
+    app.set_cloud_models(vec![AcpModelInfo {
             id: "pick-1".into(),
             name: "PickModelXYZ".into(),
             description: None,
+    }]);
+    app.set_custom_model_config(
+        vec![
+            CustomModelCatalogEntry {
+                selection_id: "custom:provider-one:shared-model".into(),
+                model_id: "shared-model".into(),
+                name: "shared-model".into(),
+                ..Default::default()
         },
-        AcpModelInfo {
-            id: "pick-2".into(),
-            name: "OtherModel".into(),
-            description: None,
+            CustomModelCatalogEntry {
+                selection_id: "custom:provider-two:shared-model".into(),
+                model_id: "shared-model".into(),
+                name: "shared-model".into(),
+                ..Default::default()
         },
-        AcpModelInfo {
-            id: "custom:provider-one:shared-model".into(),
-            name: "shared-model (BYOK)".into(),
-            description: None,
-        },
-        AcpModelInfo {
-            id: "custom:provider-two:shared-model".into(),
-            name: "shared-model (BYOK)".into(),
-            description: None,
-        },
-    ];
+        ],
+        None,
+    );
     app.current_tab_mut().model_picker_open = true;
 
     let text = render_to_text(&mut app, 120, 24);
     assert!(
-        text.contains("PickModelXYZ"),
-        "the model picker must list the advertised models; rendered:\n{text}"
+        !text.contains("PickModelXYZ"),
+        "the model picker must omit cloud models; rendered:\n{text}"
     );
     assert!(
         text.contains("custom:provider-one:shared-model")
@@ -5528,7 +6135,10 @@ fn begin_auth_checking_clears_stale_status() {
     app.begin_auth_checking();
 
     let auth = app.auth.as_ref().expect("auth screen present");
-    assert!(auth.checking, "begin_auth_checking must enter the checking state");
+    assert!(
+        auth.checking,
+        "begin_auth_checking must enter the checking state"
+    );
     assert!(
         auth.status_message.is_empty(),
         "a retry must clear the stale failure status so the checking view \
@@ -5555,9 +6165,16 @@ fn esc_collapse_clears_enterprise_failure_status() {
 
     app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-    assert_eq!(app.mode, AppMode::Auth, "collapse stays on the sign-in screen");
+    assert_eq!(
+        app.mode,
+        AppMode::Auth,
+        "collapse stays on the sign-in screen"
+    );
     let auth = app.auth.as_ref().expect("collapse keeps the auth screen");
-    assert!(!auth.enterprise_mode, "first Esc collapses the enterprise input");
+    assert!(
+        !auth.enterprise_mode,
+        "first Esc collapses the enterprise input"
+    );
     assert!(
         auth.status_message.is_empty(),
         "collapsing must clear the enterprise failure status so it does not linger"
@@ -5632,11 +6249,22 @@ fn auth_enterprise_domain_entry_via_keys() {
         .auth
         .as_ref()
         .expect("Esc collapse must not leave the sign-in screen");
-    assert!(!auth.enterprise_mode, "Esc must collapse the enterprise input");
-    assert_eq!(app.mode, AppMode::Auth, "Esc collapse must stay in Auth mode");
+    assert!(
+        !auth.enterprise_mode,
+        "Esc must collapse the enterprise input"
+    );
+    assert_eq!(
+        app.mode,
+        AppMode::Auth,
+        "Esc collapse must stay in Auth mode"
+    );
 }
 
-fn agent_status_for_test(id: &str, display: &str, cli_found: bool) -> crate::agent_check::AgentStatus {
+fn agent_status_for_test(
+    id: &str,
+    display: &str,
+    cli_found: bool,
+) -> crate::agent_check::AgentStatus {
     crate::agent_check::AgentStatus {
         id: id.into(),
         display_name: display.into(),
@@ -5691,7 +6319,10 @@ fn show_copilot_auth_screen_sets_expected_state() {
     app.show_copilot_auth_screen();
 
     assert_eq!(app.mode, AppMode::Auth);
-    assert!(app.setup.is_none(), "auth screen should replace setup state");
+    assert!(
+        app.setup.is_none(),
+        "auth screen should replace setup state"
+    );
     assert_eq!(app.current_agent_id, "copilot");
     let auth = app.auth.as_ref().expect("copilot auth state");
     assert_eq!(auth.agent_id, "copilot");
@@ -5840,7 +6471,6 @@ fn input_box_titles_queued_images() {
     );
 }
 
-
 /// the action's command body (the card shows the command, not the choice
 /// `title` field, which only surfaces for action-less choices) plus the
 /// run-command button. Lifts `ui/recommendations.rs` (reached only when
@@ -5896,9 +6526,12 @@ fn render_chat_all_message_variants() {
     {
         let tab = app.current_tab_mut();
         tab.messages.push(ChatMessage::User("USER_MSG_XYZ".into()));
-        tab.messages.push(ChatMessage::Agent("AGENT_MSG_XYZ".into()));
-        tab.messages.push(ChatMessage::System("SYSTEM_MSG_XYZ".into()));
-        tab.messages.push(ChatMessage::Error("ERROR_MSG_XYZ".into()));
+        tab.messages
+            .push(ChatMessage::Agent("AGENT_MSG_XYZ".into()));
+        tab.messages
+            .push(ChatMessage::System("SYSTEM_MSG_XYZ".into()));
+        tab.messages
+            .push(ChatMessage::Error("ERROR_MSG_XYZ".into()));
         tab.messages
             .push(ChatMessage::AgentEvent("AGENT_EVENT_MSG_XYZ".into()));
         tab.messages.push(ChatMessage::Plan(vec![
@@ -6120,7 +6753,11 @@ fn fix_target_pane_is_late_bound_by_prompt_id() {
 
     // The matching prompt id binds the resolved working pane.
     app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
-    assert_eq!(fix_target_pane(&app), "pane-7", "matching id binds the pane");
+    assert_eq!(
+        fix_target_pane(&app),
+        "pane-7",
+        "matching id binds the pane"
+    );
 }
 
 #[test]
@@ -6439,9 +7076,7 @@ fn end_pending_blocks_new_prompts_until_message_end() {
 // ─── card / panel height math ───────────────────────────────────────────
 
 use crate::app::turn_state::{SubmittedPrompt, TurnOutcome, TurnState};
-use crate::coordinator::{
-    OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction,
-};
+use crate::coordinator::{OpenTarget, RecommendationChoice, RecommendationSet, RecommendedAction};
 use crate::ui::card::{card_content_width, CARD_H_CHROME, CARD_MIN_SIZE};
 
 fn perm_with(desc: &str) -> PermissionState {
@@ -6797,11 +7432,10 @@ fn submitting_prompt_records_only_that_tab_history() {
 
     assert!(app.current_tab().input.is_empty());
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
-    assert!(
-        app.tab_sessions
+    assert!(app
+        .tab_sessions
             .get("another-tab")
-            .is_some_and(|tab| tab.input_history.entries.is_empty())
-    );
+        .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
 #[test]
@@ -6949,7 +7583,8 @@ fn typing_returns_to_input_after_clearing_selection() {
 fn command_popup_keeps_arrow_priority_over_input_history() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
-    app.current_tab_mut().record_input_history("historical prompt");
+    app.current_tab_mut()
+        .record_input_history("historical prompt");
     app.current_tab_mut().input.push('/');
     app.current_tab_mut().cursor_pos = 1;
     app.current_tab_mut().refresh_command_popup();
@@ -7042,12 +7677,7 @@ fn chip_target_returns_none_when_idle() {
 #[test]
 fn chip_target_uses_send_parent_when_set() {
     let mut app = test_app();
-    stage_surfaced_recommendation(
-        &mut app,
-        vec![send_choice("pane-A", "ls")],
-        0,
-        None,
-    );
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
         Some("pane-A".to_string()),
@@ -7078,12 +7708,7 @@ fn chip_target_filters_empty_autofix_target() {
     // Some("") would let the helper's dedupe believe it pinned the chip
     // while WT silently ignores the event.
     let mut app = test_app();
-    stage_surfaced_recommendation(
-        &mut app,
-        vec![send_choice("", "fix")],
-        0,
-        Some(""),
-    );
+    stage_surfaced_recommendation(&mut app, vec![send_choice("", "fix")], 0, Some(""));
     assert_eq!(app.current_tab().compute_chip_card_target(), None);
 }
 
@@ -7121,12 +7746,7 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
     // the next recompute observe a different value and clear the
     // last_emitted slot.
     let mut app = test_app();
-    stage_surfaced_recommendation(
-        &mut app,
-        vec![send_choice("pane-A", "ls")],
-        0,
-        None,
-    );
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
     app.recompute_chip_override(DEFAULT_TAB_ID);
     assert_eq!(
         app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
@@ -7137,10 +7757,7 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
     // the dedupe slot must follow so a fresh surface re-emits cleanly.
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Idle;
     app.recompute_chip_override(DEFAULT_TAB_ID);
-    assert_eq!(
-        app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
-        None,
-    );
+    assert_eq!(app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override, None,);
 }
 
 #[test]
@@ -7156,7 +7773,10 @@ fn known_cli_id_returns_some_for_all_first_party_clis() {
 #[test]
 fn known_cli_id_returns_none_for_unknown_variant() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Unknown("anything".to_string())), None);
+    assert_eq!(
+        known_cli_id(&CliSource::Unknown("anything".to_string())),
+        None
+    );
 }
 
 #[test]
@@ -7179,7 +7799,9 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         attention_reason: None,
         log_path:         None,
         origin:           SessionOrigin::Unknown,
-        location:         SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+        location: SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        },
     };
     let mut app = test_app();
     app.agent_sessions.merge_historical(vec![row]);
@@ -7193,7 +7815,9 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
     let argv = cmd.argv.join(" ");
     assert!(
-        argv.contains("wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""),
+        argv.contains(
+            "wsl -d Ubuntu --cd \"/home/u/proj\" -- bash -lc \"copilot --resume abc-123\""
+        ),
         "expected in-distro resume; argv: {argv}"
     );
     // The loading banner keeps the short session id and also names the
@@ -7203,5 +7827,8 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
         "expected distro-named WSL banner; argv: {argv}"
     );
     // WSL rows must not also pass the Windows `-d <cwd>` flag.
-    assert!(!argv.contains(" -d /home"), "WSL row must not pass Windows -d cwd");
+    assert!(
+        !argv.contains(" -d /home"),
+        "WSL row must not pass Windows -d cwd"
+    );
 }

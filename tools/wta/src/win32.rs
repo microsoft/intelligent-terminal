@@ -165,7 +165,9 @@ pub(crate) unsafe fn clipboard_file_path_from_open_clipboard() -> Option<std::pa
         return None;
     }
     buf.truncate(got as usize);
-    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(&buf)))
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_wide(
+        &buf,
+    )))
 }
 
 /// Open a URL with the user's default handler using ShellExecuteW instead of a

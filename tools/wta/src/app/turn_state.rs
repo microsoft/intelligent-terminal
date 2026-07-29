@@ -106,7 +106,9 @@ impl TurnState {
     pub fn is_in_flight(&self) -> bool {
         match self {
             TurnState::Submitted(_) | TurnState::Streaming { .. } => true,
-            TurnState::Surfaced { end_pending: true, .. } => true,
+            TurnState::Surfaced {
+                end_pending: true, ..
+            } => true,
             _ => false,
         }
     }
@@ -162,11 +164,8 @@ impl TurnState {
 
     /// Whether the current turn is an autofix turn.
     pub fn is_autofix(&self) -> bool {
-        self.prompt()
-            .map(|p| p.autofix.is_some())
-            .unwrap_or(false)
+        self.prompt().map(|p| p.autofix.is_some()).unwrap_or(false)
     }
-
 }
 
 #[cfg(test)]

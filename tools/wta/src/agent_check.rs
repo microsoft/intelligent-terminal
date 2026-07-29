@@ -199,8 +199,7 @@ fn is_native_wsl_resolution(resolved: &str) -> bool {
 /// tenant can sign in (mirroring the CLI's own `copilot login --host …`).
 /// Other agents ignore `enterprise_host`.
 pub fn build_login_cmd(agent_id: &str, enterprise_host: Option<&str>) -> String {
-    let exe_path = find_exe(agent_id)
-        .unwrap_or_else(|| agent_id.to_string());
+    let exe_path = find_exe(agent_id).unwrap_or_else(|| agent_id.to_string());
 
     // Agent-specific login subcommand
     let subcommand = match agent_id {
@@ -289,7 +288,10 @@ pub fn save_copilot_enterprise_host(host: &str) {
 /// Install an agent via winget. Streams output lines through `on_line` callback.
 /// On success, refreshes the process PATH so subsequent `find_exe` calls find
 /// the new binary.
-pub async fn install(agent_id: &str, on_line: impl FnMut(String) + Send + 'static) -> Result<(), String> {
+pub async fn install(
+    agent_id: &str,
+    on_line: impl FnMut(String) + Send + 'static,
+) -> Result<(), String> {
     match agent_id {
         "copilot" => install_copilot(on_line).await,
         _ => Err(t!("agent.install.unsupported", agent = agent_id).into_owned()),
@@ -406,13 +408,14 @@ pub async fn ensure_installed(
 
 /// Install GitHub Copilot via winget with streaming output.
 async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Result<(), String> {
-    use tokio::io::{AsyncBufReadExt, BufReader};
     use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
     let mut cmd = tokio::process::Command::new("winget");
     cmd.args([
         "install",
-        "--id", "GitHub.Copilot",
+        "--id",
+        "GitHub.Copilot",
         "--exact",
         "--silent",
         "--accept-package-agreements",
@@ -490,29 +493,38 @@ async fn install_copilot(mut on_line: impl FnMut(String) + Send + 'static) -> Re
 fn fresh_path() -> String {
     use std::os::windows::ffi::OsStringExt;
 
-    fn read_reg_path(hkey: windows_sys::Win32::System::Registry::HKEY, subkey: &str) -> Option<String> {
+    fn read_reg_path(
+        hkey: windows_sys::Win32::System::Registry::HKEY,
+        subkey: &str,
+    ) -> Option<String> {
         use windows_sys::Win32::System::Registry::*;
 
         let subkey_wide: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
         let value_name: Vec<u16> = "Path".encode_utf16().chain(std::iter::once(0)).collect();
 
         let mut hk: HKEY = std::ptr::null_mut();
-        let ret = unsafe {
-            RegOpenKeyExW(hkey, subkey_wide.as_ptr(), 0, KEY_READ, &mut hk)
-        };
-        if ret != 0 { return None; }
+        let ret = unsafe { RegOpenKeyExW(hkey, subkey_wide.as_ptr(), 0, KEY_READ, &mut hk) };
+        if ret != 0 {
+            return None;
+        }
 
         let mut buf_size: u32 = 8192;
         let mut buffer: Vec<u16> = vec![0u16; buf_size as usize / 2];
         let mut kind: u32 = 0;
         let ret = unsafe {
             RegQueryValueExW(
-                hk, value_name.as_ptr(), std::ptr::null(),
-                &mut kind, buffer.as_mut_ptr() as *mut u8, &mut buf_size,
+                hk,
+                value_name.as_ptr(),
+                std::ptr::null(),
+                &mut kind,
+                buffer.as_mut_ptr() as *mut u8,
+                &mut buf_size,
             )
         };
         unsafe { RegCloseKey(hk) };
-        if ret != 0 { return None; }
+        if ret != 0 {
+            return None;
+        }
 
         let len = (buf_size as usize / 2).saturating_sub(1);
         let raw = std::ffi::OsString::from_wide(&buffer[..len]);
@@ -549,18 +561,26 @@ fn expand_env_vars(s: &str) -> Option<String> {
     let wide: Vec<u16> = s.encode_utf16().chain(std::iter::once(0)).collect();
     let needed = unsafe {
         windows_sys::Win32::System::Environment::ExpandEnvironmentStringsW(
-            wide.as_ptr(), std::ptr::null_mut(), 0,
+            wide.as_ptr(),
+            std::ptr::null_mut(),
+            0,
         )
     };
-    if needed == 0 { return Some(s.to_string()); }
+    if needed == 0 {
+        return Some(s.to_string());
+    }
 
     let mut out: Vec<u16> = vec![0u16; needed as usize];
     let written = unsafe {
         windows_sys::Win32::System::Environment::ExpandEnvironmentStringsW(
-            wide.as_ptr(), out.as_mut_ptr(), needed,
+            wide.as_ptr(),
+            out.as_mut_ptr(),
+            needed,
         )
     };
-    if written == 0 { return Some(s.to_string()); }
+    if written == 0 {
+        return Some(s.to_string());
+    }
 
     let len = (written as usize).saturating_sub(1);
     let os_str = std::ffi::OsString::from_wide(&out[..len]);
@@ -657,8 +677,14 @@ mod tests {
         // exe path may resolve to a full path on dev machines, so assert on
         // the suffix / substring rather than an exact string.
         let base = build_login_cmd("copilot", None);
-        assert!(base.trim_end().ends_with("login"), "default copilot: {base}");
-        assert!(!base.contains("--host"), "default must not add --host: {base}");
+        assert!(
+            base.trim_end().ends_with("login"),
+            "default copilot: {base}"
+        );
+        assert!(
+            !base.contains("--host"),
+            "default must not add --host: {base}"
+        );
 
         let ghe = build_login_cmd("copilot", Some("mycompany.ghe.com"));
         assert!(
@@ -672,18 +698,27 @@ mod tests {
             ghe2.contains("login --host https://corp.ghe.com"),
             "normalized GHE login: {ghe2}"
         );
-        assert!(!ghe2.contains("https://https://"), "no double scheme: {ghe2}");
+        assert!(
+            !ghe2.contains("https://https://"),
+            "no double scheme: {ghe2}"
+        );
 
         // Plain github.com is the default — no --host.
         let gh = build_login_cmd("copilot", Some("github.com"));
-        assert!(!gh.contains("--host"), "github.com must not add --host: {gh}");
+        assert!(
+            !gh.contains("--host"),
+            "github.com must not add --host: {gh}"
+        );
     }
 
     #[test]
     fn build_login_cmd_non_copilot_ignores_host() {
         // Only Copilot honors an enterprise host; other agents never get one.
         let claude = build_login_cmd("claude", Some("mycompany.ghe.com"));
-        assert!(!claude.contains("--host"), "claude must ignore host: {claude}");
+        assert!(
+            !claude.contains("--host"),
+            "claude must ignore host: {claude}"
+        );
         assert!(claude.contains("login"), "claude login: {claude}");
 
         let codex = build_login_cmd("codex", Some("mycompany.ghe.com"));

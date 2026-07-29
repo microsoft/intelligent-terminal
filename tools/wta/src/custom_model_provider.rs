@@ -5,6 +5,10 @@ use tokio::process::Command;
 
 use crate::agent_registry::ByokMode;
 
+// Adapter-specific Chat Completions/Responses rendering does not create
+// separate persisted provider contracts.
+pub(crate) const CANONICAL_API_CONTRACT: &str = "openai-compatible";
+
 const SHARED_BASE_URL: &str = "WTA_CUSTOM_MODEL_BASE_URL";
 const SHARED_MODEL: &str = "WTA_CUSTOM_MODEL_ID";
 const SHARED_CREDENTIAL_ID: &str = "WTA_CUSTOM_MODEL_CREDENTIAL_ID";
@@ -28,6 +32,33 @@ const SHARED_METADATA_ENV_KEYS: &[&str] = &[
     SHARED_MODEL,
     SHARED_CREDENTIAL_ID,
     SHARED_API_KEY_REQUIRED,
+];
+#[cfg(test)]
+const COPILOT_PROVIDER_ENV_KEYS: &[&str] = &[
+    COPILOT_BASE_URL,
+    COPILOT_API_KEY,
+    COPILOT_PROVIDER_TYPE,
+    COPILOT_MODEL,
+    COPILOT_OFFLINE,
+];
+#[cfg(test)]
+const CODEX_PROVIDER_ENV_KEYS: &[&str] = &[CODEX_CONFIG, CODEX_MODEL_PROVIDER, PROVIDER_API_KEY];
+#[cfg(test)]
+const OPENCODE_PROVIDER_ENV_KEYS: &[&str] = &[OPENCODE_CONFIG_CONTENT, PROVIDER_API_KEY];
+const CLOUD_DISCOVERY_ENV_KEYS: &[&str] = &[
+    SHARED_BASE_URL,
+    SHARED_MODEL,
+    SHARED_CREDENTIAL_ID,
+    SHARED_API_KEY_REQUIRED,
+    COPILOT_BASE_URL,
+    COPILOT_API_KEY,
+    COPILOT_PROVIDER_TYPE,
+    COPILOT_MODEL,
+    COPILOT_OFFLINE,
+    CODEX_CONFIG,
+    CODEX_MODEL_PROVIDER,
+    OPENCODE_CONFIG_CONTENT,
+    PROVIDER_API_KEY,
 ];
 
 pub(crate) struct Config {
@@ -71,13 +102,25 @@ impl Config {
     }
 }
 
-pub(crate) fn is_configured() -> bool {
+pub(crate) fn shared_provider_is_complete() -> bool {
     Config::shared_from_env().is_complete()
+}
+
+pub(crate) fn normalize_api_contract(value: &str) -> Option<&'static str> {
+    if value
+        .bytes()
+        .all(|ch| matches!(ch, b' ' | b'\t' | b'\r' | b'\n'))
+        || value == CANONICAL_API_CONTRACT
+    {
+        Some(CANONICAL_API_CONTRACT)
+    } else {
+        None
+    }
 }
 
 /// Scrub shared provider metadata and the injected secret from every child,
 /// then adapt a complete shared configuration only for an agent that supports it.
-pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<()> {
+pub(crate) fn configure_child(cmd: &mut Command, byok_mode: ByokMode) -> Result<Option<ByokMode>> {
     let shared = Config::shared_from_env();
     configure_child_with_config(cmd, byok_mode, &shared)
 }
@@ -86,21 +129,57 @@ fn configure_child_with_config(
     cmd: &mut Command,
     byok_mode: ByokMode,
     shared: &Config,
-) -> Result<()> {
+) -> Result<Option<ByokMode>> {
+    scrub_shared_environment(cmd);
+
+    if !shared.is_complete() {
+        return Ok(None);
+    }
+    match byok_mode {
+        ByokMode::Unsupported => Ok(None),
+        ByokMode::CopilotProviderEnvironment => {
+            configure_copilot(cmd, shared)?;
+            Ok(Some(byok_mode))
+        }
+        ByokMode::CodexConfigEnvironment => {
+            configure_codex(cmd, shared)?;
+            Ok(Some(byok_mode))
+        }
+        ByokMode::OpenCodeConfigContent => {
+            configure_opencode(cmd, shared)?;
+            Ok(Some(byok_mode))
+        }
+    }
+}
+
+/// Remove every Intelligent Terminal shared-provider input and every
+/// agent-specific provider override so a discovery process sees only the
+/// agent's native cloud configuration.
+pub(crate) fn scrub_child_for_cloud_discovery(cmd: &mut Command) {
+    for key in CLOUD_DISCOVERY_ENV_KEYS {
+        cmd.env_remove(key);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn shared_provider_environment_keys(byok_mode: ByokMode) -> &'static [&'static str] {
+    match byok_mode {
+        ByokMode::Unsupported => &[],
+        ByokMode::CopilotProviderEnvironment => COPILOT_PROVIDER_ENV_KEYS,
+        ByokMode::CodexConfigEnvironment => CODEX_PROVIDER_ENV_KEYS,
+        ByokMode::OpenCodeConfigContent => OPENCODE_PROVIDER_ENV_KEYS,
+    }
+}
+
+pub(crate) fn cloud_discovery_environment_keys() -> &'static [&'static str] {
+    CLOUD_DISCOVERY_ENV_KEYS
+}
+
+fn scrub_shared_environment(cmd: &mut Command) {
     for key in SHARED_METADATA_ENV_KEYS {
         cmd.env_remove(key);
     }
     cmd.env_remove(PROVIDER_API_KEY);
-
-    if shared.is_complete() {
-        match byok_mode {
-            ByokMode::Unsupported => {}
-            ByokMode::CopilotProviderEnvironment => configure_copilot(cmd, shared)?,
-            ByokMode::CodexConfigEnvironment => configure_codex(cmd, shared)?,
-            ByokMode::OpenCodeConfigContent => configure_opencode(cmd, shared)?,
-        }
-    }
-    Ok(())
 }
 
 fn configure_copilot(cmd: &mut Command, config: &Config) -> Result<()> {
@@ -346,11 +425,9 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(&rendered).expect("Codex config should be valid JSON");
 
-        assert!(
-            parsed["model_providers"][PROVIDER_ID]
-                .get("env_key")
-                .is_none()
-        );
+        assert!(parsed["model_providers"][PROVIDER_ID]
+            .get("env_key")
+            .is_none());
     }
 
     #[test]
@@ -392,7 +469,7 @@ mod tests {
             cmd.env(key, "native-value");
         }
 
-        configure_child_with_config(
+        let applied = configure_child_with_config(
             &mut cmd,
             ByokMode::Unsupported,
             &Config {
@@ -404,6 +481,7 @@ mod tests {
             },
         )
         .expect("metadata scrubbing should succeed");
+        assert_eq!(applied, None);
 
         let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
         for key in SHARED_METADATA_ENV_KEYS {
@@ -462,8 +540,9 @@ mod tests {
                 cmd.env(key, "native-value");
             }
 
-            configure_child_with_config(&mut cmd, byok_mode, &incomplete)
+            let applied = configure_child_with_config(&mut cmd, byok_mode, &incomplete)
                 .expect("metadata scrubbing should succeed");
+            assert_eq!(applied, None);
 
             let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
             for key in SHARED_METADATA_ENV_KEYS {
@@ -479,6 +558,83 @@ mod tests {
                     Some(&Some(std::ffi::OsStr::new("native-value")))
                 );
             }
+        }
+    }
+
+    #[test]
+    fn complete_shared_config_applies_each_supported_agent_mode() {
+        let complete = Config {
+            base_url: "https://example.test/v1".to_string(),
+            model: "test-model".to_string(),
+            credential_id: None,
+            api_key_required: false,
+            credential_resource: "test",
+        };
+
+        for byok_mode in [
+            ByokMode::CopilotProviderEnvironment,
+            ByokMode::CodexConfigEnvironment,
+            ByokMode::OpenCodeConfigContent,
+        ] {
+            let mut cmd = Command::new("supported-agent");
+            let applied = configure_child_with_config(&mut cmd, byok_mode, &complete)
+                .expect("complete shared configuration should apply");
+            assert_eq!(applied, Some(byok_mode));
+
+            let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
+            for key in shared_provider_environment_keys(byok_mode) {
+                assert!(
+                    configured_env.contains_key(std::ffi::OsStr::new(key)),
+                    "{byok_mode:?} must configure {key}"
+                );
+            }
+            match byok_mode {
+                ByokMode::CopilotProviderEnvironment => {
+                    assert_eq!(
+                        configured_env.get(std::ffi::OsStr::new(COPILOT_BASE_URL)),
+                        Some(&Some(std::ffi::OsStr::new("https://example.test/v1")))
+                    );
+                    assert_eq!(
+                        configured_env.get(std::ffi::OsStr::new(COPILOT_MODEL)),
+                        Some(&Some(std::ffi::OsStr::new("test-model")))
+                    );
+                }
+                ByokMode::CodexConfigEnvironment => {
+                    assert_ne!(
+                        configured_env.get(std::ffi::OsStr::new(CODEX_CONFIG)),
+                        Some(&Some(std::ffi::OsStr::new("native-value")))
+                    );
+                    assert_eq!(
+                        configured_env.get(std::ffi::OsStr::new(CODEX_MODEL_PROVIDER)),
+                        Some(&Some(std::ffi::OsStr::new(PROVIDER_ID)))
+                    );
+                }
+                ByokMode::OpenCodeConfigContent => {
+                    assert!(configured_env
+                        .get(std::ffi::OsStr::new(OPENCODE_CONFIG_CONTENT))
+                        .is_some_and(|value| value.is_some()));
+                }
+                ByokMode::Unsupported => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn cloud_discovery_scrubs_shared_and_all_agent_provider_environment() {
+        let mut cmd = Command::new("cloud-probe");
+        for key in CLOUD_DISCOVERY_ENV_KEYS {
+            cmd.env(key, "must-not-leak");
+        }
+
+        scrub_child_for_cloud_discovery(&mut cmd);
+
+        let configured_env: std::collections::HashMap<_, _> = cmd.as_std().get_envs().collect();
+        for key in CLOUD_DISCOVERY_ENV_KEYS {
+            assert_eq!(
+                configured_env.get(std::ffi::OsStr::new(key)),
+                Some(&None),
+                "cloud discovery must scrub {key}"
+            );
         }
     }
 
@@ -515,4 +671,5 @@ mod tests {
             None
         );
     }
+
 }

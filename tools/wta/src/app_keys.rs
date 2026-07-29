@@ -265,14 +265,14 @@ impl App {
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
                     {
-                        self.current_tab_mut().agents_view.search_query.push(*character);
+                        self.current_tab_mut()
+                            .agents_view
+                            .search_query
+                            .push(*character);
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Up
-                    | KeyCode::Down
-                    | KeyCode::Enter
-                    | KeyCode::F(5) => {}
+                    KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::F(5) => {}
                     _ => return,
                 }
             }
@@ -452,8 +452,7 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab_mut().selected_recommendation > 0 {
                     self.current_tab_mut().selected_recommendation -= 1;
                     self.current_tab_mut().selected_button = self.default_button_for_selected();
@@ -464,8 +463,7 @@ impl App {
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Down if self.current_tab().turn.recommendations().is_some() =>
-            {
+            KeyCode::Down if self.current_tab().turn.recommendations().is_some() => {
                 let choices_len = self
                     .current_tab()
                     .turn
