@@ -28,8 +28,29 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
     let content_inner = card::inset_horizontal(content_area, 2);
     if content_inner.width > 0 {
-        let content = Paragraph::new(perm.description.clone())
-            .style(theme::CARD_DESCRIPTION)
+        // Header: optional kind glyph + the agent's own title. Unlike the
+        // chat tool-call card, the target line below is never deduped
+        // against the title — this card is a decision point, so
+        // restating exactly what's being authorized is intentional even
+        // if it repeats a preceding chat card (see
+        // `client.rs::request_permission`).
+        let header = match &perm.kind_label {
+            Some(icon) => format!("{icon} {}", perm.title),
+            None => perm.title.clone(),
+        };
+        let mut lines = vec![Line::styled(header, theme::CARD_DESCRIPTION)];
+        if let Some(target) = &perm.target {
+            // Commands get a `$` shell-prompt prefix (universally
+            // understood, no translation needed); paths are shown as-is —
+            // the code styling alone distinguishes it from the title.
+            let target_text = if perm.target_is_command {
+                format!("$ {target}")
+            } else {
+                target.clone()
+            };
+            lines.push(Line::styled(target_text, theme::CARD_CODE));
+        }
+        let content = Paragraph::new(lines)
             .alignment(crate::rtl::text_alignment())
             .wrap(Wrap { trim: false });
         frame.render_widget(content, content_inner);

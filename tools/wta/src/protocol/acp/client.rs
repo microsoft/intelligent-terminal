@@ -1518,6 +1518,124 @@ struct WtaClient {
     state: Arc<ClientState>,
 }
 
+/// Maximum characters kept in a tool-call `location` hint before truncation.
+/// Long enough for a typical path or one-line shell command, short enough
+/// that a runaway `raw_input` value (e.g. a full file-edit payload) can't
+/// blow up the chat card into a wall of text.
+const TOOL_CALL_LOCATION_MAX_CHARS: usize = 200;
+
+/// Best-effort extraction of *what* a tool call is touching: a file path
+/// (from `locations`/`raw_input.path`/`raw_input.file_path`) or a shell
+/// command (from `raw_input.command`/`commands`). Returns
+/// `(text, is_command)` so callers can decide how to render it — a path
+/// reads fine inline, but a command can be long and benefits from its own
+/// code-styled line (see `ChatMessage::ToolCall::location_is_command`,
+/// `PermissionState::target_is_command`).
+///
+/// Falls back to `None` rather than dumping the entire `raw_input` JSON,
+/// which would be noisy and could leak large payloads (e.g. file contents
+/// for a write/edit call) into the chat scrollback.
+fn tool_call_target(
+    locations: &[acp::schema::v1::ToolCallLocation],
+    raw_input: Option<&serde_json::Value>,
+) -> Option<(String, bool)> {
+    if let Some(loc) = locations.first() {
+        return Some((loc.path.to_string_lossy().to_string(), false));
+    }
+    let raw_input = raw_input?;
+    if let Some(p) = raw_input
+        .get("path")
+        .or_else(|| raw_input.get("file_path"))
+        .and_then(|v| v.as_str())
+    {
+        return Some((p.to_string(), false));
+    }
+    if let Some(c) = raw_input.get("command").and_then(|v| v.as_str()) {
+        return Some((c.to_string(), true));
+    }
+    if let Some(c) = raw_input
+        .get("commands")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+    {
+        return Some((c.to_string(), true));
+    }
+    None
+}
+
+/// Truncates a `tool_call_target` string to `TOOL_CALL_LOCATION_MAX_CHARS`,
+/// appending `…` when it had to cut.
+fn truncate_target(text: String) -> String {
+    let truncated = text.chars().count() > TOOL_CALL_LOCATION_MAX_CHARS;
+    let text: String = text.chars().take(TOOL_CALL_LOCATION_MAX_CHARS).collect();
+    if truncated { format!("{text}…") } else { text }
+}
+
+/// Best-effort one-line summary of *what* a tool call is touching, shown as
+/// a dim suffix (or, for commands, its own line) under the tool-call title
+/// in the **chat** card (see `ChatMessage::ToolCall::location`). Without
+/// this, cards only ever show the agent's often-generic `title` (e.g.
+/// "Access paths outside trusted directories") with no indication of the
+/// actual file/command involved.
+///
+/// `title` is the card's own title text; when the agent has already baked
+/// the hint into the title itself (common for read/view tool calls, e.g.
+/// title "Viewing C:\...\rust-app" with `locations: [{"path":
+/// "C:\...\rust-app"}]`), appending it again would just print the same
+/// string twice — `"Viewing X (X)"`. In that case we return `None` so the
+/// card shows the title alone. This dedupe is intentionally **not** applied
+/// on the permission dialog (see `request_permission`) — that card is a
+/// decision point, so restating the target explicitly is useful even if
+/// it repeats what a preceding chat tool-call card already showed.
+fn tool_call_location_hint(
+    title: &str,
+    locations: &[acp::schema::v1::ToolCallLocation],
+    raw_input: Option<&serde_json::Value>,
+) -> Option<(String, bool)> {
+    let (hint, is_command) = tool_call_target(locations, raw_input)?;
+
+    // Don't repeat text the title already contains — case-insensitive so
+    // "Viewing C:\...\rust-app" still dedupes against a locations path that
+    // differs only in case (e.g. drive-letter casing from a different code
+    // path).
+    if !title.is_empty() && title.to_lowercase().contains(&hint.to_lowercase()) {
+        return None;
+    }
+
+    Some((truncate_target(hint), is_command))
+}
+
+/// Short icon glyph for an ACP `ToolKind`, shown next to the title on the
+/// permission dialog (`PermissionState::kind_label`) so "Always allow" has
+/// *some* visual indication of what class of operation it covers — WTA has
+/// no visibility into the agent CLI's actual grant scope (that's entirely
+/// internal to the agent), so this is deliberately just a hint, not a claim
+/// about what "always" will match.
+///
+/// Deliberately a symbol, not an English word ("Read"/"Edit"/…) — this repo
+/// localizes every user-facing string into 85+ locales (see
+/// `rust-localization.instructions.md`), and a kind label is exactly the
+/// kind of ambiguous 1-2-word string that risks mistranslation (e.g.
+/// "Execute" reads as "kill" in several languages). A glyph sidesteps that
+/// entirely while still giving a scannable per-kind visual cue, consistent
+/// with how the rest of the chat UI already uses unlabeled marker glyphs
+/// (bullets, arrows) rather than words.
+///
+/// `None` for kinds with no useful visual framing (`Think`, `SwitchMode`,
+/// `Other`/unset) — the header just shows the title alone.
+fn tool_call_kind_label(kind: Option<&acp::schema::v1::ToolKind>) -> Option<&'static str> {
+    use acp::schema::v1::ToolKind;
+    match kind? {
+        ToolKind::Read | ToolKind::Search | ToolKind::Move => Some("→"),
+        ToolKind::Edit => Some("✎"),
+        ToolKind::Delete => Some("✕"),
+        ToolKind::Execute => Some("$"),
+        ToolKind::Fetch => Some("%"),
+        _ => None,
+    }
+}
+
 fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str {
     match update {
         acp::schema::v1::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
@@ -1542,12 +1660,28 @@ impl WtaClient {
         ));
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
-        let description = args
+        let title = args
             .tool_call
             .fields
             .title
             .clone()
             .unwrap_or_else(|| "Permission requested".to_string());
+        let kind_label = tool_call_kind_label(args.tool_call.fields.kind.as_ref());
+        // Unlike the chat tool-call card, the permission dialog never
+        // dedupes the target against the title — it's a decision point,
+        // so restating exactly what path/command is involved is
+        // intentional even if it repeats a preceding tool-call card.
+        let target_hint = tool_call_target(
+            args.tool_call.fields.locations.as_deref().unwrap_or(&[]),
+            args.tool_call.fields.raw_input.as_ref(),
+        )
+        .map(|(text, is_command)| (truncate_target(text), is_command));
+        // Fallback single-line text for the compact (1-row) card — see
+        // `PermissionState::description`.
+        let description = match &target_hint {
+            Some((target, _)) => format!("{title} ({target})"),
+            None => title.clone(),
+        };
         self.state
             .prompt_timing
             .permission_requested(&session_id, &description);
@@ -1564,10 +1698,18 @@ impl WtaClient {
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
 
+        let (target, target_is_command) = match target_hint {
+            Some((text, is_command)) => (Some(text), is_command),
+            None => (None, false),
+        };
         let _ = self.state.event_tx.send(AppEvent::PermissionRequest {
             session_id: session_id.clone(),
             tool_call_id,
             description,
+            title,
+            kind_label: kind_label.map(str::to_string),
+            target,
+            target_is_command,
             options,
             responder: resp_tx,
         });
@@ -1645,11 +1787,21 @@ impl WtaClient {
                 self.state
                     .prompt_timing
                     .observe_first_tool_call(&sid, Some(tool_call.title.as_str()));
+                let (location, location_is_command) = match tool_call_location_hint(
+                    &tool_call.title,
+                    &tool_call.locations,
+                    tool_call.raw_input.as_ref(),
+                ) {
+                    Some((text, is_command)) => (Some(text), is_command),
+                    None => (None, false),
+                };
                 let _ = self.state.event_tx.send(AppEvent::ToolCall {
                     session_id: sid,
                     id: tool_call.tool_call_id.to_string(),
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
+                    location,
+                    location_is_command,
                 });
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
@@ -1673,10 +1825,31 @@ impl WtaClient {
                         Some(msg) => format!("{:?}: {}", status, msg),
                         None => format!("{:?}", status),
                     };
+                    // Only compute a location when this update actually
+                    // carried fresh `locations`/`raw_input` — otherwise send
+                    // `None` so `app_events.rs` leaves the card's existing
+                    // hint alone instead of blanking it on every status-only
+                    // update (e.g. Pending -> InProgress -> Completed).
+                    let (location, location_is_command) = if update.fields.locations.is_some()
+                        || update.fields.raw_input.is_some()
+                    {
+                        match tool_call_location_hint(
+                            update.fields.title.as_deref().unwrap_or(""),
+                            update.fields.locations.as_deref().unwrap_or(&[]),
+                            update.fields.raw_input.as_ref(),
+                        ) {
+                            Some((text, is_command)) => (Some(text), is_command),
+                            None => (None, false),
+                        }
+                    } else {
+                        (None, false)
+                    };
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
                         id: update.tool_call_id.to_string(),
                         status: status_str,
+                        location,
+                        location_is_command,
                     });
                 }
             }
@@ -1731,14 +1904,27 @@ impl WtaClient {
         };
 
         let session_id = args.session_id.0.to_string();
+        let title = format!("{} {}", args.command, args.args.join(" "));
+        // Working directory doubles as this card's location hint — the
+        // title already has the full command line, but `cwd` is otherwise
+        // shown nowhere and is useful context for a relative-path command.
+        // Skip it if the command line already names that directory, to
+        // avoid printing the same path twice on one line.
+        let location = args
+            .cwd
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .filter(|cwd| !title.to_lowercase().contains(&cwd.to_lowercase()));
         match self.state.shell_mgr.create_terminal(config).await {
             Ok(id) => {
                 // Show tool-call-like feedback
                 let _ = self.state.event_tx.send(AppEvent::ToolCall {
                     session_id,
                     id: id.clone(),
-                    title: format!("{} {}", args.command, args.args.join(" ")),
+                    title,
                     status: "running".to_string(),
+                    location,
+                    location_is_command: false,
                 });
                 Ok(acp::schema::v1::CreateTerminalResponse::new(id))
             }
@@ -1781,6 +1967,8 @@ impl WtaClient {
                     session_id,
                     id: tid,
                     status: format!("exited ({})", code),
+                    location: None,
+                    location_is_command: false,
                 });
                 Ok(acp::schema::v1::WaitForTerminalExitResponse::new(
                     acp::schema::v1::TerminalExitStatus::new().exit_code(code),
@@ -3743,13 +3931,36 @@ async fn dispatch_prompt_body(
 mod tests {
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta, shell_from_active,
-        post_login_authenticate_error, timeout_result_failure_fields, user_locale_tag,
+        post_login_authenticate_error, timeout_result_failure_fields, tool_call_kind_label, user_locale_tag,
         PromptTimingState, SoftStopReason,
     };
     use super::acp;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::app::AppEvent;
     use tokio::sync::mpsc;
+
+    /// Each `ToolKind` that has a visual cue maps to a distinct, stable
+    /// glyph — not a translatable word (see `tool_call_kind_label`'s doc
+    /// comment: kind labels are exactly the kind of ambiguous 1-2-word
+    /// string this repo's 85+-locale localization flags as
+    /// mistranslation-prone, e.g. "Execute" reading as "kill"). Kinds with
+    /// no useful visual framing (`Think`, `SwitchMode`, `Other`) get `None`
+    /// so the permission card just shows the title alone.
+    #[test]
+    fn tool_call_kind_label_maps_each_kind_to_a_stable_glyph() {
+        use acp::schema::v1::ToolKind;
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Read)), Some("→"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Search)), Some("→"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Move)), Some("→"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Edit)), Some("✎"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Delete)), Some("✕"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Execute)), Some("$"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Fetch)), Some("%"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Think)), None);
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::SwitchMode)), None);
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Other)), None);
+        assert_eq!(tool_call_kind_label(None), None);
+    }
 
     /// `shell_from_active` resolves our own pid to a real exe name (the test
     /// binary). Proves the pid → image-name path works end to end on Windows;

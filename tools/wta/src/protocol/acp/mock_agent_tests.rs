@@ -1619,11 +1619,105 @@ async fn session_notification_routes_tool_call() {
             id,
             title,
             status,
+            ..
         }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(id, "tc-1");
             assert_eq!(title, "Run: echo hi");
             assert!(!status.is_empty(), "status should be a rendered enum name");
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// When the agent's own `title` already embeds the location text (common
+/// for read/view tool calls, e.g. title "Viewing C:\...\rust-app" whose
+/// `locations` names that exact same path), the hint must be suppressed —
+/// otherwise the card renders the path twice on one line: "Viewing X (X)".
+#[tokio::test]
+async fn session_notification_tool_call_omits_location_already_in_title() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    r"Viewing C:\Users\kaitao\codes\rust-app",
+                )
+                .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                    r"C:\Users\kaitao\codes\rust-app",
+                )]),
+            ),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => {
+            assert_eq!(location, None);
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// A `ToolCall` whose `locations` names a file surfaces that path as the
+/// event's `location` — this is what lets the chat card show *what* a
+/// generically-titled permission/read tool call actually touched (the bug
+/// this test guards: `client.rs` used to drop `locations`/`raw_input`
+/// entirely and only forward `title`/`status`).
+#[tokio::test]
+async fn session_notification_tool_call_surfaces_location_from_locations() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Access paths outside trusted directories",
+                )
+                .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                    r"C:\Users\kaitao\codes\rust-app",
+                )]),
+            ),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => {
+            assert_eq!(location.as_deref(), Some(r"C:\Users\kaitao\codes\rust-app"));
+        }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+/// When `locations` is empty (typical for `execute` tool calls), the
+/// `location` hint falls back to `raw_input.command` so the card can still
+/// show what's actually being run.
+#[tokio::test]
+async fn session_notification_tool_call_surfaces_location_from_raw_input_command() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Read main.rs",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": "Get-Content 'C:\\rust-app\\src\\main.rs'",
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => {
+            assert_eq!(
+                location.as_deref(),
+                Some("Get-Content 'C:\\rust-app\\src\\main.rs'")
+            );
         }
         _ => panic!("expected ToolCall"),
     }
@@ -1649,6 +1743,7 @@ async fn session_notification_routes_tool_call_update_status_only() {
             session_id,
             id,
             status,
+            ..
         }) => {
             assert_eq!(session_id, "s1");
             assert_eq!(id, "tc-1");
@@ -1778,6 +1873,152 @@ fn permission_request(sid: &str) -> acp::schema::v1::RequestPermissionRequest {
     )
 }
 
+/// When the tool call carries a `locations` path, `request_permission`
+/// appends it to the description so the dialog is actionable — without
+/// this, generic titles like "Access paths outside trusted directories"
+/// give the user no idea what path is actually being requested.
+#[tokio::test]
+async fn request_permission_description_includes_location_from_locations() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title("Access paths outside trusted directories")
+                        .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                            r"C:\Users\kaitao\codes\rust-app",
+                        )]),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle = tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    description,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(
+                        description,
+                        r"Access paths outside trusted directories (C:\Users\kaitao\codes\rust-app)"
+                    );
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                _ => panic!("expected PermissionRequest"),
+            }
+            handle.await.unwrap().unwrap();
+        })
+        .await;
+}
+
+/// The full-card `target`/`target_is_command`/`kind_label` fields must
+/// surface the concrete path even when it repeats the title verbatim —
+/// unlike the chat `ToolCall` card, the permission dialog is a decision
+/// point and must never silently drop the target via dedup.
+#[tokio::test]
+async fn request_permission_target_is_not_deduped_against_title() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title(r"Viewing C:\Users\kaitao\codes\rust-app")
+                        .kind(acp::schema::v1::ToolKind::Read)
+                        .locations(vec![acp::schema::v1::ToolCallLocation::new(
+                            r"C:\Users\kaitao\codes\rust-app",
+                        )]),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle = tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    target,
+                    target_is_command,
+                    kind_label,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(
+                        target.as_deref(),
+                        Some(r"C:\Users\kaitao\codes\rust-app"),
+                        "target must be present even though the title already contains it"
+                    );
+                    assert!(!target_is_command);
+                    assert_eq!(kind_label.as_deref(), Some("→"));
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                _ => panic!("expected PermissionRequest"),
+            }
+            handle.await.unwrap().unwrap();
+        })
+        .await;
+}
+
+/// An `execute`-kind tool call's target is flagged as a command (not a
+/// path) so the permission card can render it with the `$ ` shell-prompt
+/// prefix instead of as a plain path.
+#[tokio::test]
+async fn request_permission_execute_kind_marks_target_as_command() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let req = acp::schema::v1::RequestPermissionRequest::new(
+                acp::schema::v1::SessionId::new("s1"),
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("mock-tool-1"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .title("Run command")
+                        .kind(acp::schema::v1::ToolKind::Execute)
+                        .raw_input(Some(serde_json::json!({ "command": "rm -rf build" }))),
+                ),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    acp::schema::v1::PermissionOptionKind::AllowOnce,
+                )],
+            );
+            let handle = tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            match rx.recv().await {
+                Some(AppEvent::PermissionRequest {
+                    target,
+                    target_is_command,
+                    kind_label,
+                    responder,
+                    ..
+                }) => {
+                    assert_eq!(target.as_deref(), Some("rm -rf build"));
+                    assert!(target_is_command);
+                    assert_eq!(kind_label.as_deref(), Some("$"));
+                    responder.send("allow-once".to_string()).unwrap();
+                }
+                _ => panic!("expected PermissionRequest"),
+            }
+            handle.await.unwrap().unwrap();
+        })
+        .await;
+}
+
 /// `request_permission` surfaces a `PermissionRequest` event and, once the user
 /// picks an option through the responder, returns `Selected(option_id)`.
 #[tokio::test]
@@ -1797,6 +2038,7 @@ async fn request_permission_returns_selected_option() {
                     description,
                     options,
                     responder,
+                    ..
                 }) => {
                     assert_eq!(session_id, "s1");
                     assert_eq!(tool_call_id, "mock-tool-1");

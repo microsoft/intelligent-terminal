@@ -423,6 +423,19 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        /// Concise path/command hint pulled from the ACP tool call's
+        /// `locations` (first file path) or, failing that, a summarized
+        /// `raw_input` — see `client.rs::tool_call_location_hint`. `None`
+        /// when the agent didn't report a location and `raw_input` didn't
+        /// contain anything recognizable (e.g. a `path`/`command` field),
+        /// or when the title already states it verbatim (deduped).
+        location: Option<String>,
+        /// True when `location` is a shell command (sourced from
+        /// `raw_input.command`/`commands`) rather than a file path. Long
+        /// commands render on their own indented line below the title
+        /// instead of a `(location)` inline suffix — see `ui/chat.rs`.
+        #[serde(default)]
+        location_is_command: bool,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -531,7 +544,32 @@ impl PermOption {
 
 pub struct PermissionState {
     pub tool_call_id: String,
+    /// Fallback single-line text — used by the 1-row compact card when
+    /// the panel can't fit a full card (`ui/permission.rs::render_compact`).
+    /// Already combines `title` + `target` for that constrained context.
     pub description: String,
+    /// The agent's own tool-call title, unmodified — shown as the full
+    /// card's header line alongside `kind_label`.
+    pub title: String,
+    /// Icon glyph derived from ACP `ToolKind` (e.g. `"$"` for Execute,
+    /// `"✎"` for Edit), `None` when the agent didn't report a `kind` or it
+    /// doesn't map to a useful visual cue (e.g. `Think`/`SwitchMode`).
+    /// Shown next to the title so "Always allow" has *some* visual
+    /// indication of what class of operation it's scoped to, even though
+    /// WTA has no visibility into the agent CLI's actual grant scope. A
+    /// glyph rather than an English word ("Read"/"Execute") deliberately
+    /// avoids adding a new short, ambiguity-prone string to localize
+    /// across 85+ locales — see `client.rs::tool_call_kind_label`.
+    pub kind_label: Option<String>,
+    /// The concrete path/command/URL this request is about, always shown
+    /// on its own line in the full card — unlike the chat tool-call card,
+    /// this is never deduped against `title`: a permission dialog is a
+    /// decision point, so restating the target explicitly is intentional
+    /// (matches how Zed/opencode structure their permission dialogs).
+    pub target: Option<String>,
+    /// True when `target` is a shell command rather than a file path —
+    /// rendered as a code-styled line (see `ui/permission.rs`).
+    pub target_is_command: bool,
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
@@ -1235,11 +1273,23 @@ pub enum AppEvent {
         id: String,
         title: String,
         status: String,
+        /// See `ChatMessage::ToolCall::location`.
+        location: Option<String>,
+        /// See `ChatMessage::ToolCall::location_is_command`.
+        location_is_command: bool,
     },
     ToolCallUpdate {
         session_id: String,
         id: String,
         status: String,
+        /// `Some` only when the agent's `tool_call_update` actually
+        /// reported new `locations`/`raw_input` — `None` means "no
+        /// change", so the existing card's location hint (if any) is
+        /// left untouched rather than being blanked out.
+        location: Option<String>,
+        /// See `ChatMessage::ToolCall::location_is_command`. Only
+        /// meaningful when `location.is_some()`.
+        location_is_command: bool,
     },
     Plan {
         session_id: String,
@@ -1249,6 +1299,14 @@ pub enum AppEvent {
         session_id: String,
         tool_call_id: String,
         description: String,
+        /// See `PermissionState::title`.
+        title: String,
+        /// See `PermissionState::kind_label`.
+        kind_label: Option<String>,
+        /// See `PermissionState::target`.
+        target: Option<String>,
+        /// See `PermissionState::target_is_command`.
+        target_is_command: bool,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
     },
@@ -6499,22 +6557,40 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
 }
 
 /// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. No inter-card gap — only one card is ever shown.
+/// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
+/// a header line (`{kind_label} {title}` or just `title`) plus an optional
+/// second line for `target` — NOT `description`, which is only the
+/// fallback text for the 1-row compact card. No inter-card gap — only one
+/// card is ever shown.
 pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
     let inner_width = ui::card::card_content_width(panel_width);
-    let content_lines: usize = perm
-        .description
-        .lines()
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
-        })
-        .sum::<usize>()
-        .max(1);
+    let wrap_lines = |text: &str| -> usize {
+        text.lines()
+            .map(|line| {
+                let chars = line.chars().count();
+                if chars == 0 {
+                    1
+                } else {
+                    chars.div_ceil(inner_width)
+                }
+            })
+            .sum::<usize>()
+            .max(1)
+    };
+
+    let header = match &perm.kind_label {
+        Some(icon) => format!("{icon} {}", perm.title),
+        None => perm.title.clone(),
+    };
+    let mut content_lines = wrap_lines(&header);
+    if let Some(target) = &perm.target {
+        let target_text = if perm.target_is_command {
+            format!("$ {target}")
+        } else {
+            target.clone()
+        };
+        content_lines += wrap_lines(&target_text);
+    }
     // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
     ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
 }

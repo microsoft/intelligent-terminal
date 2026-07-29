@@ -1426,6 +1426,8 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
             id: "t1".to_string(),
             title: "ls".to_string(),
             status: "done".to_string(),
+            location: None,
+            location_is_command: false,
         },
         ChatMessage::Agent("Here are the files...".to_string()),
     ];
@@ -4669,6 +4671,10 @@ fn perm_option_kind_matching_is_case_insensitive() {
     let perm = PermissionState {
         tool_call_id: "tool".into(),
         description: String::new(),
+        title: String::new(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
         options: vec![opt("AllowOnce"), opt("RejectOnce")],
         selected: 0,
         responder: None,
@@ -4699,6 +4705,10 @@ fn permission_request_permanently_clears_thinking_latch() {
         session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: "Allow tool X?".into(),
+        title: "Allow tool X?".into(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
         options: vec![
             PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
             PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
@@ -5071,6 +5081,10 @@ fn render_permission_card_shows_options() {
     app.current_tab_mut().permission.push_back(PermissionState {
         tool_call_id: "tool".into(),
         description: "Run: echo PERM_XYZ".into(),
+        title: "Run: echo PERM_XYZ".into(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
         options: vec![
             PermOption {
                 id: "allow-once".into(),
@@ -5098,6 +5112,43 @@ fn render_permission_card_shows_options() {
     );
 }
 
+/// Render: the full permission card must show the kind glyph next to the
+/// title and the concrete target (path or command) on its own line — even
+/// though the target here is deliberately the same text already implied by
+/// the title, it must still render (the permission card never dedupes,
+/// unlike the chat tool-call card). A command target additionally gets the
+/// `$ ` shell-prompt prefix so it reads distinctly from a path.
+#[test]
+fn render_permission_card_shows_kind_glyph_and_target() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().permission.push_back(PermissionState {
+        tool_call_id: "tool".into(),
+        description: "Run command (rm -rf build)".into(),
+        title: "Run command".into(),
+        kind_label: Some("$".into()),
+        target: Some("rm -rf build".into()),
+        target_is_command: true,
+        options: vec![PermOption {
+            id: "allow-once".into(),
+            name: "Allow once".into(),
+            kind: "AllowOnce".into(),
+        }],
+        selected: 0,
+        responder: None,
+    });
+
+    let text = render_to_text(&mut app, 80, 24);
+    assert!(
+        text.contains("$ Run command"),
+        "the header must show the kind glyph next to the title; rendered:\n{text}"
+    );
+    assert!(
+        text.contains("$ rm -rf build"),
+        "the target line must show the command with a shell-prompt prefix; rendered:\n{text}"
+    );
+}
+
 /// Render: a tool-call card must paint its title in the chat. Lifts the
 /// tool-call branch of `ui/chat.rs`.
 #[test]
@@ -5108,6 +5159,8 @@ fn render_tool_call_card_in_chat() {
         id: "mock-tool-1".into(),
         title: "Run: echo TOOL_XYZ".into(),
         status: "Pending".into(),
+        location: None,
+        location_is_command: false,
     });
 
     let text = render_to_text(&mut app, 80, 24);
@@ -6010,6 +6063,10 @@ fn render_permission_compact_shows_hint() {
     app.current_tab_mut().permission.push_back(PermissionState {
         tool_call_id: "tool".into(),
         description: "Run: echo PERM_COMPACT_XYZ".into(),
+        title: "Run: echo PERM_COMPACT_XYZ".into(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
         options: vec![
             PermOption {
                 id: "allow-once".into(),
@@ -6187,6 +6244,8 @@ fn tool_call_permanently_clears_thinking_latch() {
         id: "tool".into(),
         title: "Find files".into(),
         status: "InProgress".into(),
+        location: None,
+        location_is_command: false,
     });
     assert!(!app.current_tab().should_show_thinking());
 
@@ -6194,6 +6253,8 @@ fn tool_call_permanently_clears_thinking_latch() {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool".into(),
         status: "Completed".into(),
+        location: None,
+        location_is_command: false,
     });
     assert!(
         !app.current_tab().should_show_thinking(),
@@ -6433,6 +6494,10 @@ fn perm_with(desc: &str) -> PermissionState {
     PermissionState {
         tool_call_id: "tool".into(),
         description: desc.to_string(),
+        title: desc.to_string(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
         options: vec![PermOption {
             id: "allow_once".into(),
             name: "Allow".into(),
