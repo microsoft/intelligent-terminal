@@ -5,6 +5,7 @@
 
 #include "pch.h"
 #include "TabStrip.h"
+#include "TabStripAutomationPeer.h"
 
 #include "TabStrip.g.cpp"
 #include "TabStripSelectionChangedEventArgs.g.cpp"
@@ -168,6 +169,11 @@ namespace winrt::TerminalApp::implementation
                 TabCloseRequested.raise(*this, *args);
             }
         }
+    }
+
+    WUX::Automation::Peers::AutomationPeer TabStrip::OnCreateAutomationPeer()
+    {
+        return winrt::make<TabStripAutomationPeer>(*this);
     }
 
     void TabStrip::OnListSelectionChanged(IInspectable const& /*sender*/,

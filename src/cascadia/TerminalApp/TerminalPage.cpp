@@ -423,12 +423,8 @@ namespace winrt::TerminalApp::implementation
         _tabStrip = _tabRow.TabStrip();
         _rearranging = false;
 
-        // Dev toggle for Spec A implementation. While the tabLayout setting
-        // and its wiring don't exist yet (Phase 7), setting
-        // WT_VERTICAL_TABS_PROTOTYPE=1 flips the TabRow to vertical so devs
-        // can exercise the incremental TabStrip work in phases 3–6. The env
-        // var goes away when the real setting lands.
-        //if (wil::TryGetEnvironmentVariableW<std::wstring>(L"WT_VERTICAL_TABS_PROTOTYPE") == L"1")
+        // Spec A §1: layout is driven by the tabLayout global setting.
+        if (_settings.GlobalSettings().TabLayout() == TabLayout::Vertical)
         {
             _tabRow.IsVerticalLayout(true);
         }
@@ -498,15 +494,34 @@ namespace winrt::TerminalApp::implementation
             transparent.Color(Windows::UI::Colors::Transparent());
             _tabRow.Background(transparent);
         }
-        else if (_isVerticalLayout && _settings.GlobalSettings().ShowTabsInTitlebar())
+        else if (_isVerticalLayout)
         {
-            // Vertical mode: TabRow stays in the page, but hand shield +
-            // workspaces to the titlebar so they sit next to min/max/close.
-            // TabRowControl::_reparentChromeToVertical built the panel during
-            // IsVerticalLayout(true) above.
+            // Vertical mode: TabRow stays in the page. TabRowControl already
+            // extracted shield + workspaces into VerticalTitleBarContent
+            // during IsVerticalLayout(true). Where the chrome lands depends
+            // on whether we have a non-client-area titlebar to host it:
+            //   - showTabsInTitlebar=true  -> hand it to the extended titlebar
+            //     (sits next to min/max/close, matches Spec A mock).
+            //   - showTabsInTitlebar=false -> no titlebar to host it, so dock
+            //     it at the top of the rail and flip to vertical orientation.
+            // Spec A §1 nominally says "silently force showTabsInTitlebar to
+            // false in vertical", but that removes the titlebar entirely and
+            // leaves nowhere for the workspaces button. Respecting the user's
+            // choice + graceful fallback matches the reviewed UX.
             if (const auto content = winrt::get_self<implementation::TabRowControl>(_tabRow)->VerticalTitleBarContent())
             {
-                SetTitleBarContent.raise(*this, content);
+                if (_settings.GlobalSettings().ShowTabsInTitlebar())
+                {
+                    SetTitleBarContent.raise(*this, content);
+                }
+                else
+                {
+                    if (const auto panel = content.try_as<WUX::Controls::StackPanel>())
+                    {
+                        panel.Orientation(WUX::Controls::Orientation::Vertical);
+                    }
+                    _tabStrip.LeadingContent(content);
+                }
             }
         }
         _updateThemeColors();

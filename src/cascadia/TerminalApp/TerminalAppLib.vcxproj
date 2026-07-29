@@ -138,6 +138,7 @@
     <ClInclude Include="TabStrip.h">
       <DependentUpon>TabStrip.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="TabStripAutomationPeer.h" />
     <ClInclude Include="HighlightedTextControl.h">
       <DependentUpon>HighlightedTextControl.idl</DependentUpon>
     </ClInclude>
@@ -263,6 +264,7 @@
     <ClCompile Include="TabStrip.cpp">
       <DependentUpon>TabStrip.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="TabStripAutomationPeer.cpp" />
     <ClCompile Include="HighlightedTextControl.cpp">
       <DependentUpon>HighlightedTextControl.idl</DependentUpon>
     </ClCompile>
@@ -382,6 +384,9 @@
     </Midl>
     <Midl Include="TabStrip.idl">
       <DependentUpon>TabStrip.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="TabStripAutomationPeer.idl">
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="HighlightedTextControl.idl">

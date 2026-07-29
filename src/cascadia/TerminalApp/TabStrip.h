@@ -108,6 +108,11 @@ namespace winrt::TerminalApp::implementation
         void OnCustomCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
                                  winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
 
+        // Spec A §2.4: reports the rail as an AutomationControlType::Tab
+        // container so screen readers (Narrator / third-party AT) treat it
+        // like the horizontal MUX TabView rather than a generic UserControl.
+        winrt::Windows::UI::Xaml::Automation::Peers::AutomationPeer OnCreateAutomationPeer();
+
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripSelectionChangedEventArgs> SelectionChanged;
         til::typed_event<TerminalApp::TabStrip, TerminalApp::TabStripCloseRequestedEventArgs> TabCloseRequested;
         til::typed_event<TerminalApp::TabStrip, winrt::Windows::Foundation::Collections::IVectorChangedEventArgs> TabItemsChanged;
