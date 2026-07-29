@@ -36,7 +36,18 @@ Describe 'Feature: agent pane mouse interactions' -Tag 'Feature' -Skip:(-not $sc
         $topMarker = "MOUSE_SCROLL_TOP_$id"
         $bottomMarker = "MOUSE_SCROLL_BOTTOM_$id"
         $session = Get-AgentPaneSession -App $script:app
-        $longPrompt = "$topMarker $(('SCROLL_FILLER ' * 120).Trim()) $bottomMarker"
+        $viewportLines = @((
+            Get-AgentPaneText -App $script:app -PaneSessionId $session.PaneSessionId -MaxLines 500
+        ) -split "`r?`n")
+        $visibleRows = [Math]::Max(1, $viewportLines.Count)
+        $visibleColumns = [Math]::Max(
+            1,
+            [int](($viewportLines | ForEach-Object Length | Measure-Object -Maximum).Maximum)
+        )
+        # Fill more cells than the measured viewport can display, so this remains
+        # deterministic across pane positions, window sizes, and display scales.
+        $fillerCount = [Math]::Ceiling(($visibleRows * $visibleColumns * 2) / 'SCROLL_FILLER '.Length)
+        $longPrompt = "$topMarker $(('SCROLL_FILLER ' * $fillerCount).Trim()) $bottomMarker"
         Send-AgentPrompt -App $script:app -PaneSessionId $session.PaneSessionId -Text $longPrompt | Out-Null
         $submitted = Test-Until -TimeoutSec 10 -IntervalSec 0.2 -Condition {
             $text = Get-AgentPaneText -App $script:app -PaneSessionId $session.PaneSessionId -MaxLines 100
