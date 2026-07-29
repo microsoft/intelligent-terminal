@@ -10,7 +10,7 @@
 //! + `new_session`, and exits.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -262,9 +262,11 @@ pub(crate) fn spawn_agent_process(
     // `hook-trace.log` lands alongside this build's Rust + C++ logs.
     cmd.env("WTA_HOOK_LOG_DIR", crate::logging::log_dir());
 
-    // Proposal commands must execute this exact trusted binary path.
-    let wta_cli_path =
-        std::env::current_exe().context("failed to resolve the running wta executable")?;
+    // Packaged agents cannot reliably execute the protected WindowsApps
+    // package path directly. Use this package family's execution alias so the
+    // OS performs the launch, while unpackaged builds keep targeting this
+    // exact development binary.
+    let wta_cli_path = proposal_cli_path()?;
     cmd.env("WTA_CLI_PATH", wta_cli_path);
 
     // Forward the user's locale to the agent process via standard POSIX
@@ -318,6 +320,35 @@ pub(crate) fn spawn_agent_process(
         is_npx,
         adapter_package,
     })
+}
+
+fn proposal_cli_path() -> Result<PathBuf> {
+    let package_family = crate::runtime_paths::current_package_family_name();
+    let local_app_data = std::env::var_os("LOCALAPPDATA");
+    let current_exe =
+        std::env::current_exe().context("failed to resolve the running wta executable")?;
+    proposal_cli_path_for(
+        package_family.as_deref(),
+        local_app_data.as_deref(),
+        &current_exe,
+    )
+}
+
+fn proposal_cli_path_for(
+    package_family: Option<&std::ffi::OsStr>,
+    local_app_data: Option<&std::ffi::OsStr>,
+    current_exe: &Path,
+) -> Result<PathBuf> {
+    let Some(package_family) = package_family else {
+        return Ok(current_exe.to_path_buf());
+    };
+    let local_app_data = local_app_data
+        .context("LOCALAPPDATA is required to resolve the packaged wta execution alias")?;
+    Ok(PathBuf::from(local_app_data)
+        .join("Microsoft")
+        .join("WindowsApps")
+        .join(package_family)
+        .join("wta.exe"))
 }
 
 /// Spawn an ACP agent in the selected per-tab execution source.
@@ -437,6 +468,31 @@ fn canonicalize_posix_locale(tag: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packaged_proposal_cli_uses_package_specific_execution_alias() {
+        let path = proposal_cli_path_for(
+            Some(std::ffi::OsStr::new("IntelligentTerminal_test")),
+            Some(std::ffi::OsStr::new(r"C:\Users\test\AppData\Local")),
+            Path::new(r"C:\Program Files\WindowsApps\package\wta.exe"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            path,
+            PathBuf::from(
+                r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\IntelligentTerminal_test\wta.exe"
+            )
+        );
+    }
+
+    #[test]
+    fn unpackaged_proposal_cli_uses_running_executable() {
+        let current_exe = Path::new(r"C:\src\wta\target\debug\wta.exe");
+        let path = proposal_cli_path_for(None, None, current_exe).unwrap();
+
+        assert_eq!(path, current_exe);
+    }
 
     #[test]
     fn wsl_launch_script_quotes_every_agent_argument() {

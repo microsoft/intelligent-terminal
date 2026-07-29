@@ -108,9 +108,14 @@ The only auto-approvable PowerShell form is:
 & "$env:WTA_CLI_PATH" propose-terminal-actions --channel <channel> --payload-json '<compact-json>'
 ```
 
-`WTA_CLI_PATH` is set by WTA to its trusted current executable. Proposal JSON
-must be compact UTF-8 JSON encoded as one PowerShell single-quoted argument;
-literal apostrophes are escaped by doubling them. The command has no pipeline,
+For a packaged installation, WTA sets `WTA_CLI_PATH` to the package-family
+specific App Execution Alias at
+`%LOCALAPPDATA%\Microsoft\WindowsApps\<package-family>\wta.exe`. This lets an
+external Agent launch WTA through the registered package boundary instead of
+directly executing the protected package file. An unpackaged development build
+uses its trusted current executable path instead. Proposal JSON must be compact
+UTF-8 JSON encoded as one PowerShell single-quoted argument; literal
+apostrophes are escaped by doubling them. The command has no pipeline,
 redirection, here-string, command substitution, temporary file, extra
 argument, or alternate executable spelling.
 
