@@ -28,6 +28,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ValidateDuplicateProfiles);
         TEST_METHOD(ValidateManyWarnings);
         TEST_METHOD(LayerGlobalProperties);
+        TEST_METHOD(TabLayoutSetting);
         TEST_METHOD(ValidateProfileOrdering);
         TEST_METHOD(ValidateHideProfiles);
         TEST_METHOD(TestReorderWithNullGuids);
@@ -380,6 +381,33 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(240, settings->GlobalSettings().InitialCols());
         VERIFY_ARE_EQUAL(60, settings->GlobalSettings().InitialRows());
         VERIFY_ARE_EQUAL(false, settings->GlobalSettings().ShowTabsInTitlebar());
+    }
+
+    // Spec A §7: verify that `tabLayout` deserializes to the TabLayout enum
+    // and that `tabLayoutVerticalWidth` round-trips as an int32, so a user
+    // opting into vertical tabs actually reaches the vertical branch in
+    // TerminalPage::Create.
+    void DeserializationTests::TabLayoutSetting()
+    {
+        static constexpr std::string_view inboxSettings{ R"({})" };
+        static constexpr std::string_view horizontalDefault{ R"({
+            "profiles": [ { "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}" } ]
+        })" };
+        static constexpr std::string_view verticalExplicit{ R"({
+            "tabLayout": "vertical",
+            "tabLayoutVerticalWidth": 320,
+            "profiles": [ { "guid": "{6239a42c-0000-49a3-80bd-e8fdd045185c}" } ]
+        })" };
+
+        {
+            const auto settings = winrt::make_self<implementation::CascadiaSettings>(horizontalDefault, inboxSettings);
+            VERIFY_ARE_EQUAL(TabLayout::Horizontal, settings->GlobalSettings().TabLayout());
+        }
+        {
+            const auto settings = winrt::make_self<implementation::CascadiaSettings>(verticalExplicit, inboxSettings);
+            VERIFY_ARE_EQUAL(TabLayout::Vertical, settings->GlobalSettings().TabLayout());
+            VERIFY_ARE_EQUAL(320, settings->GlobalSettings().TabLayoutVerticalWidth());
+        }
     }
 
     void DeserializationTests::ValidateProfileOrdering()
