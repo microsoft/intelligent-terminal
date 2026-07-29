@@ -706,7 +706,8 @@ async fn main() -> Result<()> {
     // per-mode handlers below no longer init their own. The appender's guard
     // is held in a global and flushed via `logging::shutdown_flush()` on every
     // exit path (see the calls below and before each `process::exit`).
-    logging::init(&process_label(&cli));
+    let process_label = process_label(&cli);
+    logging::init(&process_label);
     // Log + flush on console teardown signals (pane/tab/window close, logoff,
     // shutdown) so a torn-down helper isn't a silent disappearance. Installed
     // process-wide; see `install_ctrl_handler` for coverage limits — notably
@@ -719,7 +720,11 @@ async fn main() -> Result<()> {
     // panic isn't a silent death — stderr is invisible for a ConPTY helper /
     // CREATE_NO_WINDOW master. Chains the default hook; semantics unchanged.
     logging::install_panic_hook();
-    tracing::info!(version = env!("CARGO_PKG_VERSION"), "=== wta starting ===");
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        process = %process_label,
+        "=== wta starting ==="
+    );
 
     let locale = cli
         .language
