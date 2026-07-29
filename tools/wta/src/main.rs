@@ -8,6 +8,7 @@ mod agent_registry;
 mod agent_source;
 mod agent_sessions;
 mod app;
+mod app_contracts;
 mod clipboard_image;
 mod command_recall;
 mod commands;
@@ -35,12 +36,14 @@ mod shell;
 mod telemetry;
 #[cfg(test)]
 mod test_support;
+mod text_selection;
 mod theme;
 mod ui;
 mod ui_trace;
 mod win32;
 mod wsl;
 mod wsl_acp;
+mod wt_protocol_events;
 
 use agent_client_protocol as acp;
 use anyhow::{bail, Context, Result};

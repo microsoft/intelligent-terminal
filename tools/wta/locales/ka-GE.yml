@@ -132,6 +132,7 @@ connection.lost: "აგენტთან კავშირი დაიკა
 
 # ── სისტემური შეტყობინებები (src/app.rs) ────────────────────────────────────
 system.close_pane_hint: "პანელის დასახურად კვლავ დააჭირეთ Ctrl+C"  # {Locked="Ctrl+C"}
+system.selection_copied: "კოპირებულია"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "გაუქმებულია."
 system.no_prompt_in_flight: "მიმდინარე მოთხოვნა არ არის."
 system.authentication_failed: "ავთენტიფიკაცია ვერ მოხერხდა"

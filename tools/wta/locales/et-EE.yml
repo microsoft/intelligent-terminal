@@ -119,6 +119,7 @@ connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restar
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Paneeli sulgemiseks vajutage Ctrl+C uuesti"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopeeritud"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Tühistatud."
 system.no_prompt_in_flight: "Aktiivset päringut pole."
 system.authentication_failed: "Autentimine nurjus"

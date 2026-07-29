@@ -120,6 +120,7 @@ connection.lost: "ከኤጅንት ጋር ያለው ግንኙነት ጠፍቷል�
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "pane ለመዝጋት Ctrl+C እንደገና ይጫኑ"  # {Locked="Ctrl+C"}
+system.selection_copied: "ተቀድቷል"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"

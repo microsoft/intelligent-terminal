@@ -132,6 +132,7 @@ connection.lost: "ஏஜெண்டுடனான இணைப்பு து
 
 # ── கணினி செய்திகள் (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "பலகத்தை மூட Ctrl+C ஐ மீண்டும் அழுத்தவும்."  # {Locked="Ctrl+C"}
+system.selection_copied: "நகலெடுக்கப்பட்டது"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ரத்துசெய்யப்பட்டது."
 system.no_prompt_in_flight: "நிலுவையில் எந்தப் பிராம்ப்ட்டும் இல்லை."
 system.authentication_failed: "அங்கீகாரம் தோல்வியடைந்தது"

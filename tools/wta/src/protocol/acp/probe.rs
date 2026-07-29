@@ -22,7 +22,7 @@ use serde::Serialize;
 use std::time::Duration;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::app::AcpModelInfo;
+use crate::app_contracts::AcpModelInfo;
 use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{spawn_agent_process, AgentStderrLog};
 

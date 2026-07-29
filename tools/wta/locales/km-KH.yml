@@ -133,6 +133,7 @@ connection.lost: "ការតភ្ជាប់ទៅ AI អេជេន្ត�
 
 # ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────────
 system.close_pane_hint: "ចុច Ctrl+C ម្តងទៀត ដើម្បីបិទផ្តាំង"  # {Locked="Ctrl+C"}
+system.selection_copied: "បានចម្លង"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "បានបោះបង់។"
 system.no_prompt_in_flight: "គ្មានសំណើកំពុងដំណើរការ។"
 system.authentication_failed: "ការផ្ទៀងផ្ទាត់បរាជ័យ"

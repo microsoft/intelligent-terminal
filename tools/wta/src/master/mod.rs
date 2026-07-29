@@ -2720,7 +2720,7 @@ fn emit_restart_agent_pane(tab_id: &str, session_id: Option<&acp::schema::v1::Se
         session_id = ?session_id,
         "emitting restart_agent_pane (helper disconnected)"
     );
-    crate::app::send_wt_protocol_event(evt.to_string());
+    crate::wt_protocol_events::send(evt.to_string());
 }
 
 /// Pure builder for the `restart_agent_pane` WT-protocol event payload.

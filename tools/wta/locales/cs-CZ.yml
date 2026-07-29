@@ -129,6 +129,7 @@ connection.lost: "Připojení k agentovi bylo ztraceno. Zadáním /restart se zn
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Stiskněte Ctrl+C znovu pro zavření panelu"  # {Locked="Ctrl+C"}
+system.selection_copied: "Zkopírováno"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Zrušeno."
 system.no_prompt_in_flight: "Žádný dotaz neprobíhá."
 system.authentication_failed: "Ověření se nezdařilo"

@@ -133,6 +133,7 @@ connection.lost: "فُقد الاتصال بعامل الذكاء الاصطنا
 
 # ── رسائل النظام (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "اضغط Ctrl+C مرة أخرى لإغلاق اللوحة"  # {Locked="Ctrl+C"}
+system.selection_copied: "تم النسخ"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "تم الإلغاء."
 system.no_prompt_in_flight: "لا يوجد أمر قيد التنفيذ."
 system.authentication_failed: "فشلت المصادقة"

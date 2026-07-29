@@ -119,6 +119,7 @@ connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konek
 
 # ── Sistema-mezuak (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Sakatu Ctrl+C berriro panela ixteko"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopiatuta"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Bertan behera utzia."
 system.no_prompt_in_flight: "Ez dago gonbidapenik abian."
 system.authentication_failed: "Autentifikazioak huts egin du"

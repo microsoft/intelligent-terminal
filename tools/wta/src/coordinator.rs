@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
-use crate::app::AppEvent;
+use crate::app_contracts::AppEvent;
 use crate::shell::ShellManager;
 
 use crate::agent_registry::{self, PromptFlag};

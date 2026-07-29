@@ -39,13 +39,6 @@ struct DeferredAcpParams {
     owner_tab_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AvailableAgent {
-    pub id: String,
-    pub display_name: String,
-    pub source: crate::agent_source::AgentSource,
-}
-
 fn agent_command_on_enter(
     input: &str,
     selected: Option<&AvailableAgent>,
@@ -109,6 +102,10 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
 use crate::commands::{
     self, CommandKind, CommandSpec, MovePositionSpec, ParseOutcome, ParsedCommand,
 };
+pub use crate::app_contracts::{
+    AcpModelInfo, AppEvent, AvailableAgent, CheckStatus, DebugDir, DebugMessage, PermOption,
+    PlanEntry, PlanEntryStatus, PreflightResult,
+};
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
     validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
@@ -122,21 +119,7 @@ use crate::protocol::acp::client::{
 };
 use crate::ui;
 use crate::ui_trace;
-
-// --- Debug types ---
-
-#[derive(Debug, Clone)]
-pub enum DebugDir {
-    Sent,
-    Received,
-}
-
-#[derive(Debug, Clone)]
-pub struct DebugMessage {
-    pub timestamp: f64,
-    pub direction: DebugDir,
-    pub content: String,
-}
+use crate::wt_protocol_events::send as send_wt_protocol_event;
 
 // --- Application mode ---
 
@@ -249,65 +232,6 @@ pub struct SetupState {
     pub title: String,
     /// Dynamic subtitle for the setup screen.
     pub subtitle: String,
-}
-
-/// Status of a single preflight check.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CheckStatus {
-    Checking,
-    Passed,
-    Failed(String),
-    Skipped,
-}
-
-/// Result of all preflight checks for an agent.
-#[derive(Debug, Clone)]
-pub struct PreflightResult {
-    pub agent_id: String,
-    pub display_name: String,
-    pub cli_status: CheckStatus,
-    pub cli_path: Option<String>,
-    pub auth_status: CheckStatus,
-    pub install_hint: String,
-    pub install_url: String,
-    pub auth_hint: String,
-}
-
-impl PreflightResult {
-    pub fn all_passed(&self) -> bool {
-        self.cli_status == CheckStatus::Passed
-            && matches!(self.auth_status, CheckStatus::Passed | CheckStatus::Skipped)
-    }
-
-    /// Synthesize a `Passed` preflight result for a custom or unknown agent
-    /// id. We deliberately do **not** run an out-of-band PATH check for these
-    /// — the user-supplied command can be anything (`.cmd`, `.ps1`,
-    /// `node script.js`, an alias) and any guess we make disagrees with what
-    /// the spawner actually does. Real spawn failures surface via the
-    /// `ConnectionFailed` → `ConnectionState::Failed` lifecycle, which is the
-    /// authoritative error path.
-    ///
-    /// Returning `cli_status=Passed` keeps the TUI out of Setup mode so the
-    /// chat input stays responsive. The display name is derived from the
-    /// canonical id (`custom:<name>` → `<name>`) so the UI never collapses
-    /// to the generic `DEFAULT_PROFILE` "Agent" label.
-    pub fn passed_for_custom_agent(canonical_id: &str) -> Self {
-        let display_name = canonical_id
-            .strip_prefix("custom:")
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| canonical_id.to_string());
-        Self {
-            agent_id: canonical_id.to_string(),
-            display_name,
-            cli_status: CheckStatus::Passed,
-            cli_path: None,
-            auth_status: CheckStatus::Skipped,
-            install_hint: String::new(),
-            install_url: String::new(),
-            auth_hint: String::new(),
-        }
-    }
 }
 
 /// True for the auth failures a post-login reconnect can hit when the shared
@@ -501,45 +425,6 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
         out.push('…');
     }
     out
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlanEntry {
-    pub content: String,
-    pub status: PlanEntryStatus,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PlanEntryStatus {
-    Pending,
-    InProgress,
-    Completed,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PermOption {
-    pub id: String,
-    pub name: String,
-    pub kind: String,
-}
-
-impl PermOption {
-    /// True if this is an "allow" option. Case-insensitive because `kind`
-    /// is the ACP `PermissionOptionKind` rendered via `format!("{:?}", …)`,
-    /// which yields PascalCase variants like `AllowOnce` / `AllowAlways`.
-    /// Matching the leading `allow` prefix here keeps the `y`/`n` quick-keys
-    /// and the `[Y]`/`[N]` button labels in sync with the real wire values.
-    /// Prefix-checked (not lowercased) to stay allocation-free on the render /
-    /// key-handling hot path.
-    pub fn is_allow(&self) -> bool {
-        self.kind.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("allow"))
-    }
-
-    /// True if this is a "reject" option. Allocation-free, case-insensitive —
-    /// see [`PermOption::is_allow`].
-    pub fn is_reject(&self) -> bool {
-        self.kind.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("reject"))
-    }
 }
 
 pub struct PermissionState {
@@ -1065,14 +950,6 @@ pub fn classify_wt_event(
 /// One entry of an ACP agent's advertised model list, mirrored into the
 /// `agent_status` event so the XAML settings page can populate a real
 /// dropdown instead of asking the user to type a free-form string.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct AcpModelInfo {
-    pub id: String,
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
 /// Test-visible record of a wtcli command the App fired through the
 /// `wt_channel::spawn_*` helpers. Captured under `cfg(test)` so we can
 /// assert the agent session view dispatches the right shape of command
@@ -1106,328 +983,6 @@ pub struct DispatchedCommand {
     pub kind: DispatchedCommandKind,
     pub session_id: Option<String>,
     pub argv: Vec<String>,
-}
-
-pub enum AppEvent {
-    Key(KeyEvent),
-    Tick,
-    /// High-frequency (~30Hz) reveal animation tick. Drives the typewriter
-    /// smoothing of the streaming agent response (advances `reveal_chars`).
-    /// Separate from `Tick` so we can run the reveal at 30fps without
-    /// quadrupling the spinner's full-frame flush rate: a `RevealTick` only
-    /// forces a redraw when there is unrevealed pending text on the current
-    /// tab (`has_reveal_backlog`).
-    RevealTick,
-    Resize(u16, u16), // terminal resize (handled by ratatui)
-    /// XAML focus on our hosting TermControl changed — true when the agent
-    /// pane gained focus, false when it lost focus. Sourced from xterm
-    /// focus-in/out (CSI I / CSI O) delivered through conpty.
-    FocusChanged(bool),
-    ConnectionStage(String),
-    AgentConnected {
-        name: String,
-        model: Option<String>,
-        version: Option<String>,
-        /// Session id for the implicitly-created `DEFAULT_TAB_ID` ("0")
-        /// session at startup. Wires into App.session_to_tab. Other tabs
-        /// get their own sessions lazily on first prompt — see
-        /// `SessionAttached`.
-        session_id: String,
-        /// ACP-advertised models (NewSessionResponse.models.available_models).
-        /// Empty when the agent didn't fill the field.
-        available_models: Vec<AcpModelInfo>,
-        /// ACP-advertised current model id (NewSessionResponse.models.current_model_id).
-        current_model_id: Option<String>,
-        /// Whether the agent advertised the `loadSession` capability in
-        /// the initialize response. Used by the session management
-        /// view's Shift+Enter handler to short-circuit with a clear
-        /// error before opening a new tab when the agent can't
-        /// rehydrate ACP sessions.
-        load_session_supported: bool,
-        /// Whether the agent advertised the `image` prompt capability
-        /// (`promptCapabilities.image`) in its initialize response. Gates the
-        /// Alt+V image-paste handler so the user gets a clear message instead
-        /// of silently sending an image the agent will reject.
-        image_supported: bool,
-    },
-    /// A new ACP session has been created and bound to a tab. Carries the
-    /// per-tab model list (each ACP session can advertise its own).
-    SessionAttached {
-        tab_id: String,
-        session_id: String,
-        available_models: Vec<AcpModelInfo>,
-        current_model_id: Option<String>,
-    },
-    /// Error scoped to a specific tab. Used by paths that know the tab
-    /// (e.g. ACP `session/load` failure) but have no session_id yet
-    /// because the session never came up. Routes into that tab's chat as
-    /// a normal Error message; does NOT bounce through the auth/global
-    /// disconnect fallback that `AgentError` triggers.
-    TabError {
-        tab_id: String,
-        message: String,
-    },
-    /// Informational system message scoped to a specific tab. Used for
-    /// session/load progress notes ("Resuming...", "Session loaded.")
-    /// where we want the user to see something before the agent's
-    /// session/update replay (if any) arrives.
-    TabSystemMessage {
-        tab_id: String,
-        message: String,
-    },
-    AgentPasteTextReady {
-        tab_id: String,
-        generation: u64,
-        text: String,
-    },
-    AgentPasteTextFailed {
-        tab_id: String,
-        generation: u64,
-        error: String,
-    },
-    PromptTemplateLoaded {
-        name: String,
-    },
-    /// The working pane a manual `/fix` resolved to, plumbed back from the ACP
-    /// client task so the App can fill `AutofixContext.target_pane_id` on the
-    /// in-flight turn. The host fills `Send.parent` from it at execute time —
-    /// the agent never echoes a pane id for autofix turns. Routed by
-    /// `prompt_id` so a superseded turn (a newer `/fix`) is left untouched.
-    AutofixTargetResolved {
-        tab_id: Option<String>,
-        prompt_id: u64,
-        pane_id: String,
-    },
-    /// Errors raised before a session exists carry None for `session_id`
-    /// and route to the active tab; in-flight failures route to the
-    /// session's tab. `failure` is the typed classification that drives
-    /// recovery (sign-in / `/restart` / show-and-stay); `message` is the
-    /// human-readable line to display.
-    AgentError {
-        session_id: Option<String>,
-        failure: crate::protocol::acp::failure::AgentFailure,
-        message: String,
-    },
-    /// A turn that completed successfully at the protocol level but ended on a
-    /// soft stop (output-token limit, request budget, or refusal). NOT a
-    /// connection failure — the session stays `Connected`; this only appends an
-    /// informational line to the session's chat. Emitted *after*
-    /// `AgentMessageEnd` so the notice follows the agent's streamed content.
-    AgentSoftStop {
-        session_id: String,
-        reason: crate::protocol::acp::soft_stop::SoftStopReason,
-    },
-    /// Same-tab single-flight guard rejection. The user submitted a new
-    /// prompt while the previous one is still in flight on the same tab.
-    /// The ACP client side enforces this for safety; the front-end Enter
-    /// handler also has its own guard so the bounce is rare.
-    AgentBusy {
-        tab_id: String,
-    },
-    /// WT-side `tab_renamed` event: the user dragged a tab out into a new
-    /// window (or otherwise caused the tab's StableId to change). The
-    /// underlying helper process survives the drag (conpty + TermControl
-    /// are reattached via WT's ContentId mechanism), but the tab key WT
-    /// uses to address us has changed. Without rekeying, autofix /
-    /// per-tab state events targeting the new id wouldn't match any
-    /// entry in `tab_sessions`.
-    TabRenamed {
-        old_tab_id: String,
-        new_tab_id: String,
-        /// Dest window id (from WT's `tab_renamed` payload). When this
-        /// helper rekeys onto the new id, it also updates `self.window_id`
-        /// to this value so subsequent `set_agent_state` / `tab_changed`
-        /// events from the new window pass the per-window filter. `None`
-        /// for direct AppEvent dispatches that don't carry it (tests).
-        new_window_id: Option<String>,
-    },
-    ExecutionInfo(String),
-    AgentThoughtChunk {
-        session_id: String,
-        text: String,
-    },
-    AgentMessageChunk {
-        session_id: String,
-        text: String,
-    },
-    /// A `user_message_chunk` SessionUpdate received from the agent
-    /// during an ACP `session/load` replay. Carries the historical
-    /// user prompt that opens the next replayed turn. Accumulated into
-    /// `pending_user_replay` and flushed as a `ChatMessage::User` when
-    /// the next agent/tool/plan chunk lands or the load completes.
-    /// Outside of `loading_session` mode, dropped — copilot uses these
-    /// only during load.
-    UserMessageReplayChunk {
-        session_id: String,
-        text: String,
-    },
-    AgentMessageEnd {
-        session_id: String,
-    },
-    TimingMetric {
-        session_id: String,
-        note: String,
-    },
-    ToolCall {
-        session_id: String,
-        id: String,
-        title: String,
-        status: String,
-        /// See `ChatMessage::ToolCall::location`.
-        location: Option<String>,
-        /// See `ChatMessage::ToolCall::location_is_command`.
-        location_is_command: bool,
-    },
-    ToolCallUpdate {
-        session_id: String,
-        id: String,
-        status: String,
-        /// `Some` only when the agent's `tool_call_update` actually
-        /// reported new `locations`/`raw_input` — `None` means "no
-        /// change", so the existing card's location hint (if any) is
-        /// left untouched rather than being blanked out.
-        location: Option<String>,
-        /// See `ChatMessage::ToolCall::location_is_command`. Only
-        /// meaningful when `location.is_some()`.
-        location_is_command: bool,
-    },
-    Plan {
-        session_id: String,
-        entries: Vec<PlanEntry>,
-    },
-    PermissionRequest {
-        session_id: String,
-        tool_call_id: String,
-        description: String,
-        /// See `PermissionState::title`.
-        title: String,
-        /// See `PermissionState::kind_label`.
-        kind_label: Option<String>,
-        /// See `PermissionState::target`.
-        target: Option<String>,
-        /// See `PermissionState::target_is_command`.
-        target_is_command: bool,
-        options: Vec<PermOption>,
-        responder: tokio::sync::oneshot::Sender<String>,
-    },
-    SystemMessage(String),
-    DebugPipeMessage(DebugMessage),
-    /// Push event from Windows Terminal protocol (VT sequence or connection state).
-    /// `pane_id` is the WT pane GUID where the event originated.
-    /// `tab_id` is the WT tab StableId that owns the pane — used by autofix
-    /// routing to send fixes to the failing tab's ACP session rather than
-    /// whatever tab WTA happens to be focused on. `None` for events from
-    /// older WT builds that don't yet carry tab_id.
-    WtEvent {
-        method: String,
-        pane_id: String,
-        tab_id: Option<String>,
-        params: serde_json::Value,
-    },
-    /// Background agent install completed — refresh the detected agents list.
-    AgentInstallComplete,
-    /// Login progress — device code received, display to user.
-    LoginProgress {
-        device_code: String,
-        verify_url: String,
-    },
-    /// Login flow completed.
-    LoginComplete {
-        agent_id: String,
-        success: bool,
-        /// On failure, the most specific error line captured from the login
-        /// process output (if any), surfaced to the user. `None` on success.
-        error: Option<String>,
-    },
-    /// Post-login auth recovery: a genuine post-login reconnect (helper/pipe
-    /// mode) for an External-auth agent STILL failed auth, which means the
-    /// shared long-lived master CLI was spawned with a stale token and
-    /// `authenticate` can't refresh it. The handler shows a transient
-    /// "Reconnecting…" and fires `restart_agent_stack` so a fresh master
-    /// (which re-reads the now-valid on-disk token) takes over.
-    PostLoginAuthRecovery {
-        failure: crate::protocol::acp::failure::AgentFailure,
-        tab_id: Option<String>,
-        agent_id: String,
-    },
-    /// Dead-man fallback for `PostLoginAuthRecovery`: a successful restart
-    /// tears this helper down before this fires; if it DOES fire (restart
-    /// dropped/slow), surface the sign-in screen instead of stranding the user
-    /// on a perpetual "Reconnecting…". `generation` pins this to the specific
-    /// recovery that armed it, so a stale timer can't act on a later state.
-    AuthRecoveryTimedOut {
-        agent_id: String,
-        generation: u64,
-    },
-    /// Result of a source-aware `/agent` discovery for the active working pane.
-    AgentSourcesDiscovered {
-        generation: u64,
-        wsl_sources: Vec<AvailableAgent>,
-    },
-    /// Result of `preflight::check_agent` run by main.rs before the TUI
-    /// loop starts. If `all_passed()` is false the App switches into
-    /// `AppMode::Setup` so the user can install / authenticate the CLI.
-    PreflightComplete(PreflightResult),
-    /// Background-thread callback from `wt_channel::spawn_wtcli_split_then_focus_with_callback`
-    /// (used by `dispatch_resume`) reaches the registry through this variant.
-    /// Posting via the main loop keeps `agent_sessions` access single-threaded
-    /// and lets `tracing::*` calls emit on a stable thread.
-    AgentSessionEvent(crate::agent_sessions::SessionEvent),
-    /// Initial bootstrap of the alive-session mirror from master, in
-    /// response to the helper's startup `session/list` request. The
-    /// payload replaces any existing entries and flips `alive_loaded`
-    /// to true so session management routing logic can start trusting `alive.lookup()`
-    /// misses as "session is gone". See
-    /// `crate::session_registry::apply_snapshot`.
-    AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
-    /// Master broadcast a new alive session into the helper's mirror
-    /// via `intellterm.wta/session_added` ext-notification. Applied to
-    /// `App.alive` from the main event loop so the registry has a
-    /// single writer.
-    AliveSessionAdded(crate::session_registry::SessionInfo),
-    /// Master broadcast that an alive session is gone via
-    /// `intellterm.wta/session_removed`. Symmetric counterpart to
-    /// `AliveSessionAdded`.
-    AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
-    /// Apply an "upgrade Historical/Ended → Live" join between the
-    /// historical-row registry (`agent_sessions`) and the alive-session
-    /// mirror. Posted from `AliveSnapshotLoaded` (master's bootstrap
-    /// reply): the handler converts each `SessionInfo` into a `(sid, pane)`
-    /// pair, dispatches `AliveJoinUpgrade`, and lets the main loop apply it
-    /// serialized w.r.t. other agent-sessions mutations.
-    ///
-    /// See [`crate::agent_sessions::AgentSessionRegistry::apply_alive_session_join`].
-    AliveJoinUpgrade(Vec<(String, Option<String>)>),
-    SessionsChanged,
-    AgentsSnapshotLoaded {
-        request_id: u64,
-        sessions: Vec<crate::session_registry::SessionInfo>,
-    },
-    /// `sessions/list` RPC failed or timed out — unblock the tab's
-    /// `refetch_in_flight` gate without overwriting the existing
-    /// snapshot, so the 5s periodic tick / next `SessionsChanged`
-    /// broadcast can retry. Emitted by `dispatch_master_ext_request`'s
-    /// `SessionsList` arm when `conn.ext_method(...)` returns Err or
-    /// `tokio::time::timeout` elapses. The timeout path is a
-    /// workaround for a `agent-client-protocol@0.10` cancellation-
-    /// safety bug in `RpcConnection::handle_io`: when
-    /// `select_biased!`'s outgoing arm preempts an in-progress
-    /// `read_line`, BufReader bytes already pulled off the pipe are
-    /// silently dropped, the next read returns a frame starting
-    /// mid-message, JSON parse fails, and the matching
-    /// `pending_responses` entry never resolves — so the
-    /// `ext_method` future would otherwise wait forever, keeping
-    /// `refetch_in_flight=true` permanently for the affected tab.
-    /// See the GH issue for upgrading to 0.12.
-    AgentsSnapshotFailed {
-        request_id: u64,
-    },
-    RegisterBornBoundSession {
-        event: crate::agent_sessions::SessionEvent,
-    },
-    MasterMutationCompleted {
-        request_id: u64,
-    },
 }
 
 // --- Per-tab session storage ---
@@ -2219,6 +1774,7 @@ pub struct App {
     pub debug_messages: Vec<DebugMessage>,
     pub show_debug_panel: bool,
     pub debug_scroll: usize,
+    pub(crate) text_selection: crate::text_selection::TextSelection,
     // Pane identity (populated via VT channel)
     pub pane_id: Option<String>,
     pub tab_id: Option<String>,
@@ -2352,6 +1908,8 @@ pub struct App {
 /// enough that the user can react after seeing the hint; short enough that
 /// a stale arm doesn't bite the next time they want to clear input.
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
+    std::time::Duration::from_millis(1500);
 
 /// Top-level UI view selector. Toggled with Ctrl+Shift+/.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2521,6 +2079,7 @@ impl App {
             debug_messages: Vec::new(),
             show_debug_panel: false,
             debug_scroll: 0,
+            text_selection: crate::text_selection::TextSelection::default(),
             pane_id: None,
             tab_id: None,
             owner_tab_id: None,
@@ -4783,6 +4342,7 @@ impl App {
 
         let render_started = std::time::Instant::now();
         ui::render(&mut frame, self);
+        self.text_selection.snapshot_and_render(frame.buffer_mut());
         ui_trace::log_slow("ui_render", render_started.elapsed(), || self.trace_state());
 
         // The text caret is painted as an inverse buffer cell by `ui::input`
@@ -4821,6 +4381,7 @@ impl App {
     fn event_name(event: &AppEvent) -> &'static str {
         match event {
             AppEvent::Key(_) => "key",
+            AppEvent::Mouse(_) => "mouse",
             AppEvent::Tick => "tick",
             AppEvent::Resize(_, _) => "resize",
             AppEvent::FocusChanged(_) => "focus_changed",
@@ -6664,20 +6225,6 @@ fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
 #[path = "app_status_projection.rs"]
 mod app_status_projection;
 
-/// Publish a raw JSON event via `wtcli publish`. The event flows through
-/// IProtocolServer::SendEvent; our modified COM server special-cases
-/// method=="autofix_state" and dispatches directly to TerminalPage.
-///
-/// Events are funnelled through a single background thread that waits
-/// for each `wtcli publish` subprocess to exit before launching the next.
-/// Without this, two rapid emits (e.g. armed → cleared) could race at
-/// the OS process-scheduling layer and arrive at WT out of order,
-/// leaving the bottom-bar stuck in the earlier state.
-pub fn send_wt_protocol_event(json_payload: String) {
-    let tx = publisher_sender();
-    let _ = tx.send(json_payload);
-}
-
 fn build_switch_agent_event(
     window_id: &str,
     tab_id: &str,
@@ -6713,49 +6260,6 @@ fn emit_agent_chip_target(tab_id: &str, pane_session_id: Option<&str>) {
         }
     });
     send_wt_protocol_event(evt.to_string());
-}
-
-fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
-    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
-        std::sync::OnceLock::new();
-    SENDER.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        std::thread::Builder::new()
-            .name("wt-event-publisher".into())
-            .spawn(move || {
-                while let Ok(payload) = rx.recv() {
-                    publish_event_blocking(&payload);
-                }
-            })
-            .expect("spawn wt-event-publisher thread");
-        tx
-    })
-}
-
-fn publish_event_blocking(json_payload: &str) {
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("wtcli.exe")))
-        .filter(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
-    let mut cmd = std::process::Command::new(exe);
-    cmd.arg("publish").arg(json_payload);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .stdin(std::process::Stdio::null());
-    match cmd.spawn() {
-        Ok(mut child) => {
-            // Block the publisher thread until this publish finishes so
-            // the next event's subprocess can't overtake it.
-            let _ = child.wait();
-        }
-        Err(_) => {}
-    }
 }
 
 /// Resolve an agent command like "copilot --acp --stdio" to use the full

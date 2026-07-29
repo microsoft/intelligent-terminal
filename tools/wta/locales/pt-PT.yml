@@ -119,6 +119,7 @@ connection.lost: "A ligação ao agente foi perdida. Escreva /restart para resta
 
 # ── Mensagens do sistema (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "Prima Ctrl+C novamente para fechar o painel"  # {Locked="Ctrl+C"}
+system.selection_copied: "Copiado"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Nenhum pedido em curso."
 system.authentication_failed: "Falha na autenticação"

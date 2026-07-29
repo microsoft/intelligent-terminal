@@ -115,6 +115,7 @@ connection.lost: "與智能體的連線已中斷。輸入 /restart 以重新連�
 
 # ── 系統訊息 (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "再次按 Ctrl+C 以關閉窗格。"  # {Locked="Ctrl+C"}
+system.selection_copied: "已複製"  # 複製選取的終端機文字後短暫顯示的提示
 system.cancelled: "已取消。"
 system.no_prompt_in_flight: "沒有進行中的提示。"
 system.authentication_failed: "驗證失敗"

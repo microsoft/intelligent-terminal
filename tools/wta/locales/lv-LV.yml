@@ -119,6 +119,7 @@ connection.lost: "Savienojums ar aģentu tika zaudēts. Ierakstiet /restart, lai
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Nospiediet Ctrl+C vēlreiz, lai aizvērtu paneli."  # {Locked="Ctrl+C"}
+system.selection_copied: "Nokopēts"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Atcelts."
 system.no_prompt_in_flight: "Nav aktīvu pieprasījumu."
 system.authentication_failed: "Autentifikācija neizdevās"

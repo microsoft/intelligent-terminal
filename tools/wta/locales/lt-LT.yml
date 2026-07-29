@@ -119,6 +119,7 @@ connection.lost: "Ryšys su agentu nutrūko. Įveskite /restart, kad prisijungtu
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Paspauskite Ctrl+C dar kartą, kad uždarytumėte skydelį."  # {Locked="Ctrl+C"}
+system.selection_copied: "Nukopijuota"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Atšaukta."
 system.no_prompt_in_flight: "Nėra vykdomos užklausos."
 system.authentication_failed: "Autentifikavimas nepavyko"
