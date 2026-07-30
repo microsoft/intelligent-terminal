@@ -3538,65 +3538,6 @@ fn transport_loss_surfaces_restart_hint_even_behind_another_error() {
     assert_eq!(n, 1, "identical connection.lost must not duplicate");
 }
 
-/// `is_post_login_auth_failure` must catch BOTH the plain `AuthRequired`
-/// and the `HandshakeFailed { NewSession }` the pipe client wraps a
-/// still-AuthRequired post-login `new_session` into — `is_auth()` alone
-/// would miss the latter and the auth recovery would never fire. It must
-/// NOT match `HandshakeFailed { Authenticate }` (a genuine authenticate
-/// RPC rejection/timeout) — that routes to sign-in, not a master restart.
-#[test]
-fn post_login_auth_failure_matches_auth_required_and_handshake_new_session() {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    assert!(is_post_login_auth_failure(&AgentFailure::AuthRequired {
-        message: "auth".to_string()
-    }));
-    assert!(is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
-        stage: HandshakeStage::NewSession,
-        detail: "still auth after authenticate".to_string()
-    }));
-    // An authenticate-RPC rejection/timeout must NOT trigger auth recovery
-    // (a master restart can't fix bad credentials) — it routes to sign-in.
-    assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
-        stage: HandshakeStage::Authenticate,
-        detail: "authenticate rejected/timed out".to_string()
-    }));
-    // A non-auth handshake stage must NOT trigger auth recovery.
-    assert!(!is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
-        stage: HandshakeStage::Initialize,
-        detail: "boom".to_string()
-    }));
-}
-
-#[test]
-fn post_login_master_unavailable_matches_only_pipe_connect() {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-
-    assert!(is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::PipeConnect,
-            detail: "pipe missing".to_string()
-        }
-    ));
-    assert!(!is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::Initialize,
-            detail: "init failed".to_string()
-        }
-    ));
-    assert!(!is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::Authenticate,
-            detail: "auth failed".to_string()
-        }
-    ));
-    assert!(!is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::NewSession,
-            detail: "session failed".to_string()
-        }
-    ));
-}
-
 #[test]
 fn typed_pipe_connect_failure_survives_classify_anyhow() {
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3640,6 +3581,18 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
         "non-post-login pipe failures should surface normally"
     );
 
+    let auth_required = AgentFailure::AuthRequired {
+        message: "auth".to_string(),
+    };
+    assert!(
+        should_trigger_post_login_recovery(true, true, &auth_required),
+        "external post-login auth failures should recover via a fresh master"
+    );
+    assert!(
+        !should_trigger_post_login_recovery(true, false, &auth_required),
+        "non-external auth failures should route to sign-in"
+    );
+
     let still_auth = AgentFailure::HandshakeFailed {
         stage: HandshakeStage::NewSession,
         detail: "still auth".to_string(),
@@ -3651,6 +3604,15 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
     assert!(
         !should_trigger_post_login_recovery(true, false, &still_auth),
         "non-external auth failures should not use auth-stale recovery"
+    );
+
+    let authenticate_failed = AgentFailure::HandshakeFailed {
+        stage: HandshakeStage::Authenticate,
+        detail: "authenticate rejected".to_string(),
+    };
+    assert!(
+        !should_trigger_post_login_recovery(true, true, &authenticate_failed),
+        "authenticate failures should route to sign-in instead of restarting master"
     );
 }
 

@@ -239,57 +239,21 @@ pub struct SetupState {
     pub subtitle: String,
 }
 
-/// True for the auth failures a post-login reconnect can hit when the shared
-/// master CLI was spawned with a stale token: the plain `AuthRequired`, AND the
-/// `HandshakeFailed { stage: NewSession }` that the pipe client wraps a
-/// still-`AuthRequired` `new_session` into after a *successful* `authenticate`
-/// (the Copilot CLI does not refresh its in-process auth on `authenticate`, so
-/// only respawning it recovers — see `run_acp_client_over_pipe`).
-///
-/// Deliberately does NOT match `HandshakeFailed { stage: Authenticate }`: that
-/// is a genuine `authenticate` RPC rejection or timeout (the credentials were
-/// not accepted / the agent hung), which a master restart would not fix — it
-/// routes to the sign-in screen via the normal `AgentError` path instead.
-fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    matches!(
-        failure,
-        AgentFailure::AuthRequired { .. }
-            | AgentFailure::HandshakeFailed {
-                stage: HandshakeStage::NewSession,
-                ..
-            }
-    )
-}
-
-/// True when a post-login reconnect could not even reach wta-master.
-///
-/// This is distinct from auth failure: after the IT setup flow installs Copilot,
-/// the old master may already be gone because it was spawned while `copilot`
-/// was missing. Login succeeds in the browser, but reconnecting to the saved
-/// pipe fails before initialize/authenticate/new_session can run. The right
-/// recovery is still the same fresh-master restart used for stale auth state.
-fn is_post_login_master_unavailable(
-    failure: &crate::protocol::acp::failure::AgentFailure,
-) -> bool {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    matches!(
-        failure,
-        AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::PipeConnect,
-            ..
-        }
-    )
-}
-
+/// Decide whether a failed post-login reconnect should respawn the shared
+/// master. External-auth agents need this when the old process retained stale
+/// credentials through `session/new`; every agent needs it when the old master
+/// is no longer reachable. Other handshake failures follow normal error policy.
 fn should_trigger_post_login_recovery(
     post_login_auth: bool,
     is_external_auth_agent: bool,
     failure: &crate::protocol::acp::failure::AgentFailure,
 ) -> bool {
+    use crate::protocol::acp::failure::HandshakeStage;
+
     post_login_auth
-        && ((is_external_auth_agent && is_post_login_auth_failure(failure))
-            || is_post_login_master_unavailable(failure))
+        && ((is_external_auth_agent
+            && (failure.is_auth() || failure.failed_at(HandshakeStage::NewSession)))
+            || failure.failed_at(HandshakeStage::PipeConnect))
 }
 
 /// Build the diagnostic setup options list based on the configured agent state:
