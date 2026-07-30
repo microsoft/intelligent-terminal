@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -39,13 +39,6 @@ struct DeferredAcpParams {
     owner_tab_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AvailableAgent {
-    pub id: String,
-    pub display_name: String,
-    pub source: crate::agent_source::AgentSource,
-}
-
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
     commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
@@ -56,9 +49,19 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 }
 
 mod autofix;
+mod input_edit;
+mod tab_state;
 mod turn_state;
 use autofix::*;
 
+#[cfg(test)]
+use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
+pub(crate) use tab_state::PendingTerminalActionProposal;
+pub(crate) use tab_state::DEFAULT_TAB_ID;
+pub use tab_state::{
+    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState, Scroll,
+    TabSession, View,
+};
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
@@ -78,8 +81,6 @@ pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, Tu
 // `App::sessions_origin_filter`.
 const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
     crate::agent_sessions::OriginFilter::ShellOnly;
-
-const INPUT_HISTORY_MAX_ENTRIES: usize = 50;
 
 /// Resolve the `/sessions` origin filter for this process.
 ///
@@ -103,11 +104,14 @@ pub fn resolve_sessions_origin_filter() -> crate::agent_sessions::OriginFilter {
     }
 }
 
-use crate::commands::{
-    self, CommandKind, CommandSpec, MovePositionSpec, ParseOutcome, ParsedCommand,
+pub use crate::app_contracts::{
+    AcpModelInfo, AppEvent, AvailableAgent, CheckStatus, DebugDir, DebugMessage, PermOption,
+    PlanEntry, PlanEntryStatus, PreflightResult,
 };
+use crate::commands::{self, CommandKind, ParseOutcome, ParsedCommand};
 use crate::coordinator::{
-    recommended_choice_index, RecommendationChoice, RecommendationSet,
+    recommended_choice_index, validate_recommendation_set_for_coordinator_target,
+    RecommendationChoice, RecommendationSet,
 };
 use crate::pane_context::PaneContext;
 
@@ -117,21 +121,7 @@ use crate::protocol::acp::client::{
 };
 use crate::ui;
 use crate::ui_trace;
-
-// --- Debug types ---
-
-#[derive(Debug, Clone)]
-pub enum DebugDir {
-    Sent,
-    Received,
-}
-
-#[derive(Debug, Clone)]
-pub struct DebugMessage {
-    pub timestamp: f64,
-    pub direction: DebugDir,
-    pub content: String,
-}
+use crate::wt_protocol_events::send as send_wt_protocol_event;
 
 // --- Application mode ---
 
@@ -246,114 +236,21 @@ pub struct SetupState {
     pub subtitle: String,
 }
 
-/// Status of a single preflight check.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CheckStatus {
-    Checking,
-    Passed,
-    Failed(String),
-    Skipped,
-}
-
-/// Result of all preflight checks for an agent.
-#[derive(Debug, Clone)]
-pub struct PreflightResult {
-    pub agent_id: String,
-    pub display_name: String,
-    pub cli_status: CheckStatus,
-    pub cli_path: Option<String>,
-    pub auth_status: CheckStatus,
-    pub install_hint: String,
-    pub install_url: String,
-    pub auth_hint: String,
-}
-
-impl PreflightResult {
-    pub fn all_passed(&self) -> bool {
-        self.cli_status == CheckStatus::Passed
-            && matches!(self.auth_status, CheckStatus::Passed | CheckStatus::Skipped)
-    }
-
-    /// Synthesize a `Passed` preflight result for a custom or unknown agent
-    /// id. We deliberately do **not** run an out-of-band PATH check for these
-    /// — the user-supplied command can be anything (`.cmd`, `.ps1`,
-    /// `node script.js`, an alias) and any guess we make disagrees with what
-    /// the spawner actually does. Real spawn failures surface via the
-    /// `ConnectionFailed` → `ConnectionState::Failed` lifecycle, which is the
-    /// authoritative error path.
-    ///
-    /// Returning `cli_status=Passed` keeps the TUI out of Setup mode so the
-    /// chat input stays responsive. The display name is derived from the
-    /// canonical id (`custom:<name>` → `<name>`) so the UI never collapses
-    /// to the generic `DEFAULT_PROFILE` "Agent" label.
-    pub fn passed_for_custom_agent(canonical_id: &str) -> Self {
-        let display_name = canonical_id
-            .strip_prefix("custom:")
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| canonical_id.to_string());
-        Self {
-            agent_id: canonical_id.to_string(),
-            display_name,
-            cli_status: CheckStatus::Passed,
-            cli_path: None,
-            auth_status: CheckStatus::Skipped,
-            install_hint: String::new(),
-            install_url: String::new(),
-            auth_hint: String::new(),
-        }
-    }
-}
-
-/// True for the auth failures a post-login reconnect can hit when the shared
-/// master CLI was spawned with a stale token: the plain `AuthRequired`, AND the
-/// `HandshakeFailed { stage: NewSession }` that the pipe client wraps a
-/// still-`AuthRequired` `new_session` into after a *successful* `authenticate`
-/// (the Copilot CLI does not refresh its in-process auth on `authenticate`, so
-/// only respawning it recovers — see `run_acp_client_over_pipe`).
-///
-/// Deliberately does NOT match `HandshakeFailed { stage: Authenticate }`: that
-/// is a genuine `authenticate` RPC rejection or timeout (the credentials were
-/// not accepted / the agent hung), which a master restart would not fix — it
-/// routes to the sign-in screen via the normal `AgentError` path instead.
-fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    matches!(
-        failure,
-        AgentFailure::AuthRequired { .. }
-            | AgentFailure::HandshakeFailed {
-                stage: HandshakeStage::NewSession,
-                ..
-            }
-    )
-}
-
-/// True when a post-login reconnect could not even reach wta-master.
-///
-/// This is distinct from auth failure: after the IT setup flow installs Copilot,
-/// the old master may already be gone because it was spawned while `copilot`
-/// was missing. Login succeeds in the browser, but reconnecting to the saved
-/// pipe fails before initialize/authenticate/new_session can run. The right
-/// recovery is still the same fresh-master restart used for stale auth state.
-fn is_post_login_master_unavailable(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    matches!(
-        failure,
-        AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::PipeConnect,
-            ..
-        }
-    )
-}
-
+/// Decide whether a failed post-login reconnect should respawn the shared
+/// master. External-auth agents need this when the old process retained stale
+/// credentials through `session/new`; every agent needs it when the old master
+/// is no longer reachable. Other handshake failures follow normal error policy.
 fn should_trigger_post_login_recovery(
     post_login_auth: bool,
     is_external_auth_agent: bool,
     failure: &crate::protocol::acp::failure::AgentFailure,
 ) -> bool {
+    use crate::protocol::acp::failure::HandshakeStage;
+
     post_login_auth
-        && ((is_external_auth_agent && is_post_login_auth_failure(failure))
-            || is_post_login_master_unavailable(failure))
+        && ((is_external_auth_agent
+            && (failure.is_auth() || failure.failed_at(HandshakeStage::NewSession)))
+            || failure.failed_at(HandshakeStage::PipeConnect))
 }
 
 /// Build the diagnostic setup options list based on the configured agent state:
@@ -405,147 +302,6 @@ pub enum ConnectionState {
     Connecting(String),
     Connected,
     Failed(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ChatMessage {
-    User(String),
-    Agent(String),
-    System(String),
-    ToolCall {
-        id: String,
-        title: String,
-        status: String,
-    },
-    Plan(Vec<PlanEntry>),
-    Error(String),
-    /// Informational WT event surfaced inline in the chat (e.g. shell exit
-    /// codes, OSC sequences). Distinct from `Error` so we can theme it
-    /// differently and skip autofix wiring.
-    AgentEvent(String),
-    /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
-    /// Pushed on every agent-pane startup,
-    /// no persistence gating — getting cleared by the next turn is fine,
-    /// the next pane startup re-pushes it.
-    Disclaimer,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CompletedTurn {
-    pub prompt: String,
-    #[serde(default)]
-    pub details: Vec<ChatMessage>,
-    /// Whether the turn's `details` are visible in the UI. Tab to select +
-    /// Enter to toggle. Default false (collapsed) so history stays compact.
-    #[serde(default)]
-    pub expanded: bool,
-    /// Trailing inline status marker rendered in DIM next to the turn's
-    /// first content line (e.g. "(canceled)" / "→ executed: Run Get-Date").
-    /// Set when the user dismisses or executes a recommendation card, or
-    /// cancels a mid-stream turn — `None` for normal chat turns.
-    #[serde(default)]
-    pub trailing_marker: Option<String>,
-}
-
-/// Maximum displayed characters for a collapsed turn header preview.
-/// Picked so the `▶ > <preview>…` row stays well under a typical 120-col
-/// wrap width even after the chevron + prompt prefix; longer prompts get
-/// truncated with a trailing ellipsis. The full original text is always
-/// preserved in the turn's first `details` entry.
-const COLLAPSED_PROMPT_PREVIEW_CHARS: usize = 80;
-
-/// Build the single-line preview shown in a collapsed `CompletedTurn`
-/// header. Takes the first non-blank line of the prompt and clips it to
-/// `COLLAPSED_PROMPT_PREVIEW_CHARS`. Multi-line prompts (system prompts,
-/// pasted blocks, etc.) collapse to one row instead of wrapping over
-/// dozens of lines in the chat scrollback.
-pub fn collapsed_prompt_preview(text: &str) -> String {
-    let first_line = text
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .unwrap_or("");
-    let mut iter = first_line.chars();
-    let mut out: String = (&mut iter).take(COLLAPSED_PROMPT_PREVIEW_CHARS).collect();
-    // Append ellipsis if the prompt has more content than the preview
-    // covered — either the first line itself was longer, or there are
-    // additional non-empty lines below.
-    let truncated = iter.next().is_some()
-        || text
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .nth(1)
-            .is_some();
-    if truncated {
-        out.push('…');
-    }
-    out
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlanEntry {
-    pub content: String,
-    pub status: PlanEntryStatus,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PlanEntryStatus {
-    Pending,
-    InProgress,
-    Completed,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PermOption {
-    pub id: String,
-    pub name: String,
-    pub kind: String,
-}
-
-impl PermOption {
-    /// True if this is an "allow" option. Case-insensitive because `kind`
-    /// is the ACP `PermissionOptionKind` rendered via `format!("{:?}", …)`,
-    /// which yields PascalCase variants like `AllowOnce` / `AllowAlways`.
-    /// Matching the leading `allow` prefix here keeps the `y`/`n` quick-keys
-    /// and the `[Y]`/`[N]` button labels in sync with the real wire values.
-    /// Prefix-checked (not lowercased) to stay allocation-free on the render /
-    /// key-handling hot path.
-    pub fn is_allow(&self) -> bool {
-        self.kind
-            .get(..5)
-            .is_some_and(|p| p.eq_ignore_ascii_case("allow"))
-    }
-
-    /// True if this is a "reject" option. Allocation-free, case-insensitive —
-    /// see [`PermOption::is_allow`].
-    pub fn is_reject(&self) -> bool {
-        self.kind
-            .get(..6)
-            .is_some_and(|p| p.eq_ignore_ascii_case("reject"))
-    }
-}
-
-pub struct PermissionState {
-    pub tool_call_id: String,
-    pub description: String,
-    pub options: Vec<PermOption>,
-    pub selected: usize,
-    pub responder: Option<tokio::sync::oneshot::Sender<String>>,
-}
-
-impl PermissionState {
-    /// Index of the first "allow" option, used by the `y` quick-key and the
-    /// `[Y]` button label.
-    pub fn allow_index(&self) -> Option<usize> {
-        self.options.iter().position(PermOption::is_allow)
-    }
-
-    /// Index of the first "reject" option, used by the `n` quick-key and the
-    /// `[N]` button label.
-    pub fn reject_index(&self) -> Option<usize> {
-        self.options.iter().position(PermOption::is_reject)
-    }
 }
 
 // --- WT Event Notification ---
@@ -1030,14 +786,6 @@ pub fn classify_wt_event(
 /// One entry of an ACP agent's advertised model list, mirrored into the
 /// `agent_status` event so the XAML settings page can populate a real
 /// dropdown instead of asking the user to type a free-form string.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct AcpModelInfo {
-    pub id: String,
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
 /// Test-visible record of a wtcli command the App fired through the
 /// `wt_channel::spawn_*` helpers. Captured under `cfg(test)` so we can
 /// assert the agent session view dispatches the right shape of command
@@ -1071,1032 +819,6 @@ pub struct DispatchedCommand {
     pub kind: DispatchedCommandKind,
     pub session_id: Option<String>,
     pub argv: Vec<String>,
-}
-
-pub enum AppEvent {
-    Key(KeyEvent),
-    Mouse(MouseEvent),
-    Tick,
-    /// High-frequency (~30Hz) reveal animation tick. Drives the typewriter
-    /// smoothing of the streaming agent response (advances `reveal_chars`).
-    /// Separate from `Tick` so we can run the reveal at 30fps without
-    /// quadrupling the spinner's full-frame flush rate: a `RevealTick` only
-    /// forces a redraw when there is unrevealed pending text on the current
-    /// tab (`has_reveal_backlog`).
-    RevealTick,
-    Resize(u16, u16), // terminal resize (handled by ratatui)
-    /// XAML focus on our hosting TermControl changed — true when the agent
-    /// pane gained focus, false when it lost focus. Sourced from xterm
-    /// focus-in/out (CSI I / CSI O) delivered through conpty.
-    FocusChanged(bool),
-    ConnectionStage(String),
-    AgentConnected {
-        name: String,
-        model: Option<String>,
-        version: Option<String>,
-        /// Session id for the implicitly-created `DEFAULT_TAB_ID` ("0")
-        /// session at startup. Wires into App.session_to_tab. Other tabs
-        /// get their own sessions lazily on first prompt — see
-        /// `SessionAttached`.
-        session_id: String,
-        /// ACP-advertised models (NewSessionResponse.models.available_models).
-        /// Empty when the agent didn't fill the field.
-        available_models: Vec<AcpModelInfo>,
-        /// ACP-advertised current model id (NewSessionResponse.models.current_model_id).
-        current_model_id: Option<String>,
-        /// Whether the agent advertised the `loadSession` capability in
-        /// the initialize response. Used by the session management
-        /// view's Shift+Enter handler to short-circuit with a clear
-        /// error before opening a new tab when the agent can't
-        /// rehydrate ACP sessions.
-        load_session_supported: bool,
-        /// Whether the agent advertised the `image` prompt capability
-        /// (`promptCapabilities.image`) in its initialize response. Gates the
-        /// Alt+V image-paste handler so the user gets a clear message instead
-        /// of silently sending an image the agent will reject.
-        image_supported: bool,
-    },
-    /// A new ACP session has been created and bound to a tab. Carries the
-    /// per-tab model list (each ACP session can advertise its own).
-    SessionAttached {
-        tab_id: String,
-        session_id: String,
-        available_models: Vec<AcpModelInfo>,
-        current_model_id: Option<String>,
-    },
-    /// Error scoped to a specific tab. Used by paths that know the tab
-    /// (e.g. ACP `session/load` failure) but have no session_id yet
-    /// because the session never came up. Routes into that tab's chat as
-    /// a normal Error message; does NOT bounce through the auth/global
-    /// disconnect fallback that `AgentError` triggers.
-    TabError {
-        tab_id: String,
-        message: String,
-    },
-    /// Informational system message scoped to a specific tab. Used for
-    /// session/load progress notes ("Resuming...", "Session loaded.")
-    /// where we want the user to see something before the agent's
-    /// session/update replay (if any) arrives.
-    TabSystemMessage {
-        tab_id: String,
-        message: String,
-    },
-    AgentPasteTextReady {
-        tab_id: String,
-        generation: u64,
-        text: String,
-    },
-    AgentPasteTextFailed {
-        tab_id: String,
-        generation: u64,
-        error: String,
-    },
-    PromptTemplateLoaded {
-        name: String,
-    },
-    /// The working pane a manual `/fix` resolved to, plumbed back from the ACP
-    /// client task so the App can fill `AutofixContext.target_pane_id` on the
-    /// in-flight turn. The host fills `Send.parent` from it at execute time —
-    /// the agent never echoes a pane id for autofix turns. Routed by
-    /// `prompt_id` so a superseded turn (a newer `/fix`) is left untouched.
-    AutofixTargetResolved {
-        tab_id: Option<String>,
-        prompt_id: u64,
-        pane_id: String,
-    },
-    /// Errors raised before a session exists carry None for `session_id`
-    /// and route to the active tab; in-flight failures route to the
-    /// session's tab. `failure` is the typed classification that drives
-    /// recovery (sign-in / `/restart` / show-and-stay); `message` is the
-    /// human-readable line to display.
-    AgentError {
-        session_id: Option<String>,
-        failure: crate::protocol::acp::failure::AgentFailure,
-        message: String,
-    },
-    /// A turn that completed successfully at the protocol level but ended on a
-    /// soft stop (output-token limit, request budget, or refusal). NOT a
-    /// connection failure — the session stays `Connected`; this only appends an
-    /// informational line to the session's chat. Emitted *after*
-    /// `AgentMessageEnd` so the notice follows the agent's streamed content.
-    AgentSoftStop {
-        session_id: String,
-        reason: crate::protocol::acp::soft_stop::SoftStopReason,
-    },
-    /// Same-tab single-flight guard rejection. The user submitted a new
-    /// prompt while the previous one is still in flight on the same tab.
-    /// The ACP client side enforces this for safety; the front-end Enter
-    /// handler also has its own guard so the bounce is rare.
-    AgentBusy {
-        tab_id: String,
-    },
-    /// WT-side `tab_renamed` event: the user dragged a tab out into a new
-    /// window (or otherwise caused the tab's StableId to change). The
-    /// underlying helper process survives the drag (conpty + TermControl
-    /// are reattached via WT's ContentId mechanism), but the tab key WT
-    /// uses to address us has changed. Without rekeying, autofix /
-    /// per-tab state events targeting the new id wouldn't match any
-    /// entry in `tab_sessions`.
-    TabRenamed {
-        old_tab_id: String,
-        new_tab_id: String,
-        /// Dest window id (from WT's `tab_renamed` payload). When this
-        /// helper rekeys onto the new id, it also updates `self.window_id`
-        /// to this value so subsequent `set_agent_state` / `tab_changed`
-        /// events from the new window pass the per-window filter. `None`
-        /// for direct AppEvent dispatches that don't carry it (tests).
-        new_window_id: Option<String>,
-    },
-    ExecutionInfo(String),
-    AgentThoughtChunk {
-        session_id: String,
-        text: String,
-    },
-    AgentMessageChunk {
-        session_id: String,
-        text: String,
-    },
-    /// A `user_message_chunk` SessionUpdate received from the agent
-    /// during an ACP `session/load` replay. Carries the historical
-    /// user prompt that opens the next replayed turn. Accumulated into
-    /// `pending_user_replay` and flushed as a `ChatMessage::User` when
-    /// the next agent/tool/plan chunk lands or the load completes.
-    /// Outside of `loading_session` mode, dropped — copilot uses these
-    /// only during load.
-    UserMessageReplayChunk {
-        session_id: String,
-        text: String,
-    },
-    AgentMessageEnd {
-        session_id: String,
-    },
-    TimingMetric {
-        session_id: String,
-        note: String,
-    },
-    ToolCall {
-        session_id: String,
-        id: String,
-        title: String,
-        status: String,
-    },
-    ToolCallUpdate {
-        session_id: String,
-        id: String,
-        status: String,
-    },
-    HideToolCall {
-        session_id: String,
-        id: String,
-    },
-    Plan {
-        session_id: String,
-        entries: Vec<PlanEntry>,
-    },
-    PermissionRequest {
-        session_id: String,
-        tool_call_id: String,
-        description: String,
-        options: Vec<PermOption>,
-        responder: tokio::sync::oneshot::Sender<String>,
-    },
-    SystemMessage(String),
-    DebugPipeMessage(DebugMessage),
-    /// Push event from Windows Terminal protocol (VT sequence or connection state).
-    /// `pane_id` is the WT pane GUID where the event originated.
-    /// `tab_id` is the WT tab StableId that owns the pane — used by autofix
-    /// routing to send fixes to the failing tab's ACP session rather than
-    /// whatever tab WTA happens to be focused on. `None` for events from
-    /// older WT builds that don't yet carry tab_id.
-    WtEvent {
-        method: String,
-        pane_id: String,
-        tab_id: Option<String>,
-        params: serde_json::Value,
-    },
-    /// Background agent install completed — refresh the detected agents list.
-    AgentInstallComplete,
-    /// Login progress — device code received, display to user.
-    LoginProgress {
-        device_code: String,
-        verify_url: String,
-    },
-    /// Login flow completed.
-    LoginComplete {
-        agent_id: String,
-        success: bool,
-        /// On failure, the most specific error line captured from the login
-        /// process output (if any), surfaced to the user. `None` on success.
-        error: Option<String>,
-    },
-    /// Post-login auth recovery: a genuine post-login reconnect (helper/pipe
-    /// mode) for an External-auth agent STILL failed auth, which means the
-    /// shared long-lived master CLI was spawned with a stale token and
-    /// `authenticate` can't refresh it. The handler shows a transient
-    /// "Reconnecting…" and fires `restart_agent_stack` so a fresh master
-    /// (which re-reads the now-valid on-disk token) takes over.
-    PostLoginAuthRecovery {
-        failure: crate::protocol::acp::failure::AgentFailure,
-        tab_id: Option<String>,
-        agent_id: String,
-    },
-    /// Dead-man fallback for `PostLoginAuthRecovery`: a successful restart
-    /// tears this helper down before this fires; if it DOES fire (restart
-    /// dropped/slow), surface the sign-in screen instead of stranding the user
-    /// on a perpetual "Reconnecting…". `generation` pins this to the specific
-    /// recovery that armed it, so a stale timer can't act on a later state.
-    AuthRecoveryTimedOut {
-        agent_id: String,
-        generation: u64,
-    },
-    /// Result of a source-aware `/agent` discovery for the active working pane.
-    AgentSourcesDiscovered {
-        generation: u64,
-        wsl_sources: Vec<AvailableAgent>,
-    },
-    /// Result of `preflight::check_agent` run by main.rs before the TUI
-    /// loop starts. If `all_passed()` is false the App switches into
-    /// `AppMode::Setup` so the user can install / authenticate the CLI.
-    PreflightComplete(PreflightResult),
-    /// Background-thread callback from `wt_channel::spawn_wtcli_split_then_focus_with_callback`
-    /// (used by `dispatch_resume`) reaches the registry through this variant.
-    /// Posting via the main loop keeps `agent_sessions` access single-threaded
-    /// and lets `tracing::*` calls emit on a stable thread.
-    AgentSessionEvent(crate::agent_sessions::SessionEvent),
-    /// Initial bootstrap of the alive-session mirror from master, in
-    /// response to the helper's startup `session/list` request. The
-    /// payload replaces any existing entries and flips `alive_loaded`
-    /// to true so session management routing logic can start trusting `alive.lookup()`
-    /// misses as "session is gone". See
-    /// `crate::session_registry::apply_snapshot`.
-    AliveSnapshotLoaded(Vec<crate::session_registry::SessionInfo>),
-    /// Master broadcast a new alive session into the helper's mirror
-    /// via `intellterm.wta/session_added` ext-notification. Applied to
-    /// `App.alive` from the main event loop so the registry has a
-    /// single writer.
-    AliveSessionAdded(crate::session_registry::SessionInfo),
-    /// Master broadcast that an alive session is gone via
-    /// `intellterm.wta/session_removed`. Symmetric counterpart to
-    /// `AliveSessionAdded`.
-    AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
-    /// Apply an "upgrade Historical/Ended → Live" join between the
-    /// historical-row registry (`agent_sessions`) and the alive-session
-    /// mirror. Posted from `AliveSnapshotLoaded` (master's bootstrap
-    /// reply): the handler converts each `SessionInfo` into a `(sid, pane)`
-    /// pair, dispatches `AliveJoinUpgrade`, and lets the main loop apply it
-    /// serialized w.r.t. other agent-sessions mutations.
-    ///
-    /// See [`crate::agent_sessions::AgentSessionRegistry::apply_alive_session_join`].
-    AliveJoinUpgrade(Vec<(String, Option<String>)>),
-    SessionsChanged,
-    DirectTerminalActionProposal {
-        context: crate::proposal_channel::ValidationContext,
-        payload: String,
-        responder: tokio::sync::oneshot::Sender<crate::proposal_pipe::ProposalValidationDecision>,
-    },
-    DirectTerminalActionProposalCommit {
-        proposal_id: String,
-    },
-    DirectTerminalActionProposalInvalidate {
-        proposal_id: String,
-        session_id: String,
-    },
-    AgentsSnapshotLoaded {
-        request_id: u64,
-        sessions: Vec<crate::session_registry::SessionInfo>,
-    },
-    /// `sessions/list` RPC failed or timed out — unblock the tab's
-    /// `refetch_in_flight` gate without overwriting the existing
-    /// snapshot, so the 5s periodic tick / next `SessionsChanged`
-    /// broadcast can retry. Emitted by `dispatch_master_ext_request`'s
-    /// `SessionsList` arm when `conn.ext_method(...)` returns Err or
-    /// `tokio::time::timeout` elapses. The timeout path is a
-    /// workaround for a `agent-client-protocol@0.10` cancellation-
-    /// safety bug in `RpcConnection::handle_io`: when
-    /// `select_biased!`'s outgoing arm preempts an in-progress
-    /// `read_line`, BufReader bytes already pulled off the pipe are
-    /// silently dropped, the next read returns a frame starting
-    /// mid-message, JSON parse fails, and the matching
-    /// `pending_responses` entry never resolves — so the
-    /// `ext_method` future would otherwise wait forever, keeping
-    /// `refetch_in_flight=true` permanently for the affected tab.
-    /// See the GH issue for upgrading to 0.12.
-    AgentsSnapshotFailed {
-        request_id: u64,
-    },
-    RegisterBornBoundSession {
-        event: crate::agent_sessions::SessionEvent,
-    },
-    MasterMutationCompleted {
-        request_id: u64,
-    },
-}
-
-// --- Per-tab session storage ---
-
-pub(crate) const DEFAULT_TAB_ID: &str = "0";
-
-/// Single-axis scroll cursor. All mutations go through methods so callers
-/// don't reinvent saturating-math; the upper bound `max` is established by
-/// the layout/render pass once total content height is known and re-clamps
-/// on every frame.
-///
-/// `by` deliberately does NOT clamp to `max` — the bound may be stale at
-/// input time (the lazy chat build only learns `max` after exhausting
-/// history). Clamping happens on the next `set_max`.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Scroll {
-    pub offset: usize,
-    pub max: usize,
-}
-
-impl Scroll {
-    pub fn by(&mut self, delta: isize) {
-        self.offset = if delta >= 0 {
-            self.offset.saturating_add(delta as usize)
-        } else {
-            self.offset.saturating_sub(delta.unsigned_abs())
-        };
-    }
-
-    /// Jump to an absolute offset, clamped to current `max`. Only meaningful
-    /// after `max` has been set this frame.
-    pub fn set(&mut self, offset: usize) {
-        self.offset = offset.min(self.max);
-    }
-
-    pub fn set_max(&mut self, max: usize) {
-        self.max = max;
-        if self.offset > max {
-            self.offset = max;
-        }
-    }
-
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
-
-struct PendingTerminalActionProposal {
-    proposal_id: String,
-    session_id: String,
-    prompt_id: u64,
-    is_autofix: bool,
-    recommendations: RecommendationSet,
-}
-
-/// Everything that conceptually belongs to one tab's conversation: the
-/// message history, the streaming buffer of the in-flight prompt, the
-/// pending tool calls, the recommendations panel state, etc.
-///
-/// `App` holds a `HashMap<TabId, TabSession>` and a `tab_id` pointing at
-/// the currently focused entry. Renderers read via `app.current_tab()`;
-/// event handlers route updates to the relevant `TabSession` rather than
-/// mutating shared `App` fields.
-#[derive(Default)]
-pub struct TabSession {
-    /// Per-tab autofix state machine (see `TabAutofixState`).
-    pub autofix: TabAutofixState,
-    pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
-    active_direct_proposal_id: Option<String>,
-
-    // Conversation history
-    pub messages: Vec<ChatMessage>,
-    pub completed_turns: Vec<CompletedTurn>,
-    /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
-    /// toggles `CompletedTurn.expanded`. None means no selection — Enter
-    /// goes to the input/prompt path as before.
-    pub selected_completed_turn_idx: Option<usize>,
-    pub chat_scroll: Scroll,
-
-    // Streaming state
-    pub pending_agent_response: String,
-    /// Accumulator for `session/update` user_message_chunk events
-    /// arriving during an ACP `session/load` replay (the historical
-    /// user prompt for the next replayed turn). Flushed as a
-    /// `ChatMessage::User` whenever a turn boundary is detected — an
-    /// agent message / thought / tool call starts, OR the load
-    /// completes (SessionAttached for the loading tab).
-    pub pending_user_replay: String,
-    /// True between the inbound `load_session` event and the
-    /// `SessionAttached` event that closes out the ACP `session/load`
-    /// call. While set, session/update chunk handlers accept chunks
-    /// even though no `TurnState::Submitted` was created for the
-    /// replay — `turn` stays Idle through the load.
-    pub loading_session: bool,
-    /// The session id we're currently loading into this tab, set when
-    /// `loading_session` flips to true. The `SessionAttached` handler
-    /// closes the replay window only when an attach event arrives whose
-    /// `session_id` matches this value — otherwise an unrelated
-    /// `SessionAttached` (e.g. the helper's bootstrap `session/new`
-    /// that completed while a Plan-C `--initial-load-session-id` was
-    /// still being processed) would prematurely flip `loading_session`
-    /// off and the agent's replay chunks would be dropped at the chunk
-    /// handlers' `if !loading_session { return; }` gate.
-    pub loading_target_session_id: Option<String>,
-    // Explicit per-turn lifecycle. Source of truth in the new state machine
-    // (see `doc/specs/turn-state-refactor.md`).
-    pub turn: TurnState,
-    /// One-way latch for the Thinking indicator.
-    ///
-    /// Rule: a newly submitted prompt shows Thinking only while it is waiting
-    /// for the first user-visible agent feedback. The first revealed text,
-    /// tool item, plan, permission card, or surfaced result clears this latch,
-    /// and it must never become true again during the same turn. Hidden thought
-    /// chunks and structured tokens that cannot yet render do not clear it.
-    pub waiting_for_first_visible_activity: bool,
-
-    pub activity_frame: usize,
-    /// Typewriter reveal cursor: how many characters of the *user-visible*
-    /// streaming text are currently shown. The full text lives in
-    /// `turn.buffer()`; the renderer only emits the first `reveal_chars`
-    /// chars of it. Advanced toward the full length by `RevealTick`
-    /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
-    /// made irrelevant on finalize (the committed message renders in full).
-    pub reveal_chars: usize,
-    pub timing_note: Option<String>,
-    pub selection_visible_pending: bool,
-
-    // Tool calls / permission
-    pub tool_calls: HashMap<String, (String, String)>,
-    /// FIFO of pending permission requests for this session. The front
-    /// entry is the one currently rendered and accepting keys; the rest
-    /// queue up. Agents (Copilot in particular) sometimes fire multiple
-    /// concurrent `request_permission` calls for one tool invocation
-    /// — e.g. one per path that needs to be unlocked outside the trusted
-    /// directory set — and each carries its own oneshot responder. The
-    /// previous single-slot `Option` overwrote the prior entry on every
-    /// new request, dropping its responder, which `WtaClient::request_permission`
-    /// observed as `Cancelled` and the agent interpreted as "user rejected"
-    /// — producing the silent tool-call failure tracked alongside the
-    /// helper+master split.
-    pub permission: VecDeque<PermissionState>,
-    // Recommendation card UI focus (the set itself lives on
-    // `turn.recommendations()`).
-    pub selected_recommendation: usize,
-    pub selected_button: usize,
-    pub rec_scroll: Scroll,
-
-    /// Last value the helper published for this tab in a
-    /// `set_agent_chip_target` event. `Some(pane_id)` means we last asked
-    /// C++ to pin the blue "Agent" chip onto that pane; `None` means we
-    /// last asked C++ to fall back to the source-of-agent flag. Used as a
-    /// dedupe key so we only fire an event when the effective chip target
-    /// actually changes.
-    pub last_emitted_chip_override: Option<String>,
-
-    // Input editor state — per-tab so each tab keeps its own draft text,
-    // cursor, and slash-command popup across switches.
-    pub input: String,
-    pub cursor_pos: usize,
-    input_history: InputHistory,
-    /// Images captured from the clipboard via Alt+V, waiting to be sent with
-    /// the next prompt. Rendered as `[image #N]` chips above the input; drained
-    /// into the `PromptSubmission` on Enter and cleared after submit, and on
-    /// `/clear` / `/new` / session reset via `clear_chat_history`.
-    pub pending_images: Vec<crate::clipboard_image::PastedImage>,
-    /// True while a host-triggered text paste is reading the clipboard on a
-    /// blocking worker. Keystrokes are ignored until the paste resolves so the
-    /// pasted text cannot be reordered after later edits/submits.
-    pub paste_pending: bool,
-    /// Monotonic generation for async text paste. Completion events only apply
-    /// if their captured generation still matches this value.
-    pub paste_generation: u64,
-    /// Recomputed on every input mutation. Empty when not in
-    /// command-prefix mode. The popup renderer treats an empty Vec as
-    /// "do not render".
-    pub command_popup_candidates: Vec<&'static CommandSpec>,
-    /// Position candidates shown after `/move `. Kept separate from command
-    /// candidates so the existing command registry remains strongly typed.
-    pub move_position_candidates: Vec<&'static MovePositionSpec>,
-    /// Index into whichever popup candidate list is active: commands or
-    /// `/move` positions. Clamped whenever either list can shrink.
-    pub command_popup_selected: usize,
-
-    // Filled in Milestone 2 once each tab has its own ACP SessionId.
-    #[allow(dead_code)]
-    pub session_id: Option<String>,
-
-    /// Per-pane ACP model override, set by the `/model` picker. `None` means
-    /// "follow the global `acpModel` setting"; `Some(id)` pins this pane to a
-    /// specific model and survives `/new` (re-applied to fresh sessions in the
-    /// `SessionAttached` handler via `effective_model_for_tab`). It is a
-    /// transient per-pane tweak: a global `acpModel` settings change is
-    /// authoritative and clears it (see `apply_global_acp_model`). In-memory
-    /// only — not persisted across pane close / Terminal restart. See
-    /// `App::commit_model_pick`.
-    pub model_override: Option<String>,
-    /// True while the `/model` picker modal is up for this tab. Drives both
-    /// the key-event intercept in `handle_key` and the popup render.
-    pub model_picker_open: bool,
-    /// Highlighted row in the open model picker — an index into the agent's
-    /// advertised `App::available_models`. Clamped on open.
-    pub model_picker_selected: usize,
-    /// True while the `/agent` picker is open for this tab.
-    pub agent_picker_open: bool,
-    /// Highlighted row in `App::available_agents`.
-    pub agent_picker_selected: usize,
-
-    // agent session view (`/sessions`) — per-tab so each WT tab keeps
-    // its own open/closed state and selected row across tab switches.
-    pub current_view: View,
-    pub agents_list_state: ratatui::widgets::ListState,
-    pub agents_view: AgentsViewState,
-
-    // "Does this tab want the agent pane visible?" — per-tab user intent.
-    // Independent of where the (single, shared) XAML pane physically lives:
-    // C++ relocates the pane to whichever active tab has `pane_open == true`
-    // and hides it on tabs where it's `false`. wta owns this state so the
-    // C++ side has one writer (`OnAgentStateChanged`) and the desync that
-    // came from tracking it as a per-Tab.AgentPaneOpen flag on a moving
-    // XAML pane is gone.
-    //
-    // Default false. Seeded to true at startup for the spawn owner tab
-    // (the user just asked to open the pane on that tab). Flipped by
-    // C++-originated `set_agent_state` requests (hotkey/button toggles)
-    // and by wta-internal events like Ctrl+C×2 reset.
-    pub pane_open: bool,
-    /// Transient position override for this tab's agent pane. `None` follows
-    /// the global `agentPanePosition` setting; `/move` sets a canonical value.
-    pub agent_pane_position: Option<&'static str>,
-
-    // Pre-entry pane visibility, remembered when the user opens the
-    // session-management (Agents) view so Esc can restore *that* state rather
-    // than always landing on an open chat pane:
-    //   * `Some(false)` — entered from a folded (stashed) pane → Esc re-folds.
-    //   * `Some(true)`  — entered from an expanded chat pane → Esc returns to it.
-    //   * `None`        — not currently in / entering the Agents view.
-    // Captured in `open_agents_view_for_tab`, read by the Esc handler, cleared
-    // in `close_agents_view_for_tab`. The capture is reliable because the C++
-    // `set_agent_state` request applies `view` before `pane_open`: an unstash
-    // sends `{view:sessions, pane_open:true}`, but the view switch (and thus
-    // our snapshot) runs while `pane_open` still holds the old `false`.
-    pub agents_view_prev_pane_open: Option<bool>,
-}
-
-#[derive(Default)]
-struct InputHistory {
-    entries: VecDeque<String>,
-    selected: Option<usize>,
-    draft: Option<(String, usize)>,
-}
-
-impl TabSession {
-    pub fn scroll_to_bottom(&mut self) {
-        self.chat_scroll.offset = 0;
-    }
-
-    pub(crate) fn mark_visible_agent_activity(&mut self) {
-        self.waiting_for_first_visible_activity = false;
-    }
-
-    pub(crate) fn should_show_thinking(&self) -> bool {
-        self.waiting_for_first_visible_activity && self.turn.is_in_flight()
-    }
-
-    /// Whether the input box is the live, enterable caret target. False when
-    /// the user is browsing a completed turn, a recommendation card is showing,
-    /// a permission card is up, a paste is pending, or a modal picker is open.
-    /// UI indicators that track "is the input cell live" (e.g. the painted
-    /// caret cell) gate on this together with the pane's XAML focus, so a
-    /// non-enterable state reads the same as lost focus.
-    pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && self.turn.recommendations().is_none()
-            && self.permission.is_empty()
-            && !self.paste_pending
-            && !self.model_picker_open
-            && !self.agent_picker_open
-    }
-
-    pub fn clear_recommendations(&mut self) {
-        self.selected_recommendation = 0;
-        self.selected_button = 0;
-        self.rec_scroll.reset();
-    }
-
-    /// The pane the "Agent" chip should be pinned to while this tab has a
-    /// recommendation card with a `Send` action selected, or `None` when the
-    /// tab is not in that state. Returning `None` lets the C++ side fall
-    /// back to its default behavior (chip follows the source-of-agent flag).
-    ///
-    /// Resolution order for the pane id:
-    ///   1. `Send.parent` on the selected choice when non-empty.
-    ///   2. Autofix `target_pane_id` on the current prompt (for autofix
-    ///      turns where the recommendation's `Send.parent` is left blank
-    ///      and only gets filled at execute time — see `turn_execute_card`).
-    pub fn compute_chip_card_target(&self) -> Option<String> {
-        let recs = self.turn.recommendations()?;
-        let choice = recs.choices.get(self.selected_recommendation)?;
-        let send_parent = choice.actions.iter().find_map(|a| match a {
-            crate::coordinator::RecommendedAction::Send { parent, .. } if !parent.is_empty() => {
-                Some(parent.clone())
-            }
-            _ => None,
-        });
-        if send_parent.is_some() {
-            return send_parent;
-        }
-        // Autofix fallback: the autofix prompt's `target_pane_id` is what
-        // `turn_execute_card` will fill `Send.parent` with at execute time,
-        // so the chip should already point there now. Filter out empty
-        // strings — the C++ side treats `pane_session_id == ""` as "no
-        // override", so emitting `Some("")` would let the helper's dedupe
-        // believe it pinned the chip while WT silently ignores the event.
-        if choice
-            .actions
-            .iter()
-            .any(|a| matches!(a, crate::coordinator::RecommendedAction::Send { .. }))
-        {
-            return self
-                .turn
-                .prompt()
-                .and_then(|p| p.autofix.as_ref())
-                .map(|a| a.target_pane_id.clone())
-                .filter(|s| !s.is_empty());
-        }
-        None
-    }
-
-    pub fn clear_chat_history(&mut self) {
-        self.messages.clear();
-        self.tool_calls.clear();
-        // Dropping pending responders signals `Cancelled` back to the
-        // agent — appropriate when the user wipes chat history mid-turn.
-        self.permission.clear();
-        self.activity_frame = 0;
-        self.pending_agent_response.clear();
-        self.pending_user_replay.clear();
-        self.chat_scroll.reset();
-        self.timing_note = None;
-        self.selection_visible_pending = false;
-        self.turn = TurnState::Idle;
-        self.clear_recommendations();
-        // Drop any clipboard image queued but not yet sent — a wiped/fresh
-        // conversation must not carry a stale attachment into the next prompt.
-        self.pending_images.clear();
-        self.paste_pending = false;
-        self.paste_generation = self.paste_generation.wrapping_add(1);
-    }
-
-    /// Flush pending user/agent replay buffers at a turn boundary during
-    /// an ACP `session/load`. Called when a new user_message_chunk
-    /// arrives (the previous agent turn is complete) and again at end
-    /// of load to drain whatever remains. Empty buffers no-op.
-    pub fn flush_load_replay_pending(&mut self) {
-        if !self.pending_user_replay.is_empty() {
-            let text = std::mem::take(&mut self.pending_user_replay);
-            self.messages.push(ChatMessage::User(text));
-        }
-        if !self.pending_agent_response.is_empty() {
-            let text = std::mem::take(&mut self.pending_agent_response);
-            self.messages.push(ChatMessage::Agent(text));
-        }
-    }
-
-    /// Compact replayed history into collapsed `CompletedTurn` rows so a
-    /// long resumed session doesn't dump the entire transcript inline.
-    /// Called at session/load completion (after `flush_load_replay_pending`)
-    /// from the `SessionAttached` handler.
-    ///
-    /// Algorithm: walk `self.messages` left-to-right; each `User` opens a
-    /// new turn. The turn's `prompt` is a SHORT single-line preview of
-    /// the user text (so the collapsed `▶ > <preview>` row stays at one
-    /// visual line even for huge system-prompt-as-user dumps); the full
-    /// original `User(text)` is stored as the first entry of `details`,
-    /// followed by subsequent non-User messages. Messages that come
-    /// BEFORE the first User (e.g. the `System("Resuming session …")`
-    /// marker, or a stray Agent dump) stay in `messages` as-is — only
-    /// User-anchored turns get packed. Each packed turn has `expanded:
-    /// false` so history is collapsed by default. Tab + Enter toggles
-    /// individual rows.
-    pub fn pack_replayed_messages_into_turns(&mut self) {
-        if self.messages.is_empty() {
-            return;
-        }
-        let drained: Vec<ChatMessage> = std::mem::take(&mut self.messages);
-        let mut kept: Vec<ChatMessage> = Vec::new();
-        // `details` always opens with the full original ChatMessage::User
-        // so expanding the turn shows the entire prompt text. `prompt`
-        // is the short preview used in the collapsed header row.
-        let mut current: Option<(String, Vec<ChatMessage>)> = None;
-        for msg in drained {
-            match msg {
-                ChatMessage::User(text) => {
-                    if let Some((prompt, details)) = current.take() {
-                        self.completed_turns.push(CompletedTurn {
-                            prompt,
-                            details,
-                            expanded: false,
-                            trailing_marker: None,
-                        });
-                    }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
-                    current = Some((preview, details));
-                }
-                other => {
-                    if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
-                    } else {
-                        kept.push(other);
-                    }
-                }
-            }
-        }
-        if let Some((prompt, details)) = current.take() {
-            self.completed_turns.push(CompletedTurn {
-                prompt,
-                details,
-                expanded: false,
-                trailing_marker: None,
-            });
-        }
-        self.messages = kept;
-    }
-
-    /// Cycle the past-turn selection toward older entries.
-    /// `None → last (most recent) → ... → 0 → None`. No-op when there are
-    /// no completed turns.
-    pub fn select_older_completed_turn(&mut self) {
-        let len = self.completed_turns.len();
-        if len == 0 {
-            self.selected_completed_turn_idx = None;
-            return;
-        }
-        self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
-            None => Some(len - 1),
-            Some(0) => None,
-            Some(i) => Some(i - 1),
-        };
-    }
-
-    /// Cycle the past-turn selection toward newer entries.
-    /// `None → 0 (oldest) → ... → last → None`.
-    pub fn select_newer_completed_turn(&mut self) {
-        let len = self.completed_turns.len();
-        if len == 0 {
-            self.selected_completed_turn_idx = None;
-            return;
-        }
-        self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
-            None => Some(0),
-            Some(i) if i + 1 >= len => None,
-            Some(i) => Some(i + 1),
-        };
-    }
-
-    /// Flip `expanded` on the currently selected past turn. No-op if nothing
-    /// is selected or the index is out of range (defensive — selection
-    /// should track turn count, but a stale index shouldn't panic).
-    pub fn toggle_selected_completed_turn(&mut self) {
-        let Some(idx) = self.selected_completed_turn_idx else {
-            return;
-        };
-        if let Some(turn) = self.completed_turns.get_mut(idx) {
-            turn.expanded = !turn.expanded;
-        }
-    }
-
-    pub fn current_turn_details(&self) -> Vec<ChatMessage> {
-        self.messages
-            .iter()
-            .filter(|message| !matches!(message, ChatMessage::User(_)))
-            .cloned()
-            .collect()
-    }
-
-    pub fn clear_input(&mut self) {
-        self.reset_input_history_navigation();
-        self.input.clear();
-        self.cursor_pos = 0;
-        self.refresh_command_popup();
-    }
-
-    pub fn insert_input_char(&mut self, ch: char) {
-        self.reset_input_history_navigation();
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        self.input.insert(self.cursor_pos, ch);
-        self.cursor_pos += ch.len_utf8();
-        self.refresh_command_popup();
-    }
-
-    pub fn insert_input_str(&mut self, text: &str) {
-        if text.is_empty() {
-            return;
-        }
-        self.reset_input_history_navigation();
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        self.input.insert_str(self.cursor_pos, text);
-        self.cursor_pos += text.len();
-        self.refresh_command_popup();
-    }
-
-    pub fn delete_before_cursor(&mut self) {
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        if self.cursor_pos == 0 {
-            return;
-        }
-
-        self.reset_input_history_navigation();
-        let previous = prev_char_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(previous..self.cursor_pos, "");
-        self.cursor_pos = previous;
-        self.refresh_command_popup();
-    }
-
-    pub fn delete_word_before_cursor(&mut self) {
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        if self.cursor_pos == 0 {
-            return;
-        }
-        self.reset_input_history_navigation();
-        let word_start = prev_word_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(word_start..self.cursor_pos, "");
-        self.cursor_pos = word_start;
-        self.refresh_command_popup();
-    }
-
-    pub fn delete_at_cursor(&mut self) {
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        if self.cursor_pos >= self.input.len() {
-            return;
-        }
-
-        self.reset_input_history_navigation();
-        let next = next_char_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(self.cursor_pos..next, "");
-        self.refresh_command_popup();
-    }
-
-    pub fn move_cursor_left(&mut self) {
-        self.cursor_pos = prev_char_boundary(&self.input, self.cursor_pos);
-    }
-
-    pub fn move_cursor_right(&mut self) {
-        self.cursor_pos = next_char_boundary(&self.input, self.cursor_pos);
-    }
-
-    pub fn move_cursor_word_left(&mut self) {
-        self.cursor_pos = prev_word_boundary(&self.input, self.cursor_pos);
-    }
-
-    pub fn move_cursor_word_right(&mut self) {
-        self.cursor_pos = next_word_boundary(&self.input, self.cursor_pos);
-    }
-
-    pub fn move_cursor_home(&mut self) {
-        self.cursor_pos = 0;
-    }
-
-    pub fn move_cursor_end(&mut self) {
-        self.cursor_pos = self.input.len();
-    }
-
-    fn record_input_history(&mut self, input: &str) {
-        self.reset_input_history_navigation();
-        if input.is_empty() {
-            return;
-        }
-        if let Some(index) = self
-            .input_history
-            .entries
-            .iter()
-            .position(|entry| entry == input)
-        {
-            self.input_history.entries.remove(index);
-        }
-        self.input_history.entries.push_front(input.to_string());
-        self.input_history
-            .entries
-            .truncate(INPUT_HISTORY_MAX_ENTRIES);
-    }
-
-    fn input_history_is_browsing(&self) -> bool {
-        self.input_history.selected.is_some()
-    }
-
-    fn has_input_history(&self) -> bool {
-        !self.input_history.entries.is_empty()
-    }
-
-    fn navigate_input_history_older(&mut self) {
-        if self.input_history.entries.is_empty() {
-            return;
-        }
-        let index = match self.input_history.selected {
-            Some(index) => (index + 1).min(self.input_history.entries.len() - 1),
-            None => {
-                self.input_history.draft = Some((self.input.clone(), self.cursor_pos));
-                0
-            }
-        };
-        self.input_history.selected = Some(index);
-        self.input = self.input_history.entries[index].clone();
-        self.cursor_pos = self.input.len();
-        self.command_popup_candidates.clear();
-        self.move_position_candidates.clear();
-        self.command_popup_selected = 0;
-    }
-
-    fn navigate_input_history_newer(&mut self) {
-        let Some(index) = self.input_history.selected else {
-            return;
-        };
-        if index == 0 {
-            let (draft, cursor_pos) = self.input_history.draft.take().unwrap_or_default();
-            self.input = draft;
-            self.cursor_pos = clamp_cursor_to_boundary(&self.input, cursor_pos);
-            self.input_history.selected = None;
-        } else {
-            let next = index - 1;
-            self.input_history.selected = Some(next);
-            self.input = self.input_history.entries[next].clone();
-            self.cursor_pos = self.input.len();
-            self.command_popup_candidates.clear();
-            self.move_position_candidates.clear();
-            self.command_popup_selected = 0;
-        }
-        if self.input_history.selected.is_none() {
-            self.refresh_command_popup();
-        }
-    }
-
-    fn reset_input_history_navigation(&mut self) {
-        self.input_history.selected = None;
-        self.input_history.draft = None;
-    }
-
-    /// Recompute the slash-command popup candidates from the current
-    /// input. Called after every input mutation. Clamps the selected
-    /// index so it stays valid when the candidate list shrinks.
-    pub fn refresh_command_popup(&mut self) {
-        if let Some(prefix) = commands::move_position_prefix(&self.input) {
-            self.command_popup_candidates.clear();
-            self.move_position_candidates = commands::match_move_positions(prefix);
-        } else if commands::is_command_prefix(&self.input) {
-            // Strip leading whitespace + the `/` to get the user's
-            // partial name. `is_command_prefix` already guarantees the
-            // shape, so the unwrap is safe.
-            let trimmed = self.input.trim_start();
-            let name = trimmed.strip_prefix('/').unwrap_or("");
-            self.command_popup_candidates = commands::matches(name);
-            self.move_position_candidates.clear();
-        } else {
-            self.command_popup_candidates.clear();
-            self.move_position_candidates.clear();
-        }
-        let candidate_count =
-            self.command_popup_candidates.len() + self.move_position_candidates.len();
-        if candidate_count == 0 {
-            self.command_popup_selected = 0;
-        } else if self.command_popup_selected >= candidate_count {
-            self.command_popup_selected = candidate_count - 1;
-        }
-    }
-
-    pub fn command_popup_visible(&self) -> bool {
-        !self.command_popup_candidates.is_empty() || !self.move_position_candidates.is_empty()
-    }
-
-    pub fn command_popup_up(&mut self) {
-        if self.command_popup_selected > 0 {
-            self.command_popup_selected -= 1;
-        }
-    }
-
-    pub fn selected_command_spec(&self) -> Option<&'static CommandSpec> {
-        self.command_popup_candidates
-            .get(self.command_popup_selected)
-            .copied()
-    }
-
-    pub fn selected_move_position(&self) -> Option<&'static MovePositionSpec> {
-        self.move_position_candidates
-            .get(self.command_popup_selected)
-            .copied()
-    }
-
-    /// Tab-completion: replace the input buffer with `/<name> ` (with a
-    /// trailing space if the command takes args; otherwise just the
-    /// name) and reset the cursor to the end. Triggered by Tab when the
-    /// popup is visible.
-    pub fn accept_command_popup_completion(&mut self) {
-        self.reset_input_history_navigation();
-        if let Some(position) = self.selected_move_position() {
-            self.input = format!("/move {}", position.name);
-            self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
-        } else if let Some(spec) = self.selected_command_spec() {
-            self.input = if spec.takes_args {
-                format!("/{} ", spec.name)
-            } else {
-                format!("/{}", spec.name)
-            };
-            self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
-        }
-    }
 }
 
 // --- App ---
@@ -2173,7 +895,6 @@ pub struct App {
     rename_session_tx: mpsc::UnboundedSender<RenameSessionRequest>,
     restart_tx: mpsc::UnboundedSender<RestartRequest>,
     master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
-    proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
@@ -2324,6 +1045,7 @@ pub struct App {
     /// the bootstrap RPC hasn't returned yet. Tracked as an Atomic so
     /// the bootstrap task can flip it from a non-`&mut self` context.
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
 }
 
 /// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
@@ -2332,42 +1054,6 @@ pub struct App {
 pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
 pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
     std::time::Duration::from_millis(1500);
-
-/// Top-level UI view selector. Toggled with Ctrl+Shift+/.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum View {
-    Chat,
-    Agents,
-}
-
-impl Default for View {
-    fn default() -> Self {
-        View::Chat
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct AgentsViewState {
-    pub snapshot: Option<Vec<crate::session_registry::SessionInfo>>,
-    pub focused_sid: Option<agent_client_protocol::schema::v1::SessionId>,
-    pub search_query: String,
-    pub search_focused: bool,
-    pub refetch_in_flight: bool,
-    pub dirty: bool,
-    pub next_request_id: u64,
-    pub latest_request_id: Option<u64>,
-    /// Set by F5 in the session view to request a master-side disk re-scan
-    /// (`load_for_cli`) on the next dispatched `sessions/list`. Sticky across
-    /// in-flight coalescing: only cleared when a request is actually built, so
-    /// an F5 pressed while a poll is in flight still re-scans on the trailing
-    /// refetch. Reset on view close.
-    pub pending_rescan: bool,
-    /// True while an F5 rescan request is in flight (set when dispatched,
-    /// cleared when the response/failure lands). Drives the loading shimmer for
-    /// the whole refresh so F5 has visible feedback even when the list already
-    /// has rows — a normal 5s poll leaves it false and never flashes loading.
-    pub rescan_in_flight: bool,
-}
 
 // (Historical-session load-state tracking was removed: the helper no longer
 // scans on-disk history; the session view renders from master's `session/list`
@@ -2495,7 +1181,6 @@ impl App {
             rename_session_tx,
             restart_tx,
             master_request_tx,
-            proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
             debug_capture_enabled,
             help_overlay_visible: false,
             transport_lost: false,
@@ -2532,6 +1217,7 @@ impl App {
             transient_hint: None,
             alive: crate::session_registry::InMemoryRegistry::shared(),
             alive_loaded: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
             shell_mgr,
         }
     }
@@ -4859,6 +3545,10 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
+            AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
+            AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
+            AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::DirectTerminalActionProposal { .. } => "direct_terminal_action_proposal",
             AppEvent::DirectTerminalActionProposalCommit { .. } => {
                 "direct_terminal_action_proposal_commit"
@@ -4866,10 +3556,6 @@ impl App {
             AppEvent::DirectTerminalActionProposalInvalidate { .. } => {
                 "direct_terminal_action_proposal_invalidate"
             }
-            AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
-            AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
-            AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",
-            AppEvent::MasterMutationCompleted { .. } => "master_mutation_completed",
             AppEvent::RevealTick => "reveal_tick",
         }
     }
@@ -5178,22 +3864,14 @@ impl App {
                 continue;
             };
             if tab.reveal_chars >= len {
-                // Clamp down if a turn/state replacement shortened the
-                // visible streaming text.
+                // Clamp down if the visible text shrank (e.g. a fenced JSON
+                // block replaced the streamed prose).
                 tab.reveal_chars = len;
-                if len > 0 {
-                    tab.mark_visible_agent_activity();
-                }
                 continue;
             }
             let backlog = len - tab.reveal_chars;
             let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
             tab.reveal_chars = (tab.reveal_chars + step).min(len);
-            if tab.reveal_chars > 0 {
-                // The first character is now actually visible, so Thinking
-                // hands off permanently to the streamed response for this turn.
-                tab.mark_visible_agent_activity();
-            }
         }
     }
 }
@@ -6643,20 +5321,6 @@ fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
 #[path = "app_status_projection.rs"]
 mod app_status_projection;
 
-/// Publish a raw JSON event via `wtcli publish`. The event flows through
-/// IProtocolServer::SendEvent; our modified COM server special-cases
-/// method=="autofix_state" and dispatches directly to TerminalPage.
-///
-/// Events are funnelled through a single background thread that waits
-/// for each `wtcli publish` subprocess to exit before launching the next.
-/// Without this, two rapid emits (e.g. armed → cleared) could race at
-/// the OS process-scheduling layer and arrive at WT out of order,
-/// leaving the bottom-bar stuck in the earlier state.
-pub fn send_wt_protocol_event(json_payload: String) {
-    let tx = publisher_sender();
-    let _ = tx.send(json_payload);
-}
-
 fn build_switch_agent_event(
     window_id: &str,
     tab_id: &str,
@@ -6691,49 +5355,6 @@ fn emit_agent_chip_target(tab_id: &str, pane_session_id: Option<&str>) {
         }
     });
     send_wt_protocol_event(evt.to_string());
-}
-
-fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
-    static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
-        std::sync::OnceLock::new();
-    SENDER.get_or_init(|| {
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        std::thread::Builder::new()
-            .name("wt-event-publisher".into())
-            .spawn(move || {
-                while let Ok(payload) = rx.recv() {
-                    publish_event_blocking(&payload);
-                }
-            })
-            .expect("spawn wt-event-publisher thread");
-        tx
-    })
-}
-
-fn publish_event_blocking(json_payload: &str) {
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("wtcli.exe")))
-        .filter(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from("wtcli.exe"));
-    let mut cmd = std::process::Command::new(exe);
-    cmd.arg("publish").arg(json_payload);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .stdin(std::process::Stdio::null());
-    match cmd.spawn() {
-        Ok(mut child) => {
-            // Block the publisher thread until this publish finishes so
-            // the next event's subprocess can't overtake it.
-            let _ = child.wait();
-        }
-        Err(_) => {}
-    }
 }
 
 /// Resolve an agent command like "copilot --acp --stdio" to use the full
@@ -6885,94 +5506,6 @@ fn now_unix_s() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs_f64()
-}
-
-fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {
-    let mut clamped = cursor_pos.min(input.len());
-    while clamped > 0 && !input.is_char_boundary(clamped) {
-        clamped -= 1;
-    }
-    clamped
-}
-
-fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
-    let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
-    if cursor_pos == 0 {
-        return 0;
-    }
-
-    input[..cursor_pos]
-        .char_indices()
-        .last()
-        .map(|(idx, _)| idx)
-        .unwrap_or(0)
-}
-
-fn next_char_boundary(input: &str, cursor_pos: usize) -> usize {
-    let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
-    if cursor_pos >= input.len() {
-        return input.len();
-    }
-
-    input[cursor_pos..]
-        .chars()
-        .next()
-        .map(|ch| cursor_pos + ch.len_utf8())
-        .unwrap_or(input.len())
-}
-
-fn is_word_char(ch: char) -> bool {
-    ch.is_alphanumeric() || ch == '_'
-}
-
-fn next_word_boundary(input: &str, cursor_pos: usize) -> usize {
-    let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
-    if cursor_pos >= input.len() {
-        return input.len();
-    }
-
-    let mut i = cursor_pos;
-    while i < input.len() {
-        let ch = input[i..].chars().next().unwrap();
-        if is_word_char(ch) {
-            break;
-        }
-        i += ch.len_utf8();
-    }
-    while i < input.len() {
-        let ch = input[i..].chars().next().unwrap();
-        if !is_word_char(ch) {
-            break;
-        }
-        i += ch.len_utf8();
-    }
-    i
-}
-
-fn prev_word_boundary(input: &str, cursor_pos: usize) -> usize {
-    let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
-    if cursor_pos == 0 {
-        return 0;
-    }
-
-    let mut i = cursor_pos;
-    while i > 0 {
-        let prev = prev_char_boundary(input, i);
-        let ch = input[prev..].chars().next().unwrap();
-        if is_word_char(ch) {
-            break;
-        }
-        i = prev;
-    }
-    while i > 0 {
-        let prev = prev_char_boundary(input, i);
-        let ch = input[prev..].chars().next().unwrap();
-        if !is_word_char(ch) {
-            break;
-        }
-        i = prev;
-    }
-    i
 }
 
 // Slash-command behavior tests live in their own file. Declared as a child

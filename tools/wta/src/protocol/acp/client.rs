@@ -13,7 +13,7 @@ use std::sync::{
 use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::app::{AppEvent, PermOption, PlanEntry, PlanEntryStatus};
+use crate::app_contracts::{AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEntryStatus};
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
@@ -1593,10 +1593,7 @@ fn looks_like_proposal_command(command: &str) -> bool {
             return false;
         };
         let executable = executable.trim_matches(['"', '\'']);
-        let executable_name = executable
-            .rsplit(['\\', '/'])
-            .next()
-            .unwrap_or(executable);
+        let executable_name = executable.rsplit(['\\', '/']).next().unwrap_or(executable);
         let is_wta = executable.eq_ignore_ascii_case("$env:WTA_CLI_PATH")
             || executable_name.eq_ignore_ascii_case("wta")
             || executable_name.eq_ignore_ascii_case("wta.exe");
@@ -2790,7 +2787,7 @@ pub async fn run_acp_client_over_pipe(
         let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
         (
             acp::schema::v1::SessionId::new(load_sid.to_string()),
-            Vec::<crate::app::AcpModelInfo>::new(),
+            Vec::<AcpModelInfo>::new(),
             None,
             false,
         )
@@ -2812,8 +2809,8 @@ pub async fn run_acp_client_over_pipe(
                 // but new_session STILL returns AuthRequired, do NOT route
                 // back to the login screen (that would recreate the auth
                 // loop). Surface a terminal HandshakeFailed tagged with the
-                // `NewSession` stage — the DISTINCT signal the App's auth
-                // recovery matches on (`is_post_login_auth_failure`). This is
+                // `NewSession` stage — the distinct signal the App's
+                // post-login recovery policy matches via `failed_at`. This is
                 // deliberately NOT the `Authenticate` stage: an authenticate
                 // RPC that itself fails/times out (above) stays `Authenticate`
                 // and must NOT trigger a master restart, only this
@@ -3014,7 +3011,7 @@ pub async fn run_acp_client_over_pipe(
                 // the user sees a fresh session.
                 //
                 // Signal travels: helper → `wtcli publish` (see
-                // `app::send_wt_protocol_event`) → `IProtocolServer::SendEvent`
+                // `wt_protocol_events::send`) → `IProtocolServer::SendEvent`
                 // (route `RestartAgentStack`) →
                 // `TerminalPage::OnRestartAgentStackRequested`.
                 tracing::info!(
@@ -3027,7 +3024,7 @@ pub async fn run_acp_client_over_pipe(
                     "method": "restart_agent_stack",
                     "params": {},
                 });
-                crate::app::send_wt_protocol_event(evt.to_string());
+                crate::wt_protocol_events::send(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
                 proposal_channels.cancel_active();
@@ -4064,7 +4061,7 @@ mod tests {
         timeout_result_failure_fields, user_locale_tag, ClientState, PromptTimingState,
         SoftStopReason, WtaClient,
     };
-    use crate::app::AppEvent;
+    use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;
     use std::collections::HashSet;
@@ -5159,15 +5156,15 @@ mod tests {
     /// not tear down the connection).
     mod ext_notification_tests {
         use super::super::{ClientState, WtaClient};
-        use crate::app::AppEvent;
+        use crate::app_contracts::AppEvent;
         use crate::session_registry::{
             build_session_added_notification, build_session_removed_notification,
             INTELLTERM_METHOD_SESSION_REMOVED,
         };
         use crate::shell::ShellManager;
         use agent_client_protocol::{self as acp};
-        use std::path::PathBuf;
         use std::collections::HashSet;
+        use std::path::PathBuf;
         use std::sync::{Arc, Mutex};
         use tokio::sync::mpsc;
 

@@ -66,7 +66,7 @@ a single implementation today:
 
 ### ACP (Agent Client Protocol)
 
-ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on **two hops**,
+ACP (`agent-client-protocol = "1.3.0"`, JSON-RPC 2.0) is spoken on **two hops**,
 because of the helper+master split:
 
 - **master ↔ agent CLI** (stdio): master is the ACP **client** of the agent CLI
@@ -123,7 +123,7 @@ Claude and Codex are launched through ACP adapters:
 
 ```
 wta --agent "npx -y @agentclientprotocol/claude-agent-acp"
-wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.0"
+wta --agent "npx -y @agentclientprotocol/codex-acp@1.1.4"
 ```
 
 The Terminal settings layer resolves the built-in agent IDs to these adapter commands.
@@ -241,7 +241,7 @@ green build says nothing about the tests.
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
-| `agent-client-protocol` | 0.10 | ACP client library |
+| `agent-client-protocol` | 1.3.0 | ACP client library |
 | `tokio` | 1 | Async runtime |
 | `ratatui` | 0.30 | TUI rendering |
 | `crossterm` | 0.29 | Terminal I/O |

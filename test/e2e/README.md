@@ -18,6 +18,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
+| `Feature.AgentMouse.Tests.ps1` | PR #506: chat wheel scrolling, draft preservation, text selection/copy, and stale-selection suppression | 2 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation | 3 |
 | `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout | 10 |
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
@@ -30,11 +31,11 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.WslAgentBackend.Tests.ps1` | PR #481 profile-scoped WSL agent backend: settings hot reload, helper/master source routing, and authenticated chat | 2 (environment-gated) |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 
-**Coverage: 105 of 106 automatable `[E2E]` checklist items are implemented.**
-**Test status: 100 baseline feature cases pass + 2 documented skips** (`wta sessions list` is
+**Coverage: 107 of 108 automatable `[E2E]` checklist items are implemented.**
+**Test status: 102 baseline feature cases pass + 2 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases that
 run only when a dev package, runnable distro, and native supported agent are available; the
-chat case also requires authentication. The 105 implemented checklist items map to the
+chat case also requires authentication. The 107 implemented checklist items map to the
 baseline cases plus the deterministic settings/persistence assertions. The remaining new
 item is the profile Agent pane agent picker UI; it stays explicit E2E work rather than being
 falsely credited by the JSON-level runtime tests. Other

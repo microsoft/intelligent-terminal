@@ -256,8 +256,8 @@ through the `wsl.exe` stdio bridge.
 | CLI | ACP launch (`agent_registry.rs`) | `sessionCapabilities.list` | `list_sessions` result |
 |-----|----------------------------------|----------------------------|------------------------|
 | **copilot** | native `--acp --stdio` (`:87`) | `Some` | OK — 50 host sessions |
-| **claude** | `npx @agentclientprotocol/claude-agent-acp` (`:109`) | `Some` | OK — 21 host sessions |
-| **codex** | `npx @zed-industries/codex-acp` (`:126`) | `Some` | OK — host sessions |
+| **claude** | `npx -y @agentclientprotocol/claude-agent-acp` (`:109`) | `Some` | OK — 21 host sessions |
+| **codex** | `npx -y @agentclientprotocol/codex-acp@1.1.4` (`:127`) | `Some` | OK — host sessions |
 | **gemini** | native `--experimental-acp` (`:144`) | **`None`** | **`Method not found`** |
 
 Versions observed: copilot 1.0.64–1.0.66, claude-agent-acp 0.52.0, codex-acp
@@ -269,7 +269,7 @@ fallback is kept for it.
 
 The Codex results above were collected with the now-deprecated
 `@zed-industries/codex-acp`. The current runtime launch command is
-`npx -y @agentclientprotocol/codex-acp@1.1.0`; the original measurements and
+`npx -y @agentclientprotocol/codex-acp@1.1.4`; the original measurements and
 reproduction command below are retained as historical evidence.
 
 ### 2. `session/list` returns full on-disk history, not just live sessions — and only *real* sessions

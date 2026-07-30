@@ -80,7 +80,6 @@ impl App {
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
         tab.turn = TurnState::Submitted(prompt);
-        tab.waiting_for_first_visible_activity = true;
 
         // Submitting a new prompt dismisses any prior leftover card (the
         // `selected_recommendation = 0` + turn reset above). If the helper
@@ -557,7 +556,6 @@ impl App {
     fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
-        tab.mark_visible_agent_activity();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -754,7 +752,6 @@ impl App {
         tab.selected_button = 0;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
@@ -819,7 +816,6 @@ impl App {
         tab.selection_visible_pending = true;
         tab.selected_completed_turn_idx = None;
         tab.activity_frame = 0;
-        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -906,7 +902,6 @@ impl App {
         tab.selected_recommendation = rec_idx;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
-        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -988,7 +983,6 @@ impl App {
         tab.selected_button = 0;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.mark_visible_agent_activity();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,

@@ -294,7 +294,7 @@ mod tests {
         );
         assert_eq!(
             acp_command_for(&CliSource::Codex).as_deref(),
-            Some("npx -y @agentclientprotocol/codex-acp@1.1.0")
+            Some("npx -y @agentclientprotocol/codex-acp@1.1.4")
         );
         assert_eq!(
             acp_command_for(&CliSource::OpenCode).as_deref(),

@@ -248,7 +248,7 @@ fn spawn_restart_agent_stack_forwarder(
                 "method": "restart_agent_stack",
                 "params": {},
             });
-            crate::app::send_wt_protocol_event(evt.to_string());
+            crate::wt_protocol_events::send(evt.to_string());
         }
     });
 }

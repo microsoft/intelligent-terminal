@@ -3594,69 +3594,6 @@ fn transport_loss_surfaces_restart_hint_even_behind_another_error() {
     assert_eq!(n, 1, "identical connection.lost must not duplicate");
 }
 
-/// `is_post_login_auth_failure` must catch BOTH the plain `AuthRequired`
-/// and the `HandshakeFailed { NewSession }` the pipe client wraps a
-/// still-AuthRequired post-login `new_session` into — `is_auth()` alone
-/// would miss the latter and the auth recovery would never fire. It must
-/// NOT match `HandshakeFailed { Authenticate }` (a genuine authenticate
-/// RPC rejection/timeout) — that routes to sign-in, not a master restart.
-#[test]
-fn post_login_auth_failure_matches_auth_required_and_handshake_new_session() {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    assert!(is_post_login_auth_failure(&AgentFailure::AuthRequired {
-        message: "auth".to_string()
-    }));
-    assert!(is_post_login_auth_failure(&AgentFailure::HandshakeFailed {
-        stage: HandshakeStage::NewSession,
-        detail: "still auth after authenticate".to_string()
-    }));
-    // An authenticate-RPC rejection/timeout must NOT trigger auth recovery
-    // (a master restart can't fix bad credentials) — it routes to sign-in.
-    assert!(!is_post_login_auth_failure(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::Authenticate,
-            detail: "authenticate rejected/timed out".to_string()
-        }
-    ));
-    // A non-auth handshake stage must NOT trigger auth recovery.
-    assert!(!is_post_login_auth_failure(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::Initialize,
-            detail: "boom".to_string()
-        }
-    ));
-}
-
-#[test]
-fn post_login_master_unavailable_matches_only_pipe_connect() {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-
-    assert!(is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::PipeConnect,
-            detail: "pipe missing".to_string()
-        }
-    ));
-    assert!(!is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::Initialize,
-            detail: "init failed".to_string()
-        }
-    ));
-    assert!(!is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::Authenticate,
-            detail: "auth failed".to_string()
-        }
-    ));
-    assert!(!is_post_login_master_unavailable(
-        &AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::NewSession,
-            detail: "session failed".to_string()
-        }
-    ));
-}
-
 #[test]
 fn typed_pipe_connect_failure_survives_classify_anyhow() {
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -3692,6 +3629,18 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
         "non-post-login pipe failures should surface normally"
     );
 
+    let auth_required = AgentFailure::AuthRequired {
+        message: "auth".to_string(),
+    };
+    assert!(
+        should_trigger_post_login_recovery(true, true, &auth_required),
+        "external post-login auth failures should recover via a fresh master"
+    );
+    assert!(
+        !should_trigger_post_login_recovery(true, false, &auth_required),
+        "non-external auth failures should route to sign-in"
+    );
+
     let still_auth = AgentFailure::HandshakeFailed {
         stage: HandshakeStage::NewSession,
         detail: "still auth".to_string(),
@@ -3703,6 +3652,15 @@ fn post_login_recovery_route_covers_pipe_connect_without_external_auth_gate() {
     assert!(
         !should_trigger_post_login_recovery(true, false, &still_auth),
         "non-external auth failures should not use auth-stale recovery"
+    );
+
+    let authenticate_failed = AgentFailure::HandshakeFailed {
+        stage: HandshakeStage::Authenticate,
+        detail: "authenticate rejected".to_string(),
+    };
+    assert!(
+        !should_trigger_post_login_recovery(true, true, &authenticate_failed),
+        "authenticate failures should route to sign-in instead of restarting master"
     );
 }
 
@@ -4735,7 +4693,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 }
 
 #[test]
-fn permission_request_permanently_clears_thinking_latch() {
+fn permission_request_keeps_thinking_until_turn_ends() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
@@ -4748,27 +4706,34 @@ fn permission_request_permanently_clears_thinking_latch() {
         outcome: TurnOutcome::Empty,
         end_pending: true,
     };
-    app.tab_mut(DEFAULT_TAB_ID)
-        .waiting_for_first_visible_activity = true;
-
     let (responder, _response) = tokio::sync::oneshot::channel();
     app.handle_event(AppEvent::PermissionRequest {
         session_id: DEFAULT_TAB_ID.into(),
         tool_call_id: "tool".into(),
         description: "Allow tool X?".into(),
         options: vec![
-            PermOption { id: "allow-once".into(), name: "Allow".into(), kind: "AllowOnce".into() },
-            PermOption { id: "reject-once".into(), name: "Deny".into(), kind: "RejectOnce".into() },
+            PermOption {
+                id: "allow-once".into(),
+                name: "Allow".into(),
+                kind: "AllowOnce".into(),
+            },
+            PermOption {
+                id: "reject-once".into(),
+                name: "Deny".into(),
+                kind: "RejectOnce".into(),
+            },
         ],
         responder,
     });
 
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
     app.current_tab_mut().permission.pop_front();
-    assert!(
-        !app.current_tab().should_show_thinking(),
-        "resolving permission must not re-enable Thinking in the same turn"
-    );
+    assert!(app.current_tab().should_show_thinking());
+    let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn else {
+        panic!("expected surfaced turn");
+    };
+    *end_pending = false;
+    assert!(!app.current_tab().should_show_thinking());
 }
 
 /// Tool-call card: when the mock proposes a command (a `ToolCall`
@@ -4970,11 +4935,9 @@ fn hide_tool_call_removes_internal_proposal_card() {
         title: "Propose listing active directory".to_string(),
         status: "Pending".to_string(),
     });
-    assert!(app
-        .current_tab()
-        .messages
-        .iter()
-        .any(|message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")));
+    assert!(app.current_tab().messages.iter().any(
+        |message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")
+    ));
 
     app.handle_event(AppEvent::HideToolCall {
         session_id: "0".to_string(),
@@ -4982,11 +4945,9 @@ fn hide_tool_call_removes_internal_proposal_card() {
     });
 
     assert!(!app.current_tab().tool_calls.contains_key("proposal-tool"));
-    assert!(!app
-        .current_tab()
-        .messages
-        .iter()
-        .any(|message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")));
+    assert!(!app.current_tab().messages.iter().any(
+        |message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")
+    ));
 }
 
 /// Plan: a `Plan` notification must surface as a plan card with its entries.
@@ -6068,9 +6029,8 @@ fn render_chat_completed_turn_expanded_with_marker() {
     }
 }
 
-/// Render: while the helper is still connecting, the chat must paint the
-/// animated "Connecting…" activity line. Lifts the `Connecting` branch of
-/// `build_activity_line` in `ui/chat.rs`.
+/// Render: while the helper is still connecting, the fixed activity row must
+/// paint the animated "Connecting…" label.
 #[test]
 fn render_chat_connecting_activity_line() {
     let mut app = test_app();
@@ -6104,7 +6064,7 @@ fn render_chat_welcome_hint() {
 }
 
 #[test]
-fn connecting_activity_row_is_included_in_estimated_chat_height() {
+fn fixed_activity_row_does_not_change_estimated_chat_height() {
     let mut app = test_app();
     app.current_tab_mut()
         .messages
@@ -6115,7 +6075,7 @@ fn connecting_activity_row_is_included_in_estimated_chat_height() {
     app.state = ConnectionState::Connecting("Starting agent".into());
     let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
 
-    assert_eq!(with_activity, without_activity + 1);
+    assert_eq!(with_activity, without_activity);
     assert!(
         app.has_activity_indicator(),
         "Connecting must keep Tick redraws active for the shimmer"
@@ -6264,10 +6224,13 @@ fn first_message_chunk_transitions_to_streaming_with_buf() {
     assert!(app.current_tab().turn.is_streaming());
     assert!(
         app.current_tab().should_show_thinking(),
-        "Thinking remains until text is actually revealed"
+        "Thinking remains throughout the in-flight turn"
     );
     app.advance_reveal();
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(
+        app.current_tab().should_show_thinking(),
+        "revealing response text must not hide Thinking before turn end"
+    );
 }
 
 #[test]
@@ -6296,13 +6259,13 @@ fn assistant_json_is_visible_activity() {
     );
     app.advance_reveal();
     assert!(
-        !app.current_tab().should_show_thinking(),
-        "assistant JSON is ordinary visible chat in the direct-only architecture"
+        app.current_tab().should_show_thinking(),
+        "Thinking persists throughout the in-flight turn (direct-only architecture)"
     );
 }
 
 #[test]
-fn tool_call_permanently_clears_thinking_latch() {
+fn tool_call_keeps_thinking_while_turn_is_in_flight() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.handle_event(AppEvent::ToolCall {
@@ -6311,7 +6274,7 @@ fn tool_call_permanently_clears_thinking_latch() {
         title: "Find files".into(),
         status: "InProgress".into(),
     });
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
@@ -6319,8 +6282,36 @@ fn tool_call_permanently_clears_thinking_latch() {
         status: "Completed".into(),
     });
     assert!(
-        !app.current_tab().should_show_thinking(),
-        "tool completion must not re-enable Thinking"
+        app.current_tab().should_show_thinking(),
+        "tool completion does not end the agent turn"
+    );
+}
+
+#[test]
+fn thinking_is_pinned_one_row_above_input() {
+    const WIDTH: u16 = 80;
+    const HEIGHT: u16 = 24;
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "inspect");
+
+    let input_height = crate::ui::input_height(
+        &app.current_tab().input,
+        app.current_tab().cursor_pos,
+        WIDTH,
+    );
+    let text = render_to_text(&mut app, WIDTH, HEIGHT);
+    let label = t!("chat.activity_thinking").into_owned();
+    let row = text
+        .lines()
+        .position(|line| line.contains(&label))
+        .expect("Thinking row must render");
+    let expected_row = usize::from(HEIGHT - input_height - 1);
+
+    assert_eq!(
+        row, expected_row,
+        "Thinking must sit directly above the input box"
     );
 }
 
@@ -6783,7 +6774,8 @@ fn rec_card_height_matches_predict_and_render_paths() {
 fn mouse_wheel_scrolls_chat_without_changing_input_history() {
     use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
     let mut app = test_app();
-    app.current_tab_mut().record_input_history("previous prompt");
+    app.current_tab_mut()
+        .record_input_history("previous prompt");
     app.current_tab_mut().chat_scroll.set_max(20);
 
     app.handle_event(AppEvent::Mouse(MouseEvent {
@@ -7842,8 +7834,7 @@ fn direct_proposal_rejects_policy_violation_as_non_retryable() {
     submit_prompt_for_session(&mut app, sid, "please help", None);
 
     let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[]}"#;
-    let (decision, _) =
-        evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), payload);
+    let (decision, _) = evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), payload);
     assert_eq!(
         decision.status,
         crate::proposal_channel::ProposalValidationStatus::Rejected
