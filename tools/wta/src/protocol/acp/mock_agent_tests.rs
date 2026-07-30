@@ -1636,6 +1636,56 @@ async fn session_notification_routes_tool_call() {
     }
 }
 
+#[tokio::test]
+async fn session_notification_hides_proposal_tool_call_before_permission() {
+    let (client, mut rx) = bare_client();
+    let command =
+        r#"& "$env:WTA_CLI_PATH" propose-terminal-actions --channel v1.helper.turn --payload-json '{}'"#;
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("proposal-tool"),
+                    "Propose terminal action",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": command,
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::HideToolCall { session_id, id })
+            if session_id == "s1" && id == "proposal-tool"
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "proposal ToolCall must not reach the chat UI"
+    );
+
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                acp::schema::v1::ToolCallUpdate::new(
+                    acp::schema::v1::ToolCallId::new("proposal-tool"),
+                    acp::schema::v1::ToolCallUpdateFields::new()
+                        .status(acp::schema::v1::ToolCallStatus::Completed),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+    assert!(
+        rx.try_recv().is_err(),
+        "updates for a hidden proposal ToolCall must remain hidden"
+    );
+}
+
 /// When the agent's own `title` already embeds the location text (common
 /// for read/view tool calls, e.g. title "Viewing C:\...\rust-app" whose
 /// `locations` names that exact same path), the hint must be suppressed —

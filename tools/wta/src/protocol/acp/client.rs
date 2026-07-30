@@ -1710,13 +1710,11 @@ fn proposal_permission_command_candidate(
     if args.tool_call.fields.kind != Some(acp::schema::v1::ToolKind::Execute) {
         return None;
     }
-    args.tool_call
-        .fields
-        .raw_input
-        .as_ref()?
-        .as_object()?
-        .get("command")?
-        .as_str()
+    proposal_command_candidate(args.tool_call.fields.raw_input.as_ref())
+}
+
+fn proposal_command_candidate(raw_input: Option<&serde_json::Value>) -> Option<&str> {
+    raw_input?.as_object()?.get("command")?.as_str()
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -2003,6 +2001,12 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
+                if proposal_command_candidate(tool_call.raw_input.as_ref())
+                    .is_some_and(looks_like_proposal_command)
+                {
+                    self.hide_proposal_tool_call(&sid, &tool_call_id);
+                    return Ok(());
+                }
                 if self.tool_call_is_hidden(&sid, &tool_call_id) {
                     return Ok(());
                 }
@@ -2028,6 +2032,12 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
+                if proposal_command_candidate(update.fields.raw_input.as_ref())
+                    .is_some_and(looks_like_proposal_command)
+                {
+                    self.hide_proposal_tool_call(&sid, &tool_call_id);
+                    return Ok(());
+                }
                 if self.tool_call_is_hidden(&sid, &tool_call_id) {
                     return Ok(());
                 }
