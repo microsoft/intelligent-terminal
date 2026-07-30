@@ -55,6 +55,16 @@
                 </mux:InfoBar.ActionButton>
             </mux:InfoBar>
 
+            <mux:InfoBar x:Name="TabLayoutRestartInfoBar"
+                         x:Load="False"
+                         CornerRadius="0"
+                         IsClosable="True"
+                         IsIconVisible="True"
+                         IsOpen="False"
+                         Message="Restart Windows Terminal to apply the new tabLayout."
+                         Severity="Informational"
+                         Title="Tab layout change requires restart" />
+
             <mux:InfoBar x:Name="CloseOnExitInfoBar"
                          x:Uid="CloseOnExitInfoBar"
                          x:Load="False"

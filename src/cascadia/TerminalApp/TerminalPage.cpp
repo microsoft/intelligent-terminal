@@ -296,6 +296,22 @@ namespace winrt::TerminalApp::implementation
             // Create this only on the first time we load the settings.
             _terminalSettingsCache = std::make_shared<TerminalSettingsCache>(settings);
         }
+        // Spec A: TabLayout can't be applied live in v1 (would require
+        // tearing down and rebuilding the rail + chrome reparenting).
+        // Detect the mismatch before we swap _settings and surface a
+        // restart-required hint. Skipped on first load, and only when the
+        // new setting actually diverges from the live layout.
+        if (!firstLoad)
+        {
+            const bool wantVertical = settings.GlobalSettings().TabLayout() == TabLayout::Vertical;
+            if (wantVertical != _isVerticalLayout)
+            {
+                if (const auto infoBar = FindName(L"TabLayoutRestartInfoBar").try_as<MUX::Controls::InfoBar>())
+                {
+                    infoBar.IsOpen(true);
+                }
+            }
+        }
         _settings = settings;
 
         // Seed the agent-settings baseline on first load so that later
