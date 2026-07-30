@@ -5232,22 +5232,40 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
 }
 
 /// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. No inter-card gap — only one card is ever shown.
+/// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
+/// a header line (`{kind_label} {title}` or just `title`) plus, for a
+/// path target, one wrapped line, or for a command target, one line per
+/// split statement (see `ui::command_format`) — NOT `description`, which
+/// is only the fallback text for the 1-row compact card. No inter-card
+/// gap — only one card is ever shown.
 pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
     let inner_width = ui::card::card_content_width(panel_width);
-    let content_lines: usize = perm
-        .description
-        .lines()
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
-        })
-        .sum::<usize>()
-        .max(1);
+    let wrap_lines = |text: &str| -> usize {
+        text.lines()
+            .map(|line| {
+                let chars = line.chars().count();
+                if chars == 0 {
+                    1
+                } else {
+                    chars.div_ceil(inner_width)
+                }
+            })
+            .sum::<usize>()
+            .max(1)
+    };
+
+    let header = match &perm.kind_label {
+        Some(icon) => format!("{icon} {}", perm.title),
+        None => perm.title.clone(),
+    };
+    let mut content_lines = wrap_lines(&header);
+    if let Some(target) = &perm.target {
+        if perm.target_is_command {
+            content_lines += ui::command_format::command_display_lines(target).len();
+        } else {
+            content_lines += wrap_lines(target);
+        }
+    }
     // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
     ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
 }

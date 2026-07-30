@@ -19,6 +19,14 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        /// Concise path/command hint pulled from the ACP tool call's
+        /// `locations` or summarized `raw_input`. `None` when no useful
+        /// target was reported or the title already states it verbatim.
+        location: Option<String>,
+        /// True when `location` is a shell command rather than a file path.
+        /// Commands render on their own indented line below the title.
+        #[serde(default)]
+        location_is_command: bool,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -88,7 +96,16 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
 
 pub struct PermissionState {
     pub tool_call_id: String,
+    /// Fallback single-line text used when the panel cannot fit a full card.
     pub description: String,
+    /// The agent's unmodified tool-call title.
+    pub title: String,
+    /// Locale-neutral icon derived from ACP `ToolKind`.
+    pub kind_label: Option<String>,
+    /// Concrete path, command, or URL shown in the full permission card.
+    pub target: Option<String>,
+    /// True when `target` is a shell command rather than a file path.
+    pub target_is_command: bool,
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,

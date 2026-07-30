@@ -616,6 +616,8 @@ impl App {
                 id,
                 title,
                 status,
+                location,
+                location_is_command,
             } => {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
@@ -634,14 +636,21 @@ impl App {
                 }
                 tab.tool_calls
                     .insert(id.clone(), (title.clone(), status.clone()));
-                tab.messages
-                    .push(ChatMessage::ToolCall { id, title, status });
+                tab.messages.push(ChatMessage::ToolCall {
+                    id,
+                    title,
+                    status,
+                    location,
+                    location_is_command,
+                });
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
                 session_id,
                 id,
                 status,
+                location,
+                location_is_command,
             } => {
                 let tab = self.session_tab_mut(&session_id);
                 if !tab.turn.is_in_flight() && !tab.loading_session {
@@ -655,11 +664,20 @@ impl App {
                     if let ChatMessage::ToolCall {
                         id: ref mid,
                         status: ref mut s,
+                        location: ref mut loc,
+                        location_is_command: ref mut loc_is_cmd,
                         ..
                     } = msg
                     {
                         if mid == &id {
                             *s = status.clone();
+                            // Only overwrite when the update actually carried
+                            // a fresh location — `None` means "unchanged",
+                            // not "clear it" (see `AppEvent::ToolCallUpdate`).
+                            if location.is_some() {
+                                *loc = location.clone();
+                                *loc_is_cmd = location_is_command;
+                            }
                         }
                     }
                 }
@@ -696,6 +714,10 @@ impl App {
                 session_id,
                 tool_call_id,
                 description,
+                title,
+                kind_label,
+                target,
+                target_is_command,
                 options,
                 responder,
             } => {
@@ -713,6 +735,10 @@ impl App {
                 tab.permission.push_back(PermissionState {
                     tool_call_id,
                     description,
+                    title,
+                    kind_label,
+                    target,
+                    target_is_command,
                     options,
                     selected: 0,
                     responder: Some(responder),

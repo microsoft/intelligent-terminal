@@ -74,7 +74,22 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
         ChatMessage::Agent(t) | ChatMessage::Error(t) => dot_wrap_count(t, body_width) + 1,
         ChatMessage::User(t) => wrap_count(t, body_width) + 1,
         ChatMessage::System(t) | ChatMessage::AgentEvent(t) => wrap_count(t, wrap_width) + 1,
-        ChatMessage::ToolCall { .. } => 1,
+        ChatMessage::ToolCall { location, location_is_command, .. } => {
+            // Command targets render one line per split statement (see
+            // the render arm below, and `command_format`) — must count
+            // the same number of rows here, or the chat area's height
+            // budget undercounts and clips the scrollback.
+            let command_lines = if *location_is_command {
+                location
+                    .as_deref()
+                    .filter(|l| !l.is_empty())
+                    .map(|l| crate::ui::command_format::command_display_lines(l).len())
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            1 + command_lines + usize::from(command_lines > 0)
+        }
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
         // Disclaimer is a single dim row — terminal min-width guarantees the
         // short text fits without wrapping, and no trailing blank is needed.
@@ -340,8 +355,9 @@ fn build_completed_turn_lines<'a>(
 
     // Push a trailing blank only if the last detail (or the prompt header
     // for collapsed turns) didn't already supply one. Agent / Error /
-    // System / Plan / AgentEvent all trail a blank via build_message_lines;
-    // ToolCall does not, and collapsed turns stop at the prompt header.
+    // System / Plan / AgentEvent trail a blank via build_message_lines.
+    // ToolCall only does so when it renders command details; collapsed
+    // turns stop at the prompt header.
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
@@ -456,6 +472,8 @@ fn build_message_lines<'a>(
             id,
             title,
             status,
+            location,
+            location_is_command,
         } => {
             let (marker, marker_style, detail) = tool_call_presentation(status);
             let marker = if permission_tool_call_id == Some(id.as_str())
@@ -470,6 +488,21 @@ fn build_message_lines<'a>(
                 Span::raw(" "),
                 Span::styled(truncate_render_text(title), theme::TOOL_CALL_TITLE),
             ];
+            let location = location.as_deref().filter(|l| !l.is_empty());
+            // Path hint pulled from the ACP `locations`/`raw_input` fields
+            // (see `client.rs::tool_call_location_hint`) — surfaces *what*
+            // the tool touched, which the agent's `title` alone often
+            // doesn't (e.g. a generic "Access paths outside trusted
+            // directories" permission title). Rendered inline since a
+            // path is normally short enough to fit on the title's line.
+            if !location_is_command {
+                if let Some(location) = location {
+                    spans.push(Span::styled(
+                        format!(" ({})", truncate_render_text(location)),
+                        theme::DIM,
+                    ));
+                }
+            }
             if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
                 spans.push(Span::styled(
                     format!(" · {}", truncate_render_text(detail)),
@@ -477,6 +510,36 @@ fn build_message_lines<'a>(
                 ));
             }
             lines.push(Line::from(spans));
+            // A command target can be several `;`-chained PowerShell
+            // statements crammed into one `raw_input.command` (agents
+            // commonly batch multiple checks into a single tool call) —
+            // rendering that as one long line, which then wraps at the
+            // terminal edge with no hanging indent, reads as an
+            // unreadable wall of text. Splitting on top-level `;`
+            // restores the sequence of discrete steps, one per code-
+            // styled line (mirrors how `execute`-kind cards look in Zed /
+            // opencode); a long remainder folds into a single "+N more"
+            // row instead of growing the card unboundedly.
+            let mut rendered_command = false;
+            if *location_is_command {
+                if let Some(command) = location {
+                    for entry in crate::ui::command_format::command_display_lines(command) {
+                        rendered_command = true;
+                        let text = match entry {
+                            crate::ui::command_format::CommandLine::Statement(s) => {
+                                format!("    $ {s}")
+                            }
+                            crate::ui::command_format::CommandLine::Folded { remaining } => {
+                                format!("    … (+{remaining} more)")
+                            }
+                        };
+                        lines.push(Line::from(Span::styled(text, theme::CARD_CODE)));
+                    }
+                }
+            }
+            if rendered_command {
+                lines.push(Line::default());
+            }
         }
         ChatMessage::Plan(entries) => {
             lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
@@ -691,6 +754,8 @@ mod tests {
             id: "tool".into(),
             title: "Run: cargo test".into(),
             status: status.into(),
+            location: None,
+            location_is_command: false,
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
         let line = &lines[0];
@@ -699,6 +764,105 @@ mod tests {
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
         assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
+    }
+
+    /// A `location` hint renders as a dim `(path)` suffix right after the
+    /// title, before the status detail — guards against the card silently
+    /// dropping the path/command info that `client.rs` now forwards.
+    #[test]
+    fn tool_call_renders_location_hint_between_title_and_status_detail() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Access paths outside trusted directories".into(),
+            status: "Pending".into(),
+            location: Some(r"C:\src\rust-app".into()),
+            location_is_command: false,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+        let line = &lines[0];
+
+        assert_eq!(
+            line_text(line),
+            r"● Access paths outside trusted directories (C:\src\rust-app)"
+        );
+        assert_eq!(
+            lines.len(),
+            1,
+            "path-only tool calls should remain compact without a paragraph break"
+        );
+        assert_eq!(message_height(&message, 80), 1);
+    }
+
+    /// A command-kind location (`location_is_command`) must NOT be inlined
+    /// as a `(hint)` suffix on the title line — it gets its own
+    /// `CARD_CODE`-styled `$ command` line instead, since commands can be
+    /// long one-liners that would overflow or wrap awkwardly inline.
+    #[test]
+    fn tool_call_command_location_renders_as_separate_code_line() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run command".into(),
+            status: "Pending".into(),
+            location: Some("cargo test --workspace".into()),
+            location_is_command: true,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+
+        assert_eq!(
+            lines.len(),
+            3,
+            "expected a title line, command line, and paragraph break"
+        );
+        assert_eq!(line_text(&lines[0]), "● Run command");
+        assert_eq!(line_text(&lines[1]), "    $ cargo test --workspace");
+        assert_eq!(lines[1].spans[0].style, theme::CARD_CODE);
+        assert!(lines[2].spans.is_empty());
+
+        assert_eq!(
+            message_height(&message, 80),
+            3,
+            "the height budget must account for the extra command line"
+        );
+    }
+
+    /// A multi-statement command (`;`-chained, the pattern agents commonly
+    /// emit when batching several checks into one tool call) must render
+    /// as one code-styled line **per statement**, not one giant crammed
+    /// line — this was the exact bug reported: `winget list ...; winget
+    /// list ...` rendered as a single unreadable wrapped line with
+    /// misaligned continuation.
+    #[test]
+    fn tool_call_multi_statement_command_renders_one_line_per_statement() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Check installed PowerToys and Foundry Local packages".into(),
+            status: "Completed".into(),
+            location: Some(
+                "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
+            ),
+            location_is_command: true,
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 80);
+
+        assert_eq!(
+            lines.len(),
+            4,
+            "expected a title line, one line per statement, and a paragraph break"
+        );
+        assert_eq!(
+            line_text(&lines[1]),
+            "    $ winget list --name PowerToys 2>$null"
+        );
+        assert_eq!(
+            line_text(&lines[2]),
+            "    $ winget list --name Foundry 2>$null"
+        );
+
+        assert_eq!(
+            message_height(&message, 80),
+            4,
+            "the height budget must count one row per split statement"
+        );
     }
 
     #[test]
@@ -841,11 +1005,15 @@ mod tests {
             id: "tool-2".into(),
             title: "Read Cargo.toml".into(),
             status: "Completed".into(),
+            location: None,
+            location_is_command: false,
         };
         let other = ChatMessage::ToolCall {
             id: "tool-1".into(),
             title: "Find files".into(),
             status: "Completed".into(),
+            location: None,
+            location_is_command: false,
         };
 
         let matching_lines =
@@ -863,6 +1031,8 @@ mod tests {
                 id: "tool".into(),
                 title: "Find files".into(),
                 status: status.into(),
+                location: None,
+                location_is_command: false,
             };
             let lines = build_message_lines(&message, false, false, None, 9, 80);
             assert_eq!(lines[0].spans[0].content, "·", "{status} should breathe");
@@ -876,6 +1046,10 @@ mod tests {
             tab.permission.push_back(crate::app::PermissionState {
                 tool_call_id: id.into(),
                 description: "Allow access?".into(),
+                title: "Allow access?".into(),
+                kind_label: None,
+                target: None,
+                target_is_command: false,
                 options: Vec::new(),
                 selected: 0,
                 responder: None,
