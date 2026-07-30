@@ -31,7 +31,6 @@ pub enum AcpAuthFlow {
 pub enum ByokMode {
     Unsupported,
     CopilotProviderEnvironment,
-    CodexConfigEnvironment,
     OpenCodeConfigContent,
 }
 
@@ -145,7 +144,7 @@ pub const KNOWN_AGENTS: &[AgentProfile] = &[
         acp_launch_command: "npx -y @agentclientprotocol/codex-acp@1.1.4",
         acp_model_flags: &[],
         acp_auth_flow: AcpAuthFlow::External,
-        byok_mode: ByokMode::CodexConfigEnvironment,
+        byok_mode: ByokMode::Unsupported,
         delegate_prompt_flag: PromptFlag::Positional,
         model_flags: &[],
         install_hint: "npm install -g @openai/codex",
@@ -534,11 +533,7 @@ mod tests {
             lookup_profile_by_id("opencode").byok_mode,
             ByokMode::OpenCodeConfigContent
         );
-        assert_eq!(
-            lookup_profile_by_id("codex").byok_mode,
-            ByokMode::CodexConfigEnvironment
-        );
-        for agent in ["claude", "gemini", "unknown"] {
+        for agent in ["claude", "codex", "gemini", "unknown"] {
             assert_eq!(
                 lookup_profile_by_id(agent).byok_mode,
                 ByokMode::Unsupported,

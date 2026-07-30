@@ -603,6 +603,20 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return _acpModelList && (_acpModelList.Size() > 0 || _acpProbing);
     }
 
+    winrt::hstring AIAgentsViewModel::CustomModelProviderUnsupportedMessage()
+    {
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto agentId = _GlobalSettings.EffectiveAcpAgent();
+        if (_isAddingCustomAcpAgent || Reg::SupportsByok(std::wstring_view{ agentId }))
+        {
+            return {};
+        }
+
+        const auto currentAgent = CurrentAcpAgent();
+        const auto displayName = currentAgent ? currentAgent.DisplayName() : agentId;
+        return winrt::hstring{ RS_fmt(L"AIAgents_CustomProviderUnsupportedForAgent", displayName) };
+    }
+
     Editor::AgentEntry AIAgentsViewModel::_FindEntryById(
         const IObservableVector<Editor::AgentEntry>& list,
         const winrt::hstring& id) const
@@ -639,7 +653,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             _isAddingCustomAcpAgent = true;
             _customAcpCommand = _GlobalSettings.AcpCustomCommand();
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
         }
     }
 
@@ -788,7 +802,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             if (_isAddingCustomAcpAgent) return;
             _isAddingCustomAcpAgent = true;
             _customAcpCommand = L"";
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
             return;
         }
         auto idStr = winrt::to_string(value.Id());
@@ -815,7 +829,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"ShowAcpModel",
                            L"HasAcpModelList",
                            L"ShowAcpModelTextBox",
-                           L"AcpModel");
+                           L"AcpModel",
+                           L"CustomModelProviderUnsupportedMessage");
         }
     }
 
@@ -928,7 +943,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
             L"");
         _TriggerAcpModelProbe();
-        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel");
+        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage");
     }
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
@@ -966,7 +981,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     void AIAgentsViewModel::CancelCustomAcpAgent()
     {
         _isAddingCustomAcpAgent = false;
-        _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CurrentAcpAgent", L"ShowAcpModel");
+        _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CurrentAcpAgent", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
     }
 
     void AIAgentsViewModel::CancelCustomDelegateAgent()
@@ -993,7 +1008,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     break;
                 }
             }
-            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel");
+            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
         }
     }
 

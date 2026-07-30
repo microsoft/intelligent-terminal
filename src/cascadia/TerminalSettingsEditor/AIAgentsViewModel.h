@@ -137,6 +137,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void NewCustomModelApiKey(const winrt::hstring& value);
         winrt::hstring NewCustomModelApiKeyError() const { return _newCustomModelApiKeyError; }
         bool CanSaveCustomModelProvider() const { return _HasNonWhitespace(_newCustomModelProviderBaseUrl) && _HasNonWhitespace(_newCustomModelId); }
+        winrt::hstring CustomModelProviderUnsupportedMessage();
         void AddCustomModelProvider();
         void SaveCustomModelProvider();
         void CancelCustomModelProvider();

@@ -4,6 +4,7 @@
 #include "precomp.h"
 
 #include "../inc/AcpModelUtils.h"
+#include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelProviderUtils.h"
 
 using namespace WEX::TestExecution;
@@ -18,6 +19,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(MapsAgentIdsToAcpCommands);
         TEST_METHOD(AppendsSupportedModelFlags);
         TEST_METHOD(SuppressesCustomSelectionModelFlags);
+        TEST_METHOD(CustomProvidersSupportOnlyChatCompletionsAgents);
         TEST_METHOD(HostCatalogStatusRejectsSameAgentFromWsl);
         TEST_METHOD(RejectsInvalidCatalogShapes);
         TEST_METHOD(ParsesAndNormalizesCatalog);
@@ -54,6 +56,16 @@ namespace TerminalAppUnitTests
         constexpr std::wstring_view customModel{ L"custom:provider:model" };
         VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio" }, BuildAgentCommandLine(L"copilot", customModel));
         VERIFY_ARE_EQUAL(std::wstring{ L"gemini --experimental-acp" }, BuildAgentCommandLine(L"gemini", customModel));
+    }
+
+    void AcpModelUtilsTests::CustomProvidersSupportOnlyChatCompletionsAgents()
+    {
+        namespace Registry = Microsoft::Terminal::Settings::Model::AgentRegistry;
+        VERIFY_IS_TRUE(Registry::SupportsByok(L"copilot"));
+        VERIFY_IS_TRUE(Registry::SupportsByok(L"opencode"));
+        VERIFY_IS_FALSE(Registry::SupportsByok(L"claude"));
+        VERIFY_IS_FALSE(Registry::SupportsByok(L"codex"));
+        VERIFY_IS_FALSE(Registry::SupportsByok(L"gemini"));
     }
 
     void AcpModelUtilsTests::HostCatalogStatusRejectsSameAgentFromWsl()

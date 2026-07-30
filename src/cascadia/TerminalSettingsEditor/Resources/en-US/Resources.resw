@@ -3014,8 +3014,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
-    <value>Use an OpenAI-compatible Chat Completions API endpoint. Codex requires the Responses API.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","Codex","Responses API"} Explains which OpenAI-compatible API shape each supported agent requires when adding a BYOK provider.</comment>
+    <value>Use an OpenAI-compatible Chat Completions API endpoint. Supported by GitHub Copilot and OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} does not support custom OpenAI-compatible Chat Completions providers. Saved providers remain available when you switch to GitHub Copilot or OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Remove</value>

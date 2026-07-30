@@ -2628,8 +2628,12 @@
     <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
-    <value>Використовуйте кінцеву точку API Chat Completions, сумісну з OpenAI. Для Codex потрібен API Responses.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","Codex","Responses API"} Explains which OpenAI-compatible API shape each supported agent requires when adding a BYOK provider.</comment>
+    <value>Використовуйте кінцеву точку API Chat Completions, сумісну з OpenAI. Підтримується GitHub Copilot і OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} не підтримує користувацькі постачальники Chat Completions, сумісні з OpenAI. Збережені постачальники залишаться доступними після переходу на GitHub Copilot або OpenCode.</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Видалити</value>

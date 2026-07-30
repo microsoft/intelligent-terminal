@@ -25,7 +25,7 @@ other.
 |---|---|---|---|---|
 | GitHub Copilot CLI | Yes | Environment variables; `--model` | OpenAI Chat Completions, Azure OpenAI, or Anthropic | Supported for the OpenAI Chat Completions subset |
 | Claude Code | Yes | Login/setup commands, environment variables, settings files, `--model`, `/model` | Anthropic Messages API, Bedrock, Vertex AI, Microsoft Foundry | Not compatible with a generic OpenAI endpoint without an Anthropic-format gateway |
-| OpenAI Codex CLI | Yes | `config.toml`, profiles, `-c`/`--config`, `--model`; adapter environment variables in ACP mode | OpenAI Responses API for custom providers | Supported only when the endpoint implements Responses |
+| OpenAI Codex CLI | Yes | `config.toml`, profiles, `-c`/`--config`, `--model`; adapter environment variables in ACP mode | OpenAI Responses API for custom providers | Not supported by the current Chat Completions-only shared provider |
 | Gemini CLI | Yes | Login flow, environment variables, `.env`, settings files, `--model` | Gemini API or Vertex AI; custom Gemini/Vertex gateway URL | Not compatible with a generic OpenAI endpoint |
 | OpenCode | Yes | `/connect`, config files, `OPENCODE_CONFIG_CONTENT`, environment substitution, `/models` | Chat Completions or Responses, selected by provider package | Current integration supports only the Chat Completions package |
 | Custom ACP command | Agent-specific | Agent-specific | Agent-specific | No safe generic injection contract |
@@ -195,18 +195,11 @@ The ACP adapter adds its own process-level configuration contract:
 
 ### Intelligent Terminal mapping
 
-The implementation generates a `CODEX_CONFIG` JSON object with a custom
-provider, sets `MODEL_PROVIDER`, and exposes the stored credential through the
-configured provider's `env_key`. This matches the ACP adapter contract.
-
-The important limitation is that the generated provider always uses:
-
-```text
-wire_api=responses
-```
-
-Therefore, a Chat Completions-only OpenAI-compatible endpoint will not work
-with Codex even when the same URL works with Copilot or OpenCode.
+Intelligent Terminal does not map the shared provider into Codex. The current
+shared provider contract is deliberately limited to OpenAI-compatible Chat
+Completions endpoints, while Codex custom providers require the Responses API.
+Saved providers remain available for Copilot and OpenCode when the user
+switches agents.
 
 ### Official sources
 
@@ -333,14 +326,12 @@ Reviewed branch: `dev/vanzue/byok-model-runtime` at
 ### Correct mappings
 
 - Copilot's OpenAI provider environment variables match upstream names.
-- Codex's `CODEX_CONFIG` and `MODEL_PROVIDER` use the ACP adapter's documented
-  contract.
 - OpenCode's inline config, provider package, environment substitution, and
   model identifier shape match upstream.
 - API keys are resolved from Windows Credential Manager only when launching the
   selected supported agent.
-- Claude, Gemini, and custom agents do not receive the shared provider metadata
-  or secret.
+- Claude, Codex, Gemini, and custom agents do not receive the shared provider
+  metadata or secret.
 
 ### Issues and limitations
 
@@ -389,7 +380,7 @@ shared provider into agent-specific environment/config.
 This is observable when the same agent, especially the default `copilot`
 agent, is selected for both surfaces: the agent pane uses the configured BYOK
 endpoint, while `?<prompt>` launches the normal CLI without
-`COPILOT_PROVIDER_*`, `CODEX_CONFIG`, or `OPENCODE_CONFIG_CONTENT`. The delegate
+`COPILOT_PROVIDER_*` or `OPENCODE_CONFIG_CONTENT`. The delegate
 can therefore fail for a user who has only BYOK credentials, or use a different
 hosted provider/model than the visible agent pane.
 

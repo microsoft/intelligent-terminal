@@ -7,9 +7,8 @@
 
 namespace Microsoft::Terminal::CustomModels
 {
-    // This identifies the shared provider shape. Individual agent adapters may
-    // render it through Chat Completions or Responses; those are not separate
-    // persisted contracts.
+    // This identifies the shared OpenAI-compatible Chat Completions provider
+    // shape consumed by supported agents.
     inline constexpr std::wstring_view CanonicalApiContract{ L"openai-compatible" };
     inline constexpr std::string_view CanonicalApiContractUtf8{ "openai-compatible" };
 

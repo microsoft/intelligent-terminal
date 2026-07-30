@@ -28,7 +28,6 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     {
         Unsupported,
         CopilotProviderEnvironment,
-        CodexConfigEnvironment,
         OpenCodeConfigContent,
     };
 
@@ -51,7 +50,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     inline constexpr std::array<BuiltinAgent, 5> BuiltinAcpAgents{ {
         { L"copilot", L"GitHub Copilot", ByokMode::CopilotProviderEnvironment },
         { L"claude", L"Claude", ByokMode::Unsupported },
-        { L"codex", L"Codex", ByokMode::CodexConfigEnvironment },
+        { L"codex", L"Codex", ByokMode::Unsupported },
         { L"gemini", L"Gemini", ByokMode::Unsupported },
         { L"opencode", L"OpenCode", ByokMode::OpenCodeConfigContent },
     } };
@@ -63,7 +62,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     inline constexpr std::array<BuiltinAgent, 5> BuiltinDelegateAgents{ {
         { L"copilot", L"GitHub Copilot", ByokMode::CopilotProviderEnvironment },
         { L"claude", L"Claude", ByokMode::Unsupported },
-        { L"codex", L"Codex", ByokMode::CodexConfigEnvironment },
+        { L"codex", L"Codex", ByokMode::Unsupported },
         { L"gemini", L"Gemini", ByokMode::Unsupported },
         { L"opencode", L"OpenCode", ByokMode::OpenCodeConfigContent },
     } };

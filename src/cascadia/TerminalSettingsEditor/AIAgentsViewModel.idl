@@ -87,6 +87,7 @@ namespace Microsoft.Terminal.Settings.Editor
         String NewCustomModelApiKey;
         String NewCustomModelApiKeyError { get; };
         Boolean CanSaveCustomModelProvider { get; };
+        String CustomModelProviderUnsupportedMessage { get; };
         void AddCustomModelProvider();
         void SaveCustomModelProvider();
         void CancelCustomModelProvider();

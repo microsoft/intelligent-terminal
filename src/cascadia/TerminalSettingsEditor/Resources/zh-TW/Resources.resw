@@ -2924,8 +2924,12 @@
     <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomProviderApiCompatibility.Text" xml:space="preserve">
-    <value>請使用 OpenAI 相容的 Chat Completions API 端點。Codex 需要 Responses API。</value>
-    <comment>{Locked="OpenAI","Chat Completions API","Codex","Responses API"} Explains which OpenAI-compatible API shape each supported agent requires when adding a BYOK provider.</comment>
+    <value>使用 OpenAI 相容的 Chat Completions API 端點。GitHub Copilot 和 OpenCode 支援此功能。</value>
+    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
+    <value>{0} 不支援自訂的 OpenAI 相容 Chat Completions 提供者。切換至 GitHub Copilot 或 OpenCode 後，已儲存的提供者仍可使用。</value>
+    <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>移除</value>

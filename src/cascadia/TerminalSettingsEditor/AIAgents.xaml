@@ -192,41 +192,46 @@
                     </Grid>
                 </muxc:Expander.Header>
                 <StackPanel>
-            <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                        <Border BorderThickness="0,1,0,0"
-                                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                Padding="16,12">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="{x:Bind ModelsDisplayText, Mode=OneWay}"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                               Opacity="0.6"
-                                               Text="{x:Bind BaseUrl, Mode=OneWay}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                                <Button Grid.Column="1"
-                                        x:Uid="AIAgents_CustomProviderRemove"
-                                        VerticalAlignment="Center"
-                                        Click="{x:Bind Remove}"
-                                        MinWidth="120" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                    <TextBlock Margin="16,12,16,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(ViewModel.CustomModelProviderUnsupportedMessage), Mode=OneWay}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:CustomModelProviderEntry">
+                                <Border BorderThickness="0,1,0,0"
+                                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                                        Padding="16,12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{x:Bind ModelsDisplayText, Mode=OneWay}"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Opacity="0.6"
+                                                       Text="{x:Bind BaseUrl, Mode=OneWay}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                x:Uid="AIAgents_CustomProviderRemove"
+                                                VerticalAlignment="Center"
+                                                Click="{x:Bind Remove}"
+                                                MinWidth="120" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
-            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                    BorderThickness="0,1,0,0"
-                    Padding="16"
-                    Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
-                <StackPanel Spacing="8">
+                    <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                            BorderThickness="0,1,0,0"
+                            Padding="16"
+                            Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
+                        <StackPanel Spacing="8">
                     <TextBlock x:Uid="AIAgents_CustomProviderApiCompatibility"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -248,8 +253,8 @@
                         <Button x:Uid="AIAgents_CustomProviderCancel"
                                 Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
                     </StackPanel>
-                </StackPanel>
-            </Border>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </muxc:Expander>
 

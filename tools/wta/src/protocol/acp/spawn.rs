@@ -612,14 +612,6 @@ mod tests {
                 ],
             ),
             (
-                ByokMode::CodexConfigEnvironment,
-                vec![
-                    "CODEX_CONFIG",
-                    "MODEL_PROVIDER",
-                    "INTELLIGENT_TERMINAL_MODEL_API_KEY",
-                ],
-            ),
-            (
                 ByokMode::OpenCodeConfigContent,
                 vec![
                     "OPENCODE_CONFIG_CONTENT",
@@ -639,7 +631,7 @@ mod tests {
 
     #[test]
     fn wslenv_host_isolation_removes_shared_provider_forwarding() {
-        let current = "PATH/p:CODEX_CONFIG/u:copilot_provider_base_url:\
+        let current = "PATH/p:copilot_provider_base_url:\
                        INTELLIGENT_TERMINAL_MODEL_API_KEY:KEEP/u";
         let isolated = remove_wslenv_names(
             current,
@@ -651,7 +643,7 @@ mod tests {
 
     #[test]
     fn wslenv_clean_cloud_discovery_removes_all_provider_forwarding() {
-        let current = "PATH/p:WTA_CUSTOM_MODEL_BASE_URL:CODEX_CONFIG/u:\
+        let current = "PATH/p:WTA_CUSTOM_MODEL_BASE_URL:\
                        COPILOT_PROVIDER_API_KEY:OPENCODE_CONFIG_CONTENT:KEEP/u";
         let cleaned = remove_wslenv_names(
             current,
