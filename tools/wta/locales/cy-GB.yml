@@ -120,6 +120,7 @@ connection.lost: "Collwyd y cysylltiad â'r asiant. Teipiwch /restart i ailgysyl
 
 # ── Negeseuon system (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Pwyswch Ctrl+C eto i gau'r baen"  # {Locked="Ctrl+C"}
+system.selection_copied: "Wedi copïo"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Wedi'i ganslo."
 system.no_prompt_in_flight: "Dim anogaeth ar y gweill."
 system.authentication_failed: "Methwyd â dilysu"

@@ -119,6 +119,7 @@ connection.lost: "Kua ngaro te hononga ki te agent. Patohia /restart kia hono an
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Pēhia anō a Ctrl+C kia kati ai te papa."  # {Locked="Ctrl+C"}
+system.selection_copied: "Kua tāruatia"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Kua whakakorea."
 system.no_prompt_in_flight: "Karekau he tohutohu e rere ana."
 system.authentication_failed: "I rahua te whakamanatu"

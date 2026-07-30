@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Context};
 use tokio::sync::mpsc;
 
 use super::WtChannel;
-use crate::app::DebugMessage;
+use crate::app_contracts::DebugMessage;
 
 /// Extract a JSON value as a string, handling both String and Number types.
 /// Protocol IDs may arrive as either strings or numbers depending on the caller.

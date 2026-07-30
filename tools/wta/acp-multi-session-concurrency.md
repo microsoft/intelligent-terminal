@@ -54,7 +54,7 @@ The prompt was deliberately model-bound work that streams gradually:
 
 The Codex row below records the deprecated `@zed-industries/codex-acp`
 adapter used when this experiment was run. The current runtime uses
-`@agentclientprotocol/codex-acp@1.1.0`; these historical timings have not been
+`@agentclientprotocol/codex-acp@1.1.4`; these historical timings have not been
 re-attributed to the replacement adapter.
 
 Each agent received the same prompt twice (one per session) at `t = 0` after

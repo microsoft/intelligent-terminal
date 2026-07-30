@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
-use crate::app::AppEvent;
+use crate::app_contracts::AppEvent;
 use crate::shell::ShellManager;
 
 use crate::agent_registry::{self, PromptFlag};
@@ -3219,7 +3219,7 @@ mod tests {
             r#""C:\npm tools\codex.cmd" --search"#
         ));
         assert!(!is_direct_known_agent_command(
-            "npx -y @agentclientprotocol/codex-acp@1.1.0"
+            "npx -y @agentclientprotocol/codex-acp@1.1.4"
         ));
     }
 

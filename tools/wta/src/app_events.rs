@@ -10,7 +10,60 @@ use super::*;
 impl App {
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
-            AppEvent::Key(key) => self.handle_key(key),
+            AppEvent::Key(key) => {
+                let is_copy = matches!(key.code, KeyCode::Char('c'))
+                    && key.modifiers.contains(KeyModifiers::CONTROL);
+                if is_copy {
+                    if let Some(text) = self.text_selection.selected_text() {
+                        match crate::win32::copy_text_to_clipboard(&text) {
+                            Ok(()) => {
+                                self.text_selection.clear();
+                                self.close_pane_armed_at = None;
+                                self.transient_hint = Some((
+                                    t!("system.selection_copied").into_owned(),
+                                    std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
+                                ));
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    target: "clipboard",
+                                    error = %error,
+                                    "failed to copy mouse-selected text"
+                                );
+                            }
+                        }
+                        return;
+                    }
+                }
+                self.text_selection.clear();
+                self.handle_key(key);
+            }
+            AppEvent::Mouse(mouse) => match mouse.kind {
+                crossterm::event::MouseEventKind::ScrollUp
+                | crossterm::event::MouseEventKind::ScrollDown
+                    if self.mode == AppMode::Chat
+                        && self.current_tab().current_view == View::Chat =>
+                {
+                    self.text_selection.clear();
+                    let lines = if mouse.modifiers.contains(KeyModifiers::ALT) {
+                        1
+                    } else {
+                        3
+                    };
+                    match mouse.kind {
+                        crossterm::event::MouseEventKind::ScrollUp => {
+                            self.current_tab_mut().chat_scroll.by(lines);
+                        }
+                        crossterm::event::MouseEventKind::ScrollDown => {
+                            self.current_tab_mut().chat_scroll.by(-lines);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {
+                    self.text_selection.handle_mouse(mouse);
+                }
+            },
             AppEvent::AgentPasteTextReady {
                 tab_id,
                 generation,
@@ -73,6 +126,7 @@ impl App {
                 }
             }
             AppEvent::Resize(w, h) => {
+                self.text_selection.clear();
                 self.terminal_cols = w;
                 self.terminal_rows = h;
             }
@@ -610,7 +664,6 @@ impl App {
                     .insert(id.clone(), (title.clone(), status.clone()));
                 tab.messages
                     .push(ChatMessage::ToolCall { id, title, status });
-                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
@@ -658,7 +711,6 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
-                tab.mark_visible_agent_activity();
                 tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
@@ -686,7 +738,6 @@ impl App {
                     selected: 0,
                     responder: Some(responder),
                 });
-                tab.mark_visible_agent_activity();
             }
             AppEvent::SystemMessage(message) => {
                 self.current_tab_mut()

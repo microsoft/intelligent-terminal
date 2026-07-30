@@ -19,7 +19,7 @@ use agent_client_protocol as acp;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::app::AcpModelInfo;
+use crate::app_contracts::AcpModelInfo;
 
 pub(crate) const WTA_CLOUD_CATALOG_AVAILABLE: &str = "_intellterm.wta/cloud_catalog_available";
 

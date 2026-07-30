@@ -252,10 +252,7 @@ fn slash_model_without_models_notes_none() {
 #[test]
 fn slash_model_bare_opens_picker_when_models_present() {
     let mut app = test_app();
-    app.set_custom_model_config(
-        vec![custom_model("custom:provider:local", "local")],
-        None,
-    );
+    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
 
     run_slash(&mut app, "model");
 
@@ -459,10 +456,7 @@ fn agent_and_model_pickers_are_mutually_exclusive() {
 fn slash_model_direct_current_byok_is_a_noop() {
     let mut app = test_app();
     let selected = "custom:provider:smart";
-    app.set_custom_model_config(
-        vec![custom_model(selected, "smart")],
-        Some(selected.into()),
-    );
+    app.set_custom_model_config(vec![custom_model(selected, "smart")], Some(selected.into()));
 
     run_slash_args(&mut app, "model", selected);
 
@@ -485,10 +479,7 @@ fn slash_model_only_shows_disabled_byok_choices_while_cloud_is_active() {
         name: "Cloud".into(),
         description: None,
     }]);
-    app.set_custom_model_config(
-        vec![custom_model("custom:provider:local", "local")],
-        None,
-    );
+    app.set_custom_model_config(vec![custom_model("custom:provider:local", "local")], None);
     app.current_model_id = Some("cloud".into());
 
     let state = {

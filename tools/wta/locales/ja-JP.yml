@@ -115,6 +115,7 @@ connection.lost: "エージェントへの接続が失われました。再接�
 
 # ── システム メッセージ (src/app.rs) ────────────────────────────────────────────────
 system.close_pane_hint: "ペインを閉じるには、もう一度 Ctrl+C を押してください"  # {Locked="Ctrl+C"}
+system.selection_copied: "コピーしました"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "キャンセルされました。"
 system.no_prompt_in_flight: "進行中のプロンプトはありません。"
 system.authentication_failed: "認証に失敗しました"

@@ -4145,15 +4145,15 @@ fn post_login_auth_failure_matches_auth_required_and_handshake_new_session() {
     // (a master restart can't fix bad credentials) — it routes to sign-in.
     assert!(!is_post_login_auth_failure(
         &AgentFailure::HandshakeFailed {
-        stage: HandshakeStage::Authenticate,
-        detail: "authenticate rejected/timed out".to_string()
+            stage: HandshakeStage::Authenticate,
+            detail: "authenticate rejected/timed out".to_string()
         }
     ));
     // A non-auth handshake stage must NOT trigger auth recovery.
     assert!(!is_post_login_auth_failure(
         &AgentFailure::HandshakeFailed {
-        stage: HandshakeStage::Initialize,
-        detail: "boom".to_string()
+            stage: HandshakeStage::Initialize,
+            detail: "boom".to_string()
         }
     ));
 }
@@ -5040,8 +5040,8 @@ async fn mock_agent_reply_streams_into_app_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5107,8 +5107,8 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5266,7 +5266,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 }
 
 #[test]
-fn permission_request_permanently_clears_thinking_latch() {
+fn permission_request_keeps_thinking_until_turn_ends() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
@@ -5279,9 +5279,6 @@ fn permission_request_permanently_clears_thinking_latch() {
         outcome: TurnOutcome::Empty,
         end_pending: true,
     };
-    app.tab_mut(DEFAULT_TAB_ID)
-        .waiting_for_first_visible_activity = true;
-
     let (responder, _response) = tokio::sync::oneshot::channel();
     app.handle_event(AppEvent::PermissionRequest {
         session_id: DEFAULT_TAB_ID.into(),
@@ -5302,12 +5299,14 @@ fn permission_request_permanently_clears_thinking_latch() {
         responder,
     });
 
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
     app.current_tab_mut().permission.pop_front();
-    assert!(
-        !app.current_tab().should_show_thinking(),
-        "resolving permission must not re-enable Thinking in the same turn"
-    );
+    assert!(app.current_tab().should_show_thinking());
+    let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn else {
+        panic!("expected surfaced turn");
+    };
+    *end_pending = false;
+    assert!(!app.current_tab().should_show_thinking());
 }
 
 /// Tool-call card: when the mock proposes a command (a `ToolCall`
@@ -5326,8 +5325,8 @@ async fn tool_call_surfaces_card_in_chat() {
             conn.initialize(acp::schema::v1::InitializeRequest::new(
                 acp::schema::ProtocolVersion::LATEST,
             ))
-                .await
-                .expect("initialize failed");
+            .await
+            .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -5407,8 +5406,8 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     conn.initialize(acp::schema::v1::InitializeRequest::new(
         acp::schema::ProtocolVersion::LATEST,
     ))
-        .await
-        .expect("initialize failed");
+    .await
+    .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -5746,9 +5745,9 @@ fn render_model_picker_lists_models() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.set_cloud_models(vec![AcpModelInfo {
-            id: "pick-1".into(),
-            name: "PickModelXYZ".into(),
-            description: None,
+        id: "pick-1".into(),
+        name: "PickModelXYZ".into(),
+        description: None,
     }]);
     app.set_custom_model_config(
         vec![
@@ -5757,13 +5756,13 @@ fn render_model_picker_lists_models() {
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
             CustomModelCatalogEntry {
                 selection_id: "custom:provider-two:shared-model".into(),
                 model_id: "shared-model".into(),
                 name: "shared-model".into(),
                 ..Default::default()
-        },
+            },
         ],
         None,
     );
@@ -6592,9 +6591,8 @@ fn render_chat_completed_turn_expanded_with_marker() {
     }
 }
 
-/// Render: while the helper is still connecting, the chat must paint the
-/// animated "Connecting…" activity line. Lifts the `Connecting` branch of
-/// `build_activity_line` in `ui/chat.rs`.
+/// Render: while the helper is still connecting, the fixed activity row must
+/// paint the animated "Connecting…" label.
 #[test]
 fn render_chat_connecting_activity_line() {
     let mut app = test_app();
@@ -6628,7 +6626,7 @@ fn render_chat_welcome_hint() {
 }
 
 #[test]
-fn connecting_activity_row_is_included_in_estimated_chat_height() {
+fn fixed_activity_row_does_not_change_estimated_chat_height() {
     let mut app = test_app();
     app.current_tab_mut()
         .messages
@@ -6639,7 +6637,7 @@ fn connecting_activity_row_is_included_in_estimated_chat_height() {
     app.state = ConnectionState::Connecting("Starting agent".into());
     let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
 
-    assert_eq!(with_activity, without_activity + 1);
+    assert_eq!(with_activity, without_activity);
     assert!(
         app.has_activity_indicator(),
         "Connecting must keep Tick redraws active for the shimmer"
@@ -6788,10 +6786,13 @@ fn first_message_chunk_transitions_to_streaming_with_buf() {
     assert!(app.current_tab().turn.is_streaming());
     assert!(
         app.current_tab().should_show_thinking(),
-        "Thinking remains until text is actually revealed"
+        "Thinking remains throughout the in-flight turn"
     );
     app.advance_reveal();
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(
+        app.current_tab().should_show_thinking(),
+        "revealing response text must not hide Thinking before turn end"
+    );
 }
 
 #[test]
@@ -6810,7 +6811,7 @@ fn thought_chunk_first_transitions_with_empty_buf() {
 }
 
 #[test]
-fn hidden_structured_tokens_keep_thinking_until_explanation_is_visible() {
+fn structured_stream_keeps_thinking_after_explanation_is_visible() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     app.turn_observe_chunk(
@@ -6827,11 +6828,11 @@ fn hidden_structured_tokens_keep_thinking_until_explanation_is_visible() {
         r#","explanation":"Visible answer"}"#,
     );
     app.advance_reveal();
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
 }
 
 #[test]
-fn tool_call_permanently_clears_thinking_latch() {
+fn tool_call_keeps_thinking_while_turn_is_in_flight() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.handle_event(AppEvent::ToolCall {
@@ -6840,7 +6841,7 @@ fn tool_call_permanently_clears_thinking_latch() {
         title: "Find files".into(),
         status: "InProgress".into(),
     });
-    assert!(!app.current_tab().should_show_thinking());
+    assert!(app.current_tab().should_show_thinking());
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
@@ -6848,8 +6849,36 @@ fn tool_call_permanently_clears_thinking_latch() {
         status: "Completed".into(),
     });
     assert!(
-        !app.current_tab().should_show_thinking(),
-        "tool completion must not re-enable Thinking"
+        app.current_tab().should_show_thinking(),
+        "tool completion does not end the agent turn"
+    );
+}
+
+#[test]
+fn thinking_is_pinned_one_row_above_input() {
+    const WIDTH: u16 = 80;
+    const HEIGHT: u16 = 24;
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "inspect");
+
+    let input_height = crate::ui::input_height(
+        &app.current_tab().input,
+        app.current_tab().cursor_pos,
+        WIDTH,
+    );
+    let text = render_to_text(&mut app, WIDTH, HEIGHT);
+    let label = t!("chat.activity_thinking").into_owned();
+    let row = text
+        .lines()
+        .position(|line| line.contains(&label))
+        .expect("Thinking row must render");
+    let expected_row = usize::from(HEIGHT - input_height - 1);
+
+    assert_eq!(
+        row, expected_row,
+        "Thinking must sit directly above the input box"
     );
 }
 
@@ -7301,6 +7330,64 @@ fn rec_card_height_matches_predict_and_render_paths() {
 // ─── Per-tab input history ──────────────────────────────────────────
 
 #[test]
+fn mouse_wheel_scrolls_chat_without_changing_input_history() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut()
+        .record_input_history("previous prompt");
+    app.current_tab_mut().chat_scroll.set_max(20);
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 3);
+    assert!(app.current_tab().input.is_empty());
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+    assert!(app.current_tab().input.is_empty());
+}
+
+#[test]
+fn alt_mouse_wheel_scrolls_chat_one_line() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().chat_scroll.set_max(20);
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::ALT,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 1);
+}
+
+#[test]
+fn mouse_wheel_does_not_scroll_hidden_chat() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().chat_scroll.set_max(20);
+    app.current_tab_mut().current_view = View::Agents;
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+}
+
+#[test]
 fn input_history_navigates_newest_first_and_restores_draft() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
@@ -7434,7 +7521,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-            .get("another-tab")
+        .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -7763,10 +7850,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -7784,21 +7871,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key:              "abc-123".to_string(),
-        cli_source:       CliSource::Copilot,
-        pane_session_id:  None,
-        window_id:        None,
-        tab_id:           None,
-        title:            "t".to_string(),
-        cwd:              std::path::PathBuf::from("/home/u/proj"),
-        started_at:       std::time::SystemTime::UNIX_EPOCH,
+        key: "abc-123".to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: None,
+        window_id: None,
+        tab_id: None,
+        title: "t".to_string(),
+        cwd: std::path::PathBuf::from("/home/u/proj"),
+        started_at: std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status:           AgentStatus::Historical,
-        last_error:       None,
-        current_tool:     None,
+        status: AgentStatus::Historical,
+        last_error: None,
+        current_tool: None,
         attention_reason: None,
-        log_path:         None,
-        origin:           SessionOrigin::Unknown,
+        log_path: None,
+        origin: SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },

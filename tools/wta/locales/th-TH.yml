@@ -119,6 +119,7 @@ connection.lost: "การเชื่อมต่อกับเอเจน�
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "กด Ctrl+C อีกครั้งเพื่อปิดแผง"  # {Locked="Ctrl+C"}
+system.selection_copied: "คัดลอกแล้ว"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ยกเลิกแล้ว"
 system.no_prompt_in_flight: "ไม่มีพร้อมท์ที่กำลังดำเนินการ"
 system.authentication_failed: "การยืนยันตัวตนล้มเหลว"

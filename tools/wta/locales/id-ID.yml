@@ -119,6 +119,7 @@ connection.lost: "Koneksi ke agen AI terputus. Ketik /restart untuk menyambungka
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Tekan Ctrl+C lagi untuk menutup panel"  # {Locked="Ctrl+C"}
+system.selection_copied: "Disalin"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Dibatalkan."
 system.no_prompt_in_flight: "Tidak ada prompt yang sedang berjalan."
 system.authentication_failed: "Autentikasi gagal"

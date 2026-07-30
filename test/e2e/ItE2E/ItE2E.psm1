@@ -44,6 +44,7 @@ $publicFns = @(
     'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-AgentCliStatus', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSessions', 'Get-AgentPaneSession', 'Wait-NewAgentPaneSession', 'Get-AgentPaneText',
     'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',
+    'Send-AgentMouseEvent', 'Send-AgentMouseClick',
     'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Set-ClipboardImage',

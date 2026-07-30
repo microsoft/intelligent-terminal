@@ -141,6 +141,7 @@ connection.lost: "AI ئاگېنتى بىلەن بولغان باغلىنىش ئ�
 
 # ── System messages (src/app.rs) ──────────────────────────────────────────────────────────────
 system.close_pane_hint: "تاختىنى تاقاش ئۈچۈن Ctrl+C نى يەنە بىر قېتىم بېسىڭ."  # {Locked="Ctrl+C"}
+system.selection_copied: "كۆچۈرۈلدى"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "بېكىت قىلىندى."
 system.no_prompt_in_flight: "ئېۋەتىلىۋاتقان سوراق يوق."
 system.authentication_failed: "تونۇقتۇرۇش مەغلۇب بولدى"

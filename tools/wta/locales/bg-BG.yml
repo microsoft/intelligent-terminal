@@ -129,6 +129,7 @@ connection.lost: "Връзката с агента беше загубена. В
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
 system.close_pane_hint: "Натиснете Ctrl+C отново, за да затворите панела"  # {Locked="Ctrl+C"}
+system.selection_copied: "Копирано"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Отменено."
 system.no_prompt_in_flight: "Няма активна заявка."
 system.authentication_failed: "Удостоверяването е неуспешно"

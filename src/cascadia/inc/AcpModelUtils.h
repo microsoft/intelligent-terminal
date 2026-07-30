@@ -62,7 +62,7 @@ namespace Microsoft::Terminal::AcpModels
         }
         if (agentId == L"codex")
         {
-            return L"npx -y @agentclientprotocol/codex-acp@1.1.0";
+            return L"npx -y @agentclientprotocol/codex-acp@1.1.4";
         }
         if (agentId == L"opencode")
         {

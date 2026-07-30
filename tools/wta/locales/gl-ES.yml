@@ -119,6 +119,7 @@ connection.lost: "Perdeuse a conexión co axente. Escribe /restart para volver c
 
 # ── Mensaxes do sistema (src/app.rs) ────────────────────────────────────────
 system.close_pane_hint: "Preme Ctrl+C de novo para pechar o panel"  # {Locked="Ctrl+C"}
+system.selection_copied: "Copiado"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelado."
 system.no_prompt_in_flight: "Non hai ningún aviso en curso."
 system.authentication_failed: "A autenticación fallou"

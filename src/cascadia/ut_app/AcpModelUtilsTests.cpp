@@ -32,7 +32,7 @@ namespace TerminalAppUnitTests
     {
         VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio" }, BuildAgentCommandLine(L"copilot"));
         VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/claude-agent-acp" }, BuildAgentCommandLine(L"claude"));
-        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.0" }, BuildAgentCommandLine(L"codex"));
+        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.4" }, BuildAgentCommandLine(L"codex"));
         VERIFY_ARE_EQUAL(std::wstring{ L"gemini --experimental-acp" }, BuildAgentCommandLine(L"gemini"));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode"));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent"));
@@ -44,7 +44,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"copilot --acp --stdio --model gpt-5" }, BuildAgentCommandLine(L"copilot", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"gemini --experimental-acp --model gpt-5" }, BuildAgentCommandLine(L"gemini", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/claude-agent-acp" }, BuildAgentCommandLine(L"claude", model));
-        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.0" }, BuildAgentCommandLine(L"codex", model));
+        VERIFY_ARE_EQUAL(std::wstring{ L"npx -y @agentclientprotocol/codex-acp@1.1.4" }, BuildAgentCommandLine(L"codex", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"opencode acp" }, BuildAgentCommandLine(L"opencode", model));
         VERIFY_ARE_EQUAL(std::wstring{ L"other-agent" }, BuildAgentCommandLine(L"other-agent", model));
     }
