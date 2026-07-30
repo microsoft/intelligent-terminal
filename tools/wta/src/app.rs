@@ -119,9 +119,10 @@ use crate::coordinator::{
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    prompt_timing_log, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, RestartRequest,
+    CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab, PromptSubmission,
+    RenameSessionRequest, RestartRequest,
 };
+use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
 use crate::ui_trace;
 use crate::wt_protocol_events::send as send_wt_protocol_event;

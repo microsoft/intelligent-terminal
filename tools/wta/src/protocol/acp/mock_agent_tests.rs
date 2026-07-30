@@ -12,15 +12,17 @@
 //! The constructors are `pub(crate)` so app-module scenarios can borrow the
 //! harness and assert on real `App` state (see the spec, "option 2").
 
-use super::{ClientState, PromptTimingState, WtaClient};
+use super::{ClientState, WtaClient};
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
     dispatch_new_session, dispatch_prompt, dispatch_rename_session,
     CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, TemplateMemo,
+    PromptSubmission, RenameSessionRequest,
 };
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
 use crate::protocol::acp::conn;
+use crate::protocol::acp::prompt_builder::TemplateMemo;
+use crate::protocol::acp::turn_metrics::PromptTimingState;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use std::collections::{HashMap, HashSet};
