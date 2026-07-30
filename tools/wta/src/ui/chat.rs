@@ -90,7 +90,7 @@ fn message_height(msg: &ChatMessage, wrap_width: usize) -> usize {
             } else {
                 0
             };
-            1 + command_lines
+            1 + command_lines + usize::from(command_lines > 0)
         }
         ChatMessage::Plan(entries) => 2 + entries.len(), // header + each entry + blank
         // Disclaimer is a single dim row — terminal min-width guarantees the
@@ -357,8 +357,9 @@ fn build_completed_turn_lines<'a>(
 
     // Push a trailing blank only if the last detail (or the prompt header
     // for collapsed turns) didn't already supply one. Agent / Error /
-    // System / Plan / AgentEvent all trail a blank via build_message_lines;
-    // ToolCall does not, and collapsed turns stop at the prompt header.
+    // System / Plan / AgentEvent trail a blank via build_message_lines.
+    // ToolCall only does so when it renders command details; collapsed
+    // turns stop at the prompt header.
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
@@ -638,9 +639,11 @@ fn build_message_lines<'a>(
             // styled line (mirrors how `execute`-kind cards look in Zed /
             // opencode); a long remainder folds into a single "+N more"
             // row instead of growing the card unboundedly.
+            let mut rendered_command = false;
             if *location_is_command {
                 if let Some(command) = location {
                     for entry in crate::ui::command_format::command_display_lines(command) {
+                        rendered_command = true;
                         let text = match entry {
                             crate::ui::command_format::CommandLine::Statement(s) => {
                                 format!("    $ {s}")
@@ -652,6 +655,9 @@ fn build_message_lines<'a>(
                         lines.push(Line::from(Span::styled(text, theme::CARD_CODE)));
                     }
                 }
+            }
+            if rendered_command {
+                lines.push(Line::default());
             }
         }
         ChatMessage::Plan(entries) => {
@@ -898,6 +904,12 @@ mod tests {
             line_text(line),
             r"● Access paths outside trusted directories (C:\Users\kaitao\codes\rust-app)"
         );
+        assert_eq!(
+            lines.len(),
+            1,
+            "path-only tool calls should remain compact without a paragraph break"
+        );
+        assert_eq!(message_height(&message, 80), 1);
     }
 
     /// A command-kind location (`location_is_command`) must NOT be inlined
@@ -915,14 +927,19 @@ mod tests {
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
-        assert_eq!(lines.len(), 2, "expected a title line plus a command line");
+        assert_eq!(
+            lines.len(),
+            3,
+            "expected a title line, command line, and paragraph break"
+        );
         assert_eq!(line_text(&lines[0]), "● Run command");
         assert_eq!(line_text(&lines[1]), "    $ cargo test --workspace");
         assert_eq!(lines[1].spans[0].style, theme::CARD_CODE);
+        assert!(lines[2].spans.is_empty());
 
         assert_eq!(
             message_height(&message, 80),
-            2,
+            3,
             "the height budget must account for the extra command line"
         );
     }
@@ -946,7 +963,11 @@ mod tests {
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
 
-        assert_eq!(lines.len(), 3, "expected a title line plus one line per statement");
+        assert_eq!(
+            lines.len(),
+            4,
+            "expected a title line, one line per statement, and a paragraph break"
+        );
         assert_eq!(
             line_text(&lines[1]),
             "    $ winget list --name PowerToys 2>$null"
@@ -958,7 +979,7 @@ mod tests {
 
         assert_eq!(
             message_height(&message, 80),
-            3,
+            4,
             "the height budget must count one row per split statement"
         );
     }

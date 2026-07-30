@@ -10,7 +10,7 @@ pub const INPUT_TEXT: Style = Style::new().fg(Color::Reset);
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
-pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset);
+pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_SUCCESS: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
@@ -44,7 +44,7 @@ pub const CARD_FRAME_COLOR: Color = Color::Rgb(26, 26, 26);
 pub const BUTTON_BG: Color = Color::Rgb(70, 70, 70);
 pub const CARD_BORDER: Style = Style::new().fg(CARD_FRAME_COLOR);
 pub const CARD_BORDER_SELECTED: Style = Style::new().fg(CARD_FRAME_COLOR);
-pub const CARD_CODE: Style = Style::new().fg(Color::Reset);
+pub const CARD_CODE: Style = Style::new().fg(Color::DarkGray);
 pub const CARD_DESCRIPTION: Style = Style::new()
     .fg(Color::Reset)
     .add_modifier(Modifier::DIM)
