@@ -244,8 +244,7 @@ pub fn render(
     let list = List::new(rows);
     f.render_stateful_widget(list, list_area, list_state);
 
-    let scrollbar_position = list_state.selected().unwrap_or(list_state.offset());
-    render_scrollbar(f, area, list_area, sorted.len(), scrollbar_position);
+    render_scrollbar(f, area, list_area, sorted.len(), list_state.offset());
 
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
@@ -284,7 +283,7 @@ fn render_scrollbar(
     area: Rect,
     list_area: Rect,
     content_length: usize,
-    position: usize,
+    scroll_offset: usize,
 ) {
     let viewport_length = list_area.height as usize;
     if area.width == 0 || viewport_length == 0 || content_length <= viewport_length {
@@ -297,10 +296,21 @@ fn render_scrollbar(
         width: 1,
         height: list_area.height,
     };
-    let mut state = ScrollbarState::new(content_length)
-        .position(position)
-        .viewport_content_length(viewport_length);
+    let mut state = session_scrollbar_state(content_length, viewport_length, scroll_offset);
     f.render_stateful_widget(session_scrollbar(), scrollbar_area, &mut state);
+}
+
+fn session_scrollbar_state(
+    content_length: usize,
+    viewport_length: usize,
+    scroll_offset: usize,
+) -> ScrollbarState {
+    let max_offset = content_length.saturating_sub(viewport_length);
+    // With an explicit viewport, Ratatui derives the total extent from the
+    // number of valid offsets plus the viewport length.
+    ScrollbarState::new(max_offset.saturating_add(1))
+        .position(scroll_offset.min(max_offset))
+        .viewport_content_length(viewport_length)
 }
 
 fn session_scrollbar() -> Scrollbar<'static> {
@@ -811,9 +821,7 @@ mod tests {
     fn session_scrollbar_is_right_aligned_and_tracks_position() {
         let area = Rect::new(0, 0, 5, 4);
         let mut at_top = Buffer::empty(area);
-        let mut top_state = ScrollbarState::new(8)
-            .position(0)
-            .viewport_content_length(4);
+        let mut top_state = session_scrollbar_state(8, 4, 0);
         StatefulWidget::render(session_scrollbar(), area, &mut at_top, &mut top_state);
 
         assert_eq!(at_top.cell((4, 0)).map(|cell| cell.symbol()), Some("▐"));
@@ -825,12 +833,13 @@ mod tests {
             .all(|cell| cell.fg == MUTED_WHITE));
 
         let mut at_bottom = Buffer::empty(area);
-        let mut bottom_state = ScrollbarState::new(8)
-            .position(7)
-            .viewport_content_length(4);
+        let mut bottom_state = session_scrollbar_state(8, 4, 4);
         StatefulWidget::render(session_scrollbar(), area, &mut at_bottom, &mut bottom_state);
         assert_eq!(at_bottom.cell((4, 3)).map(|cell| cell.symbol()), Some("▐"));
         assert_eq!(at_bottom.cell((4, 0)).map(|cell| cell.symbol()), Some(" "));
+
+        let clamped_state = session_scrollbar_state(8, 4, usize::MAX);
+        assert_eq!(clamped_state.get_position(), 4);
     }
 
     #[test]
