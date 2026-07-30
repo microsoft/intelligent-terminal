@@ -2,7 +2,9 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::{
+        List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
     Frame,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -55,14 +57,13 @@ pub fn render(
     // the list flush against the top of `area` and don't reserve any space
     // for chrome there.
     //
-    // Layout (column 0 is the pane's left edge):
-    //   col 0  → leftmost vertical separator (only over list rows; the
-    //            spacer row and the hint sit "outside" / below the bar)
-    //   col 2+ → list rows / loading / hint, rendered into `inner`
+    // Reserve the rightmost column for a native-style overlay scrollbar.
+    // Keeping that gutter stable prevents timestamps from shifting when the
+    // list grows beyond the viewport.
     let inner = Rect {
-        x: area.x + 2,
+        x: area.x,
         y: area.y,
-        width: area.width.saturating_sub(2),
+        width: area.width.saturating_sub(1),
         height: area.height,
     };
 
@@ -72,10 +73,8 @@ pub fn render(
     // above the hint so it has visible breathing room from the last
     // session — at narrow heights we collapse those reservations gracefully.
     //
-    // The hint spans the full pane width (starting at `area.x`, not
-    // `inner.x`) so it reads as chrome that lives *outside* the vertical
-    // bar, matching the Figma where the bar terminates at the bottom of
-    // the list and the hint sits below it flush with the left edge.
+    // The hint spans the full pane width because the scrollbar terminates at
+    // the bottom of the list rather than extending through footer chrome.
     let (content_area, hint_area) = if inner.height >= 3 {
         let hint = Rect {
             x: area.x,
@@ -212,7 +211,6 @@ pub fn render(
     // list also gives F5 an unmistakable "refreshing now" signal even when rows
     // are already present.
     if show_loading {
-        render_left_bar(f, area.x, list_area, None, pane_focused);
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
         let loading_label = t!("agents.loading").into_owned();
         spans.extend(shimmer::shimmer_spans(&loading_label, activity_frame));
@@ -246,15 +244,8 @@ pub fn render(
     let list = List::new(rows);
     f.render_stateful_widget(list, list_area, list_state);
 
-    // Paint the leftmost vertical bar *after* the list renders so we can
-    // read the post-render scroll offset and color the bar segment in
-    // front of the selected row with the cyan selection accent — keeping
-    // the bar/title/caret in visual sync.
-    let offset = list_state.offset();
-    let selected_visible_row = selected
-        .and_then(|s| s.checked_sub(offset))
-        .filter(|v| (*v as u16) < list_area.height);
-    render_left_bar(f, area.x, list_area, selected_visible_row, pane_focused);
+    let scrollbar_position = list_state.selected().unwrap_or(list_state.offset());
+    render_scrollbar(f, area, list_area, sorted.len(), scrollbar_position);
 
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
@@ -288,42 +279,37 @@ fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool, pane_foc
     );
 }
 
-/// Draw the leftmost vertical separator. Spans only `list_area`'s row
-/// range — the hint (and the blank spacer above it) live *below* the bar.
-/// `selected_row`, when set, is the list-relative row index whose bar
-/// segment paints cyan instead of muted, mirroring the selection cursor
-/// in the row itself.
-fn render_left_bar(
+fn render_scrollbar(
     f: &mut Frame,
-    bar_x: u16,
+    area: Rect,
     list_area: Rect,
-    selected_row: Option<usize>,
-    pane_focused: bool,
+    content_length: usize,
+    position: usize,
 ) {
-    if list_area.height == 0 {
+    let viewport_length = list_area.height as usize;
+    if area.width == 0 || viewport_length == 0 || content_length <= viewport_length {
         return;
     }
-    let bar_lines: Vec<Line<'static>> = (0..list_area.height)
-        .map(|i| {
-            let style = if Some(i as usize) == selected_row {
-                if pane_focused {
-                    theme::SELECTED
-                } else {
-                    theme::SELECTED_INACTIVE
-                }
-            } else {
-                Style::default().fg(MUTED_WHITE)
-            };
-            Line::from(Span::styled("┃", style))
-        })
-        .collect();
-    let bar_area = Rect {
-        x: bar_x,
+
+    let scrollbar_area = Rect {
+        x: area.x + area.width - 1,
         y: list_area.y,
         width: 1,
         height: list_area.height,
     };
-    f.render_widget(Paragraph::new(bar_lines), bar_area);
+    let mut state = ScrollbarState::new(content_length)
+        .position(position)
+        .viewport_content_length(viewport_length);
+    f.render_stateful_widget(session_scrollbar(), scrollbar_area, &mut state);
+}
+
+fn session_scrollbar() -> Scrollbar<'static> {
+    Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(None)
+        .end_symbol(None)
+        .track_symbol(None)
+        .thumb_symbol("▐")
+        .thumb_style(Style::default().fg(MUTED_WHITE))
 }
 
 /// Bottom-of-pane keybinding legend. Single line, dim foreground so it
@@ -785,6 +771,7 @@ fn trunc(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::{buffer::Buffer, widgets::StatefulWidget};
     use std::time::Duration;
 
     /// All locale-sensitive tests must hold the crate-wide locale guard
@@ -818,6 +805,32 @@ mod tests {
             origin: SessionOrigin::Unknown,
             location: crate::agent_sessions::SessionLocation::Host,
         }
+    }
+
+    #[test]
+    fn session_scrollbar_is_right_aligned_and_tracks_position() {
+        let area = Rect::new(0, 0, 5, 4);
+        let mut at_top = Buffer::empty(area);
+        let mut top_state = ScrollbarState::new(8)
+            .position(0)
+            .viewport_content_length(4);
+        StatefulWidget::render(session_scrollbar(), area, &mut at_top, &mut top_state);
+
+        assert_eq!(at_top.cell((4, 0)).map(|cell| cell.symbol()), Some("▐"));
+        assert_eq!(at_top.cell((0, 0)).map(|cell| cell.symbol()), Some(" "));
+        assert!(at_top
+            .content()
+            .iter()
+            .filter(|cell| cell.symbol() == "▐")
+            .all(|cell| cell.fg == MUTED_WHITE));
+
+        let mut at_bottom = Buffer::empty(area);
+        let mut bottom_state = ScrollbarState::new(8)
+            .position(7)
+            .viewport_content_length(4);
+        StatefulWidget::render(session_scrollbar(), area, &mut at_bottom, &mut bottom_state);
+        assert_eq!(at_bottom.cell((4, 3)).map(|cell| cell.symbol()), Some("▐"));
+        assert_eq!(at_bottom.cell((4, 0)).map(|cell| cell.symbol()), Some(" "));
     }
 
     #[test]
