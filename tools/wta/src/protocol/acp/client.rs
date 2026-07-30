@@ -2763,8 +2763,8 @@ pub async fn run_acp_client_over_pipe(
                 // but new_session STILL returns AuthRequired, do NOT route
                 // back to the login screen (that would recreate the auth
                 // loop). Surface a terminal HandshakeFailed tagged with the
-                // `NewSession` stage — the DISTINCT signal the App's auth
-                // recovery matches on (`is_post_login_auth_failure`). This is
+                // `NewSession` stage — the distinct signal the App's
+                // post-login recovery policy matches via `failed_at`. This is
                 // deliberately NOT the `Authenticate` stage: an authenticate
                 // RPC that itself fails/times out (above) stays `Authenticate`
                 // and must NOT trigger a master restart, only this
