@@ -894,7 +894,7 @@ mod tests {
             id: "tool".into(),
             title: "Access paths outside trusted directories".into(),
             status: "Pending".into(),
-            location: Some(r"C:\Users\kaitao\codes\rust-app".into()),
+            location: Some(r"C:\src\rust-app".into()),
             location_is_command: false,
         };
         let lines = build_message_lines(&message, false, false, None, 0, 80);
@@ -902,7 +902,7 @@ mod tests {
 
         assert_eq!(
             line_text(line),
-            r"● Access paths outside trusted directories (C:\Users\kaitao\codes\rust-app)"
+            r"● Access paths outside trusted directories (C:\src\rust-app)"
         );
         assert_eq!(
             lines.len(),

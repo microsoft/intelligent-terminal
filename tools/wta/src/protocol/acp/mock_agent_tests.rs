@@ -1643,10 +1643,10 @@ async fn session_notification_tool_call_omits_location_already_in_title() {
             acp::schema::v1::SessionUpdate::ToolCall(
                 acp::schema::v1::ToolCall::new(
                     acp::schema::v1::ToolCallId::new("tc-1"),
-                    r"Viewing C:\Users\kaitao\codes\rust-app",
+                    r"Viewing C:\src\rust-app",
                 )
                 .locations(vec![acp::schema::v1::ToolCallLocation::new(
-                    r"C:\Users\kaitao\codes\rust-app",
+                    r"C:\src\rust-app",
                 )]),
             ),
         ))
@@ -1677,7 +1677,7 @@ async fn session_notification_tool_call_surfaces_location_from_locations() {
                     "Access paths outside trusted directories",
                 )
                 .locations(vec![acp::schema::v1::ToolCallLocation::new(
-                    r"C:\Users\kaitao\codes\rust-app",
+                    r"C:\src\rust-app",
                 )]),
             ),
         ))
@@ -1685,7 +1685,7 @@ async fn session_notification_tool_call_surfaces_location_from_locations() {
         .unwrap();
     match rx.try_recv() {
         Ok(AppEvent::ToolCall { location, .. }) => {
-            assert_eq!(location.as_deref(), Some(r"C:\Users\kaitao\codes\rust-app"));
+            assert_eq!(location.as_deref(), Some(r"C:\src\rust-app"));
         }
         _ => panic!("expected ToolCall"),
     }
@@ -1719,6 +1719,89 @@ async fn session_notification_tool_call_surfaces_location_from_raw_input_command
                 Some("Get-Content 'C:\\rust-app\\src\\main.rs'")
             );
         }
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_tool_call_ignores_empty_raw_input_target() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Run command",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": "",
+                    "path": "   ",
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => assert_eq!(location, None),
+        _ => panic!("expected ToolCall"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_tool_call_truncates_long_target_on_char_boundary() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    "Run command",
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": "界".repeat(10_000),
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall {
+            location: Some(location),
+            ..
+        }) => {
+            assert_eq!(location.chars().count(), 201);
+            assert!(location.ends_with('…'));
+        }
+        _ => panic!("expected ToolCall with location"),
+    }
+}
+
+#[tokio::test]
+async fn session_notification_tool_call_dedupes_long_target_by_visible_prefix() {
+    let (client, mut rx) = bare_client();
+    let visible_prefix = "A".repeat(200);
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCall(
+                acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("tc-1"),
+                    format!("Run {visible_prefix}"),
+                )
+                .raw_input(Some(serde_json::json!({
+                    "command": format!("{visible_prefix}{}", "B".repeat(10_000)),
+                }))),
+            ),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCall { location, .. }) => assert_eq!(location, None),
         _ => panic!("expected ToolCall"),
     }
 }
@@ -1890,7 +1973,7 @@ async fn request_permission_description_includes_location_from_locations() {
                     acp::schema::v1::ToolCallUpdateFields::new()
                         .title("Access paths outside trusted directories")
                         .locations(vec![acp::schema::v1::ToolCallLocation::new(
-                            r"C:\Users\kaitao\codes\rust-app",
+                            r"C:\src\rust-app",
                         )]),
                 ),
                 vec![acp::schema::v1::PermissionOption::new(
@@ -1909,7 +1992,7 @@ async fn request_permission_description_includes_location_from_locations() {
                 }) => {
                     assert_eq!(
                         description,
-                        r"Access paths outside trusted directories (C:\Users\kaitao\codes\rust-app)"
+                        r"Access paths outside trusted directories (C:\src\rust-app)"
                     );
                     responder.send("allow-once".to_string()).unwrap();
                 }
@@ -1935,10 +2018,10 @@ async fn request_permission_target_is_not_deduped_against_title() {
                 acp::schema::v1::ToolCallUpdate::new(
                     acp::schema::v1::ToolCallId::new("mock-tool-1"),
                     acp::schema::v1::ToolCallUpdateFields::new()
-                        .title(r"Viewing C:\Users\kaitao\codes\rust-app")
+                        .title(r"Viewing C:\src\rust-app")
                         .kind(acp::schema::v1::ToolKind::Read)
                         .locations(vec![acp::schema::v1::ToolCallLocation::new(
-                            r"C:\Users\kaitao\codes\rust-app",
+                            r"C:\src\rust-app",
                         )]),
                 ),
                 vec![acp::schema::v1::PermissionOption::new(
@@ -1959,7 +2042,7 @@ async fn request_permission_target_is_not_deduped_against_title() {
                 }) => {
                     assert_eq!(
                         target.as_deref(),
-                        Some(r"C:\Users\kaitao\codes\rust-app"),
+                        Some(r"C:\src\rust-app"),
                         "target must be present even though the title already contains it"
                     );
                     assert!(!target_is_command);
@@ -2088,4 +2171,3 @@ async fn request_permission_cancelled_when_responder_dropped() {
         })
         .await;
 }
-

@@ -1539,25 +1539,37 @@ fn tool_call_target(
     locations: &[acp::schema::v1::ToolCallLocation],
     raw_input: Option<&serde_json::Value>,
 ) -> Option<(String, bool)> {
-    if let Some(loc) = locations.first() {
-        return Some((loc.path.to_string_lossy().to_string(), false));
+    if let Some(path) = locations
+        .iter()
+        .map(|loc| loc.path.to_string_lossy())
+        .find(|path| !path.trim().is_empty())
+    {
+        return Some((path.into_owned(), false));
     }
     let raw_input = raw_input?;
     if let Some(p) = raw_input
         .get("path")
         .or_else(|| raw_input.get("file_path"))
         .and_then(|v| v.as_str())
+        .filter(|value| !value.trim().is_empty())
     {
         return Some((p.to_string(), false));
     }
-    if let Some(c) = raw_input.get("command").and_then(|v| v.as_str()) {
+    if let Some(c) = raw_input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.trim().is_empty())
+    {
         return Some((c.to_string(), true));
     }
     if let Some(c) = raw_input
         .get("commands")
         .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|v| v.as_str())
+        .and_then(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .find(|value| !value.trim().is_empty())
+        })
     {
         return Some((c.to_string(), true));
     }
@@ -1566,10 +1578,12 @@ fn tool_call_target(
 
 /// Truncates a `tool_call_target` string to `TOOL_CALL_LOCATION_MAX_CHARS`,
 /// appending `…` when it had to cut.
-fn truncate_target(text: String) -> String {
-    let truncated = text.chars().count() > TOOL_CALL_LOCATION_MAX_CHARS;
-    let text: String = text.chars().take(TOOL_CALL_LOCATION_MAX_CHARS).collect();
-    if truncated { format!("{text}…") } else { text }
+fn truncate_target(mut text: String) -> String {
+    if let Some((cut_at, _)) = text.char_indices().nth(TOOL_CALL_LOCATION_MAX_CHARS) {
+        text.truncate(cut_at);
+        text.push('…');
+    }
+    text
 }
 
 /// Best-effort one-line summary of *what* a tool call is touching, shown as
@@ -1594,16 +1608,22 @@ fn tool_call_location_hint(
     raw_input: Option<&serde_json::Value>,
 ) -> Option<(String, bool)> {
     let (hint, is_command) = tool_call_target(locations, raw_input)?;
+    let hint = truncate_target(hint);
+    let comparison_hint = hint.strip_suffix('…').unwrap_or(&hint);
 
     // Don't repeat text the title already contains — case-insensitive so
     // "Viewing C:\...\rust-app" still dedupes against a locations path that
     // differs only in case (e.g. drive-letter casing from a different code
     // path).
-    if !title.is_empty() && title.to_lowercase().contains(&hint.to_lowercase()) {
+    if !title.is_empty()
+        && title
+            .to_lowercase()
+            .contains(&comparison_hint.to_lowercase())
+    {
         return None;
     }
 
-    Some((truncate_target(hint), is_command))
+    Some((hint, is_command))
 }
 
 /// Short icon glyph for an ACP `ToolKind`, shown next to the title on the
