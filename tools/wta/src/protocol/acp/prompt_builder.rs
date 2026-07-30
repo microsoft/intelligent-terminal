@@ -260,24 +260,21 @@ pub(crate) fn log_turn_trace(
 /// Take `max_chars` from either end of `text` and inline newlines as
 /// `\n` so the snippet fits on a single log line.
 fn snippet(text: &str, max_chars: usize, from_start: bool) -> String {
-    let mut chars: Vec<char> = text.chars().collect();
-    let len = chars.len();
     let slice: String = if from_start {
-        chars.truncate(max_chars.min(len));
-        chars.into_iter().collect()
+        text.chars().take(max_chars).collect()
     } else {
-        let start = len.saturating_sub(max_chars);
-        chars.drain(..start);
-        chars.into_iter().collect()
+        let mut tail: Vec<char> = text.chars().rev().take(max_chars).collect();
+        tail.reverse();
+        tail.into_iter().collect()
     };
     slice.replace('\n', "\\n")
 }
 
 /// Last 8 chars of a SessionId for compact logging.
 fn session_short(session_id: &str) -> String {
-    let chars: Vec<char> = session_id.chars().collect();
-    let start = chars.len().saturating_sub(8);
-    chars[start..].iter().collect()
+    let mut tail: Vec<char> = session_id.chars().rev().take(8).collect();
+    tail.reverse();
+    tail.into_iter().collect()
 }
 
 fn acp_trace_content(msg: &str) {

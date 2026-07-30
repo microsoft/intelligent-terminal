@@ -28,10 +28,11 @@ use crate::shell::ShellManager;
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
 
 fn truncate_for_prompt(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
+    let mut chars = text.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_none() {
         text.to_string()
     } else {
-        let truncated: String = text.chars().take(max_chars).collect();
         format!("{truncated}\n...<truncated>")
     }
 }
