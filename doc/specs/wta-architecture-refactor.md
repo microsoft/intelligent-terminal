@@ -12,9 +12,10 @@ Windows Terminal operations. The leaf modules generally reflect that design,
 but several root modules accumulated responsibilities as the product evolved.
 The first refactor rounds have already reduced some of that concentration:
 
-- `main.rs` now owns process startup, top-level CLI dispatch, WT one-shot
-  operations, delegation, and diagnostics; helper runtime and several CLI
-  command domains have moved out.
+- `main.rs` now owns process startup, service-mode selection, and top-level CLI
+  dispatch; helper runtime and all one-shot command domains have moved out.
+- `cli/` owns WT operations, delegation, diagnostics, hooks, probes, and
+  sessions commands behind focused execution APIs.
 - `app.rs` still owns broad application orchestration and side effects, but
   neutral contracts, tab state, and input editing have moved out.
 - `protocol/acp/client.rs` owns transport, UI-facing messages, prompt assembly,
