@@ -414,11 +414,11 @@ namespace winrt::TerminalApp::implementation
         // SetSettings and after every rebuild; a diff drives teardown/rebuild
         // of the agent pane.
         //
-        // Only the agent-CLI *identity* (acpAgent / acpCustomCommand, which
-        // resolve --agent + --agent-id = the actual agent binary) forces a
-        // master respawn via _RebuildAgentStack. Model + delegate config are
-        // hot-updated over the event channel (see AgentRuntimeConfigSnapshot
-        // + _EmitAgentRuntimeConfigIfChanged) and must NOT restart the pane.
+        // Agent identity changes (global acpAgent/acpCustomCommand or an
+        // effective per-profile backend) rebuild affected helpers. Only a
+        // custom global command forces a master respawn; built-ins and profile
+        // backends are selected over the trusted helper/master metadata path.
+        // Model + delegate config are hot-updated over the event channel.
         struct AgentSettingsSnapshot
         {
             std::wstring acpAgent;
@@ -427,6 +427,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring delegateAgent;
             std::wstring delegateModel;
             std::wstring delegateCustomCommand;
+            std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };

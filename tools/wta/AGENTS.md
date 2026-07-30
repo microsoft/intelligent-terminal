@@ -19,7 +19,8 @@ with an error.
   but, instead of spawning its own agent CLI, speaks ACP/JSON-RPC to master over
   the pipe. *From the helper's perspective, master is the agent.* Entry:
   `src/helper/mod.rs` → `run_default_tui_over_pipe`.
-- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta new-tab`,
+- **CLI helpers** (`wta list-panes`, `wta capture-pane`, `wta resolve-command`,
+  `wta new-tab`,
   `delegate`, `hooks`, `sessions`, …) -- one-shot WT-control commands for humans
   and for agents that can shell out. Direct keystroke injection is not exposed by
   the CLI. Dispatched in `src/main.rs`.
@@ -154,6 +155,11 @@ Agents that can shell out, and humans debugging WTA, can use WTA as a small WT h
 | `wait-for` | -- | delegated to `wtcli wait-for` |
 | `pane-status` | -- | `get_process_status` |
 | `listen` | `mon` | COM event subscribe |
+
+`wta resolve-command <token> [--shell pwsh.exe] --json` is a local,
+profile-aware PowerShell command resolver. It does not call the WT protocol.
+It reports `exists`, `not_found`, `indeterminate`, or `unsupported`, replacing
+the former localhost MCP tool with the same machine-readable result shape.
 
 ## Connection Discovery
 
@@ -494,15 +500,13 @@ reconciliation, `intellterm.wta/session_added|removed`, and
 render in the picker and aren't reachable by the cursor.
 
 The gate is a single constant — `app.rs::MVP_SESSIONS_ORIGIN_FILTER` —
-threaded through `App::sessions_origin_filter` so that the three places
+threaded through `App::sessions_origin_filter` so that the two places
 that have to stay in sync read the same value:
 
 1. `App::agents_rows_for_tab` (cursor / Enter dispatch source of
    truth) — applies the filter to both the snapshot path and the
    registry-fallback path.
-2. The post-history-scan auto-select and the Delete clamp (same
-   file) — `iter_sorted_with_filters(cli, self.sessions_origin_filter)`.
-3. `ui/agents_view::render` — applies the same retain to keep the
+2. `ui/agents_view::render` — applies the same retain to keep the
    rendered rows lined up with the cursor model.
 
 `agent_sessions::OriginFilter` (`ShellOnly | AgentPaneOnly | All`)

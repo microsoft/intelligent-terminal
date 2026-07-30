@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} орнатылғанына және PATH-те �
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Жүктелуде..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ шарлау үшін • Enter сеанс ашу үшін • Esc шығу үшін • F5 жаңарту үшін)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ шарлау үшін • Enter сеанс ашу үшін • Esc шығу үшін • F5 жаңарту үшін • / іздеу үшін)"
 agents.status.active: "Белсенді"
 agents.status.waiting_for_input: "Енгізу күтілуде"
 agents.status.error: "Қате"
@@ -131,6 +131,8 @@ connection.connecting_activity: "Агентке қосылуда…"
 connection.lost: "Агентпен байланыс жоғалды. Қайта қосылу үшін /restart деп теріңіз."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Панельді жабу үшін Ctrl+C пернелерін қайта басыңыз"  # {Locked="Ctrl+C"}
+system.selection_copied: "Көшірілді"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Бас тартылды."
 system.no_prompt_in_flight: "Орындалып жатқан сұрау жоқ."
 system.authentication_failed: "Аутентификация сәтсіз аяқталды"

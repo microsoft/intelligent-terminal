@@ -110,8 +110,8 @@ agent.custom.auth_hint: "Проверите да је %{name} инсталира
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Учитавање..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз • F5 за освежавање)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз • F5 за освежавање • / за претрагу)"
 agents.status.active: "Активан"
 agents.status.waiting_for_input: "Чека на унос"
 agents.status.error: "Грешка"
@@ -127,6 +127,8 @@ connection.connecting_activity: "Повезивање са агентом…"
 connection.lost: "Веза са агентом је изгубљена. Унесите /restart да бисте се поново повезали."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Притисните Ctrl+C поново да бисте затворили панел"  # {Locked="Ctrl+C"}
+system.selection_copied: "Копирано"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Отказано."
 system.no_prompt_in_flight: "Нема активног захтева."
 system.authentication_failed: "Аутентификација није успела"

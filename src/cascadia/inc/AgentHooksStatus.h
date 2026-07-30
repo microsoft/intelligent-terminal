@@ -39,7 +39,7 @@ namespace Microsoft::Terminal::AgentHooks
     // One entry of `clis[]` from the JSON report.
     struct CliStatus
     {
-        std::string name; // "copilot" | "claude" | "gemini" | "codex"
+        std::string name; // "copilot" | "claude" | "gemini" | "codex" | "opencode"
         bool binaryOnPath{ false };
         std::optional<std::string> binaryPath;
         bool marketplaceRegistered{ false };
@@ -180,6 +180,16 @@ namespace Microsoft::Terminal::AgentHooks
             }
         }
         return nullptr;
+    }
+
+    inline bool HasHookState(const CliStatus* cli)
+    {
+        return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
+    }
+
+    inline bool ShouldShowDetectedOrConfiguredHookRow(const CliStatus* cli)
+    {
+        return cli && (cli->binaryOnPath || HasHookState(cli));
     }
 
     // True when at least one CLI binary is on PATH — drives the

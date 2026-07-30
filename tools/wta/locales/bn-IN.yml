@@ -115,8 +115,8 @@ agent.custom.auth_hint: "নিশ্চিত করুন যে %{name} ই�
 
 # ── এজেন্ট দৃশ্য (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "লোড হচ্ছে..."
-# {Locked="Enter","Esc","F5","↑","↓"} - কী সংমিশ্রণ, অনুবাদ করবেন না
-agents.footer_hint: "(↑ ↓ নেভিগেট করুন • Enter সেশন চালু করুন • Esc প্রস্থান • F5 রিফ্রেশ করুন)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - কী সংমিশ্রণ, অনুবাদ করবেন না
+agents.footer_hint: "(↑ ↓ নেভিগেট করুন • Enter সেশন চালু করুন • Esc প্রস্থান • F5 রিফ্রেশ করুন • / অনুসন্ধান করুন)"
 agents.status.active: "সক্রিয়"
 agents.status.waiting_for_input: "ইনপুটের জন্য অপেক্ষা"
 agents.status.error: "ত্রুটি"
@@ -132,6 +132,8 @@ connection.connecting_activity: "এজেন্টের সাথে সংয
 connection.lost: "এজেন্টের সাথে সংযোগ হারিয়ে গেছে। পুনরায় সংযোগ করতে /restart টাইপ করুন।"  # {Locked="/restart"}
 
 # ── সিস্টেম বার্তা (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "পেন বন্ধ করতে আবার Ctrl+C চাপুন"  # {Locked="Ctrl+C"}
+system.selection_copied: "কপি করা হয়েছে"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "বাতিল করা হয়েছে।"
 system.no_prompt_in_flight: "কোনো প্রম্পট চলমান নেই।"
 system.authentication_failed: "প্রমাণীকরণ ব্যর্থ"

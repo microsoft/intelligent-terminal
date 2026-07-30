@@ -10,8 +10,8 @@ all you ever need to do.
 This document exists for the circumstances where the FRE cannot do the job
 on its own, including:
 
-- You are switching to (or adding) **Claude Code**, **OpenAI Codex**, or
-  **Gemini** — agent CLIs the FRE does **not** install for you.
+- You are switching to (or adding) **Claude Code**, **OpenAI Codex**,
+  **Gemini**, or **OpenCode** — agent CLIs the FRE does **not** install for you.
 - An FRE step failed — for example, `winget` is missing or blocked, your
   PowerShell execution policy is locked down by Group Policy, or the
   Node.js install did not pick up on `PATH` — and you need to finish the
@@ -125,15 +125,15 @@ finishes, close and reopen your terminal so `PATH` picks up `node.exe`,
 
 ## Agent CLIs
 
-Intelligent Terminal supports four agents out of the box — **GitHub
-Copilot**, **Claude Code**, **OpenAI Codex**, and **Gemini**. The
+Intelligent Terminal supports five agents out of the box — **GitHub
+Copilot**, **Claude Code**, **OpenAI Codex**, **Gemini**, and **OpenCode**. The
 first-run experience installs **GitHub Copilot** (the default) for you;
-the other three are **bring-your-own** — install the CLI yourself
+the other four are **bring-your-own** — install the CLI yourself
 (sub-sections below) before selecting it in the FRE.
 
-Intelligent Terminal talks to all four through the
+Intelligent Terminal talks to all five through the
 [**Agent Control Protocol (ACP)**](https://agentclientprotocol.com/get-started/agents).
-**Copilot** and **Gemini** speak ACP natively, so no extra layer is
+**Copilot**, **Gemini**, and **OpenCode** speak ACP natively, so no extra layer is
 required. **Claude Code** and **OpenAI Codex** do not speak ACP directly
 — Intelligent Terminal launches them through an `npx` wrapper that is
 fetched on demand at run time, so its only prerequisite is Node.js.
@@ -143,7 +143,7 @@ fetched on demand at run time, so its only prerequisite is Node.js.
 > wired up from **Settings → AI Agents → Add custom agent**. Custom
 > agents work in the agent pane today, but **session management** (the
 > multi-session sidebar in the agent pane) is not yet supported for
-> custom agents — only the four built-in agents above get the full
+> custom agents — only the five built-in agents above get the full
 > session experience.
 
 ### 3.1 GitHub Copilot CLI
@@ -357,6 +357,7 @@ sub-section above before continuing:
 - **Claude Code** → [Section 3.2](#32-claude-code-bring-your-own)
 - **OpenAI Codex** → [Section 3.3](#33-openai-codex-bring-your-own)
 - **Gemini CLI** → [Section 3.4](#34-gemini-cli-bring-your-own)
+- **OpenCode** → install and authenticate the CLI using the [OpenCode documentation](https://opencode.ai/docs/)
 
 Verify the CLI you intend to use prints a version number, then close and
 reopen your terminal so any new install directory is on `PATH`.
@@ -374,6 +375,7 @@ wta hooks install --cli copilot
 wta hooks install --cli claude
 wta hooks install --cli codex
 wta hooks install --cli gemini
+wta hooks install --cli opencode
 ```
 
 Or install for every agent CLI that is currently on `PATH` in one go:
@@ -392,6 +394,13 @@ Intelligent Terminal package:
 | Claude Code    | `claude plugin marketplace add <bundle>\claude` then `claude plugin install wt-agent-hooks@wt-local`                        |
 | OpenAI Codex   | `codex plugin marketplace add <bundle>\codex` then `codex plugin add wt-agent-hooks@wt-local` *(note: `add`, not `install`)* |
 | Gemini CLI     | `gemini extensions install <bundle>\gemini-extension --consent --skip-settings` *(with `GEMINI_CLI_TRUST_WORKSPACE=true` to bypass Gemini's folder-trust prompt)* |
+| OpenCode       | Copies the bundled plugin to `%XDG_CONFIG_HOME%\opencode\plugins\wt-agent-hooks.js` when `XDG_CONFIG_HOME` is set; otherwise it uses `%USERPROFILE%\.config\opencode\plugins\wt-agent-hooks.js`, without modifying `opencode.json` |
+
+For OpenCode, the plugin is globally discoverable but emits events only from
+interactive sessions running inside Intelligent Terminal. OpenCode ACP
+processes used by the agent pane remain tracked through ACP, preventing
+duplicate session rows. The installer will not overwrite a same-name plugin
+file unless it carries Intelligent Terminal's managed-file marker.
 
 You do not need to run these directly — `wta hooks install` is the
 supported entry point and handles bundle staging, idempotency, and
@@ -403,7 +412,7 @@ diagnostic logging for you.
 > until you launch Codex once and run the `/hooks` slash command to
 > trust the `wt-agent-hooks` plugin. This is a Codex security
 > requirement that no external installer can satisfy on your behalf;
-> the other three CLIs do not need this step.
+> the other four CLIs do not need this step.
 
 #### Step 3.6.3 — Verify the install and re-enable session management
 

@@ -11,7 +11,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
 
 use super::popup;
-use crate::app::App;
+use crate::app::{App, AvailableAgent};
 use crate::commands::{CommandSpec, MovePositionSpec, REGISTRY};
 use crate::theme;
 
@@ -22,6 +22,7 @@ const POPUP_MAX_VISIBLE: usize = 6;
 pub struct PopupState<'a> {
     pub candidates: PopupCandidates<'a>,
     pub selected: usize,
+    pub pane_focused: bool,
     /// Effective model for the active pane (per-pane `/model` override, else
     /// the global one). Appended to the `/model` row so the user sees what
     /// they're currently on while typing the command. `None` when no model
@@ -32,6 +33,7 @@ pub struct PopupState<'a> {
 pub enum PopupCandidates<'a> {
     Commands(Cow<'a, [&'static CommandSpec]>),
     MovePositions(&'a [&'static MovePositionSpec]),
+    Agents(Vec<&'a AvailableAgent>),
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -42,6 +44,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     let candidate_count = match &state.candidates {
         PopupCandidates::Commands(candidates) => candidates.len(),
         PopupCandidates::MovePositions(candidates) => candidates.len(),
+        PopupCandidates::Agents(candidates) => candidates.len(),
     };
     if candidate_count == 0 {
         return;
@@ -83,11 +86,25 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                 ]))
             })
             .collect(),
+        PopupCandidates::Agents(candidates) => candidates
+            .iter()
+            .map(|agent| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!(" /agent {:<8} ", agent.id), theme::INPUT_TEXT),
+                    Span::styled(agent.display_name.as_str(), theme::DIM),
+                ]))
+            })
+            .collect(),
     };
 
+    let selected_style = if state.pane_focused {
+        theme::SELECTED
+    } else {
+        theme::SELECTED_INACTIVE
+    };
     let list = List::new(items)
         .block(popup::block(t!("commands.popup_title").into_owned()))
-        .highlight_style(theme::SELECTED)
+        .highlight_style(selected_style)
         .highlight_symbol("> ");
 
     let mut list_state = ListState::default();

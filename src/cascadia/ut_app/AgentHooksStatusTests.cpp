@@ -51,6 +51,9 @@ namespace TerminalAppUnitTests
         TEST_METHOD(AnyBinaryOnPathTrueWhenAny);
         TEST_METHOD(AnyBinaryOnPathFalseWhenNone);
         TEST_METHOD(FindCliReturnsNullptrForMissing);
+        TEST_METHOD(ShowsDetectedCliWithoutHooks);
+        TEST_METHOD(ShowsHookStateWithoutCli);
+        TEST_METHOD(HidesAbsentCliWithoutHooks);
     };
 
     static constexpr std::string_view kHappyPathJson = R"({
@@ -66,7 +69,11 @@ namespace TerminalAppUnitTests
               "plugin_installed": true, "plugin_enabled": true },
             { "name": "gemini",  "binary_on_path": false,
               "marketplace_registered": false, "marketplace_path_valid": false,
-              "plugin_installed": false, "plugin_enabled": false }
+              "plugin_installed": false, "plugin_enabled": false },
+            { "name": "opencode", "binary_on_path": true,
+               "marketplace_registered": true, "marketplace_path": "C:\\Users\\test\\.config\\opencode\\plugins",
+               "marketplace_path_valid": true,
+               "plugin_installed": true, "plugin_enabled": true }
         ],
         "bundle_source": { "kind": "exe-sibling", "path": "C:\\Program Files\\WT\\wt-agent-hooks" }
     })";
@@ -76,7 +83,7 @@ namespace TerminalAppUnitTests
         const auto report = ParseStatusJson(kHappyPathJson);
         VERIFY_IS_TRUE(report.has_value());
         VERIFY_ARE_EQUAL(3u, report->schemaVersion);
-        VERIFY_ARE_EQUAL(size_t{ 3 }, report->clis.size());
+        VERIFY_ARE_EQUAL(size_t{ 4 }, report->clis.size());
 
         const auto* copilot = FindCli(*report, "copilot");
         VERIFY_IS_NOT_NULL(copilot);
@@ -98,8 +105,44 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(gemini->marketplacePath.has_value());
         VERIFY_IS_FALSE(gemini->marketplacePathValid);
 
+        const auto* openCode = FindCli(*report, "opencode");
+        VERIFY_IS_NOT_NULL(openCode);
+        VERIFY_IS_TRUE(openCode->binaryOnPath);
+        VERIFY_IS_TRUE(openCode->pluginInstalled);
+        VERIFY_IS_TRUE(openCode->pluginEnabled);
+
         VERIFY_ARE_EQUAL(std::string{ "exe-sibling" }, report->bundleKind);
         VERIFY_IS_TRUE(report->bundlePath.has_value());
+    }
+
+    void AgentHooksStatusTests::ShowsDetectedCliWithoutHooks()
+    {
+        CliStatus openCode{};
+        openCode.name = "opencode";
+        openCode.binaryOnPath = true;
+
+        VERIFY_IS_FALSE(HasHookState(&openCode));
+        VERIFY_IS_TRUE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
+    }
+
+    void AgentHooksStatusTests::ShowsHookStateWithoutCli()
+    {
+        CliStatus openCode{};
+        openCode.name = "opencode";
+        openCode.pluginInstalled = true;
+
+        VERIFY_IS_TRUE(HasHookState(&openCode));
+        VERIFY_IS_TRUE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
+    }
+
+    void AgentHooksStatusTests::HidesAbsentCliWithoutHooks()
+    {
+        CliStatus openCode{};
+        openCode.name = "opencode";
+
+        VERIFY_IS_FALSE(HasHookState(&openCode));
+        VERIFY_IS_FALSE(ShouldShowDetectedOrConfiguredHookRow(&openCode));
+        VERIFY_IS_FALSE(ShouldShowDetectedOrConfiguredHookRow(nullptr));
     }
 
     void AgentHooksStatusTests::RejectsUnsupportedSchemaVersion()

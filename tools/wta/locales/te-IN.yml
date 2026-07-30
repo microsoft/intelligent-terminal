@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} ఇన్‌స్టాల్ చేయబడ�
 
 # ── ఏజెంట్‌ల వ్యూ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "లోడ్ అవుతోంది..."
-# {Locked="Enter","Esc","F5","↑","↓"} - కీ కాంబినేషన్‌లు, అనువదించవద్దు
-agents.footer_hint: "(↑ ↓ నావిగేట్ చేయండి • Enter సెషన్ ప్రారంభించండి • Esc నిష్క్రమించండి • F5 రిఫ్రెష్ చేయండి)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - కీ కాంబినేషన్‌లు, అనువదించవద్దు
+agents.footer_hint: "(↑ ↓ నావిగేట్ చేయండి • Enter సెషన్ ప్రారంభించండి • Esc నిష్క్రమించండి • F5 రిఫ్రెష్ చేయండి • / వెతకండి)"
 agents.status.active: "సక్రియం"
 agents.status.waiting_for_input: "ఇన్‌పుట్ కోసం వేచి ఉంది"
 agents.status.error: "ఎర్రర్"
@@ -131,6 +131,8 @@ connection.connecting_activity: "ఏజెంట్‌కు కనెక్ట�
 connection.lost: "ఏజెంట్‌తో కనెక్షన్ కోల్పోయింది. మళ్లీ కనెక్ట్ చేయడానికి /restart అని టైప్ చేయండి."  # {Locked="/restart"}
 
 # ── సిస్టమ్ సందేశాలు (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "పేన్‌ను మూసివేయడానికి Ctrl+C ని మళ్లీ నొక్కండి."  # {Locked="Ctrl+C"}
+system.selection_copied: "కాపీ చేయబడింది"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "రద్దు చేయబడింది."
 system.no_prompt_in_flight: "ప్రగతిలో ఎటువంటి ప్రాంప్ట్ లేదు."
 system.authentication_failed: "ప్రమాణీకరణ విఫలమైంది"

@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Kia mohio kua tautahia a %{name} a kei runga i to PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "E uta ana..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga • Esc ki te puta • F5 ki te whakahou)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga • Esc ki te puta • F5 ki te whakahou • / ki te rapu)"
 agents.status.active: "Hohe"
 agents.status.waiting_for_input: "E tatari ana mo te tauuru"
 agents.status.error: "Hapa"
@@ -118,6 +118,8 @@ connection.connecting_activity: "E hono ana ki te agent…"
 connection.lost: "Kua ngaro te hononga ki te agent. Patohia /restart kia hono anō."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Pēhia anō a Ctrl+C kia kati ai te papa."  # {Locked="Ctrl+C"}
+system.selection_copied: "Kua tāruatia"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Kua whakakorea."
 system.no_prompt_in_flight: "Karekau he tohutohu e rere ana."
 system.authentication_failed: "I rahua te whakamanatu"

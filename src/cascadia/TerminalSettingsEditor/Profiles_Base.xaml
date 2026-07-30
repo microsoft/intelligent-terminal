@@ -18,6 +18,10 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <DataTemplate x:Key="ProfileAgentEntryTemplate"
+                          x:DataType="local:AgentEntry">
+                <TextBlock Text="{x:Bind DisplayLabel}" />
+            </DataTemplate>
         </ResourceDictionary>
     </Page.Resources>
 
@@ -97,6 +101,20 @@
                                   IsChecked="{x:Bind Profile.UseParentProcessDirectory, Mode=TwoWay}" />
                     </StackPanel>
                 </StackPanel>
+            </local:SettingContainer>
+
+            <!--  Agent pane backend  -->
+            <local:SettingContainer x:Name="AgentPaneBackend"
+                                    x:Uid="Profile_AgentPaneBackend"
+                                    ClearSettingValue="{x:Bind Profile.ClearAgentPaneBackend}"
+                                    CurrentValue="{x:Bind Profile.CurrentAgentPaneBackend.DisplayLabel, Mode=OneWay}"
+                                    HasSettingValue="{x:Bind Profile.HasAgentPaneBackend, Mode=OneWay}"
+                                    SettingOverrideSource="{x:Bind Profile.AgentPaneBackendOverrideSource, Mode=OneWay}"
+                                    Style="{StaticResource ExpanderSettingContainerStyle}">
+                <ComboBox ItemTemplate="{StaticResource ProfileAgentEntryTemplate}"
+                          ItemsSource="{x:Bind Profile.AgentPaneBackendList, Mode=OneWay}"
+                          SelectedItem="{x:Bind Profile.CurrentAgentPaneBackend, Mode=TwoWay}"
+                          Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
             <!--  Icon  -->

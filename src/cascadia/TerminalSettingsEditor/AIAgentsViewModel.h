@@ -127,31 +127,42 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool IsClaudeCliDetected() const noexcept { return _claudeCliDetected; }
         bool IsGeminiCliDetected() const noexcept { return _geminiCliDetected; }
         bool IsCodexCliDetected() const noexcept { return _codexCliDetected; }
+        bool IsOpenCodeCliDetected() const noexcept { return _openCodeCliDetected; }
         bool IsAnyAgentCliDetected() const noexcept
         {
-            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected;
+            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected || _openCodeCliDetected;
         }
-        // Per-CLI "row visible" flags — true when the CLI has any wt-agent-hooks
-        // state on disk (marketplace registered OR plugin installed). The
-        // expander shows a Remove row for every CLI in this set so users can
-        // clean up partial installs, not just fully-installed ones.
+        // Per-CLI "row visible" flags. Existing integrations appear when they
+        // have hook state. OpenCode also appears when its CLI is detected so
+        // users can discover and install the newly supported integration.
         bool ShowCopilotHookRow() const noexcept { return _showCopilotHookRow; }
         bool ShowClaudeHookRow() const noexcept { return _showClaudeHookRow; }
         bool ShowGeminiHookRow() const noexcept { return _showGeminiHookRow; }
         bool ShowCodexHookRow() const noexcept { return _showCodexHookRow; }
+        bool ShowOpenCodeHookRow() const noexcept { return _showOpenCodeHookRow; }
         // Detail text shown under the CLI name when state isn't fully
         // installed. Empty for fully-installed CLIs (subtitle is hidden in XAML).
         winrt::hstring CopilotHooksSubtitle() const { return _copilotHooksSubtitle; }
         winrt::hstring ClaudeHooksSubtitle() const { return _claudeHooksSubtitle; }
         winrt::hstring GeminiHooksSubtitle() const { return _geminiHooksSubtitle; }
         winrt::hstring CodexHooksSubtitle() const { return _codexHooksSubtitle; }
+        winrt::hstring OpenCodeHooksSubtitle() const { return _openCodeHooksSubtitle; }
         bool ShowCopilotHooksSubtitle() const noexcept { return !_copilotHooksSubtitle.empty(); }
         bool ShowClaudeHooksSubtitle() const noexcept { return !_claudeHooksSubtitle.empty(); }
         bool ShowGeminiHooksSubtitle() const noexcept { return !_geminiHooksSubtitle.empty(); }
         bool ShowCodexHooksSubtitle() const noexcept { return !_codexHooksSubtitle.empty(); }
+        bool ShowOpenCodeHooksSubtitle() const noexcept { return !_openCodeHooksSubtitle.empty(); }
         bool CanInstallAgentHooks() const noexcept
         {
             return IsAnyAgentCliDetected() && !IsAgentSessionHooksPolicyLocked();
+        }
+        bool CanRemoveAgentHooks() const noexcept
+        {
+            return !IsAgentSessionHooksPolicyLocked();
+        }
+        bool CanRemoveOpenCodeHooks() const noexcept
+        {
+            return _openCodeHooksPresent && !IsAgentSessionHooksPolicyLocked();
         }
         bool IsInstallingAgentHooks() const noexcept { return _installingAgentHooks; }
         winrt::hstring AgentHooksInstallSummary() const { return _agentHooksInstallSummary; }
@@ -163,6 +174,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void RemoveClaudeHooks();
         void RemoveGeminiHooks();
         void RemoveCodexHooks();
+        void RemoveOpenCodeHooks();
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
@@ -218,17 +230,20 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _claudeCliDetected{ false };
         bool _geminiCliDetected{ false };
         bool _codexCliDetected{ false };
-        // Row visibility — true when the CLI has any wt-agent-hooks state
-        // on disk (marketplace registered OR plugin installed).
+        bool _openCodeCliDetected{ false };
+        // Row visibility. OpenCode additionally appears when its CLI is detected.
         bool _showCopilotHookRow{ false };
         bool _showClaudeHookRow{ false };
         bool _showGeminiHookRow{ false };
         bool _showCodexHookRow{ false };
+        bool _showOpenCodeHookRow{ false };
+        bool _openCodeHooksPresent{ false };
         // Subtitle text per CLI; empty for fully-installed CLIs.
         winrt::hstring _copilotHooksSubtitle;
         winrt::hstring _claudeHooksSubtitle;
         winrt::hstring _geminiHooksSubtitle;
         winrt::hstring _codexHooksSubtitle;
+        winrt::hstring _openCodeHooksSubtitle;
         bool _installingAgentHooks{ false };
         bool _refreshingAgentHooks{ false };
         winrt::hstring _agentHooksInstallSummary;

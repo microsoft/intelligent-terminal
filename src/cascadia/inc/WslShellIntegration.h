@@ -566,6 +566,13 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
         return details::GetWslIdentityCached(launchCommandline, /*allowProbe*/ false).name;
     }
 
+    // Resolve the distro selected by a WSL profile command line. May start a
+    // cold distro and block, so callers must run this off the UI thread.
+    inline std::wstring ResolveDistroName(std::wstring_view launchCommandline)
+    {
+        return details::GetWslIdentityCached(launchCommandline, /*allowProbe*/ true).name;
+    }
+
     // Build a Win32 UNC path for an arbitrary POSIX path inside a WSL
     // distro: \\wsl$\<distName>\<posixPath-with-forward-slashes-converted-to-backslashes>.
     // Both forward and backslash separators after the distro name are

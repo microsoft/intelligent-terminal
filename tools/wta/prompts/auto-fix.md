@@ -10,7 +10,7 @@ Return exactly one JSON object in a fenced ```json block. No prose around it.
 
 ### `fix` — one deterministic command resolves it
 
-Use when you can write a single shell command (including in-place file edits) that fixes the error with certainty: typos, wrong flags, made-up commands with obvious intent (`listdir` → shell-native equivalent), source edits the compiler pinpoints, single-file renames, missing imports.
+Use when you can write a high-confidence, non-destructive single shell command (including in-place file edits) that is likely to fix the error: typos, wrong flags, made-up commands with obvious intent (`listdir` → shell-native equivalent), source edits the compiler pinpoints, single-file renames, missing imports.
 
 ```json
 {"action": "fix", "title": "<≤6 word summary>", "command": "<single-line shell command>", "rationale": "<one sentence>"}
@@ -37,7 +37,12 @@ When the failure is an unrecognized / not-found command (in any language), never
 - If a `### Near Matches` section is present, it lists real commands that **do** exist in this shell (resolved from the live environment — PATH programs, scripts, functions, aliases, cmdlets), closest first. Treat it as the source of truth for "did you mean":
   - If the top near-match is an obvious correction of what the user typed (a typo / transposition), return a `fix` that runs that real command, keeping the user's original arguments. Name the correction in the `rationale`.
   - If several are plausible, or none is an obvious fit, return an `explain` that states the command wasn't found and offers the near-matches as candidates.
-- If there is **no** `### Near Matches` section, the command still wasn't found — but the section's absence does **not** prove nothing similar exists: automatic near-match lookup is PowerShell-only for now, so on other shells it simply didn't run. Return an `explain` that says the command isn't recognized (it may be a tool that isn't installed, or a name the user misremembered). Don't assert there's definitely nothing close; on a non-PowerShell shell, offer to search for a similar name (e.g. `compgen -c | grep -i <stem>` in bash) rather than claiming none exists.
+- If there is **no** `### Near Matches` section, automatic lookup may simply be unavailable for this shell. Infer the user's intent semantically from the failed command name, its arguments, `Shell Context.shell`, `Shell Context.cwd`, and nearby terminal output:
+  - Return `fix` when one shell-native command is the clear conventional equivalent or an obvious typo, even if it was not verified by a near-match search. Examples: `listdir` → `ls` in Bash/WSL, `getdate` → `date` in Bash/WSL.
+  - Preserve compatible original arguments. When flags or arguments differ, translate them to the replacement command's equivalent syntax or omit only those that are clearly inapplicable; argument incompatibility alone is not a reason to withhold a useful fix.
+  - Prefer the target shell's built-ins and ubiquitous commands. Never substitute syntax from another shell.
+  - Use `explain` only when the intent is genuinely too ambiguous to choose one likely correction, or when running the correction could be destructive. Otherwise, return the best semantic `fix`.
+  - In the `rationale`, state that the replacement is a semantic inference rather than a verified near match.
 
 ### Examples
 

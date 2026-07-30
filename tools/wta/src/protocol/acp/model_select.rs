@@ -19,7 +19,7 @@ use std::sync::RwLock;
 
 use agent_client_protocol as acp;
 
-use crate::app::AcpModelInfo;
+use crate::app_contracts::AcpModelInfo;
 
 /// How the current agent expects a model switch to be delivered. Refreshed on
 /// every `new_session` parse (see [`models_from_new_session`]) so an in-process

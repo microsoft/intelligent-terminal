@@ -114,8 +114,8 @@ agent.custom.auth_hint: "%{name} ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି ଏବଂ
 
 # ── ଏଜେଣ୍ଟ ଦୃଶ୍ୟ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ଲୋଡ୍ ହେଉଛି..."
-# {Locked="Enter","Esc","F5","↑","↓"} - କୀ ସଂଯୋଜନ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
-agents.footer_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Esc ବାହାରନ୍ତୁ • F5 ସତେଜ କରନ୍ତୁ)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - କୀ ସଂଯୋଜନ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
+agents.footer_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Esc ବାହାରନ୍ତୁ • F5 ସତେଜ କରନ୍ତୁ • / ଖୋଜନ୍ତୁ)"
 agents.status.active: "ସକ୍ରିୟ"
 agents.status.waiting_for_input: "ଇନ୍‌ପୁଟ୍ ପାଇଁ ଅପେକ୍ଷା"
 agents.status.error: "ତ୍ରୁଟି"
@@ -131,6 +131,8 @@ connection.connecting_activity: "ଏଜେଣ୍ଟ ସହ ସଂଯୋଗ ହ�
 connection.lost: "ଏଜେଣ୍ଟ ସହିତ ସଂଯୋଗ ହରାଇଗଲା। ପୁଣି ସଂଯୋଗ କରିବାକୁ /restart ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="/restart"}
 
 # ── ସିଷ୍ଟମ ସନ୍ଦେଶ (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "ପେନ୍ ବନ୍ଦ କରିବା ପାଇଁ Ctrl+C ପୁଣିଥରେ ଦବାନ୍ତୁ"  # {Locked="Ctrl+C"}
+system.selection_copied: "କପି ହୋଇଛି"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ବାତିଲ ହୋଇଛି।"
 system.no_prompt_in_flight: "ପ୍ରଗତିରେ କୌଣସି ପ୍ରମ୍ପ୍ଟ ନାହିଁ।"
 system.authentication_failed: "ପ୍ରମାଣୀକରଣ ବିଫଳ"

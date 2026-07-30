@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -52,17 +53,30 @@ namespace winrt::TerminalApp::implementation
     // WindowsTerminal.exe, so a static inside it is process-wide.
     struct AgentPaneDragStash
     {
-        static void Stash(uint64_t contentId, const winrt::hstring& originalTabId) noexcept
+        struct Entry
+        {
+            std::wstring originalTabId;
+            std::optional<winrt::guid> sourceProfileGuid;
+        };
+
+        static void Stash(uint64_t contentId,
+                          const winrt::hstring& originalTabId,
+                          const std::optional<winrt::guid>& sourceProfileGuid) noexcept
         {
             if (contentId == 0)
             {
                 return;
             }
             std::lock_guard lock{ _Mutex() };
-            _Map()[contentId] = std::wstring{ originalTabId };
+            _Map()[contentId] = Entry{
+                std::wstring{ originalTabId },
+                sourceProfileGuid,
+            };
         }
 
-        static bool Take(uint64_t contentId, winrt::hstring& outOriginalTabId) noexcept
+        static bool Take(uint64_t contentId,
+                         winrt::hstring& outOriginalTabId,
+                         std::optional<winrt::guid>& outSourceProfileGuid) noexcept
         {
             if (contentId == 0)
             {
@@ -75,7 +89,8 @@ namespace winrt::TerminalApp::implementation
             {
                 return false;
             }
-            outOriginalTabId = winrt::hstring{ it->second };
+            outOriginalTabId = winrt::hstring{ it->second.originalTabId };
+            outSourceProfileGuid = it->second.sourceProfileGuid;
             map.erase(it);
             return true;
         }
@@ -87,9 +102,9 @@ namespace winrt::TerminalApp::implementation
             return m;
         }
 
-        static std::unordered_map<uint64_t, std::wstring>& _Map() noexcept
+        static std::unordered_map<uint64_t, Entry>& _Map() noexcept
         {
-            static std::unordered_map<uint64_t, std::wstring> map;
+            static std::unordered_map<uint64_t, Entry> map;
             return map;
         }
     };

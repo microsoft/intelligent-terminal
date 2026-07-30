@@ -590,7 +590,8 @@ namespace winrt::TerminalApp::implementation
         if (kind == BuildStartupKind::Content && _rootPane)
         {
             const auto& myStableId = _stableId;
-            _rootPane->WalkTree([&myStableId](const auto& p) {
+            const auto sourceProfileGuid = _agentSourceProfileGuid;
+            _rootPane->WalkTree([&myStableId, &sourceProfileGuid](const auto& p) {
                 if (!p->_IsLeaf())
                 {
                     return false;
@@ -618,7 +619,10 @@ namespace winrt::TerminalApp::implementation
                 {
                     return false;
                 }
-                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(cid, myStableId);
+                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
+                    cid,
+                    myStableId,
+                    sourceProfileGuid);
                 return false;
             });
         }

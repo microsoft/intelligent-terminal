@@ -10,7 +10,12 @@ pub const INPUT_TEXT: Style = Style::new().fg(Color::Reset);
 // schemes. A hardcoded white was invisible on light color schemes (#234).
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
-pub const TOOL_CALL: Style = Style::new().fg(Color::DarkGray);
+pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset);
+pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_SUCCESS: Style = Style::new().fg(Color::Green).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_FAILURE: Style = Style::new().fg(Color::Red).add_modifier(Modifier::BOLD);
+pub const TOOL_CALL_CANCELED: Style = Style::new().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
 pub const PLAN_STYLE: Style = Style::new().fg(Color::Cyan);
 pub const ERROR_STYLE: Style = Style::new().fg(Color::Red);
 pub const IN_PROGRESS: Style = Style::new()
@@ -18,17 +23,13 @@ pub const IN_PROGRESS: Style = Style::new()
     .add_modifier(Modifier::BOLD)
     .add_modifier(Modifier::ITALIC);
 pub const DIM: Style = Style::new().fg(Color::DarkGray);
-pub const SELECTED: Style = Style::new()
-    .fg(Color::Black)
-    .bg(Color::Yellow)
-    .add_modifier(Modifier::BOLD);
-// Selected row while the pane is unfocused: same shape, muted to a gray bar
-// so the selection is preserved (and restored on refocus) without reading as
-// the live, active target. Light foreground keeps it legible on the dim bg.
+// Match the /sessions cursor: cyan foreground with no full-row background.
+pub const SELECTED: Style = Style::new().fg(Color::Cyan);
+// Preserve the selection when the pane loses focus without presenting it as
+// the active keyboard target.
 pub const SELECTED_INACTIVE: Style = Style::new()
-    .fg(Color::White)
-    .bg(Color::DarkGray)
-    .add_modifier(Modifier::BOLD);
+    .fg(Color::Cyan)
+    .add_modifier(Modifier::DIM);
 pub const DEBUG_SENT: Style = Style::new().fg(Color::Green);
 pub const DEBUG_RECEIVED: Style = Style::new().fg(Color::Cyan);
 pub const RECOMMENDATION_TITLE: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);

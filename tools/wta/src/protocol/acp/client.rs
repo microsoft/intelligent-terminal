@@ -13,7 +13,7 @@ use std::sync::{
 use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::app::{AppEvent, PermOption, PlanEntry, PlanEntryStatus};
+use crate::app_contracts::{AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEntryStatus};
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
@@ -177,6 +177,9 @@ pub enum MasterExtRequest {
         /// (`load_for_cli`) before answering — the F5 refresh path — instead of
         /// returning the cached registry snapshot.
         rescan: bool,
+    },
+    SessionBornBound {
+        event: crate::agent_sessions::SessionEvent,
     },
     SessionResumeDispatched {
         request_id: u64,
@@ -1538,6 +1541,7 @@ impl WtaClient {
             args.tool_call.fields.title
         ));
         let session_id = args.session_id.0.to_string();
+        let tool_call_id = args.tool_call.tool_call_id.to_string();
         let description = args
             .tool_call
             .fields
@@ -1562,6 +1566,7 @@ impl WtaClient {
 
         let _ = self.state.event_tx.send(AppEvent::PermissionRequest {
             session_id: session_id.clone(),
+            tool_call_id,
             description,
             options,
             responder: resp_tx,
@@ -1937,21 +1942,6 @@ fn elapsed_ms_since(start: std::time::Instant) -> f64 {
     start.elapsed().as_secs_f64() * 1000.0
 }
 
-/// Inject WTA's shared MCP server (resolve_command, …) into a `session/new`
-/// request so the agent can pull tools. Only when the agent advertises HTTP MCP
-/// support and master published an endpoint; otherwise the agent gets no MCP
-/// server and autofix's in-process path is unaffected.
-fn inject_wta_mcp_servers(req: &mut acp::schema::v1::NewSessionRequest, http_supported: bool) {
-    if !http_supported {
-        return;
-    }
-    if let Some(url) = crate::mcp::published_url() {
-        req.mcp_servers
-            .push(acp::schema::v1::McpServer::Http(acp::schema::v1::McpServerHttp::new("wta", url)));
-        tracing::info!(target: "acp", "injected wta MCP http server into session/new");
-    }
-}
-
 fn acp_result_failure_fields<T>(result: &acp::Result<T>) -> (&'static str, i32) {
     match result {
         Ok(_) => ("", 0),
@@ -2106,6 +2096,8 @@ pub async fn run_acp_client_over_pipe(
     // (it never executes a command string sent over the pipe). `None` →
     // master uses its `--agent` default (the legacy single-agent behavior).
     agent_id: Option<String>,
+    agent_source: crate::agent_source::AgentSource,
+    source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
@@ -2329,6 +2321,8 @@ pub async fn run_acp_client_over_pipe(
                 model: acp_model_override
                     .clone()
                     .filter(|s| !s.trim().is_empty()),
+                agent_source: Some(agent_source.kind().to_string()),
+                wsl_distro: agent_source.distro().map(str::to_string),
                 ..Default::default()
             },
         );
@@ -2511,7 +2505,13 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = std::env::current_dir().unwrap_or_default();
+    let cwd = match &agent_source {
+        crate::agent_source::AgentSource::Host => std::env::current_dir().unwrap_or_default(),
+        crate::agent_source::AgentSource::Wsl { .. } => source_cwd
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("/")),
+    };
     let (session_id, available_models, current_model_id, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
@@ -2533,7 +2533,7 @@ pub async fn run_acp_client_over_pipe(
             let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
             (
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
-                Vec::<crate::app::AcpModelInfo>::new(),
+                Vec::<AcpModelInfo>::new(),
                 None,
                 false,
             )
@@ -2542,10 +2542,6 @@ pub async fn run_acp_client_over_pipe(
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta);
-            inject_wta_mcp_servers(
-                &mut new_session_req,
-                init_resp.agent_capabilities.mcp_capabilities.http,
-            );
             let new_session_started = std::time::Instant::now();
             let new_session_result = conn.new_session(new_session_req).await;
             log_acp_new_session_result(
@@ -2681,7 +2677,6 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported,
         image_supported,
     });
-
     // Per-tab session cache. Only
     // prepopulate the owner-tab binding when we actually have a
     // bootstrap session — otherwise the `load_session_rx` arm would
@@ -2763,7 +2758,7 @@ pub async fn run_acp_client_over_pipe(
                 // the user sees a fresh session.
                 //
                 // Signal travels: helper → `wtcli publish` (see
-                // `app::send_wt_protocol_event`) → `IProtocolServer::SendEvent`
+                // `wt_protocol_events::send`) → `IProtocolServer::SendEvent`
                 // (route `RestartAgentStack`) →
                 // `TerminalPage::OnRestartAgentStackRequested`.
                 tracing::info!(
@@ -2776,7 +2771,7 @@ pub async fn run_acp_client_over_pipe(
                     "method": "restart_agent_stack",
                     "params": {},
                 });
-                crate::app::send_wt_protocol_event(evt.to_string());
+                crate::wt_protocol_events::send(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
                 dispatch_cancel(req, &conn, &cancel_signals);
@@ -2923,6 +2918,31 @@ fn dispatch_master_ext_request(
                         );
                         let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
                     }
+                }
+            }
+            MasterExtRequest::SessionBornBound { event } => {
+                const BORN_BOUND_TIMEOUT: std::time::Duration =
+                    std::time::Duration::from_secs(8);
+                let wire = crate::session_registry::build_born_bound_request(&event);
+                match tokio::time::timeout(BORN_BOUND_TIMEOUT, conn.ext_method(wire)).await {
+                    Ok(Ok(response)) => tracing::debug!(
+                        target: "session_hook",
+                        event = ?event,
+                        response = %response.0.get(),
+                        "born-bound registration sent to master"
+                    ),
+                    Ok(Err(err)) => tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        error = ?err,
+                        "born-bound registration ext-request failed"
+                    ),
+                    Err(_) => tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        timeout_secs = BORN_BOUND_TIMEOUT.as_secs(),
+                        "born-bound registration timed out"
+                    ),
                 }
             }
             MasterExtRequest::SessionResumeDispatched { request_id, sid } => {
@@ -3636,10 +3656,6 @@ async fn dispatch_prompt_body(
         include_template,
         &text,
     );
-    let _ = event_tx_task.send(AppEvent::ProgressStatus {
-        session_id: Some(prompt_session_id_str.clone()),
-        status: "Thinking...".to_string(),
-    });
     prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
 
     // Telemetry: prompt dispatched over ACP. WTA emits `AgentPromptSent`
@@ -3732,7 +3748,7 @@ mod tests {
     };
     use super::acp;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    use crate::app::AppEvent;
+    use crate::app_contracts::AppEvent;
     use tokio::sync::mpsc;
 
     /// `shell_from_active` resolves our own pid to a real exe name (the test
@@ -4581,7 +4597,7 @@ mod tests {
     /// not tear down the connection).
     mod ext_notification_tests {
         use super::super::{ClientState, WtaClient};
-        use crate::app::AppEvent;
+        use crate::app_contracts::AppEvent;
         use crate::session_registry::{
             build_session_added_notification, build_session_removed_notification,
             INTELLTERM_METHOD_SESSION_REMOVED,

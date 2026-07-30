@@ -101,8 +101,8 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Lastar..."
-# {Locked="Enter","Esc","F5","↑","↓"} - key combinations, do not translate
-agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte • F5 for å oppdatere)"
+# {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
+agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte • F5 for å oppdatere • / for å søkje)"
 agents.status.active: "Aktiv"
 agents.status.waiting_for_input: "Ventar på inndata"
 agents.status.error: "Feil"
@@ -118,6 +118,8 @@ connection.connecting_activity: "Koplar til agenten…"
 connection.lost: "Tilkoblinga til agenten gjekk tapt. Skriv /restart for å kople til på nytt."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Trykk Ctrl+C ein gong til for å lukke panelet"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopiert"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Avbrote."
 system.no_prompt_in_flight: "Ingen førespurnad pågår."
 system.authentication_failed: "Autentisering mislukkast"

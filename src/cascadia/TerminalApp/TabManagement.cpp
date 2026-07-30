@@ -306,6 +306,10 @@ namespace winrt::TerminalApp::implementation
                     }
                     self->_WireAgentPaneEvents(content, tabImplCom);
 
+                    if (const auto sourceProfileGuid = impl->TakePendingAgentSourceProfileGuid())
+                    {
+                        tabImplCom->AgentSourceProfileGuid(*sourceProfileGuid);
+                    }
                     const auto oldTabId = impl->TakePendingRenameFromTabId();
                     if (oldTabId.empty() || oldTabId == newTabId)
                     {
