@@ -13,13 +13,15 @@
 
 use anyhow::Result;
 
-use crate::Cli;
+pub(crate) mod config;
 
 mod runtime;
+
+use config::HelperConfig;
 
 /// Helper-mode entry point. Routes the ACP traffic through a named pipe
 /// to the wta-master singleton instead of spawning a private agent CLI
 /// subprocess.
-pub async fn run_helper_mode(cli: Cli, pipe_name: String) -> Result<()> {
-    runtime::run_default_tui_over_pipe(cli, pipe_name).await
+pub async fn run_helper_mode(config: HelperConfig, pipe_name: String) -> Result<()> {
+    runtime::run_default_tui_over_pipe(config, pipe_name).await
 }
