@@ -232,7 +232,7 @@ Split transport connection, request types, session orchestration, prompt
 construction, ACP callbacks, and turn metrics. Preserve one orchestration
 facade so callers do not depend on transport internals.
 
-This starts only after neutral event contracts exist, otherwise the current
+This starts only after neutral event contracts exist. Otherwise, the current
 cycle would merely be spread across more files.
 
 ## Step 7: Agent hooks decomposition
