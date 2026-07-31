@@ -64,6 +64,9 @@ using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
 using namespace std::chrono_literals;
 
+static constexpr double railMin = 180.0;
+static constexpr double railMax = 480.0;
+
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
 namespace winrt
@@ -3269,9 +3272,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Spec A §5.2: rail width comes from settings (default 220, clamped
-        // 140..480). Persisted on drag-end via _OnRailSplitterPointerReleased.
-        constexpr double railMin = 140.0;
-        constexpr double railMax = 480.0;
+        // 180..480). Persisted on drag-end via _OnRailSplitterPointerReleased.
         const double persistedWidth = static_cast<double>(_settings.GlobalSettings().TabLayoutVerticalWidth());
         const double railWidth = std::clamp(persistedWidth, railMin, railMax);
         VerticalRailColumn().Width(GridLengthHelper::FromValueAndType(railWidth, GridUnitType::Pixel));
@@ -3402,8 +3403,6 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        constexpr double railMin = 140.0;
-        constexpr double railMax = 480.0;
         const auto point = e.GetCurrentPoint(Root()).Position();
         const auto delta = static_cast<double>(point.X - _railSplitterStartPointer.X);
         const auto requested = std::clamp(_railSplitterStartWidth + delta, railMin, railMax);

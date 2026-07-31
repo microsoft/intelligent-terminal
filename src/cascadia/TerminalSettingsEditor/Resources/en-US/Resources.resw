@@ -621,6 +621,22 @@
     <value>Title length</value>
     <comment>An option to choose from for the "tab width mode" setting. When selected, each tab adjusts its width to the content within the tab.</comment>
   </data>
+  <data name="Globals_TabLayout.Header" xml:space="preserve">
+    <value>Tab layout</value>
+    <comment>Header for a control to choose whether tabs are laid out horizontally across the top of the window or vertically down the left side.</comment>
+  </data>
+  <data name="Globals_TabLayout.HelpText" xml:space="preserve">
+    <value>Vertical tabs are shown in a resizable column on the left side of the window. Requires a restart to apply.</value>
+    <comment>A description for what the "tab layout" setting does. Presented near "Globals_TabLayout.Header".</comment>
+  </data>
+  <data name="Globals_TabLayoutHorizontal.Content" xml:space="preserve">
+    <value>Horizontal</value>
+    <comment>An option to choose from for the "tab layout" setting. When selected, tabs run across the top of the window.</comment>
+  </data>
+  <data name="Globals_TabLayoutVertical.Content" xml:space="preserve">
+    <value>Vertical</value>
+    <comment>An option to choose from for the "tab layout" setting. When selected, tabs run down the left side of the window in a resizable column.</comment>
+  </data>
   <data name="Globals_Theme.Header" xml:space="preserve">
     <value>Application Theme</value>
     <comment>Header for a control to choose the theme colors used in the app.</comment>
