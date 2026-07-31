@@ -807,7 +807,7 @@ impl App {
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
                         cwd: self.source_cwd.clone(),
-                        source_pane_id: None,
+                        source_pane_id: self.source_session_id.clone(),
                     };
                     // The echoed user message shows a marker for each queued
                     // image; the ACP text block stays raw (the image rides as a
@@ -844,6 +844,7 @@ impl App {
                         id: prompt.id,
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
+                        target_pane_id: None,
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);

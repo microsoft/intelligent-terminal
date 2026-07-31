@@ -178,9 +178,7 @@ impl App {
                 AutofixDecision::Ignore => {}
             }
         } else {
-            let parsed = parse_recommendation_set(&buf).and_then(|r| {
-                validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-            });
+            let parsed = parse_recommendation_set(&buf);
             if let Ok(recommendations) = parsed {
                 self.turn_surface_recommendation(
                     session_id,
@@ -340,9 +338,7 @@ impl App {
     /// Path (4b): non-autofix Streaming buffer. Try `RecommendationSet`
     /// parse first; on failure, commit as a chat turn (chat-mode answer).
     fn turn_close_finalize_planner(&mut self, session_id: &str, buf: String) {
-        let parsed = parse_recommendation_set(&buf).and_then(|r| {
-            validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-        });
+        let parsed = parse_recommendation_set(&buf);
         match parsed {
             Ok(recommendations) => {
                 self.turn_surface_recommendation(session_id, recommendations, "selection_ready");
@@ -447,19 +443,32 @@ impl App {
             }
         }
         let target_tab = self.tab_for_session(session_id);
-        let armed_pane = self
+        let authoritative_target = self
             .session_tab(session_id)
             .turn
             .prompt()
-            .and_then(|p| p.autofix.as_ref())
-            .map(|a| a.target_pane_id.clone());
+            .and_then(|p| {
+                p.target_pane_id.clone().or_else(|| {
+                    p.autofix
+                        .as_ref()
+                        .map(|autofix| autofix.target_pane_id.clone())
+                        .filter(|pane_id| !pane_id.is_empty())
+                })
+            });
         let _ = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution {
                 choice,
                 insert_only,
+                target_pane_id: authoritative_target,
             });
-        if armed_pane.is_some() {
+        if self
+            .session_tab(session_id)
+            .turn
+            .prompt()
+            .and_then(|p| p.autofix.as_ref())
+            .is_some()
+        {
             self.emit_autofix_state_cleared(&target_tab);
         }
         let autofix = &mut self.session_tab_mut(session_id).autofix;

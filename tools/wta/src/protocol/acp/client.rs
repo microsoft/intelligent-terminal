@@ -2661,7 +2661,7 @@ async fn dispatch_prompt_body(
         &prompt.text,
         prompt.submitted_at_unix_s,
     );
-    let (text, prompt_source, prompt_name, resolved_fix_pane) = build_prompt_text(
+    let (text, prompt_source, prompt_name, resolved_target_pane) = build_prompt_text(
         prompt.id,
         prompt.submitted_at_unix_s,
         &prompt.text,
@@ -2672,11 +2672,10 @@ async fn dispatch_prompt_body(
         prompt.pane_context.as_ref(),
     )
     .await;
-    // A manual `/fix` resolved its working pane in build_prompt_text (it had no
-    // explicit source pane). Plumb it back so the App fills the turn's
-    // `target_pane_id`; the host fills `Send.parent` from it at execute time.
-    if let Some(pane_id) = resolved_fix_pane {
-        let _ = event_tx_task.send(AppEvent::AutofixTargetResolved {
+    // Bind the pane used to build this prompt to the matching turn. The host
+    // uses this authoritative value instead of a model-generated action target.
+    if let Some(pane_id) = resolved_target_pane {
+        let _ = event_tx_task.send(AppEvent::PromptTargetResolved {
             tab_id: prompt
                 .pane_context
                 .as_ref()

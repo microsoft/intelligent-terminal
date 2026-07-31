@@ -292,12 +292,23 @@ async fn resolve_pane_by_session_id(
     None
 }
 
-async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
+struct PlannerTerminalContext {
+    json: String,
+    target_pane_id: String,
+}
+
+async fn build_terminal_context(
+    shell_mgr: &ShellManager,
+    pane_context: Option<&PaneContext>,
+) -> Option<PlannerTerminalContext> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
     // target. Pane IDs are process-globally unique, so we only need the pane
     // id itself — tab/window aren't needed for addressing.
-    let active = shell_mgr.wt_get_active_pane().await.ok()?;
+    let active = match pane_context.and_then(|context| context.source_pane_id.as_deref()) {
+        Some(source) => resolve_pane_by_session_id(shell_mgr, source).await?,
+        None => shell_mgr.wt_get_active_pane().await.ok()?,
+    };
 
     let is_agent = active
         .get("is_agent_pane")
@@ -339,7 +350,7 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
     )
     .await;
 
-    serde_json::to_string(&serde_json::json!({
+    let json = serde_json::to_string(&serde_json::json!({
         "activeTarget": target_pane_id,
         "window_title": target_window_title,
         "cwd": target_cwd,
@@ -347,7 +358,12 @@ async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String>
         "locale": user_locale_tag(),
         "buffer": buffer,
     }))
-    .ok()
+    .ok()?;
+
+    Some(PlannerTerminalContext {
+        json,
+        target_pane_id,
+    })
 }
 
 /// User's UI locale as a BCP-47 tag, suitable for embedding in
@@ -367,6 +383,8 @@ pub(super) struct ResolvedProviderContext {
     pub(super) shell_exe: Option<String>,
     pub(super) terminal_output: Option<String>,
     pub(super) resolved_fix_pane: Option<String>,
+    pub(super) planner_terminal_context: Option<String>,
+    pub(super) resolved_planner_pane: Option<String>,
 }
 
 pub(super) async fn resolve_provider_context(
@@ -380,8 +398,17 @@ pub(super) async fn resolve_provider_context(
         shell_exe: None,
         terminal_output: None,
         resolved_fix_pane: None,
+        planner_terminal_context: None,
+        resolved_planner_pane: None,
     };
-    if !is_autofix || !wt_connected {
+    if !wt_connected {
+        return resolved;
+    }
+    if !is_autofix {
+        if let Some(context) = build_terminal_context(shell_mgr, pane_context).await {
+            resolved.planner_terminal_context = Some(context.json);
+            resolved.resolved_planner_pane = Some(context.target_pane_id);
+        }
         return resolved;
     }
 
@@ -478,6 +505,8 @@ pub(super) struct ContextRequest<'a> {
     pub(super) shell_exe: Option<&'a str>,
     /// Autofix only: the failing pane's last `[command + output]` buffer.
     pub(super) terminal_output: Option<&'a str>,
+    /// Planner only: terminal context assembled with its authoritative target.
+    pub(super) planner_terminal_context: Option<&'a str>,
 }
 
 /// One `### {heading}\n{body}` block to inject into the prompt. `heading` is
@@ -572,7 +601,7 @@ impl ContextProvider for TerminalContextProvider {
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let json = build_terminal_context_json(req.shell_mgr).await?;
+        let json = req.planner_terminal_context?;
         Some(ContextSection {
             heading: "Terminal Context JSON",
             body: format!("```json\n{}\n```", json),
@@ -772,25 +801,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_terminal_context_json_none_without_wt_channel() {
+    async fn build_terminal_context_none_without_wt_channel() {
         let mgr = ShellManager::new();
-        assert!(build_terminal_context_json(&mgr).await.is_none());
+        assert!(build_terminal_context(&mgr, None).await.is_none());
     }
 
     #[tokio::test]
-    async fn build_terminal_context_json_skips_agent_pane() {
+    async fn build_terminal_context_skips_agent_pane() {
         let mgr = shell_mgr_with_pane(serde_json::json!({
             "session_id": "p1",
             "is_agent_pane": true,
         }));
         assert!(
-            build_terminal_context_json(&mgr).await.is_none(),
+            build_terminal_context(&mgr, None).await.is_none(),
             "an active agent pane has no terminal output to ship"
         );
     }
 
     #[tokio::test]
-    async fn build_terminal_context_json_assembles_fields_for_real_pane() {
+    async fn build_terminal_context_assembles_fields_for_real_pane() {
         let mgr = shell_mgr_with_pane(serde_json::json!({
             "session_id": "pane-9",
             "title": "My Tab",
@@ -798,11 +827,12 @@ mod tests {
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
-        let json = build_terminal_context_json(&mgr)
+        let context = build_terminal_context(&mgr, None)
             .await
             .expect("a non-agent active pane must yield context json");
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&context.json).unwrap();
         assert_eq!(v["activeTarget"], "pane-9");
+        assert_eq!(context.target_pane_id, "pane-9");
         assert_eq!(v["window_title"], "My Tab");
         assert_eq!(v["cwd"], "C:\\workspace");
         // The mock errors the buffer reads, so `buffer` is null.
@@ -863,6 +893,7 @@ mod tests {
             context_pane: None,
             shell_exe: None,
             terminal_output: None,
+            planner_terminal_context: None,
         }
     }
 

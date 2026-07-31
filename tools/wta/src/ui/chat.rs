@@ -1184,6 +1184,7 @@ mod tests {
                 id: 1,
                 text: "hi".into(),
                 submitted_at_unix_s: 0.0,
+                target_pane_id: None,
                 autofix: None,
             },
             buf: buf.to_string(),

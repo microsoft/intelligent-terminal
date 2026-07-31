@@ -113,8 +113,7 @@ pub use crate::app_contracts::{
 };
 use crate::coordinator::{
     parse_autofix_response, parse_recommendation_set, recommended_choice_index,
-    validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
-    RecommendationSet,
+    AutofixDecision, RecommendationChoice, RecommendationSet,
 };
 use crate::pane_context::PaneContext;
 
@@ -3499,7 +3498,7 @@ impl App {
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
             AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
-            AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
+            AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
@@ -4385,13 +4384,11 @@ impl App {
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
-    /// there is no failing-pane notification, so (1) the source pane is
-    /// resolved in the ACP client task — `PaneContext.source_pane_id` is left
-    /// `None` and `build_prompt_text` falls back to WT's active pane, which
-    /// GetActivePane maps from the agent pane to the user's working pane; and
+    /// there is no failing-pane notification, so (1) the helper's captured
+    /// source pane is resolved in the ACP client task; and
     /// (2) `target_pane_id` starts empty and is late-bound once the client task
-    /// resolves that working pane (`AppEvent::AutofixTargetResolved` →
-    /// `apply_autofix_target_resolved`), so `turn_execute_card` fills
+    /// resolves that working pane (`AppEvent::PromptTargetResolved` →
+    /// `apply_prompt_target_resolved`), so `turn_execute_card` fills
     /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
     /// armed — that UI is tied to a specific failing pane, and a command typed
     /// into the agent pane surfaces its result there directly.
@@ -4420,13 +4417,13 @@ impl App {
             tab.autofix.generation
         };
 
+        let source_pane_id = self.source_session_id.clone();
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(target_tab_id.clone()),
             window_id: self.window_id.clone(),
             cwd: None,
-            // None → the client task resolves the active working pane itself.
-            source_pane_id: None,
+            source_pane_id: source_pane_id.clone(),
         };
 
         let hint = hint.trim().to_string();
@@ -4435,12 +4432,11 @@ impl App {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
+            target_pane_id: source_pane_id.clone(),
             autofix: Some(AutofixContext {
-                // Placeholder — the working pane isn't known synchronously here.
-                // The ACP client task resolves it and `apply_autofix_target_resolved`
-                // late-binds it (matched by prompt id) before the card surfaces,
-                // so `turn_execute_card` fills `Send.parent` with a real pane.
-                target_pane_id: String::new(),
+                // Normally captured when the helper starts. If unavailable,
+                // the ACP client resolves the active source and late-binds it.
+                target_pane_id: source_pane_id.unwrap_or_default(),
                 generation,
             }),
         };
@@ -4457,16 +4453,15 @@ impl App {
 
     /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
     /// in the ACP client task (it isn't known when `cmd_fix` submits) and
-    /// plumbed back via [`AppEvent::AutofixTargetResolved`]. We patch the
-    /// matching in-flight turn's `AutofixContext.target_pane_id` so that
-    /// `turn_execute_card` fills `Send.parent` with a real pane — without it,
-    /// the host's send has no destination ("SendInput failed: no parent").
+    /// plumbed back via [`AppEvent::PromptTargetResolved`]. The same event
+    /// binds ordinary planner turns so execution never trusts a
+    /// model-generated pane target.
     ///
     /// Routed by `prompt_id`: a superseded turn (the user fired a newer `/fix`)
     /// won't match, so a stale resolution is dropped. The event is emitted
     /// before the agent responds, so the patch lands while the turn is still
     /// `Submitted` — well before the fix card surfaces or the user executes it.
-    fn apply_autofix_target_resolved(
+    fn apply_prompt_target_resolved(
         &mut self,
         tab_id: Option<String>,
         prompt_id: u64,
@@ -4475,26 +4470,40 @@ impl App {
         if pane_id.is_empty() {
             return;
         }
-        let key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
-        let Some(tab) = self.tab_sessions.get_mut(&key) else {
+        let preferred_key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
+        let key = self
+            .tab_sessions
+            .get(&preferred_key)
+            .filter(|tab| tab.turn.prompt().is_some_and(|prompt| prompt.id == prompt_id))
+            .map(|_| preferred_key)
+            .or_else(|| {
+                self.tab_sessions.iter().find_map(|(key, tab)| {
+                    tab.turn
+                        .prompt()
+                        .is_some_and(|prompt| prompt.id == prompt_id)
+                        .then(|| key.clone())
+                })
+            });
+        let Some(key) = key else {
             return;
         };
+        let tab = self.tab_sessions.get_mut(&key).expect("resolved tab exists");
         let Some(prompt) = tab.turn.prompt_mut() else {
             return;
         };
         if prompt.id != prompt_id {
             return;
         }
-        let Some(autofix) = prompt.autofix.as_mut() else {
-            return;
-        };
-        autofix.target_pane_id = pane_id.clone();
+        prompt.target_pane_id = Some(pane_id.clone());
+        if let Some(autofix) = prompt.autofix.as_mut() {
+            autofix.target_pane_id = pane_id.clone();
+        }
         tracing::info!(
-            target: "slash_cmd",
+            target: "pane_routing",
             tab = %key,
             prompt_id,
             pane = %pane_id,
-            "bound /fix target pane",
+            "bound authoritative prompt target pane",
         );
     }
 

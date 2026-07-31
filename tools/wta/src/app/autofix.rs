@@ -257,6 +257,7 @@ impl App {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
+            target_pane_id: Some(notification.pane_id.clone()),
             autofix: Some(AutofixContext {
                 target_pane_id: notification.pane_id.clone(),
                 generation: new_gen,
@@ -466,6 +467,7 @@ impl App {
                 .send(crate::coordinator::ChoiceExecution {
                     choice,
                     insert_only: false,
+                    target_pane_id: Some(armed_pane),
                 });
         }
         self.push_execution_info(format!("Auto-executing choice {}.", choice_label));

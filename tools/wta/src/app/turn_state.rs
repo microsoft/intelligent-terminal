@@ -44,6 +44,8 @@ pub struct SubmittedPrompt {
     pub id: u64,
     pub text: String,
     pub submitted_at_unix_s: f64,
+    /// Pane resolved by the host while assembling this prompt.
+    pub target_pane_id: Option<String>,
     pub autofix: Option<AutofixContext>,
 }
 
@@ -143,7 +145,7 @@ impl TurnState {
     /// Mutable prompt info for the in-flight or just-surfaced turn. Used to
     /// late-bind a manual `/fix`'s `AutofixContext.target_pane_id` once the
     /// client task has resolved the working pane (see
-    /// `App::apply_autofix_target_resolved`).
+    /// `App::apply_prompt_target_resolved`).
     pub fn prompt_mut(&mut self) -> Option<&mut SubmittedPrompt> {
         match self {
             TurnState::Idle => None,
@@ -179,6 +181,7 @@ mod tests {
             id: 1,
             text: "hello".into(),
             submitted_at_unix_s: 0.0,
+            target_pane_id: None,
             autofix: None,
         }
     }
@@ -188,6 +191,7 @@ mod tests {
             id: 2,
             text: "autofix".into(),
             submitted_at_unix_s: 0.0,
+            target_pane_id: Some("pane-1".into()),
             autofix: Some(AutofixContext {
                 target_pane_id: "pane-1".into(),
                 generation: gen,
