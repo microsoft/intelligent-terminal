@@ -4,6 +4,7 @@
 #pragma once
 #include "Pane.h"
 #include "ColorPickupFlyout.h"
+#include "RepoAwarenessService.h"
 #include "Tab.h"
 #include "Tab.g.h"
 
@@ -63,6 +64,8 @@ namespace winrt::TerminalApp::implementation
 
         void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         void UpdateTitle();
+        void SetRepoSummary(const ::Microsoft::Terminal::RepoAwareness::RepoSummary& summary);
+        void ClearRepoSummary();
 
         void Close();
         void Shutdown();
@@ -196,6 +199,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<TerminalApp::TerminalPaneContent> RestartTerminalRequested;
 
         til::typed_event<TerminalApp::Tab, IInspectable> ActivePaneChanged;
+        til::event<winrt::delegate<std::shared_ptr<Pane>>> PaneClosing;
         til::event<winrt::delegate<>> TabRaiseVisualBell;
         til::event<winrt::delegate<winrt::hstring /*title*/, winrt::hstring /*body*/, winrt::TerminalApp::IPaneContent /*content*/>> TabToastNotificationRequested;
         til::typed_event<IInspectable, IInspectable> TaskbarProgressChanged;
@@ -300,6 +304,8 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring _stableId{};
 
         winrt::hstring _runtimeTabText{};
+        std::optional<::Microsoft::Terminal::RepoAwareness::RepoSummary> _repoSummary;
+        winrt::hstring _repoAccessibilityText{};
         bool _inRename{ false };
         winrt::Windows::UI::Xaml::Controls::TextBox::LayoutUpdated_revoker _tabRenameBoxLayoutUpdatedRevoker;
 
@@ -339,6 +345,8 @@ namespace winrt::TerminalApp::implementation
         void _EnableMenuItems();
         void _UpdateSwitchToTabKeyChord();
         void _UpdateToolTip();
+        void _UpdateRepoPresentation();
+        void _UpdateAutomationName();
 
         void _RecalculateAndApplyTabColor();
         void _ApplyTabColorOnUIThread(const winrt::Windows::UI::Color& color);

@@ -278,6 +278,14 @@ namespace winrt::TerminalApp::implementation
         textBlock.TextAlignment(WUX::TextAlignment::Center);
         textBlock.Inlines().Append(titleRun);
 
+        if (!_repoAccessibilityText.empty())
+        {
+            auto repoRun = WUX::Documents::Run();
+            repoRun.Text(_repoAccessibilityText);
+            textBlock.Inlines().Append(WUX::Documents::LineBreak{});
+            textBlock.Inlines().Append(repoRun);
+        }
+
         if (!_keyChord.empty())
         {
             auto keyChordRun = WUX::Documents::Run();
@@ -544,8 +552,128 @@ namespace winrt::TerminalApp::implementation
 
         // Update the control to reflect the changed title
         _headerControl.Title(activeTitle);
-        Automation::AutomationProperties::SetName(TabViewItem(), activeTitle);
+        _UpdateAutomationName();
         _UpdateToolTip();
+    }
+
+    void Tab::SetRepoSummary(const ::Microsoft::Terminal::RepoAwareness::RepoSummary& summary)
+    {
+        ASSERT_UI_THREAD();
+        if (summary.availability == ::Microsoft::Terminal::RepoAwareness::RepoAvailability::Ready)
+        {
+            _repoSummary = summary;
+        }
+        else
+        {
+            _repoSummary.reset();
+        }
+        _UpdateRepoPresentation();
+    }
+
+    void Tab::ClearRepoSummary()
+    {
+        ASSERT_UI_THREAD();
+        _repoSummary.reset();
+        _UpdateRepoPresentation();
+    }
+
+    void Tab::_UpdateRepoPresentation()
+    {
+        ASSERT_UI_THREAD();
+
+        std::wstring text;
+        std::vector<std::wstring> accessibleParts;
+        if (_repoSummary)
+        {
+            const auto& summary = *_repoSummary;
+            std::wstring repoLabel;
+            if (summary.branch)
+            {
+                repoLabel = winrt::to_hstring(*summary.branch).c_str();
+                accessibleParts.emplace_back(RS_fmt(L"RichTab_BranchFormat", repoLabel));
+            }
+            else if (summary.detached && !summary.headOid.empty())
+            {
+                const auto shortLength = std::min<size_t>(7, summary.headOid.size());
+                repoLabel = winrt::to_hstring(summary.headOid.substr(0, shortLength)).c_str();
+                accessibleParts.emplace_back(RS_fmt(L"RichTab_DetachedFormat", repoLabel));
+            }
+
+            if (!repoLabel.empty())
+            {
+                text = repoLabel;
+                const auto dirtyCount = summary.modifiedCount +
+                                        summary.stagedCount +
+                                        summary.untrackedCount +
+                                        summary.conflictedCount;
+                if (dirtyCount > 0)
+                {
+                    text += L"*";
+                    accessibleParts.emplace_back(RS_(L"RichTab_Dirty"));
+                }
+                if (summary.ahead > 0)
+                {
+                    text += fmt::format(FMT_COMPILE(L" \u2191{}"), summary.ahead);
+                    accessibleParts.emplace_back(RS_fmt(L"RichTab_AheadFormat", summary.ahead));
+                }
+                if (summary.behind > 0)
+                {
+                    text += fmt::format(FMT_COMPILE(L" \u2193{}"), summary.behind);
+                    accessibleParts.emplace_back(RS_fmt(L"RichTab_BehindFormat", summary.behind));
+                }
+            }
+        }
+
+        std::function<int(const std::shared_ptr<Pane>&)> countVisiblePanes;
+        countVisiblePanes = [&](const std::shared_ptr<Pane>& pane) {
+            if (!pane || pane->IsHidden())
+            {
+                return 0;
+            }
+            if (pane->_IsLeaf())
+            {
+                return pane->GetContent() && !pane->IsAgentPane() ? 1 : 0;
+            }
+            return countVisiblePanes(pane->_firstChild) + countVisiblePanes(pane->_secondChild);
+        };
+        const auto paneCount = countVisiblePanes(_rootPane);
+        if (paneCount > 1)
+        {
+            if (!text.empty())
+            {
+                text += L" \u00b7 ";
+            }
+            text += RS_fmt(L"RichTab_PaneCountFormat", paneCount);
+            accessibleParts.emplace_back(RS_fmt(L"RichTab_PaneCountFormat", paneCount));
+        }
+
+        std::wstring accessibilityText;
+        for (const auto& part : accessibleParts)
+        {
+            if (!accessibilityText.empty())
+            {
+                accessibilityText += L", ";
+            }
+            accessibilityText += part;
+        }
+
+        _repoAccessibilityText = accessibilityText;
+        _headerControl.MetadataText(text);
+        _headerControl.MetadataAutomationName(_repoAccessibilityText);
+        _headerControl.IsMetadataVisible(!text.empty());
+        _UpdateAutomationName();
+        _UpdateToolTip();
+    }
+
+    void Tab::_UpdateAutomationName()
+    {
+        auto name = std::wstring{ Title() };
+        if (!_repoAccessibilityText.empty())
+        {
+            name += L", ";
+            name += _repoAccessibilityText;
+        }
+        Automation::AutomationProperties::SetName(TabViewItem(), name);
     }
 
     // Method Description:
@@ -1530,6 +1658,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         _RecalculateAndApplyReadOnly();
+        _UpdateRepoPresentation();
 
         // Raise our own ActivePaneChanged event.
         ActivePaneChanged.raise(*this, nullptr);
@@ -1679,6 +1808,13 @@ namespace winrt::TerminalApp::implementation
             }
         });
 
+        auto closingToken = pane->Closing([weakThis](std::shared_ptr<Pane> sender) {
+            if (const auto tab = weakThis.get())
+            {
+                tab->PaneClosing.raise(std::move(sender));
+            }
+        });
+
         // Add a Closed event handler to the Pane. If the pane closes out from
         // underneath us, and it's zoomed, we want to be able to make sure to
         // update our state accordingly to un-zoom that pane. See GH#7252.
@@ -1711,6 +1847,14 @@ namespace winrt::TerminalApp::implementation
                         }
                     }
                 }
+
+                const auto dispatcher = tab->TabViewItem().Dispatcher();
+                dispatcher.RunAsync(CoreDispatcherPriority::Normal, [weakThis]() {
+                    if (const auto tab = weakThis.get(); tab && tab->_rootPane)
+                    {
+                        tab->_UpdateRepoPresentation();
+                    }
+                });
             }
         });
 
@@ -1719,13 +1863,14 @@ namespace winrt::TerminalApp::implementation
         auto detachedToken = std::make_shared<winrt::event_token>();
         // Add a Detached event handler to the Pane to clean up tab state
         // and other event handlers when a pane is removed from this tab.
-        *detachedToken = pane->Detached([weakThis, weakPane, gotFocusToken, lostFocusToken, closedToken, detachedToken](std::shared_ptr<Pane> /*sender*/) {
+        *detachedToken = pane->Detached([weakThis, weakPane, gotFocusToken, lostFocusToken, closingToken, closedToken, detachedToken](std::shared_ptr<Pane> /*sender*/) {
             // Make sure we do this at most once
             if (auto pane{ weakPane.lock() })
             {
                 pane->Detached(*detachedToken);
                 pane->GotFocus(gotFocusToken);
                 pane->LostFocus(lostFocusToken);
+                pane->Closing(closingToken);
                 pane->Closed(closedToken);
 
                 if (auto tab{ weakThis.get() })
@@ -2364,12 +2509,14 @@ namespace winrt::TerminalApp::implementation
         if (!parent)
         {
             _hiddenPane = nullptr;
+            _UpdateRepoPresentation();
             return;
         }
 
         // Restore the pane in the XAML tree.
         parent->RestorePane(_hiddenPane);
         _hiddenPane = nullptr;
+        _UpdateRepoPresentation();
     }
 
     bool Tab::HasHiddenPane()

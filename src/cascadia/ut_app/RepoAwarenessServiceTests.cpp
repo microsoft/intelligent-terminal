@@ -20,10 +20,14 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RequiresBothShellSignals);
         TEST_METHOD(DoesNoWorkWithoutConsumer);
         TEST_METHOD(DropsQueuedWorkWhenLastConsumerLeaves);
+        TEST_METHOD(InProcessConsumerSurvivesProtocolConsumerRemoval);
+        TEST_METHOD(ProtocolConsumerSurvivesInProcessConsumerRemoval);
+        TEST_METHOD(EnqueuesOnlyOnFirstEffectiveConsumer);
         TEST_METHOD(ExplicitPullUpgradesQueuedConsumerWork);
         TEST_METHOD(ExplicitPullRunsWithoutConsumer);
         TEST_METHOD(CoalescesRefreshesAndReturnsSummary);
         TEST_METHOD(RejectsCompletionAfterCwdChanges);
+        TEST_METHOD(RejectsCompletionAfterPaneRecreated);
         TEST_METHOD(ReturnsStaleSnapshotWhileRefreshing);
         TEST_METHOD(ResolvesDifferentCwdsInOneWorktree);
         TEST_METHOD(DoesNotInferNestedWorktreeFromParentCache);
@@ -110,6 +114,84 @@ namespace TerminalAppUnitTests
         service.RemoveConsumer();
         release.set_value();
         VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 2 }));
+        VERIFY_ARE_EQUAL(1u, calls.load());
+    }
+
+    void RepoAwarenessServiceTests::InProcessConsumerSurvivesProtocolConsumerRemoval()
+    {
+        std::atomic_uint calls{ 0 };
+        std::promise<void> started;
+        const auto startedFuture = started.get_future();
+        std::promise<void> release;
+        const auto releaseFuture = release.get_future().share();
+        RepoAwarenessService service{
+            [&](const std::filesystem::path& cwd, size_t, const auto*) {
+                if (++calls == 1)
+                {
+                    started.set_value();
+                    releaseFuture.wait();
+                }
+                return _success(cwd.native(), "main");
+            }
+        };
+        service.SetProtocolConsumerCount(1);
+        service.AddConsumer();
+        service.ObservePane("running", L"C:\\running", true, true, false);
+        VERIFY_ARE_EQUAL(std::future_status::ready, startedFuture.wait_for(std::chrono::seconds{ 1 }));
+        service.ObservePane("queued", L"C:\\queued", true, true, false);
+
+        service.SetProtocolConsumerCount(0);
+        release.set_value();
+        VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 2 }));
+        VERIFY_ARE_EQUAL(2u, calls.load());
+    }
+
+    void RepoAwarenessServiceTests::ProtocolConsumerSurvivesInProcessConsumerRemoval()
+    {
+        std::atomic_uint calls{ 0 };
+        std::promise<void> started;
+        const auto startedFuture = started.get_future();
+        std::promise<void> release;
+        const auto releaseFuture = release.get_future().share();
+        RepoAwarenessService service{
+            [&](const std::filesystem::path& cwd, size_t, const auto*) {
+                if (++calls == 1)
+                {
+                    started.set_value();
+                    releaseFuture.wait();
+                }
+                return _success(cwd.native(), "main");
+            }
+        };
+        service.AddConsumer();
+        service.SetProtocolConsumerCount(1);
+        service.ObservePane("running", L"C:\\running", true, true, false);
+        VERIFY_ARE_EQUAL(std::future_status::ready, startedFuture.wait_for(std::chrono::seconds{ 1 }));
+        service.ObservePane("queued", L"C:\\queued", true, true, false);
+
+        service.RemoveConsumer();
+        release.set_value();
+        VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 2 }));
+        VERIFY_ARE_EQUAL(2u, calls.load());
+    }
+
+    void RepoAwarenessServiceTests::EnqueuesOnlyOnFirstEffectiveConsumer()
+    {
+        std::atomic_uint calls{ 0 };
+        RepoAwarenessService service{
+            [&](const auto&, size_t, const auto*) {
+                ++calls;
+                return _success(L"C:\\repo", "main");
+            }
+        };
+        service.ObservePane("pane", L"C:\\repo", true, true, false);
+
+        service.SetProtocolConsumerCount(1);
+        VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 1 }));
+        VERIFY_ARE_EQUAL(1u, calls.load());
+
+        service.AddConsumer();
+        VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 1 }));
         VERIFY_ARE_EQUAL(1u, calls.load());
     }
 
@@ -207,6 +289,37 @@ namespace TerminalAppUnitTests
         service.ObservePane("pane", L"C:\\old", true, true, true);
         service.ObservePane("pane", L"C:\\new", true, true, true);
         release.set_value();
+
+        VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 2 }));
+        const auto summary = service.GetSummary("pane");
+        VERIFY_ARE_EQUAL(RepoAvailability::Ready, summary.availability);
+        VERIFY_ARE_EQUAL(std::string{ "new" }, *summary.branch);
+    }
+
+    void RepoAwarenessServiceTests::RejectsCompletionAfterPaneRecreated()
+    {
+        std::promise<void> oldStarted;
+        const auto oldStartedFuture = oldStarted.get_future();
+        std::promise<void> releaseOld;
+        const auto oldReady = releaseOld.get_future().share();
+        RepoAwarenessService service{
+            [&](const std::filesystem::path& cwd, size_t, const auto*) {
+                if (cwd == L"C:\\old")
+                {
+                    oldStarted.set_value();
+                    oldReady.wait();
+                    return _success(L"C:\\old", "old");
+                }
+                return _success(L"C:\\new", "new");
+            }
+        };
+        service.AddConsumer();
+
+        service.ObservePane("pane", L"C:\\old", true, true, true);
+        VERIFY_ARE_EQUAL(std::future_status::ready, oldStartedFuture.wait_for(std::chrono::seconds{ 1 }));
+        service.RemovePane("pane");
+        service.ObservePane("pane", L"C:\\new", true, true, true);
+        releaseOld.set_value();
 
         VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 2 }));
         const auto summary = service.GetSummary("pane");
@@ -338,7 +451,7 @@ namespace TerminalAppUnitTests
             ++second;
         });
 
-        service.SetConsumerCount(1);
+        service.SetProtocolConsumerCount(1);
         service.ObservePane("pane", L"C:\\repo", true, true, false);
         VERIFY_IS_TRUE(service.WaitForIdle(std::chrono::seconds{ 1 }));
         VERIFY_ARE_EQUAL(1u, first.load());

@@ -1045,6 +1045,7 @@ void Pane::_ContentLostFocusHandler(const winrt::Windows::Foundation::IInspectab
 // - <none>
 void Pane::Close()
 {
+    Closing.raise(shared_from_this());
     _setPaneContent(nullptr);
     // Fire our Closed event to tell our parent that we should be removed.
     Closed.raise(nullptr, nullptr);
@@ -1575,6 +1576,7 @@ void Pane::_CloseChild(const bool closeFirst)
     // Tab's _rootClosedToken) tear the rest down.
     if (remainingChild->_IsLeaf() && remainingChild->_isAgentPane)
     {
+        remainingChild->Closing.raise(remainingChild);
         remainingChild->_setPaneContent(nullptr);
         closedChild->Closed(closedChildClosedToken);
         // Revoke our own routing token on the agent pane first so the

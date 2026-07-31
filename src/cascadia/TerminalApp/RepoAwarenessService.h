@@ -71,7 +71,7 @@ namespace Microsoft::Terminal::RepoAwareness
         [[nodiscard]] RepoSummary GetSummary(std::string_view sessionId, bool forceRefresh = false);
         void AddConsumer();
         void RemoveConsumer();
-        void SetConsumerCount(size_t count);
+        void SetProtocolConsumerCount(size_t count);
         [[nodiscard]] uint64_t SubscribeSummaryChanged(SummaryChangedCallback callback);
         void UnsubscribeSummaryChanged(uint64_t token);
 
@@ -107,6 +107,8 @@ namespace Microsoft::Terminal::RepoAwareness
 
         void _enqueueRefreshLocked(const std::string& sessionId, PaneState& pane, bool refreshCached, bool requiresConsumer);
         void _dropConsumerRequestsLocked();
+        void _onConsumerDemandChangedLocked(size_t previousDemand);
+        [[nodiscard]] size_t _consumerDemandLocked() const noexcept;
         RepoSummary _getSummaryLocked(const std::string& sessionId, PaneState& pane, bool forceRefresh);
         std::optional<std::wstring> _findCachedWorktreeLocked(const std::filesystem::path& workingDirectory) const;
         void _markUnreferencedLocked(const std::optional<std::wstring>& worktreeKey);
@@ -125,8 +127,10 @@ namespace Microsoft::Terminal::RepoAwareness
         std::deque<RefreshRequest> _requests;
         std::unordered_map<uint64_t, SummaryChangedCallback> _summaryChangedCallbacks;
         std::atomic_bool _stopping{ false };
-        size_t _consumerCount = 0;
+        size_t _inProcessConsumerCount = 0;
+        size_t _protocolConsumerCount = 0;
         uint64_t _nextSummaryChangedToken = 1;
+        uint64_t _nextPaneGeneration = 1;
         uint64_t _nextSnapshotGeneration = 1;
         bool _workerBusy = false;
         std::thread _worker;

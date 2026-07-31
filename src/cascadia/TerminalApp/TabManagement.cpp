@@ -132,6 +132,8 @@ namespace winrt::TerminalApp::implementation
 
         // Hookup our event handlers to the new terminal
         _RegisterTabEvents(*newTabImpl);
+        _ObserveRepoPanes(*newTabImpl);
+        _RefreshRepoContext(*newTabImpl);
 
         // Don't capture a strong ref to the tab. If the tab is removed as this
         // is called, we don't really care anymore about handling the event.
@@ -141,6 +143,12 @@ namespace winrt::TerminalApp::implementation
         // for it. The Title change will be propagated upwards through the tab's
         // PropertyChanged event handler.
         newTabImpl->ActivePaneChanged({ get_weak(), &TerminalPage::_activePaneChanged });
+        newTabImpl->PaneClosing([weakThis = get_weak()](std::shared_ptr<Pane> pane) {
+            if (const auto page = weakThis.get())
+            {
+                page->_ReleaseTrackedRepoSessions(pane, true);
+            }
+        });
 
         // The RaiseVisualBell event has been bubbled up to here from the pane,
         // the next part of the chain is bubbling up to app logic, which will
@@ -746,6 +754,7 @@ namespace winrt::TerminalApp::implementation
         {
             _NotifyPanesClosing(rootPaneForClose);
         }
+        _ReleaseTrackedRepoSessions(rootPaneForClose, !movingAway);
 
         // NOTE: Workspace persistence for named windows used to live here,
         // but by the time _RemoveTab runs the pane content may already be

@@ -334,6 +334,12 @@ namespace winrt::TerminalApp::implementation
         bool _SetTrackedRepoSession(const Microsoft::Terminal::Control::TermControl& control, std::optional<std::string> sessionId);
         bool _IsTrackedRepoSession(std::string_view sessionId);
         void _ClearTrackedRepoSessions();
+        void _SetRepoUiConsumerEnabled(bool enabled);
+        void _ObserveRepoPanes(Tab& tab);
+        void _ObserveCurrentRepoPanes();
+        void _RefreshRepoContext(Tab& tab);
+        void _ClearRepoTabContexts();
+        void _ReleaseTrackedRepoSessions(const std::shared_ptr<Pane>& rootPane, bool removeServiceState);
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };
@@ -596,6 +602,7 @@ namespace winrt::TerminalApp::implementation
 
         TerminalApp::WindowProperties _WindowProperties{ nullptr };
         uint64_t _repoSummarySubscription{ 0 };
+        bool _repoUiConsumerRegistered{ false };
         PaneResources _paneResources;
 
         // Cached agent-pane title-bar fallback brushes (#348). Reused to theme

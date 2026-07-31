@@ -168,6 +168,30 @@
   <data name="MultiplePanes" xml:space="preserve">
     <value>Multiple panes</value>
   </data>
+  <data name="RichTab_BranchFormat" xml:space="preserve">
+    <value>Branch {0}</value>
+    <comment>{0} is replaced with the active pane's Git branch name. This text is announced by screen readers and shown in the tab tooltip.</comment>
+  </data>
+  <data name="RichTab_DetachedFormat" xml:space="preserve">
+    <value>Detached at {0}</value>
+    <comment>{0} is replaced with a shortened Git commit ID. This text is announced by screen readers and shown in the tab tooltip.</comment>
+  </data>
+  <data name="RichTab_Dirty" xml:space="preserve">
+    <value>Uncommitted changes</value>
+    <comment>Describes a Git working tree with modified, staged, untracked, or conflicted files.</comment>
+  </data>
+  <data name="RichTab_AheadFormat" xml:space="preserve">
+    <value>Ahead {0}</value>
+    <comment>{0} is replaced with the number of commits the local branch is ahead of its upstream.</comment>
+  </data>
+  <data name="RichTab_BehindFormat" xml:space="preserve">
+    <value>Behind {0}</value>
+    <comment>{0} is replaced with the number of commits the local branch is behind its upstream.</comment>
+  </data>
+  <data name="RichTab_PaneCountFormat" xml:space="preserve">
+    <value>{0} panes</value>
+    <comment>{0} is replaced with the number of panes in the tab.</comment>
+  </data>
   <data name="TabCloseSubMenu" xml:space="preserve">
     <value>Close</value>
   </data>

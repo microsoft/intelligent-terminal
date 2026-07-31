@@ -123,7 +123,7 @@ namespace Microsoft::Terminal::RepoAwareness
         if (changed)
         {
             const auto previousWorktreeKey = pane.worktreeKey;
-            ++pane.generation;
+            pane.generation = _nextPaneGeneration++;
             pane.workingDirectory = std::move(workingDirectory);
             pane.worktreeKey.reset();
             pane.lastError = LocalGitError::None;
@@ -132,7 +132,7 @@ namespace Microsoft::Terminal::RepoAwareness
             _markUnreferencedLocked(previousWorktreeKey);
         }
 
-        if (pane.ready && _consumerCount > 0 && (changed || commandCompleted))
+        if (pane.ready && _consumerDemandLocked() > 0 && (changed || commandCompleted))
         {
             _enqueueRefreshLocked(sessionId, pane, true, true);
         }
@@ -167,40 +167,43 @@ namespace Microsoft::Terminal::RepoAwareness
     void RepoAwarenessService::AddConsumer()
     {
         std::lock_guard lock{ _mutex };
-        if (++_consumerCount == 1)
-        {
-            for (auto& [sessionId, pane] : _panes)
-            {
-                if (pane.ready)
-                {
-                    _enqueueRefreshLocked(sessionId, pane, false, true);
-                }
-            }
-        }
+        const auto previousDemand = _consumerDemandLocked();
+        ++_inProcessConsumerCount;
+        _onConsumerDemandChangedLocked(previousDemand);
     }
 
     void RepoAwarenessService::RemoveConsumer()
     {
         std::lock_guard lock{ _mutex };
-        if (_consumerCount > 0)
+        if (_inProcessConsumerCount > 0)
         {
-            if (--_consumerCount == 0)
-            {
-                _dropConsumerRequestsLocked();
-            }
+            const auto previousDemand = _consumerDemandLocked();
+            --_inProcessConsumerCount;
+            _onConsumerDemandChangedLocked(previousDemand);
         }
     }
 
-    void RepoAwarenessService::SetConsumerCount(const size_t count)
+    void RepoAwarenessService::SetProtocolConsumerCount(const size_t count)
     {
         std::lock_guard lock{ _mutex };
-        const auto hadConsumers = _consumerCount != 0;
-        _consumerCount = count;
-        if (hadConsumers && _consumerCount == 0)
+        const auto previousDemand = _consumerDemandLocked();
+        _protocolConsumerCount = count;
+        _onConsumerDemandChangedLocked(previousDemand);
+    }
+
+    size_t RepoAwarenessService::_consumerDemandLocked() const noexcept
+    {
+        return _inProcessConsumerCount + _protocolConsumerCount;
+    }
+
+    void RepoAwarenessService::_onConsumerDemandChangedLocked(const size_t previousDemand)
+    {
+        const auto demand = _consumerDemandLocked();
+        if (previousDemand > 0 && demand == 0)
         {
             _dropConsumerRequestsLocked();
         }
-        if (!hadConsumers && _consumerCount != 0)
+        else if (previousDemand == 0 && demand > 0)
         {
             for (auto& [sessionId, pane] : _panes)
             {
@@ -428,7 +431,7 @@ namespace Microsoft::Terminal::RepoAwareness
                 if (pane == _panes.end() ||
                     pane->second.generation != request.paneGeneration ||
                     !pane->second.ready ||
-                    (request.requiresConsumer && _consumerCount == 0))
+                    (request.requiresConsumer && _consumerDemandLocked() == 0))
                 {
                     _workerBusy = false;
                     if (_requests.empty())

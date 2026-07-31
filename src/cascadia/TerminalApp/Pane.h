@@ -245,6 +245,7 @@ public:
     void CollectTaskbarStates(std::vector<winrt::TerminalApp::TaskbarState>& states);
 
     til::event<winrt::delegate<>> ClosedByParent;
+    til::event<winrt::delegate<std::shared_ptr<Pane>>> Closing;
     til::event<winrt::Windows::Foundation::EventHandler<winrt::Windows::Foundation::IInspectable>> Closed;
 
     using gotFocusArgs = winrt::delegate<std::shared_ptr<Pane>, winrt::Windows::UI::Xaml::FocusState>;

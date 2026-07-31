@@ -262,10 +262,11 @@ namespace winrt::TerminalApp::implementation
             [weakThis = get_weak(), dispatcher](const std::string& sessionId, const ::Microsoft::Terminal::RepoAwareness::RepoSummary& summary) {
                 const auto eventJson = winrt::to_hstring(
                     ::Microsoft::Terminal::RepoAwareness::SerializeRepoStateChanged(sessionId, summary));
+                const auto summaryCopy = summary;
 
                 dispatcher.RunAsync(
                     CoreDispatcherPriority::Normal,
-                    [weakThis, sessionId, eventJson]() {
+                    [weakThis, sessionId, eventJson, summaryCopy]() {
                         try
                         {
                             const auto page = weakThis.get();
@@ -280,14 +281,31 @@ namespace winrt::TerminalApp::implementation
                             }
 
                             const auto target = winrt::guid{ winrt::to_hstring(sessionId) };
+                            bool protocolTargetFound = false;
                             for (const auto& tab : page->_tabs)
                             {
                                 const auto tabImpl = page->_GetTabImpl(tab);
-                                if (tabImpl && tabImpl->GetRootPane()->FindPaneBySessionId(target))
+                                if (!tabImpl)
                                 {
-                                    page->ProtocolVtSequenceReceived.raise(*page, eventJson);
-                                    return;
+                                    continue;
                                 }
+
+                                if (const auto activePane = tabImpl->GetActivePane();
+                                    activePane && activePane->GetSessionId() == target)
+                                {
+                                    tabImpl->SetRepoSummary(summaryCopy);
+                                }
+
+                                if (const auto rootPane = tabImpl->GetRootPane();
+                                    rootPane && rootPane->FindPaneBySessionId(target))
+                                {
+                                    protocolTargetFound = true;
+                                }
+                            }
+
+                            if (protocolTargetFound)
+                            {
+                                page->ProtocolVtSequenceReceived.raise(*page, eventJson);
                             }
                         }
                         catch (...)
@@ -305,6 +323,7 @@ namespace winrt::TerminalApp::implementation
         {
             ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().UnsubscribeSummaryChanged(_repoSummarySubscription);
         }
+        _SetRepoUiConsumerEnabled(false);
         // wta-helper processes are conpty children of TermControl and so
         // are torn down by the standard pane teardown path. No per-page
         // wta-process watch state to disarm here (removed in Phase 5).
@@ -327,7 +346,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::SetProtocolRepoConsumerCount(const uint32_t count)
     {
-        ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().SetConsumerCount(count);
+        ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().SetProtocolConsumerCount(count);
     }
 
     bool TerminalPage::_SetTrackedRepoSession(const TermControl& control, std::optional<std::string> sessionId)
@@ -391,6 +410,138 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void TerminalPage::_SetRepoUiConsumerEnabled(const bool enabled)
+    {
+        if (_repoUiConsumerRegistered == enabled)
+        {
+            return;
+        }
+
+        auto& service = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance();
+        if (enabled)
+        {
+            service.AddConsumer();
+        }
+        else
+        {
+            service.RemoveConsumer();
+        }
+        _repoUiConsumerRegistered = enabled;
+    }
+
+    void TerminalPage::_ObserveRepoPanes(Tab& tab)
+    {
+        if (!_repoObservationAllowed.load(std::memory_order_acquire))
+        {
+            return;
+        }
+
+        auto& service = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance();
+        if (const auto rootPane = tab.GetRootPane())
+        {
+            rootPane->WalkTree([&](const auto& pane) {
+                if (const auto control = pane->GetTerminalControl();
+                    control && control.ConnectionState() == ConnectionState::Connected)
+                {
+                    const auto sessionId = _FindSessionIdForControl(control);
+                    if (!sessionId.empty() && _SetTrackedRepoSession(control, sessionId))
+                    {
+                        service.ObservePane(
+                            sessionId,
+                            std::filesystem::path{ control.WorkingDirectory().c_str() },
+                            control.WorkingDirectoryReportedByShell(),
+                            control.CommandMarksReportedByShell(),
+                            false);
+                    }
+                }
+                return false;
+            });
+        }
+    }
+
+    void TerminalPage::_ObserveCurrentRepoPanes()
+    {
+        for (const auto& projectedTab : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(projectedTab))
+            {
+                _ObserveRepoPanes(*tab);
+                _RefreshRepoContext(*tab);
+            }
+        }
+    }
+
+    void TerminalPage::_RefreshRepoContext(Tab& tab)
+    {
+        if (!_repoObservationAllowed.load(std::memory_order_acquire))
+        {
+            tab.ClearRepoSummary();
+            return;
+        }
+
+        if (const auto activePane = tab.GetActivePane())
+        {
+            const auto sessionId = _plainGuidString(activePane->GetSessionId());
+            if (_IsTrackedRepoSession(sessionId))
+            {
+                tab.SetRepoSummary(
+                    ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance().GetSummary(sessionId));
+                return;
+            }
+        }
+        tab.ClearRepoSummary();
+    }
+
+    void TerminalPage::_ClearRepoTabContexts()
+    {
+        for (const auto& projectedTab : _tabs)
+        {
+            if (const auto tab = _GetTabImpl(projectedTab))
+            {
+                tab->ClearRepoSummary();
+            }
+        }
+    }
+
+    void TerminalPage::_ReleaseTrackedRepoSessions(const std::shared_ptr<Pane>& rootPane, const bool removeServiceState)
+    {
+        if (!rootPane)
+        {
+            return;
+        }
+
+        std::vector<uintptr_t> controls;
+        rootPane->WalkTree([&](const auto& pane) {
+            if (const auto control = pane->GetTerminalControl())
+            {
+                controls.emplace_back(reinterpret_cast<uintptr_t>(winrt::get_abi(control)));
+            }
+            return false;
+        });
+
+        std::vector<std::string> sessions;
+        {
+            std::lock_guard lock{ _repoSessionsMutex };
+            for (const auto control : controls)
+            {
+                if (const auto found = _repoSessionsByControl.find(control); found != _repoSessionsByControl.end())
+                {
+                    sessions.emplace_back(std::move(found->second));
+                    _repoSessionsByControl.erase(found);
+                }
+            }
+        }
+
+        if (removeServiceState)
+        {
+            auto& service = ::Microsoft::Terminal::RepoAwareness::RepoAwarenessService::Instance();
+            for (const auto& sessionId : sessions)
+            {
+                service.RemovePane(sessionId);
+            }
+        }
+    }
+
     // Method Description:
     // - implements the IInitializeWithWindow interface from shobjidl_core.
     // - We're going to use this HWND as the owner for the ConPTY windows, via
@@ -447,6 +598,13 @@ namespace winrt::TerminalApp::implementation
         if (wasRepoObservationAllowed && !repoObservationAllowed)
         {
             _ClearTrackedRepoSessions();
+            _ClearRepoTabContexts();
+            _SetRepoUiConsumerEnabled(false);
+        }
+        else if (!wasRepoObservationAllowed && repoObservationAllowed)
+        {
+            _SetRepoUiConsumerEnabled(true);
+            _ObserveCurrentRepoPanes();
         }
 
         // Seed the agent-settings baseline on first load so that later
@@ -6835,6 +6993,7 @@ namespace winrt::TerminalApp::implementation
     // and tabs to other windows.
     void TerminalPage::_DetachPaneFromWindow(std::shared_ptr<Pane> pane)
     {
+        _ReleaseTrackedRepoSessions(pane, false);
         pane->WalkTree([&](auto p) {
             if (const auto& control{ p->GetTerminalControl() })
             {
@@ -6961,6 +7120,8 @@ namespace winrt::TerminalApp::implementation
 
             auto profile = tab->GetFocusedProfile();
             _UpdateBackground(profile);
+            _ObserveRepoPanes(*tab);
+            _RefreshRepoContext(*tab);
         }
 
         _adjustProcessPriorityThrottled->Run();

@@ -67,6 +67,28 @@ namespace winrt::TerminalApp::implementation
         return Windows::UI::Xaml::Visibility::Visible == HeaderRenamerTextBox().Visibility();
     }
 
+    bool TabHeaderControl::IsMetadataVisible() const noexcept
+    {
+        return _isMetadataVisible;
+    }
+
+    void TabHeaderControl::IsMetadataVisible(const bool value)
+    {
+        if (_isMetadataVisible != value)
+        {
+            _isMetadataVisible = value;
+            PropertyChanged.raise(*this, Windows::UI::Xaml::Data::PropertyChangedEventArgs{ L"IsMetadataVisible" });
+        }
+        _UpdateMetadataVisibility();
+    }
+
+    void TabHeaderControl::_UpdateMetadataVisibility()
+    {
+        HeaderMetadataTextBlock().Visibility(_isMetadataVisible && !InRename() ?
+                                                 Windows::UI::Xaml::Visibility::Visible :
+                                                 Windows::UI::Xaml::Visibility::Collapsed);
+    }
+
     // Method Description:
     // - Show the tab rename box for the user to rename the tab title
     // - We automatically use the previous title as the initial text of the box
@@ -77,6 +99,7 @@ namespace winrt::TerminalApp::implementation
 
         HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
         HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Visible);
+        _UpdateMetadataVisibility();
 
         HeaderRenamerTextBox().Text(Title());
         HeaderRenamerTextBox().SelectAll();
@@ -132,6 +155,7 @@ namespace winrt::TerminalApp::implementation
         {
             HeaderRenamerTextBox().Visibility(Windows::UI::Xaml::Visibility::Collapsed);
             HeaderTextBlock().Visibility(Windows::UI::Xaml::Visibility::Visible);
+            _UpdateMetadataVisibility();
             RenameEnded.raise(*this, nullptr);
         }
     }
