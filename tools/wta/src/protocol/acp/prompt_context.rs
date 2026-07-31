@@ -21,7 +21,7 @@
 
 use async_trait::async_trait;
 
-use super::client::{build_terminal_context_json, user_locale_tag};
+use super::client::{build_terminal_context_json_from_active, user_locale_tag};
 use crate::coordinator::default_supported_delegate_agents;
 use crate::shell::ShellManager;
 
@@ -51,6 +51,11 @@ pub(crate) struct ContextRequest<'a> {
     pub shell_exe: Option<&'a str>,
     /// Autofix only: the failing pane's last `[command + output]` buffer.
     pub terminal_output: Option<&'a str>,
+    /// Planner only: the active working pane resolved once by
+    /// `build_prompt_text`. Both planner providers consume this snapshot.
+    pub planner_pane: Option<&'a serde_json::Value>,
+    /// Planner only: the active pane's canonical shell identity.
+    pub planner_shell: Option<&'a str>,
 }
 
 /// One `### {heading}\n{body}` block to inject into the prompt. `heading` is
@@ -122,9 +127,13 @@ impl ContextProvider for CommandResolverProvider {
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
         !req.is_autofix
+            && req
+                .planner_shell
+                .is_some_and(crate::command_recall::is_powershell)
     }
 
-    async fn provide(&self, _req: &ContextRequest<'_>) -> Option<ContextSection> {
+    async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
+        let shell = req.planner_shell?;
         let executable = match std::env::current_exe() {
             Ok(path) => path,
             Err(error) => {
@@ -154,7 +163,7 @@ impl ContextProvider for CommandResolverProvider {
                 "Replace `<name>` with the command name as one PowerShell \
                  single-quoted argument, doubling any embedded `'`, then run:\n\
                  ```powershell\n{}\n```",
-                crate::resolve_command::powershell_invocation_template(executable)
+                crate::resolve_command::powershell_invocation_template(executable, shell)
             ),
         })
     }
@@ -193,11 +202,16 @@ impl ContextProvider for TerminalContextProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        !req.is_autofix && req.wt_connected
+        !req.is_autofix && req.wt_connected && req.planner_pane.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let json = build_terminal_context_json(req.shell_mgr).await?;
+        let json = build_terminal_context_json_from_active(
+            req.shell_mgr,
+            req.planner_pane?,
+            req.planner_shell,
+        )
+        .await?;
         Some(ContextSection {
             heading: "Terminal Context JSON",
             body: format!("```json\n{}\n```", json),
@@ -327,6 +341,8 @@ mod tests {
             context_pane: None,
             shell_exe: None,
             terminal_output: None,
+            planner_pane: None,
+            planner_shell: None,
         }
     }
 
@@ -362,9 +378,32 @@ mod tests {
     #[test]
     fn command_resolver_applies_only_to_planner() {
         let mgr = ShellManager::new();
-        assert!(CommandResolverProvider.applies(&req_planner(&mgr, true)));
+        let pane = serde_json::json!({ "session_id": "pane-1" });
+        let pwsh = ContextRequest {
+            planner_pane: Some(&pane),
+            planner_shell: Some("pwsh"),
+            ..req_planner(&mgr, true)
+        };
+        assert!(CommandResolverProvider.applies(&pwsh));
+
+        let windows_powershell = ContextRequest {
+            planner_pane: Some(&pane),
+            planner_shell: Some("powershell.exe"),
+            ..req_planner(&mgr, true)
+        };
+        assert!(CommandResolverProvider.applies(&windows_powershell));
+
+        let cmd = ContextRequest {
+            planner_pane: Some(&pane),
+            planner_shell: Some("cmd.exe"),
+            ..req_planner(&mgr, true)
+        };
+        assert!(!CommandResolverProvider.applies(&cmd));
+
         let autofix = ContextRequest {
             is_autofix: true,
+            planner_pane: Some(&pane),
+            planner_shell: Some("pwsh"),
             ..req_planner(&mgr, true)
         };
         assert!(!CommandResolverProvider.applies(&autofix));
@@ -373,7 +412,12 @@ mod tests {
     #[test]
     fn terminal_context_requires_planner_and_wt_connection() {
         let mgr = ShellManager::new();
-        assert!(TerminalContextProvider.applies(&req_planner(&mgr, true)));
+        let pane = serde_json::json!({ "session_id": "pane-1" });
+        let connected = ContextRequest {
+            planner_pane: Some(&pane),
+            ..req_planner(&mgr, true)
+        };
+        assert!(TerminalContextProvider.applies(&connected));
         assert!(!TerminalContextProvider.applies(&req_planner(&mgr, false)));
     }
 

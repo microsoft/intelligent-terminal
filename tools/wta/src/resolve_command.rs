@@ -5,10 +5,11 @@
 
 use crate::command_recall::ResolveOutcome;
 
-pub(crate) fn powershell_invocation_template(executable: &str) -> String {
+pub(crate) fn powershell_invocation_template(executable: &str, shell: &str) -> String {
     format!(
-        "& {} resolve-command '<name>' --json",
-        powershell_single_quote(executable)
+        "& {} resolve-command '<name>' --shell {} --json",
+        powershell_single_quote(executable),
+        powershell_single_quote(shell)
     )
 }
 
@@ -136,8 +137,11 @@ mod tests {
     #[test]
     fn invocation_template_quotes_executable_path_for_powershell() {
         assert_eq!(
-            powershell_invocation_template("C:\\Program Files\\It's WTA\\wta.exe"),
-            "& 'C:\\Program Files\\It''s WTA\\wta.exe' resolve-command '<name>' --json"
+            powershell_invocation_template(
+                "C:\\Program Files\\It's WTA\\wta.exe",
+                "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+            ),
+            "& 'C:\\Program Files\\It''s WTA\\wta.exe' resolve-command '<name>' --shell 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' --json"
         );
     }
 

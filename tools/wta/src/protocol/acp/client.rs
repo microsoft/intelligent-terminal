@@ -1128,7 +1128,15 @@ pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Opt
     // target. Pane IDs are process-globally unique, so we only need the pane
     // id itself — tab/window aren't needed for addressing.
     let active = shell_mgr.wt_get_active_pane().await.ok()?;
+    let target_shell = shell_from_active(&active);
+    build_terminal_context_json_from_active(shell_mgr, &active, target_shell.as_deref()).await
+}
 
+pub(crate) async fn build_terminal_context_json_from_active(
+    shell_mgr: &ShellManager,
+    active: &serde_json::Value,
+    target_shell: Option<&str>,
+) -> Option<String> {
     let is_agent = active
         .get("is_agent_pane")
         .and_then(|v| v.as_bool())
@@ -1147,13 +1155,12 @@ pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Opt
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's pid.
+    // Canonical shell identity (pwsh / cmd.exe / wsl:Ubuntu …) from shell
+    // integration or the pane's pid.
     // Load-bearing for the planner: any `send` action it emits has to match the
     // active pane's shell syntax (`Get-ChildItem` vs `ls`, `Set-Location` vs
     // `cd`, etc.). We use the real process rather than the WT profile name,
     // which the user can rename.
-    let target_shell = shell_from_active(&active);
-
     tracing::debug!(
         target: "acp.terminal_context",
         target_pane_id = %target_pane_id,
@@ -1229,18 +1236,31 @@ async fn build_prompt_text(
     );
 
     // ── Shared context resolution ───────────────────────────────────────────
-    // Autofix turns resolve the failing pane, its canonical shell, and its last
-    // output once; the providers below borrow these from the `ContextRequest`.
-    // Planner turns need none of it (their providers query the shell manager
-    // directly). Resolving here also keeps the `resolved_fix_pane` side-output
-    // — which is plumbing, not prompt context — out of the provider chain.
+    // Resolve the active pane once. Planner providers share its pane + shell;
+    // autofix providers derive the failing pane and captured output below.
+    // Keeping this here also leaves the `resolved_fix_pane` side-output —
+    // plumbing rather than prompt context — out of the provider chain.
     let mut context_pane: Option<serde_json::Value> = None;
     let mut shell_exe: Option<String> = None;
     let mut terminal_output: Option<String> = None;
+    let active = if wt_connected {
+        shell_mgr.wt_get_active_pane().await.ok()
+    } else {
+        None
+    };
+    let planner_pane = if !is_autofix {
+        active.as_ref().filter(|pane| {
+            !pane
+                .get("is_agent_pane")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
+    } else {
+        None
+    };
+    let planner_shell = planner_pane.and_then(shell_from_active);
 
     if is_autofix && wt_connected {
-        let active = shell_mgr.wt_get_active_pane().await.ok();
-
         // Explicit source pane (error-triggered autofix) wins; otherwise fall
         // back to the resolved active working pane (`/fix`). An active pane that
         // is itself an agent pane is skipped — there's no terminal output there.
@@ -1316,6 +1336,8 @@ async fn build_prompt_text(
         context_pane: context_pane.as_ref(),
         shell_exe: shell_exe.as_deref(),
         terminal_output: terminal_output.as_deref(),
+        planner_pane,
+        planner_shell: planner_shell.as_deref(),
     };
     for provider in prompt_context::default_providers() {
         if !provider.applies(&context_request) {
@@ -4532,10 +4554,14 @@ mod tests {
     /// resolves a fix pane.
     #[tokio::test]
     async fn build_prompt_text_planner_includes_template_and_user_request() {
-        let mgr = crate::shell::ShellManager::new();
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "pane-9",
+            "shell": "powershell.exe",
+            "is_agent_pane": false,
+        }));
         let expected = super::prompt::load_planner_prompt_template();
         let (prompt, _source, display_name, fix_pane) =
-            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
+            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, true, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
             prompt.contains("### Supported Delegate Agents"),
@@ -4546,8 +4572,8 @@ mod tests {
             "planner must ship the deterministic command-resolver invocation"
         );
         assert!(
-            prompt.contains("resolve-command '<name>' --json"),
-            "planner must ship the resolve-command argument template"
+            prompt.contains("resolve-command '<name>' --shell 'powershell.exe' --json"),
+            "planner must bind resolve-command to the active PowerShell host"
         );
         assert!(
             prompt.contains("## User Request\nlist files"),
@@ -4603,14 +4629,18 @@ mod tests {
     /// "template already in history" optimization.
     #[tokio::test]
     async fn build_prompt_text_without_template_drops_persona_body() {
-        let mgr = crate::shell::ShellManager::new();
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "pane-9",
+            "shell": "pwsh",
+            "is_agent_pane": false,
+        }));
         let planner = super::prompt::load_planner_prompt_template();
         assert!(
             !planner.content.trim().is_empty(),
             "test precondition: planner template body is non-empty"
         );
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
+            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, true, None).await;
         assert!(
             !prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
@@ -4619,8 +4649,28 @@ mod tests {
             prompt.contains("### Command Resolver Invocation"),
             "subsequent planner turns must retain the resolver invocation"
         );
+        assert!(prompt.contains("--shell 'pwsh' --json"));
         let user_request = format!("## User Request\n{}", "hi");
         assert!(prompt.contains(&user_request));
+    }
+
+    #[tokio::test]
+    async fn build_prompt_text_non_powershell_omits_command_resolver() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "pane-9",
+            "shell": "cmd.exe",
+            "is_agent_pane": false,
+        }));
+        let (prompt, _s, _d, _f) =
+            super::build_prompt_text(5, 0.0, "explain foo", false, true, &mgr, true, None).await;
+        assert!(
+            !prompt.contains("### Command Resolver Invocation"),
+            "non-PowerShell planner turns must use the prompt's generic fallback"
+        );
+        assert!(
+            prompt.contains("\"shell\":\"cmd.exe\""),
+            "terminal context must still report the active non-PowerShell shell"
+        );
     }
 
     /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the
