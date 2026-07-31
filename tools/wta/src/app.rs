@@ -61,8 +61,8 @@ use autofix::*;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState, Scroll,
-    TabSession, View,
+    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState,
+    RecommendationFocus, Scroll, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -5109,6 +5109,18 @@ impl App {
     /// leftmost button (Run for Send cards, the sole button for OpenAndSend).
     fn default_button_for_selected(&self) -> usize {
         0
+    }
+
+    fn focus_next_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + 1) % button_count;
+    }
+
+    fn focus_previous_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + button_count - 1) % button_count;
     }
 
     /// Returns true if the choice's primary action is Send (shell command).

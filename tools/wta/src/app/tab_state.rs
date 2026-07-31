@@ -125,6 +125,13 @@ impl PermissionState {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum RecommendationFocus {
+    #[default]
+    Button,
+    Input,
+}
+
 /// Single-axis scroll cursor. All mutations go through methods so callers
 /// don't reinvent saturating-math; the upper bound `max` is established by
 /// the layout/render pass once total content height is known and re-clamps
@@ -237,6 +244,7 @@ pub struct TabSession {
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
     pub selected_button: usize,
+    pub recommendation_focus: RecommendationFocus,
     pub rec_scroll: Scroll,
 
     /// Last value the helper published for this tab in a
@@ -307,7 +315,8 @@ impl TabSession {
     /// Whether the input box is the live, enterable caret target.
     pub fn input_has_nav_focus(&self) -> bool {
         self.selected_completed_turn_idx.is_none()
-            && self.turn.recommendations().is_none()
+            && (self.turn.recommendations().is_none()
+                || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
@@ -317,12 +326,16 @@ impl TabSession {
     pub fn clear_recommendations(&mut self) {
         self.selected_recommendation = 0;
         self.selected_button = 0;
+        self.recommendation_focus = RecommendationFocus::Button;
         self.rec_scroll.reset();
     }
 
     /// The pane the "Agent" chip should be pinned to while this tab has a
     /// recommendation card with a `Send` action selected.
     pub fn compute_chip_card_target(&self) -> Option<String> {
+        if self.recommendation_focus == RecommendationFocus::Input {
+            return None;
+        }
         let recs = self.turn.recommendations()?;
         let choice = recs.choices.get(self.selected_recommendation)?;
         let send_parent = choice.actions.iter().find_map(|action| match action {

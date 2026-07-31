@@ -6921,7 +6921,7 @@ fn local_slash_command_is_not_recorded_in_input_history() {
 }
 
 #[test]
-fn recommendation_card_keeps_focus_when_input_has_draft() {
+fn recommendation_card_cycles_buttons_and_input_with_arrows() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
     stage_surfaced_recommendation(
@@ -6953,15 +6953,40 @@ fn recommendation_card_keeps_focus_when_input_has_draft() {
 
     app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_button, 1);
-    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().selected_button, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
 
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_button, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_button, 1);
+    assert!(!app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
-    assert_eq!(
-        app.current_tab().input,
-        "draft",
-        "typing stays locked while the card owns focus",
-    );
+    assert_eq!(app.current_tab().input, "draftx");
+
+    let cursor_before = app.current_tab().cursor_pos;
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, cursor_before - 1);
+    assert!(app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert!(!app.current_tab().input_has_nav_focus());
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_recommendation, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_button, 0);
+    app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+    assert_eq!(app.current_tab().selected_button, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
 }
 
 #[test]
@@ -6988,6 +7013,52 @@ fn recommendation_card_enter_wins_over_draft_input() {
     assert!(
         !app.help_overlay_visible,
         "draft slash commands must not run while a recommendation card owns focus",
+    );
+}
+
+#[test]
+fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().input = "new prompt".into();
+    app.current_tab_mut().cursor_pos = "new prompt".len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(
+        app.current_tab().turn.recommendations().is_none(),
+        "submitting from the input must dismiss the old recommendation",
+    );
+    assert!(
+        matches!(app.current_tab().turn, TurnState::Submitted(_)),
+        "Enter must submit the draft instead of executing the selected card",
+    );
+}
+
+#[test]
+fn recommendation_card_swallow_tabs_without_completing_slash_command() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().input = "/h".into();
+    app.current_tab_mut().cursor_pos = 2;
+    app.current_tab_mut().refresh_command_popup();
+    assert!(app.command_popup_visible());
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+
+    assert_eq!(app.current_tab().input, "/h");
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Button,
     );
 }
 

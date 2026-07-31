@@ -118,7 +118,10 @@ fn render_card(
 
     let button_inner = card::inset_horizontal(button_area, 2);
     if button_inner.width > 0 {
-        let focused = if is_selected {
+        let focused = if is_selected
+            && app.current_tab().recommendation_focus
+                == crate::app::RecommendationFocus::Button
+        {
             Some(app.current_tab().selected_button)
         } else {
             None
