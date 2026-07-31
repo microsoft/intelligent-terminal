@@ -1,6 +1,6 @@
 ---
 name: wta-rust-dependency-update
-description: 'Regenerate and verify WTA Rust third-party attribution after Cargo dependency changes. Use when handling Dependabot PRs for /tools/wta, editing tools/wta/Cargo.toml or Cargo.lock, changing dependency features, finishing or reviewing a WTA dependency PR, or fixing stale NOTICE.md or cgmanifest CI failures.'
+description: 'Regenerate, review, test, and verify WTA Rust dependency updates and third-party attribution. Use when handling Dependabot PRs for /tools/wta, editing tools/wta/Cargo.toml or Cargo.lock, changing dependency features, finishing or reviewing a WTA dependency PR, or fixing stale NOTICE.md or cgmanifest CI failures.'
 ---
 
 # WTA Rust Dependency Update
@@ -32,17 +32,28 @@ graph unchanged.
 
 1. Inspect the PR or worktree diff and confirm which Cargo manifest, lockfile,
    or feature change triggered the dependency update.
-2. Regenerate both attribution artifacts:
+2. Choose the safe mode:
+   - For a review-only request, do not run the mutating generator. Inspect the
+     existing diff and continue with the offline `-Verify` command in step 4.
+   - When completing or fixing the update, regenerate both attribution
+     artifacts:
 
-   ```powershell
-   pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
-   ```
+     ```powershell
+     pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
+     ```
 
 3. Review the dependency and generated changes together:
 
    ```powershell
-   git diff --check
-   git diff -- tools/wta/Cargo.toml tools/wta/Cargo.lock `
+   $baseRef = gh pr view --json baseRefName --jq .baseRefName 2>$null
+   if ($LASTEXITCODE -eq 0) {
+       git fetch origin $baseRef
+       $compareRef = git merge-base HEAD "origin/$baseRef"
+   } else {
+       $compareRef = 'HEAD'
+   }
+   git diff --check $compareRef --
+   git diff $compareRef -- tools/wta/Cargo.toml tools/wta/Cargo.lock `
        tools/wta/cgmanifest.json NOTICE.md
    ```
 
@@ -52,7 +63,17 @@ graph unchanged.
    pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1 -Verify
    ```
 
-5. Finish according to the result:
+5. Test and finish:
+   - Run the WTA test suite with the pinned toolchain:
+
+     ```powershell
+     Get-Process wta -ErrorAction SilentlyContinue |
+         ForEach-Object { Stop-Process -Id $_.Id -Force }
+     Push-Location tools/wta
+     cargo test --locked
+     Pop-Location
+     ```
+
    - If generation produced changes, keep `NOTICE.md` and
      `tools/wta/cgmanifest.json` in the same PR as the Cargo update.
    - For a Dependabot branch, add a follow-up commit; do not rewrite the bot
@@ -64,12 +85,13 @@ graph unchanged.
 
 ## Completion Gate
 
-- The normal generator exits successfully.
+- In update/completion mode, the normal generator exits successfully.
 - Generated changes contain only dependency attribution expected from the
   Cargo update.
 - `git diff --check` passes.
 - `Generate-WtaThirdPartyNotices.ps1 -Verify` reports the same runtime crate
   count in `cgmanifest.json` and `NOTICE.md`.
+- `cargo test --locked` passes from `tools/wta`.
 - No dependency PR is declared ready while generated artifacts are stale.
 
 ## Gotchas

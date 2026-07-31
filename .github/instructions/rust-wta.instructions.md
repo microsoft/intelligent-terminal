@@ -48,7 +48,6 @@ User-facing strings go through `t!(...)` (rust-i18n) — see `rust-localization.
 `tools/wta/cgmanifest.json` (Component Governance manifest) and the `<!-- BEGIN wta-rust-deps -->` block in `/NOTICE.md` are **generated** from `cargo metadata`. Whenever you change the dependency graph — add/remove/upgrade a direct dep in `tools/wta/Cargo.toml`, run a `cargo update` that substantially shifts `Cargo.lock`, or flip a feature flag that pulls in/drops transitive crates — regenerate both and commit the diff alongside the Cargo change:
 
 ```powershell
-$env:RUSTUP_TOOLCHAIN = 'stable'   # bypass the rust-toolchain.toml pin
 pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 ```
 

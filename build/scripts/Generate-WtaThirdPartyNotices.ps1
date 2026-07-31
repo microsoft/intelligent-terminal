@@ -35,9 +35,9 @@
     left byte-identical.
 
 .NOTES
-    Requires `cargo` on PATH. The repo pins a public Rust version in
-    tools/wta/rust-toolchain.toml. Set `$env:RUSTUP_TOOLCHAIN = 'stable'`
-    before invoking the script only when intentionally overriding that pin.
+    Requires `cargo` on PATH. Cargo runs from tools/wta so rustup discovers
+    the repository's pinned public toolchain. CI can explicitly override it
+    with RUSTUP_TOOLCHAIN.
 
 .PARAMETER Verify
     Verify that cgmanifest.json and the generated NOTICE block contain exactly
@@ -45,7 +45,6 @@
     contacting external license sources.
 
 .EXAMPLE
-    PS> $env:RUSTUP_TOOLCHAIN = 'stable'
     PS> .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 #>
 [CmdletBinding()]
@@ -77,11 +76,25 @@ $targetTriple   = 'x86_64-pc-windows-msvc'
 #    needed in this script).
 # ---------------------------------------------------------------------------
 Write-Host "Running cargo metadata for $wtaRoot\Cargo.toml (--filter-platform $targetTriple)" -ForegroundColor Cyan
-$cargoJson = & cargo metadata --format-version 1 `
-    --filter-platform $targetTriple `
-    --manifest-path (Join-Path $wtaRoot 'Cargo.toml')
-if ($LASTEXITCODE -ne 0) {
-    throw "cargo metadata failed with exit code $LASTEXITCODE. Is cargo on PATH? Try `$env:RUSTUP_TOOLCHAIN='stable'."
+$cargoArgs = @(
+    'metadata'
+    '--format-version', '1'
+    '--filter-platform', $targetTriple
+    '--manifest-path', (Join-Path $wtaRoot 'Cargo.toml')
+)
+if ($Verify) {
+    $cargoArgs += @('--locked', '--offline')
+}
+
+Push-Location $wtaRoot
+try {
+    $cargoJson = & cargo @cargoArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo metadata failed with exit code $LASTEXITCODE. Is cargo on PATH?"
+    }
+}
+finally {
+    Pop-Location
 }
 $meta = $cargoJson | ConvertFrom-Json -Depth 100
 

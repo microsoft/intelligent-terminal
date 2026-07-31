@@ -269,7 +269,6 @@ next to `Generate-ThirdPartyNotices.ps1` (the existing MD-to-HTML converter
 the build pipeline runs):
 
 ```powershell
-$env:RUSTUP_TOOLCHAIN = 'stable'   # bypass the repo's rust-toolchain.toml pin
 pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 ```
 
