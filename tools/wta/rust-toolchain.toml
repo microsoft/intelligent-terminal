@@ -1,6 +1,4 @@
-# Pin Rust version for CI reproducibility.
-# The ms-prod channel is resolved by MSRustup (RustInstaller ADO task).
-# Local dev with standard rustup ignores the ms-prod- prefix and uses
-# the latest stable toolchain instead.
+# Pin the public Rust version for local development and GitHub automation.
+# Azure DevOps explicitly overrides this with the matching ms-prod toolchain.
 [toolchain]
-channel = "ms-prod-1.93"
+channel = "1.93"

@@ -11,7 +11,7 @@ The repo contains multiple Rust crates (e.g. `installer/bootstrap/`); this file'
 
 ## Toolchain & Build
 
-- **Toolchain is pinned.** `tools/wta/rust-toolchain.toml` pins the channel to `ms-prod-1.93` for CI reproducibility. Do not bump it casually.
+- **Toolchain is pinned.** `tools/wta/rust-toolchain.toml` pins the public channel to `1.93` for local development and GitHub automation. Azure DevOps explicitly overrides it with the matching `ms-prod-1.93` channel. Do not bump either version casually or let them drift.
 - **Static CRT on Windows.** The repo-root `.cargo/config.toml` forces `+crt-static` rustflags for all Windows MSVC targets (`x86_64`, `i686`, `aarch64`). Avoid dependencies that break under static CRT.
 - **Two supported build invocations — don't mix them.** Both of these are valid for WTA local dev:
 

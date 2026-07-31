@@ -35,10 +35,9 @@
     left byte-identical.
 
 .NOTES
-    Requires `cargo` on PATH. The repo's rust-toolchain.toml pins a
-    custom channel for CI builds; for metadata-only invocations bypass
-    it by setting `$env:RUSTUP_TOOLCHAIN = 'stable'` before invoking
-    the script.
+    Requires `cargo` on PATH. The repo pins a public Rust version in
+    tools/wta/rust-toolchain.toml. Set `$env:RUSTUP_TOOLCHAIN = 'stable'`
+    before invoking the script only when intentionally overriding that pin.
 
 .EXAMPLE
     PS> $env:RUSTUP_TOOLCHAIN = 'stable'

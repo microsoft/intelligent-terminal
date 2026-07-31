@@ -971,8 +971,8 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 
 ## Implementation status (Phase 0)
 
-Branch `dev/<alias>/acp-1.0-phase0`. Build/test from the **worktree root** (not
-`tools/wta/src` — that dir's `rust-toolchain.toml` pins an uninstalled channel):
+Branch `dev/<alias>/acp-1.0-phase0`. Build/test from the **worktree root** so
+Cargo discovers the repo-root configuration:
 `cargo build --manifest-path tools/wta/Cargo.toml`. Baseline = 1017 tests.
 
 **Done — chunk 1 (committed):** Cargo bump 0.10→1.0; dropped stabilized features
