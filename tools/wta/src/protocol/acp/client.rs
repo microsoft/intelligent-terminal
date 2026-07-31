@@ -1801,9 +1801,6 @@ fn is_trusted_wta_resolve_command(
     let Some(raw_input) = raw_input.and_then(serde_json::Value::as_object) else {
         return false;
     };
-    if raw_input.contains_key("commands") {
-        return false;
-    }
 
     let command = raw_input.get("command").and_then(serde_json::Value::as_str);
     let executable = raw_input
@@ -1820,6 +1817,12 @@ fn is_trusted_wta_resolve_command(
     match (raw_input.get("args"), raw_input.get("arguments")) {
         (Some(_), Some(_)) => return false,
         (Some(args), None) | (None, Some(args)) => {
+            // `commands` is Copilot's parsed shell-command metadata, not part
+            // of the direct executable+argv contract. Mixed shapes are
+            // ambiguous and must keep the normal permission prompt.
+            if raw_input.contains_key("commands") {
+                return false;
+            }
             let Some(args) = args.as_array() else {
                 return false;
             };
@@ -1834,6 +1837,22 @@ fn is_trusted_wta_resolve_command(
                 && is_injected_resolve_command_args(&args, trusted);
         }
         (None, None) => {}
+    }
+
+    // Copilot CLI includes one parsed command identifier alongside every
+    // shell permission request. The canonical command string below remains
+    // the authority; only reject missing/ambiguous identifier shapes.
+    if let Some(commands) = raw_input.get("commands") {
+        let Some(commands) = commands.as_array() else {
+            return false;
+        };
+        if commands.len() != 1
+            || commands[0]
+                .as_str()
+                .is_none_or(|identifier| identifier.trim().is_empty())
+        {
+            return false;
+        }
     }
 
     let Some(tokens) = parse_injected_powershell_invocation(executable) else {

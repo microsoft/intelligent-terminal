@@ -2095,7 +2095,10 @@ async fn request_permission_auto_approves_injected_powershell_resolver() {
             "it's",
         );
     let req = permission_request_with_raw_input(
-        serde_json::json!({ "command": command }),
+        serde_json::json!({
+            "command": command,
+            "commands": [trusted.executable],
+        }),
         vec![allow_once_option()],
     );
 
@@ -2151,6 +2154,14 @@ fn trusted_resolver_matcher_rejects_ambiguous_or_mutating_commands() {
                 "& '{}'\nresolve-command 'git' --shell 'cmd' --json",
                 trusted.executable.replace('\'', "''")
             ),
+        }),
+        serde_json::json!({
+            "command": crate::resolve_command::powershell_invocation(
+                &trusted.executable,
+                &trusted.shell,
+                "git",
+            ),
+            "commands": [trusted.executable.clone(), "malicious.exe"],
         }),
     ];
 
