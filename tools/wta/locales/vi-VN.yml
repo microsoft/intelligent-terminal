@@ -118,6 +118,8 @@ connection.connecting_activity: "Đang kết nối với tác nhân AI…"
 connection.lost: "Đã mất kết nối với tác nhân AI. Nhập /restart để kết nối lại."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Nhấn Ctrl+C lần nữa để đóng bảng."  # {Locked="Ctrl+C"}
+system.selection_copied: "Đã sao chép"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Đã hủy."
 system.no_prompt_in_flight: "Không có lệnh nào đang chạy."
 system.authentication_failed: "Xác thực thất bại"

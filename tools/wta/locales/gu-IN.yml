@@ -131,6 +131,8 @@ connection.connecting_activity: "એજન્ટ સાથે કનેક્ટ
 connection.lost: "એજન્ટ સાથેનું કનેક્શન તૂટી ગયું. ફરીથી કનેક્ટ કરવા માટે /restart ટાઇપ કરો."  # {Locked="/restart"}
 
 # ── સિસ્ટમ સંદેશા (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "પેન બંધ કરવા માટે Ctrl+C ફરી દબાવો"  # {Locked="Ctrl+C"}
+system.selection_copied: "કૉપિ થયું"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "રદ કરવામાં આવ્યું."
 system.no_prompt_in_flight: "પ્રગતિમાં કોઈ પ્રોમ્પ્ટ નથી."
 system.authentication_failed: "પ્રમાણીકરણ નિષ્ફળ"

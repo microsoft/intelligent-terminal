@@ -65,10 +65,6 @@ pub struct CommandSpec {
     /// time so the popup follows the current locale.
     pub summary_key: &'static str,
     pub kind: CommandKind,
-    /// True if this command takes free-form arguments after the name.
-    /// MVP commands are all zero-arg; the field exists so the popup
-    /// knows whether to leave a trailing space after Tab-completion.
-    pub takes_args: bool,
 }
 
 impl CommandSpec {
@@ -89,63 +85,52 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "help",
         summary_key: "commands.help.summary",
         kind: CommandKind::Help,
-        takes_args: false,
     },
     CommandSpec {
         name: "clear",
         summary_key: "commands.clear.summary",
         kind: CommandKind::Clear,
-        takes_args: false,
     },
     CommandSpec {
         name: "new",
         summary_key: "commands.new.summary",
         kind: CommandKind::New,
-        takes_args: false,
     },
     CommandSpec {
         name: "fix",
         summary_key: "commands.fix.summary",
         kind: CommandKind::Fix,
-        // `/fix <hint>` — free-form text after the name steers the fix.
-        takes_args: true,
     },
     CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
-        takes_args: false,
     },
     CommandSpec {
         name: "stop",
         summary_key: "commands.stop.summary",
         kind: CommandKind::Stop,
-        takes_args: false,
     },
     CommandSpec {
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
-        takes_args: false,
     },
     CommandSpec {
         name: "agent",
         summary_key: "commands.agent.summary",
         kind: CommandKind::Agent,
-        takes_args: true,
     },
     CommandSpec {
         name: "model",
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
-        takes_args: true,
     },
     CommandSpec {
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
-        takes_args: true,
     },
 ];
 
@@ -319,15 +304,27 @@ pub fn match_move_positions(prefix: &str) -> Vec<&'static MovePositionSpec> {
         .collect()
 }
 
+/// Return the canonical agent-id prefix while completing `/agent <id>`.
+///
+/// The command name must be complete and followed by whitespace. Agent IDs
+/// are single tokens, so a second argument hides completion.
+pub fn agent_id_prefix(input: &str) -> Option<&str> {
+    single_argument_prefix(input, "agent")
+}
+
 /// Return the argument prefix while the input is completing `/move <position>`.
 ///
 /// The command name must be complete and followed by whitespace. A second
 /// argument hides the popup because `/move` accepts exactly one position.
 pub fn move_position_prefix(input: &str) -> Option<&str> {
+    single_argument_prefix(input, "move")
+}
+
+fn single_argument_prefix<'a>(input: &'a str, command: &str) -> Option<&'a str> {
     let trimmed = input.trim_start();
     let rest = trimmed.strip_prefix('/')?;
     let command_end = rest.find(char::is_whitespace)?;
-    if !rest[..command_end].eq_ignore_ascii_case("move") {
+    if !rest[..command_end].eq_ignore_ascii_case(command) {
         return None;
     }
     let argument = rest[command_end..].trim_start();
@@ -387,7 +384,10 @@ mod tests {
         let direct = parse("/agent claude").unwrap();
         assert_eq!(direct.kind, CommandKind::Agent);
         assert_eq!(direct.rest, "claude");
-        assert!(lookup("agent").unwrap().takes_args);
+
+        let trailing_space = parse("/agent ").unwrap();
+        assert_eq!(trailing_space.kind, CommandKind::Agent);
+        assert_eq!(trailing_space.rest, "");
     }
 
     #[test]
@@ -417,8 +417,6 @@ mod tests {
         let hinted = parse("/fix the path looks wrong").unwrap();
         assert_eq!(hinted.kind, CommandKind::Fix);
         assert_eq!(hinted.rest, "the path looks wrong");
-        // takes_args is advertised so Tab-completion leaves a trailing space.
-        assert!(lookup("fix").unwrap().takes_args);
     }
 
     #[test]
@@ -493,6 +491,16 @@ mod tests {
         assert_eq!(move_position_prefix("/move"), None);
         assert_eq!(move_position_prefix("/move left extra"), None);
         assert_eq!(move_position_prefix("/model r"), None);
+    }
+
+    #[test]
+    fn agent_id_prefix_accepts_one_argument() {
+        assert_eq!(agent_id_prefix("/agent "), Some(""));
+        assert_eq!(agent_id_prefix("/AGENT co"), Some("co"));
+        assert_eq!(agent_id_prefix("  /agent gem"), Some("gem"));
+        assert_eq!(agent_id_prefix("/agent"), None);
+        assert_eq!(agent_id_prefix("/agent copilot extra"), None);
+        assert_eq!(agent_id_prefix("/model co"), None);
     }
 
     #[test]

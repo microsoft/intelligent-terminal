@@ -119,6 +119,8 @@ connection.connecting_activity: "Verbindung mit dem Agenten wird hergestellt…"
 connection.lost: "Die Verbindung mit dem Agenten wurde getrennt. Geben Sie /restart ein, um die Verbindung wiederherzustellen."  # {Locked="/restart"}
 
 # ── Systemnachrichten (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Drücken Sie Ctrl+C erneut, um den Bereich zu schließen"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopiert"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Abgebrochen."
 system.no_prompt_in_flight: "Kein Prompt aktiv."
 system.authentication_failed: "Authentifizierung fehlgeschlagen"

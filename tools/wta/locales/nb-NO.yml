@@ -118,6 +118,8 @@ connection.connecting_activity: "Kobler til agenten…"
 connection.lost: "Tilkoblingen til agenten gikk tapt. Skriv /restart for å koble til på nytt."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Trykk Ctrl+C én gang til for å lukke panelet."  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopiert"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Avbrutt."
 system.no_prompt_in_flight: "Ingen forespørsel pågår."
 system.authentication_failed: "Autentisering mislyktes"

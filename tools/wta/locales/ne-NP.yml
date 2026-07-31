@@ -131,6 +131,8 @@ connection.connecting_activity: "एजेन्टसँग जडान हु
 connection.lost: "एजेन्टसँगको जडान हरायो। पुनः जडान गर्न /restart टाइप गर्नुहोस्।"  # {Locked="/restart"}
 
 # ── प्रणाली सन्देशहरू (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "पेन बन्द गर्न Ctrl+C फेरि थिच्नुहोस्।"  # {Locked="Ctrl+C"}
+system.selection_copied: "प्रतिलिपि गरियो"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "रद्द गरियो।"
 system.no_prompt_in_flight: "प्रगतिमा कुनै प्रम्प्ट छैन।"
 system.authentication_failed: "प्रमाणीकरण विफल"

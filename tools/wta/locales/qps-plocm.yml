@@ -118,6 +118,8 @@ connection.connecting_activity: "[!! Conn_ecting to agent… !!]"
 connection.lost: "[!! Conn_ection to the agent was lost. Type /restart to reconnect. !!]"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "[!! Pre_ss Ctrl+C again to close pane !!]"  # {Locked="Ctrl+C"}
+system.selection_copied: "[!! Co_pied !!]"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "[!! Can_celled. !!]"
 system.no_prompt_in_flight: "[!! No_ prompt in flight. !!]"
 system.authentication_failed: "[!! Aut_hentication failed !!]"

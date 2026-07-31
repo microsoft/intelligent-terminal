@@ -131,6 +131,8 @@ connection.connecting_activity: "ಏಜೆಂಟ್‌ಗೆ ಸಂಪರ್ಕ�
 connection.lost: "ಏಜೆಂಟ್‌ಗೆ ಸಂಪರ್ಕ ಕಳೆದುಹೋಯಿತು. ಮರುಸಂಪರ್ಕಿಸಲು /restart ಟೈಪ್ ಮಾಡಿ."  # {Locked="/restart"}
 
 # ── ಸಿಸ್ಟಮ್ ಸಂದೇಶಗಳು (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "ಪೇನ್ ಮುಚ್ಚಲು Ctrl+C ಅನ್ನು ಮತ್ತೊಮ್ಮೆ ಒತ್ತಿರಿ"  # {Locked="Ctrl+C"}
+system.selection_copied: "ನಕಲಿಸಲಾಗಿದೆ"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "ರದ್ದುಮಾಡಲಾಗಿದೆ."
 system.no_prompt_in_flight: "ಪ್ರಗತಿಯಲ್ಲಿ ಯಾವುದೇ ಪ್ರಾಂಪ್ಟ್ ಇಲ್ಲ."
 system.authentication_failed: "ದೃಢೀಕರಣ ವಿಫಲವಾಗಿದೆ"

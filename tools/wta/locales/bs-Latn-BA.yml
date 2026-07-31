@@ -128,6 +128,8 @@ connection.connecting_activity: "Povezivanje s agentom…"
 connection.lost: "Veza s agentom je izgubljena. Upišite /restart za ponovno povezivanje."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Pritisnite Ctrl+C ponovo da zatvorite panel"  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopirano"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Otkazano."
 system.no_prompt_in_flight: "Nema aktivnog zahtjeva."
 system.authentication_failed: "Autentifikacija nije uspjela"

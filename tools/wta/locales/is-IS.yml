@@ -118,6 +118,8 @@ connection.connecting_activity: "Tengist agent…"
 connection.lost: "Tengingin við agent rofnaði. Sláðu inn /restart til að tengjast aftur."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Ýttu aftur á Ctrl+C til að loka spjaldinu"  # {Locked="Ctrl+C"}
+system.selection_copied: "Afritað"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Hætt við."
 system.no_prompt_in_flight: "Engin fyrirspurn í gangi."
 system.authentication_failed: "Auðkenning mistókst"

@@ -118,6 +118,8 @@ connection.connecting_activity: "Se conectează la agent…"
 connection.lost: "Conexiunea la agent s-a pierdut. Tastați /restart pentru reconectare."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Apăsați din nou Ctrl+C pentru a închide panoul"  # {Locked="Ctrl+C"}
+system.selection_copied: "Copiat"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Anulat."
 system.no_prompt_in_flight: "Nicio solicitare în curs."
 system.authentication_failed: "Autentificarea a eșuat"

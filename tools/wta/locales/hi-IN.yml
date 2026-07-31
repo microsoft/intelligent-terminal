@@ -131,6 +131,8 @@ connection.connecting_activity: "एजेंट से कनेक्ट ह�
 connection.lost: "एजेंट से कनेक्शन टूट गया. फिर से कनेक्ट करने के लिए /restart टाइप करें."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "पेन बंद करने के लिए Ctrl+C फिर से दबाएँ"  # {Locked="Ctrl+C"}
+system.selection_copied: "कॉपी किया गया"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "रद्द किया गया।"
 system.no_prompt_in_flight: "कोई प्रॉम्प्ट प्रगति में नहीं है।"
 system.authentication_failed: "प्रमाणीकरण विफल"

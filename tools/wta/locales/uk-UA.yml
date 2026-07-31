@@ -127,6 +127,8 @@ connection.connecting_activity: "Підключення до агента…"
 connection.lost: "Підключення до агента втрачено. Введіть /restart, щоб підключитися знову."  # {Locked="/restart"}
 
 # ── Системні повідомлення (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Натисніть Ctrl+C ще раз, щоб закрити панель."  # {Locked="Ctrl+C"}
+system.selection_copied: "Скопійовано"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Скасовано."
 system.no_prompt_in_flight: "Немає активного запиту."
 system.authentication_failed: "Помилка автентифікації"

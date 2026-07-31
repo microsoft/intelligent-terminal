@@ -114,6 +114,8 @@ connection.connecting_activity: "에이전트에 연결 중…"
 connection.lost: "에이전트와의 연결이 끊어졌습니다. 다시 연결하려면 /restart 명령을 입력하세요."  # {Locked="/restart"}
 
 # ── 시스템 메시지 (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "창을 닫으려면 Ctrl+C 를 한 번 더 누르세요"  # {Locked="Ctrl+C"}
+system.selection_copied: "복사됨"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "취소되었습니다."
 system.no_prompt_in_flight: "진행 중인 프롬프트가 없습니다."
 system.authentication_failed: "인증 실패"

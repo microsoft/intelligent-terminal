@@ -132,6 +132,8 @@ connection.connecting_activity: "এজেন্টের সাথে সংয
 connection.lost: "এজেন্টের সাথে সংযোগ হারিয়ে গেছে। পুনরায় সংযোগ করতে /restart টাইপ করুন।"  # {Locked="/restart"}
 
 # ── সিস্টেম বার্তা (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "পেন বন্ধ করতে আবার Ctrl+C চাপুন"  # {Locked="Ctrl+C"}
+system.selection_copied: "কপি করা হয়েছে"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "বাতিল করা হয়েছে।"
 system.no_prompt_in_flight: "কোনো প্রম্পট চলমান নেই।"
 system.authentication_failed: "প্রমাণীকরণ ব্যর্থ"

@@ -119,6 +119,8 @@ connection.connecting_activity: "Σύνδεση με τον παράγοντα�
 connection.lost: "Η σύνδεση με τον παράγοντα χάθηκε. Πληκτρολογήστε /restart για επανασύνδεση."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Πατήστε ξανά Ctrl+C για να κλείσετε το πλαίσιο"  # {Locked="Ctrl+C"}
+system.selection_copied: "Αντιγράφηκε"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Ακυρώθηκε."
 system.no_prompt_in_flight: "Δεν υπάρχει ενεργή εντολή."
 system.authentication_failed: "Ο έλεγχος ταυτότητας απέτυχε"

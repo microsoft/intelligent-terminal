@@ -118,6 +118,8 @@ connection.connecting_activity: "Ansluter till agenten…"
 connection.lost: "Anslutningen till agenten bröts. Skriv /restart för att återansluta."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Tryck på Ctrl+C igen för att stänga panelen."  # {Locked="Ctrl+C"}
+system.selection_copied: "Kopierat"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Avbröts."
 system.no_prompt_in_flight: "Ingen fråga pågår."
 system.authentication_failed: "Autentisering misslyckades"

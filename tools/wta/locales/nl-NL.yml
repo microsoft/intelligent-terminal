@@ -118,6 +118,8 @@ connection.connecting_activity: "Verbinding maken met agent…"
 connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnieuw verbinding te maken."  # {Locked="/restart"}
 
 # ── Systeemberichten (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "Druk nogmaals op Ctrl+C om het deelvenster te sluiten."  # {Locked="Ctrl+C"}
+system.selection_copied: "Gekopieerd"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Geannuleerd."
 system.no_prompt_in_flight: "Geen prompt actief."
 system.authentication_failed: "Verificatie mislukt"

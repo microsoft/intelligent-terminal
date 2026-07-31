@@ -127,6 +127,8 @@ connection.connecting_activity: "Pripájanie k agentovi…"
 connection.lost: "Pripojenie k agentovi sa stratilo. Zadaním /restart sa znova pripojíte."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Stlačte Ctrl+C ešte raz, aby ste zatvorili panel"  # {Locked="Ctrl+C"}
+system.selection_copied: "Skopírované"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Zrušené."
 system.no_prompt_in_flight: "Žiadna prebiehajúca požiadavka."
 system.authentication_failed: "Overenie zlyhalo"

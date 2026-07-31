@@ -147,7 +147,7 @@ this way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
 
 ### WTA ↔ AI Agent (ACP, two hops)
 
-ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on two hops:
+ACP (`agent-client-protocol = "1.3.0"`, JSON-RPC 2.0) is spoken on two hops:
 
 - **master ↔ agent CLI** (stdio): master is the ACP **client**; it spawns and
   owns the agent CLI.
@@ -173,7 +173,7 @@ ACP (`agent-client-protocol = "0.10"`, JSON-RPC 2.0) is spoken on two hops:
 | Async runtime | tokio |
 | CLI parsing | clap 4 |
 | TUI rendering | ratatui 0.30 + crossterm 0.29 |
-| ACP protocol | agent-client-protocol 0.10 |
+| ACP protocol | agent-client-protocol 1.3.0 |
 | Serialization | serde + serde_json |
 | Error handling | anyhow |
 | i18n | rust-i18n |

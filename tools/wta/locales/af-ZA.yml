@@ -119,6 +119,8 @@ connection.connecting_activity: "Koppel tans aan agent…"
 connection.lost: "Verbinding met die agent is verloor. Tik /restart om weer te koppel."  # {Locked="/restart"}
 
 # ── Stelselboodskappe (src/app.rs) ────────────────────────────────────────
+system.close_pane_hint: "Druk Ctrl+C weer om die paneel te sluit"  # {Locked="Ctrl+C"}
+system.selection_copied: "Gekopieer"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Gekanselleer."
 system.no_prompt_in_flight: "Geen opdrag onderweg nie."
 system.authentication_failed: "Stawing het misluk"

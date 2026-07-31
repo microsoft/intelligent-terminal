@@ -114,6 +114,8 @@ connection.connecting_activity: "正在连接智能体…"
 connection.lost: "与智能体的连接已断开。键入 /restart 以重新连接。"  # {Locked="/restart"}
 
 # ── 系统消息 (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "再次按 Ctrl+C 以关闭窗格。"  # {Locked="Ctrl+C"}
+system.selection_copied: "已复制"  # 复制选中的终端文本后短暂显示的提示
 system.cancelled: "已取消。"
 system.no_prompt_in_flight: "没有正在进行的提示。"
 system.authentication_failed: "身份验证失败"

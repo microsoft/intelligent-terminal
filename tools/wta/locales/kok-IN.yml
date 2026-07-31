@@ -131,6 +131,8 @@ connection.connecting_activity: "एजेंटाक जोडटा…"
 connection.lost: "एजेंटाशी जोडणी तुटली. परतून जोडपाक /restart टायप करात."  # {Locked="/restart"}
 
 # ── सिस्टम संदेश (src/app.rs) ────────────────────────────────────────────────
+system.close_pane_hint: "पेन बंद करपाक परत एक फावट Ctrl+C दामात."  # {Locked="Ctrl+C"}
+system.selection_copied: "प्रत काडली"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "रद्द केलें."
 system.no_prompt_in_flight: "प्रगतींत कसलोच प्रॉम्प्ट ना."
 system.authentication_failed: "प्रमाणीकरण अपेशी"

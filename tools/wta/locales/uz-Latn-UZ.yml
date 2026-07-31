@@ -131,6 +131,8 @@ connection.connecting_activity: "Agentga ulanilmoqda…"
 connection.lost: "Agent bilan ulanish uzildi. Qayta ulanish uchun /restart deb yozing."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Panelni yopish uchun Ctrl+C ni yana bosing."  # {Locked="Ctrl+C"}
+system.selection_copied: "Nusxalandi"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Bekor qilindi."
 system.no_prompt_in_flight: "Bajarilayotgan soʻrov yoʻq."
 system.authentication_failed: "Autentifikatsiya amalga oshmadi"

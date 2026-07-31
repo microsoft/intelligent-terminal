@@ -119,6 +119,8 @@ connection.connecting_activity: "ከኤጅንት ጋር በመገናኘት ላ�
 connection.lost: "ከኤጅንት ጋር ያለው ግንኙነት ጠፍቷል። እንደገና ለመገናኘት /restart ብለው ይተይቡ።"  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "pane ለመዝጋት Ctrl+C እንደገና ይጫኑ"  # {Locked="Ctrl+C"}
+system.selection_copied: "ተቀድቷል"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Cancelled."
 system.no_prompt_in_flight: "No prompt in flight."
 system.authentication_failed: "Authentication failed"

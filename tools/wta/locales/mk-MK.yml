@@ -127,6 +127,8 @@ connection.connecting_activity: "Поврзување со агентот…"
 connection.lost: "Врската со агентот беше изгубена. Внесете /restart за повторно поврзување."  # {Locked="/restart"}
 
 # ── System messages (src/app.rs) ────────────────────────────────────────────
+system.close_pane_hint: "Притиснете Ctrl+C повторно за да го затворите панелот."  # {Locked="Ctrl+C"}
+system.selection_copied: "Копирано"  # Brief hint shown after selected terminal text is copied
 system.cancelled: "Откажано."
 system.no_prompt_in_flight: "Нема активно барање."
 system.authentication_failed: "Автентикацијата не успеа"
