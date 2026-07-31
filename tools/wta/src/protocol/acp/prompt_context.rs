@@ -499,7 +499,7 @@ pub(super) struct ContextRequest<'a> {
     /// Planner only: the active pane's canonical shell identity.
     pub(super) planner_shell: Option<&'a str>,
     /// Planner only: the exact immutable resolver contract injected into this
-    /// prompt. The permission layer stores this same value for the turn.
+    /// prompt, keeping its structured and shell-rendered forms consistent.
     pub(super) command_resolver_invocation: Option<&'a CommandResolverInvocation>,
 }
 
@@ -564,17 +564,10 @@ pub(super) fn default_providers() -> &'static [&'static dyn ContextProvider] {
 /// Alias in the agent CLI's tool environment.
 struct CommandResolverProvider;
 
-#[derive(Clone, Debug)]
-pub(crate) struct CommandResolverInvocation {
-    pub(crate) executable: String,
-    pub(crate) shell: String,
-}
-
-impl CommandResolverInvocation {
-    pub(crate) fn is_safe_for_auto_approval(&self) -> bool {
-        !crate::command_recall::is_powershell(&self.shell)
-            || std::path::Path::new(&self.shell).is_absolute()
-    }
+#[derive(Debug)]
+pub(super) struct CommandResolverInvocation {
+    executable: String,
+    shell: String,
 }
 
 pub(super) fn command_resolver_invocation(

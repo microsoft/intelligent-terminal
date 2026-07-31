@@ -80,13 +80,7 @@ pub(crate) async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
-) -> (
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<prompt_context::CommandResolverInvocation>,
-) {
+) -> (String, String, String, Option<String>) {
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
     let template_started = std::time::Instant::now();
@@ -128,10 +122,6 @@ pub(crate) async fn build_prompt_text(
         planner_shell.as_deref(),
         planner_pane.as_ref(),
     );
-    let trusted_resolver_invocation = resolver_invocation
-        .as_ref()
-        .filter(|invocation| invocation.is_safe_for_auto_approval())
-        .cloned();
 
     // Resolving here also keeps the `resolved_fix_pane` side-output out of the
     // provider chain. For a manual `/fix`, that side-output is the active
@@ -226,7 +216,6 @@ pub(crate) async fn build_prompt_text(
         planner_template.source_label,
         planner_template.display_name,
         resolved_context.resolved_fix_pane,
-        trusted_resolver_invocation,
     )
 }
 
@@ -430,7 +419,7 @@ mod tests {
     async fn build_prompt_text_planner_includes_template_and_user_request() {
         let mgr = ShellManager::new();
         let expected = prompt::load_planner_prompt_template();
-        let (built_prompt, _source, display_name, fix_pane, trusted_resolver) =
+        let (built_prompt, _source, display_name, fix_pane) =
             build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
@@ -452,7 +441,6 @@ mod tests {
             "planner must append the user text"
         );
         assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
-        assert!(trusted_resolver.is_some());
     }
 
     /// An autofix turn loads the *autofix* persona (not the planner), appends a
@@ -462,7 +450,7 @@ mod tests {
         let mgr = ShellManager::new();
         let planner = prompt::load_planner_prompt_template();
         let autofix = prompt::load_autofix_prompt_template();
-        let (built_prompt, _s, display_name, fix_pane, trusted_resolver) =
+        let (built_prompt, _s, display_name, fix_pane) =
             build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
@@ -479,14 +467,13 @@ mod tests {
             "a non-empty autofix hint is appended"
         );
         assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");
-        assert!(trusted_resolver.is_none());
     }
 
     /// A blank autofix hint must not produce an empty `## User Request` section.
     #[tokio::test]
     async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
         let mgr = ShellManager::new();
-        let (built_prompt, _s, _d, _f, _trusted) =
+        let (built_prompt, _s, _d, _f) =
             build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
         assert!(
             !built_prompt.contains("## User Request"),
@@ -505,7 +492,7 @@ mod tests {
             !planner.content.trim().is_empty(),
             "test precondition: planner template body is non-empty"
         );
-        let (built_prompt, _s, _d, _f, _trusted) =
+        let (built_prompt, _s, _d, _f) =
             build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
         assert!(
             !built_prompt.contains(planner.content.trim()),
@@ -526,7 +513,7 @@ mod tests {
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
-        let (built_prompt, _s, _d, fix_pane, _trusted) =
+        let (built_prompt, _s, _d, fix_pane) =
             build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
         assert_eq!(
             fix_pane.as_deref(),
@@ -553,7 +540,7 @@ mod tests {
             source_pane_id: Some("explicit-src".to_string()),
             ..Default::default()
         };
-        let (_p, _s, _d, fix_pane, _trusted) =
+        let (_p, _s, _d, fix_pane) =
             build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
         assert!(
             fix_pane.is_none(),
@@ -584,7 +571,7 @@ mod tests {
             source_pane_id: Some("src-pane".to_string()),
             ..Default::default()
         };
-        let (built_prompt, _s, _d, _f, _trusted) =
+        let (built_prompt, _s, _d, _f) =
             build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
         assert!(
             built_prompt.contains("### Shell Context"),

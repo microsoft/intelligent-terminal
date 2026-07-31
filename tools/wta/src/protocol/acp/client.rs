@@ -3,7 +3,6 @@ use super::conn;
 use super::prompt_builder::{
     acp_log_built_prompt, build_prompt_text, log_turn_trace, TemplateKind, TemplateMemo,
 };
-use super::prompt_context;
 use super::soft_stop::SoftStopReason;
 use super::turn_metrics::{now_unix_s, prompt_preview, PromptTimingState};
 use agent_client_protocol as acp;
@@ -338,14 +337,10 @@ impl StartupProbe {
 }
 
 /// Shared state accessible from the Client trait impl.
-type TrustedResolverMap =
-    Arc<std::sync::Mutex<HashMap<String, prompt_context::CommandResolverInvocation>>>;
-
 struct ClientState {
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
-    trusted_resolvers: TrustedResolverMap,
 }
 
 /// Our Client trait implementation — handles incoming agent requests and notifications.
@@ -492,177 +487,6 @@ fn tool_call_kind_label(kind: Option<&acp::schema::v1::ToolKind>) -> Option<&'st
     }
 }
 
-fn is_injected_resolve_command_args(
-    args: &[String],
-    trusted: &prompt_context::CommandResolverInvocation,
-) -> bool {
-    args.len() == 5
-        && args[0].eq_ignore_ascii_case("resolve-command")
-        && !args[1].trim().is_empty()
-        && args[2] == "--shell"
-        && args[3] == trusted.shell
-        && args[4] == "--json"
-}
-
-struct ParsedPowerShellToken {
-    value: String,
-    quoted: bool,
-}
-
-/// Parses only the PowerShell shape emitted by
-/// `resolve_command::powershell_invocation`: an invocation operator followed
-/// by single-quoted values and fixed bare arguments. Rejecting every other
-/// shell construct keeps permission bypass matching from accidentally
-/// accepting command chaining or interpolation.
-fn parse_injected_powershell_invocation(command: &str) -> Option<Vec<ParsedPowerShellToken>> {
-    let mut chars = command.trim().chars().peekable();
-    if chars.next()? != '&' || !chars.peek().is_some_and(|ch| ch.is_whitespace()) {
-        return None;
-    }
-
-    let mut tokens = Vec::new();
-    loop {
-        while chars.peek().is_some_and(|ch| ch.is_whitespace()) {
-            chars.next();
-        }
-        if chars.peek().is_none() {
-            break;
-        }
-
-        let quoted = chars.peek() == Some(&'\'');
-        let mut value = String::new();
-        if quoted {
-            chars.next();
-            let mut closed = false;
-            while let Some(ch) = chars.next() {
-                if ch != '\'' {
-                    value.push(ch);
-                    continue;
-                }
-                if chars.peek() == Some(&'\'') {
-                    chars.next();
-                    value.push('\'');
-                } else {
-                    closed = true;
-                    break;
-                }
-            }
-            if !closed || chars.peek().is_some_and(|ch| !ch.is_whitespace()) {
-                return None;
-            }
-        } else {
-            while chars.peek().is_some_and(|ch| !ch.is_whitespace()) {
-                let ch = chars.next()?;
-                if ch == '\'' {
-                    return None;
-                }
-                value.push(ch);
-            }
-            if value.is_empty() {
-                return None;
-            }
-        }
-        tokens.push(ParsedPowerShellToken { value, quoted });
-    }
-
-    (!tokens.is_empty()).then_some(tokens)
-}
-
-/// The resolver is a built-in metadata query. Auto-approval is deliberately
-/// limited to the exact absolute executable injected into the prompt and its
-/// exact argv contract; bare `wta`, other subcommands, and ambiguous free-form
-/// shell commands must still ask the user.
-fn is_trusted_wta_resolve_command(
-    raw_input: Option<&serde_json::Value>,
-    trusted: Option<&prompt_context::CommandResolverInvocation>,
-) -> bool {
-    let Some(trusted) = trusted else {
-        return false;
-    };
-    if !trusted.is_safe_for_auto_approval() {
-        return false;
-    }
-    let Some(raw_input) = raw_input.and_then(serde_json::Value::as_object) else {
-        return false;
-    };
-
-    let command = raw_input.get("command").and_then(serde_json::Value::as_str);
-    let executable = raw_input
-        .get("executable")
-        .and_then(serde_json::Value::as_str);
-    let executable = match (command, executable) {
-        (Some(command), Some(executable)) if command.eq_ignore_ascii_case(executable) => command,
-        (Some(_), Some(_)) => return false,
-        (Some(command), None) => command,
-        (None, Some(executable)) => executable,
-        (None, None) => return false,
-    };
-
-    match (raw_input.get("args"), raw_input.get("arguments")) {
-        (Some(_), Some(_)) => return false,
-        (Some(args), None) | (None, Some(args)) => {
-            // `commands` is Copilot's parsed shell-command metadata, not part
-            // of the direct executable+argv contract. Mixed shapes are
-            // ambiguous and must keep the normal permission prompt.
-            if raw_input.contains_key("commands") {
-                return false;
-            }
-            let Some(args) = args.as_array() else {
-                return false;
-            };
-            let Some(args) = args
-                .iter()
-                .map(|arg| arg.as_str().map(str::to_string))
-                .collect::<Option<Vec<_>>>()
-            else {
-                return false;
-            };
-            return executable.eq_ignore_ascii_case(&trusted.executable)
-                && is_injected_resolve_command_args(&args, trusted);
-        }
-        (None, None) => {}
-    }
-
-    // Copilot CLI includes one parsed command identifier alongside every
-    // shell permission request. The canonical command string below remains
-    // the authority; only reject missing/ambiguous identifier shapes.
-    if let Some(commands) = raw_input.get("commands") {
-        let Some(commands) = commands.as_array() else {
-            return false;
-        };
-        if commands.len() != 1
-            || commands[0]
-                .as_str()
-                .is_none_or(|identifier| identifier.trim().is_empty())
-        {
-            return false;
-        }
-    }
-
-    let Some(tokens) = parse_injected_powershell_invocation(executable) else {
-        return false;
-    };
-    tokens.len() == 6
-        && tokens[0].quoted
-        && tokens[0].value.eq_ignore_ascii_case(&trusted.executable)
-        && !tokens[1].quoted
-        && tokens[1].value.eq_ignore_ascii_case("resolve-command")
-        && tokens[2].quoted
-        && !tokens[2].value.trim().is_empty()
-        && !tokens[3].quoted
-        && tokens[3].value == "--shell"
-        && tokens[4].quoted
-        && tokens[4].value == trusted.shell
-        && !tokens[5].quoted
-        && tokens[5].value == "--json"
-        && executable.trim()
-            == crate::resolve_command::powershell_invocation(
-                &trusted.executable,
-                &trusted.shell,
-                &tokens[2].value,
-            )
-}
-
 fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str {
     match update {
         acp::schema::v1::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
@@ -687,36 +511,6 @@ impl WtaClient {
         ));
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
-        let trusted_resolver = self
-            .state
-            .trusted_resolvers
-            .lock()
-            .unwrap()
-            .get(&session_id)
-            .cloned();
-        if is_trusted_wta_resolve_command(
-            args.tool_call.fields.raw_input.as_ref(),
-            trusted_resolver.as_ref(),
-        ) {
-            if let Some(option) = args.options.iter().find(|option| {
-                matches!(
-                    &option.kind,
-                    acp::schema::v1::PermissionOptionKind::AllowOnce
-                )
-            }) {
-                tracing::info!(
-                    target: "acp.permission",
-                    session_id,
-                    tool_call_id,
-                    "auto_approved_wta_resolve_command"
-                );
-                return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                    acp::schema::v1::RequestPermissionOutcome::Selected(
-                        acp::schema::v1::SelectedPermissionOutcome::new(option.option_id.clone()),
-                    ),
-                ));
-            }
-        }
         let title = args
             .tool_call
             .fields
@@ -1458,7 +1252,6 @@ pub async fn run_acp_client_over_pipe(
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
-        trusted_resolvers: Arc::new(std::sync::Mutex::new(HashMap::new())),
     });
 
     let client = WtaClient {
@@ -2020,7 +1813,7 @@ pub async fn run_acp_client_over_pipe(
                 crate::wt_protocol_events::send(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
-                dispatch_cancel(req, &conn, &cancel_signals, &state.trusted_resolvers);
+                dispatch_cancel(req, &conn, &cancel_signals);
             }
             Some(req) = new_session_rx.recv() => {
                 dispatch_new_session(
@@ -2029,7 +1822,6 @@ pub async fn run_acp_client_over_pipe(
                     &tab_to_session,
                     &template_memo,
                     &cancel_signals,
-                    &state.trusted_resolvers,
                     &event_tx,
                     is_agent_pane,
                     true,
@@ -2042,7 +1834,6 @@ pub async fn run_acp_client_over_pipe(
                     &conn,
                     &tab_to_session,
                     &cancel_signals,
-                    &state.trusted_resolvers,
                     &event_tx,
                     true,
                     true,
@@ -2050,14 +1841,7 @@ pub async fn run_acp_client_over_pipe(
                 );
             }
             Some(req) = drop_session_rx.recv() => {
-                dispatch_drop_session(
-                    req,
-                    &conn,
-                    &tab_to_session,
-                    &template_memo,
-                    &cancel_signals,
-                    &state.trusted_resolvers,
-                );
+                dispatch_drop_session(req, &conn, &tab_to_session, &template_memo, &cancel_signals);
             }
             Some(req) = rename_session_rx.recv() => {
                 dispatch_rename_session(req, &tab_to_session);
@@ -2073,7 +1857,6 @@ pub async fn run_acp_client_over_pipe(
                     &event_tx,
                     &shell_mgr,
                     &prompt_timing,
-                    &state.trusted_resolvers,
                     wt_connected,
                     is_agent_pane,
                 );
@@ -2303,7 +2086,6 @@ fn dispatch_load_session(
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
-    trusted_resolvers: &TrustedResolverMap,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
@@ -2321,7 +2103,6 @@ fn dispatch_load_session(
     let conn = conn.clone();
     let tab_to_session = Arc::clone(tab_to_session);
     let cancel_signals = Arc::clone(cancel_signals);
-    let trusted_resolvers = Arc::clone(trusted_resolvers);
     let event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
         let cwd = req
@@ -2340,7 +2121,6 @@ fn dispatch_load_session(
 
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
-            trusted_resolvers.lock().unwrap().remove(&old_str);
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
             }
@@ -2507,7 +2287,6 @@ fn dispatch_new_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
-    trusted_resolvers: &TrustedResolverMap,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     is_agent_pane: bool,
     inject_pane_meta: bool,
@@ -2522,7 +2301,6 @@ fn dispatch_new_session(
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
-    let trusted_resolvers = Arc::clone(trusted_resolvers);
     let event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
         let cwd = req
@@ -2538,7 +2316,6 @@ fn dispatch_new_session(
 
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
-            trusted_resolvers.lock().unwrap().remove(&old_str);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
@@ -2617,7 +2394,6 @@ fn dispatch_drop_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
-    trusted_resolvers: &TrustedResolverMap,
 ) {
     tracing::info!(
         target: "acp_drop_session",
@@ -2628,7 +2404,6 @@ fn dispatch_drop_session(
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
-    let trusted_resolvers = Arc::clone(trusted_resolvers);
     tokio::task::spawn_local(async move {
         let old_sid: Option<acp::schema::v1::SessionId> = {
             let mut g = tab_to_session.lock().await;
@@ -2640,7 +2415,6 @@ fn dispatch_drop_session(
             // to the agent. Mirrors the new_session cancel path, minus the
             // new_session round-trip.
             let old_str = old.to_string();
-            trusted_resolvers.lock().unwrap().remove(&old_str);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
@@ -2668,14 +2442,9 @@ fn dispatch_cancel(
     req: CancelRequest,
     conn: &conn::ClientLink,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
-    trusted_resolvers: &TrustedResolverMap,
 ) {
     let session_id_str = req.session_id.clone();
     tracing::info!(target: "acp_cancel", session_id = %session_id_str, "cancel requested");
-    trusted_resolvers
-        .lock()
-        .unwrap()
-        .remove(&session_id_str);
     // Local oneshot first — it's the critical path for breaking the
     // spawned prompt task out of conn.prompt().
     if let Some(sig) = cancel_signals.lock().unwrap().remove(&session_id_str) {
@@ -2751,7 +2520,6 @@ fn dispatch_prompt(
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     shell_mgr: &Arc<ShellManager>,
     prompt_timing: &Arc<PromptTimingState>,
-    trusted_resolvers: &TrustedResolverMap,
     wt_connected: bool,
     is_agent_pane: bool,
 ) {
@@ -2779,7 +2547,6 @@ fn dispatch_prompt(
     let event_tx_task = event_tx.clone();
     let shell_mgr_task = Arc::clone(shell_mgr);
     let prompt_timing_task = Arc::clone(prompt_timing);
-    let trusted_resolvers_task = Arc::clone(trusted_resolvers);
     let tab_key_task = tab_key.clone();
 
     tokio::task::spawn_local(dispatch_prompt_body(
@@ -2792,7 +2559,6 @@ fn dispatch_prompt(
         event_tx_task,
         shell_mgr_task,
         prompt_timing_task,
-        trusted_resolvers_task,
         tab_key_task,
         wt_connected,
         is_agent_pane,
@@ -2813,7 +2579,6 @@ async fn dispatch_prompt_body(
     event_tx_task: mpsc::UnboundedSender<AppEvent>,
     shell_mgr_task: Arc<ShellManager>,
     prompt_timing_task: Arc<PromptTimingState>,
-    trusted_resolvers_task: TrustedResolverMap,
     tab_key_task: String,
     wt_connected: bool,
     is_agent_pane: bool,
@@ -2896,55 +2661,17 @@ async fn dispatch_prompt_body(
         &prompt.text,
         prompt.submitted_at_unix_s,
     );
-
-    // Register cancellation before resolving runtime context. WT queries and
-    // profile-aware resolver setup may take time, and cancellation must revoke
-    // any turn-scoped trust even if the prompt never reaches the agent.
-    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    cancel_signals_task
-        .lock()
-        .unwrap()
-        .insert(prompt_session_id_str.clone(), cancel_tx);
-
-    let (text, prompt_source, prompt_name, resolved_fix_pane, trusted_resolver) =
-        build_prompt_text(
-            prompt.id,
-            prompt.submitted_at_unix_s,
-            &prompt.text,
-            prompt.is_autofix,
-            include_template,
-            &shell_mgr_task,
-            wt_connected,
-            prompt.pane_context.as_ref(),
-        )
-        .await;
-    {
-        let mut trusted_resolvers = trusted_resolvers_task.lock().unwrap();
-        if let Some(trusted_resolver) = trusted_resolver {
-            trusted_resolvers.insert(prompt_session_id_str.clone(), trusted_resolver);
-        } else {
-            trusted_resolvers.remove(&prompt_session_id_str);
-        }
-    }
-    if !matches!(
-        cancel_rx.try_recv(),
-        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-    ) {
-        trusted_resolvers_task
-            .lock()
-            .unwrap()
-            .remove(&prompt_session_id_str);
-        cancel_signals_task
-            .lock()
-            .unwrap()
-            .remove(&prompt_session_id_str);
-        let _ = prompt_timing_task.complete(&prompt_session_id_str, false, Some("cancelled"));
-        let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
-            session_id: prompt_session_id_str,
-        });
-        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
-        return;
-    }
+    let (text, prompt_source, prompt_name, resolved_fix_pane) = build_prompt_text(
+        prompt.id,
+        prompt.submitted_at_unix_s,
+        &prompt.text,
+        prompt.is_autofix,
+        include_template,
+        &shell_mgr_task,
+        wt_connected,
+        prompt.pane_context.as_ref(),
+    )
+    .await;
     // A manual `/fix` resolved its working pane in build_prompt_text (it had no
     // explicit source pane). Plumb it back so the App fills the turn's
     // `target_pane_id`; the host fills `Send.parent` from it at execute time.
@@ -2988,6 +2715,15 @@ async fn dispatch_prompt_body(
             TemplateKind::Planner => "Planner",
         },
     );
+
+    // Register a cancel oneshot for this prompt. The cancel
+    // listener picks the sender out by session_id and signals it
+    // when the user presses Ctrl+C.
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    cancel_signals_task
+        .lock()
+        .unwrap()
+        .insert(prompt_session_id_str.clone(), cancel_tx);
 
     // Build the prompt content: the (templated) text block, followed by any
     // images pasted via Alt+V as ACP `ContentBlock::Image` blocks. Images ride
@@ -3040,10 +2776,6 @@ async fn dispatch_prompt_body(
     drop(prompt_fut);
     let _ = cancelled;
 
-    trusted_resolvers_task
-        .lock()
-        .unwrap()
-        .remove(&prompt_session_id_str);
     cancel_signals_task
         .lock()
         .unwrap()
@@ -3442,9 +3174,6 @@ mod tests {
                 event_tx: tx,
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
-                trusted_resolvers: Arc::new(std::sync::Mutex::new(
-                    std::collections::HashMap::new(),
-                )),
             });
             (WtaClient { state }, rx)
         }
