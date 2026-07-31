@@ -20,6 +20,6 @@ updates:
           - "minor"
           - "patch"
 
-    # WTA statically links its Rust dependencies. After accepting an update,
-    # regenerate tools/wta/cgmanifest.json and the WTA block in NOTICE.md with
-    # build/scripts/Generate-WtaThirdPartyNotices.ps1.
+    # WTA statically links its Rust dependencies. Before merging an update,
+    # regenerate and commit tools/wta/cgmanifest.json and the WTA block in
+    # NOTICE.md with build/scripts/Generate-WtaThirdPartyNotices.ps1.

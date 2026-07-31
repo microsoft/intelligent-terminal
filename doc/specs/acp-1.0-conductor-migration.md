@@ -971,9 +971,9 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 
 ## Implementation status (Phase 0)
 
-Branch `dev/<alias>/acp-1.0-phase0`. Build/test from the **worktree root** so
-Cargo discovers the repo-root configuration:
-`cargo build --manifest-path tools/wta/Cargo.toml`. Baseline = 1017 tests.
+Branch `dev/<alias>/acp-1.0-phase0`. Build/test from `tools/wta` so Cargo
+discovers the pinned toolchain and repo-root configuration:
+`cargo build`. Baseline = 1017 tests.
 
 **Done — chunk 1 (committed):** Cargo bump 0.10→1.0; dropped stabilized features
 `unstable_session_list`/`unstable_session_model`; ~538 schema-path moves

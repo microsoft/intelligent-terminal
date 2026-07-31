@@ -16,11 +16,12 @@ The repo contains multiple Rust crates (e.g. `installer/bootstrap/`); this file'
 - **Two supported build invocations — don't mix them.** Both of these are valid for WTA local dev:
 
   ```bash
-  cargo build --manifest-path tools/wta/Cargo.toml                              # host target (bare target/)
-  cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml   # explicit target
+  cd tools/wta
+  cargo build                                      # host target (bare target/)
+  cargo build --target x86_64-pc-windows-msvc     # explicit target
   ```
 
-  Pick one and stay with it within a single dev session. The `CascadiaPackage.wapproj` deploy step prefers `tools/wta/target/x86_64-pc-windows-msvc/<profile>/wta.exe` over the bare `tools/wta/target/<profile>/wta.exe`, so if you build once with `--target` and later iterate with plain `cargo build`, the wapproj will silently keep deploying the stale explicit-target binary. See `tools/wta/README.md` and `tools/wta/AGENTS.md` for the host-target workflow.
+  Run Cargo from `tools/wta` so rustup discovers `rust-toolchain.toml`. Pick one invocation and stay with it within a single dev session. The `CascadiaPackage.wapproj` deploy step prefers `tools/wta/target/x86_64-pc-windows-msvc/<profile>/wta.exe` over the bare `tools/wta/target/<profile>/wta.exe`, so if you build once with `--target` and later iterate with plain `cargo build`, the wapproj will silently keep deploying the stale explicit-target binary. See `tools/wta/README.md` and `tools/wta/AGENTS.md` for the host-target workflow.
 
 ## Localization
 

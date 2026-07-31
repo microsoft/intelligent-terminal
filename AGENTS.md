@@ -330,7 +330,9 @@ There are two independent build systems. **Both must be built** before F5.
 # Kill stale WTA processes first
 taskkill //f //im wta.exe 2>/dev/null; true
 
-cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+pushd tools/wta
+cargo build --target x86_64-pc-windows-msvc
+popd
 # Output: tools/wta/target/x86_64-pc-windows-msvc/debug/wta.exe
 #
 # Always pass --target explicitly — the wapproj prefers
@@ -379,7 +381,9 @@ flow. Static assets such as `wt-agent-hooks` are not `wta.exe`-only changes.
 ```bash
 # 1. Build WTA (always use --target — see note above)
 taskkill //f //im wta.exe 2>/dev/null; true
-cargo build --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+pushd tools/wta
+cargo build --target x86_64-pc-windows-msvc
+popd
 
 # 2. Build & run Terminal from VS
 #    F5 in Visual Studio (CascadiaPackage project)

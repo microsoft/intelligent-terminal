@@ -211,6 +211,17 @@ jobs:
   # the C++ build environment), so a misconfigured vcpkg/VS install still
   # cannot poison Rust.
   # ────────────────────────────────────────────────────────────────────────
+  - pwsh: |-
+      $toolchainFile = Get-Content -Raw tools/wta/rust-toolchain.toml
+      if ($toolchainFile -notmatch '(?m)^\s*channel\s*=\s*"(?<version>\d+\.\d+)"\s*$') {
+        throw 'tools/wta/rust-toolchain.toml must pin a public major.minor Rust channel.'
+      }
+      $expectedInternalChannel = "ms-prod-$($Matches.version)"
+      if ('$(WtaRustToolchain)' -ne $expectedInternalChannel) {
+        throw "WtaRustToolchain must be $expectedInternalChannel to match the public Rust pin."
+      }
+    displayName: Verify public and internal Rust pins match
+
   - task: RustInstaller@1
     displayName: Install Rust toolchain (MSRustup)
     inputs:
@@ -276,6 +287,17 @@ jobs:
   # phase. Fetching upfront keeps `cargo build --frozen` fully offline.
   - script: cargo fetch --manifest-path tools/wta/Cargo.toml --locked
     displayName: Fetch crates (offline-friendly)
+    env:
+      RUSTUP_TOOLCHAIN: $(WtaRustToolchain)
+
+  - pwsh: |-
+      $ErrorActionPreference = 'Stop'
+      & .\build\scripts\Generate-WtaThirdPartyNotices.ps1 -Verify
+      if ($LASTEXITCODE -ne 0) {
+        throw "WTA third-party notice verification failed with exit code $LASTEXITCODE"
+      }
+    displayName: Verify WTA third-party notices
+    condition: and(succeeded(), eq(variables['BuildPlatform'], 'x64'))
     env:
       RUSTUP_TOOLCHAIN: $(WtaRustToolchain)
 
