@@ -367,13 +367,18 @@ mod tests {
 
     #[test]
     fn powershell_invocation_quotes_executable_shell_and_token() {
+        let quote = '\'';
         assert_eq!(
             powershell_invocation(
                 "C:\\Program Files\\It's WTA\\wta.exe",
                 "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
                 "deploy-it's"
             ),
-            "& 'C:\\Program Files\\It''s WTA\\wta.exe' resolve-command 'deploy-it''s' --shell 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' --json"
+            format!(
+                "& 'C:\\Program Files\\It{quote}{quote}s WTA\\wta.exe' resolve-command \
+                 'deploy-it{quote}{quote}s' --shell \
+                 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' --json"
+            )
         );
     }
 
