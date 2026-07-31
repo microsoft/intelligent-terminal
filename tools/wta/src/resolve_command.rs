@@ -5,6 +5,17 @@
 
 use crate::command_recall::ResolveOutcome;
 
+pub(crate) fn powershell_invocation_template(executable: &str) -> String {
+    format!(
+        "& {} resolve-command '<name>' --json",
+        powershell_single_quote(executable)
+    )
+}
+
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
 pub fn parse_non_empty(value: &str) -> Result<String, String> {
     let value = value.trim();
     if value.is_empty() {
@@ -120,6 +131,14 @@ mod tests {
         );
         assert!(parse_non_empty("").is_err());
         assert!(parse_non_empty(" \t ").is_err());
+    }
+
+    #[test]
+    fn invocation_template_quotes_executable_path_for_powershell() {
+        assert_eq!(
+            powershell_invocation_template("C:\\Program Files\\It's WTA\\wta.exe"),
+            "& 'C:\\Program Files\\It''s WTA\\wta.exe' resolve-command '<name>' --json"
+        );
     }
 
     #[test]

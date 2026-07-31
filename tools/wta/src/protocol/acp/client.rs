@@ -4542,6 +4542,14 @@ mod tests {
             "planner must ship the delegate-agents section"
         );
         assert!(
+            prompt.contains("### Command Resolver Invocation"),
+            "planner must ship the deterministic command-resolver invocation"
+        );
+        assert!(
+            prompt.contains("resolve-command '<name>' --json"),
+            "planner must ship the resolve-command argument template"
+        );
+        assert!(
             prompt.contains("## User Request\nlist files"),
             "planner must append the user text"
         );
@@ -4565,6 +4573,10 @@ mod tests {
         assert!(
             !prompt.contains("### Supported Delegate Agents"),
             "autofix prompt is not the planner prompt"
+        );
+        assert!(
+            !prompt.contains("### Command Resolver Invocation"),
+            "autofix prompt must omit the planner-only command resolver"
         );
         let user_request = format!("## User Request\n{}", "fix the build");
         assert!(
@@ -4602,6 +4614,10 @@ mod tests {
         assert!(
             !prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
+        );
+        assert!(
+            prompt.contains("### Command Resolver Invocation"),
+            "subsequent planner turns must retain the resolver invocation"
         );
         let user_request = format!("## User Request\n{}", "hi");
         assert!(prompt.contains(&user_request));

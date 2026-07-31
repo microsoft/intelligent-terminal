@@ -99,6 +99,7 @@ pub(crate) trait ContextProvider: Send + Sync {
 pub(crate) fn default_providers() -> &'static [&'static dyn ContextProvider] {
     &[
         // Planner turns.
+        &CommandResolverProvider,
         &DelegateAgentsProvider,
         &TerminalContextProvider,
         // Autofix turns.
@@ -106,6 +107,57 @@ pub(crate) fn default_providers() -> &'static [&'static dyn ContextProvider] {
         &TerminalOutputProvider,
         &CommandNotFoundProvider,
     ]
+}
+
+/// Planner: a deterministic invocation of this WTA binary's local command
+/// resolver. The absolute path avoids relying on PATH or an App Execution
+/// Alias in the agent CLI's tool environment.
+struct CommandResolverProvider;
+
+#[async_trait]
+impl ContextProvider for CommandResolverProvider {
+    fn id(&self) -> &'static str {
+        "command_resolver"
+    }
+
+    fn applies(&self, req: &ContextRequest<'_>) -> bool {
+        !req.is_autofix
+    }
+
+    async fn provide(&self, _req: &ContextRequest<'_>) -> Option<ContextSection> {
+        let executable = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(error) => {
+                tracing::warn!(
+                    target: "acp.terminal_context",
+                    %error,
+                    "command_resolver_current_exe_failed"
+                );
+                return None;
+            }
+        };
+        let executable = match executable.to_str() {
+            Some(path) => path,
+            None => {
+                tracing::warn!(
+                    target: "acp.terminal_context",
+                    path = ?executable,
+                    "command_resolver_path_not_unicode"
+                );
+                return None;
+            }
+        };
+
+        Some(ContextSection {
+            heading: "Command Resolver Invocation",
+            body: format!(
+                "Replace `<name>` with the command name as one PowerShell \
+                 single-quoted argument, doubling any embedded `'`, then run:\n\
+                 ```powershell\n{}\n```",
+                crate::resolve_command::powershell_invocation_template(executable)
+            ),
+        })
+    }
 }
 
 /// Planner: the agents this build can delegate to (`?<prompt>` etc.).
@@ -305,6 +357,17 @@ mod tests {
             ..req_planner(&mgr, true)
         };
         assert!(!DelegateAgentsProvider.applies(&autofix));
+    }
+
+    #[test]
+    fn command_resolver_applies_only_to_planner() {
+        let mgr = ShellManager::new();
+        assert!(CommandResolverProvider.applies(&req_planner(&mgr, true)));
+        let autofix = ContextRequest {
+            is_autofix: true,
+            ..req_planner(&mgr, true)
+        };
+        assert!(!CommandResolverProvider.applies(&autofix));
     }
 
     #[test]
