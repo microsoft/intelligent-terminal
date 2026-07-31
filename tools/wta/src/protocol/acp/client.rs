@@ -4572,6 +4572,9 @@ mod tests {
             prompt.contains("### Command Resolver Invocation"),
             "planner must ship the deterministic command-resolver invocation"
         );
+        assert!(prompt.contains("\"executable\":"));
+        assert!(prompt.contains("\"arguments\":"));
+        assert!(prompt.contains("\"powershell\":"));
         assert!(
             prompt.contains("resolve-command '<name>' --shell 'powershell.exe' --json"),
             "planner must bind resolve-command to the active PowerShell host"
@@ -4583,6 +4586,19 @@ mod tests {
         assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
     }
 
+    #[tokio::test]
+    async fn build_prompt_text_planner_without_wt_still_includes_resolver() {
+        let mgr = crate::shell::ShellManager::new();
+        let (prompt, _source, _display_name, fix_pane) =
+            super::build_prompt_text(2, 0.0, "explain foo", false, true, &mgr, false, None).await;
+        assert!(prompt.contains("### Command Resolver Invocation"));
+        assert!(
+            prompt.contains("--shell 'unknown' --json"),
+            "missing terminal context must retain host-PATH resolution"
+        );
+        assert!(fix_pane.is_none());
+    }
+
     /// An autofix turn loads the *autofix* persona (not the planner), appends a
     /// non-empty hint as a User Request, and omits planner-only sections.
     #[tokio::test]
@@ -4591,7 +4607,7 @@ mod tests {
         let planner = super::prompt::load_planner_prompt_template();
         let autofix = super::prompt::load_autofix_prompt_template();
         let (prompt, _s, display_name, fix_pane) =
-            super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
+            super::build_prompt_text(3, 0.0, "fix the build", true, true, &mgr, false, None).await;
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
             display_name, planner.display_name,
@@ -4618,7 +4634,7 @@ mod tests {
     async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
         let mgr = crate::shell::ShellManager::new();
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
+            super::build_prompt_text(4, 0.0, "   ", true, true, &mgr, false, None).await;
         assert!(
             !prompt.contains("## User Request"),
             "blank autofix hint must not add a User Request section"
@@ -4641,7 +4657,7 @@ mod tests {
             "test precondition: planner template body is non-empty"
         );
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, true, None).await;
+            super::build_prompt_text(5, 0.0, "hi", false, false, &mgr, true, None).await;
         assert!(
             !prompt.contains(planner.content.trim()),
             "include_template=false must omit the template body"
@@ -4656,22 +4672,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_prompt_text_non_powershell_omits_command_resolver() {
+    async fn build_prompt_text_non_powershell_includes_path_capable_resolver() {
         let mgr = shell_mgr_with_pane(serde_json::json!({
             "session_id": "pane-9",
             "shell": "cmd.exe",
             "is_agent_pane": false,
         }));
         let (prompt, _s, _d, _f) =
-            super::build_prompt_text(5, 0.0, "explain foo", false, true, &mgr, true, None).await;
+            super::build_prompt_text(6, 0.0, "explain foo", false, true, &mgr, true, None).await;
         assert!(
-            !prompt.contains("### Command Resolver Invocation"),
-            "non-PowerShell planner turns must use the prompt's generic fallback"
+            prompt.contains("### Command Resolver Invocation"),
+            "every planner shell must receive the context-aware resolver"
         );
+        assert!(prompt.contains("--shell 'cmd.exe' --json"));
         assert!(
             prompt.contains("\"shell\":\"cmd.exe\""),
             "terminal context must still report the active non-PowerShell shell"
         );
+    }
+
+    #[tokio::test]
+    async fn build_prompt_text_wsl_omits_unsupported_host_resolver() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "pane-9",
+            "shell": "wsl:Ubuntu",
+            "is_agent_pane": false,
+        }));
+        let (prompt, _s, _d, _f) =
+            super::build_prompt_text(7, 0.0, "explain foo", false, true, &mgr, true, None).await;
+        assert!(
+            !prompt.contains("### Command Resolver Invocation"),
+            "WSL must not receive a resolver that only knows the host PATH"
+        );
+        assert!(prompt.contains("\"shell\":\"wsl:Ubuntu\""));
     }
 
     /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the

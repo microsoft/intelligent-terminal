@@ -33,7 +33,8 @@ the local `wta` CLI: the agent shells out to commands like `wta active-pane --js
 `wta list-panes --json`, `wta capture-pane --json`, and
 `wta resolve-command <name> --json`. Terminal-control commands talk to Windows
 Terminal over the COM protocol; `resolve-command` inspects the user's real,
-profile-loaded PowerShell environment.
+shell-context-selected sources (host PATH and, for PowerShell, the
+profile-loaded command environment).
 
 ### tmux-like CLI
 
@@ -50,7 +51,7 @@ wta capture-pane -t 3 -l 50              # read last 50 lines from pane 3
 wta kill-pane -t 3                        # close pane 3
 wta pane-status -t 3                      # check if running
 wta wait-for -t 3 --timeout 30           # wait for pane 3 to exit
-wta resolve-command which --json          # resolve aliases/functions from the PowerShell profile
+wta resolve-command which --json          # resolve from PATH + applicable shell-specific sources
 wta list-windows --json                   # raw JSON output
 ```
 

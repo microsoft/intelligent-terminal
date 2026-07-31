@@ -129,11 +129,11 @@ impl ContextProvider for CommandResolverProvider {
         !req.is_autofix
             && req
                 .planner_shell
-                .is_some_and(crate::command_recall::is_powershell)
+                .is_none_or(crate::resolve_command::has_applicable_source)
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let shell = req.planner_shell?;
+        let shell = req.planner_shell.unwrap_or("unknown");
         let executable = match std::env::current_exe() {
             Ok(path) => path,
             Err(error) => {
@@ -157,13 +157,24 @@ impl ContextProvider for CommandResolverProvider {
             }
         };
 
+        let powershell =
+            crate::resolve_command::powershell_invocation(executable, shell, "<name>");
+        let contract = serde_json::json!({
+            "executable": executable,
+            "arguments": ["resolve-command", "<name>", "--shell", shell, "--json"],
+            "powershell": powershell,
+        });
+        let contract = serde_json::to_string_pretty(&contract).ok()?;
         Some(ContextSection {
             heading: "Command Resolver Invocation",
             body: format!(
-                "Replace `<name>` with the command name as one PowerShell \
-                 single-quoted argument, doubling any embedded `'`, then run:\n\
-                 ```powershell\n{}\n```",
-                crate::resolve_command::powershell_invocation_template(executable, shell)
+                "Replace `<name>` with the command name as one argument. Prefer \
+                 invoking `executable` with each `arguments` entry as a separate \
+                 argv. Use `powershell` only when the tool executes a PowerShell \
+                 command string; replace `<name>` inside its existing \
+                 single quotes and double every embedded `'` in the command name.\n\
+                 ```json\n{}\n```",
+                contract
             ),
         })
     }
@@ -376,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn command_resolver_applies_only_to_planner() {
+    fn command_resolver_applies_to_every_planner_shell() {
         let mgr = ShellManager::new();
         let pane = serde_json::json!({ "session_id": "pane-1" });
         let pwsh = ContextRequest {
@@ -398,7 +409,16 @@ mod tests {
             planner_shell: Some("cmd.exe"),
             ..req_planner(&mgr, true)
         };
-        assert!(!CommandResolverProvider.applies(&cmd));
+        assert!(CommandResolverProvider.applies(&cmd));
+
+        assert!(CommandResolverProvider.applies(&req_planner(&mgr, false)));
+
+        let wsl = ContextRequest {
+            planner_pane: Some(&pane),
+            planner_shell: Some("wsl:Ubuntu"),
+            ..req_planner(&mgr, true)
+        };
+        assert!(!CommandResolverProvider.applies(&wsl));
 
         let autofix = ContextRequest {
             is_autofix: true,

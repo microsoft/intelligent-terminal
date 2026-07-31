@@ -230,12 +230,12 @@ pub(crate) enum Command {
         #[arg(short = 'w', long)]
         window_id: Option<String>,
     },
-    /// Identify a command using the user's PowerShell profile
+    /// Identify a command using sources applicable to the active shell
     ResolveCommand {
         /// Command name to identify (without arguments or a path)
         #[arg(value_parser = resolve_command::parse_non_empty)]
         token: String,
-        /// PowerShell executable to use
+        /// Active shell identity; PowerShell hosts also load their user profile
         #[arg(long, default_value = "pwsh.exe", value_parser = resolve_command::parse_non_empty)]
         shell: String,
     },

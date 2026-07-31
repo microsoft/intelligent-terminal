@@ -84,7 +84,7 @@ wta split-pane -h                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
 wta hooks install                         # install the agent-hook bridge
-wta resolve-command which --json          # resolve a profile-defined PowerShell command
+wta resolve-command which --json          # resolve from PATH + applicable shell-specific sources
 ```
 
 Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
