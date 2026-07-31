@@ -6930,8 +6930,8 @@ fn recommendation_card_cycles_buttons_and_input_with_arrows() {
         0,
         None,
     );
-    app.current_tab_mut().input = "draft".into();
-    app.current_tab_mut().cursor_pos = "draft".len();
+    app.current_tab_mut().input = "draft ".into();
+    app.current_tab_mut().cursor_pos = "draft ".len();
     app.current_tab_mut().chat_scroll.offset = 7;
 
     assert!(
@@ -6941,7 +6941,7 @@ fn recommendation_card_cycles_buttons_and_input_with_arrows() {
 
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_recommendation, 1);
-    assert_eq!(app.current_tab().input, "draft");
+    assert_eq!(app.current_tab().input, "draft ");
     assert_eq!(
         app.current_tab().chat_scroll.offset,
         7,
@@ -6966,7 +6966,7 @@ fn recommendation_card_cycles_buttons_and_input_with_arrows() {
     app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
     assert!(app.current_tab().input_has_nav_focus());
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "draftx");
+    assert_eq!(app.current_tab().input, "draft x");
 
     let cursor_before = app.current_tab().cursor_pos;
     app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
