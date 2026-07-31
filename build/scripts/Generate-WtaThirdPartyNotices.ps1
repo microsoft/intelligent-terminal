@@ -530,7 +530,8 @@ foreach ($atom in ($atomToCrates.Keys | Sort-Object)) {
         $out.Add("_Canonical text reproduced from upstream ``$($src.Name)``:_")
         $out.Add('')
         $out.Add('```')
-        $out.Add($src.Text.TrimEnd())
+        $normalizedText = (($src.Text -split "`r?`n") | ForEach-Object { $_.TrimEnd() }) -join "`n"
+        $out.Add($normalizedText.TrimEnd())
         $out.Add('```')
     } else {
         $out.Add('```')
