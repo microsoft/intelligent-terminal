@@ -686,9 +686,6 @@ impl App {
             KeyCode::Down if self.command_popup_visible() => {
                 self.command_popup_down();
             }
-            KeyCode::Tab if self.command_popup_visible() => {
-                self.accept_command_popup_completion();
-            }
             KeyCode::Up
                 if self.current_tab().input_has_nav_focus()
                     && self.current_tab().input_history_is_browsing() =>

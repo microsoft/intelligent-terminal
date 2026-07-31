@@ -4111,21 +4111,6 @@ impl App {
         }
     }
 
-    pub(super) fn accept_command_popup_completion(&mut self) {
-        if let Some(agent_id) = self
-            .selected_agent_command_candidate()
-            .map(|agent| agent.id.clone())
-        {
-            let tab = self.current_tab_mut();
-            tab.reset_input_history_navigation();
-            tab.input = format!("/agent {agent_id}");
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
-        } else {
-            self.current_tab_mut().accept_command_popup_completion();
-        }
-    }
-
     pub(crate) fn command_ghost_suffix(&self) -> Option<&str> {
         let tab = self.current_tab();
         if tab.cursor_pos != tab.input.len() {

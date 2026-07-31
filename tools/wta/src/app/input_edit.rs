@@ -225,26 +225,6 @@ impl TabSession {
             .copied()
     }
 
-    /// Tab-completion: replace the input buffer with `/<name> ` (with a
-    /// trailing space if the command takes args; otherwise just the
-    /// name) and reset the cursor to the end. Triggered by Tab when the
-    /// popup is visible.
-    pub fn accept_command_popup_completion(&mut self) {
-        self.reset_input_history_navigation();
-        if let Some(position) = self.selected_move_position() {
-            self.input = format!("/move {}", position.name);
-            self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
-        } else if let Some(spec) = self.selected_command_spec() {
-            self.input = if spec.takes_args {
-                format!("/{} ", spec.name)
-            } else {
-                format!("/{}", spec.name)
-            };
-            self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
-        }
-    }
 }
 
 pub(super) fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {
