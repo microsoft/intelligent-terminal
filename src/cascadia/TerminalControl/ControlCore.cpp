@@ -109,7 +109,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         });
 
         // GH#8969: pre-seed working directory to prevent potential races
-        _terminal->SetWorkingDirectory(_settings.StartingDirectory());
+        _terminal->SetInitialWorkingDirectory(_settings.StartingDirectory());
 
         _terminal->SetCopyToClipboardCallback([this](wil::zwstring_view wstr) {
             WriteToClipboard.raise(*this, winrt::make<WriteToClipboardEventArgs>(winrt::hstring{ std::wstring_view{ wstr } }, std::string{}, std::string{}));
@@ -322,10 +322,14 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     //   destruct, and close) during this call.
     void ControlCore::Connection(const TerminalConnection::ITerminalConnection& newConnection)
     {
-        auto oldState = ConnectionState(); // rely on ControlCore's automatic null handling
         // revoke ALL old handlers immediately
 
         _closeConnection();
+
+        {
+            const auto lock = _terminal->LockForWriting();
+            _terminal->ResetShellIntegrationState();
+        }
 
         _connection = newConnection;
         if (_connection)
@@ -357,11 +361,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         // Fire off a connection state changed notification, to let our hosting
         // app know that we're in a different state now.
-        if (oldState != ConnectionState())
-        { // rely on the null handling again
-            // send the notification
-            ConnectionStateChanged.raise(*this, nullptr);
-        }
+        // The connection object itself changed even when its state value did
+        // not. Consumers must discard state keyed by the old connection's
+        // SessionId and re-evaluate shell-integration readiness.
+        ConnectionStateChanged.raise(*this, nullptr);
     }
 
     void ControlCore::HardResetWithoutErase()
@@ -1539,6 +1542,18 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         const auto lock = _terminal->LockForReading();
         return hstring{ _terminal->GetWorkingDirectory() };
+    }
+
+    bool ControlCore::WorkingDirectoryReportedByShell() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->IsWorkingDirectoryReportedByShell();
+    }
+
+    bool ControlCore::CommandMarksReportedByShell() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->HasCommandMarksReportedByShell();
     }
 
     hstring ControlCore::ShellName() const

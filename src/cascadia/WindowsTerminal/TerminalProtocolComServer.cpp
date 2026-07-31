@@ -35,6 +35,8 @@ static wil::unique_event g_comMtaStop;
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
 std::vector<TerminalProtocolComServer*> TerminalProtocolComServer::s_instances;
+std::mutex TerminalProtocolComServer::s_repoConsumerMutex;
+uint32_t TerminalProtocolComServer::s_repoConsumerCount = 0;
 
 void TerminalProtocolComServer::s_setEmperor(WindowEmperor* emperor) noexcept
 {
@@ -66,6 +68,7 @@ try
         {
             regHr = E_OUTOFMEMORY;
         }
+
         else
         {
             ComPtr<IUnknown> unk;
@@ -118,6 +121,21 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
 {
+    std::lock_guard subscriptionLock{ _repoRegistrationMutex };
+    {
+        if (_repoConsumerRegistered)
+        {
+            try
+            {
+                _changeRepoConsumerCount(-1, false);
+            }
+            catch (...)
+            {
+                LOG_CAUGHT_EXCEPTION();
+            }
+            _repoConsumerRegistered = false;
+        }
+    }
     // Remove this instance from the global fan-out set FIRST. This preserves the
     // global lock order: s_NotifyEventToComClients takes s_instancesMutex before
     // _enqueueEvent takes _deliveryMutex, so destruction must not take
@@ -147,14 +165,15 @@ void TerminalProtocolComServer::_addInstance()
     std::lock_guard lock{ s_instancesMutex };
     if (_instanceRegistered)
         return;
-    _instanceRegistered = true;
     s_instances.push_back(this);
+    _instanceRegistered = true;
 }
 
 void TerminalProtocolComServer::_removeInstance()
 {
     std::lock_guard lock{ s_instancesMutex };
     std::erase(s_instances, this);
+    _instanceRegistered = false;
 }
 
 // ============================================================================
@@ -364,6 +383,77 @@ void TerminalProtocolComServer::_ensurePageEventsRegistered()
 void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
 {
     _ensurePageEventsRegistered();
+    _syncRepoConsumerCount();
+}
+
+void TerminalProtocolComServer::_syncRepoConsumerCount()
+{
+    // A protocol call may hold this lock while its projected page call waits
+    // for the UI thread. Window creation already runs on that UI thread, so it
+    // must never wait for the inverse edge. The in-flight protocol call will
+    // apply the latest count when it resumes.
+    std::unique_lock lock{ s_repoConsumerMutex, std::try_to_lock };
+    if (!lock)
+    {
+        return;
+    }
+    if (!s_emperor)
+    {
+        return;
+    }
+    if (const auto host = s_emperor->GetMostRecentWindow())
+    {
+        if (const auto page = _getPage(host))
+        {
+            page.SetProtocolRepoConsumerCount(s_repoConsumerCount);
+        }
+    }
+}
+
+void TerminalProtocolComServer::_changeRepoConsumerCount(const int delta, const bool rollbackOnFailure)
+{
+    std::lock_guard lock{ s_repoConsumerMutex };
+    const auto previousCount = s_repoConsumerCount;
+    if (delta > 0)
+    {
+        ++s_repoConsumerCount;
+    }
+    else if (s_repoConsumerCount > 0)
+    {
+        --s_repoConsumerCount;
+    }
+
+    if (s_emperor)
+    {
+        if (const auto host = s_emperor->GetMostRecentWindow())
+        {
+            if (const auto page = _getPage(host))
+            {
+                try
+                {
+                    page.SetProtocolRepoConsumerCount(s_repoConsumerCount);
+                }
+                catch (...)
+                {
+                    if (!rollbackOnFailure)
+                    {
+                        LOG_CAUGHT_EXCEPTION();
+                        return;
+                    }
+                    s_repoConsumerCount = previousCount;
+                    try
+                    {
+                        page.SetProtocolRepoConsumerCount(previousCount);
+                    }
+                    catch (...)
+                    {
+                        LOG_CAUGHT_EXCEPTION();
+                    }
+                    throw;
+                }
+            }
+        }
+    }
 }
 
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
@@ -489,8 +579,8 @@ try
     // ITerminalProtocol method is gated on this call.
     Json::Value v;
     v["authenticated"] = true;
-    // 2.2 — SendInput restored on the COM surface; pane identifiers remain GUIDs.
-    v["protocol_version"] = "2.2";
+    // 2.3 — optional ITerminalProtocol2 repository-summary query.
+    v["protocol_version"] = "2.3";
     *resultJson = _bstrFromJson(v);
     return S_OK;
 }
@@ -522,6 +612,7 @@ try
         "subscribe",
         "unsubscribe",
         "send_event",
+        "get_repo_state",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -529,6 +620,25 @@ try
         methods.append(m);
 
     *json = _bstrFromJson(methods);
+    return S_OK;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::GetRepoState(GUID sessionId, boolean forceRefresh, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    const auto sessionIdString = _guidStr(winrt::guid{ sessionId });
+    RETURN_HR_IF(E_INVALIDARG, sessionIdString.empty());
+
+    RETURN_HR_IF(E_UNEXPECTED, !s_emperor);
+    const auto host = s_emperor->GetMostRecentWindow();
+    RETURN_HR_IF(E_UNEXPECTED, !host);
+    const auto page = _getPage(host);
+    RETURN_HR_IF(E_UNEXPECTED, !page);
+    *json = ::SysAllocString(page.GetProtocolRepoState(winrt::guid{ sessionId }, forceRefresh != 0).c_str());
+    THROW_IF_NULL_ALLOC(*json);
     return S_OK;
 }
 CATCH_RETURN()
@@ -977,6 +1087,7 @@ try
     // sink was unmarshaled on an MTA thread).
     ComPtr<IAgileReference> ref;
     RETURN_IF_FAILED(::RoGetAgileReference(AGILEREFERENCE_DEFAULT, __uuidof(ITerminalProtocolEventSink), sink, &ref));
+    std::lock_guard subscriptionLock{ _repoRegistrationMutex };
 
     std::shared_ptr<_DeliveryState> d;
     {
@@ -988,34 +1099,69 @@ try
         d->sinkRef = ref;
     }
 
-    // Open the subscribe-gate, then start the detached delivery worker once for
-    // this state so OnEvent never runs on the producer thread. If thread
-    // creation throws, roll the gate back so producers don't enqueue
-    // undeliverable work for a subscriber with no worker.
-    d->queue.set_active(true);
+    // Finish every potentially throwing setup step before opening the queue's
+    // active gate. An instance retained after a prior Unsubscribe is still in
+    // global fan-out, but its inactive queue drops events until this transaction
+    // commits.
+    _ensurePageEventsRegistered();
+
+    bool repoConsumerAdded = false;
+    const auto wasInstanceRegistered = _instanceRegistered;
     {
-        std::lock_guard lock{ d->mutex };
-        if (!d->workerStarted)
+        if (!_repoConsumerRegistered)
         {
-            try
+            _changeRepoConsumerCount(1);
+            _repoConsumerRegistered = true;
+            repoConsumerAdded = true;
+        }
+        try
+        {
+            // Subscribe, rather than the advisory Authenticate call, makes
+            // this client eligible for global event fan-out.
+            _addInstance();
+
+            // Start the detached delivery worker before activating producers.
+            // An inactive queue's consumer waits until the first committed
+            // event arrives.
             {
-                std::thread(&TerminalProtocolComServer::_runDeliveryWorker, d).detach();
+                std::lock_guard lock{ d->mutex };
+                if (!d->workerStarted)
+                {
+                    std::thread(&TerminalProtocolComServer::_runDeliveryWorker, d).detach();
+                    d->workerStarted = true;
+                }
             }
-            catch (...)
+
+            // Final non-throwing commit step.
+            d->queue.set_active(true);
+        }
+        catch (...)
+        {
+            d->queue.set_active(false);
             {
-                d->queue.set_active(false);
-                throw;
+                std::lock_guard lock{ d->mutex };
+                d->sinkRef.Reset();
             }
-            d->workerStarted = true;
+            if (!wasInstanceRegistered && _instanceRegistered)
+            {
+                _removeInstance();
+            }
+            if (repoConsumerAdded)
+            {
+                try
+                {
+                    _changeRepoConsumerCount(-1);
+                    _repoConsumerRegistered = false;
+                }
+                catch (...)
+                {
+                    LOG_CAUGHT_EXCEPTION();
+                }
+            }
+            throw;
         }
     }
 
-    // Subscribe, rather than the advisory Authenticate call, makes this client
-    // eligible for global event fan-out.
-    _addInstance();
-
-    // Ensure page events are wired up (one-time global init).
-    _ensurePageEventsRegistered();
     return S_OK;
 }
 CATCH_RETURN()
@@ -1023,11 +1169,18 @@ CATCH_RETURN()
 STDMETHODIMP TerminalProtocolComServer::Unsubscribe()
 try
 {
-    // Allocate the fresh replacement state BEFORE taking the lock so a throwing
-    // allocation is caught by CATCH_RETURN (escaping a COM method would crash
-    // the process) and never leaves _delivery half-swapped under the lock.
+    // Allocate before changing any live subscription state. If allocation
+    // fails, the existing subscription and consumer registration stay intact.
     auto fresh = std::make_shared<_DeliveryState>(s_maxQueuedEvents);
+    std::lock_guard subscriptionLock{ _repoRegistrationMutex };
 
+    {
+        if (_repoConsumerRegistered)
+        {
+            _changeRepoConsumerCount(-1);
+            _repoConsumerRegistered = false;
+        }
+    }
     // Non-blocking teardown: swap in the fresh state for any future Subscribe,
     // then signal the old worker to stop. We never join — a worker blocked in a
     // slow OnEvent, or a client re-entering Unsubscribe from within its own

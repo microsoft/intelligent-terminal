@@ -250,6 +250,8 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
+        hstring GetProtocolRepoState(winrt::guid sessionId, bool forceRefresh);
+        void SetProtocolRepoConsumerCount(uint32_t count);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
@@ -320,12 +322,18 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::ColorPickupFlyout _tabColorPicker{ nullptr };
 
         Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
+        std::atomic<bool> _repoObservationAllowed{ false };
+        std::mutex _repoSessionsMutex;
+        std::unordered_map<uintptr_t, std::string> _repoSessionsByControl;
 
         Windows::Foundation::Collections::IObservableVector<TerminalApp::Tab> _tabs;
         Windows::Foundation::Collections::IObservableVector<TerminalApp::Tab> _mruTabs;
         static winrt::com_ptr<Tab> _GetTabImpl(const TerminalApp::Tab& tab);
 
         void _UpdateTabIndices();
+        bool _SetTrackedRepoSession(const Microsoft::Terminal::Control::TermControl& control, std::optional<std::string> sessionId);
+        bool _IsTrackedRepoSession(std::string_view sessionId);
+        void _ClearTrackedRepoSessions();
 
         TerminalApp::Tab _settingsTab{ nullptr };
         winrt::Microsoft::Terminal::Settings::Editor::MainPage _settingsMainPage{ nullptr };
@@ -587,6 +595,7 @@ namespace winrt::TerminalApp::implementation
         bool _renamerPressedEnter{ false };
 
         TerminalApp::WindowProperties _WindowProperties{ nullptr };
+        uint64_t _repoSummarySubscription{ 0 };
         PaneResources _paneResources;
 
         // Cached agent-pane title-bar fallback brushes (#348). Reused to theme

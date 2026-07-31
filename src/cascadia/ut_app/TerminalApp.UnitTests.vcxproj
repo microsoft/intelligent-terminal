@@ -27,6 +27,10 @@
     <ClCompile Include="BoundedDispatchQueueTests.cpp" />
     <ClCompile Include="CustomAgentIdTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
+    <ClCompile Include="RepoStatusParserTests.cpp" />
+    <ClCompile Include="GitProcessRunnerTests.cpp" />
+    <ClCompile Include="LocalGitProviderTests.cpp" />
+    <ClCompile Include="RepoAwarenessServiceTests.cpp" />
     <ClCompile Include="precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>

@@ -467,6 +467,59 @@ int main()
             FormatPaneStatusHuman(status);
     });
 
+    // ── repo-state ──
+    std::string repoStateTarget;
+    bool repoStateRefresh = false;
+    auto* repoStateCmd = app.add_subcommand("repo-state", "Show local repository state for a pane");
+    repoStateCmd->add_option("-t,--target", repoStateTarget, "Session ID (GUID)");
+    repoStateCmd->add_flag("--refresh", repoStateRefresh, "Request an asynchronous refresh");
+    repoStateCmd->callback([&]() {
+        auto server = connect();
+        if (!server) return;
+        const auto protocol2 = server.try_as<ITerminalProtocol2>();
+        if (!protocol2)
+        {
+            fprintf(stderr, "[wtcli] repo-state is not supported by this Windows Terminal version.\n");
+            exitCode = 1;
+            return;
+        }
+
+        const auto sessionId = ResolveSessionId(server.get(), repoStateTarget);
+        Json::Value state;
+        const auto hr = CallJson([&](BSTR* j) {
+            return protocol2->GetRepoState(sessionId, repoStateRefresh, j);
+        }, state);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetRepoState failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+        {
+            PrintJson(state);
+            return;
+        }
+
+        const auto availability = state["availability"].asString();
+        printf("Repository: %s\n", availability.c_str());
+        if (availability == "ready")
+        {
+            printf("Branch: %s%s\n",
+                   state.get("branch", state.get("head", "")).asCString(),
+                   state.get("detached", false).asBool() ? " (detached)" : "");
+            printf("Changes: %llu modified, %llu staged, %llu untracked, %llu conflicted\n",
+                   state.get("modified", 0).asUInt64(),
+                   state.get("staged", 0).asUInt64(),
+                   state.get("untracked", 0).asUInt64(),
+                   state.get("conflicted", 0).asUInt64());
+            printf("Upstream: +%llu -%llu%s\n",
+                   state.get("ahead", 0).asUInt64(),
+                   state.get("behind", 0).asUInt64(),
+                   state.get("stale", false).asBool() ? " (stale)" : "");
+        }
+    });
+
     // ── new-tab ──
     std::string newTabCommand, newTabTitle, newTabCwd, newTabProfile;
     auto* newTabCmd = app.add_subcommand("new-tab", "Create a new tab")->alias("neww");

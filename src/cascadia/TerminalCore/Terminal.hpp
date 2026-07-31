@@ -99,6 +99,10 @@ public:
     void SetOptionalFeatures(winrt::Microsoft::Terminal::Core::ICoreSettings settings);
     bool IsXtermBracketedPasteModeEnabled() const noexcept;
     std::wstring_view GetWorkingDirectory() noexcept;
+    bool IsWorkingDirectoryReportedByShell() const noexcept;
+    bool HasCommandMarksReportedByShell() const noexcept;
+    void SetInitialWorkingDirectory(std::wstring_view path);
+    void ResetShellIntegrationState() noexcept;
     std::wstring_view GetShellName() const noexcept;
     std::wstring_view GetShellVersion() const noexcept;
 
@@ -162,7 +166,7 @@ public:
 
     bool IsVtInputEnabled() const noexcept override;
     void NotifyBufferRotation(const int delta) override;
-    void NotifyShellIntegrationMark() override;
+    void NotifyShellIntegrationMark(bool commandMark) override;
 
     void InvokeCompletions(std::wstring_view menuJson, unsigned int replaceLength) override;
 
@@ -388,6 +392,8 @@ private:
 
     std::wstring _answerbackMessage;
     std::wstring _workingDirectory;
+    bool _workingDirectoryReportedByShell = false;
+    bool _commandMarksReportedByShell = false;
     std::wstring _shellName;
     std::wstring _shellVersion;
     bool _highContrastMode = false;

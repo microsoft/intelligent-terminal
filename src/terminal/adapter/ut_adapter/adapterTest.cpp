@@ -221,7 +221,7 @@ public:
         Log::Comment(L"NotifyBufferRotation MOCK called...");
     }
 
-    void NotifyShellIntegrationMark() override
+    void NotifyShellIntegrationMark(bool /*commandMark*/) override
     {
         Log::Comment(L"NotifyShellIntegrationMark MOCK called...");
     }

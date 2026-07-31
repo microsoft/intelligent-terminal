@@ -37,7 +37,8 @@ class WindowEmperor;
 struct __declspec(uuid(__CLSID_TerminalProtocolServer))
 TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
                                 Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::RuntimeClassType::ClassicCom>,
-                                ITerminalProtocol>
+                                ITerminalProtocol,
+                                ITerminalProtocol2>
 {
     ~TerminalProtocolComServer();
 
@@ -61,6 +62,9 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
+
+    // ── ITerminalProtocol2 ──
+    STDMETHODIMP GetRepoState(GUID sessionId, boolean forceRefresh, BSTR* json) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
@@ -120,12 +124,18 @@ private:
     // Static tracking of live COM instances for event delivery.
     static std::mutex s_instancesMutex;
     static std::vector<TerminalProtocolComServer*> s_instances;
+    static std::mutex s_repoConsumerMutex;
+    static uint32_t s_repoConsumerCount;
 
     bool _instanceRegistered{ false };
+    bool _repoConsumerRegistered{ false };
+    std::mutex _repoRegistrationMutex;
 
     void _addInstance();
     void _removeInstance();
     static void _ensurePageEventsRegistered();
+    static void _changeRepoConsumerCount(int delta, bool rollbackOnFailure = true);
+    static void _syncRepoConsumerCount();
 
     // Per-method UI-thread dispatch helpers (unchanged from the WinRT server;
     // they marshal SendEvent payloads onto each window's TerminalPage).
