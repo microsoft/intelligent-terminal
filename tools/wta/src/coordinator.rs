@@ -1742,6 +1742,52 @@ mod tests {
         assert!(format!("{err:#}").contains("host could not resolve a target pane"));
     }
 
+    #[test]
+    fn tab_target_actions_discard_model_provided_parent_even_with_host_target() {
+        // Tab-targeted open/open_and_send actions don't need a parent pane at
+        // all (they create a brand new tab), so any model-invented parent
+        // must be wiped rather than bound to the host's resolved pane.
+        let mut choice = RecommendationChoice {
+            choice: 1,
+            title: "Delegate to a new tab".to_string(),
+            rationale: String::new(),
+            actions: vec![
+                RecommendedAction::OpenAndSend {
+                    target: OpenTarget::Tab,
+                    parent: Some("model-invented-tab-parent".to_string()),
+                    input: "Inspect the repo".to_string(),
+                    agent: Some("copilot".to_string()),
+                    cwd: None,
+                    title: None,
+                    direction: None,
+                    profile: None,
+                },
+                RecommendedAction::Open {
+                    target: OpenTarget::Tab,
+                    parent: Some("another-model-invented-parent".to_string()),
+                    cwd: None,
+                    title: None,
+                    direction: None,
+                    profile: None,
+                },
+            ],
+        };
+
+        // Even though the host resolved a real target pane, tab actions must
+        // never inherit it (or retain the model's guess) since they open a
+        // brand new tab rather than routing into an existing pane.
+        bind_choice_target(&mut choice, Some("real-pane-guid")).unwrap();
+
+        assert!(matches!(
+            &choice.actions[0],
+            RecommendedAction::OpenAndSend { parent: None, .. }
+        ));
+        assert!(matches!(
+            &choice.actions[1],
+            RecommendedAction::Open { parent: None, .. }
+        ));
+    }
+
     #[tokio::test]
     async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
         let channel = Arc::new(RecordingWtChannel::default());
