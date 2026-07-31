@@ -1122,6 +1122,7 @@ async fn resolve_pane_by_session_id(
     None
 }
 
+#[cfg(test)]
 pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
     // WT's GetActivePane already resolves the agent pane to the user's working
     // pane (the "source"), so a single active-pane query gives us the right
