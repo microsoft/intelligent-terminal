@@ -18,8 +18,9 @@ The first refactor rounds have already reduced some of that concentration:
   sessions commands behind focused execution APIs.
 - `app.rs` still owns broad application orchestration and side effects, but
   neutral contracts, tab state, and input editing have moved out.
-- `protocol/acp/client.rs` owns transport, UI-facing messages, prompt assembly,
-  session orchestration, and turn telemetry.
+- `protocol/acp/client.rs` owns transport, UI-facing messages, ACP callbacks,
+  and session orchestration; prompt construction/context and turn telemetry
+  now live in focused sibling modules.
 - `master/mod.rs` owns pipe transport, routing, agent processes, session
   tracking, history synchronization, and recovery.
 - `agent_hooks_installer.rs` contains every provider's install, status,
@@ -234,6 +235,17 @@ facade so callers do not depend on transport internals.
 
 This starts only after neutral event contracts exist. Otherwise, the current
 cycle would merely be spread across more files.
+
+**Status**: In progress. Completed slices:
+
+- `prompt_builder.rs` owns prompt template memoization, assembly, and prompt
+  audit logging.
+- `prompt_context.rs` owns pane-context capture/resolution and the ordered
+  runtime context provider chain.
+- `turn_metrics.rs` owns per-turn timing state, timing notes, ACP timing logs,
+  and response-latency telemetry.
+
+ACP callbacks and session orchestration remain in `client.rs` for later slices.
 
 ## Step 7: Agent hooks decomposition
 

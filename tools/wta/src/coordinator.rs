@@ -405,17 +405,15 @@ async fn execute_choice(
                     "{} input to pane {}.",
                     done_label, parent
                 )));
-                // Run is "the user dispatched a command to pane X" — follow
-                // focus to that pane so they can keep typing / observe output
-                // without an extra click. Best-effort: log and ignore on
-                // failure (focus is UX-nice, not correctness-critical).
-                if !insert_only {
-                    if let Err(err) = shell_mgr.wt_focus_pane(parent).await {
-                        coordinator_log(&format!(
-                            "send focus skipped parent={} error={}",
-                            parent, err
-                        ));
-                    }
+                // Both actions hand control back to the target pane: Run lets
+                // the user observe output, while Insert lets them edit or
+                // submit the inserted command. Focus is best-effort because
+                // the input has already been delivered successfully.
+                if let Err(err) = shell_mgr.wt_focus_pane(parent).await {
+                    coordinator_log(&format!(
+                        "send focus skipped parent={} error={}",
+                        parent, err
+                    ));
                 }
             }
             RecommendedAction::OpenAndSend {
@@ -1659,15 +1657,80 @@ mod tests {
         build_delegate_launch_commandline, build_delegate_launch_commandline_with_session,
         build_pwsh_base64_launch, build_shell_multiline_delegate_launch,
         build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
-        default_delegate_agent_runtimes, escape_for_intermediate_shell,
+        default_delegate_agent_runtimes, escape_for_intermediate_shell, execute_choice,
         is_direct_known_agent_command, parse_autofix_response, parse_recommendation_set,
         pinned_session_id_for_runtime, pwsh_available, resolve_agent_profile,
         resolve_created_pane_id, sanitize_windows_agent_cwd,
         validate_recommendation_set_for_coordinator_target, AutofixDecision,
-        DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget, RecommendedAction,
+        DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget, RecommendationChoice,
+        RecommendedAction,
     };
+    use crate::shell::wt_channel::WtChannel;
+    use crate::shell::ShellManager;
     use serde_json::json;
     use std::os::windows::process::CommandExt;
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::mpsc;
+
+    #[derive(Default)]
+    struct RecordingWtChannel {
+        requests: Mutex<Vec<(String, serde_json::Value)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl WtChannel for RecordingWtChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.requests
+                .lock()
+                .unwrap()
+                .push((method.to_string(), params));
+            Ok(json!({}))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
+        let channel = Arc::new(RecordingWtChannel::default());
+        let shell_mgr =
+            ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let choice = RecommendationChoice {
+            choice: 1,
+            title: "Insert command".to_string(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: "target-pane".to_string(),
+                input: "git status\r\n".to_string(),
+            }],
+        };
+
+        execute_choice(&choice, true, &shell_mgr, &[], &event_tx)
+            .await
+            .expect("insert should succeed");
+
+        let requests = channel.requests.lock().unwrap();
+        assert_eq!(
+            requests.as_slice(),
+            [
+                (
+                    "send_input".to_string(),
+                    json!({ "session_id": "target-pane", "text": "git status" }),
+                ),
+                (
+                    "focus_pane".to_string(),
+                    json!({ "session_id": "target-pane" }),
+                ),
+            ]
+        );
+    }
 
     #[test]
     fn default_delegate_runtime_uses_cli_default_model() {

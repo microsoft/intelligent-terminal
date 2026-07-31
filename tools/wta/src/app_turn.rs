@@ -59,6 +59,7 @@ impl App {
         // `Surfaced{end_pending:false}` is dismissed by the new submit.
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         // Autofix prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
@@ -475,6 +476,7 @@ impl App {
         };
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         // Stamp the matching completed_turn (pushed during surface) with an
         // "executed" marker so chat history reflects the user's choice.
@@ -569,6 +571,7 @@ impl App {
         tab.autofix.pane_id = None;
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
         tab.turn = TurnState::Idle;
@@ -615,6 +618,7 @@ impl App {
         tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.selection_visible_pending = true;
         tab.selected_completed_turn_idx = None;
@@ -695,6 +699,8 @@ impl App {
         tab.tool_calls.clear();
         tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
+        tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
         tab.turn = TurnState::Surfaced {
@@ -779,6 +785,7 @@ impl App {
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
         tab.turn = TurnState::Surfaced {

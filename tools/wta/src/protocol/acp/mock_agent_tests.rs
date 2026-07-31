@@ -12,15 +12,17 @@
 //! The constructors are `pub(crate)` so app-module scenarios can borrow the
 //! harness and assert on real `App` state (see the spec, "option 2").
 
-use super::{prompt_context, ClientState, PromptTimingState, WtaClient};
+use super::{prompt_context, ClientState, TrustedResolverMap, WtaClient};
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
     dispatch_new_session, dispatch_prompt, dispatch_rename_session,
     CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, TemplateMemo,
+    PromptSubmission, RenameSessionRequest,
 };
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
 use crate::protocol::acp::conn;
+use crate::protocol::acp::prompt_builder::TemplateMemo;
+use crate::protocol::acp::turn_metrics::PromptTimingState;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use std::collections::{HashMap, HashSet};
@@ -529,8 +531,7 @@ pub(crate) struct DispatchHarness {
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
-    pub trusted_resolvers:
-        Arc<Mutex<HashMap<String, prompt_context::CommandResolverInvocation>>>,
+    pub trusted_resolvers: TrustedResolverMap,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
@@ -1602,6 +1603,233 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
     (WtaClient { state }, event_rx)
 }
 
+fn permission_request_with_raw_input(
+    raw_input: serde_json::Value,
+    options: Vec<acp::schema::v1::PermissionOption>,
+) -> acp::schema::v1::RequestPermissionRequest {
+    acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new("s1"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("resolver-tool"),
+            acp::schema::v1::ToolCallUpdateFields::new()
+                .title("Resolve command")
+                .kind(acp::schema::v1::ToolKind::Execute)
+                .raw_input(Some(raw_input)),
+        ),
+        options,
+    )
+}
+
+fn allow_once_option() -> acp::schema::v1::PermissionOption {
+    acp::schema::v1::PermissionOption::new(
+        acp::schema::v1::PermissionOptionId::new("allow-once"),
+        "Allow once",
+        acp::schema::v1::PermissionOptionKind::AllowOnce,
+    )
+}
+
+fn trust_resolver(
+    client: &WtaClient,
+    shell: &str,
+) -> prompt_context::CommandResolverInvocation {
+    let invocation = prompt_context::CommandResolverInvocation {
+        executable: std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned(),
+        shell: shell.to_string(),
+    };
+    client
+        .state
+        .trusted_resolvers
+        .lock()
+        .unwrap()
+        .insert("s1".to_string(), invocation.clone());
+    invocation
+}
+
+#[tokio::test]
+async fn request_permission_auto_approves_structured_wta_resolve_command() {
+    let (client, mut rx) = bare_client();
+    let trusted = trust_resolver(&client, r"C:\Program Files\PowerShell\7\pwsh.exe");
+    let req = permission_request_with_raw_input(
+        serde_json::json!({
+            "command": trusted.executable,
+            "args": [
+                "resolve-command",
+                "git",
+                "--shell",
+                r"C:\Program Files\PowerShell\7\pwsh.exe",
+                "--json"
+            ],
+        }),
+        vec![allow_once_option()],
+    );
+
+    let resp = client.request_permission(req).await.unwrap();
+    match resp.outcome {
+        acp::schema::v1::RequestPermissionOutcome::Selected(selected) => {
+            assert_eq!(selected.option_id.to_string(), "allow-once");
+        }
+        _ => panic!("expected Selected outcome"),
+    }
+    assert!(
+        rx.try_recv().is_err(),
+        "trusted resolver should not show a permission dialog"
+    );
+}
+
+#[tokio::test]
+async fn request_permission_auto_approves_injected_powershell_resolver() {
+    let (client, mut rx) = bare_client();
+    let trusted = trust_resolver(&client, r"C:\Program Files\PowerShell\7\pwsh.exe");
+    let command = crate::resolve_command::powershell_invocation(
+        &trusted.executable,
+        &trusted.shell,
+        "it's",
+    );
+    let req = permission_request_with_raw_input(
+        serde_json::json!({
+            "command": command,
+            "commands": [trusted.executable],
+        }),
+        vec![allow_once_option()],
+    );
+
+    let resp = client.request_permission(req).await.unwrap();
+    assert!(matches!(
+        resp.outcome,
+        acp::schema::v1::RequestPermissionOutcome::Selected(_)
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "trusted resolver should not show a permission dialog"
+    );
+}
+
+#[test]
+fn trusted_resolver_matcher_rejects_ambiguous_or_mutating_commands() {
+    let trusted = prompt_context::CommandResolverInvocation {
+        executable: std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned(),
+        shell: "cmd".to_string(),
+    };
+    let cases = [
+        serde_json::json!({
+            "command": "wta",
+            "args": ["resolve-command", "git", "--shell", "cmd", "--json"],
+        }),
+        serde_json::json!({
+            "command": trusted.executable.clone(),
+            "args": ["split-pane", "pwsh.exe"],
+        }),
+        serde_json::json!({
+            "command": trusted.executable.clone(),
+            "args": ["resolve-command", "git", "--shell", "powershell", "--json"],
+        }),
+        serde_json::json!({
+            "command": trusted.executable.clone(),
+            "args": ["resolve-command", "git", "--shell", "cmd", "--json"],
+            "commands": ["malicious.exe"],
+        }),
+        serde_json::json!({
+            "command": format!(
+                "& '{}' 'resolve-command' 'git' '--shell' 'cmd' '--json'; malicious.exe",
+                trusted.executable.replace('\'', "''")
+            ),
+        }),
+        serde_json::json!({
+            "command": format!(
+                "& '{}' resolve-command 'git' --shell cmd;malicious --json",
+                trusted.executable.replace('\'', "''")
+            ),
+        }),
+        serde_json::json!({
+            "command": format!(
+                "& '{}'\nresolve-command 'git' --shell 'cmd' --json",
+                trusted.executable.replace('\'', "''")
+            ),
+        }),
+        serde_json::json!({
+            "command": crate::resolve_command::powershell_invocation(
+                &trusted.executable,
+                &trusted.shell,
+                "git",
+            ),
+            "commands": [trusted.executable.clone(), "malicious.exe"],
+        }),
+    ];
+
+    for raw_input in &cases {
+        assert!(
+            !super::is_trusted_wta_resolve_command(Some(raw_input), Some(&trusted)),
+            "unexpected trusted match: {raw_input}"
+        );
+    }
+
+    let bare_powershell = prompt_context::CommandResolverInvocation {
+        executable: trusted.executable.clone(),
+        shell: "pwsh".to_string(),
+    };
+    let raw_input = serde_json::json!({
+        "command": bare_powershell.executable,
+        "args": ["resolve-command", "git", "--shell", "pwsh", "--json"],
+    });
+    assert!(
+        !super::is_trusted_wta_resolve_command(Some(&raw_input), Some(&bare_powershell)),
+        "a PATH-resolved PowerShell executable must not be auto-approved"
+    );
+}
+
+#[tokio::test]
+async fn request_permission_does_not_invent_allow_once_option() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let trusted = trust_resolver(
+                &client,
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            );
+            let req = permission_request_with_raw_input(
+                serde_json::json!({
+                    "executable": trusted.executable,
+                    "arguments": [
+                        "resolve-command",
+                        "git",
+                        "--shell",
+                        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                        "--json"
+                    ],
+                }),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("reject-once"),
+                    "Reject once",
+                    acp::schema::v1::PermissionOptionKind::RejectOnce,
+                )],
+            );
+            let handle =
+                tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest { responder, .. }) => responder,
+                _ => panic!("expected PermissionRequest"),
+            };
+            responder.send("reject-once".to_string()).unwrap();
+
+            let resp = handle.await.unwrap().unwrap();
+            match resp.outcome {
+                acp::schema::v1::RequestPermissionOutcome::Selected(selected) => {
+                    assert_eq!(selected.option_id.to_string(), "reject-once");
+                }
+                _ => panic!("expected Selected outcome"),
+            }
+        })
+        .await;
+}
+
 fn notif(sid: &str, update: acp::schema::v1::SessionUpdate) -> acp::schema::v1::SessionNotification {
     acp::schema::v1::SessionNotification::new(acp::schema::v1::SessionId::new(sid), update)
 }
@@ -2003,236 +2231,6 @@ fn permission_request(sid: &str) -> acp::schema::v1::RequestPermissionRequest {
             acp::schema::v1::PermissionOptionKind::AllowOnce,
         )],
     )
-}
-
-fn permission_request_with_raw_input(
-    raw_input: serde_json::Value,
-    options: Vec<acp::schema::v1::PermissionOption>,
-) -> acp::schema::v1::RequestPermissionRequest {
-    acp::schema::v1::RequestPermissionRequest::new(
-        acp::schema::v1::SessionId::new("s1"),
-        acp::schema::v1::ToolCallUpdate::new(
-            acp::schema::v1::ToolCallId::new("mock-tool-1"),
-            acp::schema::v1::ToolCallUpdateFields::new()
-                .title("Resolve command")
-                .kind(acp::schema::v1::ToolKind::Execute)
-                .raw_input(Some(raw_input)),
-        ),
-        options,
-    )
-}
-
-fn allow_once_option() -> acp::schema::v1::PermissionOption {
-    acp::schema::v1::PermissionOption::new(
-        acp::schema::v1::PermissionOptionId::new("allow-once"),
-        "Allow once",
-        acp::schema::v1::PermissionOptionKind::AllowOnce,
-    )
-}
-
-fn trust_resolver(
-    client: &WtaClient,
-    shell: &str,
-) -> prompt_context::CommandResolverInvocation {
-    let invocation = prompt_context::CommandResolverInvocation {
-        executable: std::env::current_exe().unwrap().to_string_lossy().into_owned(),
-        shell: shell.to_string(),
-    };
-    client
-        .state
-        .trusted_resolvers
-        .lock()
-        .unwrap()
-        .insert("s1".to_string(), invocation.clone());
-    invocation
-}
-
-#[tokio::test]
-async fn request_permission_auto_approves_structured_wta_resolve_command() {
-    let (client, mut rx) = bare_client();
-    let trusted = trust_resolver(
-        &client,
-        r"C:\Program Files\PowerShell\7\pwsh.exe",
-    );
-    let req = permission_request_with_raw_input(
-        serde_json::json!({
-            "command": trusted.executable,
-            "args": [
-                "resolve-command",
-                "git",
-                "--shell",
-                r"C:\Program Files\PowerShell\7\pwsh.exe",
-                "--json"
-            ],
-        }),
-        vec![allow_once_option()],
-    );
-
-    let resp = client.request_permission(req).await.unwrap();
-    match resp.outcome {
-        acp::schema::v1::RequestPermissionOutcome::Selected(selected) => {
-            assert_eq!(selected.option_id.to_string(), "allow-once");
-        }
-        _ => panic!("expected Selected outcome"),
-    }
-    assert!(
-        rx.try_recv().is_err(),
-        "trusted resolver should not show a permission dialog"
-    );
-}
-
-#[tokio::test]
-async fn request_permission_auto_approves_injected_powershell_resolver() {
-    let (client, mut rx) = bare_client();
-    let trusted = trust_resolver(
-        &client,
-        r"C:\Program Files\PowerShell\7\pwsh.exe",
-    );
-    let command =
-        crate::resolve_command::powershell_invocation(
-            &trusted.executable,
-            &trusted.shell,
-            "it's",
-        );
-    let req = permission_request_with_raw_input(
-        serde_json::json!({
-            "command": command,
-            "commands": [trusted.executable],
-        }),
-        vec![allow_once_option()],
-    );
-
-    let resp = client.request_permission(req).await.unwrap();
-    assert!(matches!(
-        resp.outcome,
-        acp::schema::v1::RequestPermissionOutcome::Selected(_)
-    ));
-    assert!(
-        rx.try_recv().is_err(),
-        "trusted resolver should not show a permission dialog"
-    );
-}
-
-#[test]
-fn trusted_resolver_matcher_rejects_ambiguous_or_mutating_commands() {
-    let trusted = prompt_context::CommandResolverInvocation {
-        executable: std::env::current_exe().unwrap().to_string_lossy().into_owned(),
-        shell: "cmd".to_string(),
-    };
-    let cases = [
-        serde_json::json!({
-            "command": "wta",
-            "args": ["resolve-command", "git", "--shell", "cmd", "--json"],
-        }),
-        serde_json::json!({
-            "command": trusted.executable.clone(),
-            "args": ["split-pane", "pwsh.exe"],
-        }),
-        serde_json::json!({
-            "command": trusted.executable.clone(),
-            "args": ["resolve-command", "git", "--shell", "powershell", "--json"],
-        }),
-        serde_json::json!({
-            "command": trusted.executable.clone(),
-            "args": ["resolve-command", "git", "--shell", "cmd", "--json"],
-            "commands": ["malicious.exe"],
-        }),
-        serde_json::json!({
-            "command": format!(
-                "& '{}' 'resolve-command' 'git' '--shell' 'cmd' '--json'; malicious.exe",
-                trusted.executable.replace('\'', "''")
-            ),
-        }),
-        serde_json::json!({
-            "command": format!(
-                "& '{}' resolve-command 'git' --shell cmd;malicious --json",
-                trusted.executable.replace('\'', "''")
-            ),
-        }),
-        serde_json::json!({
-            "command": format!(
-                "& '{}'\nresolve-command 'git' --shell 'cmd' --json",
-                trusted.executable.replace('\'', "''")
-            ),
-        }),
-        serde_json::json!({
-            "command": crate::resolve_command::powershell_invocation(
-                &trusted.executable,
-                &trusted.shell,
-                "git",
-            ),
-            "commands": [trusted.executable.clone(), "malicious.exe"],
-        }),
-    ];
-
-    for raw_input in &cases {
-        assert!(
-            !super::is_trusted_wta_resolve_command(Some(raw_input), Some(&trusted)),
-            "unexpected trusted match: {raw_input}"
-        );
-    }
-
-    let bare_powershell = prompt_context::CommandResolverInvocation {
-        executable: trusted.executable.clone(),
-        shell: "pwsh".to_string(),
-    };
-    let raw_input = serde_json::json!({
-        "command": bare_powershell.executable,
-        "args": ["resolve-command", "git", "--shell", "pwsh", "--json"],
-    });
-    assert!(
-        !super::is_trusted_wta_resolve_command(
-            Some(&raw_input),
-            Some(&bare_powershell),
-        ),
-        "a PATH-resolved PowerShell executable must not be auto-approved"
-    );
-}
-
-#[tokio::test]
-async fn request_permission_does_not_invent_allow_once_option() {
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let (client, mut rx) = bare_client();
-            let trusted = trust_resolver(
-                &client,
-                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-            );
-            let req = permission_request_with_raw_input(
-                serde_json::json!({
-                    "executable": trusted.executable,
-                    "arguments": [
-                        "resolve-command",
-                        "git",
-                        "--shell",
-                        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                        "--json"
-                    ],
-                }),
-                vec![acp::schema::v1::PermissionOption::new(
-                    acp::schema::v1::PermissionOptionId::new("reject-once"),
-                    "Reject once",
-                    acp::schema::v1::PermissionOptionKind::RejectOnce,
-                )],
-            );
-            let handle = tokio::task::spawn_local(async move { client.request_permission(req).await });
-
-            let responder = match rx.recv().await {
-                Some(AppEvent::PermissionRequest { responder, .. }) => responder,
-                _ => panic!("expected PermissionRequest"),
-            };
-            responder.send("reject-once".to_string()).unwrap();
-
-            let resp = handle.await.unwrap().unwrap();
-            match resp.outcome {
-                acp::schema::v1::RequestPermissionOutcome::Selected(selected) => {
-                    assert_eq!(selected.option_id.to_string(), "reject-once");
-                }
-                _ => panic!("expected Selected outcome"),
-            }
-        })
-        .await;
 }
 
 /// When the tool call carries a `locations` path, `request_permission`

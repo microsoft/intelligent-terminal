@@ -61,8 +61,8 @@ use autofix::*;
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState, Scroll,
-    TabSession, View,
+    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState,
+    RecommendationFocus, Scroll, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -119,9 +119,10 @@ use crate::coordinator::{
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    prompt_timing_log, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, RestartRequest,
+    CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab, PromptSubmission,
+    RenameSessionRequest, RestartRequest,
 };
+use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
 use crate::ui_trace;
 use crate::wt_protocol_events::send as send_wt_protocol_event;
@@ -4111,21 +4112,6 @@ impl App {
         }
     }
 
-    pub(super) fn accept_command_popup_completion(&mut self) {
-        if let Some(agent_id) = self
-            .selected_agent_command_candidate()
-            .map(|agent| agent.id.clone())
-        {
-            let tab = self.current_tab_mut();
-            tab.reset_input_history_navigation();
-            tab.input = format!("/agent {agent_id}");
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
-        } else {
-            self.current_tab_mut().accept_command_popup_completion();
-        }
-    }
-
     pub(crate) fn command_ghost_suffix(&self) -> Option<&str> {
         let tab = self.current_tab();
         if tab.cursor_pos != tab.input.len() {
@@ -5109,6 +5095,18 @@ impl App {
     /// leftmost button (Run for Send cards, the sole button for OpenAndSend).
     fn default_button_for_selected(&self) -> usize {
         0
+    }
+
+    fn focus_next_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + 1) % button_count;
+    }
+
+    fn focus_previous_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + button_count - 1) % button_count;
     }
 
     /// Returns true if the choice's primary action is Send (shell command).
