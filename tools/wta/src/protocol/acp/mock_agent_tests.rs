@@ -12,7 +12,7 @@
 //! The constructors are `pub(crate)` so app-module scenarios can borrow the
 //! harness and assert on real `App` state (see the spec, "option 2").
 
-use super::{ClientState, PromptTimingState, WtaClient};
+use super::{prompt_context, ClientState, PromptTimingState, WtaClient};
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
     dispatch_new_session, dispatch_prompt, dispatch_rename_session,
@@ -302,6 +302,7 @@ fn connect_with(
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        trusted_resolvers: Arc::new(Mutex::new(HashMap::new())),
     });
     let wta = WtaClient { state };
 
@@ -528,6 +529,8 @@ pub(crate) struct DispatchHarness {
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
+    pub trusted_resolvers:
+        Arc<Mutex<HashMap<String, prompt_context::CommandResolverInvocation>>>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
@@ -550,10 +553,12 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
+    let trusted_resolvers = Arc::new(Mutex::new(HashMap::new()));
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        trusted_resolvers: trusted_resolvers.clone(),
     });
     let wta = WtaClient { state };
 
@@ -583,6 +588,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         event_rx,
         shell_mgr,
         prompt_timing,
+        trusted_resolvers,
         seen_prompts,
         seen_images,
         fail_new_session,
@@ -643,6 +649,7 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.trusted_resolvers,
                 false, // wt_connected
                 false, // is_agent_pane
             );
@@ -692,6 +699,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.trusted_resolvers,
                 false,
                 false,
             );
@@ -723,6 +731,14 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 seen[0].contains("Terminal Agent"),
                 "a non-autofix prompt must carry the planner template"
             );
+            let trusted_resolvers = h.trusted_resolvers.lock().unwrap();
+            assert_eq!(trusted_resolvers.len(), 1);
+            assert_eq!(
+                trusted_resolvers.values().next().unwrap().shell,
+                "unknown",
+                "permission matching must bind to the resolver contract sent for this session"
+            );
+            drop(trusted_resolvers);
 
             // The session is cached before the prompt is sent, so it's already
             // present by the time the reply arrives.
@@ -744,6 +760,10 @@ async fn dispatch_prompt_round_trips_through_agent() {
             assert!(
                 in_flight.lock().unwrap().is_empty(),
                 "single-flight slot must be released when the turn completes"
+            );
+            assert!(
+                h.trusted_resolvers.lock().unwrap().is_empty(),
+                "resolver trust must be revoked when the turn completes"
             );
         })
         .await;
@@ -803,6 +823,7 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.trusted_resolvers,
                 false, // wt_connected
                 true,  // is_agent_pane
             );
@@ -865,6 +886,7 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.trusted_resolvers,
                 false,
                 false,
             );
@@ -918,6 +940,7 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
+                &h.trusted_resolvers,
                 false,
                 false,
             );
@@ -1016,6 +1039,13 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
                 .lock()
                 .unwrap()
                 .insert("sess-cancel".to_string(), tx);
+            h.trusted_resolvers.lock().unwrap().insert(
+                "sess-cancel".to_string(),
+                prompt_context::CommandResolverInvocation {
+                    executable: "C:\\wta.exe".to_string(),
+                    shell: "cmd.exe".to_string(),
+                },
+            );
 
             dispatch_cancel(
                 CancelRequest {
@@ -1023,6 +1053,7 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
                 },
                 &h.conn,
                 &cancel_signals,
+                &h.trusted_resolvers,
             );
 
             // The local oneshot is fired synchronously inside dispatch_cancel.
@@ -1030,6 +1061,13 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
             assert!(
                 !cancel_signals.lock().unwrap().contains_key("sess-cancel"),
                 "the fired signal must be removed from the registry"
+            );
+            assert!(
+                !h.trusted_resolvers
+                    .lock()
+                    .unwrap()
+                    .contains_key("sess-cancel"),
+                "cancel must revoke resolver trust synchronously"
             );
 
             // Cancelling an unknown session is a harmless no-op (no panic).
@@ -1039,6 +1077,7 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
                 },
                 &h.conn,
                 &cancel_signals,
+                &h.trusted_resolvers,
             );
             // Let the best-effort agent-notify subtask run.
             for _ in 0..10 {
@@ -1080,6 +1119,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.trusted_resolvers,
             );
 
             // The in-flight cancel oneshot fires when the spawned task runs.
@@ -1107,6 +1147,7 @@ async fn dispatch_drop_session_unbinds_and_fires_cancel_then_ignores_missing() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.trusted_resolvers,
             );
             for _ in 0..10 {
                 tokio::task::yield_now().await;
@@ -1139,6 +1180,7 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 false,
@@ -1187,6 +1229,7 @@ async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 false,
@@ -1244,6 +1287,7 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 &tab_to_session,
                 &memo,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 false,
@@ -1294,6 +1338,7 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 &h.conn,
                 &tab_to_session,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 false,
@@ -1342,6 +1387,7 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 &h.conn,
                 &tab_to_session,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 false,
@@ -1396,6 +1442,7 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 &h.conn,
                 &tab_to_session,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 true,
@@ -1445,6 +1492,7 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 &h.conn,
                 &tab_to_session,
                 &cancel_signals,
+                &h.trusted_resolvers,
                 &h.event_tx,
                 false,
                 false,
@@ -1549,6 +1597,7 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
+        trusted_resolvers: Arc::new(Mutex::new(HashMap::new())),
     });
     (WtaClient { state }, event_rx)
 }
@@ -1954,6 +2003,225 @@ fn permission_request(sid: &str) -> acp::schema::v1::RequestPermissionRequest {
             acp::schema::v1::PermissionOptionKind::AllowOnce,
         )],
     )
+}
+
+fn permission_request_with_raw_input(
+    raw_input: serde_json::Value,
+    options: Vec<acp::schema::v1::PermissionOption>,
+) -> acp::schema::v1::RequestPermissionRequest {
+    acp::schema::v1::RequestPermissionRequest::new(
+        acp::schema::v1::SessionId::new("s1"),
+        acp::schema::v1::ToolCallUpdate::new(
+            acp::schema::v1::ToolCallId::new("mock-tool-1"),
+            acp::schema::v1::ToolCallUpdateFields::new()
+                .title("Resolve command")
+                .kind(acp::schema::v1::ToolKind::Execute)
+                .raw_input(Some(raw_input)),
+        ),
+        options,
+    )
+}
+
+fn allow_once_option() -> acp::schema::v1::PermissionOption {
+    acp::schema::v1::PermissionOption::new(
+        acp::schema::v1::PermissionOptionId::new("allow-once"),
+        "Allow once",
+        acp::schema::v1::PermissionOptionKind::AllowOnce,
+    )
+}
+
+fn trust_resolver(
+    client: &WtaClient,
+    shell: &str,
+) -> prompt_context::CommandResolverInvocation {
+    let invocation = prompt_context::CommandResolverInvocation {
+        executable: std::env::current_exe().unwrap().to_string_lossy().into_owned(),
+        shell: shell.to_string(),
+    };
+    client
+        .state
+        .trusted_resolvers
+        .lock()
+        .unwrap()
+        .insert("s1".to_string(), invocation.clone());
+    invocation
+}
+
+#[tokio::test]
+async fn request_permission_auto_approves_structured_wta_resolve_command() {
+    let (client, mut rx) = bare_client();
+    let trusted = trust_resolver(
+        &client,
+        r"C:\Program Files\PowerShell\7\pwsh.exe",
+    );
+    let req = permission_request_with_raw_input(
+        serde_json::json!({
+            "command": trusted.executable,
+            "args": [
+                "resolve-command",
+                "git",
+                "--shell",
+                r"C:\Program Files\PowerShell\7\pwsh.exe",
+                "--json"
+            ],
+        }),
+        vec![allow_once_option()],
+    );
+
+    let resp = client.request_permission(req).await.unwrap();
+    match resp.outcome {
+        acp::schema::v1::RequestPermissionOutcome::Selected(selected) => {
+            assert_eq!(selected.option_id.to_string(), "allow-once");
+        }
+        _ => panic!("expected Selected outcome"),
+    }
+    assert!(
+        rx.try_recv().is_err(),
+        "trusted resolver should not show a permission dialog"
+    );
+}
+
+#[tokio::test]
+async fn request_permission_auto_approves_injected_powershell_resolver() {
+    let (client, mut rx) = bare_client();
+    let trusted = trust_resolver(
+        &client,
+        r"C:\Program Files\PowerShell\7\pwsh.exe",
+    );
+    let command =
+        crate::resolve_command::powershell_invocation(
+            &trusted.executable,
+            &trusted.shell,
+            "it's",
+        );
+    let req = permission_request_with_raw_input(
+        serde_json::json!({ "command": command }),
+        vec![allow_once_option()],
+    );
+
+    let resp = client.request_permission(req).await.unwrap();
+    assert!(matches!(
+        resp.outcome,
+        acp::schema::v1::RequestPermissionOutcome::Selected(_)
+    ));
+    assert!(
+        rx.try_recv().is_err(),
+        "trusted resolver should not show a permission dialog"
+    );
+}
+
+#[test]
+fn trusted_resolver_matcher_rejects_ambiguous_or_mutating_commands() {
+    let trusted = prompt_context::CommandResolverInvocation {
+        executable: std::env::current_exe().unwrap().to_string_lossy().into_owned(),
+        shell: "cmd".to_string(),
+    };
+    let cases = [
+        serde_json::json!({
+            "command": "wta",
+            "args": ["resolve-command", "git", "--shell", "cmd", "--json"],
+        }),
+        serde_json::json!({
+            "command": trusted.executable.clone(),
+            "args": ["split-pane", "pwsh.exe"],
+        }),
+        serde_json::json!({
+            "command": trusted.executable.clone(),
+            "args": ["resolve-command", "git", "--shell", "powershell", "--json"],
+        }),
+        serde_json::json!({
+            "command": trusted.executable.clone(),
+            "args": ["resolve-command", "git", "--shell", "cmd", "--json"],
+            "commands": ["malicious.exe"],
+        }),
+        serde_json::json!({
+            "command": format!(
+                "& '{}' 'resolve-command' 'git' '--shell' 'cmd' '--json'; malicious.exe",
+                trusted.executable.replace('\'', "''")
+            ),
+        }),
+        serde_json::json!({
+            "command": format!(
+                "& '{}' resolve-command 'git' --shell cmd;malicious --json",
+                trusted.executable.replace('\'', "''")
+            ),
+        }),
+        serde_json::json!({
+            "command": format!(
+                "& '{}'\nresolve-command 'git' --shell 'cmd' --json",
+                trusted.executable.replace('\'', "''")
+            ),
+        }),
+    ];
+
+    for raw_input in &cases {
+        assert!(
+            !super::is_trusted_wta_resolve_command(Some(raw_input), Some(&trusted)),
+            "unexpected trusted match: {raw_input}"
+        );
+    }
+
+    let bare_powershell = prompt_context::CommandResolverInvocation {
+        executable: trusted.executable.clone(),
+        shell: "pwsh".to_string(),
+    };
+    let raw_input = serde_json::json!({
+        "command": bare_powershell.executable,
+        "args": ["resolve-command", "git", "--shell", "pwsh", "--json"],
+    });
+    assert!(
+        !super::is_trusted_wta_resolve_command(
+            Some(&raw_input),
+            Some(&bare_powershell),
+        ),
+        "a PATH-resolved PowerShell executable must not be auto-approved"
+    );
+}
+
+#[tokio::test]
+async fn request_permission_does_not_invent_allow_once_option() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (client, mut rx) = bare_client();
+            let trusted = trust_resolver(
+                &client,
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            );
+            let req = permission_request_with_raw_input(
+                serde_json::json!({
+                    "executable": trusted.executable,
+                    "arguments": [
+                        "resolve-command",
+                        "git",
+                        "--shell",
+                        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                        "--json"
+                    ],
+                }),
+                vec![acp::schema::v1::PermissionOption::new(
+                    acp::schema::v1::PermissionOptionId::new("reject-once"),
+                    "Reject once",
+                    acp::schema::v1::PermissionOptionKind::RejectOnce,
+                )],
+            );
+            let handle = tokio::task::spawn_local(async move { client.request_permission(req).await });
+
+            let responder = match rx.recv().await {
+                Some(AppEvent::PermissionRequest { responder, .. }) => responder,
+                _ => panic!("expected PermissionRequest"),
+            };
+            responder.send("reject-once".to_string()).unwrap();
+
+            let resp = handle.await.unwrap().unwrap();
+            match resp.outcome {
+                acp::schema::v1::RequestPermissionOutcome::Selected(selected) => {
+                    assert_eq!(selected.option_id.to_string(), "reject-once");
+                }
+                _ => panic!("expected Selected outcome"),
+            }
+        })
+        .await;
 }
 
 /// When the tool call carries a `locations` path, `request_permission`

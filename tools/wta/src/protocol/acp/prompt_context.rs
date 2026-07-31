@@ -56,6 +56,9 @@ pub(crate) struct ContextRequest<'a> {
     pub planner_pane: Option<&'a serde_json::Value>,
     /// Planner only: the active pane's canonical shell identity.
     pub planner_shell: Option<&'a str>,
+    /// Planner only: the exact immutable resolver contract injected into this
+    /// prompt. The permission layer stores this same value for the turn.
+    pub command_resolver_invocation: Option<&'a CommandResolverInvocation>,
 }
 
 /// One `### {heading}\n{body}` block to inject into the prompt. `heading` is
@@ -119,6 +122,75 @@ pub(crate) fn default_providers() -> &'static [&'static dyn ContextProvider] {
 /// Alias in the agent CLI's tool environment.
 struct CommandResolverProvider;
 
+#[derive(Clone, Debug)]
+pub(crate) struct CommandResolverInvocation {
+    pub executable: String,
+    pub shell: String,
+}
+
+impl CommandResolverInvocation {
+    pub fn is_safe_for_auto_approval(&self) -> bool {
+        !crate::command_recall::is_powershell(&self.shell)
+            || std::path::Path::new(&self.shell).is_absolute()
+    }
+}
+
+pub(crate) fn command_resolver_invocation(
+    is_autofix: bool,
+    planner_shell: Option<&str>,
+    planner_pane: Option<&serde_json::Value>,
+) -> Option<CommandResolverInvocation> {
+    if is_autofix
+        || planner_shell
+            .is_some_and(|shell| !crate::resolve_command::has_applicable_source(shell))
+    {
+        return None;
+    }
+
+    let executable = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!(
+                target: "acp.terminal_context",
+                %error,
+                "command_resolver_current_exe_failed"
+            );
+            return None;
+        }
+    };
+    let executable = match executable.into_os_string().into_string() {
+        Ok(path) => path,
+        Err(path) => {
+            tracing::warn!(
+                target: "acp.terminal_context",
+                path = ?path,
+                "command_resolver_path_not_unicode"
+            );
+            return None;
+        }
+    };
+
+    let mut shell = planner_shell.unwrap_or("unknown").to_string();
+    if crate::command_recall::is_powershell(&shell)
+        && !std::path::Path::new(&shell).is_absolute()
+    {
+        if let Some(path) = planner_pane
+            .and_then(|pane| pane.get("pid"))
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|pid| u32::try_from(pid).ok())
+            .and_then(super::client::process_image_path)
+            .filter(|path| crate::command_recall::is_powershell(path))
+        {
+            shell = path;
+        }
+    }
+
+    Some(CommandResolverInvocation {
+        executable,
+        shell,
+    })
+}
+
 #[async_trait]
 impl ContextProvider for CommandResolverProvider {
     fn id(&self) -> &'static str {
@@ -133,29 +205,9 @@ impl ContextProvider for CommandResolverProvider {
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
-        let shell = req.planner_shell.unwrap_or("unknown");
-        let executable = match std::env::current_exe() {
-            Ok(path) => path,
-            Err(error) => {
-                tracing::warn!(
-                    target: "acp.terminal_context",
-                    %error,
-                    "command_resolver_current_exe_failed"
-                );
-                return None;
-            }
-        };
-        let executable = match executable.to_str() {
-            Some(path) => path,
-            None => {
-                tracing::warn!(
-                    target: "acp.terminal_context",
-                    path = ?executable,
-                    "command_resolver_path_not_unicode"
-                );
-                return None;
-            }
-        };
+        let invocation = req.command_resolver_invocation?;
+        let executable = &invocation.executable;
+        let shell = &invocation.shell;
 
         let powershell =
             crate::resolve_command::powershell_invocation(executable, shell, "<name>");
@@ -354,6 +406,7 @@ mod tests {
             terminal_output: None,
             planner_pane: None,
             planner_shell: None,
+            command_resolver_invocation: None,
         }
     }
 

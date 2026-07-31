@@ -993,13 +993,11 @@ async fn read_pane_last_message(
     result
 }
 
-/// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
-/// `powershell.exe`, `cmd.exe`, `bash.exe`, `wsl.exe`. Unlike the WT profile
-/// *name* (which the user can rename), this is the actual running process, so
-/// the agent can reliably pick shell syntax. Returns the file name only;
-/// `None` on any failure (or off Windows).
+/// Best-effort absolute image path for a pid. Kept separate from
+/// `process_image_name` because command execution must use the absolute path
+/// while shell-syntax context only needs the leaf name.
 #[cfg(windows)]
-fn process_image_name(pid: u32) -> Option<String> {
+pub(crate) fn process_image_path(pid: u32) -> Option<String> {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
@@ -1029,17 +1027,27 @@ fn process_image_name(pid: u32) -> Option<String> {
         if ok == 0 || size == 0 {
             return None;
         }
-        let full = String::from_utf16_lossy(&buf[..size as usize]);
-        full.rsplit(['\\', '/'])
-            .next()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
+        Some(String::from_utf16_lossy(&buf[..size as usize]))
     }
 }
 
 #[cfg(not(windows))]
-fn process_image_name(_pid: u32) -> Option<String> {
+pub(crate) fn process_image_path(_pid: u32) -> Option<String> {
     None
+}
+
+/// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
+/// `powershell.exe`, `cmd.exe`, `bash.exe`, `wsl.exe`. Unlike the WT profile
+/// *name* (which the user can rename), this is the actual running process, so
+/// the agent can reliably pick shell syntax. Returns the file name only;
+/// `None` on any failure (or off Windows).
+fn process_image_name(pid: u32) -> Option<String> {
+    process_image_path(pid).and_then(|full| {
+        full.rsplit(['\\', '/'])
+            .next()
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+    })
 }
 
 /// Resolve the shell identity for an active-pane JSON object. The agent gets
@@ -1209,7 +1217,13 @@ async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
-) -> (String, String, String, Option<String>) {
+) -> (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<prompt_context::CommandResolverInvocation>,
+) {
     let total_started = std::time::Instant::now();
     let mut runtime_sections = Vec::new();
     // Working pane resolved from the active pane for a manual `/fix` (one with
@@ -1330,6 +1344,15 @@ async fn build_prompt_text(
     // by turn kind, so adding a source means adding a provider, not editing
     // this loop. The command-not-found "did you mean" injection (issue #287) is
     // one such provider — see `prompt_context`.
+    let resolver_invocation = prompt_context::command_resolver_invocation(
+        is_autofix,
+        planner_shell.as_deref(),
+        planner_pane,
+    );
+    let trusted_resolver_invocation = resolver_invocation
+        .as_ref()
+        .filter(|invocation| invocation.is_safe_for_auto_approval())
+        .cloned();
     let context_request = ContextRequest {
         is_autofix,
         wt_connected,
@@ -1339,6 +1362,7 @@ async fn build_prompt_text(
         terminal_output: terminal_output.as_deref(),
         planner_pane,
         planner_shell: planner_shell.as_deref(),
+        command_resolver_invocation: resolver_invocation.as_ref(),
     };
     for provider in prompt_context::default_providers() {
         if !provider.applies(&context_request) {
@@ -1410,6 +1434,7 @@ async fn build_prompt_text(
         planner_template.source_label,
         planner_template.display_name,
         resolved_fix_pane,
+        trusted_resolver_invocation,
     )
 }
 
@@ -1529,10 +1554,14 @@ impl StartupProbe {
 }
 
 /// Shared state accessible from the Client trait impl.
+type TrustedResolverMap =
+    Arc<Mutex<HashMap<String, prompt_context::CommandResolverInvocation>>>;
+
 struct ClientState {
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
+    trusted_resolvers: TrustedResolverMap,
 }
 
 /// Our Client trait implementation — handles incoming agent requests and notifications.
@@ -1679,6 +1708,160 @@ fn tool_call_kind_label(kind: Option<&acp::schema::v1::ToolKind>) -> Option<&'st
     }
 }
 
+fn is_injected_resolve_command_args(
+    args: &[String],
+    trusted: &prompt_context::CommandResolverInvocation,
+) -> bool {
+    args.len() == 5
+        && args[0].eq_ignore_ascii_case("resolve-command")
+        && !args[1].trim().is_empty()
+        && args[2] == "--shell"
+        && args[3] == trusted.shell
+        && args[4] == "--json"
+}
+
+struct ParsedPowerShellToken {
+    value: String,
+    quoted: bool,
+}
+
+/// Parses only the PowerShell shape emitted by
+/// `resolve_command::powershell_invocation`: an invocation operator followed
+/// by single-quoted values and fixed bare arguments. Rejecting every other
+/// shell construct keeps permission bypass matching from accidentally
+/// accepting command chaining or interpolation.
+fn parse_injected_powershell_invocation(command: &str) -> Option<Vec<ParsedPowerShellToken>> {
+    let mut chars = command.trim().chars().peekable();
+    if chars.next()? != '&' || !chars.peek().is_some_and(|ch| ch.is_whitespace()) {
+        return None;
+    }
+
+    let mut tokens = Vec::new();
+    loop {
+        while chars.peek().is_some_and(|ch| ch.is_whitespace()) {
+            chars.next();
+        }
+        if chars.peek().is_none() {
+            break;
+        }
+
+        let quoted = chars.peek() == Some(&'\'');
+        let mut value = String::new();
+        if quoted {
+            chars.next();
+            let mut closed = false;
+            while let Some(ch) = chars.next() {
+                if ch != '\'' {
+                    value.push(ch);
+                    continue;
+                }
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                    value.push('\'');
+                } else {
+                    closed = true;
+                    break;
+                }
+            }
+            if !closed || chars.peek().is_some_and(|ch| !ch.is_whitespace()) {
+                return None;
+            }
+        } else {
+            while chars.peek().is_some_and(|ch| !ch.is_whitespace()) {
+                let ch = chars.next()?;
+                if ch == '\'' {
+                    return None;
+                }
+                value.push(ch);
+            }
+            if value.is_empty() {
+                return None;
+            }
+        }
+        tokens.push(ParsedPowerShellToken { value, quoted });
+    }
+
+    (!tokens.is_empty()).then_some(tokens)
+}
+
+/// The resolver is a built-in, read-only metadata query. Auto-approval is
+/// deliberately limited to the exact absolute executable injected into the
+/// prompt and its exact argv contract; bare `wta`, other subcommands, and
+/// ambiguous free-form shell commands must still ask the user.
+fn is_trusted_wta_resolve_command(
+    raw_input: Option<&serde_json::Value>,
+    trusted: Option<&prompt_context::CommandResolverInvocation>,
+) -> bool {
+    let Some(trusted) = trusted else {
+        return false;
+    };
+    if !trusted.is_safe_for_auto_approval() {
+        return false;
+    }
+    let Some(raw_input) = raw_input.and_then(serde_json::Value::as_object) else {
+        return false;
+    };
+    if raw_input.contains_key("commands") {
+        return false;
+    }
+
+    let command = raw_input.get("command").and_then(serde_json::Value::as_str);
+    let executable = raw_input
+        .get("executable")
+        .and_then(serde_json::Value::as_str);
+    let executable = match (command, executable) {
+        (Some(command), Some(executable)) if command.eq_ignore_ascii_case(executable) => command,
+        (Some(_), Some(_)) => return false,
+        (Some(command), None) => command,
+        (None, Some(executable)) => executable,
+        (None, None) => return false,
+    };
+
+    match (raw_input.get("args"), raw_input.get("arguments")) {
+        (Some(_), Some(_)) => return false,
+        (Some(args), None) | (None, Some(args)) => {
+            let Some(args) = args.as_array() else {
+                return false;
+            };
+            let Some(args) = args
+                .iter()
+                .map(|arg| arg.as_str().map(str::to_string))
+                .collect::<Option<Vec<_>>>()
+            else {
+                return false;
+            };
+            return executable.eq_ignore_ascii_case(&trusted.executable)
+                && is_injected_resolve_command_args(&args, trusted);
+        }
+        (None, None) => {}
+    }
+
+    let Some(tokens) = parse_injected_powershell_invocation(executable) else {
+        return false;
+    };
+    tokens.len() == 6
+        && tokens[0].quoted
+        && tokens[0]
+            .value
+            .eq_ignore_ascii_case(&trusted.executable)
+        && !tokens[1].quoted
+        && tokens[1].value.eq_ignore_ascii_case("resolve-command")
+        && tokens[2].quoted
+        && !tokens[2].value.trim().is_empty()
+        && !tokens[3].quoted
+        && tokens[3].value == "--shell"
+        && tokens[4].quoted
+        && tokens[4].value == trusted.shell
+        && !tokens[5].quoted
+        && tokens[5].value == "--json"
+        && executable.trim()
+            == crate::resolve_command::powershell_invocation(
+                &trusted.executable,
+                &trusted.shell,
+                &tokens[2].value,
+            )
+}
+
 fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str {
     match update {
         acp::schema::v1::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
@@ -1703,6 +1886,36 @@ impl WtaClient {
         ));
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
+        let trusted_resolver = self
+            .state
+            .trusted_resolvers
+            .lock()
+            .unwrap()
+            .get(&session_id)
+            .cloned();
+        if is_trusted_wta_resolve_command(
+            args.tool_call.fields.raw_input.as_ref(),
+            trusted_resolver.as_ref(),
+        ) {
+            if let Some(option) = args.options.iter().find(|option| {
+                matches!(
+                    &option.kind,
+                    acp::schema::v1::PermissionOptionKind::AllowOnce
+                )
+            }) {
+                tracing::info!(
+                    target: "acp.permission",
+                    session_id,
+                    tool_call_id,
+                    "auto_approved_wta_resolve_command"
+                );
+                return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                    acp::schema::v1::RequestPermissionOutcome::Selected(
+                        acp::schema::v1::SelectedPermissionOutcome::new(option.option_id.clone()),
+                    ),
+                ));
+            }
+        }
         let title = args
             .tool_call
             .fields
@@ -2444,6 +2657,9 @@ pub async fn run_acp_client_over_pipe(
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        trusted_resolvers: Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     });
 
     let client = WtaClient {
@@ -3005,7 +3221,7 @@ pub async fn run_acp_client_over_pipe(
                 crate::wt_protocol_events::send(evt.to_string());
             }
             Some(req) = cancel_rx.recv() => {
-                dispatch_cancel(req, &conn, &cancel_signals);
+                dispatch_cancel(req, &conn, &cancel_signals, &state.trusted_resolvers);
             }
             Some(req) = new_session_rx.recv() => {
                 dispatch_new_session(
@@ -3014,6 +3230,7 @@ pub async fn run_acp_client_over_pipe(
                     &tab_to_session,
                     &template_memo,
                     &cancel_signals,
+                    &state.trusted_resolvers,
                     &event_tx,
                     is_agent_pane,
                     true,
@@ -3026,6 +3243,7 @@ pub async fn run_acp_client_over_pipe(
                     &conn,
                     &tab_to_session,
                     &cancel_signals,
+                    &state.trusted_resolvers,
                     &event_tx,
                     true,
                     true,
@@ -3033,7 +3251,14 @@ pub async fn run_acp_client_over_pipe(
                 );
             }
             Some(req) = drop_session_rx.recv() => {
-                dispatch_drop_session(req, &conn, &tab_to_session, &template_memo, &cancel_signals);
+                dispatch_drop_session(
+                    req,
+                    &conn,
+                    &tab_to_session,
+                    &template_memo,
+                    &cancel_signals,
+                    &state.trusted_resolvers,
+                );
             }
             Some(req) = rename_session_rx.recv() => {
                 dispatch_rename_session(req, &tab_to_session);
@@ -3049,6 +3274,7 @@ pub async fn run_acp_client_over_pipe(
                     &event_tx,
                     &shell_mgr,
                     &prompt_timing,
+                    &state.trusted_resolvers,
                     wt_connected,
                     is_agent_pane,
                 );
@@ -3278,6 +3504,7 @@ fn dispatch_load_session(
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    trusted_resolvers: &TrustedResolverMap,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
@@ -3295,6 +3522,7 @@ fn dispatch_load_session(
     let conn = conn.clone();
     let tab_to_session = Arc::clone(tab_to_session);
     let cancel_signals = Arc::clone(cancel_signals);
+    let trusted_resolvers = Arc::clone(trusted_resolvers);
     let event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
         let cwd = req
@@ -3313,6 +3541,7 @@ fn dispatch_load_session(
 
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
+            trusted_resolvers.lock().unwrap().remove(&old_str);
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
             }
@@ -3479,6 +3708,7 @@ fn dispatch_new_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    trusted_resolvers: &TrustedResolverMap,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     is_agent_pane: bool,
     inject_pane_meta: bool,
@@ -3493,6 +3723,7 @@ fn dispatch_new_session(
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
+    let trusted_resolvers = Arc::clone(trusted_resolvers);
     let event_tx = event_tx.clone();
     tokio::task::spawn_local(async move {
         let cwd = req
@@ -3508,6 +3739,7 @@ fn dispatch_new_session(
 
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
+            trusted_resolvers.lock().unwrap().remove(&old_str);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
@@ -3586,6 +3818,7 @@ fn dispatch_drop_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    trusted_resolvers: &TrustedResolverMap,
 ) {
     tracing::info!(
         target: "acp_drop_session",
@@ -3596,6 +3829,7 @@ fn dispatch_drop_session(
     let tab_to_session = Arc::clone(tab_to_session);
     let template_memo = template_memo.clone();
     let cancel_signals = Arc::clone(cancel_signals);
+    let trusted_resolvers = Arc::clone(trusted_resolvers);
     tokio::task::spawn_local(async move {
         let old_sid: Option<acp::schema::v1::SessionId> = {
             let mut g = tab_to_session.lock().await;
@@ -3607,6 +3841,7 @@ fn dispatch_drop_session(
             // to the agent. Mirrors the new_session cancel path, minus the
             // new_session round-trip.
             let old_str = old.to_string();
+            trusted_resolvers.lock().unwrap().remove(&old_str);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
@@ -3634,9 +3869,14 @@ fn dispatch_cancel(
     req: CancelRequest,
     conn: &conn::ClientLink,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    trusted_resolvers: &TrustedResolverMap,
 ) {
     let session_id_str = req.session_id.clone();
     tracing::info!(target: "acp_cancel", session_id = %session_id_str, "cancel requested");
+    trusted_resolvers
+        .lock()
+        .unwrap()
+        .remove(&session_id_str);
     // Local oneshot first — it's the critical path for breaking the
     // spawned prompt task out of conn.prompt().
     if let Some(sig) = cancel_signals.lock().unwrap().remove(&session_id_str) {
@@ -3712,6 +3952,7 @@ fn dispatch_prompt(
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     shell_mgr: &Arc<ShellManager>,
     prompt_timing: &Arc<PromptTimingState>,
+    trusted_resolvers: &TrustedResolverMap,
     wt_connected: bool,
     is_agent_pane: bool,
 ) {
@@ -3739,6 +3980,7 @@ fn dispatch_prompt(
     let event_tx_task = event_tx.clone();
     let shell_mgr_task = Arc::clone(shell_mgr);
     let prompt_timing_task = Arc::clone(prompt_timing);
+    let trusted_resolvers_task = Arc::clone(trusted_resolvers);
     let tab_key_task = tab_key.clone();
 
     tokio::task::spawn_local(dispatch_prompt_body(
@@ -3751,6 +3993,7 @@ fn dispatch_prompt(
         event_tx_task,
         shell_mgr_task,
         prompt_timing_task,
+        trusted_resolvers_task,
         tab_key_task,
         wt_connected,
         is_agent_pane,
@@ -3771,6 +4014,7 @@ async fn dispatch_prompt_body(
     event_tx_task: mpsc::UnboundedSender<AppEvent>,
     shell_mgr_task: Arc<ShellManager>,
     prompt_timing_task: Arc<PromptTimingState>,
+    trusted_resolvers_task: TrustedResolverMap,
     tab_key_task: String,
     wt_connected: bool,
     is_agent_pane: bool,
@@ -3848,7 +4092,22 @@ async fn dispatch_prompt_body(
         .await;
 
     prompt_timing_task.activate(&prompt_session_id_str, &prompt);
-    let (text, prompt_source, prompt_name, resolved_fix_pane) = build_prompt_text(
+    // Register cancellation before the awaited context build. Session
+    // replacement or user cancellation during pane/context resolution must
+    // prevent this turn from later installing resolver trust and sending a
+    // stale prompt.
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    cancel_signals_task
+        .lock()
+        .unwrap()
+        .insert(prompt_session_id_str.clone(), cancel_tx);
+    let (
+        text,
+        prompt_source,
+        prompt_name,
+        resolved_fix_pane,
+        trusted_resolver,
+    ) = build_prompt_text(
         prompt.id,
         prompt.submitted_at_unix_s,
         &prompt.text,
@@ -3859,6 +4118,37 @@ async fn dispatch_prompt_body(
         prompt.pane_context.as_ref(),
     )
     .await;
+    {
+        let mut trusted_resolvers = trusted_resolvers_task.lock().unwrap();
+        if let Some(trusted_resolver) = trusted_resolver {
+            trusted_resolvers.insert(prompt_session_id_str.clone(), trusted_resolver);
+        } else {
+            trusted_resolvers.remove(&prompt_session_id_str);
+        }
+    }
+    if !matches!(
+        cancel_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ) {
+        trusted_resolvers_task
+            .lock()
+            .unwrap()
+            .remove(&prompt_session_id_str);
+        cancel_signals_task
+            .lock()
+            .unwrap()
+            .remove(&prompt_session_id_str);
+        let _ = prompt_timing_task.complete(
+            &prompt_session_id_str,
+            false,
+            Some("cancelled"),
+        );
+        let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
+            session_id: prompt_session_id_str,
+        });
+        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+        return;
+    }
     // A manual `/fix` resolved its working pane in build_prompt_text (it had no
     // explicit source pane). Plumb it back so the App fills the turn's
     // `target_pane_id`; the host fills `Send.parent` from it at execute time.
@@ -3902,15 +4192,6 @@ async fn dispatch_prompt_body(
             TemplateKind::Planner => "Planner",
         },
     );
-
-    // Register a cancel oneshot for this prompt. The cancel
-    // listener picks the sender out by session_id and signals it
-    // when the user presses Ctrl+C.
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    cancel_signals_task
-        .lock()
-        .unwrap()
-        .insert(prompt_session_id_str.clone(), cancel_tx);
 
     // Build the prompt content: the (templated) text block, followed by any
     // images pasted via Alt+V as ACP `ContentBlock::Image` blocks. Images ride
@@ -3963,6 +4244,10 @@ async fn dispatch_prompt_body(
     drop(prompt_fut);
     let _ = cancelled;
 
+    trusted_resolvers_task
+        .lock()
+        .unwrap()
+        .remove(&prompt_session_id_str);
     cancel_signals_task
         .lock()
         .unwrap()
@@ -4561,7 +4846,7 @@ mod tests {
             "is_agent_pane": false,
         }));
         let expected = super::prompt::load_planner_prompt_template();
-        let (prompt, _source, display_name, fix_pane) =
+        let (prompt, _source, display_name, fix_pane, _resolver) =
             super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, true, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
@@ -4589,7 +4874,7 @@ mod tests {
     #[tokio::test]
     async fn build_prompt_text_planner_without_wt_still_includes_resolver() {
         let mgr = crate::shell::ShellManager::new();
-        let (prompt, _source, _display_name, fix_pane) =
+        let (prompt, _source, _display_name, fix_pane, _resolver) =
             super::build_prompt_text(2, 0.0, "explain foo", false, true, &mgr, false, None).await;
         assert!(prompt.contains("### Command Resolver Invocation"));
         assert!(
@@ -4606,7 +4891,7 @@ mod tests {
         let mgr = crate::shell::ShellManager::new();
         let planner = super::prompt::load_planner_prompt_template();
         let autofix = super::prompt::load_autofix_prompt_template();
-        let (prompt, _s, display_name, fix_pane) =
+        let (prompt, _s, display_name, fix_pane, _resolver) =
             super::build_prompt_text(3, 0.0, "fix the build", true, true, &mgr, false, None).await;
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
@@ -4633,7 +4918,7 @@ mod tests {
     #[tokio::test]
     async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
         let mgr = crate::shell::ShellManager::new();
-        let (prompt, _s, _d, _f) =
+        let (prompt, _s, _d, _f, _resolver) =
             super::build_prompt_text(4, 0.0, "   ", true, true, &mgr, false, None).await;
         assert!(
             !prompt.contains("## User Request"),
@@ -4656,7 +4941,7 @@ mod tests {
             !planner.content.trim().is_empty(),
             "test precondition: planner template body is non-empty"
         );
-        let (prompt, _s, _d, _f) =
+        let (prompt, _s, _d, _f, _resolver) =
             super::build_prompt_text(5, 0.0, "hi", false, false, &mgr, true, None).await;
         assert!(
             !prompt.contains(planner.content.trim()),
@@ -4678,7 +4963,7 @@ mod tests {
             "shell": "cmd.exe",
             "is_agent_pane": false,
         }));
-        let (prompt, _s, _d, _f) =
+        let (prompt, _s, _d, _f, _resolver) =
             super::build_prompt_text(6, 0.0, "explain foo", false, true, &mgr, true, None).await;
         assert!(
             prompt.contains("### Command Resolver Invocation"),
@@ -4698,7 +4983,7 @@ mod tests {
             "shell": "wsl:Ubuntu",
             "is_agent_pane": false,
         }));
-        let (prompt, _s, _d, _f) =
+        let (prompt, _s, _d, _f, _resolver) =
             super::build_prompt_text(7, 0.0, "explain foo", false, true, &mgr, true, None).await;
         assert!(
             !prompt.contains("### Command Resolver Invocation"),
@@ -4718,7 +5003,7 @@ mod tests {
             "pid": std::process::id(),
             "is_agent_pane": false,
         }));
-        let (prompt, _s, _d, fix_pane) =
+        let (prompt, _s, _d, fix_pane, _resolver) =
             super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
         assert_eq!(
             fix_pane.as_deref(),
@@ -4745,7 +5030,7 @@ mod tests {
             source_pane_id: Some("explicit-src".to_string()),
             ..Default::default()
         };
-        let (_p, _s, _d, fix_pane) =
+        let (_p, _s, _d, fix_pane, _resolver) =
             super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
         assert!(
             fix_pane.is_none(),
@@ -4785,7 +5070,7 @@ mod tests {
             source_pane_id: Some("src-pane".to_string()),
             ..Default::default()
         };
-        let (prompt, _s, _d, _f) =
+        let (prompt, _s, _d, _f, _resolver) =
             super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
         assert!(prompt.contains("### Shell Context"), "got: {prompt}");
         // The shell-context JSON must carry the SOURCE pane's shell + cwd…
@@ -4945,6 +5230,9 @@ mod tests {
                 event_tx: tx,
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
+                trusted_resolvers: Arc::new(std::sync::Mutex::new(
+                    std::collections::HashMap::new(),
+                )),
             });
             (WtaClient { state }, rx)
         }
