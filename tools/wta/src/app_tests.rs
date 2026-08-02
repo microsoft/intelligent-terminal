@@ -5866,13 +5866,13 @@ fn image_attachment_backspace_in_text_preserves_images() {
 
     let mut app = test_app();
     queue_test_image(&mut app, "screenshot");
-    app.current_tab_mut().insert_input_str("draft");
+    app.current_tab_mut().insert_input_str("hello");
 
     app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
 
     assert_eq!(
         app.current_tab().input,
-        "[image: image-1.png]draf"
+        "[image: image-1.png]hell"
     );
     assert_eq!(app.current_tab().attachments.images().count(), 1);
 }
