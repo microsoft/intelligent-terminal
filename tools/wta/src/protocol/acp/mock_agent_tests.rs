@@ -2112,10 +2112,6 @@ async fn request_permission_resolver_uses_normal_permission_flow() {
     local
         .run_until(async {
             let (client, mut rx) = bare_client();
-            let executable = std::env::current_exe()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
             let req = acp::schema::v1::RequestPermissionRequest::new(
                 acp::schema::v1::SessionId::new("s1"),
                 acp::schema::v1::ToolCallUpdate::new(
@@ -2124,7 +2120,7 @@ async fn request_permission_resolver_uses_normal_permission_flow() {
                         .title("Resolve command")
                         .kind(acp::schema::v1::ToolKind::Execute)
                         .raw_input(Some(serde_json::json!({
-                            "command": executable,
+                            "command": "wta.exe",
                             "args": [
                                 "resolve-command",
                                 "git",

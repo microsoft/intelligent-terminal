@@ -36,6 +36,12 @@ Terminal over the COM protocol; `resolve-command` inspects the user's real,
 shell-context-selected sources (host PATH and, for PowerShell, the
 profile-loaded command environment).
 
+The packaged app registers `wta.exe` as an App Execution Alias. Before spawning
+the host agent, WTA puts the current package family's alias directory first on
+`PATH`; unpackaged builds use the running binary's directory. Agent prompts can
+therefore use short `wta.exe` commands without selecting another installed
+branding or reproducing a protected package path.
+
 ### tmux-like CLI
 
 WTA exposes tmux-equivalent subcommands for controlling Windows Terminal from the shell. Useful for humans and AI agents that can shell out.

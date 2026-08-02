@@ -559,9 +559,9 @@ pub(super) fn default_providers() -> &'static [&'static dyn ContextProvider] {
     ]
 }
 
-/// Planner: a deterministic invocation of this WTA binary's local command
-/// resolver. The absolute path avoids relying on PATH or an App Execution
-/// Alias in the agent CLI's tool environment.
+/// Planner: a deterministic invocation of this WTA installation's local
+/// command resolver through the package execution alias injected into the
+/// agent CLI's PATH.
 struct CommandResolverProvider;
 
 #[derive(Debug)]
@@ -581,28 +581,7 @@ pub(super) fn command_resolver_invocation(
         return None;
     }
 
-    let executable = match std::env::current_exe() {
-        Ok(path) => path,
-        Err(error) => {
-            tracing::warn!(
-                target: "acp.terminal_context",
-                %error,
-                "command_resolver_current_exe_failed"
-            );
-            return None;
-        }
-    };
-    let executable = match executable.into_os_string().into_string() {
-        Ok(path) => path,
-        Err(path) => {
-            tracing::warn!(
-                target: "acp.terminal_context",
-                path = ?path,
-                "command_resolver_path_not_unicode"
-            );
-            return None;
-        }
-    };
+    let executable = "wta.exe".to_string();
 
     let mut shell = planner_shell.unwrap_or("unknown").to_string();
     if crate::command_recall::is_powershell(&shell) && !std::path::Path::new(&shell).is_absolute() {
@@ -1054,6 +1033,22 @@ mod tests {
             ..req_planner(&mgr, true)
         };
         assert!(!CommandResolverProvider.applies(&autofix));
+    }
+
+    #[test]
+    fn command_resolver_uses_short_wta_execution_alias() {
+        let invocation = command_resolver_invocation(false, Some("cmd.exe"), None).unwrap();
+
+        assert_eq!(invocation.executable, "wta.exe");
+        assert_eq!(invocation.shell, "cmd.exe");
+        assert_eq!(
+            crate::resolve_command::powershell_invocation(
+                &invocation.executable,
+                &invocation.shell,
+                "git",
+            ),
+            "& 'wta.exe' resolve-command 'git' --shell 'cmd.exe' --json"
+        );
     }
 
     #[test]

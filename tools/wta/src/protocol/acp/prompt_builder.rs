@@ -428,13 +428,11 @@ mod tests {
         );
         assert!(
             built_prompt.contains("### Command Resolver Invocation"),
-            "planner must ship the absolute resolver contract"
+            "planner must ship the resolver contract"
         );
-        let current_exe = std::env::current_exe().unwrap();
-        let escaped_current_exe = current_exe.to_string_lossy().replace('\\', "\\\\");
         assert!(
-            built_prompt.contains(&escaped_current_exe),
-            "resolver contract must contain the current executable"
+            built_prompt.contains(r#""executable": "wta.exe""#),
+            "resolver contract must use the short WTA execution alias"
         );
         assert!(
             built_prompt.contains("## User Request\nlist files"),

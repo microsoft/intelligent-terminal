@@ -93,6 +93,12 @@ helpers such as `resolve-command`, which inspect machine state directly. Used by
 humans debugging WTA and by agents that can shell out. (The agent CLI reaches WT
 this way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
 
+Packaged builds register `wta.exe` as an App Execution Alias. WTA prepends the
+current package family's alias directory to the agent process `PATH`, so a short
+`wta.exe` invocation selects the matching Dev, Preview, or Store installation
+even when multiple variants are installed. Unpackaged builds prepend the
+running executable's directory instead.
+
 ---
 
 ## Architecture diagram
