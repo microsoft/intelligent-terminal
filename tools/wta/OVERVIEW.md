@@ -84,12 +84,12 @@ wta split-pane -h                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
 wta hooks install                         # install the agent-hook bridge
-wta resolve-command which --json          # resolve from PATH + applicable shell-specific sources
+wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 ```
 
 Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
 to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit, except local
-helpers such as `resolve-command`, which inspect machine state directly. Used by
+helpers such as `resolve-command`, which inspect cwd and machine state directly. Used by
 humans debugging WTA and by agents that can shell out. (The agent CLI reaches WT
 this way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
 

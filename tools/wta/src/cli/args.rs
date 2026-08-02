@@ -238,6 +238,9 @@ pub(crate) enum Command {
         /// Active shell identity; PowerShell hosts also load their user profile
         #[arg(long, default_value = "pwsh.exe", value_parser = resolve_command::parse_non_empty)]
         shell: String,
+        /// Working directory to inspect
+        #[arg(long)]
+        cwd: Option<std::path::PathBuf>,
     },
     /// Create a new tab
     #[command(alias = "neww")]

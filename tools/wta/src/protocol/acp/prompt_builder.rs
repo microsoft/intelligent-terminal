@@ -441,6 +441,23 @@ mod tests {
         assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
     }
 
+    #[tokio::test]
+    async fn build_prompt_text_resolver_uses_active_pane_cwd() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "work-pane",
+            "shell": "cmd.exe",
+            "cwd": "C:\\workspace",
+            "is_agent_pane": false,
+        }));
+
+        let (built_prompt, _source, _display_name, fix_pane) =
+            build_prompt_text(8, 0.0, "inspect local-tool", false, true, &mgr, true, None).await;
+
+        assert!(built_prompt.contains(r#""--cwd""#));
+        assert!(built_prompt.contains(r#""C:\\workspace""#));
+        assert!(fix_pane.is_none());
+    }
+
     /// An autofix turn loads the *autofix* persona (not the planner), appends a
     /// non-empty hint as a User Request, and omits planner-only sections.
     #[tokio::test]

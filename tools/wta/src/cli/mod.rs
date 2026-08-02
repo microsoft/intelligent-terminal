@@ -26,8 +26,8 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         | Command::PipeId
         | Command::SetEnv { .. }
         | Command::Listen { .. }) => wt::run(command, json_mode).await,
-        Command::ResolveCommand { token, shell } => {
-            let result = crate::resolve_command::resolve(&token, &shell).await;
+        Command::ResolveCommand { token, shell, cwd } => {
+            let result = crate::resolve_command::resolve(&token, &shell, cwd.as_deref()).await;
             if json_mode {
                 println!("{}", serde_json::to_string_pretty(&result)?);
             } else {

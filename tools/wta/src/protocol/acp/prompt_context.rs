@@ -568,6 +568,7 @@ struct CommandResolverProvider;
 pub(super) struct CommandResolverInvocation {
     executable: String,
     shell: String,
+    cwd: Option<String>,
 }
 
 pub(super) fn command_resolver_invocation(
@@ -582,6 +583,11 @@ pub(super) fn command_resolver_invocation(
     }
 
     let executable = "wta.exe".to_string();
+    let cwd = planner_pane
+        .and_then(|pane| pane.get("cwd"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|cwd| !cwd.is_empty())
+        .map(str::to_string);
 
     let mut shell = planner_shell.unwrap_or("unknown").to_string();
     if crate::command_recall::is_powershell(&shell) && !std::path::Path::new(&shell).is_absolute() {
@@ -596,7 +602,11 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(CommandResolverInvocation { executable, shell })
+    Some(CommandResolverInvocation {
+        executable,
+        shell,
+        cwd,
+    })
 }
 
 #[async_trait]
@@ -616,22 +626,41 @@ impl ContextProvider for CommandResolverProvider {
         let invocation = req.command_resolver_invocation?;
         let executable = &invocation.executable;
         let shell = &invocation.shell;
-        let powershell = crate::resolve_command::powershell_invocation(executable, shell, "<name>");
+        let cwd = invocation.cwd.as_deref();
+        let powershell =
+            crate::resolve_command::powershell_invocation(executable, shell, "<name>", cwd);
+        let mut arguments = vec![
+            "resolve-command".to_string(),
+            "<name>".to_string(),
+            "--shell".to_string(),
+            shell.to_string(),
+        ];
+        if let Some(cwd) = cwd {
+            arguments.extend(["--cwd".to_string(), cwd.to_string()]);
+        }
+        arguments.push("--json".to_string());
         let contract = serde_json::json!({
             "executable": executable,
-            "arguments": ["resolve-command", "<name>", "--shell", shell, "--json"],
+            "arguments": arguments,
             "powershell": powershell,
         });
         let contract = serde_json::to_string_pretty(&contract).ok()?;
+        let cwd_instruction = if cwd.is_some() {
+            "Keep the injected `--cwd` value unchanged so resolution uses the \
+             active pane's working directory. "
+        } else {
+            ""
+        };
         Some(ContextSection {
             heading: "Command Resolver Invocation",
             body: format!(
                 "Replace `<name>` with the command name as one argument. Prefer \
                  invoking `executable` with each `arguments` entry as a separate \
-                 argv. Use `powershell` only when the tool executes a PowerShell \
+                 argv. {}Use `powershell` only when the tool executes a PowerShell \
                  command string; replace `<name>` inside its existing \
                  single quotes and double every embedded `'` in the command name.\n\
                  ```json\n{}\n```",
+                cwd_instruction,
                 contract
             ),
         })
@@ -1041,13 +1070,34 @@ mod tests {
 
         assert_eq!(invocation.executable, "wta.exe");
         assert_eq!(invocation.shell, "cmd.exe");
+        assert!(invocation.cwd.is_none());
         assert_eq!(
             crate::resolve_command::powershell_invocation(
                 &invocation.executable,
                 &invocation.shell,
                 "git",
+                invocation.cwd.as_deref(),
             ),
             "& 'wta.exe' resolve-command 'git' --shell 'cmd.exe' --json"
+        );
+    }
+
+    #[test]
+    fn command_resolver_binds_active_pane_working_directory() {
+        let pane = serde_json::json!({ "cwd": "C:\\workspace" });
+        let invocation =
+            command_resolver_invocation(false, Some("pwsh.exe"), Some(&pane)).unwrap();
+
+        assert_eq!(invocation.cwd.as_deref(), Some("C:\\workspace"));
+        assert_eq!(
+            crate::resolve_command::powershell_invocation(
+                &invocation.executable,
+                &invocation.shell,
+                "deploy-it",
+                invocation.cwd.as_deref(),
+            ),
+            "& 'wta.exe' resolve-command 'deploy-it' --shell 'pwsh.exe' \
+             --cwd 'C:\\workspace' --json"
         );
     }
 

@@ -2126,6 +2126,8 @@ async fn request_permission_resolver_uses_normal_permission_flow() {
                                 "git",
                                 "--shell",
                                 "cmd.exe",
+                                "--cwd",
+                                r"C:\workspace",
                                 "--json"
                             ],
                         }))),
