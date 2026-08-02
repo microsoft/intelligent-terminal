@@ -105,9 +105,9 @@ pub(crate) async fn build_prompt_text(
     // Autofix turns resolve the failing pane, its canonical shell, and its last
     // output once; the providers below borrow these from the `ContextRequest`.
     // Planner turns need none of it (their providers query the shell manager
-    // directly). Resolving here also keeps the `resolved_fix_pane` side-output
-    // out of the provider chain. For a manual `/fix`, that side-output is the
-    // active working pane; the App uses it to fill `AutofixContext.target_pane_id`.
+    // directly). Resolving here also keeps the authoritative target pane
+    // side-output out of the provider chain. The App binds it to the matching
+    // turn context before any recommendation can execute.
     let resolved_context =
         prompt_context::resolve_provider_context(is_autofix, wt_connected, shell_mgr, pane_context)
             .await;

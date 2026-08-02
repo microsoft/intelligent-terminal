@@ -4394,7 +4394,7 @@ fn submit_test_prompt(app: &mut App, text: &str) {
         id: 42,
         text: text.into(),
         submitted_at_unix_s: 0.0,
-        target_pane_id: None,
+        context: TurnContext::default(),
         autofix: None,
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
@@ -4653,7 +4653,7 @@ fn permission_request_keeps_thinking_until_turn_ends() {
         id: 1,
         text: "test".into(),
         submitted_at_unix_s: 0.0,
-        target_pane_id: None,
+        context: TurnContext::default(),
         autofix: None,
     };
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
@@ -5856,7 +5856,7 @@ fn render_recommendation_card_shows_command() {
             id: 1,
             text: "fix it".into(),
             submitted_at_unix_s: 0.0,
-            target_pane_id: None,
+            context: TurnContext::default(),
             autofix: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
@@ -6068,11 +6068,8 @@ fn submit_autofix_prompt(app: &mut App, pane: &str) {
         id: 99,
         text: "diagnose this".into(),
         submitted_at_unix_s: 0.0,
-        target_pane_id: Some(pane.into()),
-        autofix: Some(AutofixContext {
-            target_pane_id: pane.into(),
-            generation: gen,
-        }),
+        context: TurnContext::with_target_pane(pane),
+        autofix: Some(AutofixContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -6090,11 +6087,8 @@ fn submit_fix_prompt(app: &mut App, id: u64) {
         id,
         text: String::new(),
         submitted_at_unix_s: 0.0,
-        target_pane_id: None,
-        autofix: Some(AutofixContext {
-            target_pane_id: String::new(),
-            generation: gen,
-        }),
+        context: TurnContext::default(),
+        autofix: Some(AutofixContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -6104,11 +6098,10 @@ fn fix_target_pane(app: &App) -> String {
         .turn
         .prompt()
         .unwrap()
-        .autofix
-        .as_ref()
-        .unwrap()
+        .context
         .target_pane_id
         .clone()
+        .unwrap_or_default()
 }
 
 #[test]
@@ -6133,6 +6126,7 @@ fn fix_target_pane_is_late_bound_by_prompt_id() {
             .turn
             .prompt()
             .unwrap()
+            .context
             .target_pane_id
             .as_deref(),
         Some("pane-7")
@@ -6147,10 +6141,9 @@ fn manual_fix_uses_the_helpers_captured_source_target() {
     app.cmd_fix(false, String::new());
 
     let prompt = app.current_tab().turn.prompt().unwrap();
-    assert_eq!(prompt.target_pane_id.as_deref(), Some("captured-source-pane"));
     assert_eq!(
-        prompt.autofix.as_ref().unwrap().target_pane_id,
-        "captured-source-pane"
+        prompt.context.target_pane_id.as_deref(),
+        Some("captured-source-pane")
     );
 }
 
@@ -6167,6 +6160,7 @@ fn prompt_target_binding_survives_tab_rename() {
             .turn
             .prompt()
             .unwrap()
+            .context
             .target_pane_id
             .as_deref(),
         Some("pane-7")
@@ -6560,7 +6554,7 @@ fn install_recs(app: &mut App, choices: Vec<RecommendationChoice>) {
             id: 1,
             text: "p".into(),
             submitted_at_unix_s: 0.0,
-            target_pane_id: None,
+            context: TurnContext::default(),
             autofix: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
@@ -7193,17 +7187,16 @@ fn stage_surfaced_recommendation(
     app: &mut App,
     choices: Vec<crate::coordinator::RecommendationChoice>,
     selected: usize,
-    autofix_target: Option<&str>,
+    target_pane_id: Option<&str>,
 ) {
     let prompt = SubmittedPrompt {
         id: 1,
         text: "p".into(),
         submitted_at_unix_s: 0.0,
-        target_pane_id: autofix_target.map(str::to_string),
-        autofix: autofix_target.map(|t| AutofixContext {
-            target_pane_id: t.into(),
-            generation: 0,
-        }),
+        context: TurnContext {
+            target_pane_id: target_pane_id.map(str::to_string),
+        },
+        autofix: target_pane_id.map(|_| AutofixContext { generation: 0 }),
     };
     let recs = crate::coordinator::RecommendationSet {
         recommended_choice: Some(selected),
@@ -7253,17 +7246,17 @@ fn chip_target_returns_none_when_idle() {
 }
 
 #[test]
-fn chip_target_uses_send_parent_when_set() {
+fn chip_target_uses_turn_context_instead_of_model_parent() {
     let mut app = test_app();
     stage_surfaced_recommendation(
         &mut app,
         vec![send_choice("pane-A", "ls")],
         0,
-        None,
+        Some("pane-host"),
     );
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
 }
 
@@ -7314,16 +7307,16 @@ fn chip_target_tracks_selected_index() {
         &mut app,
         vec![send_choice("pane-A", "ls"), send_choice("pane-B", "pwd")],
         0,
-        None,
+        Some("pane-host"),
     );
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
     app.current_tab_mut().selected_recommendation = 1;
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-B".to_string()),
+        Some("pane-host".to_string()),
     );
 }
 
@@ -7338,12 +7331,12 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
         &mut app,
         vec![send_choice("pane-A", "ls")],
         0,
-        None,
+        Some("pane-host"),
     );
     app.recompute_chip_override(DEFAULT_TAB_ID);
     assert_eq!(
         app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
 
     // Drop the surfaced state — chip target now resolves to None and

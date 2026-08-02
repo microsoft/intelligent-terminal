@@ -8,6 +8,7 @@ use tokio::time::{sleep, Duration};
 
 use crate::app_contracts::AppEvent;
 use crate::shell::ShellManager;
+use crate::turn_context::TurnContext;
 
 use crate::agent_registry::{self, PromptFlag};
 
@@ -107,8 +108,8 @@ pub struct ChoiceExecution {
     pub choice: RecommendationChoice,
     /// When true, Send actions paste text without a trailing Enter (insert-only).
     pub insert_only: bool,
-    /// Host-resolved pane associated with the prompt that produced this choice.
-    pub target_pane_id: Option<String>,
+    /// Host-owned context associated with the turn that produced this choice.
+    pub context: TurnContext,
 }
 
 pub fn default_supported_delegate_agents() -> Vec<SupportedDelegateAgent> {
@@ -295,7 +296,10 @@ pub async fn run_recommendation_executor(
 ) {
     while let Some(mut exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
-        let result = match bind_choice_target(&mut exec.choice, exec.target_pane_id.as_deref()) {
+        let result = match bind_choice_target(
+            &mut exec.choice,
+            exec.context.target_pane_id.as_deref(),
+        ) {
             Ok(()) => {
                 execute_choice(
                     &exec.choice,

@@ -338,15 +338,6 @@ impl TabSession {
         }
         let recs = self.turn.recommendations()?;
         let choice = recs.choices.get(self.selected_recommendation)?;
-        let send_parent = choice.actions.iter().find_map(|action| match action {
-            crate::coordinator::RecommendedAction::Send { parent, .. } if !parent.is_empty() => {
-                Some(parent.clone())
-            }
-            _ => None,
-        });
-        if send_parent.is_some() {
-            return send_parent;
-        }
         if choice
             .actions
             .iter()
@@ -355,9 +346,7 @@ impl TabSession {
             return self
                 .turn
                 .prompt()
-                .and_then(|prompt| prompt.autofix.as_ref())
-                .map(|autofix| autofix.target_pane_id.clone())
-                .filter(|pane_id| !pane_id.is_empty());
+                .and_then(|prompt| prompt.context.target_pane_id().map(str::to_string));
         }
         None
     }

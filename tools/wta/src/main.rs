@@ -39,6 +39,7 @@ mod telemetry;
 mod test_support;
 mod text_selection;
 mod theme;
+mod turn_context;
 mod ui;
 mod ui_trace;
 mod win32;

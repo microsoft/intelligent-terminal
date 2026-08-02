@@ -65,6 +65,7 @@ pub use tab_state::{
     RecommendationFocus, Scroll, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
+pub use crate::turn_context::TurnContext;
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
 //
@@ -4386,8 +4387,8 @@ impl App {
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
     /// there is no failing-pane notification, so (1) the helper's captured
     /// source pane is resolved in the ACP client task; and
-    /// (2) `target_pane_id` starts empty and is late-bound once the client task
-    /// resolves that working pane (`AppEvent::PromptTargetResolved` →
+    /// (2) the turn context starts without a target and is late-bound once
+    /// the client task resolves that working pane (`AppEvent::PromptTargetResolved` →
     /// `apply_prompt_target_resolved`), so `turn_execute_card` fills
     /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
     /// armed — that UI is tied to a specific failing pane, and a command typed
@@ -4432,13 +4433,12 @@ impl App {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
-            target_pane_id: source_pane_id.clone(),
-            autofix: Some(AutofixContext {
+            context: TurnContext {
                 // Normally captured when the helper starts. If unavailable,
                 // the ACP client resolves the active source and late-binds it.
-                target_pane_id: source_pane_id.unwrap_or_default(),
-                generation,
-            }),
+                target_pane_id: source_pane_id,
+            },
+            autofix: Some(AutofixContext { generation }),
         };
         tracing::info!(
             target: "slash_cmd",
@@ -4494,10 +4494,7 @@ impl App {
         if prompt.id != prompt_id {
             return;
         }
-        prompt.target_pane_id = Some(pane_id.clone());
-        if let Some(autofix) = prompt.autofix.as_mut() {
-            autofix.target_pane_id = pane_id.clone();
-        }
+        prompt.context.target_pane_id = Some(pane_id.clone());
         tracing::info!(
             target: "pane_routing",
             tab = %key,

@@ -844,7 +844,7 @@ impl App {
                         id: prompt.id,
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
-                        target_pane_id: None,
+                        context: TurnContext::default(),
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);
