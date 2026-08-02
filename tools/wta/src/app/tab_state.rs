@@ -256,9 +256,7 @@ pub struct TabSession {
     pub input: String,
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
-    /// Images captured from the clipboard via Alt+V, waiting to be sent with
-    /// the next prompt.
-    pub pending_images: Vec<crate::clipboard_image::PastedImage>,
+    pub(crate) attachments: super::attachments::PendingAttachments,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
     pub paste_pending: bool,
@@ -374,7 +372,8 @@ impl TabSession {
         self.selection_visible_pending = false;
         self.turn = TurnState::Idle;
         self.clear_recommendations();
-        self.pending_images.clear();
+        self.attachments
+            .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
     }

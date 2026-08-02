@@ -5,6 +5,7 @@ pub const USER_PROMPT: Style = Style::new().fg(Color::DarkGray);
 // Tracks the scheme foreground now that INPUT_BG is the scheme background —
 // a hardcoded white would be invisible in the box on a light scheme (#234).
 pub const INPUT_TEXT: Style = Style::new().fg(Color::Reset);
+pub const ATTACHMENT_TOKEN: Style = Style::new().fg(Color::Cyan);
 // Default foreground (Color::Reset) so the agent's reply text tracks the
 // pane's color scheme — light text on dark schemes, dark text on light
 // schemes. A hardcoded white was invisible on light color schemes (#234).

@@ -5813,30 +5813,215 @@ fn alt_v_without_image_capability_shows_not_supported_message() {
         "Alt+V without image capability must push the not-supported message"
     );
     assert!(
-        tab.pending_images.is_empty(),
+        tab.attachments.is_empty(),
         "no image should be queued when the capability is missing"
     );
 }
 
-/// Render: queued Alt+V images surface as the input-box title so the user
-/// can see what will be sent.
+/// Render: queued Alt+V images appear inline with the draft instead of being
+/// pinned to the input-box border.
 #[test]
-fn input_box_titles_queued_images() {
+fn input_box_renders_queued_image_inline() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.current_tab_mut()
-        .pending_images
-        .push(crate::clipboard_image::PastedImage {
-            data_base64: "AAA=".into(),
-            mime_type: "image/png".into(),
-            label: "screenshot".into(),
-        });
+    queue_test_image(&mut app, "screenshot");
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("screenshot"),
-        "the input box must title queued images; rendered:\n{text}"
+        text.contains("[image: image-1.png]"),
+        "the input box must render the attachment token inline; rendered:\n{text}"
     );
+}
+
+fn queue_test_image(app: &mut App, label: &str) {
+    app.current_tab_mut()
+        .insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "AAA=".into(),
+            mime_type: "image/png".into(),
+            label: label.into(),
+        });
+}
+
+#[test]
+fn image_attachment_backspace_at_input_start_removes_last_image() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "first");
+    queue_test_image(&mut app, "second");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "[image: first.png]");
+    assert_eq!(app.current_tab().attachments.images().count(), 1);
+    assert_eq!(
+        app.current_tab().attachments.images().next().unwrap().label,
+        "first"
+    );
+}
+
+#[test]
+fn image_attachment_backspace_in_text_preserves_images() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str("draft");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+    assert_eq!(
+        app.current_tab().input,
+        "[image: image-1.png]draf"
+    );
+    assert_eq!(app.current_tab().attachments.images().count(), 1);
+}
+
+#[test]
+fn image_attachment_left_and_right_skip_the_whole_inline_token() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    let token_len = app.current_tab().input.len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, 0);
+
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, token_len);
+}
+
+#[test]
+fn image_attachment_generated_names_are_unique_per_tab() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "image");
+    queue_test_image(&mut app, "image");
+
+    assert_eq!(
+        app.current_tab().input,
+        "[image: image-1.png][image: image-2.png]"
+    );
+}
+
+#[test]
+fn image_attachment_delete_at_token_start_removes_the_whole_token() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().cursor_pos = 0;
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_submission_strips_token_from_prompt_text() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str("describe this");
+
+    let display_text = std::mem::take(&mut app.current_tab_mut().input);
+    let (prompt_text, images) = app
+        .current_tab_mut()
+        .attachments
+        .take_for_submission(display_text.clone());
+
+    assert_eq!(display_text, "[image: image-1.png]describe this");
+    assert_eq!(prompt_text, "describe this");
+    assert_eq!(images.len(), 1);
+}
+
+#[test]
+fn image_attachment_ctrl_backspace_crossing_token_removes_it_atomically() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("before ");
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str(" after");
+
+    app.handle_key(KeyEvent::new(
+        KeyCode::Backspace,
+        KeyModifiers::CONTROL,
+    ));
+    app.handle_key(KeyEvent::new(
+        KeyCode::Backspace,
+        KeyModifiers::CONTROL,
+    ));
+
+    assert_eq!(app.current_tab().input, "before ");
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_submission_preserves_visual_image_order() {
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("a");
+    queue_test_image(&mut app, "first");
+    app.current_tab_mut().insert_input_str("b");
+    queue_test_image(&mut app, "second");
+    app.current_tab_mut().insert_input_str("c");
+
+    let display_text = std::mem::take(&mut app.current_tab_mut().input);
+    let (prompt_text, images) = app
+        .current_tab_mut()
+        .attachments
+        .take_for_submission(display_text);
+
+    assert_eq!(prompt_text, "abc");
+    assert_eq!(
+        images
+            .iter()
+            .map(|image| image.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "second"]
+    );
+}
+
+#[test]
+fn image_attachment_session_reset_removes_tokens_but_preserves_draft_text() {
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("before ");
+    queue_test_image(&mut app, "image");
+    app.current_tab_mut().insert_input_str(" after");
+
+    app.current_tab_mut().clear_chat_history();
+
+    assert_eq!(app.current_tab().input, "before  after");
+    assert_eq!(app.current_tab().cursor_pos, "before  after".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_escape_clears_the_whole_draft() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.current_tab_mut().input = "draft".into();
+    app.current_tab_mut().cursor_pos = "draft".len();
+    queue_test_image(&mut app, "screenshot");
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_ctrl_c_clears_image_only_draft_without_arming_close() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert!(app.current_tab().attachments.is_empty());
+    assert!(app.close_pane_armed_at.is_none());
 }
 
 

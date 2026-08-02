@@ -602,9 +602,13 @@ impl App {
                         .push(ChatMessage::System(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                     self.close_pane_armed_at = None;
-                } else if !self.current_tab().input.is_empty() {
-                    // Mirror bash readline: Ctrl+C clears the buffer.
-                    self.current_tab_mut().clear_input();
+                } else if !self.current_tab().input.is_empty()
+                    || !self.current_tab().attachments.is_empty()
+                {
+                    // Mirror bash readline: Ctrl+C clears the whole draft,
+                    // including any queued image attachments.
+                    let tab = self.current_tab_mut();
+                    tab.clear_input();
                     self.close_pane_armed_at = None;
                 } else {
                     // Idle + empty input. First press arms; second press
@@ -770,7 +774,7 @@ impl App {
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
                 if (!self.current_tab().input.is_empty()
-                    || !self.current_tab().pending_images.is_empty())
+                    || !self.current_tab().attachments.is_empty())
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -784,10 +788,9 @@ impl App {
                         return;
                     }
                     let tab = self.current_tab_mut();
-                    let text = std::mem::take(&mut tab.input);
+                    let display_text = std::mem::take(&mut tab.input);
+                    let (text, images) = tab.attachments.take_for_submission(display_text.clone());
                     tab.record_input_history(&text);
-                    // Drain any Alt+V images queued for this prompt.
-                    let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
                     tab.refresh_command_popup();
                     // `session_id` may be None on a brand-new tab whose ACP
@@ -808,25 +811,6 @@ impl App {
                         window_id: self.window_id.clone(),
                         cwd: self.source_cwd.clone(),
                         source_pane_id: None,
-                    };
-                    // The echoed user message shows a marker for each queued
-                    // image; the ACP text block stays raw (the image rides as a
-                    // separate ContentBlock::Image).
-                    let display_text = if images.is_empty() {
-                        text.clone()
-                    } else {
-                        let items = images
-                            .iter()
-                            .enumerate()
-                            .map(|(i, im)| format!("[{}] {}", i + 1, im.label))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        let marker = t!("input.image_attachments", items = items).into_owned();
-                        if text.is_empty() {
-                            marker
-                        } else {
-                            format!("{text}\n{marker}")
-                        }
                     };
                     let prompt =
                         PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
