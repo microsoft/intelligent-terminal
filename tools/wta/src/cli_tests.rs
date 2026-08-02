@@ -421,8 +421,6 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
     );
 }
 
-// `wta delegate`'s own launchability semantics (explicit
-// `--delegate-source`, never auto-routed) are covered by the module-private
-// tests in `cli/delegate.rs`, alongside its `parse_delegate_source` /
-// `select_wsl_delegate_cwd` coverage.
-
+// `wta delegate`'s own launch checks (explicit `--delegate-source`, never
+// auto-routed) are covered by the module-private tests in `cli/delegate.rs`,
+// alongside its `parse_delegate_source` / `select_wsl_delegate_cwd` coverage.
