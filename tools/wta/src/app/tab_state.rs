@@ -374,6 +374,7 @@ impl TabSession {
         self.clear_recommendations();
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
+        self.clear_history_draft_attachments();
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
     }

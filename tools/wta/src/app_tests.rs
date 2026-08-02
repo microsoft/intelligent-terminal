@@ -5893,7 +5893,7 @@ fn image_attachment_left_and_right_skip_the_whole_inline_token() {
 }
 
 #[test]
-fn image_attachment_generated_names_are_unique_per_tab() {
+fn image_attachment_generated_clipboard_names_are_unique_per_tab() {
     let mut app = test_app();
     queue_test_image(&mut app, "image");
     queue_test_image(&mut app, "image");
@@ -5993,6 +5993,21 @@ fn image_attachment_session_reset_removes_tokens_but_preserves_draft_text() {
 
     assert_eq!(app.current_tab().input, "before  after");
     assert_eq!(app.current_tab().cursor_pos, "before  after".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_session_reset_clears_attachments_stashed_by_history_navigation() {
+    let mut app = test_app();
+    app.current_tab_mut().record_input_history("previous prompt");
+    app.current_tab_mut().insert_input_str("draft ");
+    queue_test_image(&mut app, "image");
+    app.current_tab_mut().navigate_input_history_older();
+
+    app.current_tab_mut().clear_chat_history();
+    app.current_tab_mut().navigate_input_history_newer();
+
+    assert_eq!(app.current_tab().input, "draft ");
     assert!(app.current_tab().attachments.is_empty());
 }
 

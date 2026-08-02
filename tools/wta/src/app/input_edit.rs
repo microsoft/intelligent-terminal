@@ -225,6 +225,12 @@ impl TabSession {
         self.input_history.draft = None;
     }
 
+    pub(super) fn clear_history_draft_attachments(&mut self) {
+        if let Some((input, cursor_pos, attachments)) = self.input_history.draft.as_mut() {
+            attachments.remove_tokens_from_input(input, cursor_pos);
+        }
+    }
+
     /// Recompute the slash-command popup candidates from the current
     /// input. Called after every input mutation. Clamps the selected
     /// index so it stays valid when the candidate list shrinks.

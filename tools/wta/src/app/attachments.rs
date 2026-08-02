@@ -58,7 +58,7 @@ impl PendingAttachments {
         };
         let range = self.images[index].token_range.clone();
         input.replace_range(range.clone(), "");
-        self.remove_index_and_shift(index, range.end);
+        self.on_text_deleted(range.clone());
         *cursor_pos = range.start;
         true
     }
@@ -73,7 +73,7 @@ impl PendingAttachments {
         };
         let range = self.images[index].token_range.clone();
         input.replace_range(range.clone(), "");
-        self.remove_index_and_shift(index, range.end);
+        self.on_text_deleted(range);
         true
     }
 
@@ -167,16 +167,6 @@ impl PendingAttachments {
         (input, images)
     }
 
-    fn remove_index_and_shift(&mut self, index: usize, removed_end: usize) {
-        let byte_len = self.images[index].token_range.len();
-        self.images.remove(index);
-        for pending in &mut self.images {
-            if pending.token_range.start >= removed_end {
-                pending.token_range.start -= byte_len;
-                pending.token_range.end -= byte_len;
-            }
-        }
-    }
 }
 
 fn image_display_name(image: &PastedImage, image_id: usize) -> String {
