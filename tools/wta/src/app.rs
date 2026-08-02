@@ -4510,10 +4510,7 @@ impl App {
     /// invalid input reopens the position completion popup.
     fn cmd_move(&mut self, position: String) {
         let Some(position) = commands::lookup_move_position(&position) else {
-            let tab = self.current_tab_mut();
-            tab.input = "/move ".to_string();
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
+            self.current_tab_mut().replace_input("/move ".to_string());
             return;
         };
 

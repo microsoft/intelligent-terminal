@@ -5818,6 +5818,19 @@ fn alt_v_without_image_capability_shows_not_supported_message() {
     );
 }
 
+#[test]
+fn replacing_input_clears_attachments() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+
+    app.current_tab_mut()
+        .replace_input("/move ".to_string());
+
+    assert_eq!(app.current_tab().input, "/move ");
+    assert_eq!(app.current_tab().cursor_pos, "/move ".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
 /// Render: queued Alt+V images appear inline with the draft instead of being
 /// pinned to the input-box border.
 #[test]

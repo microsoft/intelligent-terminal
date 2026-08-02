@@ -22,6 +22,14 @@ impl TabSession {
         self.refresh_command_popup();
     }
 
+    pub fn replace_input(&mut self, input: String) {
+        self.reset_input_history_navigation();
+        self.input = input;
+        self.cursor_pos = self.input.len();
+        self.attachments.clear();
+        self.refresh_command_popup();
+    }
+
     pub fn insert_input_char(&mut self, ch: char) {
         self.reset_input_history_navigation();
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
