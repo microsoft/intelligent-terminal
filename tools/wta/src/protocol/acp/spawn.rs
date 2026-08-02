@@ -245,13 +245,11 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     if let Some(base_path) = base_path.as_ref() {
         cmd.env("PATH", base_path);
     }
-    match wta_cli_location().and_then(|(directory, executable)| {
+    match wta_cli_directory().and_then(|directory| {
         prepend_directory_to_path(&directory, base_path.as_deref().unwrap_or_default())
-            .map(|path| (path, executable))
     }) {
-        Ok((path, executable)) => {
+        Ok(path) => {
             cmd.env("PATH", path);
-            cmd.env("WTA_CLI_PATH", executable);
         }
         Err(error) => {
             tracing::warn!(
@@ -326,39 +324,36 @@ pub(crate) fn spawn_agent_process(agent_cmd: &str, cwd: Option<&Path>) -> Result
     })
 }
 
-fn wta_cli_location() -> Result<(PathBuf, PathBuf)> {
+fn wta_cli_directory() -> Result<PathBuf> {
     let package_family = crate::runtime_paths::current_package_family_name();
     let local_app_data = std::env::var_os("LOCALAPPDATA");
     let current_exe =
         std::env::current_exe().context("failed to resolve the running wta executable")?;
-    wta_cli_location_for(
+    wta_cli_directory_for(
         package_family.as_deref(),
         local_app_data.as_deref(),
         &current_exe,
     )
 }
 
-fn wta_cli_location_for(
+fn wta_cli_directory_for(
     package_family: Option<&std::ffi::OsStr>,
     local_app_data: Option<&std::ffi::OsStr>,
     current_exe: &Path,
-) -> Result<(PathBuf, PathBuf)> {
+) -> Result<PathBuf> {
     if let Some(package_family) = package_family {
         let local_app_data = local_app_data
             .context("LOCALAPPDATA is required to resolve the packaged wta execution alias")?;
-        let directory = PathBuf::from(local_app_data)
+        return Ok(PathBuf::from(local_app_data)
             .join("Microsoft")
             .join("WindowsApps")
-            .join(package_family);
-        let executable = directory.join("wta.exe");
-        return Ok((directory, executable));
+            .join(package_family));
     }
 
-    let directory = current_exe
+    current_exe
         .parent()
         .map(Path::to_path_buf)
-        .context("running wta executable has no parent directory")?;
-    Ok((directory, current_exe.to_path_buf()))
+        .context("running wta executable has no parent directory")
 }
 
 fn prepend_directory_to_path(
@@ -491,7 +486,7 @@ mod tests {
 
     #[test]
     fn packaged_wta_cli_uses_package_specific_execution_alias() {
-        let (directory, executable) = wta_cli_location_for(
+        let directory = wta_cli_directory_for(
             Some(std::ffi::OsStr::new("IntelligentTerminal_test")),
             Some(std::ffi::OsStr::new(r"C:\Users\test\AppData\Local")),
             Path::new(r"C:\Program Files\WindowsApps\package\wta.exe"),
@@ -504,17 +499,14 @@ mod tests {
                 r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\IntelligentTerminal_test"
             )
         );
-        assert_eq!(executable, directory.join("wta.exe"));
     }
 
     #[test]
     fn unpackaged_wta_cli_uses_running_executable_directory() {
         let current_exe = Path::new(r"C:\src\wta\target\debug\wta.exe");
-        let (directory, executable) =
-            wta_cli_location_for(None, None, current_exe).unwrap();
+        let directory = wta_cli_directory_for(None, None, current_exe).unwrap();
 
         assert_eq!(directory, PathBuf::from(r"C:\src\wta\target\debug"));
-        assert_eq!(executable, current_exe);
     }
 
     #[test]

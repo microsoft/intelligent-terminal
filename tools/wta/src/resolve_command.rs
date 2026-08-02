@@ -6,141 +6,132 @@
 //! positive resolutions and only reports `not_found` when an authoritative
 //! source completed cleanly.
 
-use async_trait::async_trait;
+use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::path::Path;
 
 use crate::command_recall::{CommandResolution, ResolveOutcome};
 
-const SOURCE_HOST_PATH: &str = "host_path";
-const SOURCE_POWERSHELL_PROFILE: &str = "powershell_profile";
-const SOURCE_WORKING_DIRECTORY: &str = "working_directory";
 const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";
+const NOTE_UNSUPPORTED: &str = "no command resolver source supports this shell context yet";
+const NOTE_AUTHORITATIVE_FAILED: &str =
+    "an authoritative resolver source timed out or failed; fall back to your own read-only probe";
+const NOTE_WORKING_DIRECTORY_FAILED: &str =
+    "the active working directory could not be inspected; other command sources were inconclusive";
+const NOTE_HOST_PATH_FAILED: &str =
+    "host PATH could not be inspected; fall back to your own read-only probe";
+const NOTE_PARTIAL_MISS: &str =
+    "host PATH was checked, but shell-native aliases, functions, or builtins require a shell-specific resolver source";
+const DEFAULT_SOURCES: [SourceKind; 3] = [
+    SourceKind::PowerShellProfile,
+    SourceKind::WorkingDirectory,
+    SourceKind::HostPath,
+];
 
 struct ResolutionContext<'a> {
     token: &'a str,
     shell: &'a str,
+    shell_kind: ShellKind,
     cwd: Option<&'a Path>,
 }
 
+impl<'a> ResolutionContext<'a> {
+    fn new(token: &'a str, shell: &'a str, cwd: Option<&'a Path>) -> Self {
+        Self {
+            token,
+            shell,
+            shell_kind: ShellKind::from_shell(shell),
+            cwd,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceKind {
+    PowerShellProfile,
+    WorkingDirectory,
+    HostPath,
+}
+
+impl Serialize for SourceKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
 struct SourceResult {
-    source: &'static str,
-    miss_is_authoritative: bool,
+    source: SourceKind,
     outcome: ResolveOutcome,
 }
 
-#[async_trait]
-trait ResolutionSource: Send + Sync {
-    fn id(&self) -> &'static str;
-    fn applies(&self, context: &ResolutionContext<'_>) -> bool;
-    fn miss_is_authoritative(&self, context: &ResolutionContext<'_>) -> bool;
-    async fn resolve(&self, context: &ResolutionContext<'_>) -> ResolveOutcome;
-}
-
-struct PowerShellProfileSource;
-
-#[async_trait]
-impl ResolutionSource for PowerShellProfileSource {
-    fn id(&self) -> &'static str {
-        SOURCE_POWERSHELL_PROFILE
+impl SourceKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::PowerShellProfile => "powershell_profile",
+            Self::WorkingDirectory => "working_directory",
+            Self::HostPath => "host_path",
+        }
     }
 
     fn applies(&self, context: &ResolutionContext<'_>) -> bool {
-        crate::command_recall::is_powershell(context.shell)
+        match self {
+            Self::PowerShellProfile => context.shell_kind == ShellKind::PowerShell,
+            Self::WorkingDirectory => context.cwd.is_some() && context.shell_kind != ShellKind::Wsl,
+            Self::HostPath => context.shell_kind != ShellKind::Wsl,
+        }
     }
 
-    fn miss_is_authoritative(&self, _context: &ResolutionContext<'_>) -> bool {
-        true
-    }
-
-    async fn resolve(&self, context: &ResolutionContext<'_>) -> ResolveOutcome {
-        crate::command_recall::powershell_resolve(context.shell, context.token).await
-    }
-}
-
-struct HostPathSource;
-
-#[async_trait]
-impl ResolutionSource for HostPathSource {
-    fn id(&self) -> &'static str {
-        SOURCE_HOST_PATH
-    }
-
-    fn applies(&self, context: &ResolutionContext<'_>) -> bool {
-        !is_wsl_context(context.shell)
-    }
-
-    fn miss_is_authoritative(&self, _context: &ResolutionContext<'_>) -> bool {
-        false
+    fn miss_is_authoritative(self) -> bool {
+        self == Self::PowerShellProfile
     }
 
     async fn resolve(&self, context: &ResolutionContext<'_>) -> ResolveOutcome {
-        resolve_host_path(context.token)
+        match self {
+            Self::PowerShellProfile => {
+                crate::command_recall::powershell_resolve(context.shell, context.token).await
+            }
+            Self::WorkingDirectory => resolve_working_directory(context),
+            Self::HostPath => resolve_host_path(context.token),
+        }
     }
 }
 
-struct WorkingDirectorySource;
-
-#[async_trait]
-impl ResolutionSource for WorkingDirectorySource {
-    fn id(&self) -> &'static str {
-        SOURCE_WORKING_DIRECTORY
-    }
-
-    fn applies(&self, context: &ResolutionContext<'_>) -> bool {
-        context.cwd.is_some() && !is_wsl_context(context.shell)
-    }
-
-    fn miss_is_authoritative(&self, _context: &ResolutionContext<'_>) -> bool {
-        false
-    }
-
-    async fn resolve(&self, context: &ResolutionContext<'_>) -> ResolveOutcome {
-        resolve_working_directory(context)
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShellKind {
+    PowerShell,
+    Cmd,
+    Bash,
+    Wsl,
+    Other,
 }
 
-fn default_sources() -> &'static [&'static dyn ResolutionSource] {
-    &[
-        &PowerShellProfileSource,
-        &WorkingDirectorySource,
-        &HostPathSource,
-    ]
+impl ShellKind {
+    fn from_shell(shell: &str) -> Self {
+        let lower = shell.trim().to_ascii_lowercase();
+        if lower.starts_with("wsl:") {
+            return Self::Wsl;
+        }
+        if crate::command_recall::is_powershell(&lower) {
+            return Self::PowerShell;
+        }
+        let leaf = lower.rsplit(['\\', '/']).next().unwrap_or(lower.as_str());
+        match leaf.strip_suffix(".exe").unwrap_or(leaf) {
+            "cmd" => Self::Cmd,
+            "bash" | "git-bash" => Self::Bash,
+            "wsl" => Self::Wsl,
+            _ => Self::Other,
+        }
+    }
 }
 
 pub(crate) fn has_applicable_source(shell: &str) -> bool {
-    let context = ResolutionContext {
-        token: "",
-        shell,
-        cwd: None,
-    };
-    default_sources()
+    let context = ResolutionContext::new("", shell, None);
+    DEFAULT_SOURCES
         .iter()
         .any(|source| source.applies(&context))
-}
-
-fn is_wsl_context(shell: &str) -> bool {
-    let lower = shell.trim().to_ascii_lowercase();
-    if lower.starts_with("wsl:") {
-        return true;
-    }
-    let leaf = lower.rsplit(['\\', '/']).next().unwrap_or(lower.as_str());
-    let leaf = leaf.strip_suffix(".exe").unwrap_or(leaf);
-    leaf == "wsl"
-}
-
-fn is_cmd_context(shell: &str) -> bool {
-    let lower = shell.trim().to_ascii_lowercase();
-    let leaf = lower.rsplit(['\\', '/']).next().unwrap_or(lower.as_str());
-    let leaf = leaf.strip_suffix(".exe").unwrap_or(leaf);
-    leaf == "cmd"
-}
-
-fn is_bash_context(shell: &str) -> bool {
-    let lower = shell.trim().to_ascii_lowercase();
-    let leaf = lower.rsplit(['\\', '/']).next().unwrap_or(lower.as_str());
-    let leaf = leaf.strip_suffix(".exe").unwrap_or(leaf);
-    matches!(leaf, "bash" | "git-bash")
 }
 
 fn resolve_host_path(token: &str) -> ResolveOutcome {
@@ -158,12 +149,12 @@ fn resolve_working_directory(context: &ResolutionContext<'_>) -> ResolveOutcome 
     let Some(cwd) = context.cwd else {
         return ResolveOutcome::NotFound;
     };
-    let candidate_names = working_directory_candidate_names(context.token, context.shell);
+    let candidate_names = working_directory_candidate_names(context.token, context.shell_kind);
     if candidate_names.is_empty() {
         return ResolveOutcome::NotFound;
     }
 
-    let cwd = native_working_directory_path(cwd, context.shell);
+    let cwd = native_working_directory_path(cwd, context.shell_kind);
     let entries = match std::fs::read_dir(cwd.as_ref()) {
         Ok(entries) => entries,
         Err(_) => return ResolveOutcome::Indeterminate,
@@ -206,9 +197,9 @@ fn resolve_working_directory(context: &ResolutionContext<'_>) -> ResolveOutcome 
     }
 }
 
-fn native_working_directory_path<'a>(cwd: &'a Path, shell: &str) -> Cow<'a, Path> {
+fn native_working_directory_path(cwd: &Path, shell: ShellKind) -> Cow<'_, Path> {
     #[cfg(windows)]
-    if is_bash_context(shell) {
+    if shell == ShellKind::Bash {
         if let Some(value) = cwd.to_str() {
             let bytes = value.as_bytes();
             if bytes.len() >= 2
@@ -232,14 +223,17 @@ fn native_working_directory_path<'a>(cwd: &'a Path, shell: &str) -> Cow<'a, Path
     Cow::Borrowed(cwd)
 }
 
-fn working_directory_candidate_names(token: &str, shell: &str) -> Vec<String> {
+fn working_directory_candidate_names(token: &str, shell: ShellKind) -> Vec<String> {
     let token_path = Path::new(token);
     if token_path.components().count() != 1 || token == "." || token == ".." {
         return Vec::new();
     }
 
     let extensions = working_directory_extensions(shell);
-    if let Some(extension) = token_path.extension().and_then(|extension| extension.to_str()) {
+    if let Some(extension) = token_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
         let extension = format!(".{extension}");
         return extensions
             .iter()
@@ -248,7 +242,11 @@ fn working_directory_candidate_names(token: &str, shell: &str) -> Vec<String> {
             .unwrap_or_default();
     }
 
-    let mut names = vec![token.to_string()];
+    let mut names = if matches!(shell, ShellKind::PowerShell | ShellKind::Bash) {
+        vec![token.to_string()]
+    } else {
+        Vec::new()
+    };
     for extension in extensions {
         let name = format!("{token}{extension}");
         if !names
@@ -261,12 +259,12 @@ fn working_directory_candidate_names(token: &str, shell: &str) -> Vec<String> {
     names
 }
 
-fn working_directory_extensions(shell: &str) -> Vec<String> {
+fn working_directory_extensions(shell: ShellKind) -> Vec<String> {
     let mut extensions = Vec::new();
-    if crate::command_recall::is_powershell(shell) {
-        extensions.push(".PS1".to_string());
-    } else if is_bash_context(shell) {
-        extensions.push(".SH".to_string());
+    match shell {
+        ShellKind::PowerShell => extensions.push(".PS1".to_string()),
+        ShellKind::Bash => extensions.push(".SH".to_string()),
+        _ => {}
     }
     extensions.extend(
         std::env::var("PATHEXT")
@@ -308,24 +306,78 @@ fn host_path_resolution(token: &str, path: &std::path::Path) -> CommandResolutio
     }
 }
 
-pub(crate) fn powershell_invocation(
-    executable: &str,
-    shell: &str,
-    token: &str,
-    cwd: Option<&str>,
-) -> String {
-    let mut invocation = format!(
-        "& {} resolve-command {} --shell {}",
-        powershell_single_quote(executable),
-        powershell_single_quote(token),
-        powershell_single_quote(shell)
-    );
-    if let Some(cwd) = cwd {
-        invocation.push_str(" --cwd ");
-        invocation.push_str(&powershell_single_quote(cwd));
+#[derive(Debug)]
+pub(crate) struct CommandResolverInvocation {
+    executable: String,
+    shell: String,
+    cwd: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct CommandResolverContract {
+    executable: String,
+    arguments: Vec<String>,
+    powershell: String,
+}
+
+impl CommandResolverInvocation {
+    pub(crate) fn new(
+        executable: impl Into<String>,
+        shell: impl Into<String>,
+        cwd: Option<String>,
+    ) -> Self {
+        Self {
+            executable: executable.into(),
+            shell: shell.into(),
+            cwd,
+        }
     }
-    invocation.push_str(" --json");
-    invocation
+
+    #[cfg(test)]
+    pub(crate) fn shell(&self) -> &str {
+        &self.shell
+    }
+
+    pub(crate) fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
+    }
+
+    pub(crate) fn contract(&self, token: &str) -> CommandResolverContract {
+        CommandResolverContract {
+            executable: self.executable.clone(),
+            arguments: self.arguments(token),
+            powershell: self.powershell(token),
+        }
+    }
+
+    fn arguments(&self, token: &str) -> Vec<String> {
+        let mut arguments = vec![
+            "resolve-command".to_string(),
+            token.to_string(),
+            "--shell".to_string(),
+            self.shell.clone(),
+        ];
+        if let Some(cwd) = &self.cwd {
+            arguments.extend(["--cwd".to_string(), cwd.clone()]);
+        }
+        arguments.push("--json".to_string());
+        arguments
+    }
+
+    fn powershell(&self, token: &str) -> String {
+        let mut invocation = format!(
+            "& {} resolve-command {} --shell {}",
+            powershell_single_quote(&self.executable),
+            powershell_single_quote(token),
+            powershell_single_quote(&self.shell)
+        );
+        if let Some(cwd) = &self.cwd {
+            invocation.push_str(" --cwd ");
+            invocation.push_str(&powershell_single_quote(cwd));
+        }
+        invocation.push_str(" --json");
+        invocation
+    }
 }
 
 fn powershell_single_quote(value: &str) -> String {
@@ -341,92 +393,193 @@ pub fn parse_non_empty(value: &str) -> Result<String, String> {
     }
 }
 
-pub fn format_human(value: &serde_json::Value) -> String {
-    let field = |name: &str| value.get(name).and_then(|v| v.as_str()).unwrap_or("-");
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResolveStatus {
+    Exists,
+    NotFound,
+    Indeterminate,
+    Unsupported,
+}
+
+impl Serialize for ResolveStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl ResolveStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Exists => "exists",
+            Self::NotFound => "not_found",
+            Self::Indeterminate => "indeterminate",
+            Self::Unsupported => "unsupported",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ResolvedCommand {
+    source: SourceKind,
+    #[serde(rename = "type")]
+    command_type: String,
+    name: String,
+    target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requires_explicit_path: Option<bool>,
+}
+
+impl ResolvedCommand {
+    fn new(source: SourceKind, resolution: &CommandResolution, shell: ShellKind) -> Self {
+        Self {
+            source,
+            command_type: resolution.command_type.clone(),
+            name: resolution.name.clone(),
+            target: resolution.target.clone(),
+            requires_explicit_path: (source == SourceKind::WorkingDirectory)
+                .then_some(shell != ShellKind::Cmd),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ResolveCommandResult {
+    token: String,
+    status: ResolveStatus,
+    checked_sources: Vec<SourceKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resolutions: Option<Vec<ResolvedCommand>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matches: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<&'static str>,
+}
+
+impl ResolveCommandResult {
+    fn new(
+        token: &str,
+        status: ResolveStatus,
+        checked_sources: Vec<SourceKind>,
+        resolutions: Option<Vec<ResolvedCommand>>,
+        matches: Option<Vec<String>>,
+        note: Option<&'static str>,
+    ) -> Self {
+        Self {
+            token: token.to_string(),
+            status,
+            checked_sources,
+            resolutions,
+            matches,
+            note,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AggregateOutcome {
+    Exists(Vec<ResolvedCommand>),
+    NotFound,
+    Indeterminate(&'static str),
+}
+
+pub(crate) fn format_human(value: &ResolveCommandResult) -> String {
     let mut lines = vec![
-        format!("TOKEN    {}", field("token")),
-        format!("STATUS   {}", field("status")),
+        format!("TOKEN    {}", value.token),
+        format!("STATUS   {}", value.status.as_str()),
     ];
 
-    if let Some(resolutions) = value.get("resolutions").and_then(|v| v.as_array()) {
+    if let Some(resolutions) = &value.resolutions {
         for resolution in resolutions {
             lines.push(format!(
                 "COMMAND  {} {}",
-                resolution
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("-"),
-                resolution
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("-")
+                resolution.command_type, resolution.name
             ));
-            if let Some(source) = resolution
-                .get("source")
-                .and_then(|v| v.as_str())
-                .filter(|source| !source.is_empty())
-            {
-                lines.push(format!("SOURCE   {source}"));
-            }
-            if let Some(target) = resolution
-                .get("target")
-                .and_then(|v| v.as_str())
-                .filter(|target| !target.is_empty())
-            {
-                lines.push(format!("TARGET   {target}"));
+            lines.push(format!("SOURCE   {}", resolution.source.as_str()));
+            if !resolution.target.is_empty() {
+                lines.push(format!("TARGET   {}", resolution.target));
             }
         }
     }
 
-    if let Some(matches) = value.get("matches").and_then(|v| v.as_array()) {
-        let matches = matches
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
+    if let Some(matches) = &value.matches {
+        let matches = matches.join(", ");
         lines.push(format!(
             "MATCHES  {}",
             if matches.is_empty() { "-" } else { &matches }
         ));
     }
 
-    if let Some(note) = value.get("note").and_then(|v| v.as_str()) {
+    if let Some(note) = value.note {
         lines.push(format!("NOTE     {note}"));
     }
 
     lines.join("\n")
 }
 
-pub async fn resolve(token: &str, shell: &str, cwd: Option<&Path>) -> serde_json::Value {
-    let context = ResolutionContext {
-        token,
-        shell,
-        cwd,
-    };
+pub(crate) async fn resolve(token: &str, shell: &str, cwd: Option<&Path>) -> ResolveCommandResult {
+    let context = ResolutionContext::new(token, shell, cwd);
     let mut results = Vec::new();
-    for source in default_sources() {
+    for source in DEFAULT_SOURCES {
         if !source.applies(&context) {
             continue;
         }
         results.push(SourceResult {
-            source: source.id(),
-            miss_is_authoritative: source.miss_is_authoritative(&context),
+            source,
             outcome: source.resolve(&context).await,
         });
     }
 
-    let checked_sources: Vec<&str> = results.iter().map(|result| result.source).collect();
+    let checked_sources = results.iter().map(|result| result.source).collect();
     if results.is_empty() {
-        return serde_json::json!({
-            "token": token,
-            "status": "unsupported",
-            "checked_sources": checked_sources,
-            "note": "no command resolver source supports this shell context yet",
-        });
+        return ResolveCommandResult::new(
+            token,
+            ResolveStatus::Unsupported,
+            checked_sources,
+            None,
+            None,
+            Some(NOTE_UNSUPPORTED),
+        );
     }
 
-    let mut resolutions: Vec<(&str, &CommandResolution)> = Vec::new();
-    for result in &results {
+    match aggregate_results(context.shell_kind, &results) {
+        AggregateOutcome::Exists(resolutions) => ResolveCommandResult::new(
+            token,
+            ResolveStatus::Exists,
+            checked_sources,
+            Some(resolutions),
+            None,
+            None,
+        ),
+        AggregateOutcome::NotFound => {
+            let matches = crate::command_recall::powershell_near_matches(shell, token)
+                .await
+                .unwrap_or_default();
+            ResolveCommandResult::new(
+                token,
+                ResolveStatus::NotFound,
+                checked_sources,
+                None,
+                Some(matches),
+                None,
+            )
+        }
+        AggregateOutcome::Indeterminate(note) => ResolveCommandResult::new(
+            token,
+            ResolveStatus::Indeterminate,
+            checked_sources,
+            None,
+            None,
+            Some(note),
+        ),
+    }
+}
+
+fn aggregate_results(shell: ShellKind, results: &[SourceResult]) -> AggregateOutcome {
+    let mut resolutions: Vec<(SourceKind, &CommandResolution)> = Vec::new();
+    for result in results {
         let ResolveOutcome::Resolved(source_resolutions) = &result.outcome else {
             continue;
         };
@@ -441,24 +594,20 @@ pub async fn resolve(token: &str, shell: &str, cwd: Option<&Path>) -> serde_json
         }
     }
     if !resolutions.is_empty() {
-        let resolutions: Vec<serde_json::Value> = resolutions
-            .into_iter()
-            .map(|(source, resolution)| resolution_json(source, resolution, shell))
-            .collect();
-        return serde_json::json!({
-            "token": token,
-            "status": "exists",
-            "checked_sources": checked_sources,
-            "resolutions": resolutions,
-        });
+        return AggregateOutcome::Exists(
+            resolutions
+                .into_iter()
+                .map(|(source, resolution)| ResolvedCommand::new(source, resolution, shell))
+                .collect(),
+        );
     }
 
     let authoritative: Vec<&SourceResult> = results
         .iter()
-        .filter(|result| result.miss_is_authoritative)
+        .filter(|result| result.source.miss_is_authoritative())
         .collect();
     let working_directory_failed = results.iter().any(|result| {
-        result.source == SOURCE_WORKING_DIRECTORY
+        result.source == SourceKind::WorkingDirectory
             && result.outcome == ResolveOutcome::Indeterminate
     });
     if !authoritative.is_empty()
@@ -467,74 +616,41 @@ pub async fn resolve(token: &str, shell: &str, cwd: Option<&Path>) -> serde_json
             .iter()
             .all(|result| result.outcome == ResolveOutcome::NotFound)
     {
-        let matches = crate::command_recall::powershell_near_matches(shell, token)
-            .await
-            .unwrap_or_default();
-        return serde_json::json!({
-            "token": token,
-            "status": "not_found",
-            "checked_sources": checked_sources,
-            "matches": matches,
-        });
+        return AggregateOutcome::NotFound;
     }
 
     let host_path_failed = results.iter().any(|result| {
-        result.source == SOURCE_HOST_PATH && result.outcome == ResolveOutcome::Indeterminate
+        result.source == SourceKind::HostPath && result.outcome == ResolveOutcome::Indeterminate
     });
-    serde_json::json!({
-        "token": token,
-        "status": "indeterminate",
-        "checked_sources": checked_sources,
-        "note": if authoritative
+    AggregateOutcome::Indeterminate(
+        if authoritative
             .iter()
             .any(|result| result.outcome == ResolveOutcome::Indeterminate)
         {
-            "an authoritative resolver source timed out or failed; fall back to your own read-only probe"
+            NOTE_AUTHORITATIVE_FAILED
         } else if working_directory_failed {
-            "the active working directory could not be inspected; other command sources were inconclusive"
+            NOTE_WORKING_DIRECTORY_FAILED
         } else if host_path_failed {
-            "host PATH could not be inspected; fall back to your own read-only probe"
+            NOTE_HOST_PATH_FAILED
         } else {
-            "host PATH was checked, but shell-native aliases, functions, or builtins require a shell-specific resolver source"
+            NOTE_PARTIAL_MISS
         },
-    })
-}
-
-fn resolution_json(
-    source: &str,
-    resolution: &CommandResolution,
-    shell: &str,
-) -> serde_json::Value {
-    let mut value = serde_json::json!({
-        "source": source,
-        "type": resolution.command_type,
-        "name": resolution.name,
-        "target": resolution.target,
-    });
-    if source == SOURCE_WORKING_DIRECTORY {
-        value["requires_explicit_path"] = serde_json::Value::Bool(!is_cmd_context(shell));
-    }
-    value
+    )
 }
 
 fn same_resolution(left: &CommandResolution, right: &CommandResolution) -> bool {
-    left.command_type
-        .eq_ignore_ascii_case(&right.command_type)
+    left.command_type.eq_ignore_ascii_case(&right.command_type)
         && left.name.eq_ignore_ascii_case(&right.name)
         && left.target.eq_ignore_ascii_case(&right.target)
 }
 
 #[cfg(test)]
 fn selected_source_ids(shell: &str, cwd: Option<&Path>) -> Vec<&'static str> {
-    let context = ResolutionContext {
-        token: "x",
-        shell,
-        cwd,
-    };
-    default_sources()
+    let context = ResolutionContext::new("x", shell, cwd);
+    DEFAULT_SOURCES
         .iter()
         .filter(|source| source.applies(&context))
-        .map(|source| source.id())
+        .map(|source| source.as_str())
         .collect()
 }
 
@@ -547,28 +663,19 @@ mod tests {
         let cwd = Path::new("C:\\workspace");
         assert_eq!(
             selected_source_ids("pwsh.exe", Some(cwd)),
-            vec![
-                SOURCE_POWERSHELL_PROFILE,
-                SOURCE_WORKING_DIRECTORY,
-                SOURCE_HOST_PATH
-            ]
+            vec!["powershell_profile", "working_directory", "host_path"]
         );
         assert_eq!(
             selected_source_ids("cmd.exe", Some(cwd)),
-            vec![SOURCE_WORKING_DIRECTORY, SOURCE_HOST_PATH]
+            vec!["working_directory", "host_path"]
         );
         assert_eq!(
             selected_source_ids("bash", Some(cwd)),
-            vec![SOURCE_WORKING_DIRECTORY, SOURCE_HOST_PATH]
+            vec!["working_directory", "host_path"]
         );
-        assert_eq!(
-            selected_source_ids("cmd.exe", None),
-            vec![SOURCE_HOST_PATH]
-        );
+        assert_eq!(selected_source_ids("cmd.exe", None), vec!["host_path"]);
         assert!(selected_source_ids("wsl:Ubuntu", Some(cwd)).is_empty());
-        assert!(
-            selected_source_ids("C:\\Windows\\System32\\wsl.exe", Some(cwd)).is_empty()
-        );
+        assert!(selected_source_ids("C:\\Windows\\System32\\wsl.exe", Some(cwd)).is_empty());
         assert!(has_applicable_source("cmd.exe"));
         assert!(has_applicable_source("unknown"));
         assert!(!has_applicable_source("wsl:Ubuntu"));
@@ -576,30 +683,26 @@ mod tests {
 
     #[test]
     fn host_path_resolution_classifies_targets() {
-        let application =
-            host_path_resolution("git", std::path::Path::new("C:\\tools\\git.exe"));
+        let application = host_path_resolution("git", std::path::Path::new("C:\\tools\\git.exe"));
         assert_eq!(application.command_type, "Application");
         assert_eq!(application.name, "git.exe");
         assert_eq!(application.target, "C:\\tools\\git.exe");
 
-        let script =
-            host_path_resolution("deploy-it", std::path::Path::new("C:\\tools\\deploy-it.ps1"));
+        let script = host_path_resolution(
+            "deploy-it",
+            std::path::Path::new("C:\\tools\\deploy-it.ps1"),
+        );
         assert_eq!(script.command_type, "ExternalScript");
         assert_eq!(script.name, "deploy-it.ps1");
     }
 
     #[test]
     fn working_directory_resolves_local_powershell_script() {
-        let cwd =
-            std::env::temp_dir().join(format!("wta-resolve-cwd-{}", uuid::Uuid::new_v4()));
+        let cwd = std::env::temp_dir().join(format!("wta-resolve-cwd-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&cwd).unwrap();
         let script = cwd.join("deploy-it.ps1");
         std::fs::write(&script, "param()\n").unwrap();
-        let context = ResolutionContext {
-            token: "deploy-it",
-            shell: "pwsh.exe",
-            cwd: Some(&cwd),
-        };
+        let context = ResolutionContext::new("deploy-it", "pwsh.exe", Some(&cwd));
 
         let outcome = resolve_working_directory(&context);
         std::fs::remove_file(&script).unwrap();
@@ -614,36 +717,55 @@ mod tests {
         assert_eq!(resolutions[0].target, script.to_string_lossy());
     }
 
+    #[test]
+    fn working_directory_ignores_extensionless_files_for_cmd() {
+        let cwd = std::env::temp_dir().join(format!("wta-resolve-cmd-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&cwd).unwrap();
+        let file = cwd.join("plain-file");
+        std::fs::write(&file, "not executable\n").unwrap();
+        let context = ResolutionContext::new("plain-file", "cmd.exe", Some(&cwd));
+
+        let outcome = resolve_working_directory(&context);
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir(cwd).unwrap();
+
+        assert_eq!(outcome, ResolveOutcome::NotFound);
+    }
+
     #[cfg(windows)]
     #[test]
     fn working_directory_normalizes_msys_drive_paths_for_bash() {
         assert_eq!(
-            native_working_directory_path(Path::new("/c/Users/me/project"), "bash.exe"),
+            native_working_directory_path(Path::new("/c/Users/me/project"), ShellKind::Bash),
             Path::new(r"C:\Users\me\project")
         );
         assert_eq!(
-            native_working_directory_path(Path::new("/d"), "git-bash"),
+            native_working_directory_path(Path::new("/d"), ShellKind::Bash),
             Path::new(r"D:\")
         );
         assert_eq!(
-            native_working_directory_path(Path::new("/home/me/project"), "bash"),
+            native_working_directory_path(Path::new("/home/me/project"), ShellKind::Bash),
             Path::new("/home/me/project")
         );
         assert_eq!(
-            native_working_directory_path(Path::new("/c/Users/me/project"), "pwsh.exe"),
+            native_working_directory_path(Path::new("/c/Users/me/project"), ShellKind::PowerShell),
             Path::new("/c/Users/me/project")
         );
     }
 
     #[test]
     fn working_directory_rejects_tokens_that_are_paths() {
-        assert!(working_directory_candidate_names("..\\tool", "cmd.exe").is_empty());
-        assert!(working_directory_candidate_names(".\\tool", "pwsh.exe").is_empty());
-        assert!(working_directory_candidate_names("sub/tool", "bash").is_empty());
-        assert!(working_directory_candidate_names("README.md", "pwsh.exe").is_empty());
+        assert!(working_directory_candidate_names("..\\tool", ShellKind::Cmd).is_empty());
+        assert!(working_directory_candidate_names(".\\tool", ShellKind::PowerShell).is_empty());
+        assert!(working_directory_candidate_names("sub/tool", ShellKind::Bash).is_empty());
+        assert!(working_directory_candidate_names("README.md", ShellKind::PowerShell).is_empty());
         assert_eq!(
-            working_directory_candidate_names("deploy-it.sh", "bash"),
+            working_directory_candidate_names("deploy-it.sh", ShellKind::Bash),
             vec!["deploy-it.sh"]
+        );
+        assert!(
+            !working_directory_candidate_names("plain-file", ShellKind::Cmd)
+                .contains(&"plain-file".to_string())
         );
     }
 
@@ -652,14 +774,107 @@ mod tests {
         let resolution =
             host_path_resolution("deploy-it", Path::new("C:\\workspace\\deploy-it.ps1"));
 
-        let powershell = resolution_json(SOURCE_WORKING_DIRECTORY, &resolution, "pwsh.exe");
-        assert_eq!(powershell["requires_explicit_path"], true);
+        let powershell = ResolvedCommand::new(
+            SourceKind::WorkingDirectory,
+            &resolution,
+            ShellKind::PowerShell,
+        );
+        assert_eq!(powershell.requires_explicit_path, Some(true));
 
-        let cmd = resolution_json(SOURCE_WORKING_DIRECTORY, &resolution, "cmd.exe");
-        assert_eq!(cmd["requires_explicit_path"], false);
+        let cmd = ResolvedCommand::new(SourceKind::WorkingDirectory, &resolution, ShellKind::Cmd);
+        assert_eq!(cmd.requires_explicit_path, Some(false));
 
-        let host_path = resolution_json(SOURCE_HOST_PATH, &resolution, "pwsh.exe");
-        assert!(host_path.get("requires_explicit_path").is_none());
+        let host_path =
+            ResolvedCommand::new(SourceKind::HostPath, &resolution, ShellKind::PowerShell);
+        assert_eq!(host_path.requires_explicit_path, None);
+    }
+
+    #[test]
+    fn aggregation_deduplicates_resolutions_across_sources() {
+        let resolution =
+            host_path_resolution("git", Path::new(r"C:\Program Files\Git\cmd\git.exe"));
+        let results = vec![
+            SourceResult {
+                source: SourceKind::PowerShellProfile,
+                outcome: ResolveOutcome::Resolved(vec![resolution.clone()]),
+            },
+            SourceResult {
+                source: SourceKind::HostPath,
+                outcome: ResolveOutcome::Resolved(vec![resolution]),
+            },
+        ];
+
+        let AggregateOutcome::Exists(resolutions) =
+            aggregate_results(ShellKind::PowerShell, &results)
+        else {
+            panic!("expected an existing resolution");
+        };
+        assert_eq!(resolutions.len(), 1);
+        assert_eq!(resolutions[0].source, SourceKind::PowerShellProfile);
+    }
+
+    #[test]
+    fn aggregation_requires_all_authoritative_misses_and_a_readable_cwd() {
+        let clean_miss = vec![
+            SourceResult {
+                source: SourceKind::PowerShellProfile,
+                outcome: ResolveOutcome::NotFound,
+            },
+            SourceResult {
+                source: SourceKind::WorkingDirectory,
+                outcome: ResolveOutcome::NotFound,
+            },
+            SourceResult {
+                source: SourceKind::HostPath,
+                outcome: ResolveOutcome::NotFound,
+            },
+        ];
+        assert_eq!(
+            aggregate_results(ShellKind::PowerShell, &clean_miss),
+            AggregateOutcome::NotFound
+        );
+
+        let cwd_failed = vec![
+            SourceResult {
+                source: SourceKind::PowerShellProfile,
+                outcome: ResolveOutcome::NotFound,
+            },
+            SourceResult {
+                source: SourceKind::WorkingDirectory,
+                outcome: ResolveOutcome::Indeterminate,
+            },
+            SourceResult {
+                source: SourceKind::HostPath,
+                outcome: ResolveOutcome::NotFound,
+            },
+        ];
+        assert_eq!(
+            aggregate_results(ShellKind::PowerShell, &cwd_failed),
+            AggregateOutcome::Indeterminate(NOTE_WORKING_DIRECTORY_FAILED)
+        );
+    }
+
+    #[test]
+    fn aggregation_prioritizes_authoritative_failures() {
+        let results = vec![
+            SourceResult {
+                source: SourceKind::PowerShellProfile,
+                outcome: ResolveOutcome::Indeterminate,
+            },
+            SourceResult {
+                source: SourceKind::WorkingDirectory,
+                outcome: ResolveOutcome::Indeterminate,
+            },
+            SourceResult {
+                source: SourceKind::HostPath,
+                outcome: ResolveOutcome::Indeterminate,
+            },
+        ];
+
+        assert_eq!(
+            aggregate_results(ShellKind::PowerShell, &results),
+            AggregateOutcome::Indeterminate(NOTE_AUTHORITATIVE_FAILED)
+        );
     }
 
     #[test]
@@ -676,12 +891,13 @@ mod tests {
     fn powershell_invocation_quotes_executable_shell_and_token() {
         let quote = '\'';
         assert_eq!(
-            powershell_invocation(
+            CommandResolverInvocation::new(
                 "C:\\Program Files\\It's WTA\\wta.exe",
                 "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-                "deploy-it's",
-                Some("C:\\Work\\It's here"),
-            ),
+                Some("C:\\Work\\It's here".to_string()),
+            )
+            .contract("deploy-it's")
+            .powershell,
             format!(
                 "& 'C:\\Program Files\\It{quote}{quote}s WTA\\wta.exe' resolve-command \
                  'deploy-it{quote}{quote}s' --shell \
@@ -693,25 +909,33 @@ mod tests {
 
     #[test]
     fn human_format_summarizes_resolutions_and_matches() {
-        let exists = serde_json::json!({
-            "token": "profile-greeting",
-            "status": "exists",
-            "resolutions": [{
-                "type": "Alias",
-                "name": "profile-greeting",
-                "target": "Invoke-ProfileGreeting"
-            }]
-        });
+        let exists = ResolveCommandResult::new(
+            "profile-greeting",
+            ResolveStatus::Exists,
+            vec![SourceKind::PowerShellProfile],
+            Some(vec![ResolvedCommand {
+                source: SourceKind::PowerShellProfile,
+                command_type: "Alias".to_string(),
+                name: "profile-greeting".to_string(),
+                target: "Invoke-ProfileGreeting".to_string(),
+                requires_explicit_path: None,
+            }]),
+            None,
+            None,
+        );
         assert_eq!(
             format_human(&exists),
-            "TOKEN    profile-greeting\nSTATUS   exists\nCOMMAND  Alias profile-greeting\nTARGET   Invoke-ProfileGreeting"
+            "TOKEN    profile-greeting\nSTATUS   exists\nCOMMAND  Alias profile-greeting\nSOURCE   powershell_profile\nTARGET   Invoke-ProfileGreeting"
         );
 
-        let not_found = serde_json::json!({
-            "token": "gti",
-            "status": "not_found",
-            "matches": ["git", "gci"]
-        });
+        let not_found = ResolveCommandResult::new(
+            "gti",
+            ResolveStatus::NotFound,
+            vec![SourceKind::PowerShellProfile],
+            None,
+            Some(vec!["git".to_string(), "gci".to_string()]),
+            None,
+        );
         assert_eq!(
             format_human(&not_found),
             "TOKEN    gti\nSTATUS   not_found\nMATCHES  git, gci"
@@ -720,7 +944,9 @@ mod tests {
 
     #[tokio::test]
     async fn wsl_context_returns_unsupported_without_running_host_sources() {
-        let value = resolve("gti", "wsl:Ubuntu", Some(Path::new("/tmp"))).await;
+        let value =
+            serde_json::to_value(resolve("gti", "wsl:Ubuntu", Some(Path::new("/tmp"))).await)
+                .unwrap();
         assert_eq!(value["token"], "gti");
         assert_eq!(value["status"], "unsupported");
         assert_eq!(value["checked_sources"], serde_json::json!([]));
@@ -734,16 +960,16 @@ mod tests {
     #[tokio::test]
     async fn cmd_context_resolves_host_path_but_does_not_claim_a_complete_miss() {
         let cwd = std::env::current_dir().unwrap();
-        let value = resolve("cmd.exe", "cmd.exe", Some(&cwd)).await;
+        let value = serde_json::to_value(resolve("cmd.exe", "cmd.exe", Some(&cwd)).await).unwrap();
         assert_eq!(value["status"], "exists", "got {value}");
         assert_eq!(
             value["checked_sources"],
-            serde_json::json!([SOURCE_WORKING_DIRECTORY, SOURCE_HOST_PATH])
+            serde_json::json!(["working_directory", "host_path"])
         );
-        assert_eq!(value["resolutions"][0]["source"], SOURCE_HOST_PATH);
+        assert_eq!(value["resolutions"][0]["source"], "host_path");
 
         let token = format!("wta-no-such-command-{}", uuid::Uuid::new_v4());
-        let value = resolve(&token, "cmd.exe", Some(&cwd)).await;
+        let value = serde_json::to_value(resolve(&token, "cmd.exe", Some(&cwd)).await).unwrap();
         assert_eq!(value["status"], "indeterminate", "got {value}");
         assert_eq!(
             value["note"],
@@ -752,7 +978,8 @@ mod tests {
 
         let missing_cwd =
             std::env::temp_dir().join(format!("wta-missing-cwd-{}", uuid::Uuid::new_v4()));
-        let value = resolve(&token, "cmd.exe", Some(&missing_cwd)).await;
+        let value =
+            serde_json::to_value(resolve(&token, "cmd.exe", Some(&missing_cwd)).await).unwrap();
         assert_eq!(value["status"], "indeterminate", "got {value}");
         assert_eq!(
             value["note"],
@@ -772,7 +999,8 @@ mod tests {
         };
 
         let cwd = std::env::current_dir().unwrap();
-        let value = resolve("Get-ChildItem", shell, Some(&cwd)).await;
+        let value =
+            serde_json::to_value(resolve("Get-ChildItem", shell, Some(&cwd)).await).unwrap();
         if value["status"] == "indeterminate" {
             eprintln!("resolve was indeterminate (slow profile?); skipping");
             return;
@@ -787,20 +1015,17 @@ mod tests {
         );
         assert_eq!(
             value["checked_sources"],
-            serde_json::json!([
-                SOURCE_POWERSHELL_PROFILE,
-                SOURCE_WORKING_DIRECTORY,
-                SOURCE_HOST_PATH
-            ])
+            serde_json::json!(["powershell_profile", "working_directory", "host_path"])
         );
         assert!(
             resolutions
                 .iter()
-                .any(|item| item["source"] == SOURCE_POWERSHELL_PROFILE),
+                .any(|item| item["source"] == "powershell_profile"),
             "expected a PowerShell-profile resolution source, got {value}"
         );
 
-        let value = resolve("no-such-command", shell, Some(&cwd)).await;
+        let value =
+            serde_json::to_value(resolve("no-such-command", shell, Some(&cwd)).await).unwrap();
         if value["status"] == "indeterminate" {
             eprintln!("resolve was indeterminate (slow profile?); skipping");
             return;

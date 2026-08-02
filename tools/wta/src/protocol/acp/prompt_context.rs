@@ -500,7 +500,8 @@ pub(super) struct ContextRequest<'a> {
     pub(super) planner_shell: Option<&'a str>,
     /// Planner only: the exact immutable resolver contract injected into this
     /// prompt, keeping its structured and shell-rendered forms consistent.
-    pub(super) command_resolver_invocation: Option<&'a CommandResolverInvocation>,
+    pub(super) command_resolver_invocation:
+        Option<&'a crate::resolve_command::CommandResolverInvocation>,
 }
 
 /// One `### {heading}\n{body}` block to inject into the prompt. `heading` is
@@ -564,18 +565,11 @@ pub(super) fn default_providers() -> &'static [&'static dyn ContextProvider] {
 /// agent CLI's PATH.
 struct CommandResolverProvider;
 
-#[derive(Debug)]
-pub(super) struct CommandResolverInvocation {
-    executable: String,
-    shell: String,
-    cwd: Option<String>,
-}
-
 pub(super) fn command_resolver_invocation(
     is_autofix: bool,
     planner_shell: Option<&str>,
     planner_pane: Option<&serde_json::Value>,
-) -> Option<CommandResolverInvocation> {
+) -> Option<crate::resolve_command::CommandResolverInvocation> {
     if is_autofix
         || planner_shell.is_some_and(|shell| !crate::resolve_command::has_applicable_source(shell))
     {
@@ -602,11 +596,9 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(CommandResolverInvocation {
-        executable,
-        shell,
-        cwd,
-    })
+    Some(crate::resolve_command::CommandResolverInvocation::new(
+        executable, shell, cwd,
+    ))
 }
 
 #[async_trait]
@@ -616,36 +608,13 @@ impl ContextProvider for CommandResolverProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        !req.is_autofix
-            && req
-                .planner_shell
-                .is_none_or(crate::resolve_command::has_applicable_source)
+        req.command_resolver_invocation.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
         let invocation = req.command_resolver_invocation?;
-        let executable = &invocation.executable;
-        let shell = &invocation.shell;
-        let cwd = invocation.cwd.as_deref();
-        let powershell =
-            crate::resolve_command::powershell_invocation(executable, shell, "<name>", cwd);
-        let mut arguments = vec![
-            "resolve-command".to_string(),
-            "<name>".to_string(),
-            "--shell".to_string(),
-            shell.to_string(),
-        ];
-        if let Some(cwd) = cwd {
-            arguments.extend(["--cwd".to_string(), cwd.to_string()]);
-        }
-        arguments.push("--json".to_string());
-        let contract = serde_json::json!({
-            "executable": executable,
-            "arguments": arguments,
-            "powershell": powershell,
-        });
-        let contract = serde_json::to_string_pretty(&contract).ok()?;
-        let cwd_instruction = if cwd.is_some() {
+        let contract = serde_json::to_string_pretty(&invocation.contract("<name>")).ok()?;
+        let cwd_instruction = if invocation.cwd().is_some() {
             "Keep the injected `--cwd` value unchanged so resolution uses the \
              active pane's working directory. "
         } else {
@@ -660,8 +629,7 @@ impl ContextProvider for CommandResolverProvider {
                  command string; replace `<name>` inside its existing \
                  single quotes and double every embedded `'` in the command name.\n\
                  ```json\n{}\n```",
-                cwd_instruction,
-                contract
+                cwd_instruction, contract
             ),
         })
     }
@@ -1040,25 +1008,36 @@ mod tests {
         let mgr = ShellManager::new();
         let pane = serde_json::json!({ "session_id": "pane-1" });
         for shell in ["pwsh", "powershell.exe", "cmd.exe"] {
+            let invocation = command_resolver_invocation(false, Some(shell), Some(&pane));
             let req = ContextRequest {
                 planner_pane: Some(&pane),
                 planner_shell: Some(shell),
+                command_resolver_invocation: invocation.as_ref(),
                 ..req_planner(&mgr, true)
             };
             assert!(CommandResolverProvider.applies(&req), "shell={shell}");
         }
 
-        assert!(CommandResolverProvider.applies(&req_planner(&mgr, false)));
+        let unknown_invocation = command_resolver_invocation(false, None, None);
+        let unknown = ContextRequest {
+            command_resolver_invocation: unknown_invocation.as_ref(),
+            ..req_planner(&mgr, false)
+        };
+        assert!(CommandResolverProvider.applies(&unknown));
+        let wsl_invocation = command_resolver_invocation(false, Some("wsl:Ubuntu"), Some(&pane));
         let wsl = ContextRequest {
             planner_pane: Some(&pane),
             planner_shell: Some("wsl:Ubuntu"),
+            command_resolver_invocation: wsl_invocation.as_ref(),
             ..req_planner(&mgr, true)
         };
         assert!(!CommandResolverProvider.applies(&wsl));
+        let autofix_invocation = command_resolver_invocation(true, Some("pwsh"), Some(&pane));
         let autofix = ContextRequest {
             is_autofix: true,
             planner_pane: Some(&pane),
             planner_shell: Some("pwsh"),
+            command_resolver_invocation: autofix_invocation.as_ref(),
             ..req_planner(&mgr, true)
         };
         assert!(!CommandResolverProvider.applies(&autofix));
@@ -1067,17 +1046,17 @@ mod tests {
     #[test]
     fn command_resolver_uses_short_wta_execution_alias() {
         let invocation = command_resolver_invocation(false, Some("cmd.exe"), None).unwrap();
+        let contract = serde_json::to_value(invocation.contract("git")).unwrap();
 
-        assert_eq!(invocation.executable, "wta.exe");
-        assert_eq!(invocation.shell, "cmd.exe");
-        assert!(invocation.cwd.is_none());
+        assert_eq!(contract["executable"], "wta.exe");
+        assert_eq!(invocation.shell(), "cmd.exe");
+        assert!(invocation.cwd().is_none());
         assert_eq!(
-            crate::resolve_command::powershell_invocation(
-                &invocation.executable,
-                &invocation.shell,
-                "git",
-                invocation.cwd.as_deref(),
-            ),
+            contract["arguments"],
+            serde_json::json!(["resolve-command", "git", "--shell", "cmd.exe", "--json"])
+        );
+        assert_eq!(
+            contract["powershell"],
             "& 'wta.exe' resolve-command 'git' --shell 'cmd.exe' --json"
         );
     }
@@ -1085,17 +1064,24 @@ mod tests {
     #[test]
     fn command_resolver_binds_active_pane_working_directory() {
         let pane = serde_json::json!({ "cwd": "C:\\workspace" });
-        let invocation =
-            command_resolver_invocation(false, Some("pwsh.exe"), Some(&pane)).unwrap();
+        let invocation = command_resolver_invocation(false, Some("pwsh.exe"), Some(&pane)).unwrap();
+        let contract = serde_json::to_value(invocation.contract("deploy-it")).unwrap();
 
-        assert_eq!(invocation.cwd.as_deref(), Some("C:\\workspace"));
+        assert_eq!(invocation.cwd(), Some("C:\\workspace"));
         assert_eq!(
-            crate::resolve_command::powershell_invocation(
-                &invocation.executable,
-                &invocation.shell,
+            contract["arguments"],
+            serde_json::json!([
+                "resolve-command",
                 "deploy-it",
-                invocation.cwd.as_deref(),
-            ),
+                "--shell",
+                "pwsh.exe",
+                "--cwd",
+                "C:\\workspace",
+                "--json"
+            ])
+        );
+        assert_eq!(
+            contract["powershell"],
             "& 'wta.exe' resolve-command 'deploy-it' --shell 'pwsh.exe' \
              --cwd 'C:\\workspace' --json"
         );
