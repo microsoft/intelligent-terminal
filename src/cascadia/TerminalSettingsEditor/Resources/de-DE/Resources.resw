@@ -1250,7 +1250,7 @@
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>Wählen Sie den Agent aus, der in diesem Profil für Delegierungen über die Befehlspalette verwendet wird. Diese Auswahl hat Vorrang vor der globalen Einstellung für den Delegat-Agenten.</value>
+    <value>Wählen Sie den Agenten aus, der in diesem Profil für die Befehlspalette verwendet wird. Diese Auswahl hat Vorrang vor der globalen Auswahl für die Befehlspalette.</value>
     <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">

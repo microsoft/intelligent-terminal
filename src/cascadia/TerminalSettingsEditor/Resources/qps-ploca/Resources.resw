@@ -1248,11 +1248,11 @@
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
-    <value>Command palette agent</value>
+    <value>Çǿмmàηđ рáłεŧţè âġзйт !!! !!!</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>Choose the agent used for command palette delegation in this profile. This selection takes precedence over the global delegate agent setting.</value>
+    <value>Ĉћõоšė τћε αģėňţ ůšěð ƒòґ čσммąиď ρåłєтťē δеľєġâťìбπ ìŋ ţнïѕ рŗóƒιĺέ. Ţħĩŝ śëĺéċŧіőл ţâķ℮ŝ рґēčёδёпсз ονέґ тĥę ğľǿваℓ ďęľĕĝàŧέ ªğĕñť ŝĕŧŧίňğ. !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>Description for the per-profile command palette agent setting.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">

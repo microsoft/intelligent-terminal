@@ -1246,7 +1246,7 @@
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
-    <value>命令選擇區代理</value>
+    <value>命令選擇區中的代理</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
