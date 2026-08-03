@@ -68,7 +68,8 @@
                                           HorizontalAlignment="Stretch"
                                           HorizontalContentAlignment="Stretch"
                                           Content="{Binding}" />
-                        <Button Grid.Column="1"
+                        <Button x:Uid="TabStripCloseButton"
+                                Grid.Column="1"
                                 Width="24"
                                 Height="24"
                                 Margin="0,0,4,0"

@@ -22,10 +22,10 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!--
-            Spec A §5.1: the second column is the vertical-tabs rail. Width
+            Spec A §5.1: the first column is the vertical-tabs rail. Width
             defaults to 0 so horizontal layouts render identically; code-behind
             (_ApplyVerticalLayoutReshape) sets the width and moves TabRow into
-            column 0 with RowSpan=3 when the layout flips to vertical.
+            column 0 with RowSpan=4 when the layout flips to vertical.
         -->
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="VerticalRailColumn" Width="0" />
@@ -56,14 +56,13 @@
             </mux:InfoBar>
 
             <mux:InfoBar x:Name="TabLayoutRestartInfoBar"
+                         x:Uid="TabLayoutRestartInfoBar"
                          x:Load="False"
                          CornerRadius="0"
                          IsClosable="True"
                          IsIconVisible="True"
                          IsOpen="False"
-                         Message="Restart Windows Terminal to apply the new tabLayout."
-                         Severity="Informational"
-                         Title="Tab layout change requires restart" />
+                         Severity="Informational" />
 
             <mux:InfoBar x:Name="CloseOnExitInfoBar"
                          x:Uid="CloseOnExitInfoBar"

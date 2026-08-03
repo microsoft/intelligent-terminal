@@ -2691,7 +2691,7 @@
         },
         "tabLayout": {
           "default": "horizontal",
-          "description": "Whether tabs render as a horizontal strip across the top of the window (\"horizontal\", the classic layout) or as a resizable vertical rail down the left edge (\"vertical\"). When set to \"vertical\", \"showTabsInTitlebar\" is silently forced to false.",
+          "description": "Whether tabs render as a horizontal strip across the top of the window (\"horizontal\", the classic layout) or as a resizable vertical rail down the left edge (\"vertical\"). When set to \"vertical\", the tab rail is hosted inside the page; \"showTabsInTitlebar\" controls whether the tab row chrome appears in the titlebar or at the top of the rail.",
           "enum": [
             "horizontal",
             "vertical"
@@ -2700,9 +2700,9 @@
         },
         "tabLayoutVerticalWidth": {
           "default": 220,
-          "description": "Width in pixels of the vertical tab rail when \"tabLayout\" is \"vertical\". Clamped to [140, 480]. Persisted automatically when the user drags the rail divider.",
+          "description": "Width in pixels of the vertical tab rail when \"tabLayout\" is \"vertical\". Clamped to [180, 480]. Persisted automatically when the user drags the rail divider.",
           "type": "integer",
-          "minimum": 140,
+          "minimum": 180,
           "maximum": 480
         },
         "wordDelimiters": {

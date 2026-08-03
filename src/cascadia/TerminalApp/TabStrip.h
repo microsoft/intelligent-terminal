@@ -100,7 +100,7 @@ namespace winrt::TerminalApp::implementation
         void OnDragItemsCompleted(winrt::Windows::UI::Xaml::Controls::ListViewBase const& sender,
                                    winrt::Windows::UI::Xaml::Controls::DragItemsCompletedEventArgs const& e);
         // Named to avoid colliding with IControlOverrides::OnDrop /
-        // OnDragOver on the Control base class, which have different arities.
+        // OnDragOver on the Control base class, which have different parameter types.
         void OnListDragOver(winrt::Windows::Foundation::IInspectable const& sender,
                              winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnListDrop(winrt::Windows::Foundation::IInspectable const& sender,

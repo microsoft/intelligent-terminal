@@ -254,8 +254,7 @@ namespace winrt::TerminalApp::implementation
 
         // Tearoff signal: dropped where nobody accepted it. Mirrors MUX
         // TabView.TabDroppedOutside — TerminalPage will create a new window.
-        using DPO = Windows::ApplicationModel::DataTransfer::DataPackageOperation;
-        if (e.DropResult() == DPO::None && _draggingItem)
+        if (e.DropResult() == Windows::ApplicationModel::DataTransfer::DataPackageOperation::None && _draggingItem)
         {
             auto tab = _draggingItem.try_as<MUX::Controls::TabViewItem>();
             auto args = winrt::make_self<TabStripDroppedOutsideEventArgs>(tab, _draggingItem);

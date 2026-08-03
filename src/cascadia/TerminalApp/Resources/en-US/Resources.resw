@@ -849,6 +849,18 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="FindText" xml:space="preserve">
     <value>Find</value>
   </data>
+  <data name="TabLayoutRestartInfoBar.Title" xml:space="preserve">
+    <value>Tab layout change requires restart</value>
+  </data>
+  <data name="TabLayoutRestartInfoBar.Message" xml:space="preserve">
+    <value>Restart Windows Terminal to apply the new tab layout.</value>
+  </data>
+  <data name="TabStrip_ControlType" xml:space="preserve">
+    <value>tab strip</value>
+  </data>
+  <data name="TabStripCloseButton.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
   <data name="CloseOnExitInfoBar.Message" xml:space="preserve">
     <value>Termination behavior can be configured in advanced profile settings.</value>
   </data>

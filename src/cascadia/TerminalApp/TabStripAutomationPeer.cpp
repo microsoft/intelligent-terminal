@@ -26,7 +26,7 @@ namespace winrt::TerminalApp::implementation
 
     winrt::hstring TabStripAutomationPeer::GetLocalizedControlTypeCore() const
     {
-        return L"tab strip";
+        return RS_(L"TabStrip_ControlType");
     }
 
     winrt::Windows::UI::Xaml::Automation::Peers::AutomationOrientation TabStripAutomationPeer::GetOrientationCore() const
