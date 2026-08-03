@@ -102,6 +102,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C237` `[new]` `[UT~]` `[E2E]` **Profile Agent pane agent picker works:** Each profile's Agent pane agent picker lists installed, policy-allowed Windows agents plus agents installed natively in that profile's WSL distro; saving persists `agentPaneBackend`, while an unconfigured profile inherits the global Windows agent. _(#481; UT: `ProfileTests::AgentPaneBackendDefaultsAndInherits`.)_
 - [ ] `C238` `[new]` `[E2E]` **Profile WSL agent routing is strict:** Changing a profile to a WSL backend rebuilds its helper, routes the exact selected agent through `wsl:<distro>`, and does not fall back to a Windows-hosted agent. _(#481; E2E: `Feature.WslAgentBackend`.)_
 
+### Profile command palette agent
+
+- [ ] `C244` `[new]` `[UT~]` `[E2E]` **Profile Command palette agent picker works:** Each profile's Command palette agent picker offers Host and WSL-distro delegate agents; saving persists `commandPaletteAgent`, while an unconfigured profile follows the global delegate agent. _(#488; UT: `ProfileTests::AgentPaneBackendDefaultsAndInherits`.)_
+- [ ] `C245` `[new]` `[E2E]` **Command palette agent source is strict:** A profile's Command palette agent selects the exact delegate execution source — an explicit WSL selection stays in its distro and surfaces the real in-distro error, and a host selection is never diverted to WSL. _(#488; E2E: `Feature.DelegateSource`.)_
+
 ## 2. Agent pane chat
 
 **Feature definition:** The agent pane is a per-tab AI chat pane backed by WTA helper/master and an ACP-capable agent. It should be reusable, able to be hidden, and stable across tab/window operations.
