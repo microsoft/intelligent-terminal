@@ -166,6 +166,8 @@ impl App {
                 // A live connection cancels the degraded latch (e.g. the
                 // post-sign-in reconnect that goes back through master).
                 self.transport_lost = false;
+                self.proposal_channels
+                    .set_agent_transport_available(true);
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
                 if self.mode == AppMode::Setup {
@@ -287,12 +289,12 @@ impl App {
             AppEvent::PromptTemplateLoaded { name } => {
                 self.prompt_name = Some(name);
             }
-            AppEvent::AutofixTargetResolved {
+            AppEvent::PromptTargetResolved {
                 tab_id,
                 prompt_id,
                 pane_id,
             } => {
-                self.apply_autofix_target_resolved(tab_id, prompt_id, pane_id);
+                self.apply_prompt_target_resolved(tab_id, prompt_id, pane_id);
             }
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);
@@ -340,7 +342,8 @@ impl App {
                     crate::protocol::acp::failure::AgentFailure::TransportLost
                 ) {
                     self.transport_lost = true;
-                    self.proposal_channels.set_transport_available(false);
+                    self.proposal_channels
+                        .set_agent_transport_available(false);
                 }
 
                 let is_auth_error = failure.is_auth();

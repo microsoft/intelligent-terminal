@@ -281,12 +281,12 @@ fn hooks_cli_filter_into_scope_maps_each_variant() {
 #[test]
 fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     let v = serde_json::json!({ "s": "hi", "n": 42, "b": true, "nl": null });
-    assert_eq!(json_str_or_num(&v, "s"), "hi");
-    assert_eq!(json_str_or_num(&v, "n"), "42");
+    assert_eq!(cli::wt::json_str_or_num(&v, "s"), "hi");
+    assert_eq!(cli::wt::json_str_or_num(&v, "n"), "42");
     // Non-scalar / wrong-type / missing keys all degrade to "-".
-    assert_eq!(json_str_or_num(&v, "b"), "-");
-    assert_eq!(json_str_or_num(&v, "nl"), "-");
-    assert_eq!(json_str_or_num(&v, "missing"), "-");
+    assert_eq!(cli::wt::json_str_or_num(&v, "b"), "-");
+    assert_eq!(cli::wt::json_str_or_num(&v, "nl"), "-");
+    assert_eq!(cli::wt::json_str_or_num(&v, "missing"), "-");
 }
 
 // ── Delegate: WSL pane target detection + launchable gate ───────────────────
@@ -380,16 +380,16 @@ fn delegate_launchable_for_target_ors_host_and_wsl() {
     // Agent not launchable on the Windows host, but present inside the WSL
     // distro → launchable (in-distro path), so the prompt is enriched, not
     // dropped.
-    assert!(delegate_launchable_for_target(false, true));
+    assert!(cli::delegate::delegate_launchable_for_target(false, true));
 
     // Not launchable on host AND not available in WSL → stays non-launchable
     // (the bare-command path, where the prompt is intentionally not baked in).
     // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
-    assert!(!delegate_launchable_for_target(false, false));
+    assert!(!cli::delegate::delegate_launchable_for_target(false, false));
 
     // Launchable on the host is always launchable, regardless of WSL.
-    assert!(delegate_launchable_for_target(true, false));
-    assert!(delegate_launchable_for_target(true, true));
+    assert!(cli::delegate::delegate_launchable_for_target(true, false));
+    assert!(cli::delegate::delegate_launchable_for_target(true, true));
 }
 
 #[test]

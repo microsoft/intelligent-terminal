@@ -84,14 +84,20 @@ wta split-pane -h                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
 wta hooks install                         # install the agent-hook bridge
-wta resolve-command which --json          # resolve a profile-defined PowerShell command
+wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 ```
 
 Stateless, short-lived commands dispatched in `src/main.rs`. They talk directly
 to Windows Terminal via `CliChannel` → `wtcli.exe` → COM and exit, except local
-helpers such as `resolve-command`, which inspect machine state directly. Used by
+helpers such as `resolve-command`, which inspect cwd and machine state directly. Used by
 humans debugging WTA and by agents that can shell out. (The agent CLI reaches WT
 this way too — by shelling out to `wta` / `wtcli`, **not** via an MCP server.)
+
+Packaged builds register `wta.exe` as an App Execution Alias. WTA prepends the
+current package family's alias directory to the agent process `PATH`, so a short
+`wta.exe` invocation selects the matching Dev, Preview, or Store installation
+even when multiple variants are installed. Unpackaged builds prepend the
+running executable's directory instead.
 
 ---
 

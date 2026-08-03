@@ -8,6 +8,7 @@ use tokio::time::{sleep, Duration};
 
 use crate::app_contracts::AppEvent;
 use crate::shell::ShellManager;
+use crate::turn_context::TurnContext;
 
 use crate::agent_registry::{self, PromptFlag};
 
@@ -107,6 +108,8 @@ pub struct ChoiceExecution {
     pub choice: RecommendationChoice,
     /// When true, Send actions paste text without a trailing Enter (insert-only).
     pub insert_only: bool,
+    /// Host-owned context associated with the turn that produced this choice.
+    pub context: TurnContext,
 }
 
 pub fn default_supported_delegate_agents() -> Vec<SupportedDelegateAgent> {
@@ -159,46 +162,113 @@ fn derive_agent_identity(commandline: &str) -> (String, String) {
     (id.clone(), id)
 }
 
-/// Filter out choices that target the coordinator's own pane.
-/// Returns the filtered set. If all choices are removed, returns an error.
-pub fn validate_recommendation_set_for_coordinator_target(
-    set: &RecommendationSet,
-    coordinator_target: Option<&str>,
-) -> Result<RecommendationSet> {
-    let Some(coordinator_target) = coordinator_target
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-    else {
-        return Ok(set.clone());
+pub fn parse_recommendation_set(text: &str) -> Result<RecommendationSet> {
+    let json = extract_json_code_block(text)
+        .or_else(|| extract_first_json_object(text))
+        .context("no recommendation JSON block found")?;
+
+    let mut parsed: RecommendationSet =
+        serde_json::from_str(json).context("failed to parse recommendation JSON")?;
+    validate_recommendation_set(&parsed)?;
+    parsed.choices.sort_by_key(|c| c.choice);
+    Ok(parsed)
+}
+
+/// The result of parsing an autofix response.
+#[derive(Debug, Clone)]
+pub enum AutofixDecision {
+    /// AI found a single-command fix.
+    Fix(RecommendationSet),
+    /// AI cannot auto-fix but has a useful explanation/suggestion. The caller
+    /// should surface `explanation` in the agent pane chat history and tell
+    /// the bottom bar to show a "Suggestion ready — open agent pane" indicator.
+    Explain { title: String, explanation: String },
+    /// AI decided no fix is appropriate; caller should silently clear state.
+    /// The `explain` action makes this rare — Ignore is now a fail-safe for
+    /// malformed responses or empty explanations.
+    Ignore,
+}
+
+/// Parse a response from the minimal autofix prompt.
+///
+/// Expected formats:
+///   {"action": "fix",     "title": "...", "command": "...",     "rationale": "..."}
+///   {"action": "explain", "title": "...", "explanation": "..."}
+///   {"action": "ignore"}                            // legacy fallback
+///
+/// Returns `AutofixDecision::Ignore` for unrecognised JSON or missing required
+/// fields (fail-safe: never leave a stale Pending bar).
+pub fn parse_autofix_response(text: &str) -> AutofixDecision {
+    let json = match extract_json_code_block(text).or_else(|| extract_first_json_object(text)) {
+        Some(j) => j,
+        None => {
+            tracing::warn!(target: "autofix", "no JSON in autofix response, ignoring");
+            return AutofixDecision::Ignore;
+        }
     };
 
-    let filtered: Vec<RecommendationChoice> = set
-        .choices
-        .iter()
-        .filter(|choice| {
-            !choice.actions.iter().any(|action| {
-                matches!(action, RecommendedAction::Send { parent, .. } if parent == coordinator_target)
+    let value: serde_json::Value = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(target: "autofix", "failed to parse autofix JSON: {e}, ignoring");
+            return AutofixDecision::Ignore;
+        }
+    };
+
+    match value.get("action").and_then(|v| v.as_str()) {
+        Some("fix") => {
+            let command = match value.get("command").and_then(|v| v.as_str()) {
+                Some(c) if !c.trim().is_empty() => c.to_string(),
+                _ => {
+                    tracing::warn!(target: "autofix", "fix response missing 'command', ignoring");
+                    return AutofixDecision::Ignore;
+                }
+            };
+            let title = value
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Fix")
+                .to_string();
+            let rationale = value
+                .get("rationale")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            AutofixDecision::Fix(RecommendationSet {
+                recommended_choice: Some(1),
+                choices: vec![RecommendationChoice {
+                    choice: 1,
+                    title,
+                    rationale,
+                    actions: vec![RecommendedAction::Send {
+                        parent: String::new(),
+                        input: command,
+                    }],
+                }],
             })
-        })
-        .cloned()
-        .collect();
-
-    if filtered.is_empty() {
-        bail!(
-            "all choices target the current coordinator pane {}",
-            coordinator_target
-        );
+        }
+        Some("explain") => {
+            let explanation = match value.get("explanation").and_then(|v| v.as_str()) {
+                Some(e) if !e.trim().is_empty() => e.to_string(),
+                _ => {
+                    tracing::warn!(target: "autofix", "explain response missing 'explanation', ignoring");
+                    return AutofixDecision::Ignore;
+                }
+            };
+            let title = value
+                .get("title")
+                .and_then(|v| v.as_str())
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or("Suggestion")
+                .to_string();
+            AutofixDecision::Explain { title, explanation }
+        }
+        Some("ignore") | None => AutofixDecision::Ignore,
+        Some(other) => {
+            tracing::warn!(target: "autofix", "unknown autofix action {other:?}, ignoring");
+            AutofixDecision::Ignore
+        }
     }
-
-    // Adjust recommended_choice if the original was filtered out.
-    let recommended_choice = set.recommended_choice.filter(|rc| {
-        filtered.iter().any(|c| c.choice == *rc)
-    });
-
-    Ok(RecommendationSet {
-        recommended_choice,
-        choices: filtered,
-    })
 }
 
 pub fn recommended_choice_index(set: &RecommendationSet) -> usize {
@@ -224,17 +294,23 @@ pub async fn run_recommendation_executor(
     // (one entry) and the lock is never held across an await.
     delegate_agents: Arc<std::sync::Mutex<Vec<DelegateAgentRuntime>>>,
 ) {
-    while let Some(exec) = rx.recv().await {
+    while let Some(mut exec) = rx.recv().await {
         let delegate_agents = delegate_agents.lock().unwrap().clone();
-        match execute_choice(
-            &exec.choice,
-            exec.insert_only,
-            &shell_mgr,
-            &delegate_agents,
-            &event_tx,
-        )
-        .await
-        {
+        let result =
+            match bind_choice_target(&mut exec.choice, exec.context.target_pane_id.as_deref()) {
+            Ok(()) => {
+                execute_choice(
+                    &exec.choice,
+                    exec.insert_only,
+                    &shell_mgr,
+                    &delegate_agents,
+                    &event_tx,
+                )
+                .await
+            }
+            Err(err) => Err(err),
+        };
+        match result {
             Ok(()) => {}
             Err(err) => {
                 let err_str = format!("{:#}", err);
@@ -249,6 +325,43 @@ pub async fn run_recommendation_executor(
             }
         }
     }
+}
+
+fn bind_choice_target(
+    choice: &mut RecommendationChoice,
+    target_pane_id: Option<&str>,
+) -> Result<()> {
+    for action in &mut choice.actions {
+        let requires_target = matches!(action, RecommendedAction::Send { .. })
+            || matches!(
+                action,
+                RecommendedAction::OpenAndSend {
+                    target: OpenTarget::Panel,
+                    ..
+                } | RecommendedAction::Open {
+                    target: OpenTarget::Panel,
+                    ..
+                }
+            );
+        if requires_target {
+            let target = target_pane_id
+                .map(str::trim)
+                .filter(|target| !target.is_empty())
+                .context("the host could not resolve a target pane for this recommendation")?;
+            match action {
+                RecommendedAction::Send { parent, .. } => *parent = target.to_string(),
+                RecommendedAction::OpenAndSend { parent, .. }
+                | RecommendedAction::Open { parent, .. } => *parent = Some(target.to_string()),
+            }
+        } else {
+            match action {
+                RecommendedAction::OpenAndSend { parent, .. }
+                | RecommendedAction::Open { parent, .. } => *parent = None,
+                RecommendedAction::Send { .. } => unreachable!(),
+            }
+        }
+    }
+    Ok(())
 }
 
 async fn execute_choice(
@@ -296,17 +409,15 @@ async fn execute_choice(
                     "{} input to pane {}.",
                     done_label, parent
                 )));
-                // Run is "the user dispatched a command to pane X" — follow
-                // focus to that pane so they can keep typing / observe output
-                // without an extra click. Best-effort: log and ignore on
-                // failure (focus is UX-nice, not correctness-critical).
-                if !insert_only {
-                    if let Err(err) = shell_mgr.wt_focus_pane(parent).await {
-                        coordinator_log(&format!(
-                            "send focus skipped parent={} error={}",
-                            parent, err
-                        ));
-                    }
+                // Both actions hand control back to the target pane: Run lets
+                // the user observe output, while Insert lets them edit or
+                // submit the inserted command. Focus is best-effort because
+                // the input has already been delivered successfully.
+                if let Err(err) = shell_mgr.wt_focus_pane(parent).await {
+                    coordinator_log(&format!(
+                        "send focus skipped parent={} error={}",
+                        parent, err
+                    ));
                 }
             }
             RecommendedAction::OpenAndSend {
@@ -414,9 +525,7 @@ async fn execute_choice(
                     "Opened {} pane {}.",
                     target_label, pane_id
                 )));
-                if let (Some(session_id), Some(runtime)) =
-                    (pinned_session_id.as_deref(), runtime)
-                {
+                if let (Some(session_id), Some(runtime)) = (pinned_session_id.as_deref(), runtime) {
                     let event = crate::agent_sessions::SessionEvent::SessionStarted {
                         key: session_id.to_string(),
                         cli_source: crate::agent_sessions::CliSource::from(
@@ -484,7 +593,12 @@ async fn execute_choice(
                 let pane_id = match target {
                     OpenTarget::Tab => {
                         let result = shell_mgr
-                            .wt_create_tab(None, cwd.as_deref(), title.as_deref(), profile.as_deref())
+                            .wt_create_tab(
+                                None,
+                                cwd.as_deref(),
+                                title.as_deref(),
+                                profile.as_deref(),
+                            )
                             .await
                             .context("failed to create tab")?;
                         coordinator_log(&format!(
@@ -496,7 +610,14 @@ async fn execute_choice(
                     OpenTarget::Panel => {
                         let parent = required_parent(parent.as_deref(), "open")?;
                         let result = shell_mgr
-                            .wt_split_pane(parent, None, cwd.as_deref(), direction.as_deref(), None, profile.as_deref())
+                            .wt_split_pane(
+                                parent,
+                                None,
+                                cwd.as_deref(),
+                                direction.as_deref(),
+                                None,
+                                profile.as_deref(),
+                            )
                             .await
                             .with_context(|| format!("failed to split pane {}", parent))?;
                         coordinator_log(&format!(
@@ -548,6 +669,45 @@ pub(crate) fn validate_recommendation_set(set: &RecommendationSet) -> Result<()>
     Ok(())
 }
 
+/// Remove choices that would send input back into the helper's own pane.
+pub(crate) fn validate_recommendation_set_for_coordinator_target(
+    set: &RecommendationSet,
+    coordinator_target: Option<&str>,
+) -> Result<RecommendationSet> {
+    let Some(coordinator_target) = coordinator_target
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(set.clone());
+    };
+
+    let choices: Vec<RecommendationChoice> = set
+        .choices
+        .iter()
+        .filter(|choice| {
+            !choice.actions.iter().any(|action| {
+                matches!(
+                    action,
+                    RecommendedAction::Send { parent, .. } if parent == coordinator_target
+                )
+            })
+        })
+        .cloned()
+        .collect();
+
+    if choices.is_empty() {
+        bail!("all choices target the current coordinator pane {coordinator_target}");
+    }
+
+    let recommended_choice = set
+        .recommended_choice
+        .filter(|number| choices.iter().any(|choice| choice.choice == *number));
+    Ok(RecommendationSet {
+        recommended_choice,
+        choices,
+    })
+}
+
 fn validate_action(action: &RecommendedAction) -> Result<()> {
     match action {
         RecommendedAction::Send { parent: _, input } => {
@@ -569,9 +729,6 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(agent) = agent.as_deref() {
                 ensure_non_empty("agent", agent)?;
             }
-            if matches!(target, OpenTarget::Panel) {
-                required_parent(parent.as_deref(), "open_and_send")?;
-            }
             validate_direction(direction.as_deref(), target)?;
         }
         RecommendedAction::Open {
@@ -582,9 +739,6 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
         } => {
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;
-            }
-            if matches!(target, OpenTarget::Panel) {
-                required_parent(parent.as_deref(), "open")?;
             }
             validate_direction(direction.as_deref(), target)?;
         }
@@ -988,8 +1142,14 @@ fn needs_cmd_wrapper(command: &str) -> bool {
     if lower.ends_with(".exe") || lower.ends_with(".com") {
         return false;
     }
-    let basename = lower.rsplit(|ch: char| ch == '\\' || ch == '/').next().unwrap_or(&lower);
-    if matches!(basename, "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe") {
+    let basename = lower
+        .rsplit(|ch: char| ch == '\\' || ch == '/')
+        .next()
+        .unwrap_or(&lower);
+    if matches!(
+        basename,
+        "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+    ) {
         return false;
     }
 
@@ -1014,7 +1174,6 @@ fn needs_cmd_wrapper(command: &str) -> bool {
     // No .exe found on PATH — likely a .cmd/.bat shim, needs wrapping.
     true
 }
-
 
 pub fn split_windows_commandline(commandline: &str) -> Vec<String> {
     let mut args = Vec::new();
@@ -1173,9 +1332,8 @@ pub(crate) fn build_wsl_delegate_commandline(
     if agent_cmd.is_empty() {
         bail!("delegate agent runtime commandline is empty");
     }
-    let profile = agent_registry::lookup_profile_by_id(
-        agent_registry::resolve_agent_id_from_cmd(agent_cmd),
-    );
+    let profile =
+        agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
 
     // Agent invocation: the CLI tokens plus model / session-id flags, each
     // single-quoted for the inner bash.
@@ -1488,36 +1646,236 @@ fn coordinator_log(msg: &str) {
     tracing::debug!(target: "coordinator", "{}", msg);
 }
 
+fn extract_json_code_block(text: &str) -> Option<&str> {
+    let start = text.find("```json").or_else(|| text.find("```JSON"))?;
+    let mut body = &text[start + 7..];
+    if let Some(b) = body.strip_prefix('\r') {
+        body = b;
+    }
+    if let Some(b) = body.strip_prefix('\n') {
+        body = b;
+    }
+    extract_balanced_json_object(body)
+}
+
+fn extract_first_json_object(text: &str) -> Option<&str> {
+    extract_balanced_json_object(text)
+}
+
+/// Returns the substring spanning the first balanced JSON object in `text`.
+///
+/// Walks the input as bytes, tracking string state and brace depth so that
+/// braces or fence markers (```) inside JSON string values do not terminate
+/// the scan early. Byte indexing is safe because we only land on ASCII
+/// characters (`{`, `}`, `"`, `\`).
+fn extract_balanced_json_object(text: &str) -> Option<&str> {
+    let bytes = text.as_bytes();
+    let start = bytes.iter().position(|&b| b == b'{')?;
+
+    let mut depth: i32 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for j in start..bytes.len() {
+        let c = bytes[j];
+        if in_string {
+            if escape {
+                escape = false;
+            } else if c == b'\\' {
+                escape = true;
+            } else if c == b'"' {
+                in_string = false;
+            }
+        } else {
+            match c {
+                b'"' => in_string = true,
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(text[start..=j].trim());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        build_delegate_launch_commandline, build_delegate_launch_commandline_with_session,
-        build_pwsh_base64_launch, build_shell_multiline_delegate_launch,
-        build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
-        default_delegate_agent_runtimes, escape_for_intermediate_shell,
-        is_direct_known_agent_command, pinned_session_id_for_runtime, pwsh_available,
-        resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
-        validate_recommendation_set, validate_recommendation_set_for_coordinator_target,
-        DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget, RecommendationChoice,
-        RecommendationSet, RecommendedAction,
+        bind_choice_target, build_delegate_launch_commandline,
+        build_delegate_launch_commandline_with_session, build_pwsh_base64_launch,
+        build_shell_multiline_delegate_launch, build_windows_powershell_base64_launch,
+        build_wsl_delegate_commandline, default_delegate_agent_runtimes,
+        escape_for_intermediate_shell, execute_choice, is_direct_known_agent_command,
+        parse_autofix_response, parse_recommendation_set, pinned_session_id_for_runtime,
+        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
+        AutofixDecision, DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget,
+        RecommendationChoice, RecommendedAction,
     };
+    use crate::shell::wt_channel::WtChannel;
+    use crate::shell::ShellManager;
     use serde_json::json;
     use std::os::windows::process::CommandExt;
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::mpsc;
 
-    fn choice(number: usize, action: RecommendedAction) -> RecommendationChoice {
-        RecommendationChoice {
-            choice: number,
-            title: format!("Choice {number}"),
-            rationale: String::new(),
-            actions: vec![action],
+    #[derive(Default)]
+    struct RecordingWtChannel {
+        requests: Mutex<Vec<(String, serde_json::Value)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl WtChannel for RecordingWtChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.requests
+                .lock()
+                .unwrap()
+                .push((method.to_string(), params));
+            Ok(json!({}))
+        }
+
+        fn is_available(&self) -> bool {
+            true
         }
     }
 
-    fn recommendation_set(choices: Vec<RecommendationChoice>) -> RecommendationSet {
-        RecommendationSet {
-            recommended_choice: Some(1),
-            choices,
-        }
+    #[test]
+    fn host_target_overrides_model_generated_pane_targets() {
+        let mut choice = RecommendationChoice {
+            choice: 1,
+            title: "Check port".to_string(),
+            rationale: String::new(),
+            actions: vec![
+                RecommendedAction::Send {
+                    parent: "10".to_string(),
+                    input: "Get-NetTCPConnection -LocalPort 8000".to_string(),
+                },
+                RecommendedAction::Open {
+                    target: OpenTarget::Panel,
+                    parent: Some("invented-pane".to_string()),
+                    cwd: None,
+                    title: None,
+                    direction: None,
+                    profile: None,
+                },
+            ],
+        };
+
+        bind_choice_target(&mut choice, Some("real-pane-guid")).unwrap();
+
+        assert!(matches!(
+            &choice.actions[0],
+            RecommendedAction::Send { parent, .. } if parent == "real-pane-guid"
+        ));
+        assert!(matches!(
+            &choice.actions[1],
+            RecommendedAction::Open { parent: Some(parent), .. } if parent == "real-pane-guid"
+        ));
+    }
+
+    #[test]
+    fn target_requiring_action_fails_when_host_has_no_target() {
+        let mut choice = RecommendationChoice {
+            choice: 1,
+            title: "Check port".to_string(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: "10".to_string(),
+                input: "Get-NetTCPConnection -LocalPort 8000".to_string(),
+            }],
+        };
+
+        let err = bind_choice_target(&mut choice, None).unwrap_err();
+
+        assert!(format!("{err:#}").contains("host could not resolve a target pane"));
+    }
+
+    #[test]
+    fn tab_target_actions_discard_model_provided_parent_even_with_host_target() {
+        // Tab-targeted open/open_and_send actions don't need a parent pane at
+        // all (they create a brand new tab), so any model-invented parent
+        // must be wiped rather than bound to the host's resolved pane.
+        let mut choice = RecommendationChoice {
+            choice: 1,
+            title: "Delegate to a new tab".to_string(),
+            rationale: String::new(),
+            actions: vec![
+                RecommendedAction::OpenAndSend {
+                    target: OpenTarget::Tab,
+                    parent: Some("model-invented-tab-parent".to_string()),
+                    input: "Inspect the repo".to_string(),
+                    agent: Some("copilot".to_string()),
+                    cwd: None,
+                    title: None,
+                    direction: None,
+                    profile: None,
+                },
+                RecommendedAction::Open {
+                    target: OpenTarget::Tab,
+                    parent: Some("another-model-invented-parent".to_string()),
+                    cwd: None,
+                    title: None,
+                    direction: None,
+                    profile: None,
+                },
+            ],
+        };
+
+        // Even though the host resolved a real target pane, tab actions must
+        // never inherit it (or retain the model's guess) since they open a
+        // brand new tab rather than routing into an existing pane.
+        bind_choice_target(&mut choice, Some("real-pane-guid")).unwrap();
+
+        assert!(matches!(
+            &choice.actions[0],
+            RecommendedAction::OpenAndSend { parent: None, .. }
+        ));
+        assert!(matches!(
+            &choice.actions[1],
+            RecommendedAction::Open { parent: None, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn insert_into_terminal_focuses_target_pane_after_sending_input() {
+        let channel = Arc::new(RecordingWtChannel::default());
+        let shell_mgr = ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>);
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let choice = RecommendationChoice {
+            choice: 1,
+            title: "Insert command".to_string(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: "target-pane".to_string(),
+                input: "git status\r\n".to_string(),
+            }],
+        };
+
+        execute_choice(&choice, true, &shell_mgr, &[], &event_tx)
+            .await
+            .expect("insert should succeed");
+
+        let requests = channel.requests.lock().unwrap();
+        assert_eq!(
+            requests.as_slice(),
+            [
+                (
+                    "send_input".to_string(),
+                    json!({ "session_id": "target-pane", "text": "git status" }),
+                ),
+                (
+                    "focus_pane".to_string(),
+                    json!({ "session_id": "target-pane" }),
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -1541,8 +1899,11 @@ mod tests {
             .find(|runtime| runtime.id == "copilot")
             .expect("copilot runtime should exist");
 
-        let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Fix the build and report back"), None)
+        let commandline = build_delegate_launch_commandline(
+            &runtime,
+            Some("Fix the build and report back"),
+            None,
+        )
                 .unwrap();
 
         assert!(!commandline.contains("--model"));
@@ -1783,8 +2144,8 @@ mod tests {
             model: None,
         };
 
-        let session_id = pinned_session_id_for_runtime(&runtime, true)
-            .expect("copilot should support pinning");
+        let session_id =
+            pinned_session_id_for_runtime(&runtime, true).expect("copilot should support pinning");
         assert!(uuid::Uuid::parse_str(&session_id).is_ok());
     }
 
@@ -1843,14 +2204,242 @@ mod tests {
         .find(|runtime| runtime.id == "copilot")
         .expect("copilot runtime should exist");
 
-        let commandline =
-            build_delegate_launch_commandline(&runtime, Some("Inspect the repo and summarize"), None)
+        let commandline = build_delegate_launch_commandline(
+            &runtime,
+            Some("Inspect the repo and summarize"),
+            None,
+        )
                 .unwrap();
 
         assert_eq!(
             commandline,
             "C:\\Users\\kaitao\\AppData\\Local\\Microsoft\\WinGet\\Links\\copilot.exe --model claude-haiku-4.5 -i \"Inspect the repo and summarize\""
         );
+    }
+
+    #[test]
+    fn parse_recommendations_accepts_open_and_send_tab_actions_without_parent() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open a shell tab",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "input": "pwd",
+          "cwd": "C:\\repo",
+          "title": "Repo shell"
+        }
+      ]
+    },
+    {
+      "choice": 2,
+      "title": "Delegate in a new tab",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "input": "Inspect the repo",
+          "agent": "copilot",
+          "cwd": "C:\\repo",
+          "title": "Copilot delegate"
+        }
+      ]
+    },
+    {
+      "choice": 3,
+      "title": "Run locally",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+
+        let parsed = parse_recommendation_set(text).expect("recommendation set should parse");
+
+        assert!(matches!(
+            parsed.choices[0].actions[0],
+            RecommendedAction::OpenAndSend {
+                target: OpenTarget::Tab,
+                ..
+            }
+        ));
+        assert!(matches!(
+            parsed.choices[1].actions[0],
+            RecommendedAction::OpenAndSend {
+                target: OpenTarget::Tab,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_open_action_without_input() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open an empty tab",
+      "actions": [
+        {
+          "type": "open",
+          "target": "tab",
+          "cwd": "C:\\repo"
+        }
+      ]
+    },
+    {
+      "choice": 2,
+      "title": "Split a panel here",
+      "actions": [
+        {
+          "type": "open",
+          "target": "panel",
+          "parent": "12"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+
+        let parsed = parse_recommendation_set(text).expect("open recommendation should parse");
+        assert!(matches!(
+            parsed.choices[0].actions[0],
+            RecommendedAction::Open {
+                target: OpenTarget::Tab,
+                ..
+            }
+        ));
+        assert!(matches!(
+            parsed.choices[1].actions[0],
+            RecommendedAction::Open {
+                target: OpenTarget::Panel,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_open_panel_with_direction() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Split right",
+      "actions": [
+        {
+          "type": "open",
+          "target": "panel",
+          "parent": "12",
+          "direction": "right"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+
+        let parsed = parse_recommendation_set(text).expect("open with direction should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { direction, .. } => {
+                assert_eq!(direction.as_deref(), Some("right"));
+            }
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    // ── profile inheritance (PR #366) ──────────────────────────────────────
+
+    #[test]
+    fn open_action_defaults_profile_to_none_when_absent() {
+        // The `profile` field is optional; an LLM emitting the pre-#366 schema
+        // (no `profile` key) must still parse, with profile == None.
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open a tab",
+      "actions": [ { "type": "open", "target": "tab" } ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open without profile should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { profile, .. } => assert_eq!(profile.as_deref(), None),
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_action_parses_explicit_profile() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open Ubuntu tab",
+      "actions": [ { "type": "open", "target": "tab", "profile": "Ubuntu" } ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open with profile should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::Open { profile, .. } => {
+                assert_eq!(profile.as_deref(), Some("Ubuntu"));
+            }
+            other => panic!("expected Open, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_and_send_parses_explicit_profile() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open Ubuntu tab and run",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "input": "ls -la",
+          "profile": "Ubuntu"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+        let parsed = parse_recommendation_set(text).expect("open_and_send should parse");
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::OpenAndSend { profile, input, .. } => {
+                assert_eq!(profile.as_deref(), Some("Ubuntu"));
+                assert_eq!(input, "ls -la");
+            }
+            other => panic!("expected OpenAndSend, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1958,18 +2547,27 @@ mod tests {
         // No Windows home available → drop the unusable cwd (None), letting WT
         // pick a default rather than crashing the agent CLI on a POSIX path.
         assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), None), None);
-        assert_eq!(sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")), None);
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("/home/user"), Some("   ")),
+            None
+        );
     }
 
     #[test]
     fn sanitize_cwd_keeps_unc_path() {
         // Forward-slash and backslash UNC paths are valid Windows paths — keep.
         assert_eq!(
-            sanitize_windows_agent_cwd(Some("//wsl.localhost/Ubuntu/home/user"), Some(r"C:\Users\me")),
+            sanitize_windows_agent_cwd(
+                Some("//wsl.localhost/Ubuntu/home/user"),
+                Some(r"C:\Users\me")
+            ),
             Some("//wsl.localhost/Ubuntu/home/user".to_string())
         );
         assert_eq!(
-            sanitize_windows_agent_cwd(Some(r"\\wsl.localhost\Ubuntu\home\user"), Some(r"C:\Users\me")),
+            sanitize_windows_agent_cwd(
+                Some(r"\\wsl.localhost\Ubuntu\home\user"),
+                Some(r"C:\Users\me")
+            ),
             Some(r"\\wsl.localhost\Ubuntu\home\user".to_string())
         );
     }
@@ -1977,7 +2575,10 @@ mod tests {
     #[test]
     fn sanitize_cwd_none_and_blank_stay_none() {
         assert_eq!(sanitize_windows_agent_cwd(None, Some(r"C:\Users\me")), None);
-        assert_eq!(sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")), None);
+        assert_eq!(
+            sanitize_windows_agent_cwd(Some("   "), Some(r"C:\Users\me")),
+            None
+        );
     }
 
     #[test]
@@ -1990,136 +2591,246 @@ mod tests {
 
     #[test]
     fn rejects_open_with_invalid_direction() {
-        let set = recommendation_set(vec![choice(
-            1,
-            RecommendedAction::Open {
-                target: OpenTarget::Panel,
-                parent: Some("12".into()),
-                cwd: None,
-                title: None,
-                direction: Some("sideways".into()),
-                profile: None,
-            },
-        )]);
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Split sideways",
+      "actions": [
+        {
+          "type": "open",
+          "target": "panel",
+          "parent": "12",
+          "direction": "sideways"
+        }
+      ]
+    }
+  ]
+}
+```"#;
 
-        assert!(validate_recommendation_set(&set).is_err());
+        assert!(parse_recommendation_set(text).is_err());
     }
 
     #[test]
     fn rejects_open_tab_with_direction() {
-        let set = recommendation_set(vec![choice(
-            1,
-            RecommendedAction::Open {
-                target: OpenTarget::Tab,
-                parent: None,
-                cwd: None,
-                title: None,
-                direction: Some("right".into()),
-                profile: None,
-            },
-        )]);
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open tab right?",
+      "actions": [
+        {
+          "type": "open",
+          "target": "tab",
+          "direction": "right"
+        }
+      ]
+    }
+  ]
+}
+```"#;
 
-        assert!(validate_recommendation_set(&set).is_err());
+        assert!(parse_recommendation_set(text).is_err());
     }
 
     #[test]
-    fn rejects_open_panel_without_parent() {
-        let set = recommendation_set(vec![choice(
-            1,
-            RecommendedAction::Open {
-                target: OpenTarget::Panel,
-                parent: None,
-                cwd: None,
-                title: None,
-                direction: None,
-                profile: None,
-            },
-        )]);
+    fn accepts_open_panel_without_model_owned_parent() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Open a panel",
+      "actions": [
+        {
+          "type": "open",
+          "target": "panel"
+        }
+      ]
+    }
+  ]
+}
+```"#;
 
-        assert!(validate_recommendation_set(&set).is_err());
+        assert!(parse_recommendation_set(text).is_ok());
     }
 
     #[test]
-    fn rejects_send_to_current_coordinator_target() {
-        let set = recommendation_set(vec![
-            choice(
-                1,
-                RecommendedAction::Send {
-                    parent: "14".into(),
-                    input: "Continue in this pane".into(),
-                },
-            ),
-            choice(
-                2,
-                RecommendedAction::Send {
-                    parent: "1".into(),
-                    input: "pwd".into(),
-                },
-            ),
-            choice(
-                3,
-                RecommendedAction::OpenAndSend {
-                    target: OpenTarget::Tab,
-                    parent: None,
-                    input: "Inspect the repo".into(),
-                    agent: Some("copilot".into()),
-                    cwd: Some(r"C:\repo".into()),
-                    title: None,
-                    direction: None,
-                    profile: None,
-                },
-            ),
-        ]);
-        let filtered = validate_recommendation_set_for_coordinator_target(&set, Some("14"))
-            .expect("should filter instead of rejecting");
+    fn accepts_open_and_send_panel_without_model_owned_parent() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Split a panel",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "panel",
+          "input": "pwd"
+        }
+      ]
+    },
+    {
+      "choice": 2,
+      "title": "Run locally",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    },
+    {
+      "choice": 3,
+      "title": "Open a tab",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "input": "pwd"
+        }
+      ]
+    }
+  ]
+}
+```"#;
 
-        // Choice 1 (self-targeted) should be removed, choices 2 and 3 remain.
-        assert_eq!(filtered.choices.len(), 2);
-        assert_eq!(filtered.choices[0].choice, 2);
-        assert_eq!(filtered.choices[1].choice, 3);
-        // recommended_choice was 1 (now filtered out), so it should be None.
-        assert_eq!(filtered.recommended_choice, None);
+        assert!(parse_recommendation_set(text).is_ok());
     }
 
     #[test]
-    fn rejects_open_and_send_panel_without_parent() {
-        let set = recommendation_set(vec![choice(
-            1,
-            RecommendedAction::OpenAndSend {
-                target: OpenTarget::Panel,
-                parent: None,
-                input: "pwd".into(),
-                agent: None,
-                cwd: None,
-                title: None,
-                direction: None,
-                profile: None,
-            },
-        )]);
+    fn parse_recommendations_accepts_single_choice() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Run locally",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+
+        let parsed =
+            parse_recommendation_set(text).expect("single-choice recommendation should parse");
+        assert_eq!(parsed.choices.len(), 1);
+        assert_eq!(parsed.choices[0].choice, 1);
+    }
+
+    #[test]
+    fn parse_recommendations_handles_backticks_inside_string_values() {
+        // Regression: a JSON string value that contains a triple-backtick fence
+        // marker (e.g. an `input` prompt asking another agent to emit a
+        // ```mermaid block) used to terminate the ```json fence early, leaving
+        // the JSON truncated and unparseable.
+        let text = r#"Sure, here's the plan.
+
+```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "Delegate to Copilot",
+      "actions": [
+        {
+          "type": "open_and_send",
+          "target": "tab",
+          "agent": "copilot",
+          "cwd": "C:\\repo",
+          "input": "Produce a Mermaid flowchart (```mermaid) showing the main flow.",
+          "title": "Explore project"
+        }
+      ]
+    }
+  ]
+}
+```"#;
+
+        let parsed = parse_recommendation_set(text)
+            .expect("recommendation with backticks in string should parse");
+        assert_eq!(parsed.choices.len(), 1);
+        match &parsed.choices[0].actions[0] {
+            RecommendedAction::OpenAndSend { input, .. } => {
+                assert!(input.contains("```mermaid"));
+            }
+            other => panic!("expected OpenAndSend, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_recommendations_rejects_four_choices() {
+        let text = r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [
+    {
+      "choice": 1,
+      "title": "One",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    },
+    {
+      "choice": 2,
+      "title": "Two",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    },
+    {
+      "choice": 3,
+      "title": "Three",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    },
+    {
+      "choice": 4,
+      "title": "Four",
+      "actions": [
+        {
+          "type": "send",
+          "parent": "1",
+          "input": "pwd"
+        }
+      ]
+    }
+  ]
+}
+```"#;
 
         let err =
-            validate_recommendation_set(&set).expect_err("panel without parent should be rejected");
-        assert!(format!("{err:#}")
-            .contains("field 'parent' is required for open_and_send target panel"));
-    }
-
-    #[test]
-    fn validate_recommendations_rejects_four_choices() {
-        let choices = (1..=4)
-            .map(|number| {
-                choice(
-                    number,
-                    RecommendedAction::Send {
-                        parent: "1".into(),
-                        input: "pwd".into(),
-                    },
-                )
-            })
-            .collect();
-        let set = recommendation_set(choices);
-
-        let err =
-            validate_recommendation_set(&set).expect_err("four-choice recommendation should fail");
+            parse_recommendation_set(text).expect_err("four-choice recommendation should fail");
         assert!(format!("{err:#}").contains("expected 1 to 3 choices"));
     }
 
@@ -2142,6 +2853,54 @@ mod tests {
         assert!(format!("{err:#}").contains("create_tab response missing pane_id"));
     }
 
+    #[test]
+    fn parse_autofix_explain_with_title_and_explanation() {
+        let text = r#"```json
+{"action": "explain", "title": "claude is not installed",
+ "explanation": "The `claude` command isn't on PATH.\n\nInstall with `npm install -g @anthropic-ai/claude-code`."}
+```"#;
+        match parse_autofix_response(text) {
+            AutofixDecision::Explain { title, explanation } => {
+                assert_eq!(title, "claude is not installed");
+                assert!(explanation.contains("npm install"));
+            }
+            other => panic!("expected Explain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_autofix_explain_falls_back_to_ignore_when_explanation_empty() {
+        let text = r#"```json
+{"action": "explain", "title": "Something", "explanation": "   "}
+```"#;
+        assert!(matches!(
+            parse_autofix_response(text),
+            AutofixDecision::Ignore
+        ));
+    }
+
+    #[test]
+    fn parse_autofix_explain_uses_default_title_when_missing() {
+        let text = r#"```json
+{"action": "explain", "explanation": "Some useful suggestion goes here."}
+```"#;
+        match parse_autofix_response(text) {
+            AutofixDecision::Explain { title, .. } => assert_eq!(title, "Suggestion"),
+            other => panic!("expected Explain with default title, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_autofix_legacy_ignore_still_supported() {
+        let text = r#"```json
+{"action": "ignore"}
+```"#;
+        assert!(matches!(
+            parse_autofix_response(text),
+            AutofixDecision::Ignore
+        ));
+    }
+
     // ── #404: WSL delegate inline base64 ─────────────────────────────────
 
     fn base64_runtime(commandline: &str) -> DelegateAgentRuntime {
@@ -2162,7 +2921,10 @@ mod tests {
         let cmd = build_wsl_delegate_commandline(&runtime, Some(prompt), None).expect("cmd");
 
         // The whole command is a single line — no raw newline rides the commandline.
-        assert!(!cmd.contains('\n'), "commandline must be single-line: {cmd}");
+        assert!(
+            !cmd.contains('\n'),
+            "commandline must be single-line: {cmd}"
+        );
         // The raw prompt and its shell syntax characters never appear literally.
         assert!(!cmd.contains("$(whoami)"));
         assert!(!cmd.contains("%TEMP%"));
@@ -2172,14 +2934,20 @@ mod tests {
         assert!(cmd.contains("base64 -d <<<"));
         // The decode wrapper is escaped for the wsl.exe expansion pass.
         assert!(cmd.contains("\\$(base64 -d"), "escaped $() missing: {cmd}");
-        assert!(cmd.contains("exec 'claude' \"\\$prompt\""), "exec form: {cmd}");
+        assert!(
+            cmd.contains("exec 'claude' \"\\$prompt\""),
+            "exec form: {cmd}"
+        );
     }
 
     #[test]
     fn wsl_delegate_uses_prompt_flag_for_flag_agents() {
         let runtime = base64_runtime("copilot"); // -i flag agent
         let cmd = build_wsl_delegate_commandline(&runtime, Some("hi\nthere"), None).expect("cmd");
-        assert!(cmd.contains("'-i' \"\\$prompt\""), "flag prompt form: {cmd}");
+        assert!(
+            cmd.contains("'-i' \"\\$prompt\""),
+            "flag prompt form: {cmd}"
+        );
     }
 
     #[test]

@@ -184,7 +184,8 @@ pub struct ConfirmationClaim {
 
 struct ChannelState {
     session_epoch: u64,
-    transport_available: bool,
+    pipe_available: bool,
+    agent_transport_available: bool,
     active: Option<ActiveChannel>,
     tombstones: VecDeque<Tombstone>,
 }
@@ -206,7 +207,8 @@ impl ProposalChannelManager {
             config,
             state: Mutex::new(ChannelState {
                 session_epoch: 0,
-                transport_available: true,
+                pipe_available: true,
+                agent_transport_available: true,
                 active: None,
                 tombstones: VecDeque::new(),
             }),
@@ -226,7 +228,7 @@ impl ProposalChannelManager {
     ) -> Result<ProposalChannel, ChannelFailure> {
         let mut state = self.lock_state();
         self.prune_tombstones(&mut state);
-        if !state.transport_available {
+        if !state.pipe_available || !state.agent_transport_available {
             return Err(failure(
                 ProposalValidationStatus::Unavailable,
                 "proposal transport is unavailable",
@@ -263,7 +265,7 @@ impl ProposalChannelManager {
         let mut state = self.lock_state();
         self.prune_tombstones(&mut state);
         self.ensure_local_channel(channel)?;
-        if !state.transport_available {
+        if !state.pipe_available || !state.agent_transport_available {
             return Err(failure(
                 ProposalValidationStatus::Unavailable,
                 "proposal transport is unavailable",
@@ -307,7 +309,7 @@ impl ProposalChannelManager {
         self.prune_tombstones(&mut state);
         self.ensure_local_channel(channel)?;
         let session_epoch = state.session_epoch;
-        let transport_available = state.transport_available;
+        let transport_available = state.pipe_available && state.agent_transport_available;
         let Some(active) = state.active.as_mut() else {
             return Err(self.inactive_failure(&state, channel));
         };
@@ -494,12 +496,20 @@ impl ProposalChannelManager {
         self.invalidate_active(&mut state, ProposalFinalStatus::Cancelled);
     }
 
-    pub fn set_transport_available(&self, available: bool) {
+    pub fn set_pipe_available(&self, available: bool) {
         let mut state = self.lock_state();
         if !available {
             self.invalidate_active(&mut state, ProposalFinalStatus::Unavailable);
         }
-        state.transport_available = available;
+        state.pipe_available = available;
+    }
+
+    pub fn set_agent_transport_available(&self, available: bool) {
+        let mut state = self.lock_state();
+        if !available {
+            self.invalidate_active(&mut state, ProposalFinalStatus::Unavailable);
+        }
+        state.agent_transport_available = available;
     }
 
     #[cfg(test)]
@@ -734,5 +744,26 @@ mod tests {
         assert_eq!(failure.status, ProposalValidationStatus::Expired);
         assert!(failure.retryable);
         assert_eq!(manager.active_state(), Some(ProposalChannelState::Issued));
+    }
+
+    #[test]
+    fn agent_reconnect_does_not_revive_failed_pipe() {
+        let manager = manager();
+        manager.set_pipe_available(false);
+        manager.set_agent_transport_available(false);
+        manager.set_agent_transport_available(true);
+
+        let failure = manager.issue("session".into(), 1, None, false).unwrap_err();
+        assert_eq!(failure.status, ProposalValidationStatus::Unavailable);
+    }
+
+    #[test]
+    fn agent_reconnect_restores_channels_when_pipe_is_live() {
+        let manager = manager();
+        manager.set_agent_transport_available(false);
+        assert!(manager.issue("session".into(), 1, None, false).is_err());
+
+        manager.set_agent_transport_available(true);
+        assert!(manager.issue("session".into(), 2, None, false).is_ok());
     }
 }

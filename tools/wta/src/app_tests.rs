@@ -3783,6 +3783,8 @@ fn auth_failure_does_not_arm_degraded_latch() {
 fn agent_connected_clears_degraded_latch() {
     let mut app = test_app();
     app.transport_lost = true;
+    app.proposal_channels
+        .set_agent_transport_available(false);
 
     app.handle_event(AppEvent::AgentConnected {
         name: "Copilot".to_string(),
@@ -3798,6 +3800,12 @@ fn agent_connected_clears_degraded_latch() {
     assert!(
         !app.transport_lost,
         "reaching Connected must clear the degraded latch"
+    );
+    assert!(
+        app.proposal_channels
+            .issue("sid-fresh".into(), 1, None, false)
+            .is_ok(),
+        "reaching Connected must restore proposal channels when the pipe is live"
     );
 }
 
@@ -4442,6 +4450,7 @@ fn submit_test_prompt(app: &mut App, text: &str) {
         id: 42,
         text: text.into(),
         submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
         autofix: None,
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
@@ -4459,6 +4468,7 @@ fn submit_test_prompt(app: &mut App, text: &str) {
 async fn mock_agent_reply_streams_into_app_chat() {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
     use agent_client_protocol as acp;
+    
 
     let local = tokio::task::LocalSet::new();
     local
@@ -4466,11 +4476,9 @@ async fn mock_agent_reply_streams_into_app_chat() {
             // Borrow the acp-module harness: deterministic mock wired to a
             // real WtaClient over an in-memory duplex.
             let (conn, mut event_rx, _seen) = connect_mock_agent();
-            conn.initialize(acp::schema::v1::InitializeRequest::new(
-                acp::schema::ProtocolVersion::LATEST,
-            ))
-            .await
-            .expect("initialize failed");
+            conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -4531,13 +4539,12 @@ async fn mock_agent_reply_streams_into_app_chat() {
 async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_asking_permission;
     use agent_client_protocol as acp;
+    
 
     let (conn, mut event_rx, outcome) = connect_mock_agent_asking_permission();
-    conn.initialize(acp::schema::v1::InitializeRequest::new(
-        acp::schema::ProtocolVersion::LATEST,
-    ))
-    .await
-    .expect("initialize failed");
+    conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+        .await
+        .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -4705,6 +4712,7 @@ fn permission_request_keeps_thinking_until_turn_ends() {
         id: 1,
         text: "test".into(),
         submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
         autofix: None,
     };
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
@@ -4754,16 +4762,15 @@ fn permission_request_keeps_thinking_until_turn_ends() {
 async fn tool_call_surfaces_card_in_chat() {
     use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent_proposing_tool;
     use agent_client_protocol as acp;
+    
 
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let (conn, mut event_rx) = connect_mock_agent_proposing_tool();
-            conn.initialize(acp::schema::v1::InitializeRequest::new(
-                acp::schema::ProtocolVersion::LATEST,
-            ))
-            .await
-            .expect("initialize failed");
+            conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+                .await
+                .expect("initialize failed");
             let session = conn
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
@@ -4837,14 +4844,14 @@ async fn pump_until(
 /// leaving an in-flight turn whose streamed notifications the caller pumps
 /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
 /// owns the `App`.
-async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
+async fn app_after_prompt(
+    conn: &crate::protocol::acp::conn::ClientLink,
+) {
     use agent_client_protocol as acp;
-
-    conn.initialize(acp::schema::v1::InitializeRequest::new(
-        acp::schema::ProtocolVersion::LATEST,
-    ))
-    .await
-    .expect("initialize failed");
+    
+    conn.initialize(acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::LATEST))
+        .await
+        .expect("initialize failed");
     let session = conn
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
@@ -4932,34 +4939,6 @@ async fn tool_call_completion_updates_card_status() {
             );
         })
         .await;
-}
-
-#[test]
-fn hide_tool_call_removes_internal_proposal_card() {
-    let mut app = test_app();
-    submit_test_prompt(&mut app, "list files");
-
-    app.handle_event(AppEvent::ToolCall {
-        session_id: "0".to_string(),
-        id: "proposal-tool".to_string(),
-        title: "Propose listing active directory".to_string(),
-        status: "Pending".to_string(),
-        location: None,
-        location_is_command: false,
-    });
-    assert!(app.current_tab().messages.iter().any(
-        |message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")
-    ));
-
-    app.handle_event(AppEvent::HideToolCall {
-        session_id: "0".to_string(),
-        id: "proposal-tool".to_string(),
-    });
-
-    assert!(!app.current_tab().tool_calls.contains_key("proposal-tool"));
-    assert!(!app.current_tab().messages.iter().any(
-        |message| matches!(message, ChatMessage::ToolCall { id, .. } if id == "proposal-tool")
-    ));
 }
 
 /// Plan: a `Plan` notification must surface as a plan card with its entries.
@@ -5937,30 +5916,234 @@ fn alt_v_without_image_capability_shows_not_supported_message() {
         "Alt+V without image capability must push the not-supported message"
     );
     assert!(
-        tab.pending_images.is_empty(),
+        tab.attachments.is_empty(),
         "no image should be queued when the capability is missing"
     );
 }
 
-/// Render: queued Alt+V images surface as the input-box title so the user
-/// can see what will be sent.
 #[test]
-fn input_box_titles_queued_images() {
+fn replacing_input_clears_attachments() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+
+    app.current_tab_mut().replace_input("/move ".to_string());
+
+    assert_eq!(app.current_tab().input, "/move ");
+    assert_eq!(app.current_tab().cursor_pos, "/move ".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+/// Render: queued Alt+V images appear inline with the draft instead of being
+/// pinned to the input-box border.
+#[test]
+fn input_box_renders_queued_image_inline() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.current_tab_mut()
-        .pending_images
-        .push(crate::clipboard_image::PastedImage {
-            data_base64: "AAA=".into(),
-            mime_type: "image/png".into(),
-            label: "screenshot".into(),
-        });
+    queue_test_image(&mut app, "screenshot");
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("screenshot"),
-        "the input box must title queued images; rendered:\n{text}"
+        text.contains("[image: image-1.png]"),
+        "the input box must render the attachment token inline; rendered:\n{text}"
     );
+}
+
+fn queue_test_image(app: &mut App, label: &str) {
+    app.current_tab_mut()
+        .insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "AAA=".into(),
+            mime_type: "image/png".into(),
+            label: label.into(),
+        });
+}
+
+#[test]
+fn image_attachment_backspace_at_input_start_removes_last_image() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "first");
+    queue_test_image(&mut app, "second");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "[image: first.png]");
+    assert_eq!(app.current_tab().attachments.images().count(), 1);
+    assert_eq!(
+        app.current_tab().attachments.images().next().unwrap().label,
+        "first"
+    );
+}
+
+#[test]
+fn image_attachment_backspace_in_text_preserves_images() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str("hello");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "[image: image-1.png]hell");
+    assert_eq!(app.current_tab().attachments.images().count(), 1);
+}
+
+#[test]
+fn image_attachment_left_and_right_skip_the_whole_inline_token() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    let token_len = app.current_tab().input.len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, 0);
+
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, token_len);
+}
+
+#[test]
+fn image_attachment_generated_clipboard_names_are_unique_per_tab() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "image");
+    queue_test_image(&mut app, "image");
+
+    assert_eq!(
+        app.current_tab().input,
+        "[image: image-1.png][image: image-2.png]"
+    );
+}
+
+#[test]
+fn image_attachment_delete_at_token_start_removes_the_whole_token() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().cursor_pos = 0;
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_submission_strips_token_from_prompt_text() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str("describe this");
+
+    let display_text = std::mem::take(&mut app.current_tab_mut().input);
+    let (prompt_text, images) = app
+        .current_tab_mut()
+        .attachments
+        .take_for_submission(display_text.clone());
+
+    assert_eq!(display_text, "[image: image-1.png]describe this");
+    assert_eq!(prompt_text, "describe this");
+    assert_eq!(images.len(), 1);
+}
+
+#[test]
+fn image_attachment_ctrl_backspace_crossing_token_removes_it_atomically() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("before ");
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str(" after");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL));
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL));
+
+    assert_eq!(app.current_tab().input, "before ");
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_submission_preserves_visual_image_order() {
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("a");
+    queue_test_image(&mut app, "first");
+    app.current_tab_mut().insert_input_str("b");
+    queue_test_image(&mut app, "second");
+    app.current_tab_mut().insert_input_str("c");
+
+    let display_text = std::mem::take(&mut app.current_tab_mut().input);
+    let (prompt_text, images) = app
+        .current_tab_mut()
+        .attachments
+        .take_for_submission(display_text);
+
+    assert_eq!(prompt_text, "abc");
+    assert_eq!(
+        images
+            .iter()
+            .map(|image| image.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "second"]
+    );
+}
+
+#[test]
+fn image_attachment_session_reset_removes_tokens_but_preserves_draft_text() {
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("before ");
+    queue_test_image(&mut app, "image");
+    app.current_tab_mut().insert_input_str(" after");
+
+    app.current_tab_mut().clear_chat_history();
+
+    assert_eq!(app.current_tab().input, "before  after");
+    assert_eq!(app.current_tab().cursor_pos, "before  after".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_session_reset_clears_attachments_stashed_by_history_navigation() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .record_input_history("previous prompt");
+    app.current_tab_mut().insert_input_str("draft ");
+    queue_test_image(&mut app, "image");
+    app.current_tab_mut().navigate_input_history_older();
+
+    app.current_tab_mut().clear_chat_history();
+    app.current_tab_mut().navigate_input_history_newer();
+
+    assert_eq!(app.current_tab().input, "draft ");
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_escape_clears_the_whole_draft() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.current_tab_mut().input = "draft".into();
+    app.current_tab_mut().cursor_pos = "draft".len();
+    queue_test_image(&mut app, "screenshot");
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_ctrl_c_clears_image_only_draft_without_arming_close() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert!(app.current_tab().attachments.is_empty());
+    assert!(app.close_pane_armed_at.is_none());
 }
 
 /// the action's command body (the card shows the command, not the choice
@@ -5977,6 +6160,7 @@ fn render_recommendation_card_shows_command() {
             id: 1,
             text: "fix it".into(),
             submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
             autofix: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
@@ -6191,10 +6375,8 @@ fn submit_autofix_prompt(app: &mut App, pane: &str) {
         id: 99,
         text: "diagnose this".into(),
         submitted_at_unix_s: 0.0,
-        autofix: Some(AutofixContext {
-            target_pane_id: pane.into(),
-            generation: gen,
-        }),
+        context: TurnContext::with_target_pane(pane),
+        autofix: Some(AutofixContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -6212,10 +6394,8 @@ fn submit_fix_prompt(app: &mut App, id: u64) {
         id,
         text: String::new(),
         submitted_at_unix_s: 0.0,
-        autofix: Some(AutofixContext {
-            target_pane_id: String::new(),
-            generation: gen,
-        }),
+        context: TurnContext::default(),
+        autofix: Some(AutofixContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -6225,11 +6405,10 @@ fn fix_target_pane(app: &App) -> String {
         .turn
         .prompt()
         .unwrap()
-        .autofix
-        .as_ref()
-        .unwrap()
+        .context
         .target_pane_id
         .clone()
+        .unwrap_or_default()
 }
 
 #[test]
@@ -6239,19 +6418,63 @@ fn fix_target_pane_is_late_bound_by_prompt_id() {
     assert_eq!(fix_target_pane(&app), "", "starts unbound");
 
     // A resolution for a different prompt id (a superseded /fix) is ignored.
-    app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 7, "pane-X".into());
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 7, "pane-X".into());
     assert_eq!(fix_target_pane(&app), "", "stale prompt_id must not patch");
 
     // An empty pane id is a no-op.
-    app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, String::new());
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, String::new());
     assert_eq!(fix_target_pane(&app), "", "empty pane id is ignored");
 
     // The matching prompt id binds the resolved working pane.
-    app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
     assert_eq!(
         fix_target_pane(&app),
         "pane-7",
         "matching id binds the pane"
+    );
+    assert_eq!(
+        app.current_tab()
+            .turn
+            .prompt()
+            .unwrap()
+            .context
+            .target_pane_id
+            .as_deref(),
+        Some("pane-7")
+    );
+}
+
+#[test]
+fn manual_fix_uses_the_helpers_captured_source_target() {
+    let mut app = test_app();
+    app.source_session_id = Some("captured-source-pane".into());
+
+    app.cmd_fix(false, String::new());
+
+    let prompt = app.current_tab().turn.prompt().unwrap();
+    assert_eq!(
+        prompt.context.target_pane_id.as_deref(),
+        Some("captured-source-pane")
+    );
+}
+
+#[test]
+fn prompt_target_binding_survives_tab_rename() {
+    let mut app = test_app();
+    submit_fix_prompt(&mut app, 42);
+    app.rename_tab_session(DEFAULT_TAB_ID, "renamed-tab", None);
+
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
+
+    assert_eq!(
+        app.tab_sessions["renamed-tab"]
+            .turn
+            .prompt()
+            .unwrap()
+            .context
+            .target_pane_id
+            .as_deref(),
+        Some("pane-7")
     );
 }
 
@@ -6308,7 +6531,7 @@ fn thought_chunk_first_transitions_with_empty_buf() {
 }
 
 #[test]
-fn assistant_json_is_visible_activity() {
+fn structured_stream_keeps_thinking_after_explanation_is_visible() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     app.turn_observe_chunk(
@@ -6317,10 +6540,15 @@ fn assistant_json_is_visible_activity() {
         r#"{"kind":"explanation""#,
     );
     app.advance_reveal();
-    assert!(
-        app.current_tab().should_show_thinking(),
-        "Thinking persists throughout the in-flight turn (direct-only architecture)"
+    assert!(app.current_tab().should_show_thinking());
+
+    app.turn_observe_chunk(
+        DEFAULT_TAB_ID,
+        ChunkKind::Message,
+        r#","explanation":"Visible answer"}"#,
     );
+    app.advance_reveal();
+    assert!(app.current_tab().should_show_thinking());
 }
 
 #[test]
@@ -6379,9 +6607,10 @@ fn thinking_is_pinned_one_row_above_input() {
 }
 
 #[test]
-fn assistant_prose_commits_completed_chat_turn() {
+fn end_with_no_eager_chat_fallback_commits_completed_turn() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "why blue?");
+    // Pure prose — won't parse as a RecommendationSet, falls to chat.
     app.turn_observe_chunk(
         DEFAULT_TAB_ID,
         ChunkKind::Message,
@@ -6403,7 +6632,7 @@ fn assistant_prose_commits_completed_chat_turn() {
     );
     assert!(
         tab.turn.accepts_new_prompt(),
-        "completed chat turn unblocks input"
+        "chat fallback unblocks input"
     );
     assert_eq!(tab.completed_turns.len(), 1);
     assert_eq!(tab.completed_turns[0].prompt, "why blue?");
@@ -6563,47 +6792,127 @@ fn raw_json_assistant_text_commits_as_chat_turn() {
     app.turn_close(DEFAULT_TAB_ID);
 
     let tab = app.current_tab();
-    assert!(matches!(
-        tab.turn,
-        TurnState::Surfaced {
-            outcome: TurnOutcome::ChatTurn,
-            end_pending: false,
-            ..
-        }
-    ));
+    assert!(
+        matches!(
+            tab.turn,
+            TurnState::Surfaced {
+                outcome: TurnOutcome::ChatTurn,
+                end_pending: false,
+                ..
+            }
+        ),
+        "expected chat turn, got {:?}",
+        tab.turn
+    );
     assert!(tab.completed_turns[0]
         .details
         .iter()
         .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
 }
 
-#[test]
-fn fenced_json_assistant_text_commits_as_chat_turn() {
-    let mut app = test_app();
-    submit_test_prompt(&mut app, "first");
-    let json = r#"```json
-{"recommended_choice":1,"choices":[{"choice":1,"title":"do it","rationale":"r","actions":[{"type":"send","parent":"pane-X","input":"ls"}]}]}
-```"#;
-    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
-    assert!(
-        matches!(app.current_tab().turn, TurnState::Streaming { .. }),
-        "assistant text must not surface a recommendation card"
-    );
+fn stage_proposal_session(app: &mut App, session_id: &str) {
+    app.session_to_tab
+        .insert(session_id.to_string(), DEFAULT_TAB_ID.to_string());
+}
 
-    app.turn_close(DEFAULT_TAB_ID);
-    let tab = app.current_tab();
-    assert!(matches!(
-        tab.turn,
-        TurnState::Surfaced {
-            outcome: TurnOutcome::ChatTurn,
-            end_pending: false,
-            ..
-        }
-    ));
-    assert!(tab.completed_turns[0]
-        .details
-        .iter()
-        .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
+fn submit_proposal_prompt(app: &mut App, session_id: &str) {
+    app.turn_submit_prompt(
+        session_id,
+        SubmittedPrompt {
+            id: 99,
+            text: "restart it".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::with_target_pane("pane-9"),
+            autofix: None,
+        },
+    );
+}
+
+const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"restart service","rationale":"r","actions":[{"type":"send","input":"Restart-Service foo"}]}]}"#;
+
+fn stage_direct_proposal(
+    app: &mut App,
+    manager: &std::sync::Arc<crate::proposal_channel::ProposalChannelManager>,
+    session_id: &str,
+) -> (
+    String,
+    tokio::sync::oneshot::Receiver<crate::proposal_channel::ProposalFinalStatus>,
+) {
+    let channel = manager
+        .issue(
+            session_id.to_string(),
+            99,
+            Some("pane-9".to_string()),
+            false,
+        )
+        .unwrap();
+    manager
+        .arm(
+            session_id,
+            &channel,
+            TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes(),
+        )
+        .unwrap();
+    let context = manager
+        .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
+        .unwrap();
+    let proposal_id = context.proposal_id.clone();
+    let (decision_tx, decision_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposal {
+        context,
+        payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
+        responder: decision_tx,
+    });
+    assert_eq!(
+        decision_rx.blocking_recv().unwrap().status,
+        crate::proposal_channel::ProposalValidationStatus::Accepted
+    );
+    let (final_tx, final_rx) = tokio::sync::oneshot::channel();
+    assert!(manager.accept_validation(&proposal_id, final_tx));
+    (proposal_id, final_rx)
+}
+
+#[test]
+fn direct_proposal_confirm_resolves_waiting_cli() {
+    let mut app = test_app();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    let manager = std::sync::Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-confirm";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+    app.turn_execute_card(session_id);
+
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::proposal_channel::ProposalFinalStatus::Confirmed
+    );
+    let execution = recommendation_rx.try_recv().unwrap();
+    assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+}
+
+#[test]
+fn direct_proposal_cancel_before_commit_does_not_surface() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-cancel";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+
+    app.turn_cancel(session_id);
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+
+    assert!(app.session_tab(session_id).turn.is_idle());
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::proposal_channel::ProposalFinalStatus::Cancelled
+    );
 }
 
 // ─── card / panel height math ───────────────────────────────────────────
@@ -6649,6 +6958,7 @@ fn install_recs(app: &mut App, choices: Vec<RecommendationChoice>) {
             id: 1,
             text: "p".into(),
             submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
             autofix: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
@@ -7029,7 +7339,7 @@ fn submitting_prompt_records_only_that_tab_history() {
     assert_eq!(app.current_tab().input_history.entries[0], "remember me");
     assert!(app
         .tab_sessions
-        .get("another-tab")
+            .get("another-tab")
         .is_some_and(|tab| tab.input_history.entries.is_empty()));
 }
 
@@ -7058,7 +7368,7 @@ fn local_slash_command_is_not_recorded_in_input_history() {
 }
 
 #[test]
-fn recommendation_card_keeps_focus_when_input_has_draft() {
+fn recommendation_card_cycles_buttons_and_input_with_arrows() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
     stage_surfaced_recommendation(
@@ -7067,8 +7377,8 @@ fn recommendation_card_keeps_focus_when_input_has_draft() {
         0,
         None,
     );
-    app.current_tab_mut().input = "draft".into();
-    app.current_tab_mut().cursor_pos = "draft".len();
+    app.current_tab_mut().input = "draft ".into();
+    app.current_tab_mut().cursor_pos = "draft ".len();
     app.current_tab_mut().chat_scroll.offset = 7;
 
     assert!(
@@ -7078,7 +7388,7 @@ fn recommendation_card_keeps_focus_when_input_has_draft() {
 
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_recommendation, 1);
-    assert_eq!(app.current_tab().input, "draft");
+    assert_eq!(app.current_tab().input, "draft ");
     assert_eq!(
         app.current_tab().chat_scroll.offset,
         7,
@@ -7090,15 +7400,40 @@ fn recommendation_card_keeps_focus_when_input_has_draft() {
 
     app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
     assert_eq!(app.current_tab().selected_button, 1);
-    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().selected_button, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
 
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_button, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_button, 1);
+    assert!(!app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
     app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
-    assert_eq!(
-        app.current_tab().input,
-        "draft",
-        "typing stays locked while the card owns focus",
-    );
+    assert_eq!(app.current_tab().input, "draft x");
+
+    let cursor_before = app.current_tab().cursor_pos;
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, cursor_before - 1);
+    assert!(app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_recommendation, 1);
+    assert!(!app.current_tab().input_has_nav_focus());
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_recommendation, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().selected_button, 0);
+    app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+    assert_eq!(app.current_tab().selected_button, 0);
+    assert!(!app.current_tab().input_has_nav_focus());
 }
 
 #[test]
@@ -7125,6 +7460,52 @@ fn recommendation_card_enter_wins_over_draft_input() {
     assert!(
         !app.help_overlay_visible,
         "draft slash commands must not run while a recommendation card owns focus",
+    );
+}
+
+#[test]
+fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().input = "new prompt".into();
+    app.current_tab_mut().cursor_pos = "new prompt".len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(
+        app.current_tab().turn.recommendations().is_none(),
+        "submitting from the input must dismiss the old recommendation",
+    );
+    assert!(
+        matches!(app.current_tab().turn, TurnState::Submitted(_)),
+        "Enter must submit the draft instead of executing the selected card",
+    );
+}
+
+#[test]
+fn recommendation_card_swallow_tabs_without_completing_slash_command() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().input = "/h".into();
+    app.current_tab_mut().cursor_pos = 2;
+    app.current_tab_mut().refresh_command_popup();
+    assert!(app.command_popup_visible());
+
+    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+
+    assert_eq!(app.current_tab().input, "/h");
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Button,
     );
 }
 
@@ -7211,16 +7592,16 @@ fn stage_surfaced_recommendation(
     app: &mut App,
     choices: Vec<crate::coordinator::RecommendationChoice>,
     selected: usize,
-    autofix_target: Option<&str>,
+    target_pane_id: Option<&str>,
 ) {
     let prompt = SubmittedPrompt {
         id: 1,
         text: "p".into(),
         submitted_at_unix_s: 0.0,
-        autofix: autofix_target.map(|t| AutofixContext {
-            target_pane_id: t.into(),
-            generation: 0,
-        }),
+        context: TurnContext {
+            target_pane_id: target_pane_id.map(str::to_string),
+        },
+        autofix: target_pane_id.map(|_| AutofixContext { generation: 0 }),
     };
     let recs = crate::coordinator::RecommendationSet {
         recommended_choice: Some(selected),
@@ -7270,12 +7651,17 @@ fn chip_target_returns_none_when_idle() {
 }
 
 #[test]
-fn chip_target_uses_send_parent_when_set() {
+fn chip_target_uses_turn_context_instead_of_model_parent() {
     let mut app = test_app();
-    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane-A", "ls")],
+        0,
+        Some("pane-host"),
+    );
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
 }
 
@@ -7321,16 +7707,16 @@ fn chip_target_tracks_selected_index() {
         &mut app,
         vec![send_choice("pane-A", "ls"), send_choice("pane-B", "pwd")],
         0,
-        None,
+        Some("pane-host"),
     );
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
     app.current_tab_mut().selected_recommendation = 1;
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-B".to_string()),
+        Some("pane-host".to_string()),
     );
 }
 
@@ -7341,11 +7727,16 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
     // the next recompute observe a different value and clear the
     // last_emitted slot.
     let mut app = test_app();
-    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane-A", "ls")],
+        0,
+        Some("pane-host"),
+    );
     app.recompute_chip_override(DEFAULT_TAB_ID);
     assert_eq!(
         app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
 
     // Drop the surfaced state — chip target now resolves to None and
@@ -7358,10 +7749,10 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
 #[test]
 fn known_cli_id_returns_some_for_all_first_party_clis() {
     use crate::agent_sessions::CliSource;
-    assert_eq!(known_cli_id(&CliSource::Claude), Some("claude"));
-    assert_eq!(known_cli_id(&CliSource::Codex), Some("codex"));
+    assert_eq!(known_cli_id(&CliSource::Claude),  Some("claude"));
+    assert_eq!(known_cli_id(&CliSource::Codex),   Some("codex"));
     assert_eq!(known_cli_id(&CliSource::Copilot), Some("copilot"));
-    assert_eq!(known_cli_id(&CliSource::Gemini), Some("gemini"));
+    assert_eq!(known_cli_id(&CliSource::Gemini),  Some("gemini"));
     assert_eq!(known_cli_id(&CliSource::OpenCode), Some("opencode"));
 }
 
@@ -7379,21 +7770,21 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     use crate::agent_sessions::{AgentStatus, CliSource, SessionLocation, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let row = crate::agent_sessions::AgentSession {
-        key: "abc-123".to_string(),
-        cli_source: CliSource::Copilot,
-        pane_session_id: None,
-        window_id: None,
-        tab_id: None,
-        title: "t".to_string(),
-        cwd: std::path::PathBuf::from("/home/u/proj"),
-        started_at: std::time::SystemTime::UNIX_EPOCH,
+        key:              "abc-123".to_string(),
+        cli_source:       CliSource::Copilot,
+        pane_session_id:  None,
+        window_id:        None,
+        tab_id:           None,
+        title:            "t".to_string(),
+        cwd:              std::path::PathBuf::from("/home/u/proj"),
+        started_at:       std::time::SystemTime::UNIX_EPOCH,
         last_activity_at: std::time::SystemTime::UNIX_EPOCH,
-        status: AgentStatus::Historical,
-        last_error: None,
-        current_tool: None,
+        status:           AgentStatus::Historical,
+        last_error:       None,
+        current_tool:     None,
         attention_reason: None,
-        log_path: None,
-        origin: SessionOrigin::Unknown,
+        log_path:         None,
+        origin:           SessionOrigin::Unknown,
         location: SessionLocation::Wsl {
             distro: "Ubuntu".to_string(),
         },
@@ -7425,503 +7816,5 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     assert!(
         !argv.contains(" -d /home"),
         "WSL row must not pass Windows -d cwd"
-    );
-}
-
-// ─── Direct Helper proposal validation and staging ────────────────────
-
-fn stage_proposal_session(app: &mut App, sid: &str) {
-    app.session_to_tab
-        .insert(sid.to_string(), DEFAULT_TAB_ID.to_string());
-}
-
-fn submit_prompt_for_session(
-    app: &mut App,
-    sid: &str,
-    text: &str,
-    autofix: Option<AutofixContext>,
-) {
-    app.turn_submit_prompt(
-        sid,
-        SubmittedPrompt {
-            id: 99,
-            text: text.into(),
-            submitted_at_unix_s: 0.0,
-            autofix,
-        },
-    );
-}
-
-const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"restart service","rationale":"r","actions":[{"type":"send","input":"Restart-Service foo"}]}]}"#;
-
-fn autofix_proposal_payload() -> String {
-    r#"{"schema_version":1,"origin":"autofix","choices":[{"choice":1,"title":"fix it","rationale":"r","actions":[{"type":"send","input":"echo fix"}]}]}"#.to_string()
-}
-
-fn evaluate_direct_proposal(
-    app: &mut App,
-    sid: &str,
-    prompt_id: u64,
-    active_target: Option<&str>,
-    payload: &str,
-) -> (crate::proposal_pipe::ProposalValidationDecision, String) {
-    let manager = crate::proposal_channel::ProposalChannelManager::new();
-    let is_autofix = app
-        .session_to_tab
-        .contains_key(sid)
-        .then(|| app.session_tab(sid).turn.is_autofix())
-        .unwrap_or(false);
-    let channel = manager
-        .issue(
-            sid.to_string(),
-            prompt_id,
-            active_target.map(str::to_string),
-            is_autofix,
-        )
-        .expect("issue direct proposal channel");
-    manager
-        .arm(sid, &channel, payload.as_bytes())
-        .expect("arm direct proposal channel");
-    let context = manager
-        .begin_validation(&channel, payload.as_bytes())
-        .expect("begin direct proposal validation");
-    let proposal_id = context.proposal_id.clone();
-    (
-        app.evaluate_direct_terminal_action_proposal(&context, payload),
-        proposal_id,
-    )
-}
-
-fn stage_direct_proposal_with_manager(
-    app: &mut App,
-    manager: &Arc<crate::proposal_channel::ProposalChannelManager>,
-    sid: &str,
-) -> (
-    String,
-    crate::proposal_channel::ProposalChannel,
-    tokio::sync::oneshot::Receiver<crate::proposal_channel::ProposalFinalStatus>,
-) {
-    let channel = manager
-        .issue(sid.to_string(), 99, Some("pane-9".to_string()), false)
-        .expect("issue direct proposal channel");
-    manager
-        .arm(sid, &channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
-        .expect("arm direct proposal channel");
-    let context = manager
-        .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
-        .expect("begin direct proposal validation");
-    let proposal_id = context.proposal_id.clone();
-    let (decision_tx, decision_rx) = tokio::sync::oneshot::channel();
-    app.handle_event(AppEvent::DirectTerminalActionProposal {
-        context,
-        payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
-        responder: decision_tx,
-    });
-    assert_eq!(
-        decision_rx.blocking_recv().unwrap().status,
-        crate::proposal_channel::ProposalValidationStatus::Accepted
-    );
-    let (final_tx, final_rx) = tokio::sync::oneshot::channel();
-    assert!(manager.accept_validation(&proposal_id, final_tx));
-    (proposal_id, channel, final_rx)
-}
-
-#[test]
-fn direct_proposal_confirm_resolves_waiting_cli() {
-    let mut app = test_app();
-    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
-    app.recommendation_tx = recommendation_tx;
-    let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
-    app.set_proposal_channels(Arc::clone(&manager));
-    let sid = "sess-direct-confirm";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, channel, final_rx) =
-        stage_direct_proposal_with_manager(&mut app, &manager, sid);
-
-    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
-        proposal_id: proposal_id.clone(),
-    });
-    assert!(matches!(
-        app.session_tab(sid).turn,
-        TurnState::Surfaced {
-            outcome: TurnOutcome::Recommendation(_),
-            ..
-        }
-    ));
-
-    app.turn_execute_card(sid);
-    assert_eq!(
-        final_rx.blocking_recv().unwrap(),
-        crate::proposal_channel::ProposalFinalStatus::Confirmed
-    );
-    assert!(recommendation_rx.try_recv().is_ok());
-    assert_eq!(
-        manager
-            .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
-            .unwrap_err()
-            .status,
-        crate::proposal_channel::ProposalValidationStatus::AlreadyConsumed
-    );
-}
-
-#[test]
-fn direct_proposal_enqueue_failure_is_unavailable_to_cli_and_channel_lookup() {
-    let mut app = test_app();
-    let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
-    drop(recommendation_rx);
-    app.recommendation_tx = recommendation_tx;
-    let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
-    app.set_proposal_channels(Arc::clone(&manager));
-    let sid = "sess-direct-enqueue-failure";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, channel, final_rx) =
-        stage_direct_proposal_with_manager(&mut app, &manager, sid);
-
-    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
-    app.turn_execute_card(sid);
-
-    assert_eq!(
-        final_rx.blocking_recv().unwrap(),
-        crate::proposal_channel::ProposalFinalStatus::Unavailable
-    );
-    assert_eq!(
-        manager
-            .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
-            .unwrap_err()
-            .status,
-        crate::proposal_channel::ProposalValidationStatus::Unavailable
-    );
-}
-
-#[test]
-fn direct_proposal_cancel_between_validation_and_commit_does_not_surface() {
-    let mut app = test_app();
-    let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
-    app.set_proposal_channels(Arc::clone(&manager));
-    let sid = "sess-direct-cancel-before-commit";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, _channel, final_rx) =
-        stage_direct_proposal_with_manager(&mut app, &manager, sid);
-
-    app.turn_cancel(sid);
-    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
-
-    assert!(app.session_tab(sid).turn.is_idle());
-    assert_eq!(
-        final_rx.blocking_recv().unwrap(),
-        crate::proposal_channel::ProposalFinalStatus::Cancelled
-    );
-}
-
-#[test]
-fn direct_proposal_cancel_resolves_waiting_cli() {
-    let mut app = test_app();
-    let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
-    app.set_proposal_channels(Arc::clone(&manager));
-    let sid = "sess-direct-cancel";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "restart it", None);
-    let (proposal_id, _channel, final_rx) =
-        stage_direct_proposal_with_manager(&mut app, &manager, sid);
-
-    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
-    app.turn_cancel(sid);
-    assert_eq!(
-        final_rx.blocking_recv().unwrap(),
-        crate::proposal_channel::ProposalFinalStatus::Cancelled
-    );
-}
-
-#[test]
-fn direct_proposal_presents_terminal_agent_card() {
-    let mut app = test_app();
-    let sid = "sess-proposal-terminal-agent";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-
-    let (decision, proposal_id) = evaluate_direct_proposal(
-        &mut app,
-        sid,
-        99,
-        Some("pane-9"),
-        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
-    );
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Accepted
-    );
-    assert!(decision.reason.is_none());
-    assert!(app.commit_terminal_action_proposal(&proposal_id));
-    assert!(matches!(
-        app.session_tab(sid).turn,
-        TurnState::Surfaced {
-            outcome: TurnOutcome::Recommendation(_),
-            end_pending: true,
-            ..
-        }
-    ));
-}
-
-#[test]
-fn direct_proposal_presents_autofix_card() {
-    let mut app = test_app();
-    let sid = "sess-proposal-autofix-ok";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(
-        &mut app,
-        sid,
-        "autofix run",
-        Some(AutofixContext {
-            target_pane_id: "pane-9".into(),
-            generation: 0,
-        }),
-    );
-
-    let payload = autofix_proposal_payload();
-    let (decision, proposal_id) = evaluate_direct_proposal(&mut app, sid, 99, None, &payload);
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Accepted
-    );
-    assert!(app.commit_terminal_action_proposal(&proposal_id));
-    let TurnState::Surfaced {
-        outcome: TurnOutcome::Recommendation(set),
-        ..
-    } = &app.session_tab(sid).turn
-    else {
-        panic!("expected a surfaced recommendation");
-    };
-    assert_eq!(set.choices.len(), 1);
-}
-
-#[test]
-fn direct_proposal_for_an_earlier_prompt_is_stale() {
-    let mut app = test_app();
-    let sid = "sess-proposal-old-turn";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "new prompt", None);
-
-    let (decision, _) = evaluate_direct_proposal(
-        &mut app,
-        sid,
-        98,
-        Some("pane-9"),
-        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
-    );
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Stale
-    );
-    assert_eq!(
-        decision.reason.as_deref(),
-        Some("proposal belongs to an earlier prompt")
-    );
-}
-
-#[test]
-fn direct_proposal_preserves_assistant_text_before_and_after_card() {
-    let mut app = test_app();
-    let sid = "sess-proposal-dup";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-    let json = r#"```json
-{"recommended_choice":1,"choices":[{"choice":1,"title":"do it","rationale":"r","actions":[{"type":"send","parent":"pane-X","input":"ls"}]}]}
-```"#;
-    app.turn_observe_chunk(sid, ChunkKind::Message, json);
-    assert!(
-        matches!(app.session_tab(sid).turn, TurnState::Streaming { .. }),
-        "assistant JSON must remain ordinary streaming text"
-    );
-
-    let (decision, proposal_id) = evaluate_direct_proposal(
-        &mut app,
-        sid,
-        99,
-        Some("pane-9"),
-        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
-    );
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Accepted
-    );
-    assert!(app.commit_terminal_action_proposal(&proposal_id));
-
-    let trailing = "\ntrailing explanation";
-    app.turn_observe_chunk(sid, ChunkKind::Message, trailing);
-    app.turn_close(sid);
-
-    let completed = app
-        .session_tab(sid)
-        .completed_turns
-        .last()
-        .expect("direct proposal should commit a completed turn");
-    assert!(completed
-        .details
-        .iter()
-        .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
-    assert!(completed
-        .details
-        .iter()
-        .any(|message| matches!(message, ChatMessage::Agent(text) if text == trailing)));
-}
-
-#[test]
-fn direct_proposal_card_survives_turn_close_without_a_second_card() {
-    let mut app = test_app();
-    let sid = "sess-proposal-close-dedup";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-    let (decision, proposal_id) = evaluate_direct_proposal(
-        &mut app,
-        sid,
-        99,
-        Some("pane-9"),
-        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
-    );
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Accepted
-    );
-    assert!(app.commit_terminal_action_proposal(&proposal_id));
-
-    app.turn_close(sid);
-    let tab = app.session_tab(sid);
-    assert_eq!(tab.completed_turns.len(), 1);
-    assert!(matches!(
-        tab.turn,
-        TurnState::Surfaced {
-            end_pending: false,
-            outcome: TurnOutcome::Recommendation(_),
-            ..
-        }
-    ));
-}
-
-#[test]
-fn direct_proposal_with_no_turn_in_flight_is_stale() {
-    let mut app = test_app();
-    let sid = "sess-proposal-idle";
-    stage_proposal_session(&mut app, sid);
-    let (decision, _) = evaluate_direct_proposal(
-        &mut app,
-        sid,
-        99,
-        Some("pane-9"),
-        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
-    );
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Stale
-    );
-}
-
-#[test]
-fn direct_proposal_stale_when_autofix_generation_diverges() {
-    let mut app = test_app();
-    let sid = "sess-proposal-autofix-stale";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(
-        &mut app,
-        sid,
-        "autofix run",
-        Some(AutofixContext {
-            target_pane_id: "pane-1".into(),
-            generation: 0,
-        }),
-    );
-    app.tab_mut(DEFAULT_TAB_ID).autofix.generation = 1;
-
-    let payload = autofix_proposal_payload();
-    let (decision, _) = evaluate_direct_proposal(&mut app, sid, 99, None, &payload);
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Stale
-    );
-}
-
-#[test]
-fn direct_proposal_rejects_unsupported_schema_version() {
-    let mut app = test_app();
-    let sid = "sess-proposal-bad-schema";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-
-    let bad = r#"{"schema_version":99,"origin":"terminal_agent","choices":[]}"#;
-    let (decision, _) = evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), bad);
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::InvalidSchema
-    );
-    assert!(decision.retryable);
-    assert!(decision.reason.unwrap().contains("schema_version"));
-}
-
-#[test]
-fn direct_proposal_rejects_malformed_schema_as_retryable() {
-    let mut app = test_app();
-    let sid = "sess-proposal-malformed";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-
-    let (decision, _) =
-        evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), r#"{"schema_version":"#);
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::InvalidSchema
-    );
-    assert!(decision.retryable);
-    assert!(decision.reason.unwrap().contains("malformed payload"));
-}
-
-#[test]
-fn direct_proposal_rejects_origin_mismatch_with_live_turn() {
-    let mut app = test_app();
-    let sid = "sess-proposal-origin-mismatch";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-
-    let payload = autofix_proposal_payload();
-    let (decision, _) = evaluate_direct_proposal(&mut app, sid, 99, None, &payload);
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Rejected
-    );
-    assert!(!decision.retryable);
-    assert!(decision.reason.unwrap().contains("does not match"));
-}
-
-#[test]
-fn direct_proposal_rejects_policy_violation_as_non_retryable() {
-    let mut app = test_app();
-    let sid = "sess-proposal-policy";
-    stage_proposal_session(&mut app, sid);
-    submit_prompt_for_session(&mut app, sid, "please help", None);
-
-    let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[]}"#;
-    let (decision, _) = evaluate_direct_proposal(&mut app, sid, 99, Some("pane-9"), payload);
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Rejected
-    );
-    assert!(!decision.retryable);
-    assert!(decision.reason.unwrap().contains("expected 1 to"));
-}
-
-#[test]
-fn direct_proposal_unknown_session_is_unavailable() {
-    let mut app = test_app();
-    let (decision, _) = evaluate_direct_proposal(
-        &mut app,
-        "sess-never-bound",
-        99,
-        Some("pane-9"),
-        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
-    );
-    assert_eq!(
-        decision.status,
-        crate::proposal_channel::ProposalValidationStatus::Unavailable
     );
 }

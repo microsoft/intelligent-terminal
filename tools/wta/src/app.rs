@@ -48,19 +48,20 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
     })
 }
 
+mod attachments;
 mod autofix;
 mod input_edit;
 mod tab_state;
 mod turn_state;
 use autofix::*;
 
+pub use crate::turn_context::TurnContext;
 #[cfg(test)]
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
-pub(crate) use tab_state::PendingTerminalActionProposal;
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState, Scroll,
-    TabSession, View,
+    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState,
+    RecommendationFocus, Scroll, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -109,16 +110,14 @@ pub use crate::app_contracts::{
     PlanEntry, PlanEntryStatus, PreflightResult,
 };
 use crate::commands::{self, CommandKind, ParseOutcome, ParsedCommand};
-use crate::coordinator::{
-    recommended_choice_index, validate_recommendation_set_for_coordinator_target,
-    RecommendationChoice, RecommendationSet,
-};
+use crate::coordinator::{recommended_choice_index, RecommendationChoice, RecommendationSet};
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    prompt_timing_log, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, RestartRequest,
+    CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab, PromptSubmission,
+    RenameSessionRequest, RestartRequest,
 };
+use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
 use crate::ui_trace;
 use crate::wt_protocol_events::send as send_wt_protocol_event;
@@ -544,7 +543,7 @@ where
                     .get("tool_input")
                     .and_then(|ti| {
                         ti.get("question")
-                            .or_else(|| ti.get("prompt"))
+                        .or_else(|| ti.get("prompt"))
                             .or_else(|| ti.get("message"))
                     })
                     .and_then(|v| v.as_str())
@@ -1067,10 +1066,10 @@ pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
 pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'static str> {
     use crate::agent_sessions::CliSource;
     match src {
-        CliSource::Claude => Some("claude"),
-        CliSource::Codex => Some("codex"),
+        CliSource::Claude  => Some("claude"),
+        CliSource::Codex   => Some("codex"),
         CliSource::Copilot => Some("copilot"),
-        CliSource::Gemini => Some("gemini"),
+        CliSource::Gemini  => Some("gemini"),
         CliSource::OpenCode => Some("opencode"),
         CliSource::Unknown(_) => None,
     }
@@ -1395,29 +1394,29 @@ impl App {
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
                         if let Err(e) = crate::protocol::acp::client::run_acp_client_over_pipe(
-                            pipe_name,
-                            acp_model,
-                            agent_id_opt,
-                            agent_source,
-                            source_cwd,
-                            owner_tab_opt,
-                            None, // initial_load_session_id: already handled by the dead initial task
-                            event_tx_for_pipe.clone(),
-                            prompt_rx,
-                            cancel_rx,
-                            new_session_rx,
-                            load_session_rx,
-                            drop_session_rx,
-                            rename_session_rx,
-                            restart_rx,
-                            shrx,
-                            master_ext_rx,
-                            shell_mgr,
-                            wt_connected,
-                            post_login_auth, // only true on genuine LoginComplete reconnects
+                                pipe_name,
+                                acp_model,
+                                agent_id_opt,
+                                agent_source,
+                                source_cwd,
+                                owner_tab_opt,
+                                None, // initial_load_session_id: already handled by the dead initial task
+                                event_tx_for_pipe.clone(),
+                                prompt_rx,
+                                cancel_rx,
+                                new_session_rx,
+                                load_session_rx,
+                                drop_session_rx,
+                                rename_session_rx,
+                                restart_rx,
+                                shrx,
+                                master_ext_rx,
+                                shell_mgr,
+                                wt_connected,
+                                post_login_auth, // only true on genuine LoginComplete reconnects
                             proposal_channels,
-                        )
-                        .await
+                            )
+                            .await
                         {
                             tracing::error!(
                                 target: "helper",
@@ -3513,7 +3512,7 @@ impl App {
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
             AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
-            AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
+            AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
@@ -3902,13 +3901,8 @@ impl App {
         }
         match crate::clipboard_image::read_clipboard_image() {
             Some(image) => {
-                let label = image.label.clone();
                 let tab = self.current_tab_mut();
-                tab.pending_images.push(image);
-                tab.messages.push(ChatMessage::System(
-                    t!("system.image_pasted", label = label).into_owned(),
-                ));
-                tab.scroll_to_bottom();
+                tab.insert_image_attachment(image);
             }
             None => {
                 let tab = self.current_tab_mut();
@@ -4090,13 +4084,13 @@ impl App {
             commands::agent_id_prefix(&self.current_tab().input)
         };
         self.available_agents.iter().filter(move |agent| {
-            prefix.is_some_and(|prefix| {
-                agent
-                    .id
-                    .get(..prefix.len())
-                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+                prefix.is_some_and(|prefix| {
+                    agent
+                        .id
+                        .get(..prefix.len())
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+                })
             })
-        })
     }
 
     fn selected_agent_command_candidate(&self) -> Option<&AvailableAgent> {
@@ -4125,21 +4119,6 @@ impl App {
         let tab = self.current_tab_mut();
         if tab.command_popup_selected + 1 < candidate_count {
             tab.command_popup_selected += 1;
-        }
-    }
-
-    pub(super) fn accept_command_popup_completion(&mut self) {
-        if let Some(agent_id) = self
-            .selected_agent_command_candidate()
-            .map(|agent| agent.id.clone())
-        {
-            let tab = self.current_tab_mut();
-            tab.reset_input_history_navigation();
-            tab.input = format!("/agent {agent_id}");
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
-        } else {
-            self.current_tab_mut().accept_command_popup_completion();
         }
     }
 
@@ -4400,9 +4379,9 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-            tab_id,
-            cwd: self.source_cwd.clone(),
-        });
+                tab_id,
+                cwd: self.source_cwd.clone(),
+            });
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.completed_turns.clear();
@@ -4418,13 +4397,11 @@ impl App {
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
-    /// there is no failing-pane notification, so (1) the source pane is
-    /// resolved in the ACP client task — `PaneContext.source_pane_id` is left
-    /// `None` and `build_prompt_text` falls back to WT's active pane, which
-    /// GetActivePane maps from the agent pane to the user's working pane; and
-    /// (2) `target_pane_id` starts empty and is late-bound once the client task
-    /// resolves that working pane (`AppEvent::AutofixTargetResolved` →
-    /// `apply_autofix_target_resolved`), so `turn_execute_card` fills
+    /// there is no failing-pane notification, so (1) the helper's captured
+    /// source pane is resolved in the ACP client task; and
+    /// (2) the turn context starts without a target and is late-bound once
+    /// the client task resolves that working pane (`AppEvent::PromptTargetResolved` →
+    /// `apply_prompt_target_resolved`), so `turn_execute_card` fills
     /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
     /// armed — that UI is tied to a specific failing pane, and a command typed
     /// into the agent pane surfaces its result there directly.
@@ -4453,13 +4430,13 @@ impl App {
             tab.autofix.generation
         };
 
+        let source_pane_id = self.source_session_id.clone();
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(target_tab_id.clone()),
             window_id: self.window_id.clone(),
             cwd: None,
-            // None → the client task resolves the active working pane itself.
-            source_pane_id: None,
+            source_pane_id: source_pane_id.clone(),
         };
 
         let hint = hint.trim().to_string();
@@ -4468,14 +4445,12 @@ impl App {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
-            autofix: Some(AutofixContext {
-                // Placeholder — the working pane isn't known synchronously here.
-                // The ACP client task resolves it and `apply_autofix_target_resolved`
-                // late-binds it (matched by prompt id) before the card surfaces,
-                // so `turn_execute_card` fills `Send.parent` with a real pane.
-                target_pane_id: String::new(),
-                generation,
-            }),
+            context: TurnContext {
+                // Normally captured when the helper starts. If unavailable,
+                // the ACP client resolves the active source and late-binds it.
+                target_pane_id: source_pane_id,
+            },
+            autofix: Some(AutofixContext { generation }),
         };
         tracing::info!(
             target: "slash_cmd",
@@ -4490,16 +4465,15 @@ impl App {
 
     /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
     /// in the ACP client task (it isn't known when `cmd_fix` submits) and
-    /// plumbed back via [`AppEvent::AutofixTargetResolved`]. We patch the
-    /// matching in-flight turn's `AutofixContext.target_pane_id` so that
-    /// `turn_execute_card` fills `Send.parent` with a real pane — without it,
-    /// the host's send has no destination ("SendInput failed: no parent").
+    /// plumbed back via [`AppEvent::PromptTargetResolved`]. The same event
+    /// binds ordinary planner turns so execution never trusts a
+    /// model-generated pane target.
     ///
     /// Routed by `prompt_id`: a superseded turn (the user fired a newer `/fix`)
     /// won't match, so a stale resolution is dropped. The event is emitted
     /// before the agent responds, so the patch lands while the turn is still
     /// `Submitted` — well before the fix card surfaces or the user executes it.
-    fn apply_autofix_target_resolved(
+    fn apply_prompt_target_resolved(
         &mut self,
         tab_id: Option<String>,
         prompt_id: u64,
@@ -4508,26 +4482,44 @@ impl App {
         if pane_id.is_empty() {
             return;
         }
-        let key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
-        let Some(tab) = self.tab_sessions.get_mut(&key) else {
+        let preferred_key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
+        let key = self
+            .tab_sessions
+            .get(&preferred_key)
+            .filter(|tab| {
+                tab.turn
+                    .prompt()
+                    .is_some_and(|prompt| prompt.id == prompt_id)
+            })
+            .map(|_| preferred_key)
+            .or_else(|| {
+                self.tab_sessions.iter().find_map(|(key, tab)| {
+                    tab.turn
+                        .prompt()
+                        .is_some_and(|prompt| prompt.id == prompt_id)
+                        .then(|| key.clone())
+                })
+            });
+        let Some(key) = key else {
             return;
         };
+        let tab = self
+            .tab_sessions
+            .get_mut(&key)
+            .expect("resolved tab exists");
         let Some(prompt) = tab.turn.prompt_mut() else {
             return;
         };
         if prompt.id != prompt_id {
             return;
         }
-        let Some(autofix) = prompt.autofix.as_mut() else {
-            return;
-        };
-        autofix.target_pane_id = pane_id.clone();
+        prompt.context.target_pane_id = Some(pane_id.clone());
         tracing::info!(
-            target: "slash_cmd",
+            target: "pane_routing",
             tab = %key,
             prompt_id,
             pane = %pane_id,
-            "bound /fix target pane",
+            "bound authoritative prompt target pane",
         );
     }
 
@@ -4547,10 +4539,7 @@ impl App {
     /// invalid input reopens the position completion popup.
     fn cmd_move(&mut self, position: String) {
         let Some(position) = commands::lookup_move_position(&position) else {
-            let tab = self.current_tab_mut();
-            tab.input = "/move ".to_string();
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
+            self.current_tab_mut().replace_input("/move ".to_string());
             return;
         };
 
@@ -5126,6 +5115,18 @@ impl App {
     /// leftmost button (Run for Send cards, the sole button for OpenAndSend).
     fn default_button_for_selected(&self) -> usize {
         0
+    }
+
+    fn focus_next_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + 1) % button_count;
+    }
+
+    fn focus_previous_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + button_count - 1) % button_count;
     }
 
     /// Returns true if the choice's primary action is Send (shell command).

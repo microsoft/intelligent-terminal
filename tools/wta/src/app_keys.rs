@@ -454,12 +454,30 @@ impl App {
         match key.code {
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() =>
             {
-                if self.current_tab_mut().selected_recommendation > 0 {
+                if self.current_tab().recommendation_focus == RecommendationFocus::Input {
+                    let choices_len = self
+                        .current_tab()
+                        .turn
+                        .recommendations()
+                        .map(|r| r.choices.len())
+                        .unwrap_or(0);
+                    let tab = self.current_tab_mut();
+                    tab.recommendation_focus = RecommendationFocus::Button;
+                    tab.selected_recommendation = choices_len.saturating_sub(1);
+                    tab.selected_button = 0;
+                    self.scroll_rec_to_selected(self.main_area_width());
+                    let tab_id = self.active_tab_key().to_string();
+                    self.recompute_chip_override(&tab_id);
+                } else if self.current_tab().selected_recommendation > 0 {
                     self.current_tab_mut().selected_recommendation -= 1;
                     self.current_tab_mut().selected_button = self.default_button_for_selected();
                     self.scroll_rec_to_selected(self.main_area_width());
                     // Selection moved — the new card may target a different
                     // pane (or have no Send action), so re-pin the chip.
+                    let tab_id = self.active_tab_key().to_string();
+                    self.recompute_chip_override(&tab_id);
+                } else {
+                    self.current_tab_mut().recommendation_focus = RecommendationFocus::Input;
                     let tab_id = self.active_tab_key().to_string();
                     self.recompute_chip_override(&tab_id);
                 }
@@ -472,25 +490,33 @@ impl App {
                     .recommendations()
                     .map(|r| r.choices.len())
                     .unwrap_or(0);
-                if self.current_tab().selected_recommendation + 1 < choices_len {
-                    let default_btn = self.default_button_for_selected();
-                    self.current_tab_mut().selected_recommendation += 1;
-                    self.current_tab_mut().selected_button = default_btn;
+                if self.current_tab().recommendation_focus == RecommendationFocus::Input {
+                    let tab = self.current_tab_mut();
+                    tab.recommendation_focus = RecommendationFocus::Button;
+                    tab.selected_recommendation = 0;
+                    tab.selected_button = 0;
                     self.scroll_rec_to_selected(self.main_area_width());
+                    let tab_id = self.active_tab_key().to_string();
+                    self.recompute_chip_override(&tab_id);
+                } else if self.current_tab().selected_recommendation + 1 < choices_len {
+                    let default_button = self.default_button_for_selected();
+                    self.current_tab_mut().selected_recommendation += 1;
+                    self.current_tab_mut().selected_button = default_button;
+                    self.scroll_rec_to_selected(self.main_area_width());
+                    let tab_id = self.active_tab_key().to_string();
+                    self.recompute_chip_override(&tab_id);
+                } else {
+                    self.current_tab_mut().recommendation_focus = RecommendationFocus::Input;
                     let tab_id = self.active_tab_key().to_string();
                     self.recompute_chip_override(&tab_id);
                 }
             }
-            KeyCode::Right | KeyCode::Tab
-                if self.current_tab().turn.recommendations().is_some() =>
+            KeyCode::Right
+                if self.current_tab().turn.recommendations().is_some()
+                    && self.current_tab().recommendation_focus
+                        == RecommendationFocus::Button =>
             {
-                // Cycle button focus forward within the selected card.
-                // Send: 0=Run, 1=Insert. OpenAndSend has only index 0.
-                let button_count = self.button_count_for_selected();
-                if button_count > 1 {
-                    self.current_tab_mut().selected_button =
-                        (self.current_tab_mut().selected_button + 1) % button_count;
-                }
+                self.focus_next_recommendation_action();
             }
             KeyCode::Tab
                 if self.current_tab().input.is_empty()
@@ -517,15 +543,18 @@ impl App {
             KeyCode::Down if self.current_tab().selected_completed_turn_idx.is_some() => {
                 self.current_tab_mut().select_newer_completed_turn();
             }
-            KeyCode::Left | KeyCode::BackTab
+            KeyCode::Left
+                if self.current_tab().turn.recommendations().is_some()
+                    && self.current_tab().recommendation_focus
+                        == RecommendationFocus::Button =>
+            {
+                self.focus_previous_recommendation_action();
+            }
+            KeyCode::Tab | KeyCode::BackTab
                 if self.current_tab().turn.recommendations().is_some() =>
             {
-                // Cycle button focus backward.
-                let button_count = self.button_count_for_selected();
-                if button_count > 1 {
-                    self.current_tab_mut().selected_button =
-                        (self.current_tab_mut().selected_button + button_count - 1) % button_count;
-                }
+                // Recommendation focus is arrow-only. Consume Tab so a
+                // slash-command popup cannot edit the input behind a card.
             }
             KeyCode::F(12) => {
                 self.show_debug_panel = !self.show_debug_panel;
@@ -573,9 +602,13 @@ impl App {
                         .push(ChatMessage::System(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
                     self.close_pane_armed_at = None;
-                } else if !self.current_tab().input.is_empty() {
-                    // Mirror bash readline: Ctrl+C clears the buffer.
-                    self.current_tab_mut().clear_input();
+                } else if !self.current_tab().input.is_empty()
+                    || !self.current_tab().attachments.is_empty()
+                {
+                    // Mirror bash readline: Ctrl+C clears the whole draft,
+                    // including any queued image attachments.
+                    let tab = self.current_tab_mut();
+                    tab.clear_input();
                     self.close_pane_armed_at = None;
                 } else {
                     // Idle + empty input. First press arms; second press
@@ -657,9 +690,6 @@ impl App {
             KeyCode::Down if self.command_popup_visible() => {
                 self.command_popup_down();
             }
-            KeyCode::Tab if self.command_popup_visible() => {
-                self.accept_command_popup_completion();
-            }
             KeyCode::Up
                 if self.current_tab().input_has_nav_focus()
                     && self.current_tab().input_history_is_browsing() =>
@@ -696,11 +726,12 @@ impl App {
                 self.current_tab_mut().toggle_selected_completed_turn();
             }
             KeyCode::Enter => {
-                if self.current_tab().turn.recommendations().is_some() {
-                    // Card is visible — it owns focus even when the input box
-                    // already has draft text. Keep the draft intact and route
-                    // Enter to the selected card action instead of submitting
-                    // or slash-parsing the input.
+                if self.current_tab().turn.recommendations().is_some()
+                    && self.current_tab().recommendation_focus == RecommendationFocus::Button
+                {
+                    // A card button owns focus even when the input box already
+                    // has draft text. Keep the draft intact and route Enter to
+                    // the selected action.
                     if self.state == ConnectionState::Connected {
                         let session_id = self.current_tab().session_id.clone();
                         if let Some(session_id) = session_id {
@@ -743,7 +774,7 @@ impl App {
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
                 if (!self.current_tab().input.is_empty()
-                    || !self.current_tab().pending_images.is_empty())
+                    || !self.current_tab().attachments.is_empty())
                     && self.state == ConnectionState::Connected
                 {
                     // Same-tab single-flight: refuse a new prompt if the
@@ -757,10 +788,9 @@ impl App {
                         return;
                     }
                     let tab = self.current_tab_mut();
-                    let text = std::mem::take(&mut tab.input);
+                    let display_text = std::mem::take(&mut tab.input);
+                    let (text, images) = tab.attachments.take_for_submission(display_text.clone());
                     tab.record_input_history(&text);
-                    // Drain any Alt+V images queued for this prompt.
-                    let images = std::mem::take(&mut tab.pending_images);
                     tab.cursor_pos = 0;
                     tab.refresh_command_popup();
                     // `session_id` may be None on a brand-new tab whose ACP
@@ -780,26 +810,7 @@ impl App {
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
                         cwd: self.source_cwd.clone(),
-                        source_pane_id: None,
-                    };
-                    // The echoed user message shows a marker for each queued
-                    // image; the ACP text block stays raw (the image rides as a
-                    // separate ContentBlock::Image).
-                    let display_text = if images.is_empty() {
-                        text.clone()
-                    } else {
-                        let items = images
-                            .iter()
-                            .enumerate()
-                            .map(|(i, im)| format!("[{}] {}", i + 1, im.label))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        let marker = t!("input.image_attachments", items = items).into_owned();
-                        if text.is_empty() {
-                            marker
-                        } else {
-                            format!("{text}\n{marker}")
-                        }
+                        source_pane_id: self.source_session_id.clone(),
                     };
                     let prompt =
                         PromptSubmission::new(text.clone(), Some(pane_context)).with_images(images);
@@ -817,6 +828,7 @@ impl App {
                         id: prompt.id,
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
+                        context: TurnContext::default(),
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);
@@ -869,11 +881,9 @@ impl App {
             }
             KeyCode::Char(c) => {
                 // Only type into the input when it is the live caret target.
-                // When a recommendation/permission card or a past turn is
-                // highlighted the input is locked: keystrokes are ignored so
-                // the buffer can't fill invisibly (no caret) and strand the
-                // user (a non-empty buffer disables Tab/↑ history nav). Press
-                // Esc, or Tab/Shift+Tab back past the ends, to return focus.
+                // When a card button, permission card, or past turn is
+                // highlighted the input is locked so the buffer cannot fill
+                // invisibly without a caret.
                 if self.current_tab().input_has_nav_focus() {
                     self.current_tab_mut().insert_input_char(c);
                 }

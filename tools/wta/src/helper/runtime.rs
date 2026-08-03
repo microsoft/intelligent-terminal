@@ -290,7 +290,7 @@ async fn run_acp_app(
                 if let Err(error) =
                     crate::proposal_pipe::run_server(proposal_server_manager, proposal_pipe_tx).await
                 {
-                    proposal_server_lifecycle.set_transport_available(false);
+                    proposal_server_lifecycle.set_pipe_available(false);
                     tracing::error!(
                         target: "proposal_pipe",
                         error = %format!("{error:#}"),

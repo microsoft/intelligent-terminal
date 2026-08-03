@@ -47,7 +47,7 @@ pub enum AppEvent {
     PromptTemplateLoaded {
         name: String,
     },
-    AutofixTargetResolved {
+    PromptTargetResolved {
         tab_id: Option<String>,
         prompt_id: u64,
         pane_id: String,
