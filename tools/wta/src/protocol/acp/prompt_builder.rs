@@ -102,30 +102,10 @@ pub(crate) async fn build_prompt_text(
     );
 
     // ── Shared context resolution ───────────────────────────────────────────
-    // Planner providers share one active-pane snapshot. Autofix turns resolve
-    // the failing pane, its canonical shell, and its last output once below.
-    let planner_pane = if !is_autofix && wt_connected {
-        shell_mgr.wt_get_active_pane().await.ok().filter(|pane| {
-            !pane
-                .get("is_agent_pane")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false)
-        })
-    } else {
-        None
-    };
-    let planner_shell = planner_pane
-        .as_ref()
-        .and_then(prompt_context::shell_from_active);
-    let resolver_invocation = prompt_context::command_resolver_invocation(
-        is_autofix,
-        planner_shell.as_deref(),
-        planner_pane.as_ref(),
-    );
-
-    // Resolving here also keeps the `resolved_fix_pane` side-output out of the
-    // provider chain. For a manual `/fix`, that side-output is the active
-    // working pane; the App uses it to fill `AutofixContext.target_pane_id`.
+    // Resolve the authoritative planner or autofix pane once. Providers borrow
+    // the resulting terminal context and resolver invocation, while the App
+    // binds the same target pane to the matching turn before recommendations
+    // can execute.
     let resolved_context =
         prompt_context::resolve_provider_context(is_autofix, wt_connected, shell_mgr, pane_context)
             .await;
@@ -142,9 +122,8 @@ pub(crate) async fn build_prompt_text(
         context_pane: resolved_context.context_pane.as_ref(),
         shell_exe: resolved_context.shell_exe.as_deref(),
         terminal_output: resolved_context.terminal_output.as_deref(),
-        planner_pane: planner_pane.as_ref(),
-        planner_shell: planner_shell.as_deref(),
-        command_resolver_invocation: resolver_invocation.as_ref(),
+        planner_terminal_context: resolved_context.planner_terminal_context.as_deref(),
+        command_resolver_invocation: resolved_context.command_resolver_invocation.as_ref(),
     };
     for provider in prompt_context::default_providers() {
         if !provider.applies(&context_request) {
@@ -215,7 +194,9 @@ pub(crate) async fn build_prompt_text(
         prompt,
         planner_template.source_label,
         planner_template.display_name,
-        resolved_context.resolved_fix_pane,
+        resolved_context
+            .resolved_fix_pane
+            .or(resolved_context.resolved_planner_pane),
     )
 }
 
@@ -413,13 +394,12 @@ mod tests {
     }
 
     /// A planner turn with `include_template=true` ships the persona template,
-    /// the delegate-agents section, and appends the user request. It never
-    /// resolves a fix pane.
+    /// the delegate-agents section, and appends the user request.
     #[tokio::test]
     async fn build_prompt_text_planner_includes_template_and_user_request() {
         let mgr = ShellManager::new();
         let expected = prompt::load_planner_prompt_template();
-        let (built_prompt, _source, display_name, fix_pane) =
+        let (built_prompt, _source, display_name, target_pane) =
             build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
@@ -438,7 +418,61 @@ mod tests {
             built_prompt.contains("## User Request\nlist files"),
             "planner must append the user text"
         );
-        assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
+        assert!(target_pane.is_none(), "no WT channel means no target pane");
+    }
+
+    #[tokio::test]
+    async fn build_prompt_text_planner_returns_the_injected_active_target() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "real-pane-guid",
+            "cwd": "C:\\repo",
+            "pid": std::process::id(),
+            "is_agent_pane": false,
+        }));
+
+        let (built_prompt, _source, _display_name, target_pane) =
+            build_prompt_text(8, 0.0, "check port 8000", false, true, &mgr, true, None).await;
+
+        assert!(built_prompt.contains("\"activeTarget\":\"real-pane-guid\""));
+        assert_eq!(target_pane.as_deref(), Some("real-pane-guid"));
+    }
+
+    #[tokio::test]
+    async fn build_prompt_text_planner_uses_submitted_source_after_focus_changes() {
+        let active = serde_json::json!({
+            "session_id": "newly-focused-pane",
+            "cwd": "C:\\other",
+            "pid": std::process::id(),
+            "is_agent_pane": false,
+        });
+        let source = serde_json::json!({
+            "session_id": "submitted-source-pane",
+            "cwd": "C:\\repo",
+            "pid": std::process::id(),
+            "is_agent_pane": false,
+        });
+        let mgr = shell_mgr_with_source_pane(active, source);
+        let pane_context = PaneContext {
+            source_pane_id: Some("submitted-source-pane".to_string()),
+            ..Default::default()
+        };
+
+        let (built_prompt, _source, _display_name, target_pane) = build_prompt_text(
+            9,
+            0.0,
+            "check port 8000",
+            false,
+            true,
+            &mgr,
+            true,
+            Some(&pane_context),
+        )
+        .await;
+
+        assert!(built_prompt.contains("\"activeTarget\":\"submitted-source-pane\""));
+        assert!(built_prompt.contains(r#""C:\\repo""#));
+        assert!(!built_prompt.contains(r#""C:\\other""#));
+        assert_eq!(target_pane.as_deref(), Some("submitted-source-pane"));
     }
 
     #[tokio::test]
@@ -450,12 +484,12 @@ mod tests {
             "is_agent_pane": false,
         }));
 
-        let (built_prompt, _source, _display_name, fix_pane) =
+        let (built_prompt, _source, _display_name, target_pane) =
             build_prompt_text(8, 0.0, "inspect local-tool", false, true, &mgr, true, None).await;
 
         assert!(built_prompt.contains(r#""--cwd""#));
         assert!(built_prompt.contains(r#""C:\\workspace""#));
-        assert!(fix_pane.is_none());
+        assert_eq!(target_pane.as_deref(), Some("work-pane"));
     }
 
     /// An autofix turn loads the *autofix* persona (not the planner), appends a

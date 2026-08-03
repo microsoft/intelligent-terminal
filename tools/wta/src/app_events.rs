@@ -288,12 +288,12 @@ impl App {
             AppEvent::PromptTemplateLoaded { name } => {
                 self.prompt_name = Some(name);
             }
-            AppEvent::AutofixTargetResolved {
+            AppEvent::PromptTargetResolved {
                 tab_id,
                 prompt_id,
                 pane_id,
             } => {
-                self.apply_autofix_target_resolved(tab_id, prompt_id, pane_id);
+                self.apply_prompt_target_resolved(tab_id, prompt_id, pane_id);
             }
             AppEvent::AgentBusy { tab_id } => {
                 let tab = self.tab_mut(&tab_id);

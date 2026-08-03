@@ -4394,6 +4394,7 @@ fn submit_test_prompt(app: &mut App, text: &str) {
         id: 42,
         text: text.into(),
         submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
         autofix: None,
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
@@ -4652,6 +4653,7 @@ fn permission_request_keeps_thinking_until_turn_ends() {
         id: 1,
         text: "test".into(),
         submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
         autofix: None,
     };
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
@@ -5813,30 +5815,243 @@ fn alt_v_without_image_capability_shows_not_supported_message() {
         "Alt+V without image capability must push the not-supported message"
     );
     assert!(
-        tab.pending_images.is_empty(),
+        tab.attachments.is_empty(),
         "no image should be queued when the capability is missing"
     );
 }
 
-/// Render: queued Alt+V images surface as the input-box title so the user
-/// can see what will be sent.
 #[test]
-fn input_box_titles_queued_images() {
+fn replacing_input_clears_attachments() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+
+    app.current_tab_mut()
+        .replace_input("/move ".to_string());
+
+    assert_eq!(app.current_tab().input, "/move ");
+    assert_eq!(app.current_tab().cursor_pos, "/move ".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+/// Render: queued Alt+V images appear inline with the draft instead of being
+/// pinned to the input-box border.
+#[test]
+fn input_box_renders_queued_image_inline() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.current_tab_mut()
-        .pending_images
-        .push(crate::clipboard_image::PastedImage {
-            data_base64: "AAA=".into(),
-            mime_type: "image/png".into(),
-            label: "screenshot".into(),
-        });
+    queue_test_image(&mut app, "screenshot");
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("screenshot"),
-        "the input box must title queued images; rendered:\n{text}"
+        text.contains("[image: image-1.png]"),
+        "the input box must render the attachment token inline; rendered:\n{text}"
     );
+}
+
+fn queue_test_image(app: &mut App, label: &str) {
+    app.current_tab_mut()
+        .insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "AAA=".into(),
+            mime_type: "image/png".into(),
+            label: label.into(),
+        });
+}
+
+#[test]
+fn image_attachment_backspace_at_input_start_removes_last_image() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "first");
+    queue_test_image(&mut app, "second");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "[image: first.png]");
+    assert_eq!(app.current_tab().attachments.images().count(), 1);
+    assert_eq!(
+        app.current_tab().attachments.images().next().unwrap().label,
+        "first"
+    );
+}
+
+#[test]
+fn image_attachment_backspace_in_text_preserves_images() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str("hello");
+
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+
+    assert_eq!(
+        app.current_tab().input,
+        "[image: image-1.png]hell"
+    );
+    assert_eq!(app.current_tab().attachments.images().count(), 1);
+}
+
+#[test]
+fn image_attachment_left_and_right_skip_the_whole_inline_token() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    let token_len = app.current_tab().input.len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, 0);
+
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().cursor_pos, token_len);
+}
+
+#[test]
+fn image_attachment_generated_clipboard_names_are_unique_per_tab() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "image");
+    queue_test_image(&mut app, "image");
+
+    assert_eq!(
+        app.current_tab().input,
+        "[image: image-1.png][image: image-2.png]"
+    );
+}
+
+#[test]
+fn image_attachment_delete_at_token_start_removes_the_whole_token() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().cursor_pos = 0;
+
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_submission_strips_token_from_prompt_text() {
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str("describe this");
+
+    let display_text = std::mem::take(&mut app.current_tab_mut().input);
+    let (prompt_text, images) = app
+        .current_tab_mut()
+        .attachments
+        .take_for_submission(display_text.clone());
+
+    assert_eq!(display_text, "[image: image-1.png]describe this");
+    assert_eq!(prompt_text, "describe this");
+    assert_eq!(images.len(), 1);
+}
+
+#[test]
+fn image_attachment_ctrl_backspace_crossing_token_removes_it_atomically() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("before ");
+    queue_test_image(&mut app, "screenshot");
+    app.current_tab_mut().insert_input_str(" after");
+
+    app.handle_key(KeyEvent::new(
+        KeyCode::Backspace,
+        KeyModifiers::CONTROL,
+    ));
+    app.handle_key(KeyEvent::new(
+        KeyCode::Backspace,
+        KeyModifiers::CONTROL,
+    ));
+
+    assert_eq!(app.current_tab().input, "before ");
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_submission_preserves_visual_image_order() {
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("a");
+    queue_test_image(&mut app, "first");
+    app.current_tab_mut().insert_input_str("b");
+    queue_test_image(&mut app, "second");
+    app.current_tab_mut().insert_input_str("c");
+
+    let display_text = std::mem::take(&mut app.current_tab_mut().input);
+    let (prompt_text, images) = app
+        .current_tab_mut()
+        .attachments
+        .take_for_submission(display_text);
+
+    assert_eq!(prompt_text, "abc");
+    assert_eq!(
+        images
+            .iter()
+            .map(|image| image.label.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first", "second"]
+    );
+}
+
+#[test]
+fn image_attachment_session_reset_removes_tokens_but_preserves_draft_text() {
+    let mut app = test_app();
+    app.current_tab_mut().insert_input_str("before ");
+    queue_test_image(&mut app, "image");
+    app.current_tab_mut().insert_input_str(" after");
+
+    app.current_tab_mut().clear_chat_history();
+
+    assert_eq!(app.current_tab().input, "before  after");
+    assert_eq!(app.current_tab().cursor_pos, "before  after".len());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_session_reset_clears_attachments_stashed_by_history_navigation() {
+    let mut app = test_app();
+    app.current_tab_mut().record_input_history("previous prompt");
+    app.current_tab_mut().insert_input_str("draft ");
+    queue_test_image(&mut app, "image");
+    app.current_tab_mut().navigate_input_history_older();
+
+    app.current_tab_mut().clear_chat_history();
+    app.current_tab_mut().navigate_input_history_newer();
+
+    assert_eq!(app.current_tab().input, "draft ");
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_escape_clears_the_whole_draft() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.current_tab_mut().input = "draft".into();
+    app.current_tab_mut().cursor_pos = "draft".len();
+    queue_test_image(&mut app, "screenshot");
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn image_attachment_ctrl_c_clears_image_only_draft_without_arming_close() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    queue_test_image(&mut app, "screenshot");
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert!(app.current_tab().attachments.is_empty());
+    assert!(app.close_pane_armed_at.is_none());
 }
 
 
@@ -5854,6 +6069,7 @@ fn render_recommendation_card_shows_command() {
             id: 1,
             text: "fix it".into(),
             submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
             autofix: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
@@ -6065,10 +6281,8 @@ fn submit_autofix_prompt(app: &mut App, pane: &str) {
         id: 99,
         text: "diagnose this".into(),
         submitted_at_unix_s: 0.0,
-        autofix: Some(AutofixContext {
-            target_pane_id: pane.into(),
-            generation: gen,
-        }),
+        context: TurnContext::with_target_pane(pane),
+        autofix: Some(AutofixContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -6086,10 +6300,8 @@ fn submit_fix_prompt(app: &mut App, id: u64) {
         id,
         text: String::new(),
         submitted_at_unix_s: 0.0,
-        autofix: Some(AutofixContext {
-            target_pane_id: String::new(),
-            generation: gen,
-        }),
+        context: TurnContext::default(),
+        autofix: Some(AutofixContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -6099,11 +6311,10 @@ fn fix_target_pane(app: &App) -> String {
         .turn
         .prompt()
         .unwrap()
-        .autofix
-        .as_ref()
-        .unwrap()
+        .context
         .target_pane_id
         .clone()
+        .unwrap_or_default()
 }
 
 #[test]
@@ -6113,16 +6324,60 @@ fn fix_target_pane_is_late_bound_by_prompt_id() {
     assert_eq!(fix_target_pane(&app), "", "starts unbound");
 
     // A resolution for a different prompt id (a superseded /fix) is ignored.
-    app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 7, "pane-X".into());
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 7, "pane-X".into());
     assert_eq!(fix_target_pane(&app), "", "stale prompt_id must not patch");
 
     // An empty pane id is a no-op.
-    app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, String::new());
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, String::new());
     assert_eq!(fix_target_pane(&app), "", "empty pane id is ignored");
 
     // The matching prompt id binds the resolved working pane.
-    app.apply_autofix_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
     assert_eq!(fix_target_pane(&app), "pane-7", "matching id binds the pane");
+    assert_eq!(
+        app.current_tab()
+            .turn
+            .prompt()
+            .unwrap()
+            .context
+            .target_pane_id
+            .as_deref(),
+        Some("pane-7")
+    );
+}
+
+#[test]
+fn manual_fix_uses_the_helpers_captured_source_target() {
+    let mut app = test_app();
+    app.source_session_id = Some("captured-source-pane".into());
+
+    app.cmd_fix(false, String::new());
+
+    let prompt = app.current_tab().turn.prompt().unwrap();
+    assert_eq!(
+        prompt.context.target_pane_id.as_deref(),
+        Some("captured-source-pane")
+    );
+}
+
+#[test]
+fn prompt_target_binding_survives_tab_rename() {
+    let mut app = test_app();
+    submit_fix_prompt(&mut app, 42);
+    app.rename_tab_session(DEFAULT_TAB_ID, "renamed-tab", None);
+
+    app.apply_prompt_target_resolved(Some(DEFAULT_TAB_ID.into()), 42, "pane-7".into());
+
+    assert_eq!(
+        app.tab_sessions["renamed-tab"]
+            .turn
+            .prompt()
+            .unwrap()
+            .context
+            .target_pane_id
+            .as_deref(),
+        Some("pane-7")
+    );
 }
 
 #[test]
@@ -6512,6 +6767,7 @@ fn install_recs(app: &mut App, choices: Vec<RecommendationChoice>) {
             id: 1,
             text: "p".into(),
             submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
             autofix: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
@@ -7144,16 +7400,16 @@ fn stage_surfaced_recommendation(
     app: &mut App,
     choices: Vec<crate::coordinator::RecommendationChoice>,
     selected: usize,
-    autofix_target: Option<&str>,
+    target_pane_id: Option<&str>,
 ) {
     let prompt = SubmittedPrompt {
         id: 1,
         text: "p".into(),
         submitted_at_unix_s: 0.0,
-        autofix: autofix_target.map(|t| AutofixContext {
-            target_pane_id: t.into(),
-            generation: 0,
-        }),
+        context: TurnContext {
+            target_pane_id: target_pane_id.map(str::to_string),
+        },
+        autofix: target_pane_id.map(|_| AutofixContext { generation: 0 }),
     };
     let recs = crate::coordinator::RecommendationSet {
         recommended_choice: Some(selected),
@@ -7203,17 +7459,17 @@ fn chip_target_returns_none_when_idle() {
 }
 
 #[test]
-fn chip_target_uses_send_parent_when_set() {
+fn chip_target_uses_turn_context_instead_of_model_parent() {
     let mut app = test_app();
     stage_surfaced_recommendation(
         &mut app,
         vec![send_choice("pane-A", "ls")],
         0,
-        None,
+        Some("pane-host"),
     );
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
 }
 
@@ -7264,16 +7520,16 @@ fn chip_target_tracks_selected_index() {
         &mut app,
         vec![send_choice("pane-A", "ls"), send_choice("pane-B", "pwd")],
         0,
-        None,
+        Some("pane-host"),
     );
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
     app.current_tab_mut().selected_recommendation = 1;
     assert_eq!(
         app.current_tab().compute_chip_card_target(),
-        Some("pane-B".to_string()),
+        Some("pane-host".to_string()),
     );
 }
 
@@ -7288,12 +7544,12 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
         &mut app,
         vec![send_choice("pane-A", "ls")],
         0,
-        None,
+        Some("pane-host"),
     );
     app.recompute_chip_override(DEFAULT_TAB_ID);
     assert_eq!(
         app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override,
-        Some("pane-A".to_string()),
+        Some("pane-host".to_string()),
     );
 
     // Drop the surfaced state — chip target now resolves to None and

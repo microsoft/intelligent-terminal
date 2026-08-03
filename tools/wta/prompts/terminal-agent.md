@@ -69,7 +69,7 @@ These rules exist because cwd can be ambiguous across tool calls. When Terminal 
 
 Action types:
 
-- `send` — type `input` plus Enter into an existing pane identified by `parent`. Used in Mode A.
+- `send` — type `input` plus Enter into the active pane selected by the host. Used in Mode A.
 - `open_and_send` — create a new shell or agent destination, then type `input` plus Enter into it. Used in Mode C, or in Mode A when the user explicitly asked for a new tab/panel.
 - `open` — create a new empty shell tab or panel and do NOT send any input. Use only when the user explicitly asked for a new tab/panel with no command (e.g. "open a new tab here", "split a pane right").
 
@@ -80,21 +80,21 @@ Rules:
 - Keep `title` short. Keep `rationale` to one sentence.
 
 `send` rules (Mode A):
-- `parent` MUST be the literal `activeTarget` value from the Terminal Context JSON. Never invent pane IDs.
+- Omit `parent`. The host binds the action to the `activeTarget` captured for this turn.
 - `input` must match the active pane's shell — determine it from `shell` (the actual executable). PowerShell/pwsh → `Get-ChildItem`, `Get-Location`, `Set-Location`, `Get-Content`, `Remove-Item`. cmd → `dir`, `cd`, `type`, `del`. bash/WSL → `ls`, `pwd`, `cd`, `cat`, `rm`. Default to PowerShell when `shell` is missing.
 - For Mode A inspection commands, prefer a single `send` choice on the active pane unless the user explicitly asked for isolation.
 
 `open_and_send` rules (Mode C, or new-destination A):
 - Must include `target` (`"tab"` or `"panel"`) and `input`.
 - Must include `cwd` so the new shell starts in the right directory (use the runtime cwd unless the user named a different directory).
-- For `target: "panel"`: set `parent` to `activeTarget`. You may include `direction` (`"right"` / `"left"` / `"up"` / `"down"` / `"auto"`).
+- For `target: "panel"`: omit `parent`; the host binds it to the captured `activeTarget`. You may include `direction` (`"right"` / `"left"` / `"up"` / `"down"` / `"auto"`).
 - For `target: "tab"`: omit `parent`. `direction` is invalid.
 - When delegating (Mode C), set `agent` to an ID from the supported delegate agent JSON. WTA will launch that agent in the new destination and send `input` as the agent's first prompt.
 - The delegated `input` should be a self-contained briefing: tell the delegate agent the cwd, the goal, the constraints, and what "done" looks like.
 
 `open` rules:
 - Must include `target` (`"tab"` or `"panel"`). MUST NOT include `input` or `agent`.
-- Should include `cwd`. May include `title`. For panels, set `parent` to `activeTarget`, optionally `direction`.
+- Should include `cwd`. May include `title`. For panels, omit `parent`; the host supplies it. You may include `direction`.
 
 `activeTarget` rules:
 - If `activeTarget` is missing from the Terminal Context, do NOT emit `send` or any `target: "panel"` action — there is no pane to attach to. Fall back to `target: "tab"` or to a Mode B / chat answer.
@@ -120,7 +120,6 @@ Rules:
       "actions": [
         {
           "type": "send",
-          "parent": "10",
           "input": "cargo test"
         }
       ]
