@@ -251,7 +251,8 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
-        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolShellSession(hstring name);
+        Windows::Foundation::IAsyncOperation<hstring> ListProtocolShellSessions();
+        Windows::Foundation::IAsyncOperation<bool> RestoreProtocolShellSession(hstring id);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
@@ -502,6 +503,7 @@ namespace winrt::TerminalApp::implementation
         {
             uint64_t startupActionBatchId{ 0 };
             std::string sessionId;
+            winrt::hstring agent;
             std::string cwd;
             std::string view;
             bool paneOpen{ false };
@@ -683,11 +685,12 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
-        void _AddDurableSessionMetadata(const winrt::com_ptr<Tab>& tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
-        void _PersistShellSession(const winrt::com_ptr<Tab>& tab);
+        void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        void _PersistShellSession(Tab* tab);
         struct _PaneAgentSession
         {
             winrt::hstring sessionId;
+            winrt::hstring agent;
             winrt::hstring resumeCommandline;
         };
         std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;

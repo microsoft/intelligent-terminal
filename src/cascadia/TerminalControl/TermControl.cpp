@@ -914,6 +914,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     // - wstr: the string of characters to write to the terminal connection.
     // Return Value:
     // - <none>
+    bool TermControl::HasUserInput() const noexcept
+    {
+        return _core.HasUserInput();
+    }
+
     void TermControl::SendInput(const winrt::hstring& wstr)
     {
         // Dismiss any previewed input.
@@ -1453,17 +1458,6 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     safe_void_coroutine TermControl::_restoreInBackground()
     {
         const auto path = std::exchange(_restorePath, {});
-        const std::filesystem::path filesystemPath{ std::wstring_view{ path } };
-        const auto filename = filesystemPath.filename().wstring();
-        const auto removeAfterRestore = filename.starts_with(L"shell_buffer_") ||
-                                        filename.starts_with(L"shell_elevated_");
-        const auto cleanup = wil::scope_exit([&]() {
-            if (removeAfterRestore)
-            {
-                std::error_code error;
-                std::filesystem::remove(filesystemPath, error);
-            }
-        });
         const auto weakSelf = get_weak();
         winrt::apartment_context uiThread;
 

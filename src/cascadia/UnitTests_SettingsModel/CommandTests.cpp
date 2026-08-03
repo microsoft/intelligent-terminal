@@ -476,6 +476,27 @@ namespace SettingsModelUnitTests
                     "agentPaneOpen": true,
                     "agentPanePosition": "right"
                 }
+            },
+            {
+                "name":"action10_structuredAgentSession",
+                "command": {
+                    "action": "newWindow",
+                    "sessionId": "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
+                    "agentSession": {
+                        "paneSessionId": "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
+                        "agentSessionId": "agent-session-3",
+                        "agent": "copilot"
+                    },
+                    "agentPane": {
+                        "agentSession": {
+                            "agentSessionId": "acp-session-4",
+                            "agent": "claude"
+                        },
+                        "view": "chat",
+                        "open": true,
+                        "position": "bottom"
+                    }
+                }
             }
         ])" };
 
@@ -485,7 +506,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(0u, commands.Size());
         auto warnings = implementation::Command::LayerJson(commands, commands0Json, OriginTag::None);
         VERIFY_ARE_EQUAL(0u, warnings.size());
-        VERIFY_ARE_EQUAL(10u, commands.Size());
+        VERIFY_ARE_EQUAL(11u, commands.Size());
 
         {
             auto command = commands.Lookup(L"action0");
@@ -633,6 +654,31 @@ namespace SettingsModelUnitTests
             VERIFY_ARE_EQUAL(winrt::hstring{ L"shell_sessions" }, terminalArgs.AgentPaneView());
             VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
             VERIFY_ARE_EQUAL(winrt::hstring{ L"right" }, terminalArgs.AgentPanePosition());
+        }
+        {
+            const auto command = commands.Lookup(L"action10_structuredAgentSession");
+            const auto realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
+            const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-3" }, terminalArgs.AgentSessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, terminalArgs.AgentSessionAgent());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"acp-session-4" }, terminalArgs.AgentPaneSessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude" }, terminalArgs.AgentPaneAgent());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"chat" }, terminalArgs.AgentPaneView());
+            VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, terminalArgs.AgentPanePosition());
+
+            const auto serialized = implementation::NewTerminalArgs::ToJson(terminalArgs);
+            VERIFY_IS_TRUE(serialized["agentSession"].isObject());
+            VERIFY_ARE_EQUAL("copilot", serialized["agentSession"]["agent"].asString());
+            VERIFY_ARE_EQUAL(
+                "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
+                serialized["agentSession"]["paneSessionId"].asString());
+            VERIFY_IS_TRUE(serialized["agentPane"].isObject());
+            VERIFY_ARE_EQUAL(
+                "claude",
+                serialized["agentPane"]["agentSession"]["agent"].asString());
+            VERIFY_IS_FALSE(serialized.isMember("agentResumeCommandline"));
+            VERIFY_IS_FALSE(serialized.isMember("agentPaneSessionId"));
         }
     }
 }

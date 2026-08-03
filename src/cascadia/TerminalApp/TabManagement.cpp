@@ -104,6 +104,7 @@ namespace winrt::TerminalApp::implementation
                     _PendingDurableAgentPaneRestore{
                         _currentStartupActionBatchId,
                         winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                        newTerminalArgs.AgentPaneAgent(),
                         winrt::to_string(newTerminalArgs.StartingDirectory()),
                         winrt::to_string(newTerminalArgs.AgentPaneView()),
                         newTerminalArgs.AgentPaneOpen(),
@@ -406,6 +407,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+
     // Method Description:
     // - Create a new tab using a specified pane as the root.
     // Arguments:
@@ -611,7 +613,7 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
-    void TerminalPage::_AddDurableSessionMetadata(const winrt::com_ptr<Tab>& tab, std::vector<ActionAndArgs>& actions)
+    void TerminalPage::_AddDurableSessionMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
     {
         for (const auto& action : actions)
         {
@@ -630,6 +632,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
                 {
                     terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentSessionAgent(binding->second.agent);
                     terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
                 }
             }
@@ -647,11 +650,14 @@ namespace winrt::TerminalApp::implementation
                         if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
                         {
                             terminalArgs.AgentPaneSessionId(agentSessionId);
+                            terminalArgs.AgentPaneAgent(tab->HasAgentOverride() ?
+                                                            tab->AgentIdOverride() :
+                                                            _settings.GlobalSettings().EffectiveAcpAgent());
                             terminalArgs.AgentPaneView(agentContent.IsShellSessionsView() ? L"shell_sessions" :
                                                        agentContent.IsSessionsView() ? L"sessions" :
                                                                                        L"chat");
                             terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
-                            terminalArgs.AgentPanePosition(agentContent.GetAgentPanePosition());
+                            terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
                             break;
                         }
                     }
@@ -666,8 +672,7 @@ namespace winrt::TerminalApp::implementation
         const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
         const auto elevated = IsRunningElevated();
         const auto filenamePrefix = elevated ? L"workspace_elevated_"sv : L"workspace_buffer_"sv;
-        winrt::guid snapshotId;
-        THROW_IF_FAILED(CoCreateGuid(&snapshotId));
+        const auto snapshotId = ::Microsoft::Console::Utils::CreateGuid();
         const auto snapshotIdString = ::Microsoft::Console::Utils::GuidToPlainString(snapshotId);
         struct PendingBufferWrite
         {
@@ -778,8 +783,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto state = ApplicationState::SharedInstance();
-        const auto stateImpl = winrt::get_self<winrt::Microsoft::Terminal::Settings::Model::implementation::ApplicationState>(state);
-        THROW_HR_IF(E_FAIL, !stateImpl->SaveWorkspaceAndFlush(name, layout));
+        THROW_HR_IF(E_FAIL, !state.SaveWorkspaceAndFlush(name, layout));
         committed = true;
         for (const auto& write : pendingWrites)
         {
@@ -805,9 +809,24 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_PersistShellSession(const winrt::com_ptr<Tab>& tab)
+    void TerminalPage::_PersistShellSession(Tab* const tab)
     {
         if (!_settings.GlobalSettings().RestoreShellSessions())
+        {
+            return;
+        }
+
+        bool hasUserInput = false;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (!pane->IsAgentPane())
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    hasUserInput = hasUserInput || control.HasUserInput();
+                }
+            }
+        });
+        if (!hasUserInput && tab->DurableShellSessionId().empty())
         {
             return;
         }
@@ -819,11 +838,12 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        using namespace std::string_view_literals;
         const std::filesystem::path settingsDirectory{ std::wstring_view{ CascadiaSettings::SettingsDirectory() } };
+        const auto stagingDirectory = settingsDirectory / L"IntelligentTerminal" / L"shell-session-staging";
+        std::filesystem::create_directories(stagingDirectory);
         const auto elevated = IsRunningElevated();
-        const auto filenamePrefix = elevated ? L"shell_elevated_"sv : L"shell_buffer_"sv;
         std::vector<std::filesystem::path> persistedPaths;
+        Json::Value buffers{ Json::arrayValue };
         bool committed = false;
         const auto cleanup = wil::scope_exit([&]() {
             if (!committed)
@@ -864,12 +884,17 @@ namespace winrt::TerminalApp::implementation
                         const auto sessionId = connection.SessionId();
                         if (sessionId != winrt::guid{})
                         {
-                            const auto filename = fmt::format(FMT_COMPILE(L"{}{}.txt"), filenamePrefix, sessionId);
-                            path = settingsDirectory / filename;
-                            wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+                            const auto stagingId = ::Microsoft::Console::Utils::CreateGuid();
+                            path = stagingDirectory / (::Microsoft::Console::Utils::GuidToPlainString(stagingId) + L".tmp");
+                            wil::unique_hfile file{ CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, elevated ? &sa : nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
                             THROW_LAST_ERROR_IF(!file);
                             control.PersistTo(reinterpret_cast<int64_t>(file.get()));
                             persistedPaths.emplace_back(path);
+
+                            Json::Value buffer;
+                            buffer["pane_key"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
+                            buffer["staging_path"] = til::u16u8(path.wstring());
+                            buffers.append(std::move(buffer));
                         }
                     }
                 }
@@ -888,36 +913,71 @@ namespace winrt::TerminalApp::implementation
         WindowLayout layout;
         layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
 
-        const auto state = ApplicationState::SharedInstance();
-        if (const auto sessions = state.AllPersistedShellSessions(); sessions && sessions.HasKey(sessionName))
-        {
-            const auto oldLayout = sessions.Lookup(sessionName);
-            for (const auto& action : oldLayout.TabLayout())
-            {
-                INewContentArgs contentArgs{ nullptr };
-                if (const auto args = action.Args().try_as<NewTabArgs>())
-                {
-                    contentArgs = args.ContentArgs();
-                }
-                else if (const auto args = action.Args().try_as<SplitPaneArgs>())
-                {
-                    contentArgs = args.ContentArgs();
-                }
+        Json::Value params;
+        params["name"] = winrt::to_string(sessionName);
 
-                if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+        TermControl activeShellControl{ nullptr };
+        for (const auto paneId : tab->GetMruPanes())
+        {
+            if (const auto pane = tab->GetRootPane()->FindPane(paneId);
+                pane && !pane->IsAgentPane())
+            {
+                activeShellControl = pane->GetTerminalControl();
+                if (activeShellControl)
                 {
-                    const auto sessionId = terminalArgs.SessionId();
-                    if (sessionId != winrt::guid{})
-                    {
-                        std::error_code error;
-                        std::filesystem::remove(settingsDirectory / fmt::format(FMT_COMPILE(L"shell_buffer_{}.txt"), sessionId), error);
-                        error.clear();
-                        std::filesystem::remove(settingsDirectory / fmt::format(FMT_COMPILE(L"shell_elevated_{}.txt"), sessionId), error);
-                    }
+                    break;
                 }
             }
         }
-        state.SaveShellSession(sessionName, layout);
+        if (!activeShellControl)
+        {
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (!activeShellControl && !pane->IsAgentPane())
+                {
+                    activeShellControl = pane->GetTerminalControl();
+                }
+            });
+        }
+
+        if (activeShellControl)
+        {
+            params["active_pane_cwd"] = winrt::to_string(activeShellControl.WorkingDirectory());
+        }
+        else
+        {
+            params["active_pane_cwd"] = "";
+        }
+        params["layout_json"] = winrt::to_string(winrt::Microsoft::Terminal::Settings::Model::WindowLayout::ToJson(layout));
+        params["elevated"] = elevated;
+        params["buffers"] = std::move(buffers);
+        if (!tab->DurableShellSessionId().empty())
+        {
+            params["id"] = winrt::to_string(tab->DurableShellSessionId());
+            params["expected_revision"] = Json::Int64{ tab->DurableShellSessionRevision() };
+        }
+
+        auto& sharedWta = winrt::TerminalApp::implementation::SharedWta::Instance();
+        bool temporaryAcquire = false;
+        if (!sharedWta.IsRunning())
+        {
+            const auto wtaPath = _DetectWtaPath();
+            const auto extraArgs = _BuildSharedWtaExtraArgs();
+            temporaryAcquire = sharedWta.AcquirePane(wtaPath, extraArgs);
+            THROW_HR_IF(E_FAIL, !temporaryAcquire);
+        }
+        const auto releaseTemporaryAcquire = wil::scope_exit([&]() {
+            if (temporaryAcquire)
+            {
+                sharedWta.ReleasePane();
+            }
+        });
+
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        const auto result = sharedWta.Request(
+            "_intellterm.wta/shell_sessions/save",
+            Json::writeString(writer, params));
+        THROW_HR_IF(E_FAIL, !result);
         committed = true;
     }
 
@@ -1161,7 +1221,6 @@ namespace winrt::TerminalApp::implementation
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
         }
-
     }
 
     // Method Description:

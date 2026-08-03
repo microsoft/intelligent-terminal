@@ -4,7 +4,7 @@ use super::prompt;
 use super::prompt_context::{self, ContextRequest};
 use super::soft_stop::SoftStopReason;
 use agent_client_protocol as acp;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -185,6 +185,23 @@ pub enum MasterExtRequest {
     SessionFocus {
         request_id: u64,
         sid: acp::schema::v1::SessionId,
+    },
+    SessionBornBound {
+        event: crate::agent_sessions::SessionEvent,
+    },
+    ShellSessionsList {
+        tab_id: String,
+        elevated: bool,
+    },
+    ShellSessionRestore {
+        tab_id: String,
+        id: String,
+        window_id: Option<String>,
+    },
+    ShellSessionDelete {
+        tab_id: String,
+        id: String,
+        elevated: bool,
     },
     /// Hot-swap the ACP model on this helper's live session(s) via
     /// `set_session_model`, without restarting anything. Two callers:
@@ -2939,6 +2956,17 @@ fn dispatch_master_ext_request(
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
             }
+            MasterExtRequest::SessionBornBound { event } => {
+                let wire = crate::session_registry::build_born_bound_request(&event);
+                if let Err(err) = conn.ext_method(wire).await {
+                    tracing::warn!(
+                        target: "session_hook",
+                        event = ?event,
+                        error = ?err,
+                        "restored session born-bound registration failed"
+                    );
+                }
+            }
             MasterExtRequest::SessionFocus { request_id, sid } => {
                 let wire = crate::session_registry::build_session_focus_request(&sid);
                 match conn.ext_method(wire).await {
@@ -2950,6 +2978,68 @@ fn dispatch_master_ext_request(
                     }
                 }
                 let _ = event_tx.send(AppEvent::MasterMutationCompleted { request_id });
+            }
+            MasterExtRequest::ShellSessionsList { tab_id, elevated } => {
+                let result = conn
+                    .ext_method(crate::session_registry::build_shell_sessions_list_request(elevated))
+                    .await
+                    .map_err(|error| anyhow::anyhow!("{error:?}"))
+                    .and_then(|response| {
+                        crate::session_registry::parse_shell_sessions_list_response(&response.0)
+                            .map_err(anyhow::Error::from)
+                    });
+                let (sessions, error) = match result {
+                    Ok(response) => (response.sessions, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                };
+                let _ = event_tx.send(AppEvent::ShellSessionsLoaded { tab_id, sessions, error });
+            }
+            MasterExtRequest::ShellSessionRestore { tab_id, id, window_id } => {
+                let result = async {
+                    use crate::shell::wt_channel::WtChannel;
+
+                    let channel = crate::shell::wt_channel::CliChannel::connect().await?;
+                    channel
+                        .request(
+                            "restore_shell_session",
+                            serde_json::json!({ "id": id, "window_id": window_id }),
+                        )
+                        .await?;
+                    anyhow::Ok(())
+                }
+                .await;
+                let _ = event_tx.send(AppEvent::ShellSessionRestored {
+                    tab_id,
+                    id,
+                    error: result.err().map(|error| error.to_string()),
+                });
+            }
+            MasterExtRequest::ShellSessionDelete {
+                tab_id,
+                id,
+                elevated,
+            } => {
+                let result = conn
+                    .ext_method(crate::session_registry::build_shell_session_delete_request(
+                        id.clone(),
+                        elevated,
+                    ))
+                    .await
+                    .map_err(|error| anyhow::anyhow!("{error:?}"))
+                    .and_then(|response| {
+                        crate::session_registry::parse_shell_session_delete_response(&response.0)
+                            .map_err(anyhow::Error::from)
+                    });
+                let (deleted, error) = match result {
+                    Ok(response) => (response.deleted, None),
+                    Err(error) => (false, Some(error.to_string())),
+                };
+                let _ = event_tx.send(AppEvent::ShellSessionDeleted {
+                    tab_id,
+                    id,
+                    deleted,
+                    error,
+                });
             }
             MasterExtRequest::SetSessionModel { session_id, model } => {
                 // Apply to the targeted session, or to every live session

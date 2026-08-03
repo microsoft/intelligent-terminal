@@ -84,9 +84,13 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             &tab.shell_sessions,
+            &tab.shell_sessions_query,
+            tab.shell_sessions_search_focused,
             &mut tab.shell_sessions_list_state,
             tab.shell_sessions_loading,
             tab.shell_sessions_error.as_deref(),
+            tab.shell_session_delete_confirmation.as_deref(),
+            tab.shell_session_delete_in_flight,
         );
         return;
     }
@@ -256,7 +260,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 /// (not char-count) so localized hints containing wide CJK glyphs are clipped
 /// at the right column instead of overrunning the pane. The returned string is
 /// guaranteed to have a display width of at most `max`.
-fn truncate_to_width(s: &str, max: usize) -> String {
+pub(super) fn truncate_to_width(s: &str, max: usize) -> String {
     use unicode_width::UnicodeWidthChar;
 
     let total: usize = s

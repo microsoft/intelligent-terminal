@@ -39,6 +39,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
 /// Per-helper notification channel capacity. Sized for bursty chunk
@@ -50,9 +51,11 @@ use std::sync::{Arc, OnceLock};
 const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
+static NEXT_AGENT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
+use tokio::io::AsyncReadExt;
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::LocalSet;
@@ -87,6 +90,7 @@ pub(crate) struct HelperId(u64);
 #[derive(Clone)]
 struct HelperRoute {
     helper_id: HelperId,
+    agent_generation: u64,
     notif_tx: mpsc::Sender<acp::schema::v1::SessionNotification>,
     forwarder: Option<conn::AgentLink>,
     /// Per-route counter for back-pressure log rate-limiting.
@@ -138,6 +142,10 @@ struct MasterStateInner {
     /// blocking would freeze notification delivery for every other
     /// helper sharing this master.
     session_to_helper: Mutex<HashMap<acp::schema::v1::SessionId, HelperRoute>>,
+    /// Sessions currently inside an ACP `session/load` replay. Their
+    /// notifications must be forwarded synchronously so they reach the helper
+    /// before the load response closes its replay window.
+    ordered_replay_sessions: Mutex<HashSet<acp::schema::v1::SessionId>>,
     /// Authoritative live-session set, owned by master. Mirrors what
     /// helpers learn via ext-notifications and what the session management view sees
     /// via the standard ACP `session/list` request. Kept beside
@@ -179,6 +187,7 @@ struct MasterStateInner {
     /// a structured `acp::Error` so the helper can fall back to its
     /// legacy resume path.
     pub(crate) wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>>,
+    shell_sessions: Option<crate::shell_session_store::ShellSessionStore>,
     /// The pool of agent CLI subprocesses master is multiplexing,
     /// keyed by the agent command line (`AgentCmdKey`). Lazily
     /// populated: a helper declares its agent *id* in the `initialize`
@@ -205,8 +214,7 @@ struct MasterStateInner {
     /// lazily on the next helper request. Idle-timeout eviction would save
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
-    pub(crate) agents:
-        Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
+    pub(crate) agents: Mutex<HashMap<AgentCmdKey, Arc<tokio::sync::OnceCell<Arc<AgentCli>>>>>,
     /// Fallback agent command line + id for helpers that don't declare
     /// their own in `_meta.wta` (older helper builds, or the rare
     /// manual launch). Comes from the master's own `--agent` / `--agent-id`,
@@ -280,21 +288,14 @@ struct MasterStateInner {
     hook_owned: Mutex<HashSet<acp::schema::v1::SessionId>>,
     /// Sessions loaded on a shared agent CLI whose owning helper has
     /// disconnected (its tab/pane closed) — the CLI keeps them loaded as
-    /// "orphans". Keyed by `AgentCmdKey` so orphans belong to a specific
-    /// agent CLI, never a global pool: a window can run Copilot in one tab
-    /// and Gemini in another, and reaping one must not affect the other.
+    /// "orphans". Keyed by command and process generation so a replacement
+    /// process never mistakes an older process's resident session for its own.
     ///
     /// When a helper resumes such a session (`--initial-load-session-id`
-    /// re-warm or `/restart`), `load_session` re-binds routing to the new
-    /// helper *directly* — no fresh `session/load` — because the CLI already
-    /// has it (a re-load would be rejected "already loaded", or, if the
-    /// orphan turn is still running, wedge behind it and hang the pane on
-    /// "Resuming…"). Only recorded while the owning CLI *instance* is still
-    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
-    /// drops just that agent's set on CLI death, so a crashed-and-respawned
-    /// CLI under the same command line never re-binds to a session it never
-    /// had — such a resume falls back to a real `session/load` from disk.
-    orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
+    /// re-warm or `/restart`), `load_session` rotates to a fresh process and
+    /// performs a real ACP load so history is replayed to the new helper.
+    /// `reap_agent` drops only the exiting generation's records.
+    orphaned_sessions: Mutex<HashMap<(AgentCmdKey, u64), HashSet<acp::schema::v1::SessionId>>>,
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
     /// still supply STATUS for these when no real hook is installed
@@ -308,8 +309,12 @@ struct MasterStateInner {
     /// negative-cached so a burst of hook/watcher events and the 5s poll share
     /// one round-trip and don't hammer a hung agent. Both the host-history
     /// reconcile and the synthetic-title refresh derive from this one fetch.
-    host_list_cache:
-        Mutex<Option<(std::time::Instant, Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>)>>,
+    host_list_cache: Mutex<
+        Option<(
+            std::time::Instant,
+            Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>>,
+        )>,
+    >,
     /// Last time a poll-triggered WSL title seed was dispatched. Throttles the
     /// expensive per-distro `wsl.exe` ACP scan so the 5 s `sessions/list` poll
     /// can't turn it into a scan storm while a synthetic WSL delegate row waits
@@ -354,6 +359,12 @@ struct AgentCli {
     /// crashed-and-respawned CLI under the same command line never inherits
     /// another instance's stale orphan sessions.
     cmd_key: AgentCmdKey,
+    /// Distinguishes successive pooled processes for the same command line.
+    generation: u64,
+    /// Helpers currently bound to this exact process generation.
+    helper_bindings: AtomicU64,
+    /// Wakes the child task when a superseded process loses its last helper.
+    shutdown: Arc<tokio::sync::Notify>,
 }
 
 /// Per-helper recovery metadata stashed in
@@ -383,6 +394,7 @@ pub(crate) struct HelperRecoveryMeta {
 #[derive(Clone)]
 struct MasterClient {
     state: Arc<MasterStateInner>,
+    agent_generation: u64,
 }
 
 impl MasterClient {
@@ -405,23 +417,33 @@ impl MasterClient {
         match entry {
             Some(HelperRoute {
                 helper_id,
-                forwarder: Some(forwarder),
-                ..
-            }) => Ok((helper_id, forwarder)),
-            Some(HelperRoute {
-                forwarder: None,
-                helper_id,
+                agent_generation,
+                forwarder,
                 ..
             }) => {
-                tracing::error!(
-                    target: "master",
-                    op = op,
-                    session_id = ?sid,
-                    helper_id = ?helper_id,
-                    "routing entry has no forwarder — bug; routing entry should always carry the helper's AgentSideConnection",
-                );
-                Err(acp::Error::internal_error()
-                    .data(serde_json::json!("master routing entry missing forwarder")))
+                if agent_generation != self.agent_generation {
+                    tracing::warn!(
+                        target: "master",
+                        op = op,
+                        session_id = ?sid,
+                        route_generation = agent_generation,
+                        caller_generation = self.agent_generation,
+                        "stale agent CLI sent request for a session owned by another generation"
+                    );
+                    return Err(acp::Error::internal_error()
+                        .data(serde_json::json!("stale agent generation for session_id")));
+                }
+                forwarder.map(|forwarder| (helper_id, forwarder)).ok_or_else(|| {
+                    tracing::error!(
+                        target: "master",
+                        op = op,
+                        session_id = ?sid,
+                        helper_id = ?helper_id,
+                        "routing entry has no forwarder — bug; routing entry should always carry the helper's AgentSideConnection",
+                    );
+                    acp::Error::internal_error()
+                        .data(serde_json::json!("master routing entry missing forwarder"))
+                })
             }
             None => {
                 tracing::warn!(
@@ -502,7 +524,10 @@ impl MasterClient {
         resp
     }
 
-    async fn session_notification(&self, args: acp::schema::v1::SessionNotification) -> acp::Result<()> {
+    async fn session_notification(
+        &self,
+        args: acp::schema::v1::SessionNotification,
+    ) -> acp::Result<()> {
         let sid = args.session_id.clone();
         // Discriminator for "what KIND of notification this is" — useful
         // when scrolling logs to see prompt/turn lifecycle without
@@ -528,20 +553,65 @@ impl MasterClient {
             map.get(&sid).map(|r| {
                 (
                     r.helper_id,
-                    r.notif_tx.clone(),
+                    r.agent_generation,
                     Arc::clone(&r.consecutive_drops),
                 )
             })
         };
         match route {
-            Some((snap_helper_id, tx, drops)) => {
+            Some((snap_helper_id, agent_generation, drops)) => {
+                if agent_generation != self.agent_generation {
+                    tracing::debug!(
+                        target: "master",
+                        session_id = ?sid,
+                        route_generation = agent_generation,
+                        caller_generation = self.agent_generation,
+                        "dropping notification from stale agent generation"
+                    );
+                    return Ok(());
+                }
+                let ordered_replay = self
+                    .state
+                    .ordered_replay_sessions
+                    .lock()
+                    .await
+                    .contains(&sid);
+                let map = self.state.session_to_helper.lock().await;
+                let current = match map.get(&sid) {
+                    Some(current)
+                        if current.helper_id == snap_helper_id
+                            && current.agent_generation == self.agent_generation =>
+                    {
+                        current
+                    }
+                    _ => {
+                        tracing::debug!(
+                            target: "master",
+                            session_id = ?sid,
+                            caller_generation = self.agent_generation,
+                            "route changed while dispatching notification; dropping stale update"
+                        );
+                        return Ok(());
+                    }
+                };
+                if ordered_replay {
+                    let forwarder = current.forwarder.as_ref().ok_or_else(|| {
+                        acp::Error::internal_error()
+                            .data(serde_json::json!("master replay route missing forwarder"))
+                    })?;
+                    forwarder.session_notification(args).await?;
+                    drop(map);
+                    return Ok(());
+                }
+                let send_result = current.notif_tx.try_send(args);
+                drop(map);
                 use std::sync::atomic::Ordering;
                 // `try_send` rather than `send().await`: a slow helper
                 // pipe must not back-pressure this trait method, which
                 // is driven by the agent CLI's I/O loop and is shared
                 // across every helper. Blocking here would freeze
                 // notification delivery for everyone.
-                match tx.try_send(args) {
+                match send_result {
                     Ok(()) => {
                         // First successful send after one or more drops
                         // is the recovery point — summarize and reset.
@@ -804,6 +874,9 @@ fn notification_kind(notif: &acp::schema::v1::SessionNotification) -> &'static s
 #[derive(Clone)]
 struct HelperHandler {
     helper_id: HelperId,
+    /// Elevation of this named-pipe client, authenticated from its
+    /// impersonation token when the connection was accepted.
+    client_elevated: bool,
     /// The agent CLI this helper is bound to. Resolved lazily during
     /// `initialize` from the helper's declared `_meta.wta.agent_id`
     /// (+ `model`): the master reconstructs the command from that id and
@@ -815,6 +888,11 @@ struct HelperHandler {
     /// guarantees `initialize` precedes `new_session`/`prompt`/…, so
     /// `resolved_agent()` always finds it populated for those.
     agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// Fresh ACP process selected when the shared process reports that a
+    /// durable-resume target is already loaded.
+    replacement_agent: Arc<OnceLock<Arc<AgentCli>>>,
+    /// Serializes replacement binding and route quarantine for this helper.
+    rotation_lock: Arc<Mutex<()>>,
     state: Arc<MasterStateInner>,
     /// Notification fan-in for this helper. `new_session` /
     /// `load_session` writes `(SessionId → this sender)` into
@@ -877,16 +955,85 @@ impl HelperHandler {
     /// binding — a protocol violation by the helper, never expected in
     /// the normal handshake order.
     fn resolved_agent(&self, op: &'static str) -> acp::Result<Arc<AgentCli>> {
-        self.agent.get().cloned().ok_or_else(|| {
-            tracing::error!(
-                target: "master",
-                op = op,
-                helper_id = ?self.helper_id,
-                "helper request arrived before initialize bound an agent — protocol violation"
-            );
-            acp::Error::internal_error()
-                .data(serde_json::json!("no agent bound; initialize must come first"))
-        })
+        self.replacement_agent
+            .get()
+            .or_else(|| self.agent.get())
+            .cloned()
+            .ok_or_else(|| {
+                tracing::error!(
+                    target: "master",
+                    op = op,
+                    helper_id = ?self.helper_id,
+                    "helper request arrived before initialize bound an agent — protocol violation"
+                );
+                acp::Error::internal_error().data(serde_json::json!(
+                    "no agent bound; initialize must come first"
+                ))
+            })
+    }
+
+    async fn rotate_agent_for_load(
+        &self,
+        previous: &Arc<AgentCli>,
+        session_id: &acp::schema::v1::SessionId,
+    ) -> acp::Result<Arc<AgentCli>> {
+        let _rotation_guard = self.rotation_lock.lock().await;
+        {
+            let mut routes = self.state.session_to_helper.lock().await;
+            let route = routes.get_mut(session_id).ok_or_else(|| {
+                acp::Error::internal_error().data(serde_json::json!(
+                    "session route disappeared before rotation"
+                ))
+            })?;
+            if route.helper_id != self.helper_id || route.agent_generation != previous.generation {
+                return Err(acp::Error::internal_error()
+                    .data(serde_json::json!("session route changed before rotation")));
+            }
+            // Quarantine traffic from the old process while the replacement
+            // initializes. Generation zero is never assigned to an AgentCli.
+            route.agent_generation = 0;
+        }
+        let replacement = rotate_agent(&self.state, previous).await.map_err(|err| {
+            acp::Error::internal_error().data(serde_json::json!(format!(
+                "failed to rotate agent CLI for session load: {err}"
+            )))
+        })?;
+        let newly_bound = {
+            let mut routes = self.state.session_to_helper.lock().await;
+            let route = routes.get_mut(session_id).ok_or_else(|| {
+                acp::Error::internal_error().data(serde_json::json!(
+                    "session route disappeared during rotation"
+                ))
+            })?;
+            if route.helper_id != self.helper_id || route.agent_generation != 0 {
+                return Err(acp::Error::internal_error().data(serde_json::json!(
+                    "session route was rebound during rotation"
+                )));
+            }
+            let newly_bound = match self.replacement_agent.set(Arc::clone(&replacement)) {
+                Ok(()) => true,
+                Err(_)
+                    if self
+                        .replacement_agent
+                        .get()
+                        .is_some_and(|bound| bound.generation == replacement.generation) =>
+                {
+                    false
+                }
+                Err(_) => {
+                    return Err(acp::Error::internal_error().data(serde_json::json!(
+                        "helper already has a different replacement agent binding"
+                    )));
+                }
+            };
+            route.agent_generation = replacement.generation;
+            newly_bound
+        };
+        if newly_bound {
+            replacement.helper_bindings.fetch_add(1, Ordering::Relaxed);
+            release_agent_binding(&self.state, previous).await;
+        }
+        Ok(replacement)
     }
 
     /// Forward `session/new` to this helper's bound agent CLI with a
@@ -989,7 +1136,9 @@ impl HelperHandler {
             })?;
         // `set` is idempotent-by-error; a helper that (incorrectly) sent
         // initialize twice keeps its first binding, which is fine.
-        let _ = self.agent.set(Arc::clone(&agent));
+        if self.agent.set(Arc::clone(&agent)).is_ok() {
+            agent.helper_bindings.fetch_add(1, Ordering::Relaxed);
+        }
 
         // Replay the CLI's own initialize response (re-forwarding returns
         // empty `agent_info` on most backends, blanking the agent bar).
@@ -1008,7 +1157,10 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "forwarding authenticate"
         );
-        self.resolved_agent("authenticate")?.conn.authenticate(args).await
+        self.resolved_agent("authenticate")?
+            .conn
+            .authenticate(args)
+            .await
     }
 
     async fn new_session(
@@ -1053,6 +1205,7 @@ impl HelperHandler {
                 resp.session_id.clone(),
                 HelperRoute {
                     helper_id: self.helper_id,
+                    agent_generation: agent.generation,
                     notif_tx: self.notif_tx.clone(),
                     forwarder: Some(forwarder),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -1064,10 +1217,8 @@ impl HelperHandler {
         // ordering matches the doc on `MasterStateInner::registry`:
         // `session_to_helper` is no longer held here, so the upsert
         // can't deadlock against `drop_sessions_for_helper`.
-        let mut info = crate::session_registry::SessionInfo::new(
-            resp.session_id.clone(),
-            cwd_for_registry,
-        );
+        let mut info =
+            crate::session_registry::SessionInfo::new(resp.session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
         // Stamp the row as a Live agent-pane session. Without this, the
         // row lands in master's registry with status=cli_source=origin=None,
@@ -1178,82 +1329,94 @@ impl HelperHandler {
                 session_id.clone(),
                 HelperRoute {
                     helper_id: self.helper_id,
+                    agent_generation: agent.generation,
                     notif_tx: self.notif_tx.clone(),
                     forwarder: Some(forwarder),
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                 },
             );
         }
-        // Orphan re-bind fast path: this session's previous helper
-        // disconnected but the shared CLI still has it loaded (tracked in
-        // `orphaned_sessions` under this agent's key). Re-attach onto the
-        // routing pre-registered above WITHOUT a `session/load` round-trip —
-        // the CLI already has the session, and forwarding a load would be
-        // rejected "already loaded", or (if the orphan turn is still running)
-        // wedge behind it and hang the pane on "Resuming…". Any in-flight
-        // turn now streams its `session/update`s to this new helper. Scoped
-        // to `agent.cmd_key` so we only re-bind sessions this exact CLI still
-        // holds (a crashed+respawned CLI's set was dropped by `reap_agent`).
-        let is_orphan_rebind = {
+        // Remove the stale owner marker, but still ask the agent to load the
+        // session. A replacement helper needs the ACP history replay to rebuild
+        // its conversation UI; routing alone only reconnects future updates.
+        let is_orphan = {
             let mut orphans = self.state.orphaned_sessions.lock().await;
             orphans
-                .get_mut(&agent.cmd_key)
+                .get_mut(&(agent.cmd_key.clone(), agent.generation))
                 .is_some_and(|set| set.remove(&session_id))
         };
 
-        // Both a re-bind and a real `session/load` resume the session; only a
-        // genuine load failure rolls back. Resolve the response, then register
-        // the resumed row once for either success path.
-        let resp = if is_orphan_rebind {
+        self.state
+            .ordered_replay_sessions
+            .lock()
+            .await
+            .insert(session_id.clone());
+        let mut active_agent = Arc::clone(&agent);
+        let mut load_result = if is_orphan {
+            match self.rotate_agent_for_load(&agent, &session_id).await {
+                Ok(replacement) => {
+                    active_agent = replacement;
+                    active_agent.conn.load_session(args.clone()).await
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            agent.conn.load_session(args.clone()).await
+        };
+        if active_agent.generation == agent.generation
+            && load_result.as_ref().is_err_and(is_already_loaded_error)
+        {
             tracing::info!(
                 target: "master",
                 step = "helper→agent",
                 op = "load_session",
                 helper_id = ?self.helper_id,
                 session_id = ?session_id,
-                "re-binding orphan session without a session/load round-trip"
+                generation = agent.generation,
+                "session is already loaded; rotating ACP process for a real history replay"
             );
-            acp::schema::v1::LoadSessionResponse::new()
-        } else {
-            match agent.conn.load_session(args).await {
-                Ok(resp) => resp,
-                // Fallback for an orphan we didn't track (e.g. it predates
-                // this master): the CLI reports "already loaded", so re-bind
-                // onto the pre-registered routing just like the fast path.
-                Err(err) if is_already_loaded_error(&err) => {
-                    tracing::info!(
-                        target: "master",
-                        step = "helper→agent",
-                        op = "load_session",
-                        helper_id = ?self.helper_id,
-                        session_id = ?session_id,
-                        "re-binding session already loaded in the shared CLI"
-                    );
-                    acp::schema::v1::LoadSessionResponse::new()
+            load_result = match self.rotate_agent_for_load(&agent, &session_id).await {
+                Ok(replacement) => {
+                    active_agent = replacement;
+                    active_agent.conn.load_session(args).await
                 }
-                Err(err) => {
-                    // Roll back the pre-registration. Only `session_to_helper`
-                    // needs touching — we never wrote to `registry` and we
-                    // never broadcast `session_added`, so peers never saw
-                    // this row.
+                Err(err) => Err(err),
+            };
+        }
+        self.state
+            .ordered_replay_sessions
+            .lock()
+            .await
+            .remove(&session_id);
+
+        let resp = match load_result {
+            Ok(resp) => resp,
+            Err(err) => {
+                // Roll back the pre-registration. Only `session_to_helper`
+                // needs touching — we never wrote to `registry` and we
+                // never broadcast `session_added`, so peers never saw
+                // this row.
+                {
+                    let mut map = self.state.session_to_helper.lock().await;
+                    if map
+                        .get(&session_id)
+                        .is_some_and(|route| route.helper_id == self.helper_id)
                     {
-                        let mut map = self.state.session_to_helper.lock().await;
                         map.remove(&session_id);
                     }
-                    tracing::warn!(
-                        target: "master",
-                        helper_id = ?self.helper_id,
-                        session_id = ?session_id,
-                        error = %err,
-                        "load_session failed; rolled back routing entry"
-                    );
-                    return Err(err);
                 }
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?self.helper_id,
+                    session_id = ?session_id,
+                    error = %err,
+                    "load_session failed; rolled back routing entry"
+                );
+                return Err(err);
             }
         };
 
-        // Register the resumed row (Live + tagged) — shared by the real-load
-        // and orphan-re-bind paths.
+        // Register the resumed row (Live + tagged).
         let mut info =
             crate::session_registry::SessionInfo::new(session_id.clone(), cwd_for_registry);
         info.pane_session_id = wta_meta.pane_session_id;
@@ -1294,7 +1457,10 @@ impl HelperHandler {
         &self,
         args: acp::schema::v1::SetSessionModeRequest,
     ) -> acp::Result<acp::schema::v1::SetSessionModeResponse> {
-        self.resolved_agent("set_session_mode")?.conn.set_session_mode(args).await
+        self.resolved_agent("set_session_mode")?
+            .conn
+            .set_session_mode(args)
+            .await
     }
 
     // Forward config-option changes (incl. model selection) — the
@@ -1314,7 +1480,10 @@ impl HelperHandler {
             session_id = ?args.session_id,
             "forwarding set_session_config_option"
         );
-        self.resolved_agent("set_session_config_option")?.conn.set_session_config_option(args).await
+        self.resolved_agent("set_session_config_option")?
+            .conn
+            .set_session_config_option(args)
+            .await
     }
 
     /// Answer `session/list` from our own registry (NOT by proxying the
@@ -1455,7 +1624,10 @@ impl HelperHandler {
     /// ACP-1.0 leading-`_` normalization lives in one place and the match below
     /// is exhaustive (a new method is a compile error until it is handled,
     /// instead of silently falling through to the agent CLI).
-    async fn ext_method(&self, args: acp::schema::v1::ExtRequest) -> acp::Result<acp::schema::v1::ExtResponse> {
+    async fn ext_method(
+        &self,
+        args: acp::schema::v1::ExtRequest,
+    ) -> acp::Result<acp::schema::v1::ExtResponse> {
         use crate::session_registry::WtaExtRequest as Req;
         tracing::debug!(
             target: "master",
@@ -1464,16 +1636,41 @@ impl HelperHandler {
             helper_id = ?self.helper_id,
             "routing ext_method"
         );
-        match crate::session_registry::parse_ext_request(args) {
+        let mut request = crate::session_registry::parse_ext_request(args);
+        if let Some(claimed_elevated) =
+            scope_shell_session_request(&mut request, self.client_elevated)
+        {
+            if claimed_elevated != self.client_elevated {
+                tracing::warn!(
+                    target: "shell_sessions",
+                    helper_id = ?self.helper_id,
+                    claimed_elevated,
+                    authenticated_elevated = self.client_elevated,
+                    "ignoring caller-controlled shell-session elevation scope"
+                );
+            }
+        }
+        match request {
             Req::FocusSession(p) => handle_focus_session(&self.state, &p).await,
             Req::SessionsList(p) => handle_sessions_list(&self.state, &p).await,
             Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
             }
-            Req::SessionResumeDispatched(p) => handle_session_resume_dispatched(&self.state, &p).await,
+            Req::SessionResumeDispatched(p) => {
+                handle_session_resume_dispatched(&self.state, &p).await
+            }
             Req::SessionFocus(p) => handle_session_focus(&self.state, &p).await,
-            Req::ForwardToAgent(raw) => self.resolved_agent("ext_method")?.conn.ext_method(raw).await,
+            Req::ShellSessionsList(p) => handle_shell_sessions_list(&self.state, p).await,
+            Req::ShellSessionSave(p) => handle_shell_session_save(&self.state, p).await,
+            Req::ShellSessionGet(p) => handle_shell_session_get(&self.state, p).await,
+            Req::ShellSessionDelete(p) => handle_shell_session_delete(&self.state, p).await,
+            Req::ForwardToAgent(raw) => {
+                self.resolved_agent("ext_method")?
+                    .conn
+                    .ext_method(raw)
+                    .await
+            }
             Req::Malformed { method, error } => {
                 tracing::warn!(
                     target: "master",
@@ -1551,7 +1748,6 @@ pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
     }
     result
 }
-
 
 struct MasterPipeDiscoveryGuard {
     path: Option<PathBuf>,
@@ -1790,6 +1986,106 @@ fn create_master_pipe_instance(
     }
 }
 
+#[derive(Debug)]
+enum PipeClientElevationError {
+    Reject(anyhow::Error),
+    Fatal(anyhow::Error),
+}
+
+struct RevertImpersonationGuard {
+    active: bool,
+}
+
+impl RevertImpersonationGuard {
+    fn revert(mut self) -> std::io::Result<()> {
+        if unsafe { windows_sys::Win32::Security::RevertToSelf() } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        self.active = false;
+        Ok(())
+    }
+}
+
+impl Drop for RevertImpersonationGuard {
+    fn drop(&mut self) {
+        if self.active {
+            unsafe {
+                windows_sys::Win32::Security::RevertToSelf();
+            }
+        }
+    }
+}
+
+struct OwnedWin32Handle(windows_sys::Win32::Foundation::HANDLE);
+
+impl Drop for OwnedWin32Handle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+/// Authenticate one connected pipe client's elevation from its impersonation
+/// token. No await may occur while impersonating: impersonation is bound to
+/// the current OS thread, and this function always reverts before returning.
+fn connected_pipe_client_is_elevated(
+    pipe: &NamedPipeServer,
+) -> std::result::Result<bool, PipeClientElevationError> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::System::Pipes::ImpersonateNamedPipeClient;
+    use windows_sys::Win32::System::Threading::{GetCurrentThread, OpenThreadToken};
+
+    let pipe_handle = pipe.as_raw_handle() as HANDLE;
+    if unsafe { ImpersonateNamedPipeClient(pipe_handle) } == 0 {
+        return Err(PipeClientElevationError::Reject(
+            anyhow::Error::new(std::io::Error::last_os_error())
+                .context("ImpersonateNamedPipeClient failed"),
+        ));
+    }
+    let revert_guard = RevertImpersonationGuard { active: true };
+
+    let elevation_result = (|| -> std::io::Result<bool> {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut token) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let token = OwnedWin32Handle(token);
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut returned = 0;
+        let ok = unsafe {
+            GetTokenInformation(
+                token.0,
+                TokenElevation,
+                &mut elevation as *mut TOKEN_ELEVATION as *mut std::ffi::c_void,
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut returned,
+            )
+        };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(elevation.TokenIsElevated != 0)
+    })();
+
+    if let Err(error) = revert_guard.revert() {
+        return Err(PipeClientElevationError::Fatal(
+            anyhow::Error::new(error).context("RevertToSelf failed after pipe impersonation"),
+        ));
+    }
+    elevation_result.map_err(|error| {
+        PipeClientElevationError::Reject(
+            anyhow::Error::new(error).context("failed to query pipe client token elevation"),
+        )
+    })
+}
+
 async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     // Publish the shared MCP endpoint before any lazily spawned agent creates
     // a session. Failure is non-fatal; helpers simply omit MCP tools.
@@ -1830,6 +2126,17 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
     let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> = wt_cli
         .clone()
         .map(|c| c as Arc<dyn crate::shell::wt_channel::WtChannel>);
+    let shell_sessions = match crate::shell_session_store::ShellSessionStore::open_runtime().await {
+        Ok(store) => Some(store),
+        Err(error) => {
+            tracing::error!(
+                target: "shell_sessions",
+                error = %error,
+                "durable shell-session store unavailable; agent master will continue"
+            );
+            None
+        }
+    };
 
     // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
     // a helper declares an agent in its `initialize` handshake — the master
@@ -1850,9 +2157,11 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
     let inner = Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        ordered_replay_sessions: Mutex::new(HashSet::new()),
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
+        shell_sessions,
         agents: Mutex::new(HashMap::new()),
         default_agent_cmd: cli.agent.clone(),
         default_agent_id: cli.agent_id.clone(),
@@ -1984,27 +2293,77 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
         let helper_id = HelperId(next_helper_id);
         next_helper_id = next_helper_id.wrapping_add(1);
-        let live = live_helpers.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        tracing::info!(
-            target: "master",
-            helper_id = ?helper_id,
-            live_helpers = live,
-            "helper pipe connected, dispatching to serve_helper"
-        );
 
         // Replace the connected instance with a fresh one so the next
         // helper can connect concurrently.
-        let connected = std::mem::replace(
+        let mut connected = std::mem::replace(
             &mut server,
             create_master_pipe_instance(&pipe_name, false, pipe_security.as_ref()).with_context(
                 || format!("failed to create follow-up pipe instance for '{pipe_name}'"),
             )?,
         );
 
+        // ImpersonateNamedPipeClient authenticates the sender of the most
+        // recently read message. Preserve the first byte and replay it into
+        // ACP after authentication so framing remains unchanged.
+        let mut first_byte = [0u8; 1];
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            connected.read_exact(&mut first_byte),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    error = %error,
+                    "rejecting helper before elevation authentication"
+                );
+                continue;
+            }
+            Err(_) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    "rejecting helper that sent no request before authentication timeout"
+                );
+                continue;
+            }
+        }
+
+        let client_elevated = match connected_pipe_client_is_elevated(&connected) {
+            Ok(elevated) => elevated,
+            Err(PipeClientElevationError::Reject(error)) => {
+                tracing::warn!(
+                    target: "master",
+                    helper_id = ?helper_id,
+                    error = %error,
+                    "rejecting helper whose elevation could not be authenticated"
+                );
+                continue;
+            }
+            Err(PipeClientElevationError::Fatal(error)) => {
+                return Err(error.context(format!(
+                    "failed to safely revert impersonation for helper {helper_id:?}"
+                )));
+            }
+        };
+        let live = live_helpers.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        tracing::info!(
+            target: "master",
+            helper_id = ?helper_id,
+            client_elevated,
+            live_helpers = live,
+            "authenticated helper pipe, dispatching to serve_helper"
+        );
+
         let inner = Arc::clone(&inner);
         let live_helpers = Arc::clone(&live_helpers);
         tokio::task::spawn_local(async move {
-            let result = serve_helper(helper_id, connected, inner).await;
+            let result =
+                serve_helper(helper_id, client_elevated, first_byte, connected, inner).await;
             let live = live_helpers.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) - 1;
             match result {
                 Err(err) => tracing::warn!(
@@ -2117,9 +2476,7 @@ fn resolve_agent_selection(
         let allowed = allowed_ids.map_or(true, |set| set.contains(id));
 
         if known && allowed {
-            let model = requested_model
-                .map(str::trim)
-                .filter(|s| !s.is_empty());
+            let model = requested_model.map(str::trim).filter(|s| !s.is_empty());
             let cmd = crate::agent_registry::build_acp_command(id, model);
             return (cmd, Some(id.to_string()));
         }
@@ -2164,9 +2521,57 @@ async fn get_or_spawn_agent(
     // helper requesting the same agent gets a fresh cell and retries
     // cleanly (no lingering dead slot, no leaked subprocess).
     let agent = cell
-        .get_or_try_init(|| async { spawn_one_agent(state, &key, agent_cmd, agent_id).await })
+        .get_or_try_init(|| async {
+            spawn_one_agent(state, &key, agent_cmd, agent_id, Arc::clone(&cell)).await
+        })
         .await?;
     Ok(Arc::clone(agent))
+}
+
+/// Replace the pooled process for an agent command while existing helpers keep
+/// their `Arc<AgentCli>` bindings to the previous process. This is required
+/// when an ACP implementation refuses to load a session that is still resident
+/// in its current process: the replacement process can perform a real
+/// `session/load` and replay the conversation to the restoring helper.
+async fn rotate_agent(
+    state: &Arc<MasterStateInner>,
+    previous: &Arc<AgentCli>,
+) -> Result<Arc<AgentCli>> {
+    let key = previous.cmd_key.clone();
+    let cell = {
+        let mut agents = state.agents.lock().await;
+        if let Some(cell) = agents.get(&key) {
+            match cell.get() {
+                Some(current) if current.generation != previous.generation => {
+                    return Ok(Arc::clone(current));
+                }
+                None => Arc::clone(cell),
+                Some(_) => {
+                    let replacement = Arc::new(tokio::sync::OnceCell::new());
+                    agents.insert(key.clone(), Arc::clone(&replacement));
+                    replacement
+                }
+            }
+        } else {
+            let replacement = Arc::new(tokio::sync::OnceCell::new());
+            agents.insert(key.clone(), Arc::clone(&replacement));
+            replacement
+        }
+    };
+    let replacement = cell
+        .get_or_try_init(|| async {
+            spawn_one_agent(state, &key, &key, None, Arc::clone(&cell)).await
+        })
+        .await
+        .map(Arc::clone)?;
+    tracing::info!(
+        target: "master",
+        agent = %key,
+        old_generation = previous.generation,
+        new_generation = replacement.generation,
+        "rotated pooled agent CLI for ACP session reload"
+    );
+    Ok(replacement)
 }
 
 /// Spawn one agent CLI subprocess, wire master as its ACP client, run
@@ -2179,7 +2584,9 @@ async fn spawn_one_agent(
     key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
+    pool_cell: Arc<tokio::sync::OnceCell<Arc<AgentCli>>>,
 ) -> Result<Arc<AgentCli>> {
+    let generation = NEXT_AGENT_GENERATION.fetch_add(1, Ordering::Relaxed);
     let mut spawn_result = spawn_agent_process(agent_cmd, None)
         .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
     tracing::info!(
@@ -2219,6 +2626,7 @@ async fn spawn_one_agent(
 
     let client = MasterClient {
         state: Arc::clone(state),
+        agent_generation: generation,
     };
     let builder = acp::Client
         .builder()
@@ -2326,6 +2734,7 @@ async fn spawn_one_agent(
     {
         let state = Arc::clone(state);
         let key = key.clone();
+        let pool_cell = Arc::clone(&pool_cell);
         tokio::task::spawn_local(async move {
             match handle_io.await {
                 Ok(()) => tracing::info!(
@@ -2340,7 +2749,7 @@ async fn spawn_one_agent(
                     "agent CLI ACP I/O loop ended with error — removing from pool"
                 ),
             }
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, generation, &pool_cell).await;
         });
     }
 
@@ -2359,14 +2768,9 @@ async fn spawn_one_agent(
         std::time::Duration::from_secs(init_timeout_secs),
         conn.initialize(
             acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                .client_capabilities(
-                    acp::schema::v1::ClientCapabilities::new().terminal(true),
-                )
+                .client_capabilities(acp::schema::v1::ClientCapabilities::new().terminal(true))
                 .client_info(
-                    acp::schema::v1::Implementation::new(
-                        "wta-master",
-                        env!("CARGO_PKG_VERSION"),
-                    )
+                    acp::schema::v1::Implementation::new("wta-master", env!("CARGO_PKG_VERSION"))
                         .title("Windows Terminal Agent (master)"),
                 ),
         ),
@@ -2390,21 +2794,37 @@ async fn spawn_one_agent(
         }
     };
 
+    let shutdown = Arc::new(tokio::sync::Notify::new());
+
     // Init succeeded — install the child reaper now (takes ownership of
     // `child`). A later CLI exit drops just this agent from the pool so
     // the next helper respawns it; the master stays up for other agents.
     {
         let state = Arc::clone(state);
         let key = key.clone();
+        let pool_cell = Arc::clone(&pool_cell);
+        let shutdown_waiter = Arc::clone(&shutdown);
         tokio::task::spawn_local(async move {
-            let status = child.wait().await;
+            let status = tokio::select! {
+                status = child.wait() => status,
+                () = shutdown_waiter.notified() => {
+                    tracing::info!(
+                        target: "master",
+                        agent = %key,
+                        generation,
+                        "stopping superseded agent CLI with no bound helpers"
+                    );
+                    let _ = child.start_kill();
+                    child.wait().await
+                }
+            };
             tracing::error!(
                 target: "master",
                 agent = %key,
                 ?status,
                 "agent CLI exited — removing from pool (master stays up for other agents)"
             );
-            reap_agent(&state, &key).await;
+            reap_agent(&state, &key, generation, &pool_cell).await;
         });
     }
 
@@ -2446,6 +2866,9 @@ async fn spawn_one_agent(
         cached_init_resp: init_resp,
         cli_source,
         cmd_key: key.clone(),
+        generation,
+        helper_bindings: AtomicU64::new(0),
+        shutdown,
     }))
 }
 
@@ -2454,14 +2877,25 @@ async fn spawn_one_agent(
 /// pane gets rebuilt); a fresh helper requesting the same `agent_cmd`
 /// re-runs `spawn_one_agent`. Sessions owned by the dead agent are left
 /// for the owning helper's disconnect cleanup (`drop_sessions_for_helper`).
-async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
-    let removed = { state.agents.lock().await.remove(key).is_some() };
+async fn reap_agent(
+    state: &Arc<MasterStateInner>,
+    key: &AgentCmdKey,
+    expected_generation: u64,
+    expected_cell: &Arc<tokio::sync::OnceCell<Arc<AgentCli>>>,
+) {
+    let removed = {
+        let mut agents = state.agents.lock().await;
+        let matches_process = agents
+            .get(key)
+            .is_some_and(|cell| Arc::ptr_eq(cell, expected_cell));
+        matches_process && agents.remove(key).is_some()
+    };
+    state
+        .orphaned_sessions
+        .lock()
+        .await
+        .remove(&(key.clone(), expected_generation));
     if removed {
-        // Every session THIS CLI held died with it, so drop only this
-        // agent's orphan set — a post-respawn resume then forwards a real
-        // `session/load` (reloading from disk) instead of re-binding to a
-        // session the new CLI never had. Other agents' orphans are untouched.
-        state.orphaned_sessions.lock().await.remove(key);
         tracing::info!(
             target: "master",
             agent = %key,
@@ -2470,11 +2904,36 @@ async fn reap_agent(state: &Arc<MasterStateInner>, key: &AgentCmdKey) {
     }
 }
 
+async fn release_agent_binding(state: &Arc<MasterStateInner>, agent: &Arc<AgentCli>) {
+    let was_last = agent
+        .helper_bindings
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            count.checked_sub(1)
+        })
+        .is_ok_and(|previous| previous == 1);
+    if !was_last {
+        return;
+    }
+
+    let is_pooled = {
+        let agents = state.agents.lock().await;
+        agents
+            .get(&agent.cmd_key)
+            .and_then(|cell| cell.get())
+            .is_some_and(|current| Arc::ptr_eq(current, agent))
+    };
+    if !is_pooled {
+        agent.shutdown.notify_one();
+    }
+}
+
 /// Per-helper-connection task. Wraps the named pipe in an
 /// `AgentSideConnection`, runs both its I/O loop and a notification
 /// forwarder until the helper disconnects.
 async fn serve_helper(
     helper_id: HelperId,
+    client_elevated: bool,
+    first_byte: [u8; 1],
     pipe: NamedPipeServer,
     state: Arc<MasterStateInner>,
 ) -> Result<()> {
@@ -2509,9 +2968,12 @@ async fn serve_helper(
 
     let handler = HelperHandler {
         helper_id,
+        client_elevated,
         // Resolved lazily during this helper's `initialize` (see
         // HelperHandler::initialize → get_or_spawn_agent).
         agent: Arc::new(OnceLock::new()),
+        replacement_agent: Arc::new(OnceLock::new()),
+        rotation_lock: Arc::new(Mutex::new(())),
         state: Arc::clone(&state),
         notif_tx,
         agent_side_slot: Arc::clone(&agent_side_slot),
@@ -2519,30 +2981,76 @@ async fn serve_helper(
 
     let (read_half, write_half) = tokio::io::split(pipe);
     let outgoing = write_half.compat_write();
-    let incoming = read_half.compat();
+    let incoming = std::io::Cursor::new(first_byte).chain(read_half).compat();
 
     let builder = acp::Agent
         .builder()
         .name("wta-master-helper")
-        .on_receive_request({ let h = handler.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let h = h.clone(); async move {
-            use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
-            match req {
-                Q::InitializeRequest(a) => conn::respond_enum(responder, h.initialize(a).await.map(R::InitializeResponse)),
-                Q::AuthenticateRequest(a) => conn::respond_enum(responder, h.authenticate(a).await.map(R::AuthenticateResponse)),
-                Q::NewSessionRequest(a) => conn::respond_enum(responder, h.new_session(a).await.map(R::NewSessionResponse)),
-                Q::LoadSessionRequest(a) => conn::respond_enum(responder, h.load_session(a).await.map(R::LoadSessionResponse)),
-                Q::SetSessionModeRequest(a) => conn::respond_enum(responder, h.set_session_mode(a).await.map(R::SetSessionModeResponse)),
-                Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(responder, h.set_session_config_option(a).await.map(R::SetSessionConfigOptionResponse)),
-                Q::ListSessionsRequest(a) => conn::respond_enum(responder, h.list_sessions(a).await.map(R::ListSessionsResponse)),
-                Q::PromptRequest(a) => h.prompt(a, responder).await,
-                Q::ExtMethodRequest(a) => conn::respond_enum(responder, h.ext_method(a).await.map(R::ExtMethodResponse)),
-                _ => responder.respond_with_error(acp::Error::method_not_found()),
-            }
-        } } }, acp::on_receive_request!())
-        .on_receive_notification({ let h = handler.clone(); move |notif: acp::schema::v1::ClientNotification, _cx| { let h = h.clone(); async move {
-            if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif { let _ = h.cancel(n).await; }
-            Ok(())
-        } } }, acp::on_receive_notification!());
+        .on_receive_request(
+            {
+                let h = handler.clone();
+                move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                    let h = h.clone();
+                    async move {
+                        use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
+                        match req {
+                            Q::InitializeRequest(a) => conn::respond_enum(
+                                responder,
+                                h.initialize(a).await.map(R::InitializeResponse),
+                            ),
+                            Q::AuthenticateRequest(a) => conn::respond_enum(
+                                responder,
+                                h.authenticate(a).await.map(R::AuthenticateResponse),
+                            ),
+                            Q::NewSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                h.new_session(a).await.map(R::NewSessionResponse),
+                            ),
+                            Q::LoadSessionRequest(a) => conn::respond_enum(
+                                responder,
+                                h.load_session(a).await.map(R::LoadSessionResponse),
+                            ),
+                            Q::SetSessionModeRequest(a) => conn::respond_enum(
+                                responder,
+                                h.set_session_mode(a).await.map(R::SetSessionModeResponse),
+                            ),
+                            Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(
+                                responder,
+                                h.set_session_config_option(a)
+                                    .await
+                                    .map(R::SetSessionConfigOptionResponse),
+                            ),
+                            Q::ListSessionsRequest(a) => conn::respond_enum(
+                                responder,
+                                h.list_sessions(a).await.map(R::ListSessionsResponse),
+                            ),
+                            Q::PromptRequest(a) => h.prompt(a, responder).await,
+                            Q::ExtMethodRequest(a) => conn::respond_enum(
+                                responder,
+                                h.ext_method(a).await.map(R::ExtMethodResponse),
+                            ),
+                            _ => responder.respond_with_error(acp::Error::method_not_found()),
+                        }
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .on_receive_notification(
+            {
+                let h = handler.clone();
+                move |notif: acp::schema::v1::ClientNotification, _cx| {
+                    let h = h.clone();
+                    async move {
+                        if let acp::schema::v1::ClientNotification::CancelNotification(n) = notif {
+                            let _ = h.cancel(n).await;
+                        }
+                        Ok(())
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        );
 
     let (agent_side_conn, handle_io) =
         conn::spawn_agent(builder, conn::byte_streams(outgoing, incoming));
@@ -2626,16 +3134,17 @@ async fn serve_helper(
     let victims = drop_sessions_for_helper(&state, helper_id).await;
 
     // The dropped sessions are still loaded on the shared CLI — they're now
-    // orphans. Record them under the owning agent's key so a later resume
-    // re-binds directly instead of forwarding a `session/load` that the CLI
-    // rejects "already loaded" (or, mid-turn, wedges behind the running
-    // turn). Guard on `Arc::ptr_eq`: only record if the helper's bound CLI
-    // is STILL the live pool instance for its key. If that CLI already died
-    // (reaped, possibly respawned under the same command line), these
-    // sessions are gone — recording them would make a later resume skip the
-    // `session/load` the new CLI needs, binding to a session it never had.
+    // Orphans. Record them under the exact owning process generation so a
+    // later resume knows it must rotate before performing a real ACP load.
+    // Guard on `Arc::ptr_eq`: only the current pooled process can create
+    // actionable orphan metadata.
+    let active_agent = handler
+        .replacement_agent
+        .get()
+        .or_else(|| handler.agent.get())
+        .cloned();
     if !victims.is_empty() {
-        if let Some(agent) = handler.agent.get() {
+        if let Some(agent) = active_agent.as_ref() {
             let key = agent.cmd_key.clone();
             let still_live = {
                 let agents = state.agents.lock().await;
@@ -2646,11 +3155,14 @@ async fn serve_helper(
             };
             if still_live {
                 let mut orphans = state.orphaned_sessions.lock().await;
-                let set = orphans.entry(key).or_default();
+                let set = orphans.entry((key, agent.generation)).or_default();
                 for sid in &victims {
                     set.insert(sid.clone());
                 }
             }
+        }
+        if let Some(agent) = active_agent {
+            release_agent_binding(&state, &agent).await;
         }
     }
 
@@ -2796,7 +3308,9 @@ pub(crate) async fn broadcast_ext_to_helpers(
 /// "no sessions" — the reconcile skips it so a transient error can't wipe the
 /// view. 2s TTL so the 5s poll, the title refresh, and a burst of hook events
 /// share one round-trip.
-async fn host_session_list_raw(state: &MasterStateInner) -> Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>> {
+async fn host_session_list_raw(
+    state: &MasterStateInner,
+) -> Option<std::sync::Arc<[acp::schema::v1::SessionInfo]>> {
     let Some(init) = state.cached_init_resp.get() else {
         return None;
     };
@@ -2926,8 +3440,10 @@ async fn sync_host_history(state: &MasterStateInner) -> Option<(bool, usize)> {
     // Snapshot once; compute existing ids for the add pass and reconcile the
     // terminal Class-B host rows in the same pass.
     let snapshot = state.registry.snapshot().await;
-    let existing: std::collections::HashSet<String> =
-        snapshot.iter().map(|s| s.session_id.0.to_string()).collect();
+    let existing: std::collections::HashSet<String> = snapshot
+        .iter()
+        .map(|s| s.session_id.0.to_string())
+        .collect();
 
     let mut changed = false;
 
@@ -3128,9 +3644,7 @@ fn wsl_title_seed_warranted(
 /// [`wsl_title_seed_warranted`] to tell a synthetic row the host CLI knows about
 /// apart from an in-distro (WSL) one it can never title. Empty when the host
 /// agent can't list / isn't connected.
-async fn host_session_id_set(
-    state: &MasterStateInner,
-) -> std::collections::HashSet<String> {
+async fn host_session_id_set(state: &MasterStateInner) -> std::collections::HashSet<String> {
     host_session_list_raw(state)
         .await
         .map(|rows| rows.iter().map(|r| r.session_id.to_string()).collect())
@@ -3217,7 +3731,10 @@ async fn handle_sessions_list(
     }
 
     let mut sessions = state.registry.snapshot().await;
-    if sessions.iter().any(crate::session_registry::title_is_synthetic) {
+    if sessions
+        .iter()
+        .any(crate::session_registry::title_is_synthetic)
+    {
         let titles = host_titles_via_acp(state).await;
         // Re-snapshot only when a title actually changed; the common steady-state
         // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
@@ -3236,6 +3753,100 @@ async fn handle_sessions_list(
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(sessions);
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+fn scope_shell_session_request(
+    request: &mut crate::session_registry::WtaExtRequest,
+    authenticated_elevated: bool,
+) -> Option<bool> {
+    use crate::session_registry::WtaExtRequest as Req;
+    let claimed = match request {
+        Req::ShellSessionsList(params) => &mut params.elevated,
+        Req::ShellSessionSave(params) => &mut params.elevated,
+        Req::ShellSessionGet(params) => &mut params.elevated,
+        Req::ShellSessionDelete(params) => &mut params.elevated,
+        _ => return None,
+    };
+    let claimed_elevated = *claimed;
+    *claimed = authenticated_elevated;
+    Some(claimed_elevated)
+}
+
+fn shell_session_store(
+    state: &MasterStateInner,
+) -> acp::Result<&crate::shell_session_store::ShellSessionStore> {
+    state.shell_sessions.as_ref().ok_or_else(|| {
+        acp::Error::internal_error().data(serde_json::json!({
+            "reason": "shell-session store unavailable"
+        }))
+    })
+}
+
+fn shell_session_store_error(operation: &str, error: anyhow::Error) -> acp::Error {
+    tracing::warn!(target: "shell_sessions", operation, error = %error, "durable shell-session operation failed");
+    acp::Error::internal_error().data(serde_json::json!({
+        "operation": operation,
+        "message": error.to_string()
+    }))
+}
+
+async fn handle_shell_sessions_list(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionsListParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .list(params)
+        .await
+        .map_err(|error| shell_session_store_error("list", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_save(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionSaveParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .save(params)
+        .await
+        .map_err(|error| shell_session_store_error("save", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_get(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionGetParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let id = params.id.clone();
+    let response = shell_session_store(state)?
+        .get(params)
+        .await
+        .map_err(|error| shell_session_store_error("get", error))?
+        .ok_or_else(|| {
+            acp::Error::resource_not_found(None).data(serde_json::json!({
+                "id": id,
+                "reason": "durable shell session not found in elevation scope"
+            }))
+        })?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
+}
+
+async fn handle_shell_session_delete(
+    state: &MasterStateInner,
+    params: crate::shell_session_store::ShellSessionDeleteParams,
+) -> acp::Result<acp::schema::v1::ExtResponse> {
+    let response = shell_session_store(state)?
+        .delete(params)
+        .await
+        .map_err(|error| shell_session_store_error("delete", error))?;
+    Ok(crate::session_registry::build_shell_session_ext_response(
+        &response,
+    ))
 }
 
 /// Pure async handler for the `intellterm.wta/session_hook` ExtRequest.
@@ -3339,7 +3950,9 @@ async fn handle_session_hook(
         .await;
     }
 
-    Ok(crate::session_registry::build_session_hook_response(applied))
+    Ok(crate::session_registry::build_session_hook_response(
+        applied,
+    ))
 }
 
 /// Handle a #266 *born-bound* registration (delegate `?<prompt>` / resume).
@@ -3390,10 +4003,7 @@ async fn handle_session_born_bound(
 ///      without touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
 ///      VS Code / another terminal) → drop — we can't bind it to an IT pane.
-async fn apply_watcher_event(
-    state: &MasterStateInner,
-    emitted: crate::session_watcher::Emitted,
-) {
+async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
 
     // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
@@ -3454,10 +4064,7 @@ async fn apply_watcher_event(
 /// the publish-from-helper path works for them today; this subscriber
 /// makes the behavior uniform across CLIs and resilient to helper
 /// teardown order.
-async fn handle_master_wt_event(
-    state: &MasterStateInner,
-    event_json: serde_json::Value,
-) {
+async fn handle_master_wt_event(state: &MasterStateInner, event_json: serde_json::Value) {
     let method = event_json
         .get("method")
         .and_then(|v| v.as_str())
@@ -3482,10 +4089,7 @@ async fn handle_master_wt_event(
     if pane_id.is_empty() {
         return;
     }
-    let pane_state = params
-        .get("state")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let pane_state = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
     let event = match pane_state {
         "closed" => crate::agent_sessions::SessionEvent::PaneClosed {
             pane_session_id: pane_id.clone(),
@@ -3842,7 +4446,9 @@ mod tests {
             &self,
             _args: acp::schema::v1::InitializeRequest,
         ) -> acp::Result<acp::schema::v1::InitializeResponse> {
-            Ok(acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1))
+            Ok(acp::schema::v1::InitializeResponse::new(
+                acp::schema::ProtocolVersion::V1,
+            ))
         }
         async fn authenticate(
             &self,
@@ -3871,6 +4477,72 @@ mod tests {
 
     fn allow_set(ids: &[&str]) -> std::collections::HashSet<String> {
         ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn shell_session_requests_use_authenticated_pipe_elevation() {
+        use crate::session_registry::WtaExtRequest as Req;
+        use crate::shell_session_store::{
+            ShellSessionDeleteParams, ShellSessionGetParams, ShellSessionSaveParams,
+            ShellSessionsListParams,
+        };
+
+        let mut requests = [
+            Req::ShellSessionsList(ShellSessionsListParams { elevated: false }),
+            Req::ShellSessionSave(ShellSessionSaveParams {
+                id: None,
+                expected_revision: None,
+                name: "name".to_string(),
+                active_pane_cwd: r"C:\repo".to_string(),
+                layout_json: "{}".to_string(),
+                elevated: false,
+                buffers: Vec::new(),
+            }),
+            Req::ShellSessionGet(ShellSessionGetParams {
+                id: uuid::Uuid::nil().to_string(),
+                elevated: false,
+            }),
+            Req::ShellSessionDelete(ShellSessionDeleteParams {
+                id: uuid::Uuid::nil().to_string(),
+                elevated: false,
+            }),
+        ];
+
+        for request in &mut requests {
+            assert_eq!(scope_shell_session_request(request, true), Some(false));
+            let elevated = match request {
+                Req::ShellSessionsList(params) => params.elevated,
+                Req::ShellSessionSave(params) => params.elevated,
+                Req::ShellSessionGet(params) => params.elevated,
+                Req::ShellSessionDelete(params) => params.elevated,
+                _ => unreachable!(),
+            };
+            assert!(elevated);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pipe_client_elevation_is_available_after_first_read() -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::windows::named_pipe::ClientOptions;
+
+        let pipe_name = format!(r"\\.\pipe\wta-elevation-test-{}", uuid::Uuid::new_v4());
+        let mut server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&pipe_name)?;
+        let mut client = ClientOptions::new().open(&pipe_name)?;
+        server.connect().await?;
+        client.write_all(b"{").await?;
+
+        let mut first_byte = [0u8; 1];
+        server.read_exact(&mut first_byte).await?;
+        assert_eq!(first_byte, *b"{");
+        assert_eq!(
+            connected_pipe_client_is_elevated(&server)
+                .map_err(|error| anyhow!("failed to authenticate test pipe client: {error:?}"))?,
+            crate::shell_session_store::current_process_is_elevated()
+        );
+        Ok(())
     }
 
     /// Run the resolver the way `HelperHandler::initialize` does.
@@ -3939,8 +4611,17 @@ mod tests {
         for profile in crate::agent_registry::KNOWN_AGENTS {
             let (cmd, id) = resolve(None, Some(profile.id), None);
             let expected = crate::agent_registry::build_acp_command(profile.id, None);
-            assert_eq!(cmd, expected, "agent {} must be honored, not fall back", profile.id);
-            assert_eq!(id.as_deref(), Some(profile.id), "id stamp for {}", profile.id);
+            assert_eq!(
+                cmd, expected,
+                "agent {} must be honored, not fall back",
+                profile.id
+            );
+            assert_eq!(
+                id.as_deref(),
+                Some(profile.id),
+                "id stamp for {}",
+                profile.id
+            );
         }
     }
 
@@ -3960,7 +4641,11 @@ mod tests {
     fn allowed_ids_absent_is_no_policy_present_but_empty_is_block_all() {
         // The flag being *absent* (clap yields `[]`) is the only "no host
         // policy" case → `None` → accept any known id.
-        assert_eq!(normalize_allowed_agent_ids(&[]), None, "no argv ⇒ no policy");
+        assert_eq!(
+            normalize_allowed_agent_ids(&[]),
+            None,
+            "no argv ⇒ no policy"
+        );
 
         // The flag being *present* but filtering down to nothing is honored
         // fail-closed → `Some({})` → block every helper-selected id (all tabs
@@ -3995,11 +4680,9 @@ mod tests {
         .expect("non-empty allowlist");
         assert_eq!(set, allow_set(&["gemini", "copilot"]));
         // Unknown ids mixed with a real id: only the real id survives.
-        let mixed = normalize_allowed_agent_ids(&[
-            "custom:myapp".to_string(),
-            "claude".to_string(),
-        ])
-        .expect("one real id survives");
+        let mixed =
+            normalize_allowed_agent_ids(&["custom:myapp".to_string(), "claude".to_string()])
+                .expect("one real id survives");
         assert_eq!(mixed, allow_set(&["claude"]));
 
         // End-to-end through resolve_agent_selection:
@@ -4104,9 +4787,11 @@ mod tests {
     fn make_state() -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            ordered_replay_sessions: Mutex::new(HashSet::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: None,
+            shell_sessions: None,
             agents: Mutex::new(HashMap::new()),
             default_agent_cmd: "copilot --acp --stdio".to_string(),
             default_agent_id: Some("copilot".to_string()),
@@ -4133,24 +4818,48 @@ mod tests {
         let agent_builder = acp::Agent
             .builder()
             .name("pending-agent")
-            .on_receive_request({ let m = mock.clone(); move |req: acp::schema::v1::ClientRequest, responder, _cx| { let m = m.clone(); async move {
-                use acp::schema::v1::{ClientRequest as Q, AgentResponse as R};
-                match req {
-                    Q::InitializeRequest(a) => conn::respond_enum(responder, m.initialize(a).await.map(R::InitializeResponse)),
-                    Q::AuthenticateRequest(a) => conn::respond_enum(responder, m.authenticate(a).await.map(R::AuthenticateResponse)),
-                    Q::NewSessionRequest(a) => conn::respond_enum(responder, m.new_session(a).await.map(R::NewSessionResponse)),
-                    _ => responder.respond_with_error(acp::Error::method_not_found()),
-                }
-            } } }, acp::on_receive_request!());
-        let (_agent_conn, agent_io) =
-            conn::spawn_agent(agent_builder, conn::byte_streams(agent_write.compat_write(), agent_read.compat()));
-        tokio::task::spawn_local(async move { let _ = agent_io.await; });
+            .on_receive_request(
+                {
+                    let m = mock.clone();
+                    move |req: acp::schema::v1::ClientRequest, responder, _cx| {
+                        let m = m.clone();
+                        async move {
+                            use acp::schema::v1::{AgentResponse as R, ClientRequest as Q};
+                            match req {
+                                Q::InitializeRequest(a) => conn::respond_enum(
+                                    responder,
+                                    m.initialize(a).await.map(R::InitializeResponse),
+                                ),
+                                Q::AuthenticateRequest(a) => conn::respond_enum(
+                                    responder,
+                                    m.authenticate(a).await.map(R::AuthenticateResponse),
+                                ),
+                                Q::NewSessionRequest(a) => conn::respond_enum(
+                                    responder,
+                                    m.new_session(a).await.map(R::NewSessionResponse),
+                                ),
+                                _ => responder.respond_with_error(acp::Error::method_not_found()),
+                            }
+                        }
+                    }
+                },
+                acp::on_receive_request!(),
+            );
+        let (_agent_conn, agent_io) = conn::spawn_agent(
+            agent_builder,
+            conn::byte_streams(agent_write.compat_write(), agent_read.compat()),
+        );
+        tokio::task::spawn_local(async move {
+            let _ = agent_io.await;
+        });
 
         let (client_conn, client_io) = conn::spawn_client(
             acp::Client.builder().name("noop-client"),
             conn::byte_streams(client_write.compat_write(), client_read.compat()),
         );
-        tokio::task::spawn_local(async move { let _ = client_io.await; });
+        tokio::task::spawn_local(async move {
+            let _ = client_io.await;
+        });
 
         client_conn
     }
@@ -4173,10 +4882,16 @@ mod tests {
                     ),
                     cli_source: None,
                     cmd_key: "copilot --acp --stdio".to_string(),
+                    generation: 1,
+                    helper_bindings: AtomicU64::new(0),
+                    shutdown: Arc::new(tokio::sync::Notify::new()),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
+                    client_elevated: false,
                     agent,
+                    replacement_agent: Arc::new(OnceLock::new()),
+                    rotation_lock: Arc::new(Mutex::new(())),
                     state: make_state(),
                     notif_tx,
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -4204,7 +4919,10 @@ mod tests {
         let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
         let handler = HelperHandler {
             helper_id: HelperId(1),
+            client_elevated: false,
             agent: Arc::new(OnceLock::new()),
+            replacement_agent: Arc::new(OnceLock::new()),
+            rotation_lock: Arc::new(Mutex::new(())),
             state: make_state(),
             notif_tx,
             agent_side_slot: Arc::new(OnceLock::new()),
@@ -4223,13 +4941,13 @@ mod tests {
     #[tokio::test]
     async fn request_permission_for_orphaned_session_returns_cancelled_not_error() {
         use acp::schema::v1::{
-            PermissionOption, PermissionOptionId, PermissionOptionKind,
-            RequestPermissionOutcome, RequestPermissionRequest, ToolCallId, ToolCallUpdate,
-            ToolCallUpdateFields,
+            PermissionOption, PermissionOptionId, PermissionOptionKind, RequestPermissionOutcome,
+            RequestPermissionRequest, ToolCallId, ToolCallUpdate, ToolCallUpdateFields,
         };
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         // No routing entry for this session — it's orphaned.
         let req = RequestPermissionRequest::new(
@@ -4268,6 +4986,26 @@ mod tests {
         assert!(!is_already_loaded_error(&unrelated));
     }
 
+    #[tokio::test]
+    async fn agent_reaper_does_not_remove_a_replacement_cell() {
+        let state = make_state();
+        let key = "copilot --acp --stdio".to_string();
+        let old_cell = Arc::new(tokio::sync::OnceCell::new());
+        let replacement_cell = Arc::new(tokio::sync::OnceCell::new());
+        state
+            .agents
+            .lock()
+            .await
+            .insert(key.clone(), Arc::clone(&replacement_cell));
+
+        reap_agent(&state, &key, 1, &old_cell).await;
+
+        let agents = state.agents.lock().await;
+        assert!(agents
+            .get(&key)
+            .is_some_and(|cell| Arc::ptr_eq(cell, &replacement_cell)));
+    }
+
     /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
     /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
     #[tokio::test]
@@ -4278,28 +5016,30 @@ mod tests {
         {
             let mut orphans = state.orphaned_sessions.lock().await;
             orphans
-                .entry(key_a.clone())
+                .entry((key_a.clone(), 1))
                 .or_default()
                 .insert(SessionId::new("a-sess"));
             orphans
-                .entry(key_b.clone())
+                .entry((key_b.clone(), 1))
                 .or_default()
                 .insert(SessionId::new("b-sess"));
         }
         // reap only acts when the key is a live pool entry.
-        {
+        let cell = {
             let mut agents = state.agents.lock().await;
-            agents.insert(key_a.clone(), Arc::new(tokio::sync::OnceCell::new()));
-        }
-        reap_agent(&state, &key_a).await;
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            agents.insert(key_a.clone(), Arc::clone(&cell));
+            cell
+        };
+        reap_agent(&state, &key_a, 1, &cell).await;
         let orphans = state.orphaned_sessions.lock().await;
         assert!(
-            !orphans.contains_key(&key_a),
+            !orphans.contains_key(&(key_a.clone(), 1)),
             "reaped agent's orphan set must be dropped"
         );
         assert!(
             orphans
-                .get(&key_b)
+                .get(&(key_b, 1))
                 .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
             "a co-resident agent's orphans must be untouched"
         );
@@ -4378,8 +5118,9 @@ mod tests {
                                         });
                                         Ok(())
                                     }
-                                    _ => responder
-                                        .respond_with_error(acp::Error::method_not_found()),
+                                    _ => {
+                                        responder.respond_with_error(acp::Error::method_not_found())
+                                    }
                                 }
                             },
                             acp::on_receive_request!(),
@@ -4397,6 +5138,7 @@ mod tests {
                 // reentrant request_permission back out to the owning helper.
                 let master_client = MasterClient {
                     state: Arc::clone(&state),
+                    agent_generation: 1,
                 };
                 let agent_conn = {
                     let (cr, cw) = tokio::io::split(master_agent_pipe);
@@ -4418,9 +5160,8 @@ mod tests {
                                                     ),
                                                 )
                                             }
-                                            _ => responder.respond_with_error(
-                                                acp::Error::method_not_found(),
-                                            ),
+                                            _ => responder
+                                                .respond_with_error(acp::Error::method_not_found()),
                                         }
                                     }
                                 }
@@ -4447,10 +5188,16 @@ mod tests {
                     ),
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                     cmd_key: "copilot --acp --stdio".to_string(),
+                    generation: 1,
+                    helper_bindings: AtomicU64::new(0),
+                    shutdown: Arc::new(tokio::sync::Notify::new()),
                 }));
                 let handler = HelperHandler {
                     helper_id: HelperId(1),
+                    client_elevated: false,
                     agent,
+                    replacement_agent: Arc::new(OnceLock::new()),
+                    rotation_lock: Arc::new(Mutex::new(())),
                     state: Arc::clone(&state),
                     notif_tx: notif_tx.clone(),
                     agent_side_slot: Arc::new(OnceLock::new()),
@@ -4471,9 +5218,8 @@ mod tests {
                                             ClientRequest::PromptRequest(a) => {
                                                 h.prompt(a, responder).await
                                             }
-                                            _ => responder.respond_with_error(
-                                                acp::Error::method_not_found(),
-                                            ),
+                                            _ => responder
+                                                .respond_with_error(acp::Error::method_not_found()),
                                         }
                                     }
                                 }
@@ -4496,6 +5242,7 @@ mod tests {
                     sid.clone(),
                     HelperRoute {
                         helper_id: HelperId(1),
+                        agent_generation: 1,
                         notif_tx,
                         forwarder: Some(master_to_helper),
                         consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4525,8 +5272,9 @@ mod tests {
                                             )),
                                         )
                                     }
-                                    _ => responder
-                                        .respond_with_error(acp::Error::method_not_found()),
+                                    _ => {
+                                        responder.respond_with_error(acp::Error::method_not_found())
+                                    }
                                 }
                             },
                             acp::on_receive_request!(),
@@ -4588,8 +5336,37 @@ mod tests {
     async fn route(state: &Arc<MasterStateInner>, notif: SessionNotification) {
         let client = MasterClient {
             state: Arc::clone(state),
+            agent_generation: 1,
         };
         client.session_notification(notif).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stale_agent_generation_cannot_notify_replacement_helper() {
+        let state = make_state();
+        let sid = SessionId::new("rotated-session");
+        let (tx, mut rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+        state.session_to_helper.lock().await.insert(
+            sid.clone(),
+            HelperRoute {
+                helper_id: HelperId(1),
+                agent_generation: 2,
+                notif_tx: tx,
+                forwarder: None,
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        );
+        let stale_client = MasterClient {
+            state,
+            agent_generation: 1,
+        };
+
+        stale_client
+            .session_notification(make_notif(&sid))
+            .await
+            .unwrap();
+
+        assert!(rx.try_recv().is_err());
     }
 
     /// New `session_notification`s for a registered SessionId reach
@@ -4609,6 +5386,7 @@ mod tests {
                 sid1.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx1,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4618,6 +5396,7 @@ mod tests {
                 sid2.clone(),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx2,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4647,6 +5426,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(7),
+                    agent_generation: 1,
                     notif_tx: tx,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4697,6 +5477,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4722,6 +5503,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx_b,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4773,6 +5555,7 @@ mod tests {
                 sid.clone(),
                 HelperRoute {
                     helper_id: HelperId(9),
+                    agent_generation: 1,
                     notif_tx: tx.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4820,6 +5603,7 @@ mod tests {
                 SessionId::new("a1"),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4829,6 +5613,7 @@ mod tests {
                 SessionId::new("a2"),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4838,6 +5623,7 @@ mod tests {
                 SessionId::new("b1"),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx_b,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4847,6 +5633,7 @@ mod tests {
                 SessionId::new("c1"),
                 HelperRoute {
                     helper_id: HelperId(3),
+                    agent_generation: 1,
                     notif_tx: tx_c,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4890,6 +5677,7 @@ mod tests {
                 sid_a.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: tx_a,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -4899,6 +5687,7 @@ mod tests {
                 sid_b.clone(),
                 HelperRoute {
                     helper_id: HelperId(2),
+                    agent_generation: 1,
                     notif_tx: tx_b,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5014,6 +5803,7 @@ mod tests {
                 sid_a.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: notif_tx1.clone(),
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5023,6 +5813,7 @@ mod tests {
                 sid_b.clone(),
                 HelperRoute {
                     helper_id: HelperId(1),
+                    agent_generation: 1,
                     notif_tx: notif_tx1,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5070,6 +5861,7 @@ mod tests {
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         let err = client
             .route_for(&SessionId::new("ghost"), "request_permission")
@@ -5094,6 +5886,7 @@ mod tests {
                 SessionId::new("orphan"),
                 HelperRoute {
                     helper_id: HelperId(42),
+                    agent_generation: 1,
                     notif_tx: tx,
                     forwarder: None,
                     consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -5102,6 +5895,7 @@ mod tests {
         }
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
         let err = client
             .route_for(&SessionId::new("orphan"), "create_terminal")
@@ -5120,17 +5914,18 @@ mod tests {
         let state = make_state();
         let client = MasterClient {
             state: Arc::clone(&state),
+            agent_generation: 1,
         };
-        let req =
-            acp::schema::v1::CreateTerminalRequest::new(SessionId::new("nobody-home"), "echo".to_string());
+        let req = acp::schema::v1::CreateTerminalRequest::new(
+            SessionId::new("nobody-home"),
+            "echo".to_string(),
+        );
         let err = client
             .create_terminal(req)
             .await
             .expect_err("create_terminal on unknown session must fail");
         assert_eq!(err.code, acp::ErrorCode::InternalError);
     }
-
-
 
     #[tokio::test]
     async fn sessions_list_handler_returns_registry_snapshot_payload() {
@@ -5144,11 +5939,14 @@ mod tests {
         row.last_activity_at_ms = Some(42);
         state.registry.upsert(row.clone()).await;
 
-        let resp = handle_sessions_list(&state, &session_registry::SessionsListParams { rescan: false })
-            .await
-            .expect("sessions/list succeeds");
-        let parsed = session_registry::parse_sessions_list_response(&resp.0)
-            .expect("response parses");
+        let resp = handle_sessions_list(
+            &state,
+            &session_registry::SessionsListParams { rescan: false },
+        )
+        .await
+        .expect("sessions/list succeeds");
+        let parsed =
+            session_registry::parse_sessions_list_response(&resp.0).expect("response parses");
 
         assert_eq!(parsed.sessions, vec![row]);
     }
@@ -5164,14 +5962,21 @@ mod tests {
         let sid = SessionId::new("removed-a");
         {
             let mut map = state.session_to_helper.lock().await;
-            map.insert(sid.clone(), HelperRoute {
-                helper_id: HelperId(1),
-                notif_tx,
-                forwarder: None,
-                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-            });
+            map.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    agent_generation: 1,
+                    notif_tx,
+                    forwarder: None,
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
         }
-        state.registry.upsert(SessionInfo::new(sid, PathBuf::from("C:\\repo"))).await;
+        state
+            .registry
+            .upsert(SessionInfo::new(sid, PathBuf::from("C:\\repo")))
+            .await;
         {
             let mut subs = state.helper_ext_subscribers.lock().await;
             subs.insert(HelperId(2), ext_tx);
@@ -5283,11 +6088,15 @@ mod tests {
         assert!(mock.calls().is_empty());
     }
 
-    fn session_resume_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::SessionResumeDispatchedParams {
+    fn session_resume_params_for(
+        sid: &acp::schema::v1::SessionId,
+    ) -> crate::session_registry::SessionResumeDispatchedParams {
         crate::session_registry::SessionResumeDispatchedParams { sid: sid.clone() }
     }
 
-    fn session_focus_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::SessionFocusParams {
+    fn session_focus_params_for(
+        sid: &acp::schema::v1::SessionId,
+    ) -> crate::session_registry::SessionFocusParams {
         crate::session_registry::SessionFocusParams { sid: sid.clone() }
     }
 
@@ -5348,9 +6157,11 @@ mod tests {
     ) -> Arc<MasterStateInner> {
         Arc::new(MasterStateInner {
             session_to_helper: Mutex::new(HashMap::new()),
+            ordered_replay_sessions: Mutex::new(HashSet::new()),
             registry: crate::session_registry::InMemoryRegistry::shared(),
             helper_ext_subscribers: Mutex::new(HashMap::new()),
             wt: Some(wt),
+            shell_sessions: None,
             agents: Mutex::new(HashMap::new()),
             default_agent_cmd: "copilot --acp --stdio".to_string(),
             default_agent_id: Some("copilot".to_string()),
@@ -5368,8 +6179,12 @@ mod tests {
         })
     }
 
-    fn focus_params_for(sid: &acp::schema::v1::SessionId) -> crate::session_registry::FocusSessionParams {
-        crate::session_registry::FocusSessionParams { session_id: sid.clone() }
+    fn focus_params_for(
+        sid: &acp::schema::v1::SessionId,
+    ) -> crate::session_registry::FocusSessionParams {
+        crate::session_registry::FocusSessionParams {
+            session_id: sid.clone(),
+        }
     }
 
     /// Happy path: sid in registry with pane_session_id, WtChannel present.
@@ -5496,7 +6311,11 @@ mod tests {
     async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
         let state = make_state();
         let (tx, mut rx) = mpsc::unbounded_channel();
-        state.helper_ext_subscribers.lock().await.insert(HelperId(7), tx);
+        state
+            .helper_ext_subscribers
+            .lock()
+            .await
+            .insert(HelperId(7), tx);
 
         // Use SessionStarted because it unconditionally upserts a row,
         // so the reducer returns true and the broadcast fires. PaneClosed
@@ -5691,35 +6510,53 @@ mod tests {
         // and its id is NOT in the host session/list → warrants a WSL scan.
         let wsl_row = live_synthetic_pane_row("wsl-sid");
         let no_host: HashSet<String> = HashSet::new();
-        assert!(wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &no_host));
+        assert!(wsl_title_seed_warranted(
+            std::slice::from_ref(&wsl_row),
+            &no_host
+        ));
 
         // Same row, but the host CLI lists it (a host delegate not yet titled) →
         // the host title refresh owns it, no WSL scan.
         let host_ids: HashSet<String> = ["wsl-sid".to_string()].into_iter().collect();
-        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&wsl_row), &host_ids));
+        assert!(!wsl_title_seed_warranted(
+            std::slice::from_ref(&wsl_row),
+            &host_ids
+        ));
 
         // A Host-located row with the same live/synthetic/pane-bound shape must
         // NOT warrant a scan, even when the host list is empty (temporarily
         // unavailable) — only in-distro rows can be titled by a WSL scan.
         let mut host_row = live_synthetic_pane_row("host-sid");
         host_row.location = SessionLocation::Host;
-        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&host_row), &no_host));
+        assert!(!wsl_title_seed_warranted(
+            std::slice::from_ref(&host_row),
+            &no_host
+        ));
 
         // A non-synthetic row never warrants a scan.
         let mut titled = live_synthetic_pane_row("titled-sid");
         titled.title = Some("Real Title".to_string());
-        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&titled), &no_host));
+        assert!(!wsl_title_seed_warranted(
+            std::slice::from_ref(&titled),
+            &no_host
+        ));
 
         // Historical / ended synthetic rows are excluded so an untitled old row
         // can't drive perpetual scans.
         let mut ended = live_synthetic_pane_row("ended-sid");
         ended.status = Some(AgentStatus::Ended);
-        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&ended), &no_host));
+        assert!(!wsl_title_seed_warranted(
+            std::slice::from_ref(&ended),
+            &no_host
+        ));
 
         // A synthetic live row with no pane binding (not born-bound) is excluded.
         let mut unbound = live_synthetic_pane_row("unbound-sid");
         unbound.pane_session_id = None;
-        assert!(!wsl_title_seed_warranted(std::slice::from_ref(&unbound), &no_host));
+        assert!(!wsl_title_seed_warranted(
+            std::slice::from_ref(&unbound),
+            &no_host
+        ));
     }
 
     #[tokio::test]
@@ -5765,12 +6602,21 @@ mod tests {
         );
         // Same known cli → refreshable.
         row.cli_source = Some(CliSource::Copilot);
-        assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+        assert!(row_refreshable_by_connected_agent(
+            &row,
+            Some(&CliSource::Copilot)
+        ));
         // Different known cli → skipped (the connected agent can't enumerate it).
-        assert!(!row_refreshable_by_connected_agent(&row, Some(&CliSource::Claude)));
+        assert!(!row_refreshable_by_connected_agent(
+            &row,
+            Some(&CliSource::Claude)
+        ));
         // Unknown cli on either side → attempt (never skip).
         row.cli_source = None;
-        assert!(row_refreshable_by_connected_agent(&row, Some(&CliSource::Copilot)));
+        assert!(row_refreshable_by_connected_agent(
+            &row,
+            Some(&CliSource::Copilot)
+        ));
         row.cli_source = Some(CliSource::Copilot);
         assert!(row_refreshable_by_connected_agent(&row, None));
     }
@@ -5803,7 +6649,9 @@ mod tests {
         assert!(!is_stale_host_history_row(&pane, &listed));
         // WSL row → host can't authoritatively list distro sessions.
         let mut wsl = mk("gone");
-        wsl.location = SessionLocation::Wsl { distro: "Ubuntu".to_string() };
+        wsl.location = SessionLocation::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
         assert!(!is_stale_host_history_row(&wsl, &listed));
     }
 
@@ -5944,7 +6792,9 @@ mod tests {
 
         let row = state
             .registry
-            .lookup(&acp::schema::v1::SessionId::new("sid-agent-pane".to_string()))
+            .lookup(&acp::schema::v1::SessionId::new(
+                "sid-agent-pane".to_string(),
+            ))
             .await
             .unwrap();
         // Still Idle — the watcher's ToolStarting (Working) was dropped.
@@ -6039,7 +6889,9 @@ mod tests {
         let sid = acp::schema::v1::SessionId::new("bb-wsl-loc".to_string());
         assert_eq!(
             state.registry.lookup(&sid).await.unwrap().location,
-            crate::agent_sessions::SessionLocation::Wsl { distro: "Ubuntu".to_string() },
+            crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".to_string()
+            },
             "WSL born-bound row must be stamped Wsl {{ distro }}"
         );
         // Still binding-only, like any born-bound row.
@@ -6076,8 +6928,10 @@ mod tests {
         let state = make_state();
         let sid = acp::schema::v1::SessionId::new("bb-activity".to_string());
 
-        let mut info =
-            crate::session_registry::SessionInfo::new(sid.clone(), std::path::PathBuf::from("C:\\repo"));
+        let mut info = crate::session_registry::SessionInfo::new(
+            sid.clone(),
+            std::path::PathBuf::from("C:\\repo"),
+        );
         info.cli_source = Some(crate::agent_sessions::CliSource::Claude);
         info.origin = Some(crate::agent_sessions::SessionOrigin::Unknown);
         info.status = Some(crate::agent_sessions::AgentStatus::Idle);
@@ -6178,5 +7032,4 @@ mod tests {
         );
         assert!(!state.hook_owned.lock().await.contains(&sid));
     }
-
 }
