@@ -72,16 +72,15 @@ pub(crate) async fn run(
 
 /// Whether the delegate agent CLI is actually available inside `distro`.
 ///
-/// PR375 routes a `?<prompt>` from a WSL pane into the distro
-/// (`wsl -d <distro> -- bash -lc "<agent> …"`), but the agent may be
-/// installed only on the Windows host — the Settings UI verifies the host
-/// CLI, never the distro. Probe the distro under a **login** shell
-/// (`bash -lc`): the shipped integration and the common CLI installs
-/// (npm-global, snap, `~/.local/bin`) only put the agent on the login PATH,
-/// so a non-login `bash -c` would miss it. The probe resolves the agent's
-/// PATH location and accepts it only when it is a native Linux install — a
-/// Windows CLI leaking in via `appendWindowsPath` (resolving under `/mnt/…`)
-/// is rejected (see [`crate::agent_check::wsl_agent_probe_script`]).
+/// Explicit WSL delegation launches the agent inside the selected distro
+/// (`wsl -d <distro> -- bash -lc "<agent> …"`). Re-probe immediately before
+/// launch because an agent discovered when settings were loaded may since
+/// have been removed. The probe uses a **login** shell because common CLI
+/// installs (npm-global, snap, `~/.local/bin`) only put the agent on the login
+/// PATH; a non-login `bash -c` would miss them. Only a native Linux install is
+/// accepted — a Windows CLI leaking in through `appendWindowsPath` and
+/// resolving under `/mnt/…` is rejected (see
+/// [`crate::agent_check::wsl_agent_probe_script`]).
 /// This only gates an explicit `--delegate-source wsl` selection: an
 /// unavailable agent keeps WSL as the source (see
 /// [`delegate_launchable_for_source`]) so its command-not-found error
