@@ -48,18 +48,20 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
     })
 }
 
+mod attachments;
 mod autofix;
 mod input_edit;
 mod tab_state;
 mod turn_state;
 use autofix::*;
 
+pub use crate::turn_context::TurnContext;
 #[cfg(test)]
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
 pub(crate) use tab_state::DEFAULT_TAB_ID;
 pub use tab_state::{
-    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState, Scroll,
-    TabSession, View,
+    collapsed_prompt_preview, AgentsViewState, ChatMessage, CompletedTurn, PermissionState,
+    RecommendationFocus, Scroll, TabSession, View,
 };
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
 
@@ -109,16 +111,16 @@ pub use crate::app_contracts::{
 };
 use crate::commands::{self, CommandKind, ParseOutcome, ParsedCommand};
 use crate::coordinator::{
-    parse_autofix_response, parse_recommendation_set, recommended_choice_index,
-    validate_recommendation_set_for_coordinator_target, AutofixDecision, RecommendationChoice,
-    RecommendationSet,
+    parse_autofix_response, parse_recommendation_set, recommended_choice_index, AutofixDecision,
+    RecommendationChoice, RecommendationSet,
 };
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    prompt_timing_log, CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab,
-    PromptSubmission, RenameSessionRequest, RestartRequest,
+    CancelRequest, DropSessionRequest, LoadSessionForTab, NewSessionForTab, PromptSubmission,
+    RenameSessionRequest, RestartRequest,
 };
+use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
 use crate::ui_trace;
 use crate::wt_protocol_events::send as send_wt_protocol_event;
@@ -236,55 +238,21 @@ pub struct SetupState {
     pub subtitle: String,
 }
 
-/// True for the auth failures a post-login reconnect can hit when the shared
-/// master CLI was spawned with a stale token: the plain `AuthRequired`, AND the
-/// `HandshakeFailed { stage: NewSession }` that the pipe client wraps a
-/// still-`AuthRequired` `new_session` into after a *successful* `authenticate`
-/// (the Copilot CLI does not refresh its in-process auth on `authenticate`, so
-/// only respawning it recovers — see `run_acp_client_over_pipe`).
-///
-/// Deliberately does NOT match `HandshakeFailed { stage: Authenticate }`: that
-/// is a genuine `authenticate` RPC rejection or timeout (the credentials were
-/// not accepted / the agent hung), which a master restart would not fix — it
-/// routes to the sign-in screen via the normal `AgentError` path instead.
-fn is_post_login_auth_failure(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    matches!(
-        failure,
-        AgentFailure::AuthRequired { .. }
-            | AgentFailure::HandshakeFailed {
-                stage: HandshakeStage::NewSession,
-                ..
-            }
-    )
-}
-
-/// True when a post-login reconnect could not even reach wta-master.
-///
-/// This is distinct from auth failure: after the IT setup flow installs Copilot,
-/// the old master may already be gone because it was spawned while `copilot`
-/// was missing. Login succeeds in the browser, but reconnecting to the saved
-/// pipe fails before initialize/authenticate/new_session can run. The right
-/// recovery is still the same fresh-master restart used for stale auth state.
-fn is_post_login_master_unavailable(failure: &crate::protocol::acp::failure::AgentFailure) -> bool {
-    use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
-    matches!(
-        failure,
-        AgentFailure::HandshakeFailed {
-            stage: HandshakeStage::PipeConnect,
-            ..
-        }
-    )
-}
-
+/// Decide whether a failed post-login reconnect should respawn the shared
+/// master. External-auth agents need this when the old process retained stale
+/// credentials through `session/new`; every agent needs it when the old master
+/// is no longer reachable. Other handshake failures follow normal error policy.
 fn should_trigger_post_login_recovery(
     post_login_auth: bool,
     is_external_auth_agent: bool,
     failure: &crate::protocol::acp::failure::AgentFailure,
 ) -> bool {
+    use crate::protocol::acp::failure::HandshakeStage;
+
     post_login_auth
-        && ((is_external_auth_agent && is_post_login_auth_failure(failure))
-            || is_post_login_master_unavailable(failure))
+        && ((is_external_auth_agent
+            && (failure.is_auth() || failure.failed_at(HandshakeStage::NewSession)))
+            || failure.failed_at(HandshakeStage::PipeConnect))
 }
 
 /// Build the diagnostic setup options list based on the configured agent state:
@@ -3815,7 +3783,7 @@ impl App {
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
             AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
-            AppEvent::AutofixTargetResolved { .. } => "autofix_target_resolved",
+            AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
@@ -4196,13 +4164,8 @@ impl App {
         }
         match crate::clipboard_image::read_clipboard_image() {
             Some(image) => {
-                let label = image.label.clone();
                 let tab = self.current_tab_mut();
-                tab.pending_images.push(image);
-                tab.messages.push(ChatMessage::System(
-                    t!("system.image_pasted", label = label).into_owned(),
-                ));
-                tab.scroll_to_bottom();
+                tab.insert_image_attachment(image);
             }
             None => {
                 let tab = self.current_tab_mut();
@@ -4419,21 +4382,6 @@ impl App {
         let tab = self.current_tab_mut();
         if tab.command_popup_selected + 1 < candidate_count {
             tab.command_popup_selected += 1;
-        }
-    }
-
-    pub(super) fn accept_command_popup_completion(&mut self) {
-        if let Some(agent_id) = self
-            .selected_agent_command_candidate()
-            .map(|agent| agent.id.clone())
-        {
-            let tab = self.current_tab_mut();
-            tab.reset_input_history_navigation();
-            tab.input = format!("/agent {agent_id}");
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
-        } else {
-            self.current_tab_mut().accept_command_popup_completion();
         }
     }
 
@@ -4710,13 +4658,11 @@ impl App {
     /// after `/fix` is appended as an extra steer.
     ///
     /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
-    /// there is no failing-pane notification, so (1) the source pane is
-    /// resolved in the ACP client task — `PaneContext.source_pane_id` is left
-    /// `None` and `build_prompt_text` falls back to WT's active pane, which
-    /// GetActivePane maps from the agent pane to the user's working pane; and
-    /// (2) `target_pane_id` starts empty and is late-bound once the client task
-    /// resolves that working pane (`AppEvent::AutofixTargetResolved` →
-    /// `apply_autofix_target_resolved`), so `turn_execute_card` fills
+    /// there is no failing-pane notification, so (1) the helper's captured
+    /// source pane is resolved in the ACP client task; and
+    /// (2) the turn context starts without a target and is late-bound once
+    /// the client task resolves that working pane (`AppEvent::PromptTargetResolved` →
+    /// `apply_prompt_target_resolved`), so `turn_execute_card` fills
     /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
     /// armed — that UI is tied to a specific failing pane, and a command typed
     /// into the agent pane surfaces its result there directly.
@@ -4745,13 +4691,13 @@ impl App {
             tab.autofix.generation
         };
 
+        let source_pane_id = self.source_session_id.clone();
         let pane_context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(target_tab_id.clone()),
             window_id: self.window_id.clone(),
             cwd: None,
-            // None → the client task resolves the active working pane itself.
-            source_pane_id: None,
+            source_pane_id: source_pane_id.clone(),
         };
 
         let hint = hint.trim().to_string();
@@ -4760,14 +4706,12 @@ impl App {
             id: prompt.id,
             text: prompt.text.clone(),
             submitted_at_unix_s: prompt.submitted_at_unix_s,
-            autofix: Some(AutofixContext {
-                // Placeholder — the working pane isn't known synchronously here.
-                // The ACP client task resolves it and `apply_autofix_target_resolved`
-                // late-binds it (matched by prompt id) before the card surfaces,
-                // so `turn_execute_card` fills `Send.parent` with a real pane.
-                target_pane_id: String::new(),
-                generation,
-            }),
+            context: TurnContext {
+                // Normally captured when the helper starts. If unavailable,
+                // the ACP client resolves the active source and late-binds it.
+                target_pane_id: source_pane_id,
+            },
+            autofix: Some(AutofixContext { generation }),
         };
         tracing::info!(
             target: "slash_cmd",
@@ -4782,16 +4726,15 @@ impl App {
 
     /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
     /// in the ACP client task (it isn't known when `cmd_fix` submits) and
-    /// plumbed back via [`AppEvent::AutofixTargetResolved`]. We patch the
-    /// matching in-flight turn's `AutofixContext.target_pane_id` so that
-    /// `turn_execute_card` fills `Send.parent` with a real pane — without it,
-    /// the host's send has no destination ("SendInput failed: no parent").
+    /// plumbed back via [`AppEvent::PromptTargetResolved`]. The same event
+    /// binds ordinary planner turns so execution never trusts a
+    /// model-generated pane target.
     ///
     /// Routed by `prompt_id`: a superseded turn (the user fired a newer `/fix`)
     /// won't match, so a stale resolution is dropped. The event is emitted
     /// before the agent responds, so the patch lands while the turn is still
     /// `Submitted` — well before the fix card surfaces or the user executes it.
-    fn apply_autofix_target_resolved(
+    fn apply_prompt_target_resolved(
         &mut self,
         tab_id: Option<String>,
         prompt_id: u64,
@@ -4800,26 +4743,44 @@ impl App {
         if pane_id.is_empty() {
             return;
         }
-        let key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
-        let Some(tab) = self.tab_sessions.get_mut(&key) else {
+        let preferred_key = tab_id.unwrap_or_else(|| self.active_tab_key().to_string());
+        let key = self
+            .tab_sessions
+            .get(&preferred_key)
+            .filter(|tab| {
+                tab.turn
+                    .prompt()
+                    .is_some_and(|prompt| prompt.id == prompt_id)
+            })
+            .map(|_| preferred_key)
+            .or_else(|| {
+                self.tab_sessions.iter().find_map(|(key, tab)| {
+                    tab.turn
+                        .prompt()
+                        .is_some_and(|prompt| prompt.id == prompt_id)
+                        .then(|| key.clone())
+                })
+            });
+        let Some(key) = key else {
             return;
         };
+        let tab = self
+            .tab_sessions
+            .get_mut(&key)
+            .expect("resolved tab exists");
         let Some(prompt) = tab.turn.prompt_mut() else {
             return;
         };
         if prompt.id != prompt_id {
             return;
         }
-        let Some(autofix) = prompt.autofix.as_mut() else {
-            return;
-        };
-        autofix.target_pane_id = pane_id.clone();
+        prompt.context.target_pane_id = Some(pane_id.clone());
         tracing::info!(
-            target: "slash_cmd",
+            target: "pane_routing",
             tab = %key,
             prompt_id,
             pane = %pane_id,
-            "bound /fix target pane",
+            "bound authoritative prompt target pane",
         );
     }
 
@@ -4839,10 +4800,7 @@ impl App {
     /// invalid input reopens the position completion popup.
     fn cmd_move(&mut self, position: String) {
         let Some(position) = commands::lookup_move_position(&position) else {
-            let tab = self.current_tab_mut();
-            tab.input = "/move ".to_string();
-            tab.cursor_pos = tab.input.len();
-            tab.refresh_command_popup();
+            self.current_tab_mut().replace_input("/move ".to_string());
             return;
         };
 
@@ -5420,6 +5378,18 @@ impl App {
         0
     }
 
+    fn focus_next_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + 1) % button_count;
+    }
+
+    fn focus_previous_recommendation_action(&mut self) {
+        let button_count = self.button_count_for_selected();
+        let tab = self.current_tab_mut();
+        tab.selected_button = (tab.selected_button + button_count - 1) % button_count;
+    }
+
     /// Returns true if the choice's primary action is Send (shell command).
     fn is_send_choice(&self, choice: &RecommendationChoice) -> bool {
         choice
@@ -5524,22 +5494,40 @@ pub(crate) fn rec_card_height(choice: &RecommendationChoice, panel_width: u16) -
 }
 
 /// Computes the rendered height (in terminal rows) of the embedded
-/// permission card. No inter-card gap — only one card is ever shown.
+/// permission card. Mirrors `ui/permission.rs::render`'s content exactly:
+/// a header line (`{kind_label} {title}` or just `title`) plus, for a
+/// path target, one wrapped line, or for a command target, one line per
+/// split statement (see `ui::command_format`) — NOT `description`, which
+/// is only the fallback text for the 1-row compact card. No inter-card
+/// gap — only one card is ever shown.
 pub(crate) fn permission_card_height(perm: &PermissionState, panel_width: u16) -> usize {
     let inner_width = ui::card::card_content_width(panel_width);
-    let content_lines: usize = perm
-        .description
-        .lines()
-        .map(|line| {
-            let chars = line.chars().count();
-            if chars == 0 {
-                1
-            } else {
-                chars.div_ceil(inner_width)
-            }
-        })
-        .sum::<usize>()
-        .max(1);
+    let wrap_lines = |text: &str| -> usize {
+        text.lines()
+            .map(|line| {
+                let chars = line.chars().count();
+                if chars == 0 {
+                    1
+                } else {
+                    chars.div_ceil(inner_width)
+                }
+            })
+            .sum::<usize>()
+            .max(1)
+    };
+
+    let header = match &perm.kind_label {
+        Some(icon) => format!("{icon} {}", perm.title),
+        None => perm.title.clone(),
+    };
+    let mut content_lines = wrap_lines(&header);
+    if let Some(target) = &perm.target {
+        if perm.target_is_command {
+            content_lines += ui::command_format::command_display_lines(target).len();
+        } else {
+            content_lines += wrap_lines(target);
+        }
+    }
     // CARD_MIN_SIZE counts 1 content row; add the wrap-extra rows.
     ui::card::CARD_MIN_SIZE as usize + content_lines.saturating_sub(1)
 }

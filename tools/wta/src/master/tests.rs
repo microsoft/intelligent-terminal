@@ -457,7 +457,7 @@ fn host_empty_allowlist_flag_round_trips_as_block_all() {
     // which normalizes to block-all, and NOT into an absent flag (which
     // would mean "no policy / accept any known id" — the bypass we're closing).
     use clap::Parser;
-    let cli = crate::Cli::try_parse_from(["wta", "--allowed-agent-ids="])
+    let cli = crate::cli::args::Cli::try_parse_from(["wta", "--allowed-agent-ids="])
         .expect("--allowed-agent-ids= parses");
     assert_eq!(
         cli.allowed_agent_ids,
@@ -470,7 +470,7 @@ fn host_empty_allowlist_flag_round_trips_as_block_all() {
         "present-but-empty ⇒ block all (fail-closed)"
     );
     // And the flag entirely absent stays "no host policy".
-    let cli_absent = crate::Cli::try_parse_from(["wta"]).expect("parses");
+    let cli_absent = crate::cli::args::Cli::try_parse_from(["wta"]).expect("parses");
     assert_eq!(
         normalize_allowed_agent_ids(&cli_absent.allowed_agent_ids),
         None,

@@ -140,131 +140,6 @@ fn sessions_list_cli_parses_origin_agent_pane() {
     }
 }
 
-#[test]
-fn sessions_json_lines_prints_one_session_info_per_line() {
-    let mut row = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-json"),
-        std::path::PathBuf::from("C:\\repo"),
-    );
-    row.status = Some(agent_sessions::AgentStatus::Working);
-    row.cli_source = Some(agent_sessions::CliSource::Copilot);
-    row.current_tool = Some("shell".into());
-
-    let out = format_sessions_json_lines(&[row]).expect("format jsonl");
-    let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines.len(), 1);
-    let value: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-    assert_eq!(value["session_id"], "sid-json");
-    assert_eq!(value["status"], "Working");
-    assert_eq!(value["cli_source"], "Copilot");
-    assert_eq!(value["current_tool"], "shell");
-}
-
-#[test]
-fn sessions_table_prints_header_and_rows() {
-    let mut row = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-table"),
-        std::path::PathBuf::from("C:\\repo"),
-    );
-    row.title = Some("fix build".into());
-    row.status = Some(agent_sessions::AgentStatus::Idle);
-    row.cli_source = Some(agent_sessions::CliSource::Claude);
-    row.pane_session_id = Some("pane-table".into());
-
-    let out = format_sessions_table(&[row]);
-    assert!(out.contains("SESSION"));
-    assert!(out.contains("sid-table"));
-    assert!(out.contains("Idle"));
-    assert!(out.contains("Claude"));
-    assert!(out.contains("pane-table"));
-    // ORIGIN column exists and untagged rows render as "-" so the
-    // operator can tell "legacy / unclassified" from "shell".
-    assert!(out.contains("ORIGIN"));
-    let body = out.lines().nth(1).expect("body row present");
-    assert!(
-        body.contains(" - "),
-        "untagged origin renders as '-' got: {body}"
-    );
-    // Leading 1-based index column.
-    assert!(
-        out.lines().next().expect("header").starts_with("#"),
-        "header has # column"
-    );
-    assert!(
-        body.starts_with("1"),
-        "first row is numbered 1, got: {body}"
-    );
-}
-
-#[test]
-fn sessions_table_renders_origin_labels() {
-    let mut shell = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-shell"),
-        std::path::PathBuf::from("C:\\repo"),
-    );
-    shell.origin = Some(agent_sessions::SessionOrigin::Unknown);
-    let mut pane = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-pane"),
-        std::path::PathBuf::from("C:\\repo"),
-    );
-    pane.origin = Some(agent_sessions::SessionOrigin::AgentPane);
-
-    let out = format_sessions_table(&[shell, pane]);
-    assert!(out.contains("Shell"), "shell origin label present: {out}");
-    assert!(
-        out.contains("AgentPane"),
-        "agent-pane origin label present: {out}"
-    );
-}
-
-#[test]
-fn sessions_table_renders_location_labels() {
-    let mut host = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-host"),
-        std::path::PathBuf::from("C:\\repo"),
-    );
-    host.location = agent_sessions::SessionLocation::Host;
-    let mut wsl = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-wsl"),
-        std::path::PathBuf::from("/home/u"),
-    );
-    wsl.location = agent_sessions::SessionLocation::Wsl {
-        distro: "Ubuntu".into(),
-    };
-
-    let out = format_sessions_table(&[host, wsl]);
-    assert!(out.contains("LOCATION"), "LOCATION header present: {out}");
-    assert!(out.contains("host"), "host location label present: {out}");
-    assert!(
-        out.contains("wsl:Ubuntu"),
-        "wsl distro label present: {out}"
-    );
-}
-
-#[test]
-fn format_epoch_ms_utc_known_values() {
-    assert_eq!(format_epoch_ms_utc(0), "1970-01-01 00:00");
-    // 2021-01-01 00:00:00 UTC
-    assert_eq!(format_epoch_ms_utc(1_609_459_200_000), "2021-01-01 00:00");
-    // 2021-03-01 (just past a non-leap February) sanity-checks the month math.
-    assert_eq!(format_epoch_ms_utc(1_614_556_800_000), "2021-03-01 00:00");
-}
-
-#[test]
-fn updated_label_falls_back_to_last_activity_ms() {
-    let mut s = session_registry::SessionInfo::new(
-        agent_client_protocol::schema::v1::SessionId::new("sid-u"),
-        std::path::PathBuf::from("/home/u"),
-    );
-    // No updated_at, but an epoch-ms activity stamp -> formatted, not "-".
-    s.updated_at = None;
-    s.last_activity_at_ms = Some(1_609_459_200_000);
-    assert_eq!(updated_label(&s), "2021-01-01 00:00");
-    // updated_at, when present, wins verbatim.
-    s.updated_at = Some("2026-06-22T03:33:46Z".into());
-    assert_eq!(updated_label(&s), "2026-06-22T03:33:46Z");
-}
-
 // ── normalize_locale: OS-locale → bundled-locale affinity matching ──────────
 
 #[test]
@@ -410,12 +285,12 @@ fn hooks_cli_filter_into_scope_maps_each_variant() {
 #[test]
 fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     let v = serde_json::json!({ "s": "hi", "n": 42, "b": true, "nl": null });
-    assert_eq!(json_str_or_num(&v, "s"), "hi");
-    assert_eq!(json_str_or_num(&v, "n"), "42");
+    assert_eq!(cli::wt::json_str_or_num(&v, "s"), "hi");
+    assert_eq!(cli::wt::json_str_or_num(&v, "n"), "42");
     // Non-scalar / wrong-type / missing keys all degrade to "-".
-    assert_eq!(json_str_or_num(&v, "b"), "-");
-    assert_eq!(json_str_or_num(&v, "nl"), "-");
-    assert_eq!(json_str_or_num(&v, "missing"), "-");
+    assert_eq!(cli::wt::json_str_or_num(&v, "b"), "-");
+    assert_eq!(cli::wt::json_str_or_num(&v, "nl"), "-");
+    assert_eq!(cli::wt::json_str_or_num(&v, "missing"), "-");
 }
 
 // ── Delegate: WSL pane target detection + launchable gate ───────────────────
@@ -509,14 +384,14 @@ fn delegate_launchable_for_target_ors_host_and_wsl() {
     // Agent not launchable on the Windows host, but present inside the WSL
     // distro → launchable (in-distro path), so the prompt is enriched, not
     // dropped.
-    assert!(delegate_launchable_for_target(false, true));
+    assert!(cli::delegate::delegate_launchable_for_target(false, true));
 
     // Not launchable on host AND not available in WSL → stays non-launchable
     // (the bare-command path, where the prompt is intentionally not baked in).
     // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
-    assert!(!delegate_launchable_for_target(false, false));
+    assert!(!cli::delegate::delegate_launchable_for_target(false, false));
 
     // Launchable on the host is always launchable, regardless of WSL.
-    assert!(delegate_launchable_for_target(true, false));
-    assert!(delegate_launchable_for_target(true, true));
+    assert!(cli::delegate::delegate_launchable_for_target(true, false));
+    assert!(cli::delegate::delegate_launchable_for_target(true, true));
 }

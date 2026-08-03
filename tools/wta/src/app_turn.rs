@@ -59,6 +59,7 @@ impl App {
         // `Surfaced{end_pending:false}` is dismissed by the new submit.
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         // Autofix prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
@@ -177,9 +178,7 @@ impl App {
                 AutofixDecision::Ignore => {}
             }
         } else {
-            let parsed = parse_recommendation_set(&buf).and_then(|r| {
-                validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-            });
+            let parsed = parse_recommendation_set(&buf);
             if let Ok(recommendations) = parsed {
                 self.turn_surface_recommendation(
                     session_id,
@@ -258,8 +257,7 @@ impl App {
         let autofix_pane = prompt
             .autofix
             .as_ref()
-            .map(|a| a.target_pane_id.clone())
-            .filter(|s| !s.is_empty());
+            .and(prompt.context.target_pane_id().map(str::to_string));
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Empty,
@@ -339,9 +337,7 @@ impl App {
     /// Path (4b): non-autofix Streaming buffer. Try `RecommendationSet`
     /// parse first; on failure, commit as a chat turn (chat-mode answer).
     fn turn_close_finalize_planner(&mut self, session_id: &str, buf: String) {
-        let parsed = parse_recommendation_set(&buf).and_then(|r| {
-            validate_recommendation_set_for_coordinator_target(&r, self.pane_id.as_deref())
-        });
+        let parsed = parse_recommendation_set(&buf);
         match parsed {
             Ok(recommendations) => {
                 self.turn_surface_recommendation(session_id, recommendations, "selection_ready");
@@ -412,7 +408,7 @@ impl App {
     /// choice to the coordinator and transition to `Surfaced { Empty, .. }`
     /// while preserving the ACP single-flight gate.
     pub fn turn_execute_card(&mut self, session_id: &str) {
-        let Some(mut choice) = self.selected_recommendation_choice().cloned() else {
+        let Some(choice) = self.selected_recommendation_choice().cloned() else {
             return;
         };
         let tab = self.session_tab(session_id);
@@ -429,36 +425,27 @@ impl App {
         let executed_title = choice.title.clone();
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
-        // Autofill parent for Send actions when this is an autofix turn.
-        if let Some(pane_id) = self
-            .session_tab(session_id)
-            .turn
-            .prompt()
-            .and_then(|p| p.autofix.as_ref())
-            .map(|a| a.target_pane_id.clone())
-        {
-            for action in &mut choice.actions {
-                if let crate::coordinator::RecommendedAction::Send { ref mut parent, .. } = action {
-                    if parent.is_empty() {
-                        *parent = pane_id.clone();
-                    }
-                }
-            }
-        }
         let target_tab = self.tab_for_session(session_id);
-        let armed_pane = self
+        let context = self
             .session_tab(session_id)
             .turn
             .prompt()
-            .and_then(|p| p.autofix.as_ref())
-            .map(|a| a.target_pane_id.clone());
+            .map(|prompt| prompt.context.clone())
+            .unwrap_or_default();
         let _ = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution {
                 choice,
                 insert_only,
+                context,
             });
-        if armed_pane.is_some() {
+        if self
+            .session_tab(session_id)
+            .turn
+            .prompt()
+            .and_then(|p| p.autofix.as_ref())
+            .is_some()
+        {
             self.emit_autofix_state_cleared(&target_tab);
         }
         let autofix = &mut self.session_tab_mut(session_id).autofix;
@@ -475,6 +462,7 @@ impl App {
         };
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         // Stamp the matching completed_turn (pushed during surface) with an
         // "executed" marker so chat history reflects the user's choice.
@@ -505,8 +493,12 @@ impl App {
             tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
             tab.turn
                 .prompt()
-                .and_then(|p| p.autofix.as_ref())
-                .map(|a| a.target_pane_id.clone())
+                .and_then(|prompt| {
+                    prompt
+                        .autofix
+                        .as_ref()
+                        .and(prompt.context.target_pane_id().map(str::to_string))
+                })
                 .or_else(|| tab.autofix.pane_id.clone())
         };
         if pane_id.is_some() {
@@ -569,6 +561,7 @@ impl App {
         tab.autofix.pane_id = None;
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
         tab.turn = TurnState::Idle;
@@ -615,6 +608,7 @@ impl App {
         tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.selection_visible_pending = true;
         tab.selected_completed_turn_idx = None;
@@ -640,21 +634,16 @@ impl App {
         recommendations: RecommendationSet,
         phase_name: &str,
     ) {
-        let target_pane_id = self
-            .session_tab(session_id)
-            .turn
-            .prompt()
-            .and_then(|p| p.autofix.as_ref())
-            .map(|a| a.target_pane_id.clone());
         // Defensive: only autofix turns surface a fix card here.
-        let Some(target_pane_id) = target_pane_id else {
+        let prompt = self.session_tab(session_id).turn.prompt();
+        let Some(prompt) = prompt.filter(|prompt| prompt.autofix.is_some()) else {
             return;
         };
-        // An empty `target_pane_id` is a manually-invoked `/fix` with no
-        // concrete failing pane. Still surface the card below, but skip the
+        // A manual `/fix` may have no concrete failing pane. Still surface the
+        // card below, but skip the
         // bottom-bar / suggested-pane side effects — they key off a real
         // failing pane (the Review pill, the Ctrl+Alt+. hotkey target).
-        let bar_pane = (!target_pane_id.is_empty()).then_some(target_pane_id);
+        let bar_pane = prompt.context.target_pane_id().map(str::to_string);
         self.log_selection_phase_for(
             session_id,
             phase_name,
@@ -695,6 +684,8 @@ impl App {
         tab.tool_calls.clear();
         tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
+        tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
         tab.turn = TurnState::Surfaced {
@@ -718,20 +709,15 @@ impl App {
         explanation: String,
         phase_name: &str,
     ) {
-        let target_pane_id = self
-            .session_tab(session_id)
-            .turn
-            .prompt()
-            .and_then(|p| p.autofix.as_ref())
-            .map(|a| a.target_pane_id.clone());
         // Defensive: only autofix turns surface an explain answer here.
-        let Some(target_pane_id) = target_pane_id else {
+        let prompt = self.session_tab(session_id).turn.prompt();
+        let Some(prompt) = prompt.filter(|prompt| prompt.autofix.is_some()) else {
             return;
         };
-        // Empty `target_pane_id` = a manually-invoked `/fix` with no concrete
-        // failing pane: surface the explanation, but skip the bottom-bar /
+        // A manual `/fix` may have no concrete failing pane: surface the
+        // explanation, but skip the bottom-bar /
         // suggested-pane side effects below.
-        let bar_pane = (!target_pane_id.is_empty()).then_some(target_pane_id);
+        let bar_pane = prompt.context.target_pane_id().map(str::to_string);
         self.log_selection_phase_for(
             session_id,
             phase_name,
@@ -779,6 +765,7 @@ impl App {
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
         tab.turn = TurnState::Surfaced {

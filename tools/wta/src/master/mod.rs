@@ -63,7 +63,10 @@ use crate::protocol::acp::conn;
 use crate::protocol::acp::spawn::{
     spawn_agent_process_for_source, AgentStderrLog, ChildEnvironmentPolicy,
 };
-use crate::Cli;
+
+pub(crate) mod config;
+
+use config::MasterConfig;
 
 /// Opaque identifier for a helper connection. Used in logs only;
 /// routing keys off `acp::schema::v1::SessionId`.
@@ -242,7 +245,7 @@ struct MasterStateInner {
     /// reading the CLI's on-disk files.
     agent_conn: OnceLock<conn::ClientLink>,
     /// The CLI provider master is multiplexing. Resolved once at
-    /// startup from `cli.agent` via `agent_registry::resolve_agent_id_from_cmd`.
+    /// startup from `config.agent` via `agent_registry::resolve_agent_id_from_cmd`.
     /// Used to stamp `cli_source` on every SessionInfo upserted from
     /// `session/new` and `session/load` so agent-pane sessions are not
     /// reported with cli_source=None (which would make session management Enter on a
@@ -1826,18 +1829,18 @@ impl HelperHandler {
 }
 
 /// Master mode entry point.
-pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
+pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<()> {
     // Logging is initialized once in `main()`; the WorkerGuard lives there for
     // the whole process so the non-blocking appender flushes on the graceful
     // shutdown path (see the `run_master_loop` shutdown notes below).
     tracing::info!(
         target: "master",
         pipe_name = %pipe_name,
-        agent_cmd = %cli.agent,
+        agent_cmd = %config.agent,
         "=== wta-master starting ==="
     );
 
-    if cli.agent.is_empty() {
+    if config.agent.is_empty() {
         return Err(anyhow!(
             "wta-master requires --agent <cmd>; nothing to multiplex onto"
         ));
@@ -1875,7 +1878,7 @@ pub async fn run_master_mode(cli: Cli, pipe_name: String) -> Result<()> {
 
     let local_set = LocalSet::new();
     let result = local_set
-        .run_until(async move { run_master_loop(cli, pipe_name).await })
+        .run_until(async move { run_master_loop(config, pipe_name).await })
         .await;
 
     // Every master-side failure (named-pipe create/connect, agent CLI spawn,
@@ -2125,7 +2128,7 @@ fn create_master_pipe_instance(
     }
 }
 
-async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
+async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> {
     // Best-effort wtcli/COM channel for intellterm.wta/focus_session AND
     // the WT connection_state -> PaneClosed bridge: master demotes F2 rows
     // to Ended on pane-close even when no helper publishes a `PaneClosed`
@@ -2161,18 +2164,18 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
 
     // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
     // a helper declares an agent in its `initialize` handshake — the master
-    // no longer owns a single eager agent CLI. `cli.agent` / `cli.agent_id`
+    // no longer owns a single eager agent CLI. `config.agent` / `config.agent_id`
     // become the fallback default for helpers that don't declare one.
     // Host-supplied allowlist (GPO-filtered) of agent ids a helper may
     // select. An *absent* flag means "no allowlist; accept any known id"
     // (`None`); a *present* flag is honored fail-closed even when it filters
     // down to nothing (`Some(empty_set)` ⇒ block all) — see
     // `normalize_allowed_agent_ids` for the absent-vs-present-empty split.
-    let allowed_agent_ids = normalize_allowed_agent_ids(&cli.allowed_agent_ids);
+    let allowed_agent_ids = normalize_allowed_agent_ids(&config.allowed_agent_ids);
     tracing::info!(
         target: "master",
         allowed_agent_ids = ?allowed_agent_ids,
-        default_agent_id = ?cli.agent_id,
+        default_agent_id = ?config.agent_id,
         "agent allowlist resolved"
     );
 
@@ -2182,15 +2185,16 @@ async fn run_master_loop(cli: Cli, pipe_name: String) -> Result<()> {
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
-        default_agent_cmd: cli.agent.clone(),
-        default_agent_id: cli.agent_id.clone(),
+        default_agent_cmd: config.agent.clone(),
+        default_agent_id: config.agent_id.clone(),
         allowed_agent_ids,
         cached_init_resp: OnceLock::new(),
         agent_conn: OnceLock::new(),
         cli_source: crate::agent_sessions::CliSource::from_agent_id(
-            cli.agent_id
+            config
+                .agent_id
                 .as_deref()
-                .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(&cli.agent)),
+                .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(&config.agent)),
         ),
         helper_meta: Mutex::new(HashMap::new()),
         hook_owned: Mutex::new(HashSet::new()),

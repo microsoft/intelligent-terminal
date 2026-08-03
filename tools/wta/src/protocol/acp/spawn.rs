@@ -7,11 +7,11 @@
 //! provider, while cloud model discovery removes every provider override.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 const STARTUP_STDERR_MAX_LINES: usize = 32;
@@ -251,18 +251,32 @@ pub(crate) fn spawn_agent_process(
     cmd.env_remove("CLAUDECODE");
     configure_child_environment(&mut cmd, agent_cmd, agent_id, environment_policy)?;
 
-    // Give the agent CLI a PATH rebuilt from the Windows registry. Windows
-    // Terminal — and thus this wta-master / wta child — snapshots its
-    // environment at start, so an agent CLI installed mid-session (e.g. the
-    // FRE winget-installing `copilot` while WT is already running) is invisible
-    // to our inherited PATH. That makes `cmd /c copilot` (or a bare spawn) fail
-    // with "is not recognized", which the master reports as an immediate
-    // ACP-initialize failure. Setting the child's PATH here fixes resolution
-    // for both the `cmd /c` and direct-spawn cases without requiring a full WT
-    // restart. (Recent Rust resolves the program name against the child env's
-    // PATH when one is provided.)
-    if let Some(path) = crate::agent_check::spawn_path() {
-        cmd.env("PATH", path);
+    // Give the agent CLI a fresh PATH and make this package's `wta.exe`
+    // App Execution Alias the first match. The package-specific alias directory
+    // avoids collisions when Dev, Preview, and Store builds are installed
+    // together. Unpackaged builds prepend the running binary's directory.
+    //
+    // The agent's tool shells inherit this environment, so prompt contracts can
+    // invoke short `wta.exe` while still selecting this exact WTA installation.
+    let base_path = crate::agent_check::spawn_path()
+        .map(std::ffi::OsString::from)
+        .or_else(|| std::env::var_os("PATH"));
+    if let Some(base_path) = base_path.as_ref() {
+        cmd.env("PATH", base_path);
+    }
+    match wta_cli_directory().and_then(|directory| {
+        prepend_directory_to_path(&directory, base_path.as_deref().unwrap_or_default())
+    }) {
+        Ok(path) => {
+            cmd.env("PATH", path);
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "acp.spawn",
+                %error,
+                "wta_cli_alias_path_unavailable"
+            );
+        }
     }
 
     // Tell the agent CLI's hook scripts (`send-event.ps1`, inherited via the
@@ -327,6 +341,48 @@ pub(crate) fn spawn_agent_process(
         is_npx,
         adapter_package,
     })
+}
+
+fn wta_cli_directory() -> Result<PathBuf> {
+    let package_family = crate::runtime_paths::current_package_family_name();
+    let local_app_data = std::env::var_os("LOCALAPPDATA");
+    let current_exe =
+        std::env::current_exe().context("failed to resolve the running wta executable")?;
+    wta_cli_directory_for(
+        package_family.as_deref(),
+        local_app_data.as_deref(),
+        &current_exe,
+    )
+}
+
+fn wta_cli_directory_for(
+    package_family: Option<&std::ffi::OsStr>,
+    local_app_data: Option<&std::ffi::OsStr>,
+    current_exe: &Path,
+) -> Result<PathBuf> {
+    if let Some(package_family) = package_family {
+        let local_app_data = local_app_data
+            .context("LOCALAPPDATA is required to resolve the packaged wta execution alias")?;
+        return Ok(PathBuf::from(local_app_data)
+            .join("Microsoft")
+            .join("WindowsApps")
+            .join(package_family));
+    }
+
+    current_exe
+        .parent()
+        .map(Path::to_path_buf)
+        .context("running wta executable has no parent directory")
+}
+
+fn prepend_directory_to_path(
+    directory: &Path,
+    base_path: &std::ffi::OsStr,
+) -> Result<std::ffi::OsString> {
+    std::env::join_paths(
+        std::iter::once(directory.to_path_buf()).chain(std::env::split_paths(base_path)),
+    )
+    .context("failed to prepend the wta CLI directory to the agent PATH")
 }
 
 fn resolve_spawn_profile(
@@ -580,6 +636,46 @@ mod tests {
                 "cloud policy must scrub {key}"
             );
         }
+    }
+
+    #[test]
+    fn packaged_wta_cli_uses_package_specific_execution_alias() {
+        let directory = wta_cli_directory_for(
+            Some(std::ffi::OsStr::new("IntelligentTerminal_test")),
+            Some(std::ffi::OsStr::new(r"C:\Users\test\AppData\Local")),
+            Path::new(r"C:\Program Files\WindowsApps\package\wta.exe"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            directory,
+            PathBuf::from(
+                r"C:\Users\test\AppData\Local\Microsoft\WindowsApps\IntelligentTerminal_test"
+            )
+        );
+    }
+
+    #[test]
+    fn unpackaged_wta_cli_uses_running_executable_directory() {
+        let current_exe = Path::new(r"C:\src\wta\target\debug\wta.exe");
+        let directory = wta_cli_directory_for(None, None, current_exe).unwrap();
+
+        assert_eq!(directory, PathBuf::from(r"C:\src\wta\target\debug"));
+    }
+
+    #[test]
+    fn wta_cli_directory_is_first_on_agent_path() {
+        let directory = Path::new(r"C:\package-alias");
+        let path = prepend_directory_to_path(
+            directory,
+            std::ffi::OsStr::new(r"C:\Windows\System32;C:\Tools"),
+        )
+        .unwrap();
+        let entries = std::env::split_paths(&path).collect::<Vec<_>>();
+
+        assert_eq!(entries[0], directory);
+        assert_eq!(entries[1], Path::new(r"C:\Windows\System32"));
+        assert_eq!(entries[2], Path::new(r"C:\Tools"));
     }
 
     #[test]

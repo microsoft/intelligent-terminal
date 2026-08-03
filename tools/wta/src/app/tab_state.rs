@@ -19,6 +19,14 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        /// Concise path/command hint pulled from the ACP tool call's
+        /// `locations` or summarized `raw_input`. `None` when no useful
+        /// target was reported or the title already states it verbatim.
+        location: Option<String>,
+        /// True when `location` is a shell command rather than a file path.
+        /// Commands render on their own indented line below the title.
+        #[serde(default)]
+        location_is_command: bool,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -88,7 +96,16 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
 
 pub struct PermissionState {
     pub tool_call_id: String,
+    /// Fallback single-line text used when the panel cannot fit a full card.
     pub description: String,
+    /// The agent's unmodified tool-call title.
+    pub title: String,
+    /// Locale-neutral icon derived from ACP `ToolKind`.
+    pub kind_label: Option<String>,
+    /// Concrete path, command, or URL shown in the full permission card.
+    pub target: Option<String>,
+    /// True when `target` is a shell command rather than a file path.
+    pub target_is_command: bool,
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
@@ -106,6 +123,13 @@ impl PermissionState {
     pub fn reject_index(&self) -> Option<usize> {
         self.options.iter().position(PermOption::is_reject)
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum RecommendationFocus {
+    #[default]
+    Button,
+    Input,
 }
 
 /// Single-axis scroll cursor. All mutations go through methods so callers
@@ -220,6 +244,7 @@ pub struct TabSession {
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
     pub selected_button: usize,
+    pub recommendation_focus: RecommendationFocus,
     pub rec_scroll: Scroll,
 
     /// Last value the helper published for this tab in a
@@ -231,9 +256,7 @@ pub struct TabSession {
     pub input: String,
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
-    /// Images captured from the clipboard via Alt+V, waiting to be sent with
-    /// the next prompt.
-    pub pending_images: Vec<crate::clipboard_image::PastedImage>,
+    pub(crate) attachments: super::attachments::PendingAttachments,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
     pub paste_pending: bool,
@@ -296,7 +319,8 @@ impl TabSession {
     /// Whether the input box is the live, enterable caret target.
     pub fn input_has_nav_focus(&self) -> bool {
         self.selected_completed_turn_idx.is_none()
-            && self.turn.recommendations().is_none()
+            && (self.turn.recommendations().is_none()
+                || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
@@ -306,23 +330,18 @@ impl TabSession {
     pub fn clear_recommendations(&mut self) {
         self.selected_recommendation = 0;
         self.selected_button = 0;
+        self.recommendation_focus = RecommendationFocus::Button;
         self.rec_scroll.reset();
     }
 
     /// The pane the "Agent" chip should be pinned to while this tab has a
     /// recommendation card with a `Send` action selected.
     pub fn compute_chip_card_target(&self) -> Option<String> {
+        if self.recommendation_focus == RecommendationFocus::Input {
+            return None;
+        }
         let recs = self.turn.recommendations()?;
         let choice = recs.choices.get(self.selected_recommendation)?;
-        let send_parent = choice.actions.iter().find_map(|action| match action {
-            crate::coordinator::RecommendedAction::Send { parent, .. } if !parent.is_empty() => {
-                Some(parent.clone())
-            }
-            _ => None,
-        });
-        if send_parent.is_some() {
-            return send_parent;
-        }
         if choice
             .actions
             .iter()
@@ -331,9 +350,7 @@ impl TabSession {
             return self
                 .turn
                 .prompt()
-                .and_then(|prompt| prompt.autofix.as_ref())
-                .map(|autofix| autofix.target_pane_id.clone())
-                .filter(|pane_id| !pane_id.is_empty());
+                .and_then(|prompt| prompt.context.target_pane_id().map(str::to_string));
         }
         None
     }
@@ -350,7 +367,9 @@ impl TabSession {
         self.selection_visible_pending = false;
         self.turn = TurnState::Idle;
         self.clear_recommendations();
-        self.pending_images.clear();
+        self.attachments
+            .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
+        self.clear_history_draft_attachments();
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
     }

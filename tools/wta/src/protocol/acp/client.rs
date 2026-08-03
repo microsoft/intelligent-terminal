@@ -1,14 +1,16 @@
 use super::conn;
 use super::failure::{AgentFailure, HandshakeStage};
-use super::prompt;
-use super::prompt_context::{self, ContextRequest};
+use super::prompt_builder::{
+    acp_log_built_prompt, build_prompt_text, log_turn_trace, TemplateKind, TemplateMemo,
+};
 use super::soft_stop::SoftStopReason;
+use super::turn_metrics::{now_unix_s, prompt_preview, PromptTimingState};
 use agent_client_protocol as acp;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, Mutex,
+    Arc,
 };
 use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -17,7 +19,6 @@ use crate::app_contracts::{AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEn
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
 
-const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
 // Normal helper startup can race a slow wta-master cold start: master opens its
 // pipe only after spawning and initializing the agent CLI (up to 60s for npx
 // adapters), so keep a long budget there.
@@ -65,57 +66,6 @@ fn post_login_authenticate_error(method_id: &str, e: &acp::Error) -> anyhow::Err
 #[cfg(test)]
 #[path = "mock_agent_tests.rs"]
 pub(crate) mod mock_agent_tests;
-
-/// Which prompt template was last shipped on a given ACP session.
-/// Used by [`TemplateMemo`] to decide whether the next turn needs to
-/// re-include the (~10k char) template body or can ride on the
-/// persona already installed in the session's conversation history.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TemplateKind {
-    Planner,
-    Autofix,
-}
-
-impl std::fmt::Display for TemplateKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TemplateKind::Planner => f.write_str("planner"),
-            TemplateKind::Autofix => f.write_str("autofix"),
-        }
-    }
-}
-
-/// Per-session memo of the last shipped template kind.
-///
-/// Each ACP session has its own conversation history with the agent.
-/// We pay the ~10k-char template body once on the first turn of a
-/// session; subsequent turns only carry runtime context + the user
-/// request, because the planner persona is already in history. When
-/// the kind changes (planner ↔ autofix) we re-ship so the model's
-/// most-recent system instructions match the turn's intent.
-///
-/// Cleanup is driven by the session lifecycle: `forget()` runs
-/// whenever a SessionId is dropped (via `/new` or `drop_session_rx`),
-/// keeping the map bounded.
-#[derive(Clone, Default)]
-struct TemplateMemo(Arc<tokio::sync::Mutex<HashMap<String, TemplateKind>>>);
-
-impl TemplateMemo {
-    /// Records `kind` as the latest template for this session and
-    /// returns whether the caller must ship the template body on this
-    /// turn. Autofix always ships (its template *is* the prompt body);
-    /// planner ships on the first turn or when the previous turn used
-    /// the other kind.
-    async fn should_ship(&self, session_id: &str, kind: TemplateKind) -> bool {
-        let prev = self.0.lock().await.insert(session_id.to_string(), kind);
-        kind == TemplateKind::Autofix || prev != Some(kind)
-    }
-
-    /// Drops the memo entry for a session that's going away.
-    async fn forget(&self, session_id: &str) {
-        self.0.lock().await.remove(session_id);
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct PromptSubmission {
@@ -291,501 +241,6 @@ impl PromptSubmission {
     }
 }
 
-fn now_unix_s() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-}
-
-fn prompt_preview(text: &str) -> String {
-    const MAX_CHARS: usize = 80;
-
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let escaped = normalized.replace('\n', "\\n");
-    let mut preview = String::new();
-    let mut chars = escaped.chars();
-    for _ in 0..MAX_CHARS {
-        match chars.next() {
-            Some(ch) => preview.push(ch),
-            None => return preview,
-        }
-    }
-
-    if chars.next().is_some() {
-        preview.push_str("...");
-    }
-
-    preview
-}
-
-fn format_elapsed(start: Option<f64>, end: Option<f64>) -> String {
-    match (start, end) {
-        (Some(start), Some(end)) if end >= start => format!("{:.3}s", end - start),
-        _ => "n/a".to_string(),
-    }
-}
-
-fn first_visible_text_gap(
-    first_event_at_unix_s: Option<f64>,
-    first_stdout_byte_at_unix_s: Option<f64>,
-    first_text_at_unix_s: Option<f64>,
-) -> (String, &'static str) {
-    if first_event_at_unix_s.is_some() {
-        return (
-            format_elapsed(first_event_at_unix_s, first_text_at_unix_s),
-            "first_event",
-        );
-    }
-
-    if first_stdout_byte_at_unix_s.is_some() {
-        return (
-            format_elapsed(first_stdout_byte_at_unix_s, first_text_at_unix_s),
-            "first_transport_read",
-        );
-    }
-
-    ("n/a".to_string(), "n/a")
-}
-
-fn final_timing_note(
-    submitted_at_unix_s: f64,
-    context_ready_at_unix_s: Option<f64>,
-    prompt_sent_at_unix_s: Option<f64>,
-    completed_at_unix_s: f64,
-) -> String {
-    format!(
-        "submit->context_ready {} | prompt_sent->options_shown {}",
-        format_elapsed(Some(submitted_at_unix_s), context_ready_at_unix_s),
-        format_elapsed(prompt_sent_at_unix_s, Some(completed_at_unix_s))
-    )
-}
-
-pub fn prompt_timing_log(turn_id: u64, submitted_at_unix_s: f64, phase: &str, details: &str) {
-    let since_submit = (now_unix_s() - submitted_at_unix_s).max(0.0);
-    if details.is_empty() {
-        acp_log(&format!(
-            "prompt_timing turn={} phase={} since_submit={:.3}s",
-            turn_id, phase, since_submit
-        ));
-    } else {
-        acp_log(&format!(
-            "prompt_timing turn={} phase={} since_submit={:.3}s {}",
-            turn_id, phase, since_submit, details
-        ));
-    }
-}
-
-#[derive(Debug)]
-struct ActivePromptTiming {
-    id: u64,
-    preview: String,
-    submitted_at_unix_s: f64,
-    received_at_unix_s: Option<f64>,
-    context_ready_at_unix_s: Option<f64>,
-    prompt_sent_at_unix_s: Option<f64>,
-    /// Monotonic counterpart of `prompt_sent_at_unix_s`. Captured at the
-    /// same instant in `mark_prompt_sent()`. Used by ETW telemetry to
-    /// compute `first_token_latency_ms` / `total_duration_ms` so the
-    /// emitted durations are immune to wall-clock jumps (NTP, DST,
-    /// manual time adjustments) — `SystemTime` deltas could otherwise go
-    /// negative or skew aggregates.
-    prompt_sent_at_mono: Option<std::time::Instant>,
-    first_stdin_write_at_unix_s: Option<f64>,
-    bytes_written_after_prompt: u64,
-    first_stdout_byte_at_unix_s: Option<f64>,
-    bytes_read_after_prompt: u64,
-    first_event_at_unix_s: Option<f64>,
-    first_event_kind: Option<String>,
-    first_text_at_unix_s: Option<f64>,
-    first_tool_call_at_unix_s: Option<f64>,
-    first_permission_at_unix_s: Option<f64>,
-    permission_requested_at_unix_s: Option<f64>,
-    permission_wait_total_s: f64,
-    event_count: u64,
-}
-
-/// Concurrent-prompt-aware timing tracker. With M3's spawn-per-prompt
-/// model, multiple prompts can be in flight at the same time; each is
-/// keyed by its ACP `SessionId`. Byte-level observers (writes/reads on
-/// the shared stdio) update every in-flight prompt that hasn't yet
-/// recorded its first byte — `is_none()` guards make that a no-op
-/// once a value is set.
-#[derive(Default)]
-struct PromptTimingState {
-    active: Mutex<HashMap<String, ActivePromptTiming>>,
-}
-
-impl PromptTimingState {
-    fn activate(&self, session_id: &str, prompt: &PromptSubmission) {
-        let now = now_unix_s();
-        let preview = prompt.preview();
-        let mut active = self.active.lock().unwrap();
-        active.insert(
-            session_id.to_string(),
-            ActivePromptTiming {
-                id: prompt.id,
-                preview: preview.clone(),
-                submitted_at_unix_s: prompt.submitted_at_unix_s,
-                received_at_unix_s: Some(now),
-                context_ready_at_unix_s: None,
-                prompt_sent_at_unix_s: None,
-                prompt_sent_at_mono: None,
-                first_stdin_write_at_unix_s: None,
-                bytes_written_after_prompt: 0,
-                first_stdout_byte_at_unix_s: None,
-                bytes_read_after_prompt: 0,
-                first_event_at_unix_s: None,
-                first_event_kind: None,
-                first_text_at_unix_s: None,
-                first_tool_call_at_unix_s: None,
-                first_permission_at_unix_s: None,
-                permission_requested_at_unix_s: None,
-                permission_wait_total_s: 0.0,
-                event_count: 0,
-            },
-        );
-        drop(active);
-
-        prompt_timing_log(
-            prompt.id,
-            prompt.submitted_at_unix_s,
-            "prompt_received",
-            &format!(
-                "queue_delay={}",
-                format_elapsed(Some(prompt.submitted_at_unix_s), Some(now)),
-            ),
-        );
-        // User prompt preview — trace only.
-        acp_trace_content(&format!("turn {} preview={:?}", prompt.id, preview));
-    }
-
-    fn mark_context_ready(&self, session_id: &str, prompt_len: usize) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            active.context_ready_at_unix_s = Some(now);
-            let turn_id = active.id;
-            let submitted_at_unix_s = active.submitted_at_unix_s;
-            let details = format!(
-                "prompt_len={} context_build={}",
-                prompt_len,
-                format_elapsed(active.received_at_unix_s, Some(now))
-            );
-            drop(guard);
-            prompt_timing_log(turn_id, submitted_at_unix_s, "context_ready", &details);
-        }
-    }
-
-    fn mark_prompt_sent(&self, session_id: &str) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            active.prompt_sent_at_unix_s = Some(now);
-            active.prompt_sent_at_mono = Some(std::time::Instant::now());
-            let turn_id = active.id;
-            let submitted_at_unix_s = active.submitted_at_unix_s;
-            let details = format!(
-                "after_context_ready={}",
-                format_elapsed(active.context_ready_at_unix_s, Some(now))
-            );
-            drop(guard);
-            prompt_timing_log(turn_id, submitted_at_unix_s, "prompt_sent", &details);
-        }
-    }
-
-    fn observe_session_update(&self, session_id: &str, kind: &str) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            active.event_count += 1;
-            if active.first_event_at_unix_s.is_none() {
-                active.first_event_at_unix_s = Some(now);
-                active.first_event_kind = Some(kind.to_string());
-                let turn_id = active.id;
-                let submitted_at_unix_s = active.submitted_at_unix_s;
-                let details = format!(
-                    "event_kind={} since_prompt_sent={}",
-                    kind,
-                    format_elapsed(active.prompt_sent_at_unix_s, Some(now))
-                );
-                drop(guard);
-                prompt_timing_log(turn_id, submitted_at_unix_s, "first_event", &details);
-            }
-        }
-    }
-
-    fn observe_first_text(&self, session_id: &str, text_len: usize) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            if active.first_text_at_unix_s.is_none() {
-                active.first_text_at_unix_s = Some(now);
-                let (visible_gap, visible_gap_source) = first_visible_text_gap(
-                    active.first_event_at_unix_s,
-                    active.first_stdout_byte_at_unix_s,
-                    Some(now),
-                );
-                let turn_id = active.id;
-                let submitted_at_unix_s = active.submitted_at_unix_s;
-                let prompt_sent_at = active.prompt_sent_at_unix_s;
-                let prompt_sent_at_mono = active.prompt_sent_at_mono;
-                let details = format!(
-                    "text_len={} since_prompt_sent={} first_visible_text_gap={} gap_source={}",
-                    text_len,
-                    format_elapsed(prompt_sent_at, Some(now)),
-                    visible_gap,
-                    visible_gap_source
-                );
-                drop(guard);
-                prompt_timing_log(turn_id, submitted_at_unix_s, "first_text", &details);
-
-                // Telemetry: agent's first text chunk arrived. Time-to-first-token
-                // is the key responsiveness metric — emit only when we can
-                // compute it reliably (i.e. we observed `prompt_sent_at_mono`).
-                // Use the monotonic `Instant` captured at the same moment as
-                // `prompt_sent_at_unix_s` so the latency is immune to wall-clock
-                // jumps (NTP/DST) that could otherwise produce a negative delta
-                // we'd silently drop, skewing the aggregate.
-                if let Some(sent_mono) = prompt_sent_at_mono {
-                    let first_token_latency_ms = sent_mono.elapsed().as_secs_f64() * 1000.0;
-                    crate::telemetry::log_agent_response_first_token(
-                        session_id,
-                        first_token_latency_ms,
-                        u32::try_from(text_len).unwrap_or(u32::MAX),
-                    );
-                }
-            }
-        }
-    }
-
-    fn observe_first_tool_call(&self, session_id: &str, title: Option<&str>) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            if active.first_tool_call_at_unix_s.is_none() {
-                active.first_tool_call_at_unix_s = Some(now);
-                let turn_id = active.id;
-                let submitted_at_unix_s = active.submitted_at_unix_s;
-                let title_preview = title.map(prompt_preview).unwrap_or_default();
-                let details = format!(
-                    "since_prompt_sent={}",
-                    format_elapsed(active.prompt_sent_at_unix_s, Some(now))
-                );
-                drop(guard);
-                prompt_timing_log(turn_id, submitted_at_unix_s, "first_tool_call", &details);
-                // Tool-call title is agent-generated content — trace only.
-                acp_trace_content(&format!(
-                    "turn {turn_id} first_tool_call title={title_preview:?}"
-                ));
-            }
-        }
-    }
-
-    fn permission_requested(&self, session_id: &str, description: &str) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            if active.first_permission_at_unix_s.is_none() {
-                active.first_permission_at_unix_s = Some(now);
-            }
-            active.permission_requested_at_unix_s = Some(now);
-            let turn_id = active.id;
-            let submitted_at_unix_s = active.submitted_at_unix_s;
-            let details = format!(
-                "since_prompt_sent={}",
-                format_elapsed(active.prompt_sent_at_unix_s, Some(now))
-            );
-            drop(guard);
-            prompt_timing_log(
-                turn_id,
-                submitted_at_unix_s,
-                "permission_requested",
-                &details,
-            );
-            // Permission description is agent-generated content — trace only.
-            acp_trace_content(&format!(
-                "turn {turn_id} permission_requested description={:?}",
-                prompt_preview(description)
-            ));
-        }
-    }
-
-    fn permission_resolved(&self, session_id: &str, outcome: &str) {
-        let now = now_unix_s();
-        let mut guard = self.active.lock().unwrap();
-        if let Some(active) = guard.get_mut(session_id) {
-            let wait_s = active
-                .permission_requested_at_unix_s
-                .map(|start| (now - start).max(0.0))
-                .unwrap_or(0.0);
-            active.permission_wait_total_s += wait_s;
-            active.permission_requested_at_unix_s = None;
-            let turn_id = active.id;
-            let submitted_at_unix_s = active.submitted_at_unix_s;
-            drop(guard);
-            prompt_timing_log(
-                turn_id,
-                submitted_at_unix_s,
-                "permission_resolved",
-                &format!("outcome={} wait={:.3}s", outcome, wait_s),
-            );
-        }
-    }
-
-    fn complete(&self, session_id: &str, success: bool, error: Option<&str>) -> Option<String> {
-        let now = now_unix_s();
-        let mut active = self.active.lock().unwrap();
-        let Some(active_prompt) = active.remove(session_id) else {
-            return None;
-        };
-        drop(active);
-
-        let (first_visible_text_gap, first_visible_text_gap_source) = first_visible_text_gap(
-            active_prompt.first_event_at_unix_s,
-            active_prompt.first_stdout_byte_at_unix_s,
-            active_prompt.first_text_at_unix_s,
-        );
-
-        let mut details = vec![
-            format!("success={}", success),
-            format!(
-                "queue_delay={}",
-                format_elapsed(
-                    Some(active_prompt.submitted_at_unix_s),
-                    active_prompt.received_at_unix_s
-                )
-            ),
-            format!(
-                "context_build={}",
-                format_elapsed(
-                    active_prompt.received_at_unix_s,
-                    active_prompt.context_ready_at_unix_s
-                )
-            ),
-            format!(
-                "prompt_send_gap={}",
-                format_elapsed(
-                    active_prompt.context_ready_at_unix_s,
-                    active_prompt.prompt_sent_at_unix_s
-                )
-            ),
-            format!(
-                "first_transport_write={}",
-                format_elapsed(
-                    active_prompt.prompt_sent_at_unix_s,
-                    active_prompt.first_stdin_write_at_unix_s
-                )
-            ),
-            format!(
-                "first_transport_read={}",
-                format_elapsed(
-                    active_prompt.prompt_sent_at_unix_s,
-                    active_prompt.first_stdout_byte_at_unix_s
-                )
-            ),
-            format!(
-                "first_event={}",
-                format_elapsed(
-                    active_prompt.prompt_sent_at_unix_s,
-                    active_prompt.first_event_at_unix_s
-                )
-            ),
-            format!(
-                "first_event_kind={}",
-                active_prompt
-                    .first_event_kind
-                    .unwrap_or_else(|| "n/a".to_string())
-            ),
-            format!(
-                "first_text={}",
-                format_elapsed(
-                    active_prompt.prompt_sent_at_unix_s,
-                    active_prompt.first_text_at_unix_s
-                )
-            ),
-            format!("first_visible_text_gap={}", first_visible_text_gap),
-            format!(
-                "first_visible_text_gap_source={}",
-                first_visible_text_gap_source
-            ),
-            format!(
-                "first_tool_call={}",
-                format_elapsed(
-                    active_prompt.prompt_sent_at_unix_s,
-                    active_prompt.first_tool_call_at_unix_s
-                )
-            ),
-            format!(
-                "first_permission={}",
-                format_elapsed(
-                    active_prompt.prompt_sent_at_unix_s,
-                    active_prompt.first_permission_at_unix_s
-                )
-            ),
-            format!(
-                "bytes_out_after_prompt={}",
-                active_prompt.bytes_written_after_prompt
-            ),
-            format!(
-                "bytes_in_after_prompt={}",
-                active_prompt.bytes_read_after_prompt
-            ),
-            format!(
-                "permission_wait_total={:.3}s",
-                active_prompt.permission_wait_total_s
-            ),
-            format!(
-                "prompt_rpc_total={}",
-                format_elapsed(active_prompt.prompt_sent_at_unix_s, Some(now))
-            ),
-            format!(
-                "total={}",
-                format_elapsed(Some(active_prompt.submitted_at_unix_s), Some(now))
-            ),
-            format!("event_count={}", active_prompt.event_count),
-        ];
-
-        if let Some(error) = error {
-            details.push(format!("error={:?}", error));
-        }
-
-        prompt_timing_log(
-            active_prompt.id,
-            active_prompt.submitted_at_unix_s,
-            "prompt_complete",
-            &details.join(" "),
-        );
-        // User prompt preview — trace only.
-        acp_trace_content(&format!(
-            "turn {} complete preview={:?}",
-            active_prompt.id, active_prompt.preview
-        ));
-
-        // Telemetry: emit the prompt-complete signal with aggregate metrics.
-        // Use the monotonic `Instant` (captured alongside `prompt_sent_at_unix_s`
-        // in `mark_prompt_sent`) so `total_duration_ms` is wall-clock-jump-
-        // immune. Skip emission when the monotonic anchor is missing rather
-        // than reporting 0ms, mirroring the first-token guard.
-        if let Some(sent_mono) = active_prompt.prompt_sent_at_mono {
-            let total_duration_ms = sent_mono.elapsed().as_secs_f64() * 1000.0;
-            crate::telemetry::log_agent_response_complete(
-                session_id,
-                total_duration_ms,
-                active_prompt.bytes_read_after_prompt as u64,
-                success,
-            );
-        }
-
-        Some(final_timing_note(
-            active_prompt.submitted_at_unix_s,
-            active_prompt.context_ready_at_unix_s,
-            active_prompt.prompt_sent_at_unix_s,
-            now,
-        ))
-    }
-}
-
 async fn complete_prompt_request<T>(
     result: std::result::Result<T, acp::Error>,
     soft_stop: Option<SoftStopReason>,
@@ -848,552 +303,6 @@ async fn complete_prompt_request<T>(
     }
 }
 
-fn truncate_for_prompt(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        text.to_string()
-    } else {
-        let truncated: String = text.chars().take(max_chars).collect();
-        format!("{truncated}\n...<truncated>")
-    }
-}
-
-fn format_pane_context_summary(pane_context: Option<&PaneContext>) -> String {
-    match pane_context {
-        Some(context) => format!(
-            "pane_id={:?} tab_id={:?} window_id={:?} source_pane_id={:?} effective_source_pane_id={:?}",
-            context.pane_id,
-            context.tab_id,
-            context.window_id,
-            context.source_pane_id,
-            context.effective_source_pane_id(),
-        ),
-        None => "none".to_string(),
-    }
-}
-
-fn json_str_or_num(value: Option<&serde_json::Value>) -> Option<String> {
-    match value {
-        Some(serde_json::Value::String(s)) => Some(s.clone()),
-        Some(serde_json::Value::Number(n)) => Some(n.to_string()),
-        _ => None,
-    }
-}
-
-/// Read the most recent shell-integration command (prompt + command + output)
-/// for `pane_id`. Falls back to a line-count read when shell integration is
-/// not active (e.g. CMD, plain bash without OSC 133 support).
-///
-/// Returns the (possibly truncated) content as a string. `None` on failure.
-///
-/// Emits structured tracing under target `acp.last_message` so the call chain
-/// is visible in `wta-{process}.log`:
-///   * `last_message_request`  — start, with pane_id and budgets
-///   * `last_message_result`   — outcome: marks_hit | fallback_used | empty
-async fn read_pane_last_message(
-    shell_mgr: &ShellManager,
-    pane_id: &str,
-    fallback_lines: u32,
-    max_chars: usize,
-) -> Option<String> {
-    let started = std::time::Instant::now();
-    tracing::debug!(
-        target: "acp.last_message",
-        pane_id,
-        fallback_lines,
-        max_chars,
-        "last_message_request"
-    );
-
-    let mark_call_started = std::time::Instant::now();
-    let mark_result = shell_mgr.wt_read_last_prompt(pane_id).await;
-    let mark_call_ms = mark_call_started.elapsed().as_millis() as u64;
-
-    match &mark_result {
-        Ok(value) => {
-            let has_marks = value
-                .get("has_marks")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let raw_len = value
-                .get("content")
-                .and_then(|c| c.as_str())
-                .map(str::len)
-                .unwrap_or(0);
-            tracing::debug!(
-                target: "acp.last_message",
-                pane_id,
-                has_marks,
-                raw_len,
-                rpc_ms = mark_call_ms,
-                "last_message_rpc_ok"
-            );
-            if has_marks {
-                if let Some(content) = value.get("content").and_then(|c| c.as_str()) {
-                    if !content.is_empty() {
-                        let truncated = truncate_for_prompt(content, max_chars);
-                        tracing::debug!(
-                            target: "acp.last_message",
-                            pane_id,
-                            path = "marks_hit",
-                            out_len = truncated.len(),
-                            total_ms = started.elapsed().as_millis() as u64,
-                            "last_message_result"
-                        );
-                        return Some(truncated);
-                    }
-                }
-            }
-        }
-        Err(err) => {
-            tracing::debug!(
-                target: "acp.last_message",
-                pane_id,
-                rpc_ms = mark_call_ms,
-                error = %err,
-                "last_message_rpc_err"
-            );
-        }
-    }
-
-    // Fallback: shell integration absent or call failed — use line-count read.
-    let fb_started = std::time::Instant::now();
-    let result = shell_mgr
-        .wt_read_pane_output(pane_id, Some(fallback_lines))
-        .await
-        .ok()
-        .and_then(|value| {
-            value
-                .get("content")
-                .and_then(|content| content.as_str())
-                .map(|content| truncate_for_prompt(content, max_chars))
-        });
-    let fb_ms = fb_started.elapsed().as_millis() as u64;
-
-    match &result {
-        Some(text) => tracing::debug!(
-            target: "acp.last_message",
-            pane_id,
-            path = "fallback_used",
-            fallback_lines,
-            out_len = text.len(),
-            fallback_ms = fb_ms,
-            total_ms = started.elapsed().as_millis() as u64,
-            "last_message_result"
-        ),
-        None => tracing::debug!(
-            target: "acp.last_message",
-            pane_id,
-            path = "empty",
-            fallback_lines,
-            fallback_ms = fb_ms,
-            total_ms = started.elapsed().as_millis() as u64,
-            "last_message_result"
-        ),
-    }
-
-    result
-}
-
-/// Best-effort canonical shell executable for a pid — e.g. `pwsh.exe`,
-/// `powershell.exe`, `cmd.exe`, `bash.exe`, `wsl.exe`. Unlike the WT profile
-/// *name* (which the user can rename), this is the actual running process, so
-/// the agent can reliably pick shell syntax. Returns the file name only;
-/// `None` on any failure (or off Windows).
-#[cfg(windows)]
-fn process_image_name(pid: u32) -> Option<String> {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    if pid == 0 {
-        return None;
-    }
-    // SAFETY: a standard Win32 handle dance. The handle from OpenProcess is
-    // closed on every return path; the buffer is sized up front and the
-    // written length comes back in `size`.
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return None;
-        }
-        // Not MAX_PATH: QueryFullProcessImageNameW can return paths longer than
-        // 260 for processes under long roots (WindowsApps installs, `\\?\`
-        // extended paths). Use the extended-length max so a valid pid never
-        // silently drops the `shell` field. Heap-allocated to keep it off the
-        // (smaller) task stack.
-        let mut size: u32 = 32768;
-        let mut buf = vec![0u16; size as usize];
-        let ok =
-            QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut size);
-        CloseHandle(handle);
-        if ok == 0 || size == 0 {
-            return None;
-        }
-        let full = String::from_utf16_lossy(&buf[..size as usize]);
-        full.rsplit(['\\', '/'])
-            .next()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-    }
-}
-
-#[cfg(not(windows))]
-fn process_image_name(_pid: u32) -> Option<String> {
-    None
-}
-
-/// Resolve the shell identity for an active-pane JSON object. The agent gets
-/// this as the `shell` field — the shell-type signal that drives PowerShell vs
-/// bash vs cmd syntax in any fix command it suggests.
-///
-/// Resolution order:
-///   1. The `shell` field reported by shell integration via `OSC 9001;ShellType`
-///      (e.g. `pwsh`, `powershell`, `bash`, `wsl:Ubuntu`). This is the only
-///      signal that survives a nested shell — `pwsh` → `wsl` → `exit` reports
-///      `wsl:<distro>` while inside WSL and `pwsh` again after exit, because the
-///      shell re-emits it on every prompt. The pid-based fallback below can't
-///      see this: the pane's host process stays `wsl.exe`/`pwsh.exe` regardless
-///      of which shell is actually drawing the prompt.
-///   2. Otherwise, the canonical shell exe from the pane's `pid` (covers panes
-///      without shell integration installed, or before the first prompt).
-fn shell_from_active(active: &serde_json::Value) -> Option<String> {
-    if let Some(shell) = active
-        .get("shell")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        return Some(shell.to_string());
-    }
-    active
-        .get("pid")
-        .and_then(|v| v.as_u64())
-        .and_then(|pid| process_image_name(pid as u32))
-}
-
-/// Resolve a pane's full JSON (`shell`, `cwd`, `session_id`, `pid`, …) by its
-/// **session id**, enumerating windows → tabs → panes via the protocol. Used by
-/// error-triggered autofix, where the failing pane can live in a non-focused
-/// tab and so is **not** the active pane returned by `get_active_pane`.
-///
-/// We deliberately resolve by session id rather than scoping `list_panes` to a
-/// tab: in autofix `PaneContext.tab_id` is the WT tab *StableId* (see
-/// `WtNotification.tab_id`), not the numeric protocol tab index that
-/// `list_panes` expects, so scoping by it would never match and would silently
-/// fall back to the wrong (active) pane. Enumerating by session id — using each
-/// tab's protocol `tab_id` from `list_tabs` for the inner `list_panes` call —
-/// sidesteps the id-space mismatch entirely. Returns `None` when no pane
-/// matches (channel error, pane closed).
-async fn resolve_pane_by_session_id(
-    shell_mgr: &ShellManager,
-    session_id: &str,
-) -> Option<serde_json::Value> {
-    let windows = shell_mgr.wt_list_windows().await.ok()?;
-    for win in windows.get("windows")?.as_array()? {
-        let Some(window_id) = json_str_or_num(win.get("window_id")) else {
-            continue;
-        };
-        let Ok(tabs) = shell_mgr.wt_list_tabs(&window_id).await else {
-            continue;
-        };
-        let Some(tabs_arr) = tabs.get("tabs").and_then(|v| v.as_array()) else {
-            continue;
-        };
-        for tab in tabs_arr {
-            // Protocol tab index (from `list_tabs`), which `list_panes` accepts
-            // — NOT the autofix StableId.
-            let Some(tab_id) = json_str_or_num(tab.get("tab_id")) else {
-                continue;
-            };
-            let Ok(panes) = shell_mgr
-                .wt_list_panes(&tab_id, Some(window_id.as_str()))
-                .await
-            else {
-                continue;
-            };
-            let Some(panes_arr) = panes.get("panes").and_then(|v| v.as_array()) else {
-                continue;
-            };
-            if let Some(pane) = panes_arr
-                .iter()
-                .find(|p| json_str_or_num(p.get("session_id")).as_deref() == Some(session_id))
-            {
-                return Some(pane.clone());
-            }
-        }
-    }
-    None
-}
-
-pub(crate) async fn build_terminal_context_json(shell_mgr: &ShellManager) -> Option<String> {
-    // WT's GetActivePane already resolves the agent pane to the user's working
-    // pane (the "source"), so a single active-pane query gives us the right
-    // target. Pane IDs are process-globally unique, so we only need the pane
-    // id itself — tab/window aren't needed for addressing.
-    let active = shell_mgr.wt_get_active_pane().await.ok()?;
-
-    let is_agent = active
-        .get("is_agent_pane")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if is_agent {
-        return None;
-    }
-
-    let target_pane_id = json_str_or_num(active.get("session_id"))?;
-    let target_window_title = active
-        .get("title")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let target_cwd = active
-        .get("cwd")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-    // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) from the pane's pid.
-    // Load-bearing for the planner: any `send` action it emits has to match the
-    // active pane's shell syntax (`Get-ChildItem` vs `ls`, `Set-Location` vs
-    // `cd`, etc.). We use the real process rather than the WT profile name,
-    // which the user can rename.
-    let target_shell = shell_from_active(&active);
-
-    tracing::debug!(
-        target: "acp.terminal_context",
-        target_pane_id = %target_pane_id,
-        shell = ?target_shell,
-        "terminal_context_target_resolved"
-    );
-
-    let buffer = read_pane_last_message(
-        shell_mgr,
-        &target_pane_id,
-        24,
-        ACTIVE_PANE_CONTEXT_MAX_CHARS,
-    )
-    .await;
-
-    serde_json::to_string(&serde_json::json!({
-        "activeTarget": target_pane_id,
-        "window_title": target_window_title,
-        "cwd": target_cwd,
-        "shell": target_shell,
-        "locale": user_locale_tag(),
-        "buffer": buffer,
-    }))
-    .ok()
-}
-
-/// User's UI locale as a BCP-47 tag, suitable for embedding in
-/// runtime context JSON shipped to the agent.
-///
-/// Pseudo-locales (`qps-ploc*`) are passed through verbatim. Unlike
-/// `LANG`/`LC_ALL` in `spawn.rs` — which feed libc and have to be real
-/// POSIX locales — this field is just metadata for an LLM, which will
-/// either recognise the tag or treat it as opaque text. Either way it's
-/// honest: it reflects exactly what the user picked in the UI.
-pub(crate) fn user_locale_tag() -> String {
-    rust_i18n::locale().to_string()
-}
-
-async fn build_prompt_text(
-    prompt_id: u64,
-    submitted_at_unix_s: f64,
-    user_text: &str,
-    is_autofix: bool,
-    include_template: bool,
-    shell_mgr: &ShellManager,
-    wt_connected: bool,
-    pane_context: Option<&PaneContext>,
-) -> (String, String, String, Option<String>) {
-    let total_started = std::time::Instant::now();
-    let mut runtime_sections = Vec::new();
-    // Working pane resolved from the active pane for a manual `/fix` (one with
-    // no explicit `source_pane_id`). Plumbed back to the App so it can fill
-    // `AutofixContext.target_pane_id` — empty otherwise (auto-fix carries its
-    // failing pane explicitly; planner turns let the agent fill `Send.parent`).
-    let mut resolved_fix_pane: Option<String> = None;
-
-    let template_started = std::time::Instant::now();
-    let planner_template = if is_autofix {
-        prompt::load_autofix_prompt_template()
-    } else {
-        prompt::load_planner_prompt_template()
-    };
-    prompt_timing_log(
-        prompt_id,
-        submitted_at_unix_s,
-        "planner_template_ready",
-        &format!(
-            "name={:?} source={} dt={:.3}s",
-            planner_template.display_name,
-            planner_template.source_label,
-            template_started.elapsed().as_secs_f64()
-        ),
-    );
-
-    // ── Shared context resolution ───────────────────────────────────────────
-    // Autofix turns resolve the failing pane, its canonical shell, and its last
-    // output once; the providers below borrow these from the `ContextRequest`.
-    // Planner turns need none of it (their providers query the shell manager
-    // directly). Resolving here also keeps the `resolved_fix_pane` side-output
-    // — which is plumbing, not prompt context — out of the provider chain.
-    let mut context_pane: Option<serde_json::Value> = None;
-    let mut shell_exe: Option<String> = None;
-    let mut terminal_output: Option<String> = None;
-
-    if is_autofix && wt_connected {
-        let active = shell_mgr.wt_get_active_pane().await.ok();
-
-        // Explicit source pane (error-triggered autofix) wins; otherwise fall
-        // back to the resolved active working pane (`/fix`). An active pane that
-        // is itself an agent pane is skipped — there's no terminal output there.
-        let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.clone());
-        let source_pane_id = explicit_source.clone().or_else(|| {
-            active.as_ref().and_then(|a| {
-                let is_agent = a
-                    .get("is_agent_pane")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if is_agent {
-                    None
-                } else {
-                    json_str_or_num(a.get("session_id"))
-                }
-            })
-        });
-        // When we resolved the pane ourselves (manual `/fix`, no explicit
-        // source), remember it so the App can fill `target_pane_id` — that is
-        // the pane the eventual fix command is sent to.
-        if explicit_source.is_none() {
-            resolved_fix_pane = source_pane_id.clone();
-        }
-
-        // The pane whose shell/cwd describe the FAILING command — drives the
-        // `### Shell Context` header and the command-not-found near-match gate.
-        // For a manual `/fix` the active pane IS the source. But error-triggered
-        // autofix can fire for a pane in a *non-focused* tab, so deriving the
-        // shell from `wt_get_active_pane()` would describe the wrong pane (e.g.
-        // a failing pwsh pane while bash is active) and mis-gate the near-match.
-        // Resolve the explicit source pane's JSON by *session id* (not by
-        // `PaneContext.tab_id`, which in autofix is a StableId `list_panes`
-        // won't accept — see `resolve_pane_by_session_id`); fall back to the
-        // active pane if that lookup can't resolve it.
-        context_pane = match explicit_source.as_deref() {
-            Some(src) => resolve_pane_by_session_id(shell_mgr, src)
-                .await
-                .or_else(|| active.clone()),
-            None => active.clone(),
-        };
-        // Canonical shell exe (pwsh.exe / cmd.exe / wsl.exe …) of the failing
-        // pane — load-bearing for both the shell-context header and the
-        // command-not-found near-match gate.
-        shell_exe = context_pane.as_ref().and_then(shell_from_active);
-
-        if let Some(source_pane_id) = source_pane_id {
-            tracing::debug!(
-                target: "acp.terminal_context",
-                source_pane_id = %source_pane_id,
-                shell = ?shell_exe,
-                mode = "autofix",
-                "terminal_context_target_resolved"
-            );
-            terminal_output = read_pane_last_message(
-                shell_mgr,
-                &source_pane_id,
-                30,
-                ACTIVE_PANE_CONTEXT_MAX_CHARS,
-            )
-            .await;
-        }
-    }
-
-    // ── Provider-driven section assembly ────────────────────────────────────
-    // Each `### …` context source is a `ContextProvider`; the chain self-gates
-    // by turn kind, so adding a source means adding a provider, not editing
-    // this loop. The command-not-found "did you mean" injection (issue #287) is
-    // one such provider — see `prompt_context`.
-    let context_request = ContextRequest {
-        is_autofix,
-        wt_connected,
-        shell_mgr,
-        context_pane: context_pane.as_ref(),
-        shell_exe: shell_exe.as_deref(),
-        terminal_output: terminal_output.as_deref(),
-    };
-    for provider in prompt_context::default_providers() {
-        if !provider.applies(&context_request) {
-            continue;
-        }
-        let provider_started = std::time::Instant::now();
-        let section = provider.provide(&context_request).await;
-        prompt_timing_log(
-            prompt_id,
-            submitted_at_unix_s,
-            "context_provider",
-            &format!(
-                "id={} present={} dt={:.3}s",
-                provider.id(),
-                section.is_some(),
-                provider_started.elapsed().as_secs_f64()
-            ),
-        );
-        if let Some(section) = section {
-            runtime_sections.push(section.render());
-        }
-    }
-
-    let assemble_started = std::time::Instant::now();
-    // First turn of a session (or kind change): ship the full template
-    // body. Subsequent same-kind turns drop the template — the agent
-    // already has the persona in its conversation history. Autofix
-    // turns always carry the template because the template *is* the
-    // prompt body (no user_text alongside it).
-    let prompt_body = if include_template {
-        prompt::merge_runtime_sections(&planner_template.content, &runtime_sections)
-    } else {
-        runtime_sections
-            .iter()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    };
-    let prompt = if is_autofix {
-        // Autofix prompts historically ignored `user_text` — the template +
-        // terminal output was the whole prompt. Now a non-empty `user_text` is
-        // appended as a `## User Request`: a manual `/fix <hint>` passes the
-        // hint here, and the error-triggered path passes its failure summary.
-        if user_text.trim().is_empty() {
-            prompt_body
-        } else {
-            format!("{}\n\n## User Request\n{}", prompt_body, user_text)
-        }
-    } else if prompt_body.is_empty() {
-        format!("## User Request\n{}", user_text)
-    } else {
-        format!("{}\n\n## User Request\n{}", prompt_body, user_text)
-    };
-    prompt_timing_log(
-        prompt_id,
-        submitted_at_unix_s,
-        "prompt_assembled",
-        &format!(
-            "assemble_dt={:.3}s total_context_dt={:.3}s prompt_len={} include_template={}",
-            assemble_started.elapsed().as_secs_f64(),
-            total_started.elapsed().as_secs_f64(),
-            prompt.len(),
-            include_template
-        ),
-    );
-    (
-        prompt,
-        planner_template.source_label,
-        planner_template.display_name,
-        resolved_fix_pane,
-    )
-}
-
 fn acp_log(msg: &str) {
     tracing::debug!(target: "acp", "{}", msg);
 }
@@ -1404,88 +313,6 @@ fn acp_log(msg: &str) {
 /// `WTA_LOG=trace` when a human is deliberately deep-debugging.
 fn acp_trace_content(msg: &str) {
     tracing::trace!(target: "acp.content", "{}", msg);
-}
-
-fn acp_log_built_prompt(
-    user_text: &str,
-    pane_context: Option<&PaneContext>,
-    prompt_source: &str,
-    prompt_text: &str,
-) {
-    tracing::debug!(
-        target: "acp",
-        user_text_len = user_text.len(),
-        pane_context = %format_pane_context_summary(pane_context),
-        prompt_source,
-        "planner_prompt_begin"
-    );
-    // Full assembled prompt = user text + captured terminal buffer + cwd.
-    // Sensitive — trace only.
-    acp_trace_content(&format!("planner_prompt_text:\n{}", prompt_text));
-    tracing::debug!(target: "acp", "planner_prompt_end");
-}
-
-/// Per-turn audit log: one structured info-level line per round.
-///
-/// Use this to verify rounds 2+ on a session are "clean" — i.e. the
-/// prompt body no longer carries the planner template. Look for
-/// `include_template=false` paired with a `body_head` that does NOT
-/// start with `# Terminal Agent`.
-///
-/// Snippets are short on purpose (newlines escaped) so each turn fits
-/// on one log line and stays greppable.
-fn log_turn_trace(
-    prompt_id: u64,
-    session_id: &str,
-    kind: TemplateKind,
-    include_template: bool,
-    prompt_text: &str,
-) {
-    const HEAD_LEN: usize = 200;
-    const TAIL_LEN: usize = 150;
-    let head = snippet(prompt_text, HEAD_LEN, true);
-    let tail = if prompt_text.chars().count() > HEAD_LEN + TAIL_LEN {
-        snippet(prompt_text, TAIL_LEN, false)
-    } else {
-        String::new()
-    };
-    tracing::info!(
-        target: "acp.turn_trace",
-        turn = prompt_id,
-        session = %session_short(session_id),
-        kind = %kind,
-        include_template,
-        prompt_len = prompt_text.len(),
-        "turn_sent"
-    );
-    // The prompt body snippets carry user text / template content — trace only.
-    acp_trace_content(&format!(
-        "turn {turn} body_head={head:?} body_tail={tail:?}",
-        turn = prompt_id
-    ));
-}
-
-/// Take `max_chars` from either end of `text` and inline newlines as
-/// `\n` so the snippet fits on a single log line.
-fn snippet(text: &str, max_chars: usize, from_start: bool) -> String {
-    let mut chars: Vec<char> = text.chars().collect();
-    let len = chars.len();
-    let slice: String = if from_start {
-        chars.truncate(max_chars.min(len));
-        chars.into_iter().collect()
-    } else {
-        let start = len.saturating_sub(max_chars);
-        chars.drain(..start);
-        chars.into_iter().collect()
-    };
-    slice.replace('\n', "\\n")
-}
-
-/// Last 8 chars of a SessionId for compact logging.
-fn session_short(session_id: &str) -> String {
-    let chars: Vec<char> = session_id.chars().collect();
-    let start = chars.len().saturating_sub(8);
-    chars[start..].iter().collect()
 }
 
 #[derive(Clone)]
@@ -1522,6 +349,144 @@ struct WtaClient {
     state: Arc<ClientState>,
 }
 
+/// Maximum characters kept in a tool-call `location` hint before truncation.
+/// Long enough for a typical path or one-line shell command, short enough
+/// that a runaway `raw_input` value (e.g. a full file-edit payload) can't
+/// blow up the chat card into a wall of text.
+const TOOL_CALL_LOCATION_MAX_CHARS: usize = 200;
+
+/// Best-effort extraction of *what* a tool call is touching: a file path
+/// (from `locations`/`raw_input.path`/`raw_input.file_path`) or a shell
+/// command (from `raw_input.command`/`commands`). Returns
+/// `(text, is_command)` so callers can decide how to render it — a path
+/// reads fine inline, but a command can be long and benefits from its own
+/// code-styled line (see `ChatMessage::ToolCall::location_is_command`,
+/// `PermissionState::target_is_command`).
+///
+/// Falls back to `None` rather than dumping the entire `raw_input` JSON,
+/// which would be noisy and could leak large payloads (e.g. file contents
+/// for a write/edit call) into the chat scrollback.
+fn tool_call_target(
+    locations: &[acp::schema::v1::ToolCallLocation],
+    raw_input: Option<&serde_json::Value>,
+) -> Option<(String, bool)> {
+    if let Some(path) = locations
+        .iter()
+        .map(|loc| loc.path.to_string_lossy())
+        .find(|path| !path.trim().is_empty())
+    {
+        return Some((path.into_owned(), false));
+    }
+    let raw_input = raw_input?;
+    if let Some(p) = raw_input
+        .get("path")
+        .or_else(|| raw_input.get("file_path"))
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.trim().is_empty())
+    {
+        return Some((p.to_string(), false));
+    }
+    if let Some(c) = raw_input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.trim().is_empty())
+    {
+        return Some((c.to_string(), true));
+    }
+    if let Some(c) = raw_input
+        .get("commands")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .find(|value| !value.trim().is_empty())
+        })
+    {
+        return Some((c.to_string(), true));
+    }
+    None
+}
+
+/// Truncates a `tool_call_target` string to `TOOL_CALL_LOCATION_MAX_CHARS`,
+/// appending `…` when it had to cut.
+fn truncate_target(mut text: String) -> String {
+    if let Some((cut_at, _)) = text.char_indices().nth(TOOL_CALL_LOCATION_MAX_CHARS) {
+        text.truncate(cut_at);
+        text.push('…');
+    }
+    text
+}
+
+/// Best-effort one-line summary of *what* a tool call is touching, shown as
+/// a dim suffix (or, for commands, its own line) under the tool-call title
+/// in the **chat** card (see `ChatMessage::ToolCall::location`). Without
+/// this, cards only ever show the agent's often-generic `title` (e.g.
+/// "Access paths outside trusted directories") with no indication of the
+/// actual file/command involved.
+///
+/// `title` is the card's own title text; when the agent has already baked
+/// the hint into the title itself (common for read/view tool calls, e.g.
+/// title "Viewing C:\...\rust-app" with `locations: [{"path":
+/// "C:\...\rust-app"}]`), appending it again would just print the same
+/// string twice — `"Viewing X (X)"`. In that case we return `None` so the
+/// card shows the title alone. This dedupe is intentionally **not** applied
+/// on the permission dialog (see `request_permission`) — that card is a
+/// decision point, so restating the target explicitly is useful even if
+/// it repeats what a preceding chat tool-call card already showed.
+fn tool_call_location_hint(
+    title: &str,
+    locations: &[acp::schema::v1::ToolCallLocation],
+    raw_input: Option<&serde_json::Value>,
+) -> Option<(String, bool)> {
+    let (hint, is_command) = tool_call_target(locations, raw_input)?;
+    let hint = truncate_target(hint);
+    let comparison_hint = hint.strip_suffix('…').unwrap_or(&hint);
+
+    // Don't repeat text the title already contains — case-insensitive so
+    // "Viewing C:\...\rust-app" still dedupes against a locations path that
+    // differs only in case (e.g. drive-letter casing from a different code
+    // path).
+    if !title.is_empty()
+        && title
+            .to_lowercase()
+            .contains(&comparison_hint.to_lowercase())
+    {
+        return None;
+    }
+
+    Some((hint, is_command))
+}
+
+/// Short icon glyph for an ACP `ToolKind`, shown next to the title on the
+/// permission dialog (`PermissionState::kind_label`) so "Always allow" has
+/// *some* visual indication of what class of operation it covers — WTA has
+/// no visibility into the agent CLI's actual grant scope (that's entirely
+/// internal to the agent), so this is deliberately just a hint, not a claim
+/// about what "always" will match.
+///
+/// Deliberately a symbol, not an English word ("Read"/"Edit"/…) — this repo
+/// localizes every user-facing string into 85+ locales (see
+/// `rust-localization.instructions.md`), and a kind label is exactly the
+/// kind of ambiguous 1-2-word string that risks mistranslation (e.g.
+/// "Execute" reads as "kill" in several languages). A glyph sidesteps that
+/// entirely while still giving a scannable per-kind visual cue, consistent
+/// with how the rest of the chat UI already uses unlabeled marker glyphs
+/// (bullets, arrows) rather than words.
+///
+/// `None` for kinds with no useful visual framing (`Think`, `SwitchMode`,
+/// `Other`/unset) — the header just shows the title alone.
+fn tool_call_kind_label(kind: Option<&acp::schema::v1::ToolKind>) -> Option<&'static str> {
+    use acp::schema::v1::ToolKind;
+    match kind? {
+        ToolKind::Read | ToolKind::Search | ToolKind::Move => Some("→"),
+        ToolKind::Edit => Some("✎"),
+        ToolKind::Delete => Some("✕"),
+        ToolKind::Execute => Some("$"),
+        ToolKind::Fetch => Some("%"),
+        _ => None,
+    }
+}
+
 fn session_update_kind(update: &acp::schema::v1::SessionUpdate) -> &'static str {
     match update {
         acp::schema::v1::SessionUpdate::AgentThoughtChunk(_) => "agent_thought_chunk",
@@ -1546,12 +511,28 @@ impl WtaClient {
         ));
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
-        let description = args
+        let title = args
             .tool_call
             .fields
             .title
             .clone()
             .unwrap_or_else(|| "Permission requested".to_string());
+        let kind_label = tool_call_kind_label(args.tool_call.fields.kind.as_ref());
+        // Unlike the chat tool-call card, the permission dialog never
+        // dedupes the target against the title — it's a decision point,
+        // so restating exactly what path/command is involved is
+        // intentional even if it repeats a preceding tool-call card.
+        let target_hint = tool_call_target(
+            args.tool_call.fields.locations.as_deref().unwrap_or(&[]),
+            args.tool_call.fields.raw_input.as_ref(),
+        )
+        .map(|(text, is_command)| (truncate_target(text), is_command));
+        // Fallback single-line text for the compact (1-row) card — see
+        // `PermissionState::description`.
+        let description = match &target_hint {
+            Some((target, _)) => format!("{title} ({target})"),
+            None => title.clone(),
+        };
         self.state
             .prompt_timing
             .permission_requested(&session_id, &description);
@@ -1568,10 +549,18 @@ impl WtaClient {
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
 
+        let (target, target_is_command) = match target_hint {
+            Some((text, is_command)) => (Some(text), is_command),
+            None => (None, false),
+        };
         let _ = self.state.event_tx.send(AppEvent::PermissionRequest {
             session_id: session_id.clone(),
             tool_call_id,
             description,
+            title,
+            kind_label: kind_label.map(str::to_string),
+            target,
+            target_is_command,
             options,
             responder: resp_tx,
         });
@@ -1650,11 +639,21 @@ impl WtaClient {
                 self.state
                     .prompt_timing
                     .observe_first_tool_call(&sid, Some(tool_call.title.as_str()));
+                let (location, location_is_command) = match tool_call_location_hint(
+                    &tool_call.title,
+                    &tool_call.locations,
+                    tool_call.raw_input.as_ref(),
+                ) {
+                    Some((text, is_command)) => (Some(text), is_command),
+                    None => (None, false),
+                };
                 let _ = self.state.event_tx.send(AppEvent::ToolCall {
                     session_id: sid,
                     id: tool_call.tool_call_id.to_string(),
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
+                    location,
+                    location_is_command,
                 });
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
@@ -1678,10 +677,30 @@ impl WtaClient {
                         Some(msg) => format!("{:?}: {}", status, msg),
                         None => format!("{:?}", status),
                     };
+                    // Only compute a location when this update actually
+                    // carried fresh `locations`/`raw_input` — otherwise send
+                    // `None` so `app_events.rs` leaves the card's existing
+                    // hint alone instead of blanking it on every status-only
+                    // update (e.g. Pending -> InProgress -> Completed).
+                    let (location, location_is_command) =
+                        if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
+                            match tool_call_location_hint(
+                                update.fields.title.as_deref().unwrap_or(""),
+                                update.fields.locations.as_deref().unwrap_or(&[]),
+                                update.fields.raw_input.as_ref(),
+                            ) {
+                                Some((text, is_command)) => (Some(text), is_command),
+                                None => (None, false),
+                            }
+                        } else {
+                            (None, false)
+                        };
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
                         id: update.tool_call_id.to_string(),
                         status: status_str,
+                        location,
+                        location_is_command,
                     });
                 }
             }
@@ -1740,14 +759,27 @@ impl WtaClient {
         };
 
         let session_id = args.session_id.0.to_string();
+        let title = format!("{} {}", args.command, args.args.join(" "));
+        // Working directory doubles as this card's location hint — the
+        // title already has the full command line, but `cwd` is otherwise
+        // shown nowhere and is useful context for a relative-path command.
+        // Skip it if the command line already names that directory, to
+        // avoid printing the same path twice on one line.
+        let location = args
+            .cwd
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .filter(|cwd| !title.to_lowercase().contains(&cwd.to_lowercase()));
         match self.state.shell_mgr.create_terminal(config).await {
             Ok(id) => {
                 // Show tool-call-like feedback
                 let _ = self.state.event_tx.send(AppEvent::ToolCall {
                     session_id,
                     id: id.clone(),
-                    title: format!("{} {}", args.command, args.args.join(" ")),
+                    title,
                     status: "running".to_string(),
+                    location,
+                    location_is_command: false,
                 });
                 Ok(acp::schema::v1::CreateTerminalResponse::new(id))
             }
@@ -1791,6 +823,8 @@ impl WtaClient {
                     session_id,
                     id: tid,
                     status: format!("exited ({})", code),
+                    location: None,
+                    location_is_command: false,
                 });
                 Ok(acp::schema::v1::WaitForTerminalExitResponse::new(
                     acp::schema::v1::TerminalExitStatus::new().exit_code(code),
@@ -2675,8 +1709,8 @@ pub async fn run_acp_client_over_pipe(
                 // but new_session STILL returns AuthRequired, do NOT route
                 // back to the login screen (that would recreate the auth
                 // loop). Surface a terminal HandshakeFailed tagged with the
-                // `NewSession` stage — the DISTINCT signal the App's auth
-                // recovery matches on (`is_post_login_auth_failure`). This is
+                // `NewSession` stage — the distinct signal the App's
+                // post-login recovery policy matches via `failed_at`. This is
                 // deliberately NOT the `Authenticate` stage: an authenticate
                 // RPC that itself fails/times out (above) stays `Authenticate`
                 // and must NOT trigger a master restart, only this
@@ -3731,8 +2765,13 @@ async fn dispatch_prompt_body(
         .should_ship(&prompt_session_id_str, kind)
         .await;
 
-    prompt_timing_task.activate(&prompt_session_id_str, &prompt);
-    let (text, prompt_source, prompt_name, resolved_fix_pane) = build_prompt_text(
+    prompt_timing_task.activate(
+        &prompt_session_id_str,
+        prompt.id,
+        &prompt.text,
+        prompt.submitted_at_unix_s,
+    );
+    let (text, prompt_source, prompt_name, resolved_target_pane) = build_prompt_text(
         prompt.id,
         prompt.submitted_at_unix_s,
         &prompt.text,
@@ -3743,11 +2782,10 @@ async fn dispatch_prompt_body(
         prompt.pane_context.as_ref(),
     )
     .await;
-    // A manual `/fix` resolved its working pane in build_prompt_text (it had no
-    // explicit source pane). Plumb it back so the App fills the turn's
-    // `target_pane_id`; the host fills `Send.parent` from it at execute time.
-    if let Some(pane_id) = resolved_fix_pane {
-        let _ = event_tx_task.send(AppEvent::AutofixTargetResolved {
+    // Bind the pane used to build this prompt to the matching turn. The host
+    // uses this authoritative value instead of a model-generated action target.
+    if let Some(pane_id) = resolved_target_pane {
+        let _ = event_tx_task.send(AppEvent::PromptTargetResolved {
             tab_id: prompt.pane_context.as_ref().and_then(|c| c.tab_id.clone()),
             prompt_id: prompt.id,
             pane_id,
@@ -3856,47 +2894,34 @@ mod tests {
     use super::acp;
     use super::{
         acp_result_failure_fields, complete_prompt_request, inject_wta_pane_meta,
-        post_login_authenticate_error, shell_from_active, timeout_result_failure_fields,
-        user_locale_tag, PromptTimingState, SoftStopReason,
+        post_login_authenticate_error, timeout_result_failure_fields, tool_call_kind_label,
+        PromptTimingState, SoftStopReason,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use tokio::sync::mpsc;
 
-    /// `shell_from_active` resolves our own pid to a real exe name (the test
-    /// binary). Proves the pid → image-name path works end to end on Windows;
-    /// a missing/zero pid yields `None`.
-    #[cfg(windows)]
+    /// Each `ToolKind` that has a visual cue maps to a distinct, stable
+    /// glyph — not a translatable word (see `tool_call_kind_label`'s doc
+    /// comment: kind labels are exactly the kind of ambiguous 1-2-word
+    /// string this repo's 85+-locale localization flags as
+    /// mistranslation-prone, e.g. "Execute" reading as "kill"). Kinds with
+    /// no useful visual framing (`Think`, `SwitchMode`, `Other`) get `None`
+    /// so the permission card just shows the title alone.
     #[test]
-    fn shell_from_active_resolves_pid() {
-        let me = serde_json::json!({ "pid": std::process::id() });
-        let name = shell_from_active(&me).expect("own pid should resolve");
-        assert!(
-            name.to_ascii_lowercase().ends_with(".exe"),
-            "expected an .exe image name, got {name:?}"
-        );
-
-        assert_eq!(shell_from_active(&serde_json::json!({ "pid": 0 })), None);
-        assert_eq!(shell_from_active(&serde_json::json!({})), None);
-    }
-
-    /// The `shell` field reported via `OSC 9001;ShellType` wins over the
-    /// pid-based fallback — even when a real pid is present. This is the
-    /// nested-shell case (`pwsh` → `wsl` → bash): the pane's host process is
-    /// still pwsh/wsl.exe, but the prompt is drawn by bash, so the OSC-reported
-    /// `wsl:Ubuntu` must reach the agent. Platform-independent (no pid lookup).
-    #[test]
-    fn shell_from_active_prefers_osc_reported_shell() {
-        // Reported shell wins over a live pid.
-        let pane = serde_json::json!({ "pid": std::process::id(), "shell": "wsl:Ubuntu" });
-        assert_eq!(shell_from_active(&pane), Some("wsl:Ubuntu".to_string()));
-
-        // Empty/whitespace reported shell is ignored; falls back to pid (or None).
-        assert_eq!(
-            shell_from_active(&serde_json::json!({ "shell": "  ", "pid": 0 })),
-            None
-        );
-        assert_eq!(shell_from_active(&serde_json::json!({ "shell": "" })), None);
+    fn tool_call_kind_label_maps_each_kind_to_a_stable_glyph() {
+        use acp::schema::v1::ToolKind;
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Read)), Some("→"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Search)), Some("→"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Move)), Some("→"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Edit)), Some("✎"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Delete)), Some("✕"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Execute)), Some("$"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Fetch)), Some("%"));
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Think)), None);
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::SwitchMode)), None);
+        assert_eq!(tool_call_kind_label(Some(&ToolKind::Other)), None);
+        assert_eq!(tool_call_kind_label(None), None);
     }
 
     #[test]
@@ -4023,20 +3048,6 @@ mod tests {
     }
 
     #[test]
-    fn user_locale_tag_returns_current_locale_verbatim() {
-        let _g = crate::test_support::lock_locale();
-        // Real locales pass through unchanged.
-        rust_i18n::set_locale("zh-CN");
-        assert_eq!(user_locale_tag(), "zh-CN");
-        rust_i18n::set_locale("en-US");
-        assert_eq!(user_locale_tag(), "en-US");
-        // Pseudo-locales are passed through too — agents treat unknown
-        // BCP-47 tags as opaque metadata, so there's no need to remap.
-        rust_i18n::set_locale("qps-ploca");
-        assert_eq!(user_locale_tag(), "qps-ploca");
-    }
-
-    #[test]
     fn parses_model_from_separate_flag() {
         let profile = crate::agent_registry::lookup_profile("copilot");
         let args = ["--acp", "--stdio", "--model", "claude-haiku-4.5"];
@@ -4140,70 +3151,6 @@ mod tests {
         assert!(event_rx.try_recv().is_err());
     }
 
-    // ── Pure string/timing helpers ──────────────────────────────────────────
-
-    #[test]
-    fn prompt_preview_escapes_newlines_and_normalizes_crlf() {
-        assert_eq!(super::prompt_preview("a\r\nb\rc\nd"), "a\\nb\\nc\\nd");
-    }
-
-    #[test]
-    fn prompt_preview_truncates_past_80_chars_with_ellipsis() {
-        let long: String = std::iter::repeat('x').take(100).collect();
-        let out = super::prompt_preview(&long);
-        assert_eq!(out.chars().count(), 83, "80 chars + \"...\"");
-        assert!(out.ends_with("..."));
-        // Exactly 80 chars must NOT get an ellipsis.
-        let exact: String = std::iter::repeat('y').take(80).collect();
-        let out80 = super::prompt_preview(&exact);
-        assert_eq!(out80, exact);
-        assert!(!out80.ends_with("..."));
-    }
-
-    #[test]
-    fn prompt_preview_is_char_safe_with_multibyte() {
-        let long: String = std::iter::repeat('é').take(100).collect();
-        let out = super::prompt_preview(&long);
-        // Must not panic and must cut on a char boundary at 80 + "...".
-        assert_eq!(out.chars().count(), 83);
-    }
-
-    #[test]
-    fn format_elapsed_formats_positive_delta_and_handles_invalid() {
-        assert_eq!(super::format_elapsed(Some(1.0), Some(2.5)), "1.500s");
-        assert_eq!(super::format_elapsed(Some(2.0), Some(2.0)), "0.000s");
-        // end < start, or any missing endpoint → "n/a".
-        assert_eq!(super::format_elapsed(Some(2.0), Some(1.0)), "n/a");
-        assert_eq!(super::format_elapsed(None, Some(1.0)), "n/a");
-        assert_eq!(super::format_elapsed(Some(1.0), None), "n/a");
-        assert_eq!(super::format_elapsed(None, None), "n/a");
-    }
-
-    #[test]
-    fn first_visible_text_gap_prefers_first_event_then_transport() {
-        // first_event present → measured from it, labeled "first_event".
-        let (gap, label) = super::first_visible_text_gap(Some(1.0), Some(0.5), Some(1.4));
-        assert_eq!(label, "first_event");
-        assert_eq!(gap, "0.400s");
-        // No first_event but transport read present → from transport.
-        let (gap, label) = super::first_visible_text_gap(None, Some(0.5), Some(1.5));
-        assert_eq!(label, "first_transport_read");
-        assert_eq!(gap, "1.000s");
-        // Neither present → n/a.
-        let (gap, label) = super::first_visible_text_gap(None, None, Some(1.5));
-        assert_eq!(label, "n/a");
-        assert_eq!(gap, "n/a");
-    }
-
-    #[test]
-    fn final_timing_note_composes_both_phases() {
-        let note = super::final_timing_note(1.0, Some(1.2), Some(1.5), 2.0);
-        assert_eq!(
-            note,
-            "submit->context_ready 0.200s | prompt_sent->options_shown 0.500s"
-        );
-    }
-
     // ── telemetry failure-field mapping ─────────────────────────────────────
 
     /// `acp_result_failure_fields` reports no failure for `Ok`, and surfaces
@@ -4241,345 +3188,6 @@ mod tests {
         let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
         assert_eq!(timeout_result_failure_fields(&timed_out), ("Timeout", 0));
     }
-
-    // ── pane-context / template-kind formatting ─────────────────────────────
-
-    #[test]
-    fn format_pane_context_summary_none_is_literal_none() {
-        assert_eq!(super::format_pane_context_summary(None), "none");
-    }
-
-    /// The summary must surface `effective_source_pane_id`, which drives autofix
-    /// routing: it prefers `source_pane_id` (the pane that produced the failing
-    /// command) and only falls back to `pane_id` (the agent pane) when absent.
-    #[test]
-    fn format_pane_context_summary_reflects_effective_source_precedence() {
-        let ctx = crate::pane_context::PaneContext {
-            pane_id: Some("agent-pane".to_string()),
-            tab_id: Some("tab-1".to_string()),
-            window_id: Some("win-1".to_string()),
-            cwd: Some("C:\\work".to_string()),
-            source_pane_id: Some("src-pane".to_string()),
-        };
-        let s = super::format_pane_context_summary(Some(&ctx));
-        assert!(s.contains("pane_id=Some(\"agent-pane\")"), "got: {s}");
-        assert!(s.contains("source_pane_id=Some(\"src-pane\")"), "got: {s}");
-        assert!(
-            s.contains("effective_source_pane_id=Some(\"src-pane\")"),
-            "effective must prefer source_pane_id; got: {s}"
-        );
-
-        let ctx2 = crate::pane_context::PaneContext {
-            pane_id: Some("agent-pane".to_string()),
-            source_pane_id: None,
-            ..Default::default()
-        };
-        let s2 = super::format_pane_context_summary(Some(&ctx2));
-        assert!(
-            s2.contains("effective_source_pane_id=Some(\"agent-pane\")"),
-            "effective must fall back to pane_id; got: {s2}"
-        );
-    }
-
-    #[test]
-    fn template_kind_display_matches_label() {
-        assert_eq!(super::TemplateKind::Planner.to_string(), "planner");
-        assert_eq!(super::TemplateKind::Autofix.to_string(), "autofix");
-    }
-
-    // ── terminal-context / prompt assembly ──────────────────────────────────
-
-    /// Minimal [`WtChannel`] that answers `get_active_pane` with a canned pane
-    /// and the `list_windows`/`list_tabs`/`list_panes` enumeration with canned
-    /// payloads; every other request errors. `read_pane_last_message` degrades
-    /// to `None` on those errors, which is all the assembly tests need (no
-    /// buffer content is asserted).
-    struct MockWtChannel {
-        active_pane: serde_json::Value,
-        /// Optional enumeration topology for `resolve_pane_by_session_id`:
-        /// `{ "windows": […] }`, `{ "tabs": […] }`, `{ "panes": […] }`.
-        windows: Option<serde_json::Value>,
-        tabs: Option<serde_json::Value>,
-        panes: Option<serde_json::Value>,
-    }
-
-    #[async_trait::async_trait]
-    impl crate::shell::wt_channel::WtChannel for MockWtChannel {
-        async fn request(
-            &self,
-            method: &str,
-            _params: serde_json::Value,
-        ) -> anyhow::Result<serde_json::Value> {
-            let scripted = |v: &Option<serde_json::Value>, what: &str| {
-                v.clone()
-                    .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no {what} scripted"))
-            };
-            match method {
-                "get_active_pane" => Ok(self.active_pane.clone()),
-                "list_windows" => scripted(&self.windows, "list_windows"),
-                "list_tabs" => scripted(&self.tabs, "list_tabs"),
-                "list_panes" => scripted(&self.panes, "list_panes"),
-                other => Err(anyhow::anyhow!("MockWtChannel: unhandled method {other}")),
-            }
-        }
-        fn is_available(&self) -> bool {
-            true
-        }
-    }
-
-    fn shell_mgr_with_pane(active: serde_json::Value) -> crate::shell::ShellManager {
-        crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
-            active_pane: active,
-            windows: None,
-            tabs: None,
-            panes: None,
-        }))
-    }
-
-    /// Shell manager whose enumeration (`list_windows`→`list_tabs`→`list_panes`)
-    /// resolves to a single window/tab containing `source_pane`, so
-    /// `resolve_pane_by_session_id` can find the failing pane.
-    fn shell_mgr_with_source_pane(
-        active: serde_json::Value,
-        source_pane: serde_json::Value,
-    ) -> crate::shell::ShellManager {
-        crate::shell::ShellManager::new().with_wt_channel(std::sync::Arc::new(MockWtChannel {
-            active_pane: active,
-            windows: Some(serde_json::json!({ "windows": [{ "window_id": 1 }] })),
-            tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": 0 }] })),
-            panes: Some(serde_json::json!({ "panes": [source_pane] })),
-        }))
-    }
-
-    #[tokio::test]
-    async fn build_terminal_context_json_none_without_wt_channel() {
-        let mgr = crate::shell::ShellManager::new();
-        assert!(super::build_terminal_context_json(&mgr).await.is_none());
-    }
-
-    #[tokio::test]
-    async fn build_terminal_context_json_skips_agent_pane() {
-        let mgr = shell_mgr_with_pane(serde_json::json!({
-            "session_id": "p1",
-            "is_agent_pane": true,
-        }));
-        assert!(
-            super::build_terminal_context_json(&mgr).await.is_none(),
-            "an active agent pane has no terminal output to ship"
-        );
-    }
-
-    #[tokio::test]
-    async fn build_terminal_context_json_assembles_fields_for_real_pane() {
-        let mgr = shell_mgr_with_pane(serde_json::json!({
-            "session_id": "pane-9",
-            "title": "My Tab",
-            "cwd": "C:\\workspace",
-            "pid": std::process::id(),
-            "is_agent_pane": false,
-        }));
-        let json = super::build_terminal_context_json(&mgr)
-            .await
-            .expect("a non-agent active pane must yield context json");
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(v["activeTarget"], "pane-9");
-        assert_eq!(v["window_title"], "My Tab");
-        assert_eq!(v["cwd"], "C:\\workspace");
-        // The mock errors the buffer reads, so `buffer` is null.
-        assert!(v["buffer"].is_null());
-        // pid is our own test process → shell resolves to the test binary exe.
-        if cfg!(windows) {
-            assert!(
-                v["shell"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_ascii_lowercase()
-                    .ends_with(".exe"),
-                "shell should resolve from pid; got {:?}",
-                v["shell"]
-            );
-        }
-    }
-
-    /// A planner turn with `include_template=true` ships the persona template,
-    /// the delegate-agents section, and appends the user request. It never
-    /// resolves a fix pane.
-    #[tokio::test]
-    async fn build_prompt_text_planner_includes_template_and_user_request() {
-        let mgr = crate::shell::ShellManager::new();
-        let expected = super::prompt::load_planner_prompt_template();
-        let (prompt, _source, display_name, fix_pane) =
-            super::build_prompt_text(1, 0.0, "list files", false, true, &mgr, false, None).await;
-        assert_eq!(display_name, expected.display_name);
-        assert!(
-            prompt.contains("### Supported Delegate Agents"),
-            "planner must ship the delegate-agents section"
-        );
-        assert!(
-            prompt.contains("## User Request\nlist files"),
-            "planner must append the user text"
-        );
-        assert!(fix_pane.is_none(), "planner turns never resolve a fix pane");
-    }
-
-    /// An autofix turn loads the *autofix* persona (not the planner), appends a
-    /// non-empty hint as a User Request, and omits planner-only sections.
-    #[tokio::test]
-    async fn build_prompt_text_autofix_appends_hint_and_omits_planner_sections() {
-        let mgr = crate::shell::ShellManager::new();
-        let planner = super::prompt::load_planner_prompt_template();
-        let autofix = super::prompt::load_autofix_prompt_template();
-        let (prompt, _s, display_name, fix_pane) =
-            super::build_prompt_text(2, 0.0, "fix the build", true, true, &mgr, false, None).await;
-        assert_eq!(display_name, autofix.display_name);
-        assert_ne!(
-            display_name, planner.display_name,
-            "autofix must not reuse the planner persona"
-        );
-        assert!(
-            !prompt.contains("### Supported Delegate Agents"),
-            "autofix prompt is not the planner prompt"
-        );
-        let user_request = format!("## User Request\n{}", "fix the build");
-        assert!(
-            prompt.contains(&user_request),
-            "a non-empty autofix hint is appended"
-        );
-        assert!(fix_pane.is_none(), "no wt channel → nothing to resolve");
-    }
-
-    /// A blank autofix hint must not produce an empty `## User Request` section.
-    #[tokio::test]
-    async fn build_prompt_text_autofix_blank_hint_has_no_user_request() {
-        let mgr = crate::shell::ShellManager::new();
-        let (prompt, _s, _d, _f) =
-            super::build_prompt_text(3, 0.0, "   ", true, true, &mgr, false, None).await;
-        assert!(
-            !prompt.contains("## User Request"),
-            "blank autofix hint must not add a User Request section"
-        );
-    }
-
-    /// With `include_template=false` the (large) persona body is dropped — only
-    /// runtime sections and the user request remain. This is the per-session
-    /// "template already in history" optimization.
-    #[tokio::test]
-    async fn build_prompt_text_without_template_drops_persona_body() {
-        let mgr = crate::shell::ShellManager::new();
-        let planner = super::prompt::load_planner_prompt_template();
-        assert!(
-            !planner.content.trim().is_empty(),
-            "test precondition: planner template body is non-empty"
-        );
-        let (prompt, _s, _d, _f) =
-            super::build_prompt_text(4, 0.0, "hi", false, false, &mgr, false, None).await;
-        assert!(
-            !prompt.contains(planner.content.trim()),
-            "include_template=false must omit the template body"
-        );
-        let user_request = format!("## User Request\n{}", "hi");
-        assert!(prompt.contains(&user_request));
-    }
-
-    /// A manual `/fix` (autofix, no explicit `source_pane_id`) resolves the
-    /// active working pane from WT and reports it as the fix target so the App
-    /// can address the eventual fix command.
-    #[tokio::test]
-    async fn build_prompt_text_autofix_fix_resolves_active_pane() {
-        let mgr = shell_mgr_with_pane(serde_json::json!({
-            "session_id": "work-pane",
-            "cwd": "C:\\proj",
-            "pid": std::process::id(),
-            "is_agent_pane": false,
-        }));
-        let (prompt, _s, _d, fix_pane) =
-            super::build_prompt_text(5, 0.0, "", true, true, &mgr, true, None).await;
-        assert_eq!(
-            fix_pane.as_deref(),
-            Some("work-pane"),
-            "manual /fix must resolve the active working pane"
-        );
-        assert!(
-            prompt.contains("### Shell Context"),
-            "autofix with a wt channel must ship shell context"
-        );
-    }
-
-    /// Error-triggered autofix carries its own `source_pane_id`; the explicit
-    /// source wins and `resolved_fix_pane` stays `None` (the App already knows
-    /// the target).
-    #[tokio::test]
-    async fn build_prompt_text_autofix_explicit_source_not_reported_as_resolved() {
-        let mgr = shell_mgr_with_pane(serde_json::json!({
-            "session_id": "work-pane",
-            "pid": std::process::id(),
-            "is_agent_pane": false,
-        }));
-        let ctx = crate::pane_context::PaneContext {
-            source_pane_id: Some("explicit-src".to_string()),
-            ..Default::default()
-        };
-        let (_p, _s, _d, fix_pane) =
-            super::build_prompt_text(6, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
-        assert!(
-            fix_pane.is_none(),
-            "error-triggered autofix carries its source; resolved_fix_pane stays None"
-        );
-    }
-
-    /// Regression: error-triggered autofix whose failing pane lives in a
-    /// **non-focused** tab must describe *that* pane's shell/cwd in
-    /// `### Shell Context`, not the currently-active pane's. Deriving the shell
-    /// from `get_active_pane` here would mis-describe the failing command (and
-    /// mis-gate the not-found near-match — e.g. a failing pwsh pane while bash
-    /// is active). The source pane is resolved by **session id** (enumerating
-    /// windows→tabs→panes), so it works even though `PaneContext.tab_id` is a
-    /// StableId that `list_panes` won't accept.
-    #[tokio::test]
-    async fn build_prompt_text_autofix_uses_source_pane_shell_not_active_pane() {
-        // Active pane is bash in a different cwd…
-        let active = serde_json::json!({
-            "session_id": "active-pane",
-            "shell": "bash",
-            "cwd": "C:\\activedir",
-            "is_agent_pane": false,
-        });
-        // …while the failing pane (found via session-id enumeration) is pwsh.
-        let source_pane = serde_json::json!({
-            "session_id": "src-pane",
-            "shell": "pwsh.exe",
-            "cwd": "C:\\srcdir",
-            "is_agent_pane": false,
-        });
-        let mgr = shell_mgr_with_source_pane(active, source_pane);
-        let ctx = crate::pane_context::PaneContext {
-            // A StableId, as autofix supplies — deliberately NOT usable with
-            // `list_panes`; resolution must succeed via session id regardless.
-            tab_id: Some("stable-tab-xyz".to_string()),
-            source_pane_id: Some("src-pane".to_string()),
-            ..Default::default()
-        };
-        let (prompt, _s, _d, _f) =
-            super::build_prompt_text(7, 0.0, "", true, true, &mgr, true, Some(&ctx)).await;
-        assert!(prompt.contains("### Shell Context"), "got: {prompt}");
-        // The shell-context JSON must carry the SOURCE pane's shell + cwd…
-        assert!(
-            prompt.contains("\"shell\":\"pwsh.exe\""),
-            "shell context must use the source pane's shell (pwsh); got: {prompt}"
-        );
-        assert!(
-            prompt.contains("\"cwd\":\"C:\\\\srcdir\""),
-            "shell context must use the source pane's cwd (srcdir); got: {prompt}"
-        );
-        // …and never the active pane's. (Check the JSON key:value form, not a
-        // bare word — the prompt template legitimately mentions `bash`.)
-        assert!(
-            !prompt.contains("\"shell\":\"bash\"") && !prompt.contains("activedir"),
-            "the active pane's shell/cwd must NOT leak into shell context; got: {prompt}"
-        );
-    }
-
-    // ── truncate / snippet / session_short ──────────────────────────────────
 
     #[test]
     fn build_prompt_content_text_only_is_single_text_block() {
@@ -4635,63 +3243,6 @@ mod tests {
             content[1],
             acp::schema::v1::ContentBlock::Image(_)
         ));
-    }
-
-    #[test]
-    fn truncate_for_prompt_appends_marker_only_when_over_budget() {
-        assert_eq!(super::truncate_for_prompt("hello", 10), "hello");
-        assert_eq!(super::truncate_for_prompt("hello", 5), "hello");
-        assert_eq!(
-            super::truncate_for_prompt("hello", 3),
-            "hel\n...<truncated>"
-        );
-    }
-
-    #[test]
-    fn truncate_for_prompt_is_char_safe() {
-        let s: String = std::iter::repeat('é').take(10).collect();
-        // 5-char budget must cut on a char boundary, no panic.
-        let out = super::truncate_for_prompt(&s, 5);
-        assert!(out.starts_with("ééééé"));
-        assert!(out.ends_with("...<truncated>"));
-    }
-
-    #[test]
-    fn snippet_takes_head_or_tail() {
-        assert_eq!(super::snippet("hello world", 5, true), "hello");
-        assert_eq!(super::snippet("hello world", 5, false), "world");
-        // Budget larger than the text returns the whole thing either way.
-        assert_eq!(super::snippet("hi", 5, true), "hi");
-        assert_eq!(super::snippet("hi", 5, false), "hi");
-        // Newlines are escaped for single-line logging.
-        assert_eq!(super::snippet("a\nb", 5, true), "a\\nb");
-    }
-
-    #[test]
-    fn session_short_returns_last_eight_chars() {
-        assert_eq!(super::session_short("0123456789abcdef"), "89abcdef");
-        // Shorter than 8 → whole string.
-        assert_eq!(super::session_short("abc"), "abc");
-    }
-
-    // ── json_str_or_num ─────────────────────────────────────────────────────
-
-    #[test]
-    fn json_str_or_num_accepts_strings_and_numbers_only() {
-        use serde_json::json;
-        let s = json!("hello");
-        let n = json!(42);
-        let f = json!(1.5);
-        let b = json!(true);
-        let null = json!(null);
-        let arr = json!([1, 2]);
-        assert_eq!(super::json_str_or_num(Some(&s)).as_deref(), Some("hello"));
-        assert_eq!(super::json_str_or_num(Some(&n)).as_deref(), Some("42"));
-        assert_eq!(super::json_str_or_num(Some(&f)).as_deref(), Some("1.5"));
-        assert_eq!(super::json_str_or_num(Some(&b)), None);
-        assert_eq!(super::json_str_or_num(Some(&null)), None);
-        assert_eq!(super::json_str_or_num(Some(&arr)), None);
-        assert_eq!(super::json_str_or_num(None), None);
     }
 
     /// Test the helper's mirror of master's session-broadcast feed.

@@ -107,6 +107,15 @@ impl AgentFailure {
         matches!(self, AgentFailure::Cancelled)
     }
 
+    /// True when this failure occurred at the specified startup handshake
+    /// stage. Recovery policy remains with the caller.
+    pub fn failed_at(&self, expected: HandshakeStage) -> bool {
+        matches!(
+            self,
+            AgentFailure::HandshakeFailed { stage, .. } if *stage == expected
+        )
+    }
+
     /// Short, stable class label for structured logging (`target=failure`).
     pub fn class(&self) -> &'static str {
         match self {
@@ -216,6 +225,17 @@ mod tests {
     fn cancelled_code_classifies_as_cancelled() {
         let e = acp::Error::new(-32800, "cancelled");
         assert!(AgentFailure::from_acp_error(&e).is_cancelled());
+    }
+
+    #[test]
+    fn failed_at_matches_only_the_handshake_stage() {
+        let failure = AgentFailure::HandshakeFailed {
+            stage: HandshakeStage::NewSession,
+            detail: "session failed".into(),
+        };
+        assert!(failure.failed_at(HandshakeStage::NewSession));
+        assert!(!failure.failed_at(HandshakeStage::Authenticate));
+        assert!(!AgentFailure::TransportLost.failed_at(HandshakeStage::NewSession));
     }
 
     #[test]

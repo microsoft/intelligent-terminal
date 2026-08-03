@@ -10,7 +10,7 @@ pub(super) const INPUT_HISTORY_MAX_ENTRIES: usize = 50;
 pub(super) struct InputHistory {
     pub(super) entries: VecDeque<String>,
     pub(super) selected: Option<usize>,
-    pub(super) draft: Option<(String, usize)>,
+    pub(super) draft: Option<(String, usize, super::attachments::PendingAttachments)>,
 }
 
 impl TabSession {
@@ -18,6 +18,15 @@ impl TabSession {
         self.reset_input_history_navigation();
         self.input.clear();
         self.cursor_pos = 0;
+        self.attachments.clear();
+        self.refresh_command_popup();
+    }
+
+    pub fn replace_input(&mut self, input: String) {
+        self.reset_input_history_navigation();
+        self.input = input;
+        self.cursor_pos = self.input.len();
+        self.attachments.clear();
         self.refresh_command_popup();
     }
 
@@ -25,6 +34,8 @@ impl TabSession {
         self.reset_input_history_navigation();
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert(self.cursor_pos, ch);
+        self.attachments
+            .on_text_inserted(self.cursor_pos, ch.len_utf8());
         self.cursor_pos += ch.len_utf8();
         self.refresh_command_popup();
     }
@@ -36,7 +47,17 @@ impl TabSession {
         self.reset_input_history_navigation();
         self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
         self.input.insert_str(self.cursor_pos, text);
+        self.attachments
+            .on_text_inserted(self.cursor_pos, text.len());
         self.cursor_pos += text.len();
+        self.refresh_command_popup();
+    }
+
+    pub fn insert_image_attachment(&mut self, image: crate::clipboard_image::PastedImage) {
+        self.reset_input_history_navigation();
+        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
+        self.attachments
+            .insert_image(&mut self.input, &mut self.cursor_pos, image);
         self.refresh_command_popup();
     }
 
@@ -47,8 +68,16 @@ impl TabSession {
         }
 
         self.reset_input_history_navigation();
+        if self
+            .attachments
+            .remove_before_cursor(&mut self.input, &mut self.cursor_pos)
+        {
+            self.refresh_command_popup();
+            return;
+        }
         let previous = prev_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(previous..self.cursor_pos, "");
+        self.attachments.on_text_deleted(previous..self.cursor_pos);
         self.cursor_pos = previous;
         self.refresh_command_popup();
     }
@@ -59,9 +88,12 @@ impl TabSession {
             return;
         }
         self.reset_input_history_navigation();
-        let word_start = prev_word_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(word_start..self.cursor_pos, "");
-        self.cursor_pos = word_start;
+        let range = self.attachments.expand_deletion_range(
+            prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos,
+        );
+        self.input.replace_range(range.clone(), "");
+        self.attachments.on_text_deleted(range.clone());
+        self.cursor_pos = range.start;
         self.refresh_command_popup();
     }
 
@@ -72,25 +104,43 @@ impl TabSession {
         }
 
         self.reset_input_history_navigation();
+        if self
+            .attachments
+            .remove_at_cursor(&mut self.input, self.cursor_pos)
+        {
+            self.refresh_command_popup();
+            return;
+        }
         let next = next_char_boundary(&self.input, self.cursor_pos);
         self.input.replace_range(self.cursor_pos..next, "");
+        self.attachments.on_text_deleted(self.cursor_pos..next);
         self.refresh_command_popup();
     }
 
     pub fn move_cursor_left(&mut self) {
-        self.cursor_pos = prev_char_boundary(&self.input, self.cursor_pos);
+        self.cursor_pos = self
+            .attachments
+            .cursor_left(self.cursor_pos)
+            .unwrap_or_else(|| prev_char_boundary(&self.input, self.cursor_pos));
     }
 
     pub fn move_cursor_right(&mut self) {
-        self.cursor_pos = next_char_boundary(&self.input, self.cursor_pos);
+        self.cursor_pos = self
+            .attachments
+            .cursor_right(self.cursor_pos)
+            .unwrap_or_else(|| next_char_boundary(&self.input, self.cursor_pos));
     }
 
     pub fn move_cursor_word_left(&mut self) {
-        self.cursor_pos = prev_word_boundary(&self.input, self.cursor_pos);
+        self.cursor_pos = self
+            .attachments
+            .snap_cursor_left(prev_word_boundary(&self.input, self.cursor_pos));
     }
 
     pub fn move_cursor_word_right(&mut self) {
-        self.cursor_pos = next_word_boundary(&self.input, self.cursor_pos);
+        self.cursor_pos = self
+            .attachments
+            .snap_cursor_right(next_word_boundary(&self.input, self.cursor_pos));
     }
 
     pub fn move_cursor_home(&mut self) {
@@ -135,7 +185,11 @@ impl TabSession {
         let index = match self.input_history.selected {
             Some(index) => (index + 1).min(self.input_history.entries.len() - 1),
             None => {
-                self.input_history.draft = Some((self.input.clone(), self.cursor_pos));
+                self.input_history.draft = Some((
+                    self.input.clone(),
+                    self.cursor_pos,
+                    std::mem::take(&mut self.attachments),
+                ));
                 0
             }
         };
@@ -152,8 +206,10 @@ impl TabSession {
             return;
         };
         if index == 0 {
-            let (draft, cursor_pos) = self.input_history.draft.take().unwrap_or_default();
+            let (draft, cursor_pos, attachments) =
+                self.input_history.draft.take().unwrap_or_default();
             self.input = draft;
+            self.attachments = attachments;
             self.cursor_pos = clamp_cursor_to_boundary(&self.input, cursor_pos);
             self.input_history.selected = None;
         } else {
@@ -173,6 +229,12 @@ impl TabSession {
     pub(super) fn reset_input_history_navigation(&mut self) {
         self.input_history.selected = None;
         self.input_history.draft = None;
+    }
+
+    pub(super) fn clear_history_draft_attachments(&mut self) {
+        if let Some((input, cursor_pos, attachments)) = self.input_history.draft.as_mut() {
+            attachments.remove_tokens_from_input(input, cursor_pos);
+        }
     }
 
     /// Recompute the slash-command popup candidates from the current
@@ -223,27 +285,6 @@ impl TabSession {
         self.move_position_candidates
             .get(self.command_popup_selected)
             .copied()
-    }
-
-    /// Tab-completion: replace the input buffer with `/<name> ` (with a
-    /// trailing space if the command takes args; otherwise just the
-    /// name) and reset the cursor to the end. Triggered by Tab when the
-    /// popup is visible.
-    pub fn accept_command_popup_completion(&mut self) {
-        self.reset_input_history_navigation();
-        if let Some(position) = self.selected_move_position() {
-            self.input = format!("/move {}", position.name);
-            self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
-        } else if let Some(spec) = self.selected_command_spec() {
-            self.input = if spec.takes_args {
-                format!("/{} ", spec.name)
-            } else {
-                format!("/{}", spec.name)
-            };
-            self.cursor_pos = self.input.len();
-            self.refresh_command_popup();
-        }
     }
 }
 

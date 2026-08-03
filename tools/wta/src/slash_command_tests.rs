@@ -685,7 +685,7 @@ fn agent_trailing_space_opens_completion_with_all_agents() {
 }
 
 #[test]
-fn agent_argument_arrow_changes_ghost_and_tab_completes() {
+fn agent_argument_arrow_changes_ghost_but_tab_does_not_complete() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut app = test_app();
@@ -696,8 +696,8 @@ fn agent_argument_arrow_changes_ghost_and_tab_completes() {
     assert_eq!(app.command_ghost_suffix(), Some("dex"));
 
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "/agent codex");
-    assert_eq!(app.command_ghost_suffix(), None);
+    assert_eq!(app.current_tab().input, "/agent co");
+    assert_eq!(app.command_ghost_suffix(), Some("dex"));
 }
 
 #[test]

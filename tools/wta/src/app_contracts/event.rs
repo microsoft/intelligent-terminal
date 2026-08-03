@@ -51,7 +51,7 @@ pub enum AppEvent {
     PromptTemplateLoaded {
         name: String,
     },
-    AutofixTargetResolved {
+    PromptTargetResolved {
         tab_id: Option<String>,
         prompt_id: u64,
         pane_id: String,
@@ -98,11 +98,23 @@ pub enum AppEvent {
         id: String,
         title: String,
         status: String,
+        /// See `ChatMessage::ToolCall::location`.
+        location: Option<String>,
+        /// See `ChatMessage::ToolCall::location_is_command`.
+        location_is_command: bool,
     },
     ToolCallUpdate {
         session_id: String,
         id: String,
         status: String,
+        /// `Some` only when the agent's `tool_call_update` actually
+        /// reported new `locations`/`raw_input` — `None` means "no
+        /// change", so the existing card's location hint (if any) is
+        /// left untouched rather than being blanked out.
+        location: Option<String>,
+        /// See `ChatMessage::ToolCall::location_is_command`. Only
+        /// meaningful when `location.is_some()`.
+        location_is_command: bool,
     },
     Plan {
         session_id: String,
@@ -112,6 +124,14 @@ pub enum AppEvent {
         session_id: String,
         tool_call_id: String,
         description: String,
+        /// See `PermissionState::title`.
+        title: String,
+        /// See `PermissionState::kind_label`.
+        kind_label: Option<String>,
+        /// See `PermissionState::target`.
+        target: Option<String>,
+        /// See `PermissionState::target_is_command`.
+        target_is_command: bool,
         options: Vec<PermOption>,
         responder: tokio::sync::oneshot::Sender<String>,
     },
