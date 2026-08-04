@@ -1957,6 +1957,84 @@ fn model_info(id: &str) -> AcpModelInfo {
     }
 }
 
+#[test]
+fn model_config_update_refreshes_active_session_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-1".into());
+    app.available_models = vec![model_info("claude-sonnet-5")];
+    app.current_model_id = Some("claude-sonnet-5".into());
+
+    app.handle_event(AppEvent::ModelConfigUpdated {
+        session_id: "sid-1".into(),
+        available_models: vec![
+            model_info("claude-sonnet-5"),
+            model_info("gpt-5.6-sol"),
+        ],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(app.available_models.len(), 2);
+    app.open_model_picker();
+    assert_eq!(
+        app.current_tab().model_picker_selected,
+        1,
+        "the picker must highlight the model reported by the latest config update"
+    );
+    assert_eq!(
+        app.model_popup_state().and_then(|state| state.current_id),
+        Some("gpt-5.6-sol")
+    );
+}
+
+#[test]
+fn model_config_update_before_session_attach_is_applied_on_attach() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("claude-sonnet-5")];
+    app.current_model_id = Some("claude-sonnet-5".into());
+
+    app.handle_event(AppEvent::ModelConfigUpdated {
+        session_id: "sid-later".into(),
+        available_models: vec![model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("claude-sonnet-5"));
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-later".into(),
+        available_models: vec![model_info("claude-sonnet-5")],
+        current_model_id: Some("claude-sonnet-5".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(app.available_models[0].id, "gpt-5.6-sol");
+}
+
+#[test]
+fn background_session_attach_waits_for_tab_switch_to_update_picker() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("claude-sonnet-5")];
+    app.current_model_id = Some("claude-sonnet-5".into());
+    app.tab_sessions
+        .insert("background".into(), TabSession::default());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "background".into(),
+        session_id: "sid-background".into(),
+        available_models: vec![model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("claude-sonnet-5"));
+
+    app.switch_tab_session("background".into());
+
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(app.available_models[0].id, "gpt-5.6-sol");
+}
+
 /// `/model <id>` records a per-pane override and hot-applies it to *that*
 /// tab's live session (a targeted `SetSessionModel`, not a fan-out).
 #[test]

@@ -156,8 +156,13 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
-                self.available_models = available_models.clone();
-                self.current_model_id = current_model_id.clone();
+                let (available_models, current_model_id) = self
+                    .session_model_configs
+                    .entry(session_id.clone())
+                    .or_insert((available_models, current_model_id))
+                    .clone();
+                self.available_models = available_models;
+                self.current_model_id = current_model_id;
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -214,6 +219,7 @@ impl App {
                 available_models,
                 current_model_id,
             } => {
+                let is_active_tab = self.active_tab_key() == tab_id;
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
                 let tab = self.tab_mut(&tab_id);
@@ -245,11 +251,18 @@ impl App {
                 // this session in the future. For now we keep
                 // App.available_models pointing at the active session's
                 // models so the existing settings UI stays correct.
-                if !available_models.is_empty() {
-                    self.available_models = available_models;
-                }
-                if current_model_id.is_some() {
-                    self.current_model_id = current_model_id;
+                let (available_models, current_model_id) = self
+                    .session_model_configs
+                    .entry(session_id.clone())
+                    .or_insert((available_models, current_model_id))
+                    .clone();
+                if is_active_tab {
+                    if !available_models.is_empty() {
+                        self.available_models = available_models;
+                    }
+                    if current_model_id.is_some() {
+                        self.current_model_id = current_model_id;
+                    }
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -264,6 +277,21 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+            }
+            AppEvent::ModelConfigUpdated {
+                session_id,
+                available_models,
+                current_model_id,
+            } => {
+                self.session_model_configs.insert(
+                    session_id.clone(),
+                    (available_models.clone(), current_model_id.clone()),
+                );
+                if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
+                    self.available_models = available_models;
+                    self.current_model_id = current_model_id;
+                    self.publish_agent_status();
+                }
             }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global

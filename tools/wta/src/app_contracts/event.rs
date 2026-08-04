@@ -26,6 +26,11 @@ pub enum AppEvent {
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
     },
+    ModelConfigUpdated {
+        session_id: String,
+        available_models: Vec<AcpModelInfo>,
+        current_model_id: Option<String>,
+    },
     TabError {
         tab_id: String,
         message: String,

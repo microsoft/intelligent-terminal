@@ -55,13 +55,22 @@ pub(crate) fn models_from_new_session(
     resp: &acp::schema::v1::NewSessionResponse,
 ) -> (Vec<AcpModelInfo>, Option<String>) {
     if let Some(opts) = &resp.config_options {
-        if let Some((config_id, models, current)) = model_option_from_config(opts) {
-            record_channel_config(&config_id);
+        if let Some((models, current)) = models_from_config_options(opts) {
             return (models, current);
         }
     }
 
     (Vec::new(), None)
+}
+
+/// Extract the model selector from a full config-options snapshot delivered by
+/// either `session/new` or a later `config_option_update`.
+pub(crate) fn models_from_config_options(
+    opts: &[acp::schema::v1::SessionConfigOption],
+) -> Option<(Vec<AcpModelInfo>, Option<String>)> {
+    let (config_id, models, current) = model_option_from_config(opts)?;
+    record_channel_config(&config_id);
+    Some((models, current))
 }
 
 /// Find the model selector among a session's config options and flatten it

@@ -1601,6 +1601,50 @@ async fn session_notification_routes_user_message_replay_chunk() {
     }
 }
 
+#[tokio::test]
+async fn session_notification_routes_model_config_update() {
+    let (client, mut rx) = bare_client();
+    let update: acp::schema::v1::SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sessionUpdate": "config_option_update",
+        "configOptions": [{
+            "id": "model",
+            "name": "Model",
+            "category": "model",
+            "type": "select",
+            "currentValue": "gpt-5.6-sol",
+            "options": [
+                {"value": "claude-sonnet-5", "name": "Claude Sonnet 5"},
+                {"value": "gpt-5.6-sol", "name": "GPT-5.6 Sol"}
+            ]
+        }]
+    }))
+    .unwrap();
+
+    client
+        .session_notification(notif("s1", update))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ModelConfigUpdated {
+            session_id,
+            available_models,
+            current_model_id,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert_eq!(current_model_id.as_deref(), Some("gpt-5.6-sol"));
+            assert_eq!(
+                available_models
+                    .iter()
+                    .map(|model| model.id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["claude-sonnet-5", "gpt-5.6-sol"]
+            );
+        }
+        _ => panic!("expected ModelConfigUpdated"),
+    }
+}
+
 /// A `ToolCall` update becomes a `ToolCall` event with the tool id and title.
 #[tokio::test]
 async fn session_notification_routes_tool_call() {

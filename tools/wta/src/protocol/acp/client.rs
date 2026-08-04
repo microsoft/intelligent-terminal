@@ -722,6 +722,19 @@ impl WtaClient {
                     entries,
                 });
             }
+            acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
+                if let Some((available_models, current_model_id)) =
+                    crate::protocol::acp::model_select::models_from_config_options(
+                        &update.config_options,
+                    )
+                {
+                    let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
+                        session_id: sid,
+                        available_models,
+                        current_model_id,
+                    });
+                }
+            }
             _ => {} // Ignore other update types for now
         }
         Ok(())

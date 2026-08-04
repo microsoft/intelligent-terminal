@@ -872,6 +872,9 @@ pub struct App {
     /// `agent_status` event so the settings UI can render a dropdown.
     pub available_models: Vec<AcpModelInfo>,
     pub current_model_id: Option<String>,
+    /// Latest ACP model config for each session. Notifications can race ahead
+    /// of the event that attaches their session to a tab.
+    session_model_configs: HashMap<String, (Vec<AcpModelInfo>, Option<String>)>,
     pub prompt_name: Option<String>,
     pub session_id: String,
     #[allow(dead_code)]
@@ -1163,6 +1166,7 @@ impl App {
             agent_version: None,
             available_models: Vec::new(),
             current_model_id: None,
+            session_model_configs: HashMap::new(),
             prompt_name: None,
             session_id: String::new(),
             wt_connected,
@@ -3495,6 +3499,7 @@ impl App {
             AppEvent::ConnectionStage(_) => "connection_stage",
             AppEvent::AgentConnected { .. } => "agent_connected",
             AppEvent::SessionAttached { .. } => "session_attached",
+            AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::TabError { .. } => "tab_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
@@ -4705,6 +4710,21 @@ impl App {
             "switch_tab_session"
         );
         self.tab_id = Some(new_tab_id);
+
+        if let Some((models, current)) = self
+            .current_tab()
+            .session_id
+            .as_deref()
+            .and_then(|session_id| self.session_model_configs.get(session_id))
+            .cloned()
+        {
+            if !models.is_empty() {
+                self.available_models = models;
+            }
+            if current.is_some() {
+                self.current_model_id = current;
+            }
+        }
 
         // The new active tab's `current_view` (and autofix bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
