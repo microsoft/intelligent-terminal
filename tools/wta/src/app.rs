@@ -4371,6 +4371,9 @@ impl App {
                 tab_id,
                 cwd: self.source_cwd.clone(),
             });
+        if let Some(session_id) = self.current_tab().session_id.clone() {
+            self.session_model_configs.remove(&session_id);
+        }
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.completed_turns.clear();
@@ -4552,6 +4555,7 @@ impl App {
     fn cmd_restart(&mut self) {
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.session_to_tab.clear();
+        self.session_model_configs.clear();
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
             tab.clear_chat_history();
@@ -4711,20 +4715,15 @@ impl App {
         );
         self.tab_id = Some(new_tab_id);
 
-        if let Some((models, current)) = self
+        let (models, current) = self
             .current_tab()
             .session_id
             .as_deref()
             .and_then(|session_id| self.session_model_configs.get(session_id))
             .cloned()
-        {
-            if !models.is_empty() {
-                self.available_models = models;
-            }
-            if current.is_some() {
-                self.current_model_id = current;
-            }
-        }
+            .unwrap_or_default();
+        self.available_models = models;
+        self.current_model_id = current;
 
         // The new active tab's `current_view` (and autofix bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
@@ -4759,6 +4758,9 @@ impl App {
             return;
         }
         let removed = self.tab_sessions.remove(closed_tab_id);
+        if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
+            self.session_model_configs.remove(session_id);
+        }
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
 
         // Tell the ACP client to release the binding for this tab so
@@ -4961,15 +4963,19 @@ impl App {
     /// next tab_changed back into this tab finds an empty-but-present
     /// `TabSession` and just renders an empty chat.
     fn reset_tab_session_for(&mut self, tab_id: &str) {
+        let mut removed_session_id = None;
         // Same wipe as the `/clear` slash command: clear in-flight chat state
         // via `clear_chat_history` AND the completed-turn history that
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
+            removed_session_id = tab.session_id.take();
             tab.clear_chat_history();
             tab.completed_turns.clear();
             tab.selected_completed_turn_idx = None;
             tab.scroll_to_bottom();
-            tab.session_id = None;
+        }
+        if let Some(session_id) = removed_session_id {
+            self.session_model_configs.remove(&session_id);
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for

@@ -1645,6 +1645,41 @@ async fn session_notification_routes_model_config_update() {
     }
 }
 
+#[tokio::test]
+async fn session_notification_clears_removed_model_config() {
+    let (client, mut rx) = bare_client();
+    let update: acp::schema::v1::SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sessionUpdate": "config_option_update",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "auto",
+            "options": [{"value": "auto", "name": "Auto"}]
+        }]
+    }))
+    .unwrap();
+
+    client
+        .session_notification(notif("s1", update))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ModelConfigUpdated {
+            session_id,
+            available_models,
+            current_model_id,
+        }) => {
+            assert_eq!(session_id, "s1");
+            assert!(available_models.is_empty());
+            assert_eq!(current_model_id, None);
+        }
+        _ => panic!("expected ModelConfigUpdated"),
+    }
+}
+
 /// A `ToolCall` update becomes a `ToolCall` event with the tool id and title.
 #[tokio::test]
 async fn session_notification_routes_tool_call() {

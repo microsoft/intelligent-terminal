@@ -1227,6 +1227,14 @@ fn load_session_applied_when_target_tab_matches_owner() {
     app.owner_tab_id = Some("OWNER-TAB".to_string());
     app.tab_sessions
         .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.tab_sessions
+        .get_mut("OWNER-TAB")
+        .unwrap()
+        .session_id = Some("old-session".into());
+    app.session_model_configs.insert(
+        "old-session".into(),
+        (vec![model_info("gpt-5.6-sol")], Some("gpt-5.6-sol".into())),
+    );
 
     app.handle_event(AppEvent::WtEvent {
         method: "load_session".to_string(),
@@ -1245,6 +1253,12 @@ fn load_session_applied_when_target_tab_matches_owner() {
     assert_eq!(req.tab_id, "OWNER-TAB");
     assert_eq!(req.session_id, "sess-abc");
     assert_eq!(req.cwd.as_deref(), Some("C:/foo"));
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].session_id.as_deref(),
+        Some("old-session"),
+        "the previous session remains authoritative until load succeeds"
+    );
+    assert!(app.session_model_configs.contains_key("old-session"));
 }
 
 #[test]
@@ -1988,6 +2002,23 @@ fn model_config_update_refreshes_active_session_picker() {
 }
 
 #[test]
+fn model_config_update_without_model_clears_active_session_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-1".into());
+    app.available_models = vec![model_info("gpt-5.6-sol")];
+    app.current_model_id = Some("gpt-5.6-sol".into());
+
+    app.handle_event(AppEvent::ModelConfigUpdated {
+        session_id: "sid-1".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert!(app.available_models.is_empty());
+    assert_eq!(app.current_model_id, None);
+}
+
+#[test]
 fn model_config_update_before_session_attach_is_applied_on_attach() {
     let mut app = test_app();
     app.available_models = vec![model_info("claude-sonnet-5")];
@@ -2013,6 +2044,28 @@ fn model_config_update_before_session_attach_is_applied_on_attach() {
 }
 
 #[test]
+fn session_attach_prunes_replaced_session_model_config() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-old".into());
+    app.session_to_tab
+        .insert("sid-old".into(), DEFAULT_TAB_ID.into());
+    app.session_model_configs.insert(
+        "sid-old".into(),
+        (vec![model_info("claude-sonnet-5")], Some("claude-sonnet-5".into())),
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-new".into(),
+        available_models: vec![model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert!(!app.session_to_tab.contains_key("sid-old"));
+    assert!(!app.session_model_configs.contains_key("sid-old"));
+}
+
+#[test]
 fn background_session_attach_waits_for_tab_switch_to_update_picker() {
     let mut app = test_app();
     app.available_models = vec![model_info("claude-sonnet-5")];
@@ -2033,6 +2086,34 @@ fn background_session_attach_waits_for_tab_switch_to_update_picker() {
 
     assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(app.available_models[0].id, "gpt-5.6-sol");
+}
+
+#[test]
+fn switching_to_tab_without_session_clears_model_picker() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("gpt-5.6-sol")];
+    app.current_model_id = Some("gpt-5.6-sol".into());
+    app.tab_sessions
+        .insert("without-session".into(), TabSession::default());
+
+    app.switch_tab_session("without-session".into());
+
+    assert!(app.available_models.is_empty());
+    assert_eq!(app.current_model_id, None);
+}
+
+#[test]
+fn new_session_prunes_previous_model_config() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-old".into());
+    app.session_model_configs.insert(
+        "sid-old".into(),
+        (vec![model_info("gpt-5.6-sol")], Some("gpt-5.6-sol".into())),
+    );
+
+    app.cmd_new(false);
+
+    assert!(!app.session_model_configs.contains_key("sid-old"));
 }
 
 /// `/model <id>` records a per-pane override and hot-applies it to *that*

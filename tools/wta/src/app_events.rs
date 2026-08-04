@@ -220,6 +220,18 @@ impl App {
                 current_model_id,
             } => {
                 let is_active_tab = self.active_tab_key() == tab_id;
+                let replaced_session_ids: Vec<String> = self
+                    .session_to_tab
+                    .iter()
+                    .filter(|(known_session_id, known_tab_id)| {
+                        *known_tab_id == &tab_id && *known_session_id != &session_id
+                    })
+                    .map(|(known_session_id, _)| known_session_id.clone())
+                    .collect();
+                for replaced_session_id in replaced_session_ids {
+                    self.session_to_tab.remove(&replaced_session_id);
+                    self.session_model_configs.remove(&replaced_session_id);
+                }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
                 let tab = self.tab_mut(&tab_id);
@@ -257,12 +269,8 @@ impl App {
                     .or_insert((available_models, current_model_id))
                     .clone();
                 if is_active_tab {
-                    if !available_models.is_empty() {
-                        self.available_models = available_models;
-                    }
-                    if current_model_id.is_some() {
-                        self.current_model_id = current_model_id;
-                    }
+                    self.available_models = available_models;
+                    self.current_model_id = current_model_id;
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -1323,7 +1331,6 @@ impl App {
                         tab.clear_chat_history();
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
-                        tab.session_id = None;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

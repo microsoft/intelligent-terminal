@@ -723,17 +723,17 @@ impl WtaClient {
                 });
             }
             acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
-                if let Some((available_models, current_model_id)) =
+                let (available_models, current_model_id) =
                     crate::protocol::acp::model_select::models_from_config_options(
+                        &sid,
                         &update.config_options,
                     )
-                {
-                    let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
-                        session_id: sid,
-                        available_models,
-                        current_model_id,
-                    });
-                }
+                    .unwrap_or_default();
+                let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
+                    session_id: sid,
+                    available_models,
+                    current_model_id,
+                });
             }
             _ => {} // Ignore other update types for now
         }
@@ -2158,7 +2158,7 @@ fn dispatch_load_session(
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
 
         match load_result {
-            Ok(Ok(_resp)) => {
+            Ok(Ok(resp)) => {
                 tracing::info!(
                     target: "acp_load_session",
                     tab = %req.tab_id,
@@ -2169,12 +2169,20 @@ fn dispatch_load_session(
                     let mut g = tab_to_session.lock().await;
                     g.insert(req.tab_id.clone(), session_id.clone());
                 }
+                if let Some(old) = old_sid
+                    .as_ref()
+                    .filter(|old| old.0.as_ref() != session_id.0.as_ref())
+                {
+                    crate::protocol::acp::model_select::forget_session(old.0.as_ref());
+                }
                 // The agent replays past content via session/update
                 // notifications that route through the existing
                 // session_to_tab map. SessionAttached primes that mapping.
-                // load_session/LoadSessionResponse does not carry the
-                // per-session model list (only modes); leave the
-                // previously-published list alone.
+                let (available_models, current_model_id) =
+                    crate::protocol::acp::model_select::models_from_load_session(
+                        session_id.0.as_ref(),
+                        &resp,
+                    );
                 //
                 // Resume is intentionally silent: no "Session loaded" note
                 // and no "Resuming…" marker (see the `load_session` handler),
@@ -2182,8 +2190,8 @@ fn dispatch_load_session(
                 let _ = event_tx.send(AppEvent::SessionAttached {
                     tab_id: req.tab_id.clone(),
                     session_id: session_id.to_string(),
-                    available_models: Vec::new(),
-                    current_model_id: None,
+                    available_models,
+                    current_model_id,
                 });
             }
             Ok(Err(e)) => {
@@ -2329,6 +2337,7 @@ fn dispatch_new_session(
 
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
+            crate::protocol::acp::model_select::forget_session(&old_str);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
@@ -2428,6 +2437,7 @@ fn dispatch_drop_session(
             // to the agent. Mirrors the new_session cancel path, minus the
             // new_session round-trip.
             let old_str = old.to_string();
+            crate::protocol::acp::model_select::forget_session(&old_str);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
