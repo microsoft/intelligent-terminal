@@ -675,6 +675,14 @@ impl WtaClient {
                         status = ?arm_result.as_ref().err().map(|failure| failure.status),
                         "silently resolving canonical proposal permission"
                     );
+                    if arm_result.is_err() {
+                        self.state
+                            .prompt_timing
+                            .permission_resolved(&session_id, "proposal_arm_failed");
+                        return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                            acp::schema::v1::RequestPermissionOutcome::Cancelled,
+                        ));
+                    }
                     self.state
                         .prompt_timing
                         .permission_resolved(&session_id, "proposal_allow_once");
@@ -3141,6 +3149,41 @@ mod tests {
         assert!(manager
             .begin_validation(&channel, payload.as_bytes())
             .is_ok());
+    }
+
+    #[tokio::test]
+    async fn canonical_proposal_permission_is_cancelled_when_arming_fails() {
+        let manager = Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        );
+        let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
+        let channel = manager
+            .issue("different-session".into(), 1, None, false)
+            .unwrap();
+        let command =
+            crate::agent_tools::action_proposal::invocation::render(&channel, payload).unwrap();
+        let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
+
+        let response = client
+            .request_permission(proposal_permission_request(&command))
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            response.outcome,
+            acp::schema::v1::RequestPermissionOutcome::Cancelled
+        ));
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { .. })
+        ));
+        assert_eq!(
+            manager
+                .begin_validation(&channel, payload.as_bytes())
+                .unwrap_err()
+                .status,
+            crate::agent_tools::action_proposal::channel::ProposalValidationStatus::NotArmed
+        );
     }
 
     #[tokio::test]

@@ -132,12 +132,14 @@ Permission policy has three outcomes:
 
 | Input | Outcome |
 |---|---|
-| Exact canonical command for the current channel and compact JSON payload | Silently `AllowOnce`; arm channel with SHA-256 payload digest |
+| Exact canonical command for the current channel and compact JSON payload, with successful arming | Silently `AllowOnce` |
 | Recognizable proposal command with unsafe or non-canonical syntax | Silently cancel |
 | Any unrelated command | Use the existing Permission UI |
 
-An exact canonical command for a different or stale channel may be allowed
-once, but it is not armed; its CLI request receives a structured routing error.
+Returning `AllowOnce` and transitioning the channel to `Armed` are one
+indivisible permission outcome. If arming fails for any reason, including a
+different or stale channel, the Helper silently cancels the permission request
+and the Agent must not launch the CLI.
 `AllowAlways` is never selected because every proposal must pass through
 per-turn arming.
 
