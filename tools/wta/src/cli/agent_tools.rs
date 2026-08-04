@@ -1,20 +1,39 @@
 use anyhow::{Context, Result};
+use std::path::Path;
 use tokio::io::{AsyncWriteExt, BufReader};
 
-pub(crate) async fn run(channel: String, payload: String) -> Result<()> {
+pub(crate) async fn run_command_resolution(
+    token: &str,
+    shell: &str,
+    cwd: Option<&Path>,
+    json_mode: bool,
+) -> Result<()> {
+    let result = crate::agent_tools::command_resolution::resolve(token, shell, cwd).await;
+    if json_mode {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!(
+            "{}",
+            crate::agent_tools::command_resolution::format_human(&result)
+        );
+    }
+    Ok(())
+}
+
+pub(crate) async fn run_action_proposal(channel: String, payload: String) -> Result<()> {
     let channel = channel
-        .parse::<crate::proposal_channel::ProposalChannel>()
+        .parse::<crate::agent_tools::action_proposal::channel::ProposalChannel>()
         .context("invalid --channel")?;
-    if payload.len() > crate::terminal_action_proposal::MAX_PAYLOAD_BYTES {
+    if payload.len() > crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES {
         anyhow::bail!(
             "--payload-json exceeds the {}-byte inline limit",
-            crate::terminal_action_proposal::MAX_PAYLOAD_BYTES
+            crate::agent_tools::action_proposal::schema::MAX_PAYLOAD_BYTES
         );
     }
     let pipe = open_pipe(&channel.pipe_name()).await?;
     let (read_half, mut write_half) = tokio::io::split(pipe);
-    let request = crate::proposal_pipe::ProposalPipeRequest {
-        version: crate::proposal_pipe::PROTOCOL_VERSION,
+    let request = crate::agent_tools::action_proposal::pipe::ProposalPipeRequest {
+        version: crate::agent_tools::action_proposal::pipe::PROTOCOL_VERSION,
         channel: channel.to_string(),
         payload,
     };
@@ -27,15 +46,17 @@ pub(crate) async fn run(channel: String, payload: String) -> Result<()> {
     write_half.flush().await.context("flush proposal request")?;
 
     let mut reader = BufReader::new(read_half);
-    let validation: crate::proposal_pipe::ProposalValidationResponse =
+    let validation: crate::agent_tools::action_proposal::pipe::ProposalValidationResponse =
         read_response(&mut reader).await?;
     println!("{}", serde_json::to_string(&validation)?);
     std::io::Write::flush(&mut std::io::stdout()).context("flush validation response")?;
-    if validation.status != crate::proposal_channel::ProposalValidationStatus::Accepted {
+    if validation.status
+        != crate::agent_tools::action_proposal::channel::ProposalValidationStatus::Accepted
+    {
         return Ok(());
     }
 
-    let final_response: crate::proposal_pipe::ProposalFinalResponse =
+    let final_response: crate::agent_tools::action_proposal::pipe::ProposalFinalResponse =
         read_response(&mut reader).await?;
     println!("{}", serde_json::to_string(&final_response)?);
     Ok(())
@@ -93,7 +114,7 @@ where
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(available.len(), |index| index + 1);
-        if line.len() + take > crate::proposal_pipe::MAX_FRAME_BYTES {
+        if line.len() + take > crate::agent_tools::action_proposal::pipe::MAX_FRAME_BYTES {
             anyhow::bail!("proposal response exceeds the frame limit");
         }
         line.extend_from_slice(&available[..take]);

@@ -1,5 +1,5 @@
-use crate::proposal_channel::ProposalChannel;
-use crate::terminal_action_proposal::MAX_PAYLOAD_BYTES;
+use super::channel::ProposalChannel;
+use super::schema::MAX_PAYLOAD_BYTES;
 
 const PREFIX: &str = r#"& "$env:WTA_CLI_PATH" propose-terminal-actions --channel "#;
 const PAYLOAD_MARKER: &str = " --payload-json ";
@@ -75,7 +75,7 @@ fn decode_single_quoted(expression: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proposal_channel::ProposalChannelManager;
+    use super::super::channel::ProposalChannelManager;
 
     fn payload() -> &'static str {
         r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"Run user's test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#

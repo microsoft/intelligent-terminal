@@ -262,8 +262,9 @@ terminal states are not retryable.
 ## Proposal schema and trusted target
 
 The public payload is the versioned schema defined by
-`terminal_action_proposal.rs`. It uses `deny_unknown_fields`, explicit count
-and size limits, and hand-written conversion to `RecommendationSet`.
+`tools/wta/src/agent_tools/action_proposal/schema.rs`. It uses
+`deny_unknown_fields`, explicit count and size limits, and hand-written
+conversion to `RecommendationSet`.
 
 It never accepts:
 

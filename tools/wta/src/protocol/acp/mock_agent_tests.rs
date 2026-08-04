@@ -327,7 +327,9 @@ fn connect_with(
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
-        proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
+        proposal_channels: Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        ),
         hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     let wta = WtaClient { state };
@@ -639,7 +641,8 @@ pub(crate) struct DispatchHarness {
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub shell_mgr: Arc<ShellManager>,
     pub prompt_timing: Arc<PromptTimingState>,
-    pub proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
+    pub proposal_channels:
+        Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
@@ -662,7 +665,9 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let shell_mgr = Arc::new(ShellManager::new());
     let prompt_timing = Arc::new(PromptTimingState::default());
-    let proposal_channels = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+    let proposal_channels = Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
@@ -1730,7 +1735,9 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         event_tx,
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
-        proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
+        proposal_channels: Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        ),
         hidden_tool_calls: Mutex::new(HashSet::new()),
     });
     (WtaClient { state }, event_rx)

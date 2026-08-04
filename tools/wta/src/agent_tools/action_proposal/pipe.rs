@@ -1,8 +1,8 @@
-use crate::proposal_channel::{
+use super::channel::{
     ProposalChannel, ProposalChannelManager, ProposalFinalStatus, ProposalValidationStatus,
     ValidationContext,
 };
-use crate::terminal_action_proposal::MAX_PAYLOAD_BYTES;
+use super::schema::MAX_PAYLOAD_BYTES;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -91,9 +91,9 @@ pub async fn run_server(
     event_tx: mpsc::UnboundedSender<ProposalPipeEvent>,
 ) -> Result<()> {
     let pipe_name = manager.pipe_name();
-    let security = crate::named_pipe_security::build_required()
+    let security = super::pipe_security::build_required()
         .context("build hardened proposal pipe security")?;
-    let mut server = crate::named_pipe_security::create_server(&pipe_name, true, Some(&security))
+    let mut server = super::pipe_security::create_server(&pipe_name, true, Some(&security))
         .with_context(|| format!("create proposal pipe '{pipe_name}'"))?;
     tracing::info!(
         target: "proposal_pipe",
@@ -108,7 +108,7 @@ pub async fn run_server(
             .with_context(|| format!("connect proposal pipe '{pipe_name}'"))?;
         let connected = std::mem::replace(
             &mut server,
-            crate::named_pipe_security::create_server(&pipe_name, false, Some(&security))
+            super::pipe_security::create_server(&pipe_name, false, Some(&security))
                 .with_context(|| format!("create follow-up proposal pipe '{pipe_name}'"))?,
         );
         let manager = Arc::clone(&manager);
@@ -442,9 +442,9 @@ mod tests {
             .arm("session", &channel, payload.as_bytes())
             .unwrap();
         let pipe_name = manager.pipe_name();
-        let security = crate::named_pipe_security::build_required().unwrap();
+        let security = super::super::pipe_security::build_required().unwrap();
         let server =
-            crate::named_pipe_security::create_server(&pipe_name, true, Some(&security)).unwrap();
+            super::super::pipe_security::create_server(&pipe_name, true, Some(&security)).unwrap();
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
 
         let server_manager = Arc::clone(&manager);

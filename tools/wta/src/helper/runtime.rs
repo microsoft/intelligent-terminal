@@ -281,14 +281,20 @@ async fn run_acp_app(
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
             let proposal_channels =
-                Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+                Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
             let (proposal_pipe_tx, mut proposal_pipe_rx) =
                 tokio::sync::mpsc::unbounded_channel();
             let proposal_server_manager = Arc::clone(&proposal_channels);
             let proposal_server_lifecycle = Arc::clone(&proposal_channels);
             tokio::task::spawn_local(async move {
                 if let Err(error) =
-                    crate::proposal_pipe::run_server(proposal_server_manager, proposal_pipe_tx).await
+                    crate::agent_tools::action_proposal::pipe::run_server(
+                        proposal_server_manager,
+                        proposal_pipe_tx,
+                    )
+                    .await
                 {
                     proposal_server_lifecycle.set_pipe_available(false);
                     tracing::error!(
@@ -302,7 +308,7 @@ async fn run_acp_app(
             tokio::task::spawn_local(async move {
                 while let Some(event) = proposal_pipe_rx.recv().await {
                     let app_event = match event {
-                        crate::proposal_pipe::ProposalPipeEvent::Validate {
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Validate {
                             context,
                             payload,
                             responder,
@@ -311,10 +317,12 @@ async fn run_acp_app(
                             payload,
                             responder,
                         },
-                        crate::proposal_pipe::ProposalPipeEvent::Commit { proposal_id } => {
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Commit {
+                            proposal_id,
+                        } => {
                             app::AppEvent::DirectTerminalActionProposalCommit { proposal_id }
                         }
-                        crate::proposal_pipe::ProposalPipeEvent::Invalidate {
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Invalidate {
                             proposal_id,
                             session_id,
                         } => app::AppEvent::DirectTerminalActionProposalInvalidate {

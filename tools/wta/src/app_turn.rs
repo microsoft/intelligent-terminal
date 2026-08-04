@@ -10,7 +10,7 @@ enum DirectProposalEvaluation {
     Presented,
     Duplicate(String),
     Stale(String),
-    Rejected(crate::terminal_action_proposal::ProposalError),
+    Rejected(crate::agent_tools::action_proposal::schema::ProposalError),
     Unavailable(String),
 }
 
@@ -177,7 +177,9 @@ impl App {
         payload: &str,
         proposal_id: &str,
     ) -> DirectProposalEvaluation {
-        use crate::terminal_action_proposal::{build_recommendation_set, parse_proposal_payload};
+        use crate::agent_tools::action_proposal::schema::{
+            build_recommendation_set, parse_proposal_payload,
+        };
 
         if !self.session_to_tab.contains_key(session_id) {
             return DirectProposalEvaluation::Unavailable(
@@ -253,11 +255,11 @@ impl App {
 
     pub(super) fn evaluate_direct_terminal_action_proposal(
         &mut self,
-        context: &crate::proposal_channel::ValidationContext,
+        context: &crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: &str,
-    ) -> crate::proposal_pipe::ProposalValidationDecision {
-        use crate::proposal_channel::ProposalValidationStatus;
-        use crate::terminal_action_proposal::ProposalError;
+    ) -> crate::agent_tools::action_proposal::pipe::ProposalValidationDecision {
+        use crate::agent_tools::action_proposal::channel::ProposalValidationStatus;
+        use crate::agent_tools::action_proposal::schema::ProposalError;
 
         let binding = &context.binding;
         match self.validate_and_stage_terminal_action_proposal(
@@ -268,17 +270,17 @@ impl App {
             &context.proposal_id,
         ) {
             DirectProposalEvaluation::Presented => {
-                crate::proposal_pipe::ProposalValidationDecision::accepted()
+                crate::agent_tools::action_proposal::pipe::ProposalValidationDecision::accepted()
             }
             DirectProposalEvaluation::Duplicate(reason) => {
-                crate::proposal_pipe::ProposalValidationDecision {
+                crate::agent_tools::action_proposal::pipe::ProposalValidationDecision {
                     status: ProposalValidationStatus::AlreadyConsumed,
                     reason: Some(reason),
                     retryable: false,
                 }
             }
             DirectProposalEvaluation::Stale(reason) => {
-                crate::proposal_pipe::ProposalValidationDecision {
+                crate::agent_tools::action_proposal::pipe::ProposalValidationDecision {
                     status: ProposalValidationStatus::Stale,
                     reason: Some(reason),
                     retryable: false,
@@ -295,14 +297,14 @@ impl App {
                         (ProposalValidationStatus::Rejected, false)
                     }
                 };
-                crate::proposal_pipe::ProposalValidationDecision {
+                crate::agent_tools::action_proposal::pipe::ProposalValidationDecision {
                     status,
                     reason: Some(error.reason()),
                     retryable,
                 }
             }
             DirectProposalEvaluation::Unavailable(reason) => {
-                crate::proposal_pipe::ProposalValidationDecision {
+                crate::agent_tools::action_proposal::pipe::ProposalValidationDecision {
                     status: ProposalValidationStatus::Unavailable,
                     reason: Some(reason),
                     retryable: false,
@@ -603,9 +605,9 @@ impl App {
             .is_ok();
         if let Some(claim) = confirmation_claim {
             let status = if dispatched {
-                crate::proposal_channel::ProposalFinalStatus::Confirmed
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
             } else {
-                crate::proposal_channel::ProposalFinalStatus::Unavailable
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
             };
             self.proposal_channels.finalize_confirmation(claim, status);
             if !dispatched {
@@ -749,7 +751,7 @@ impl App {
         if let Some(proposal_id) = direct_proposal_id.as_deref() {
             self.proposal_channels.resolve_final(
                 proposal_id,
-                crate::proposal_channel::ProposalFinalStatus::Cancelled,
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
             );
         }
 

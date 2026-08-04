@@ -174,9 +174,11 @@ pub enum AppEvent {
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
     SessionsChanged,
     DirectTerminalActionProposal {
-        context: crate::proposal_channel::ValidationContext,
+        context: crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: String,
-        responder: tokio::sync::oneshot::Sender<crate::proposal_pipe::ProposalValidationDecision>,
+        responder: tokio::sync::oneshot::Sender<
+            crate::agent_tools::action_proposal::pipe::ProposalValidationDecision,
+        >,
     },
     DirectTerminalActionProposalCommit {
         proposal_id: String,

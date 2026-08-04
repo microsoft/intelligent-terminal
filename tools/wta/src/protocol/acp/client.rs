@@ -341,7 +341,8 @@ struct ClientState {
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
-    proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
+    proposal_channels:
+        Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     hidden_tool_calls: std::sync::Mutex<HashSet<(String, String)>>,
 }
 
@@ -650,7 +651,7 @@ impl WtaClient {
             .permission_requested(&session_id, &description);
 
         if let Some(command) = canonical_proposal_permission_command(&args) {
-            match crate::proposal_invocation::parse(command) {
+            match crate::agent_tools::action_proposal::invocation::parse(command) {
                 Ok(invocation) => {
                     let Some(option) = args.options.iter().find(|option| {
                         option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce
@@ -1350,7 +1351,8 @@ pub async fn run_acp_client_over_pipe(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     post_login_reconnect: bool,
-    proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
+    proposal_channels:
+        Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) -> Result<()> {
     let startup_probe = StartupProbe::new();
     startup_probe.log(&format!(
@@ -2761,7 +2763,8 @@ fn dispatch_prompt(
     wt_connected: bool,
     is_agent_pane: bool,
     proposal_commands_supported: bool,
-    proposal_channels: &Arc<crate::proposal_channel::ProposalChannelManager>,
+    proposal_channels:
+        &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) {
     let tab_key = prompt
         .pane_context
@@ -2826,7 +2829,8 @@ async fn dispatch_prompt_body(
     wt_connected: bool,
     is_agent_pane: bool,
     proposal_commands_supported: bool,
-    proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
+    proposal_channels:
+        Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) {
     // Resolve (or lazily create) the ACP session for this tab.
     let prompt_session_id = {
@@ -3094,7 +3098,7 @@ mod tests {
     }
 
     fn proposal_test_client(
-        manager: Arc<crate::proposal_channel::ProposalChannelManager>,
+        manager: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     ) -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         let state = Arc::new(ClientState {
@@ -3109,12 +3113,15 @@ mod tests {
 
     #[tokio::test]
     async fn canonical_proposal_permission_is_silent_and_arms_payload() {
-        let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+        let manager = Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        );
         let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
         let channel = manager
             .issue("proposal-session".into(), 1, None, false)
             .unwrap();
-        let command = crate::proposal_invocation::render(&channel, payload).unwrap();
+        let command =
+            crate::agent_tools::action_proposal::invocation::render(&channel, payload).unwrap();
         let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
 
         let response = client
@@ -3138,7 +3145,9 @@ mod tests {
 
     #[tokio::test]
     async fn noncanonical_proposal_permission_is_silently_cancelled() {
-        let manager = Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+        let manager = Arc::new(
+            crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+        );
         let channel = manager
             .issue("proposal-session".into(), 1, None, false)
             .unwrap();
@@ -3537,7 +3546,9 @@ mod tests {
                 event_tx: tx,
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
-                proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
+                proposal_channels: Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                ),
                 hidden_tool_calls: std::sync::Mutex::new(std::collections::HashSet::new()),
             });
             (WtaClient { state }, rx)

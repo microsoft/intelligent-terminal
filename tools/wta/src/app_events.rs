@@ -949,7 +949,7 @@ impl App {
                 if !self.commit_terminal_action_proposal(&proposal_id) {
                     self.proposal_channels.resolve_final(
                         &proposal_id,
-                        crate::proposal_channel::ProposalFinalStatus::Cancelled,
+                        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
                     );
                 }
             }

@@ -1044,7 +1044,8 @@ pub struct App {
     /// the bootstrap RPC hasn't returned yet. Tracked as an Atomic so
     /// the bootstrap task can flip it from a non-`&mut self` context.
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    pub proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
+    pub proposal_channels:
+        Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 }
 
 /// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
@@ -1216,14 +1217,17 @@ impl App {
             transient_hint: None,
             alive: crate::session_registry::InMemoryRegistry::shared(),
             alive_loaded: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            proposal_channels: Arc::new(crate::proposal_channel::ProposalChannelManager::new()),
+            proposal_channels: Arc::new(
+                crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+            ),
             shell_mgr,
         }
     }
 
     pub fn set_proposal_channels(
         &mut self,
-        proposal_channels: Arc<crate::proposal_channel::ProposalChannelManager>,
+        proposal_channels:
+            Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     ) {
         self.proposal_channels = proposal_channels;
     }

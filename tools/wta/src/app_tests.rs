@@ -6832,11 +6832,15 @@ const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"t
 
 fn stage_direct_proposal(
     app: &mut App,
-    manager: &std::sync::Arc<crate::proposal_channel::ProposalChannelManager>,
+    manager: &std::sync::Arc<
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager,
+    >,
     session_id: &str,
 ) -> (
     String,
-    tokio::sync::oneshot::Receiver<crate::proposal_channel::ProposalFinalStatus>,
+    tokio::sync::oneshot::Receiver<
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus,
+    >,
 ) {
     let channel = manager
         .issue(
@@ -6865,7 +6869,7 @@ fn stage_direct_proposal(
     });
     assert_eq!(
         decision_rx.blocking_recv().unwrap().status,
-        crate::proposal_channel::ProposalValidationStatus::Accepted
+        crate::agent_tools::action_proposal::channel::ProposalValidationStatus::Accepted
     );
     let (final_tx, final_rx) = tokio::sync::oneshot::channel();
     assert!(manager.accept_validation(&proposal_id, final_tx));
@@ -6877,7 +6881,9 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     let mut app = test_app();
     let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     app.recommendation_tx = recommendation_tx;
-    let manager = std::sync::Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
     app.set_proposal_channels(std::sync::Arc::clone(&manager));
     let session_id = "direct-confirm";
     stage_proposal_session(&mut app, session_id);
@@ -6889,7 +6895,7 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
 
     assert_eq!(
         final_rx.blocking_recv().unwrap(),
-        crate::proposal_channel::ProposalFinalStatus::Confirmed
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
     );
     let execution = recommendation_rx.try_recv().unwrap();
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
@@ -6898,7 +6904,9 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
 #[test]
 fn direct_proposal_cancel_before_commit_does_not_surface() {
     let mut app = test_app();
-    let manager = std::sync::Arc::new(crate::proposal_channel::ProposalChannelManager::new());
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
     app.set_proposal_channels(std::sync::Arc::clone(&manager));
     let session_id = "direct-cancel";
     stage_proposal_session(&mut app, session_id);
@@ -6911,7 +6919,7 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
     assert!(app.session_tab(session_id).turn.is_idle());
     assert_eq!(
         final_rx.blocking_recv().unwrap(),
-        crate::proposal_channel::ProposalFinalStatus::Cancelled
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
     );
 }
 
