@@ -1703,21 +1703,21 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     _keptSessionMenuIds.clear();
     if (const auto manager = _keptSessionManager())
     {
-        const auto sessions = manager.KeptSessions();
-        if (sessions.Size() > 0)
+        const auto groups = manager.KeptGroups();
+        if (groups.Size() > 0)
         {
             AppendMenuW(menu, MF_SEPARATOR, 0, L"");
 
             std::wstring displayText;
-            for (const auto& entry : sessions)
+            for (const auto& entry : groups)
             {
                 const auto index = _keptSessionMenuIds.size();
                 _keptSessionMenuIds.push_back(entry.Key());
 
                 displayText = entry.Value().empty() ? std::wstring{ L"(untitled)" } : std::wstring{ entry.Value() };
 
-                // Each session gets its own submenu so restoring and closing
-                // stay distinct — a single click doing either would be a trap.
+                // Each tab gets its own submenu so restoring and closing stay
+                // distinct — a single click doing either would be a trap.
                 if (const auto sessionMenu = CreatePopupMenu())
                 {
                     static constexpr MENUINFO sessionMenuInfo{
@@ -1817,11 +1817,12 @@ winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
     return nullptr;
 }
 
-// Brings a detached session back on screen. The content is right here in the
+// Brings a detached tab back on screen. Its panes are right here in the
 // ContentManager, so this reuses the same "open with existing content" path a
 // cross-window pane drag uses, rather than going anywhere near the saved
-// snapshot.
-void WindowEmperor::_restoreKeptSession(const winrt::guid& sessionId)
+// snapshot. The panes come back in one tab; their original split ratios are not
+// preserved, since the layout those panes had is gone with the tab.
+void WindowEmperor::_restoreKeptSession(const winrt::guid& groupId)
 try
 {
     const auto manager = _keptSessionManager();
@@ -1830,20 +1831,30 @@ try
         return;
     }
 
-    // Atomic take: after this the session is ours and is no longer listed.
-    const auto contentId = manager.TryReattachKeptSession(sessionId);
-    if (contentId == 0)
+    // Atomic take: after this the tab is ours and is no longer listed.
+    const auto contentIds = manager.TryReattachKeptGroup(groupId);
+    if (!contentIds || contentIds.Size() == 0)
     {
         return;
     }
 
     using namespace winrt::Microsoft::Terminal::Settings::Model;
-    NewTerminalArgs terminalArgs;
-    terminalArgs.ContentId(contentId);
-    const NewTabArgs newTabArgs{ terminalArgs };
-    const ActionAndArgs action{ ShortcutAction::NewTab, newTabArgs };
-    const auto actions = winrt::single_threaded_vector<ActionAndArgs>({ action });
-    const auto content = ActionAndArgs::Serialize(actions);
+    std::vector<ActionAndArgs> actions;
+    for (const auto contentId : contentIds)
+    {
+        NewTerminalArgs terminalArgs;
+        terminalArgs.ContentId(contentId);
+        if (actions.empty())
+        {
+            actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ terminalArgs });
+        }
+        else
+        {
+            actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Automatic, 0.5f, terminalArgs });
+        }
+    }
+
+    const auto content = ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
 
     if (_windows.empty())
     {
@@ -1856,12 +1867,12 @@ try
 }
 CATCH_LOG()
 
-void WindowEmperor::_discardKeptSession(const winrt::guid& sessionId)
+void WindowEmperor::_discardKeptSession(const winrt::guid& groupId)
 try
 {
     if (const auto manager = _keptSessionManager())
     {
-        manager.DiscardKeptSession(sessionId);
+        manager.DiscardKeptGroup(groupId);
     }
 }
 CATCH_LOG()

@@ -1006,7 +1006,12 @@ namespace winrt::TerminalApp::implementation
     // ordinary "fresh shell plus replayed scrollback" restore.
     void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab)
     {
+        // One group per tab, so a multi-pane tab is offered back as the one
+        // thing the user closed rather than as N indistinguishable panes.
+        const auto groupId = ::Microsoft::Console::Utils::CreateGuid();
+        const auto title = tab->Title();
         auto detached = 0;
+
         tab->GetRootPane()->WalkTree([&](const auto& pane) {
             if (pane->IsAgentPane())
             {
@@ -1028,7 +1033,7 @@ namespace winrt::TerminalApp::implementation
                             {
                                 _panesKeptRunning.insert(std::move(paneId));
                             }
-                            _manager.DetachForKeepRunning(sessionId, tab->Title(), control);
+                            _manager.DetachForKeepRunning(groupId, sessionId, title, control);
                             ++detached;
                         }
                     }

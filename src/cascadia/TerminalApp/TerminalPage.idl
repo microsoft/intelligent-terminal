@@ -20,14 +20,22 @@ namespace TerminalApp
         // window, so a shell survives its tab and its window closing. This is
         // the same detached state Detach() above produces, just held
         // deliberately and indefinitely rather than in transit between windows.
+        //
+        // Sessions are grouped by the tab they were detached from, because a
+        // tab is the unit a user thinks in: a two-pane tab must not show up as
+        // two indistinguishable things to restore.
+        //
         // See doc/specs/keep-running-sessions.md.
-        void DetachForKeepRunning(Guid sessionId, String title, Microsoft.Terminal.Control.TermControl control);
+        void DetachForKeepRunning(Guid groupId, Guid sessionId, String title, Microsoft.Terminal.Control.TermControl control);
         UInt64 TryReattachKeptSession(Guid sessionId);
-        // Session id -> the tab title it was detached from, for anything that
-        // needs to show the user what is still running with no window.
-        Windows.Foundation.Collections.IMapView<Guid, String> KeptSessions();
-        // Ends a detached session and lets its shell be torn down.
-        void DiscardKeptSession(Guid sessionId);
+        // Group id -> the tab title it was detached from.
+        Windows.Foundation.Collections.IMapView<Guid, String> KeptGroups();
+        // Takes a whole detached tab: returns its panes' content ids in the
+        // order they were detached, and stops listing them. Empty if the group
+        // is gone.
+        Windows.Foundation.Collections.IVectorView<UInt64> TryReattachKeptGroup(Guid groupId);
+        // Ends every session in a detached tab and lets their shells be torn down.
+        void DiscardKeptGroup(Guid groupId);
         Boolean HasKeptSessions { get; };
         event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> KeptSessionsChanged;
     }
