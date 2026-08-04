@@ -1245,6 +1245,14 @@
     <value>Escolha o agente compatível com ACP que será usado no painel do agente. Para este perfil, esta seleção tem prioridade sobre a seleção global do painel do agente.</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>Agente da paleta de comandos</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>Escolha o agente usado para delegação pela paleta de comandos neste perfil. Esta seleção tem precedência sobre a configuração global do agente delegado.</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>

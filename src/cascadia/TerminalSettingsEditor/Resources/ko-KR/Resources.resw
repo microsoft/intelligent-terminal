@@ -1245,6 +1245,14 @@
     <value>에이전트 창에서 사용할 ACP 지원 에이전트를 선택하세요. 이 프로필에서는 이 선택 항목이 전역 에이전트 창 선택 항목보다 우선합니다.</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>명령 팔레트 에이전트</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>이 프로필에서 명령 팔레트 위임에 사용할 에이전트를 선택합니다. 이 선택은 전역 위임 에이전트 설정보다 우선합니다.</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>

@@ -3203,6 +3203,14 @@
           ],
           "pattern": "^(|host:[^:]+|wsl:[^:]+:[^:]+)$"
         },
+        "commandPaletteAgent": {
+          "description": "Selects the agent used for command palette delegation from this profile. An empty value uses the global Windows-hosted delegate agent. An explicit host or WSL selection is strict and never falls back to another agent.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(|host:[^:]+|wsl:[^:]+:[^:]+)$"
+        },
         "suppressApplicationTitle": {
           "description": "When set to true, tabTitle overrides the default title of the tab and any title change messages from the application will be suppressed. When set to false, tabTitle behaves as normal.",
           "type": "boolean",

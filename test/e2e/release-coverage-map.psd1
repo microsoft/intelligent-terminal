@@ -42,6 +42,11 @@
     'Profile WSL agent routing is strict' = 'Hot reload routes the profile agent through its WSL distro without host fallback'
     'Profile WSL agent chat works'        = 'profile-selected WSL agent connects and answers a chat round trip'
 
+    # PR #488 profile-scoped delegate source routing. The profile picker UI is
+    # deliberately NOT mapped, same as #481's above: Feature.DelegateSource drives
+    # `wta delegate` directly and cannot prove the Settings picker renders or saves.
+    'Command palette agent source is strict' = 'never falls back to the Windows host|never diverted to WSL'
+
     # §0 FRE auto-error (on/off both covered by the single off/on test)
     'Automatic error detection on'      = 'Automatic error detection off/on'
     'Automatic error suggestion on'     = 'Automatic error suggestion off/on'

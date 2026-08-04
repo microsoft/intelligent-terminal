@@ -39,6 +39,8 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             agent,
             delegate_agent,
             delegate_model,
+            delegate_source,
+            delegate_wsl_distro,
             cwd,
         } => {
             delegate::run(
@@ -46,6 +48,8 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 &agent,
                 delegate_agent.as_deref(),
                 delegate_model.as_deref(),
+                delegate_source.as_deref(),
+                delegate_wsl_distro.as_deref(),
                 cwd.as_deref(),
             )
             .await

@@ -351,6 +351,13 @@ pub(crate) enum Command {
         /// Model override for the delegate agent
         #[arg(long)]
         delegate_model: Option<String>,
+        /// Exact execution source (host or wsl). Defaults to host when
+        /// omitted; never inferred from the active pane's shell/distro
+        #[arg(long)]
+        delegate_source: Option<String>,
+        /// WSL distro for an explicit --delegate-source wsl selection
+        #[arg(long)]
+        delegate_wsl_distro: Option<String>,
         /// Working directory for the delegate agent tab
         #[arg(long)]
         cwd: Option<String>,
