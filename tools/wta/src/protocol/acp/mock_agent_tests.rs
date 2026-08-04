@@ -826,7 +826,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             // Pump until the agent's streamed reply surfaces — implies lazy
             // new_session, prompt assembly + send, and response routing all ran.
             // The mock echoes the *assembled* prompt, which the dispatcher wraps
-            // in the planner template, so we assert structure rather than exact
+            // in the terminal template, so we assert structure rather than exact
             // equality.
             let chunk = next_agent_chunk(&mut event_rx).await;
             assert!(
@@ -839,7 +839,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             );
 
             // The assembled prompt that reached the agent must contain the user
-            // text (build_prompt_text wraps it with the planner template).
+            // text (build_prompt_text wraps it with the terminal template).
             let seen = h.seen_prompts.lock().unwrap().clone();
             assert_eq!(seen.len(), 1, "exactly one prompt reached the agent");
             assert!(
@@ -847,8 +847,8 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 "the agent must receive the user's text inside the assembled prompt"
             );
             assert!(
-                seen[0].contains("Terminal Agent"),
-                "a non-autofix prompt must carry the planner template"
+                seen[0].contains("Working in Windows Terminal"),
+                "a non-autofix prompt must carry the terminal template"
             );
 
             // The session is cached before the prompt is sent, so it's already
@@ -1068,8 +1068,8 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
 }
 
 /// Template selection: an autofix prompt (`is_autofix=true`) must be assembled
-/// with the *autofix* template ("A command failed. Diagnose…"), NOT the planner
-/// persona. Picking the wrong template would make autofix behave like the
+/// with the *autofix* template ("Fixing a Failed Terminal Command"), NOT the planner
+/// terminal template. Picking the wrong template would make autofix behave like the
 /// general planner and fail to diagnose the failure.
 #[tokio::test]
 async fn dispatch_prompt_autofix_uses_autofix_template() {
@@ -1107,12 +1107,12 @@ async fn dispatch_prompt_autofix_uses_autofix_template() {
             let seen = h.seen_prompts.lock().unwrap().clone();
             assert_eq!(seen.len(), 1);
             assert!(
-                seen[0].contains("A command failed. Diagnose the error"),
+                seen[0].contains("Fixing a Failed Terminal Command"),
                 "autofix prompt must carry the auto-fix template"
             );
             assert!(
-                !seen[0].contains("You are Terminal Agent"),
-                "autofix prompt must NOT carry the planner persona template"
+                !seen[0].contains("You assist from within Windows Terminal"),
+                "autofix prompt must NOT carry the terminal template"
             );
             assert!(
                 seen[0].contains("fix the build"),

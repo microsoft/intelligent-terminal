@@ -30,7 +30,7 @@ impl std::fmt::Display for TemplateKind {
 /// Each ACP session has its own conversation history with the agent.
 /// We pay the ~10k-char template body once on the first turn of a
 /// session; subsequent turns only carry runtime context + the user
-/// request, because the planner persona is already in history. When
+/// request, because the terminal template is already in history. When
 /// the kind changes (planner ↔ autofix) we re-ship so the model's
 /// most-recent system instructions match the turn's intent.
 ///
@@ -222,9 +222,9 @@ pub(crate) fn acp_log_built_prompt(
 /// Per-turn audit log: one structured info-level line per round.
 ///
 /// Use this to verify rounds 2+ on a session are "clean" — i.e. the
-/// prompt body no longer carries the planner template. Look for
+/// prompt body no longer carries the terminal template. Look for
 /// `include_template=false` paired with a `body_head` that does NOT
-/// start with `# Terminal Agent`.
+/// start with `# Working in Windows Terminal`.
 ///
 /// Snippets are short on purpose (newlines escaped) so each turn fits
 /// on one log line and stays greppable.
@@ -393,7 +393,7 @@ mod tests {
         }))
     }
 
-    /// A planner turn with `include_template=true` ships the persona template,
+    /// A planner turn with `include_template=true` ships the terminal template,
     /// the delegate-agents section, and appends the user request.
     #[tokio::test]
     async fn build_prompt_text_planner_includes_template_and_user_request() {
@@ -405,6 +405,14 @@ mod tests {
         assert!(
             built_prompt.contains("### Supported Delegate Agents"),
             "planner must ship the delegate-agents section"
+        );
+        assert!(
+            built_prompt.contains("Follow one continuous workflow"),
+            "terminal prompt must use the unified workflow"
+        );
+        assert!(
+            !built_prompt.contains("Choose the first matching mode"),
+            "terminal prompt must not restore the old mode taxonomy"
         );
         assert!(
             built_prompt.contains("### Command Resolver Invocation"),
@@ -504,7 +512,7 @@ mod tests {
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(
             display_name, planner.display_name,
-            "autofix must not reuse the planner persona"
+            "autofix must not reuse the terminal prompt"
         );
         assert!(
             !built_prompt.contains("### Supported Delegate Agents"),
