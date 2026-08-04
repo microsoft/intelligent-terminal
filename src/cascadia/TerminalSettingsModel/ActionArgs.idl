@@ -210,6 +210,11 @@ namespace Microsoft.Terminal.Settings.Model
         // existing durable-session properties.
         String AgentSessionAgent;
         String AgentPaneAgent;
+
+        // Set only by a durable-session restore, and never serialized: the id
+        // of a session that may still be detached and running. SessionId always
+        // carries a fresh identity for the shell we would create if it isn't.
+        Guid KeptSessionId;
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

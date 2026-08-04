@@ -687,6 +687,11 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
         void _AddDurableSessionMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void _PersistShellSession(Tab* tab);
+        void _DetachShellPanesForKeepRunning(Tab* tab);
+        // Session ids of panes detached for keep-running during the tab close
+        // that is currently in flight, so _NotifyPanesClosing can tell them
+        // apart from panes that really are going away.
+        std::unordered_set<std::string> _panesKeptRunning;
         struct _PaneAgentSession
         {
             winrt::hstring sessionId;

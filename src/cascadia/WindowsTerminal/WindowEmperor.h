@@ -32,6 +32,9 @@ public:
         WM_NOTIFY_FROM_NOTIFICATION_AREA,
         WM_GET_WINDOW_LIST,
         WM_GET_WINDOW_FOR_PROTOCOL,
+        // Posted when a "keep running" session is detached or released, so the
+        // emperor can re-evaluate whether it still has a reason to exist.
+        WM_KEPT_SESSIONS_CHANGED,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -92,7 +95,7 @@ private:
     void _postQuitMessageIfNeeded() const;
     safe_void_coroutine _showMessageBox(winrt::hstring message, bool error);
     void _notificationAreaMenuRequested(WPARAM wParam);
-    void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam) const;
+    void _notificationAreaMenuClicked(WPARAM wParam, LPARAM lParam);
     void _hotkeyPressed(long hotkeyIndex);
     void _registerHotKey(int index, const winrt::Microsoft::Terminal::Control::KeyChord& hotkey) noexcept;
     void _unregisterHotKey(int index) noexcept;
@@ -102,6 +105,9 @@ private:
     void _finalizeSessionPersistence() const;
     void _checkWindowsForNotificationIcon();
     void _setupAumid(const std::wstring& aumid);
+    bool _hasKeptSessions() const;
+    bool _restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
+    void _setupKeptSessionTracking();
 
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
@@ -123,6 +129,7 @@ private:
     int32_t _messageBoxCount = 0;
     std::wstring _pendingAumidLnkPath;
     std::wstring _pendingAumid;
+    winrt::event_token _keptSessionsChangedToken{};
 
 #if 0 // #ifdef NDEBUG
     static constexpr void _assertIsMainThread() noexcept

@@ -401,6 +401,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(winrt::hstring, ShellSessionRestorePath, L"");
         ACTION_ARG(winrt::hstring, DurableShellSessionId, L"");
         ACTION_ARG(int64_t, DurableShellSessionRevision, 0);
+        // Transient, restore-only, never serialized. See ActionArgs.idl.
+        ACTION_ARG(winrt::guid, KeptSessionId, winrt::guid{});
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
 
@@ -578,6 +580,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_ShellSessionRestorePath = _ShellSessionRestorePath;
             copy->_DurableShellSessionId = _DurableShellSessionId;
             copy->_DurableShellSessionRevision = _DurableShellSessionRevision;
+            copy->_KeptSessionId = _KeptSessionId;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
             copy->_ColorScheme = _ColorScheme;
             copy->_Elevate = _Elevate;

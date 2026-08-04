@@ -978,9 +978,23 @@ namespace winrt::TerminalApp::implementation
                     const auto paneKey = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
                     if (const auto path = restorePaths.find(paneKey); path != restorePaths.end())
                     {
+                        // Kept alive or not, hand the snapshot along: if the
+                        // session dies between here and the pane actually being
+                        // made, the reattach misses and this is what the restore
+                        // falls back to.
                         terminalArgs.ShellSessionRestorePath(path->second);
                     }
+
+                    // Restoring from a snapshot builds a brand new shell, so it
+                    // gets a brand new identity — unconditionally, exactly as
+                    // before. Whether the session is instead still detached and
+                    // can be reattached is decided in one atomic step when the
+                    // pane is actually built; deciding it here would leave a
+                    // window in which two restores of the same record could
+                    // both believe they own this id.
+                    terminalArgs.KeptSessionId(sessionId);
                     terminalArgs.SessionId(::Microsoft::Console::Utils::CreateGuid());
+
                     if (firstTerminal)
                     {
                         terminalArgs.DurableShellSessionId(id);
