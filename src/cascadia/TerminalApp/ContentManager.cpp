@@ -49,12 +49,13 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Detaches `control` and remembers its content as a session that must stay
-    // alive with no window. The content keeps its ConptyConnection — and
-    // therefore its output thread and its Terminal buffer — so the shell keeps
-    // running and its scrollback keeps filling while nothing is attached.
-    void ContentManager::DetachForKeepRunning(const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control)
+    // alive with no window, as part of the tab identified by `groupId`. The
+    // content keeps its ConptyConnection — and therefore its output thread and
+    // its Terminal buffer — so the shell keeps running and its scrollback keeps
+    // filling while nothing is attached.
+    void ContentManager::DetachForKeepRunning(const winrt::guid& groupId, const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control)
     {
-        if (!control || sessionId == winrt::guid{})
+        if (!control || sessionId == winrt::guid{} || groupId == winrt::guid{})
         {
             return;
         }
@@ -70,7 +71,7 @@ namespace winrt::TerminalApp::implementation
 
         KeptSession kept;
         kept.contentId = contentId;
-        kept.title = title;
+        kept.groupId = groupId;
 
         // Detaching severed the only thing that was watching this connection —
         // TermControl::Detach() clears its revokers. Without our own watch, a
@@ -101,13 +102,21 @@ namespace winrt::TerminalApp::implementation
         }
 
         _keptSessions.insert_or_assign(sessionId, std::move(kept));
+
+        auto& group = _keptGroups[groupId];
+        if (group.title.empty())
+        {
+            group.title = title;
+        }
+        group.sessionIds.push_back(sessionId);
+
         KeptSessionsChanged.raise(*this, nullptr);
     }
 
-    // Returns the ContentId of a previously kept session, or 0 if there is no
-    // live session with that id — which is the ordinary "restore from the saved
-    // snapshot instead" path, and is also what happens after the terminal has
-    // been restarted.
+    // Returns the ContentId of a previously detached session, or 0 if there is
+    // no live session with that id — which is the ordinary "restore from the
+    // saved snapshot instead" path, and is also what happens after the terminal
+    // has been restarted.
     uint64_t ContentManager::TryReattachKeptSession(const winrt::guid& sessionId)
     {
         const auto it = _keptSessions.find(sessionId);
@@ -117,7 +126,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto contentId = it->second.contentId;
-        _keptSessions.erase(it);
+        _dropKeptSession(sessionId);
         KeptSessionsChanged.raise(*this, nullptr);
 
         // The shell may have exited while detached, in which case the content is
@@ -130,21 +139,92 @@ namespace winrt::TerminalApp::implementation
         return !_keptSessions.empty();
     }
 
-    // What is still running with no window, for the notification-area menu.
-    winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> ContentManager::KeptSessions()
+    // What is still running with no window, one entry per detached tab.
+    winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> ContentManager::KeptGroups()
     {
         auto map = winrt::single_threaded_map<winrt::guid, winrt::hstring>();
-        for (const auto& [sessionId, kept] : _keptSessions)
+        for (const auto& [groupId, group] : _keptGroups)
         {
-            map.Insert(sessionId, kept.title);
+            map.Insert(groupId, group.title);
         }
         return map.GetView();
     }
 
-    // Ends a detached session on purpose. Closing the content is what tears the
-    // shell down, and _closedHandler drops it from both maps and tells the
+    // Takes a whole detached tab at once. Returning the content ids rather than
+    // rebuilding here keeps this class out of the business of composing tab
+    // layouts; the caller turns them into a new tab.
+    winrt::Windows::Foundation::Collections::IVectorView<uint64_t> ContentManager::TryReattachKeptGroup(const winrt::guid& groupId)
+    {
+        std::vector<uint64_t> contentIds;
+
+        const auto it = _keptGroups.find(groupId);
+        if (it != _keptGroups.end())
+        {
+            // Copy first: dropping the sessions mutates the group.
+            const auto sessionIds = it->second.sessionIds;
+            for (const auto& sessionId : sessionIds)
+            {
+                const auto session = _keptSessions.find(sessionId);
+                if (session == _keptSessions.end())
+                {
+                    continue;
+                }
+                const auto contentId = session->second.contentId;
+                _dropKeptSession(sessionId);
+                // Skip any whose shell exited while detached.
+                if (TryLookupCore(contentId))
+                {
+                    contentIds.push_back(contentId);
+                }
+            }
+            KeptSessionsChanged.raise(*this, nullptr);
+        }
+
+        return winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView();
+    }
+
+    // Ends a detached tab on purpose. Closing each content is what tears its
+    // shell down, and _closedHandler drops it from our maps and tells the
     // emperor it may now have one fewer reason to stay alive.
-    void ContentManager::DiscardKeptSession(const winrt::guid& sessionId)
+    void ContentManager::DiscardKeptGroup(const winrt::guid& groupId)
+    {
+        const auto it = _keptGroups.find(groupId);
+        if (it == _keptGroups.end())
+        {
+            return;
+        }
+
+        const auto sessionIds = it->second.sessionIds;
+        auto changed = false;
+        for (const auto& sessionId : sessionIds)
+        {
+            const auto session = _keptSessions.find(sessionId);
+            if (session == _keptSessions.end())
+            {
+                continue;
+            }
+            const auto contentId = session->second.contentId;
+            if (const auto content{ TryLookupCore(contentId) })
+            {
+                // Drops through _closedHandler, which also raises the event.
+                content.Close();
+            }
+            else
+            {
+                _dropKeptSession(sessionId);
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            KeptSessionsChanged.raise(*this, nullptr);
+        }
+    }
+
+    // Removes one session and, once its tab has no members left, the tab.
+    // Deliberately silent: callers batch several drops behind one event.
+    void ContentManager::_dropKeptSession(const winrt::guid& sessionId)
     {
         const auto it = _keptSessions.find(sessionId);
         if (it == _keptSessions.end())
@@ -152,16 +232,21 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const auto contentId = it->second.contentId;
-        if (const auto content{ TryLookupCore(contentId) })
+        const auto groupId = it->second.groupId;
+        _keptSessions.erase(it);
+
+        const auto group = _keptGroups.find(groupId);
+        if (group == _keptGroups.end())
         {
-            content.Close();
             return;
         }
 
-        // Already gone; just forget it.
-        _keptSessions.erase(it);
-        KeptSessionsChanged.raise(*this, nullptr);
+        auto& members = group->second.sessionIds;
+        members.erase(std::remove(members.begin(), members.end(), sessionId), members.end());
+        if (members.empty())
+        {
+            _keptGroups.erase(group);
+        }
     }
 
     // Runs on the UI thread after a detached session's connection changed state.
@@ -177,7 +262,7 @@ namespace winrt::TerminalApp::implementation
         const auto content{ TryLookupCore(contentId) };
         if (!content)
         {
-            _keptSessions.erase(it);
+            _dropKeptSession(sessionId);
             KeptSessionsChanged.raise(*this, nullptr);
             return;
         }
@@ -189,8 +274,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // The shell exited while detached. Closing the content drops it from both
-        // _content and _keptSessions via _closedHandler, which is also what
+        // The shell exited while detached. Closing the content drops it from
+        // both _content and our maps via _closedHandler, which is also what
         // eventually lets the emperor quit. `content` keeps it alive across the
         // call.
         content.Close();
@@ -198,11 +283,12 @@ namespace winrt::TerminalApp::implementation
 
     void ContentManager::_forgetKeptSession(uint64_t contentId)
     {
-        for (auto it = _keptSessions.begin(); it != _keptSessions.end(); ++it)
+        for (const auto& [sessionId, kept] : _keptSessions)
         {
-            if (it->second.contentId == contentId)
+            if (kept.contentId == contentId)
             {
-                _keptSessions.erase(it);
+                const auto id = sessionId;
+                _dropKeptSession(id);
                 KeptSessionsChanged.raise(*this, nullptr);
                 return;
             }

@@ -44,10 +44,11 @@ namespace winrt::TerminalApp::implementation
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
-        void DetachForKeepRunning(const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control);
+        void DetachForKeepRunning(const winrt::guid& groupId, const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control);
         uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
-        winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptSessions();
-        void DiscardKeptSession(const winrt::guid& sessionId);
+        winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptGroups();
+        winrt::Windows::Foundation::Collections::IVectorView<uint64_t> TryReattachKeptGroup(const winrt::guid& groupId);
+        void DiscardKeptGroup(const winrt::guid& groupId);
         bool HasKeptSessions() const noexcept;
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
@@ -58,13 +59,20 @@ namespace winrt::TerminalApp::implementation
         struct KeptSession
         {
             uint64_t contentId{ 0 };
-            // The tab title this was detached from, so the notification-area
-            // menu can name what is still running.
-            winrt::hstring title;
+            // The tab this pane was detached from.
+            winrt::guid groupId{};
             // A detached content has no TermControl, so nothing else is left
             // watching its connection. This is how we notice a shell that exits
             // while detached.
             Microsoft::Terminal::Control::ControlCore::ConnectionStateChanged_revoker connectionStateRevoker;
+        };
+
+        // One detached tab. Its members are listed in detach order so a restore
+        // rebuilds the panes in the order they appeared.
+        struct KeptGroup
+        {
+            winrt::hstring title;
+            std::vector<winrt::guid> sessionIds;
         };
 
         // Sessions deliberately kept alive with no window, keyed by the
@@ -72,7 +80,9 @@ namespace winrt::TerminalApp::implementation
         // persisted under, so a restore can find its way back without relying on
         // a ContentId that is only meaningful inside this process instance.
         std::unordered_map<winrt::guid, KeptSession> _keptSessions;
+        std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
 
+        void _dropKeptSession(const winrt::guid& sessionId);
         void _reapDetachedSessionIfDead(const winrt::guid& sessionId);
         void _forgetKeptSession(uint64_t contentId);
 
