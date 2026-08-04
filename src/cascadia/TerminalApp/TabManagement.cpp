@@ -813,6 +813,7 @@ namespace winrt::TerminalApp::implementation
     {
         if (!_settings.GlobalSettings().RestoreShellSessions())
         {
+            _agentPaneLog("_PersistShellSession: skipped — restoreShellSessions is off");
             return;
         }
 
@@ -828,6 +829,7 @@ namespace winrt::TerminalApp::implementation
         });
         if (!hasUserInput && tab->DurableShellSessionId().empty())
         {
+            _agentPaneLog("_PersistShellSession: skipped — no user input and no durable id");
             return;
         }
 
@@ -835,6 +837,9 @@ namespace winrt::TerminalApp::implementation
         auto actions = tab->BuildStartupActions(BuildStartupKind::Persist);
         if (sessionName.empty() || actions.empty())
         {
+            _agentPaneLog(std::string{ "_PersistShellSession: skipped — nameEmpty=" } +
+                          (sessionName.empty() ? "true" : "false") + " actions=" +
+                          std::to_string(actions.size()));
             return;
         }
 
@@ -977,8 +982,62 @@ namespace winrt::TerminalApp::implementation
         const auto result = sharedWta.Request(
             "_intellterm.wta/shell_sessions/save",
             Json::writeString(writer, params));
+        if (!result)
+        {
+            _agentPaneLog("_PersistShellSession: wta shell_sessions/save returned no result — not detaching");
+        }
         THROW_HR_IF(E_FAIL, !result);
         committed = true;
+
+        // Only now that the record is durably saved is it sound to detach the
+        // live panes: a save that failed first would leave shells running that
+        // nothing could ever find its way back to.
+        if (_settings.GlobalSettings().ContinueRunningCommands())
+        {
+            _DetachShellPanesForKeepRunning(tab);
+        }
+    }
+
+    // Detaches every shell pane's live content so the commands they are running
+    // survive this tab — and, if it was the last one, this whole window —
+    // closing. The content keeps its connection and its buffer; only the
+    // TermControl is severed. Restoring the session reattaches to the very same
+    // content, so a pane that could not be detached simply falls back to the
+    // ordinary "fresh shell plus replayed scrollback" restore.
+    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab)
+    {
+        auto detached = 0;
+        tab->GetRootPane()->WalkTree([&](const auto& pane) {
+            if (pane->IsAgentPane())
+            {
+                return;
+            }
+
+            try
+            {
+                if (const auto control = pane->GetTerminalControl())
+                {
+                    if (const auto connection = control.Connection())
+                    {
+                        if (const auto sessionId = connection.SessionId(); sessionId != winrt::guid{})
+                        {
+                            // Recorded before detaching, while the control can
+                            // still resolve its id, so the imminent
+                            // _NotifyPanesClosing knows to leave this pane alone.
+                            if (auto paneId = _FindSessionIdForControl(control); !paneId.empty())
+                            {
+                                _panesKeptRunning.insert(std::move(paneId));
+                            }
+                            _manager.DetachForKeepRunning(sessionId, control);
+                            ++detached;
+                        }
+                    }
+                }
+            }
+            CATCH_LOG()
+        });
+
+        _agentPaneLog("_DetachShellPanesForKeepRunning: detached " + std::to_string(detached) + " pane(s)");
     }
 
     // Method Description:

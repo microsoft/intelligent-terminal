@@ -14,6 +14,17 @@ namespace TerminalApp
 
         Microsoft.Terminal.Control.ControlInteractivity TryLookupCore(UInt64 id);
         void Detach(Microsoft.Terminal.Control.TermControl control);
+
+        // "Keep running" (durable session) support. Detaching a control here
+        // holds the live content — connection, buffer and all — outside of any
+        // window, so a shell survives its tab and its window closing. This is
+        // the same detached state Detach() above produces, just held
+        // deliberately and indefinitely rather than in transit between windows.
+        // See doc/specs/keep-running-sessions.md.
+        void DetachForKeepRunning(Guid sessionId, Microsoft.Terminal.Control.TermControl control);
+        UInt64 TryReattachKeptSession(Guid sessionId);
+        Boolean HasKeptSessions { get; };
+        event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> KeptSessionsChanged;
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs

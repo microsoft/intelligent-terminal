@@ -294,6 +294,10 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
     _windowCount += 1;
     _windows.emplace_back(std::move(host));
 
+    // A window exists again, so whatever we persisted when we last went
+    // headless is stale; let the normal exit path persist afresh.
+    _skipPersistence = false;
+
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
     // (agent-pane attach_pane / detach_pane, autofix OSC 133;D, etc.)
@@ -608,6 +612,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
 
     _createMessageWindow(windowClassName.c_str());
     _setupGlobalHotkeys();
+    _setupKeptSessionTracking();
     _checkWindowsForNotificationIcon();
     _setupSessionPersistence(_app.Logic().Settings().GlobalSettings().ShouldUsePersistedLayout());
 
@@ -647,6 +652,7 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
                 startIdx += 1;
             }
         }
+
 
         const auto args = commandlineToArgArray(GetCommandLineW());
 
@@ -1126,9 +1132,78 @@ void WindowEmperor::_postQuitMessageIfNeeded() const
     if (
         _messageBoxCount <= 0 &&
         _windowCount <= 0 &&
+        // A "keep running" session is a live shell with no window. Quitting
+        // would kill it, which is precisely what the user asked us not to do.
+        !_hasKeptSessions() &&
         !_app.Logic().Settings().GlobalSettings().AllowHeadless())
     {
         PostQuitMessage(0);
+    }
+}
+
+// True when at least one durable session is detached with no window. This is what
+// lets the process outlive its last window, tmux-style.
+bool WindowEmperor::_hasKeptSessions() const
+{
+    try
+    {
+        if (const auto logic = _app.Logic())
+        {
+            if (const auto manager = logic.ContentManager())
+            {
+                return manager.HasKeptSessions();
+            }
+        }
+    }
+    CATCH_LOG();
+    return false;
+}
+
+// Re-runs the startup layout restore for a process that never restarted. Used
+// when a bare launch arrives while we are headless with kept sessions: the
+// layout was written when the last window closed, and restoring it is what
+// reattaches those sessions. Returns false if there is nothing to restore, so
+// the caller can fall back to an ordinary new window.
+bool WindowEmperor::_restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd)
+try
+{
+    const auto state = ApplicationState::SharedInstance();
+    const auto layouts = state.PersistedWindowLayouts();
+    if (!layouts || layouts.Size() == 0)
+    {
+        return false;
+    }
+
+    _needsPersistenceCleanup = true;
+
+    uint32_t startIdx = 0;
+    for (const auto layout : layouts)
+    {
+        winrt::hstring args[] = { L"wt", L"-w", L"new", L"-s", winrt::to_hstring(startIdx) };
+        _dispatchCommandlineCommon(args, cwd, env, showCmd);
+        startIdx += 1;
+    }
+    return true;
+}
+catch (...)
+{
+    LOG_CAUGHT_EXCEPTION();
+    return false;
+}
+
+// The content manager raises its event on the UI thread, but re-evaluating our
+// exit condition from inside a content callback would mean tearing down the app
+// underneath its own stack. Bounce through the message queue instead.
+void WindowEmperor::_setupKeptSessionTracking()
+{
+    if (const auto logic = _app.Logic())
+    {
+        if (const auto manager = logic.ContentManager())
+        {
+            _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
+                PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
+            });
+        }
     }
 }
 
@@ -1167,15 +1242,29 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
             // Keep the last window in the array so that we can persist it on exit.
             // We check for AllowHeadless(), as that being true prevents us from ever quitting in the first place.
             // (= If we avoided closing the last window you wouldn't be able to reach a headless state.)
+            // Kept "keep running" sessions are the same story: they hold the
+            // process open deliberately, so the last window must really close.
             const auto shouldKeepWindow =
                 _windows.size() == 1 &&
                 globalSettings.ShouldUsePersistedLayout() &&
+                !_hasKeptSessions() &&
                 !globalSettings.AllowHeadless();
 
             if (!shouldKeepWindow)
             {
                 // Did the window counter get out of sync? It shouldn't.
                 assert(_windowCount == gsl::narrow_cast<int32_t>(_windows.size()));
+
+                // We are about to drop the last window while kept sessions hold
+                // the process open. _persistState() reads _windows, so capture
+                // the layout now: once the array is empty there is nothing left
+                // to write, and the finalize on our eventual exit would clear
+                // the saved layout and delete the buffer sidecars with it.
+                if (_windows.size() == 1 && _hasKeptSessions())
+                {
+                    _persistState(ApplicationState::SharedInstance());
+                    _skipPersistence = true;
+                }
 
                 // !!! NOTE !!!
                 // At least theoretically the lParam pointer may be invalid.
@@ -1229,6 +1318,14 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
         case WM_MESSAGE_BOX_CLOSED:
             // Counterpart specific to _showMessageBox().
             _messageBoxCount -= 1;
+            _postQuitMessageIfNeeded();
+            return 0;
+        case WM_KEPT_SESSIONS_CHANGED:
+            // The last kept session just ended (or the first one was detached).
+            // Re-check whether we still have a reason to run, and whether the
+            // notification icon should appear — without it, a windowless
+            // terminal would be invisible and unquittable.
+            _checkWindowsForNotificationIcon();
             _postQuitMessageIfNeeded();
             return 0;
         case WM_IDENTIFY_ALL_WINDOWS:
@@ -1335,6 +1432,18 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
                 // toast's Activated event, so just ignore this handoff.
                 if (argv.size() != 2 || argv[1] != L"--from-toast")
                 {
+                    // Coming back from the headless state that keep-running put
+                    // us in. A bare launch means "give me my terminal back", so
+                    // restore what was open when the last window closed rather
+                    // than opening an unrelated default tab and leaving the
+                    // kept sessions stranded with no way to reach them. The
+                    // startup path does this too, but it only runs once, when
+                    // the process starts — and this process never left.
+                    if (_windows.empty() && _hasKeptSessions() && argv.size() == 1 &&
+                        _restorePersistedLayouts(handoff.cwd, handoff.env, handoff.show))
+                    {
+                        return 0;
+                    }
                     _dispatchCommandlineCommon(argv, handoff.cwd, handoff.env, handoff.show);
                 }
             }
@@ -1599,11 +1708,24 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     _currentWindowMenu = menu;
 }
 
-void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam) const
+void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPARAM lParam)
 {
     const auto menu = reinterpret_cast<HMENU>(lParam);
     const auto menuItemIndex = LOWORD(wParam);
     const auto windowId = GetMenuItemID(menu, menuItemIndex);
+
+    // With kept sessions and no windows there is nothing to summon, and the
+    // icon would be a dead end. Open a fresh window instead, which is also
+    // where the durable sessions get reattached.
+    if (windowId == 0 && _windows.empty())
+    {
+        const wil::unique_environstrings_ptr envMem{ GetEnvironmentStringsW() };
+        const auto env = stringFromDoubleNullTerminated(envMem.get());
+        const auto cwd = wil::GetCurrentDirectoryW<std::wstring>();
+        const std::array args{ winrt::hstring{ L"wt" } };
+        _dispatchCommandlineCommon(args, cwd, env, SW_SHOWNORMAL);
+        return;
+    }
 
     // _notificationAreaMenuRequested constructs each menu item with an ID
     // that is either 0 for "Focus Terminal" or >0 for a specific window ID.
@@ -1754,6 +1876,10 @@ void WindowEmperor::_checkWindowsForNotificationIcon()
             needsIcon |= host->Logic().IsQuakeWindow();
         }
     }
+    // A process with kept sessions but no windows has nothing else on screen.
+    // The icon is the only way for the user to see it is still there, get a
+    // window back, or quit it.
+    needsIcon |= _hasKeptSessions();
 
     if (_notificationIconShown == needsIcon)
     {

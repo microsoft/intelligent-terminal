@@ -21,6 +21,10 @@ Abstract:
 - Detach can be used to temporarily remove a content from its hosted
   TermControl. After detaching, you can still use LookupCore &
   TermControl::AttachContent to re-attach to the content.
+- The same detached state is what powers "keep running" durable sessions: a
+  detached content has no window and no TermControl, but its ConptyConnection and
+  Terminal buffer are untouched, so the shell keeps running and its scrollback
+  keeps filling. See doc/specs/keep-running-sessions.md.
 --*/
 #pragma once
 
@@ -40,8 +44,32 @@ namespace winrt::TerminalApp::implementation
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
+        void DetachForKeepRunning(const winrt::guid& sessionId, const Microsoft::Terminal::Control::TermControl& control);
+        uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
+        bool HasKeptSessions() const noexcept;
+
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
+
     private:
         std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
+
+        struct KeptSession
+        {
+            uint64_t contentId{ 0 };
+            // A detached content has no TermControl, so nothing else is left
+            // watching its connection. This is how we notice a shell that exits
+            // while detached.
+            Microsoft::Terminal::Control::ControlCore::ConnectionStateChanged_revoker connectionStateRevoker;
+        };
+
+        // Sessions deliberately kept alive with no window, keyed by the
+        // connection's session GUID — the same id the durable session record is
+        // persisted under, so a restore can find its way back without relying on
+        // a ContentId that is only meaningful inside this process instance.
+        std::unordered_map<winrt::guid, KeptSession> _keptSessions;
+
+        void _reapDetachedSessionIfDead(const winrt::guid& sessionId);
+        void _forgetKeptSession(uint64_t contentId);
 
         void _closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
                             const winrt::Windows::Foundation::IInspectable& e);

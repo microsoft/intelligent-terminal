@@ -1679,6 +1679,15 @@ namespace winrt::TerminalApp::implementation
             {
                 return;
             }
+            // A pane detached for keep-running is still very much alive; the same
+            // reasoning as the `movingAway` guard applies. Announcing it as
+            // closed would flip its agent session to Ended even though the
+            // shell is still running and will be reattached.
+            if (const auto kept = _panesKeptRunning.find(paneIdStr); kept != _panesKeptRunning.end())
+            {
+                _panesKeptRunning.erase(kept);
+                return;
+            }
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "connection_state";
@@ -6504,6 +6513,26 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        // Closing the window has to do what closing each tab would have done.
+        // The per-tab path runs from _HandleCloseTabRequested, which the window
+        // close never reaches — so without this, the single most common way to
+        // finish for the day ("close the terminal") would neither save the
+        // sessions nor keep them running.
+        if (_settings.GlobalSettings().ContinueRunningCommands())
+        {
+            for (const auto& tab : _tabs)
+            {
+                if (const auto tabImpl = _GetTabImpl(tab))
+                {
+                    try
+                    {
+                        _PersistShellSession(tabImpl.get());
+                    }
+                    CATCH_LOG()
+                }
+            }
+        }
+
         CloseWindowRequested.raise(*this, nullptr);
     }
 
@@ -8039,6 +8068,37 @@ namespace winrt::TerminalApp::implementation
 
         const auto sessionId = controlSettings.DefaultSettings()->SessionId();
         const auto hasSessionId = sessionId != winrt::guid{};
+
+        // A "keep running" session from earlier in this process may still be
+        // live, detached with no window. Reattaching it gives back the very same
+        // shell — mid-command, with its process tree and its whole Terminal
+        // buffer intact — so there is nothing to replay and no fresh shell to
+        // start.
+        //
+        // This take is the single arbiter of who owns that session: it is
+        // atomic, so two restores of the same record cannot both end up
+        // claiming the id. A restore hands us the original id in KeptSessionId
+        // and a fresh one in SessionId, and only the loser of the race uses the
+        // fresh one. The persisted-window-layout path has no separate id and
+        // reattaches on SessionId itself.
+        if (!existingConnection && _settings.GlobalSettings().ContinueRunningCommands())
+        {
+            const auto keptId = newTerminalArgs && newTerminalArgs.KeptSessionId() != winrt::guid{} ?
+                                    newTerminalArgs.KeptSessionId() :
+                                    sessionId;
+            if (keptId != winrt::guid{})
+            {
+                if (const auto keptContentId = _manager.TryReattachKeptSession(keptId); keptContentId != 0)
+                {
+                    if (const auto keptControl = _AttachControlToContent(keptContentId))
+                    {
+                        auto keptContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, keptControl) };
+                        return std::make_shared<Pane>(keptContent);
+                    }
+                }
+            }
+        }
+
         if (hasSessionId &&
             newTerminalArgs &&
             !newTerminalArgs.AgentSessionId().empty())
