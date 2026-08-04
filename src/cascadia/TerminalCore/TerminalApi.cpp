@@ -234,6 +234,14 @@ void Terminal::SetWorkingDirectory(std::wstring_view uri)
     }
 
     _workingDirectory = uri;
+    if (!_mainBuffer)
+    {
+        return;
+    }
+
+    auto& buffer = _activeBuffer();
+    const auto id = buffer.GetWorkingDirectoryId(uri);
+    buffer.GetMutableRowByOffset(buffer.GetCursor().GetPosition().y).SetWorkingDirectoryId(id);
 }
 
 void Terminal::SetShellType(std::wstring_view shellName, std::wstring_view shellVersion)
@@ -297,6 +305,11 @@ void Terminal::UseAlternateScreenBuffer(const TextAttribute& attrs)
         tgtCursorPos.y -= _mutableViewport.Top();
         tgtCursor.SetPosition(tgtCursorPos);
     }
+    if (!_workingDirectory.empty())
+    {
+        const auto id = _altBuffer->GetWorkingDirectoryId(_workingDirectory);
+        _altBuffer->GetMutableRowByOffset(_altBuffer->GetCursor().GetPosition().y).SetWorkingDirectoryId(id);
+    }
 
     // update all the hyperlinks on the screen
     _updateUrlDetection();
@@ -353,6 +366,11 @@ void Terminal::UseMainScreenBuffer()
         auto tgtCursorPos = altCursor.GetPosition();
         tgtCursorPos.y += _mutableViewport.Top();
         mainCursor.SetPosition(tgtCursorPos);
+    }
+    if (!_workingDirectory.empty())
+    {
+        const auto id = _mainBuffer->GetWorkingDirectoryId(_workingDirectory);
+        _mainBuffer->GetMutableRowByOffset(_mainBuffer->GetCursor().GetPosition().y).SetWorkingDirectoryId(id);
     }
 
     // update all the hyperlinks on the screen

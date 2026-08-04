@@ -14,10 +14,14 @@
 #include "../../types/inc/Viewport.hpp"
 #include "../../types/inc/GlyphWidth.hpp"
 #include "../../cascadia/terminalcore/ITerminalInput.hpp"
+#include "ClickableMatcher.hpp"
 
 #include <til/generational.h>
 #include <til/ticket_lock.h>
 #include <til/winrt.h>
+
+#include <chrono>
+#include <map>
 
 inline constexpr size_t TaskbarMinProgress{ 10 };
 
@@ -384,8 +388,6 @@ private:
     size_t _taskbarState = 0;
     size_t _taskbarProgress = 0;
 
-    size_t _hyperlinkPatternId = 0;
-
     std::wstring _answerbackMessage;
     std::wstring _workingDirectory;
     std::wstring _shellName;
@@ -443,6 +445,15 @@ private:
     //      Either way, we should make this behavior controlled by a setting.
 
     interval_tree::IntervalTree<til::point, size_t> _patternIntervalTree;
+    struct FilePathCacheEntry
+    {
+        std::wstring uri;
+        std::chrono::steady_clock::time_point expiresAt;
+        size_t generation;
+    };
+    mutable std::map<std::wstring, FilePathCacheEntry> _filePathCache;
+    mutable size_t _filePathCacheGeneration = 0;
+
     void _clearPatternTree();
     void _InvalidatePatternTree();
     void _InvalidateFromCoords(const til::point start, const til::point end);
@@ -480,6 +491,11 @@ private:
     TextBuffer& _activeBuffer() const noexcept;
     void _updateUrlDetection();
     interval_tree::IntervalTree<til::point, size_t> _getPatterns(til::CoordType beg, til::CoordType end) const;
+    static std::span<const ClickableMatcher> _getClickableMatchers() noexcept;
+    std::optional<ClickableMatch> _resolveClickableMatch(size_t matcherId, std::wstring_view text, til::CoordType row, ClickResolveMode mode = ClickResolveMode::Detect, std::optional<std::wstring_view> workingDirectory = std::nullopt) const;
+    std::wstring _getFilePathUri(std::wstring_view path, std::wstring_view workingDirectory, bool useCachedResult) const;
+    std::wstring_view _getWorkingDirectoryForRow(til::CoordType row) const noexcept;
+    std::vector<std::wstring_view> _getWorkingDirectoriesForRows(til::CoordType beg, til::CoordType end) const;
 
 #pragma region TextSelection
     // These methods are defined in TerminalSelection.cpp

@@ -730,6 +730,8 @@ void TextBuffer::IncrementCircularBuffer(const TextAttribute& fillAttributes)
     // Prune hyperlinks to delete obsolete references
     _PruneHyperlinks();
 
+    const auto evictedWorkingDirectoryId = GetRowByOffset(0).GetWorkingDirectoryId();
+
     // Second, clean out the old "first row" as it will become the "last row" of the buffer after the circle is performed.
     GetMutableRowByOffset(0).Reset(fillAttributes);
     {
@@ -742,6 +744,12 @@ void TextBuffer::IncrementCircularBuffer(const TextAttribute& fillAttributes)
         {
             _firstRow = 0;
         }
+    }
+
+    auto& firstRow = GetMutableRowByOffset(0);
+    if (firstRow.GetWorkingDirectoryId() == 0)
+    {
+        firstRow.SetWorkingDirectoryId(evictedWorkingDirectoryId);
     }
 }
 
@@ -2819,7 +2827,6 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
         {
             newBuffer.GetMutableRowByOffset(newY).SetScrollbarData(oldRow.GetScrollbarData());
         }
-
         til::CoordType oldX = 0;
 
         // Copy oldRow into newBuffer until oldRow has been fully consumed.
@@ -2853,6 +2860,10 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
             }
 
             auto& newRow = newBuffer.GetMutableRowByOffset(newY);
+            if (oldX == 0)
+            {
+                newRow.SetWorkingDirectoryId(oldRow.GetWorkingDirectoryId());
+            }
 
             RowCopyTextFromState state{
                 .source = oldRow,
@@ -2932,6 +2943,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
         auto& newAttr = newRow.Attributes();
         newAttr = oldRow.Attributes();
         newAttr.resize_trailing_extent(newWidthU16);
+        newRow.SetWorkingDirectoryId(oldRow.GetWorkingDirectoryId());
     }
 
     // Since we didn't use IncrementCircularBuffer() we need to compute the proper
@@ -2949,6 +2961,7 @@ void TextBuffer::Reflow(TextBuffer& oldBuffer, TextBuffer& newBuffer, const View
 
     newBuffer.CopyProperties(oldBuffer);
     newBuffer.CopyHyperlinkMaps(oldBuffer);
+    newBuffer.CopyWorkingDirectoryMaps(oldBuffer);
 
     assert(newCursorPos.x >= 0 && newCursorPos.x < newWidth);
     assert(newCursorPos.y >= 0 && newCursorPos.y < newHeight);
@@ -3060,6 +3073,76 @@ void TextBuffer::CopyHyperlinkMaps(const TextBuffer& other)
     _hyperlinkMap = other._hyperlinkMap;
     _hyperlinkCustomIdMap = other._hyperlinkCustomIdMap;
     _currentHyperlinkId = other._currentHyperlinkId;
+}
+
+uint32_t TextBuffer::GetWorkingDirectoryId(const std::wstring_view workingDirectory)
+{
+    static constexpr size_t maxWorkingDirectories = 4096;
+
+    for (size_t index = 0; index < _workingDirectories.size(); ++index)
+    {
+        if (_workingDirectories[index] == workingDirectory)
+        {
+            return gsl::narrow<uint32_t>(index + 1);
+        }
+    }
+
+    if (_workingDirectories.size() >= maxWorkingDirectories)
+    {
+        _PruneWorkingDirectories();
+        for (size_t index = 0; index < _workingDirectories.size(); ++index)
+        {
+            if (!_workingDirectories[index].has_value())
+            {
+                _workingDirectories[index] = workingDirectory;
+                return gsl::narrow<uint32_t>(index + 1);
+            }
+        }
+        return 0;
+    }
+
+    _workingDirectories.emplace_back(workingDirectory);
+    return gsl::narrow<uint32_t>(_workingDirectories.size());
+}
+
+std::wstring_view TextBuffer::GetWorkingDirectoryFromId(const uint32_t id) const noexcept
+{
+    const auto index = static_cast<size_t>(id - 1);
+    if (id != 0 && index < _workingDirectories.size())
+    {
+        const auto& workingDirectory = _workingDirectories[index];
+        if (workingDirectory.has_value())
+        {
+            return *workingDirectory;
+        }
+    }
+    return {};
+}
+
+void TextBuffer::CopyWorkingDirectoryMaps(const TextBuffer& other)
+{
+    _workingDirectories = other._workingDirectories;
+}
+
+void TextBuffer::_PruneWorkingDirectories()
+{
+    std::unordered_set<uint32_t> idsInUse;
+    const auto height = GetSize().Height();
+    for (til::CoordType row = 0; row < height; ++row)
+    {
+        if (const auto id = GetRowByOffset(row).GetWorkingDirectoryId())
+        {
+            idsInUse.emplace(id);
+        }
+    }
+
+    for (size_t index = 0; index < _workingDirectories.size(); ++index)
+    {
+        if (!idsInUse.contains(gsl::narrow<uint32_t>(index + 1)))
+        {
+            _workingDirectories[index].reset();
+        }
+    }
 }
 
 // Searches through the entire (committed) text buffer for `needle` and returns the coordinates in absolute coordinates.

@@ -234,6 +234,7 @@ void ROW::Reset(const TextAttribute& attr) noexcept
     _lineRendition = LineRendition::SingleWidth;
     _wrapForced = false;
     _doubleBytePadded = false;
+    _workingDirectoryId = 0;
     _promptData = std::nullopt;
     _init();
 }
@@ -357,6 +358,7 @@ void ROW::CopyFrom(const ROW& source)
 {
     _lineRendition = source._lineRendition;
     _wrapForced = source._wrapForced;
+    _workingDirectoryId = source._workingDirectoryId;
 
     RowCopyTextFromState state{
         .source = source,
@@ -1252,6 +1254,16 @@ const std::optional<ScrollbarData>& ROW::GetScrollbarData() const noexcept
 void ROW::SetScrollbarData(std::optional<ScrollbarData> data) noexcept
 {
     _promptData = data;
+}
+
+uint32_t ROW::GetWorkingDirectoryId() const noexcept
+{
+    return _workingDirectoryId;
+}
+
+void ROW::SetWorkingDirectoryId(const uint32_t id) noexcept
+{
+    _workingDirectoryId = id;
 }
 
 void ROW::StartPrompt() noexcept

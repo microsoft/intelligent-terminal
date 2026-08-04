@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ClInclude Include="..\ClickableMatcher.hpp" />
     <ClInclude Include="..\ControlKeyStates.hpp" />
     <ClInclude Include="..\pch.h" />
     <ClInclude Include="..\Terminal.hpp" />

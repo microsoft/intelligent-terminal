@@ -3,6 +3,8 @@
 
 #include "pch.h"
 #include <WexTestClass.h>
+#include <wininet.h>
+#include <shlwapi.h>
 
 #include "../renderer/inc/DummyRenderer.hpp"
 #include "../cascadia/TerminalCore/Terminal.hpp"
@@ -601,6 +603,18 @@ void TerminalBufferTests::TestURLPatternDetection()
 {
     using namespace std::string_view_literals;
 
+    Log::Comment(L"Test working-directory reports before buffer creation");
+    {
+        Terminal preCreateTerminal{ Terminal::TestDummyMarker{} };
+        constexpr auto PreCreateWorkingDirectory = LR"(C:\pre-create)"sv;
+        preCreateTerminal.SetWorkingDirectory(PreCreateWorkingDirectory);
+        DummyRenderer renderer{ &preCreateTerminal };
+        preCreateTerminal.Create({ TerminalViewWidth, TerminalViewHeight }, TerminalHistoryLength, renderer);
+        VERIFY_ARE_EQUAL(preCreateTerminal._getWorkingDirectoryForRow(0),
+                         PreCreateWorkingDirectory,
+                         L"A working directory reported before buffer creation is applied after creation.");
+    }
+
     constexpr auto BeforeStr = L"<Before>"sv;
     constexpr auto UrlStr = L"https://www.contoso.com"sv;
     constexpr auto AfterStr = L"<After>"sv;
@@ -626,6 +640,10 @@ void TerminalBufferTests::TestURLPatternDetection()
     result = term->GetHyperlinkAtBufferPosition(til::point{ urlStartX, 0 });
     VERIFY_IS_TRUE(!result.empty(), L"A URL is detected at the start position.");
     VERIFY_ARE_EQUAL(result, UrlStr, L"Detected URL matches the given URL.");
+    const auto urlMatch = term->_resolveClickableMatch(term->_getClickableMatchers().front().id, UrlStr, 0);
+    VERIFY_IS_TRUE(urlMatch.has_value(), L"The URL matcher produces a click action.");
+    VERIFY_IS_TRUE(urlMatch->action == ClickAction::OpenUri);
+    VERIFY_ARE_EQUAL(urlMatch->target, UrlStr);
 
     result = term->GetHyperlinkAtBufferPosition(til::point{ urlEndX, 0 });
     VERIFY_IS_TRUE(!result.empty(), L"A URL is detected at the end position.");
@@ -633,6 +651,144 @@ void TerminalBufferTests::TestURLPatternDetection()
 
     result = term->GetHyperlinkAtBufferPosition(til::point{ urlEndX + 1, 0 });
     VERIFY_IS_TRUE(result.empty(), L"URL is not detected after the actual URL.");
+
+    Log::Comment(L"Test file path detection");
+    {
+        static std::atomic<uint64_t> counter{ 0 };
+        const auto scratchRoot = std::filesystem::temp_directory_path() /
+                                 fmt::format(FMT_COMPILE(L"TerminalFileLinks-{}-{}-{}"),
+                                             ::GetCurrentProcessId(),
+                                             ::GetTickCount64(),
+                                             counter.fetch_add(1, std::memory_order_relaxed));
+        const auto firstDirectory = scratchRoot / L"first";
+        const auto secondDirectory = scratchRoot / L"second";
+        std::filesystem::create_directories(firstDirectory);
+        std::filesystem::create_directories(secondDirectory);
+        auto cleanupScratch = wil::scope_exit([&]() {
+            std::error_code error;
+            std::filesystem::remove_all(scratchRoot, error);
+        });
+
+        const auto createFile = [](const std::filesystem::path& path) {
+            std::ofstream file{ path };
+            file << "test";
+        };
+        createFile(firstDirectory / L"README.md");
+        createFile(firstDirectory / L"release notes.txt");
+        createFile(firstDirectory / L"main.cpp");
+        createFile(secondDirectory / L"README.md");
+
+        const auto pathUri = [](const std::filesystem::path& path) {
+            std::wstring uri(INTERNET_MAX_URL_LENGTH, L'\0');
+            auto length = gsl::narrow<DWORD>(uri.size());
+            VERIFY_SUCCEEDED(UrlCreateFromPathW(path.c_str(), uri.data(), &length, 0));
+            uri.resize(length);
+            return uri;
+        };
+
+        term->SetWorkingDirectory(firstDirectory.native());
+
+        constexpr auto FilePrefix = L"\r\nfiles: "sv;
+        constexpr auto FileName = L"README.md"sv;
+        termSm.ProcessString(fmt::format(FMT_COMPILE(L"{}{}"), FilePrefix, FileName));
+        term->UpdatePatternsUnderLock();
+
+        const auto row = term->_mainBuffer->GetCursor().GetPosition().y;
+        const auto start = FilePrefix.size() - 2;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ start, row });
+        VERIFY_ARE_EQUAL(result, pathUri(firstDirectory / FileName), L"A listed file name resolves against the working directory.");
+        const auto fileMatch = term->_resolveClickableMatch(term->_getClickableMatchers().back().id, FileName, row);
+        VERIFY_IS_TRUE(fileMatch.has_value(), L"The file matcher produces a click action.");
+        VERIFY_IS_TRUE(fileMatch->action == ClickAction::OpenFile);
+        VERIFY_ARE_EQUAL(fileMatch->target, pathUri(firstDirectory / FileName));
+
+        std::filesystem::remove(firstDirectory / FileName);
+        const auto cachedFileMatch = term->_resolveClickableMatch(term->_getClickableMatchers().back().id, FileName, row);
+        VERIFY_IS_TRUE(cachedFileMatch.has_value(), L"Detection reuses a recent positive file result.");
+        const auto deletedFileActivation = term->_resolveClickableMatch(term->_getClickableMatchers().back().id,
+                                                                        FileName,
+                                                                        row,
+                                                                        ClickResolveMode::Activate);
+        VERIFY_IS_FALSE(deletedFileActivation.has_value(), L"Activation revalidates a cached file before opening it.");
+        createFile(firstDirectory / FileName);
+        const auto recreatedFileActivation = term->_resolveClickableMatch(term->_getClickableMatchers().back().id,
+                                                                          FileName,
+                                                                          row,
+                                                                          ClickResolveMode::Activate);
+        VERIFY_IS_TRUE(recreatedFileActivation.has_value(), L"Activation refreshes the cache after a file is recreated.");
+
+        result = term->GetHyperlinkAtBufferPosition(til::point{ start - 1, row });
+        VERIFY_IS_TRUE(result.empty(), L"Text before a file path is not linked.");
+
+        const auto absolutePath = firstDirectory / L"main.cpp";
+        termSm.ProcessString(fmt::format(FMT_COMPILE(L"\r\n{}"), absolutePath.native()));
+        term->UpdatePatternsUnderLock();
+        const auto absoluteRow = term->_mainBuffer->GetCursor().GetPosition().y;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ 0, absoluteRow });
+        VERIFY_ARE_EQUAL(result, pathUri(absolutePath), L"An absolute Windows path becomes a file URI.");
+
+        constexpr auto QuotedPath = LR"("release notes.txt")"sv;
+        termSm.ProcessString(fmt::format(FMT_COMPILE(L"\r\n{}"), QuotedPath));
+        term->UpdatePatternsUnderLock();
+        const auto quotedRow = term->_mainBuffer->GetCursor().GetPosition().y;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ 1, quotedRow });
+        VERIFY_ARE_EQUAL(result, pathUri(firstDirectory / L"release notes.txt"), L"A quoted path may contain spaces.");
+        result = term->GetHyperlinkAtBufferPosition(til::point{ 0, quotedRow });
+        VERIFY_IS_TRUE(result.empty(), L"Quotes are not part of the file link.");
+
+        termSm.ProcessString(L"\r\n");
+        term->SetWorkingDirectory(secondDirectory.native());
+        term->UpdatePatternsUnderLock();
+        result = term->GetHyperlinkAtBufferPosition(til::point{ start, row });
+        VERIFY_ARE_EQUAL(result, pathUri(firstDirectory / FileName), L"An earlier file link retains the working directory active when it was printed.");
+
+        constexpr auto MissingFile = L"missing-file.txt"sv;
+        termSm.ProcessString(fmt::format(FMT_COMPILE(L"{}"), MissingFile));
+        term->UpdatePatternsUnderLock();
+        const auto missingRow = term->_mainBuffer->GetCursor().GetPosition().y;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ 0, missingRow });
+        VERIFY_IS_TRUE(result.empty(), L"A nonexistent file is not linked.");
+        createFile(secondDirectory / MissingFile);
+        const auto cachedMissingFile = term->_resolveClickableMatch(term->_getClickableMatchers().back().id, MissingFile, missingRow);
+        VERIFY_IS_FALSE(cachedMissingFile.has_value(), L"Detection reuses a recent negative file result.");
+        const auto createdFileActivation = term->_resolveClickableMatch(term->_getClickableMatchers().back().id,
+                                                                        MissingFile,
+                                                                        missingRow,
+                                                                        ClickResolveMode::Activate);
+        VERIFY_IS_TRUE(createdFileActivation.has_value(), L"Activation discovers a file created after negative detection.");
+
+        constexpr auto DottedToken = L"\r\nversion.123"sv;
+        termSm.ProcessString(DottedToken);
+        term->UpdatePatternsUnderLock();
+        const auto dottedTokenRow = term->_mainBuffer->GetCursor().GetPosition().y;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ 0, dottedTokenRow });
+        VERIFY_IS_TRUE(result.empty(), L"A dotted token that is not a file is not linked.");
+
+        const auto currentWorkingDirectoryId = term->_mainBuffer->GetWorkingDirectoryId(secondDirectory.native());
+        term->_mainBuffer->GetMutableRowByOffset(0).SetWorkingDirectoryId(currentWorkingDirectoryId);
+        term->_mainBuffer->GetMutableRowByOffset(1).SetWorkingDirectoryId(0);
+        term->_mainBuffer->IncrementCircularBuffer();
+        VERIFY_ARE_EQUAL(term->_mainBuffer->GetRowByOffset(0).GetWorkingDirectoryId(),
+                         currentWorkingDirectoryId,
+                         L"Circular buffer rotation carries the active working directory forward.");
+
+        term->UseAlternateScreenBuffer(TextAttribute{});
+        VERIFY_ARE_EQUAL(term->_getWorkingDirectoryForRow(term->_altBuffer->GetCursor().GetPosition().y),
+                         secondDirectory.native(),
+                         L"The alternate buffer inherits the active working directory.");
+        term->SetWorkingDirectory(firstDirectory.native());
+        term->UseMainScreenBuffer();
+        VERIFY_ARE_EQUAL(term->_getWorkingDirectoryForRow(term->_mainBuffer->GetCursor().GetPosition().y),
+                         firstDirectory.native(),
+                         L"The main buffer receives working-directory changes made in the alternate buffer.");
+
+        constexpr auto UrlWithFileName = L"https://www.contoso.com/?file=README.md"sv;
+        termSm.ProcessString(fmt::format(FMT_COMPILE(L"\r\n{}"), UrlWithFileName));
+        term->UpdatePatternsUnderLock();
+        const auto urlRow = term->_mainBuffer->GetCursor().GetPosition().y;
+        result = term->GetHyperlinkAtBufferPosition(til::point{ gsl::narrow<til::CoordType>(UrlWithFileName.size() - 1), urlRow });
+        VERIFY_ARE_EQUAL(result, UrlWithFileName, L"URL detection takes precedence over an overlapping file name.");
+    }
 
     Log::Comment(L"Test wrapped URL detection");
     {

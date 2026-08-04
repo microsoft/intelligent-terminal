@@ -3,6 +3,9 @@
 
 #include "pch.h"
 #include "Terminal.hpp"
+
+#include <wininet.h>
+#include <shlwapi.h>
 #include "../../terminal/adapter/adaptDispatch.hpp"
 #include "../../terminal/parser/OutputStateMachineEngine.hpp"
 #include "../../inc/unicode.hpp"
@@ -49,6 +52,11 @@ void Terminal::Create(til::size viewportSize, til::CoordType scrollbackLines, Re
     const TextAttribute attr{};
     const UINT cursorSize = 12;
     _mainBuffer = std::make_unique<TextBuffer>(bufferSize, attr, cursorSize, true, &renderer);
+    if (!_workingDirectory.empty())
+    {
+        const auto id = _mainBuffer->GetWorkingDirectoryId(_workingDirectory);
+        _mainBuffer->GetMutableRowByOffset(0).SetWorkingDirectoryId(id);
+    }
 
     auto dispatch = std::make_unique<AdaptDispatch>(*this, &renderer, _renderSettings, _terminalInput);
     auto engine = std::make_unique<OutputStateMachineEngine>(std::move(dispatch));
@@ -555,9 +563,10 @@ std::wstring Terminal::GetHyperlinkAtBufferPosition(const til::point bufferPos)
     {
         for (const auto& result : results)
         {
-            if (result.value == _hyperlinkPatternId)
+            const auto text = buffer.GetPlainText(result.start, result.stop);
+            if (const auto match = _resolveClickableMatch(result.value, text, result.start.y, ClickResolveMode::Activate))
             {
-                return buffer.GetPlainText(result.start, result.stop);
+                return match->target;
             }
         }
     }
@@ -592,14 +601,11 @@ std::optional<PointTree::interval> Terminal::GetHyperlinkIntervalFromViewportPos
     {
         for (const auto& result : results)
         {
-            if (result.value == _hyperlinkPatternId)
-            {
-                // Convert back to viewport-relative coordinates
-                auto interval = result;
-                interval.start.y -= visStart;
-                interval.stop.y -= visStart;
-                return interval;
-            }
+            // Convert back to viewport-relative coordinates
+            auto interval = result;
+            interval.start.y -= visStart;
+            interval.stop.y -= visStart;
+            return interval;
         }
     }
     return std::nullopt;
@@ -1428,10 +1434,6 @@ static URegularExpressionInterner uregexInterner;
 
 PointTree Terminal::_getPatterns(til::CoordType beg, til::CoordType end) const
 {
-    static constexpr std::array<std::wstring_view, 1> patterns{
-        LR"(\b(?:https?|ftp|file)://[-A-Za-z0-9+&@#/%?=~_|$!:,.;]*[A-Za-z0-9+&@#/%=~_|$])",
-    };
-
     if (!_detectURLs)
     {
         return {};
@@ -1440,10 +1442,11 @@ PointTree Terminal::_getPatterns(til::CoordType beg, til::CoordType end) const
     auto text = ICU::UTextFromTextBuffer(_activeBuffer(), beg, end + 1);
     UErrorCode status = U_ZERO_ERROR;
     PointTree::interval_vector intervals;
+    const auto workingDirectories = _getWorkingDirectoriesForRows(beg, end);
 
-    for (size_t i = 0; i < patterns.size(); ++i)
+    for (const auto& matcher : _getClickableMatchers())
     {
-        const auto re = uregexInterner.Intern(patterns.at(i));
+        const auto re = uregexInterner.Intern(matcher.pattern);
         uregex_setUText(re.get(), &text, &status);
 
         if (uregex_find(re.get(), -1, &status))
@@ -1452,12 +1455,209 @@ PointTree Terminal::_getPatterns(til::CoordType beg, til::CoordType end) const
             {
                 // PointTree uses half-open ranges and buffer-absolute coordinates.
                 const auto range = ICU::BufferRangeFromMatch(&text, re.get());
-                intervals.push_back(PointTree::interval(range.start, range.end, 0));
+                const auto matchedText = _activeBuffer().GetPlainText(range.start, range.end);
+                const auto workingDirectory = til::at(workingDirectories, gsl::narrow<size_t>(range.start.y - beg));
+                if (!_resolveClickableMatch(matcher.id, matchedText, range.start.y, ClickResolveMode::Detect, workingDirectory))
+                {
+                    continue;
+                }
+
+                // Earlier matchers have priority when clickable regions overlap.
+                if (std::ranges::any_of(intervals, [&](const auto& interval) {
+                        return interval.start < range.end && range.start < interval.stop;
+                    }))
+                {
+                    continue;
+                }
+
+                intervals.emplace_back(range.start, range.end, matcher.id);
             } while (uregex_findNext(re.get(), &status));
         }
     }
 
     return PointTree{ std::move(intervals) };
+}
+
+std::span<const ClickableMatcher> Terminal::_getClickableMatchers() noexcept
+{
+    static constexpr std::array matchers{
+        ClickableMatcher{
+            .id = 0,
+            .pattern = LR"(\b(?:https?|ftp|file)://[-A-Za-z0-9+&@#/%?=~_|$!:,.;]*[A-Za-z0-9+&@#/%=~_|$])",
+            .action = ClickAction::OpenUri,
+        },
+        ClickableMatcher{
+            .id = 1,
+            .pattern = LR"((?:(?<=")(?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^"<>\r\n]+|[^"<>\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15})(?=")|(?<=')(?:(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^'<>\r\n]+|[^'<>\r\n]*\.[A-Za-z][A-Za-z0-9]{0,15})(?=')|(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^<>"|?*\s,;:)\]}]+(?=$|[\s,;:)\]}])|(?<![/:])(?:[\p{L}\p{N}_@+.-]+[\\/])*(?:[\p{L}\p{N}_@+-]+(?:\.[A-Za-z][A-Za-z0-9]{0,15})+|\.[A-Za-z][A-Za-z0-9_.-]{0,31})(?=$|[\s,;:)\]}])))",
+            .action = ClickAction::OpenFile,
+        },
+    };
+    return matchers;
+}
+
+std::optional<ClickableMatch> Terminal::_resolveClickableMatch(const size_t matcherId,
+                                                               const std::wstring_view text,
+                                                               const til::CoordType row,
+                                                               const ClickResolveMode mode,
+                                                               const std::optional<std::wstring_view> workingDirectory) const
+{
+    const auto matchers = _getClickableMatchers();
+    const auto matcher = std::ranges::find(matchers, matcherId, &ClickableMatcher::id);
+    if (matcher == matchers.end())
+    {
+        return std::nullopt;
+    }
+
+    std::wstring target;
+    switch (matcher->action)
+    {
+    case ClickAction::OpenUri:
+        target = text;
+        break;
+    case ClickAction::OpenFile:
+    {
+        const auto effectiveWorkingDirectory = workingDirectory.has_value() ?
+                                                   *workingDirectory :
+                                                   _getWorkingDirectoryForRow(row);
+        target = _getFilePathUri(text,
+                                 effectiveWorkingDirectory,
+                                 mode == ClickResolveMode::Detect);
+        break;
+    }
+    }
+
+    if (target.empty())
+    {
+        return std::nullopt;
+    }
+
+    return ClickableMatch{
+        .matcherId = matcherId,
+        .action = matcher->action,
+        .target = std::move(target),
+    };
+}
+
+std::wstring Terminal::_getFilePathUri(const std::wstring_view path,
+                                       const std::wstring_view workingDirectory,
+                                       const bool useCachedResult) const
+{
+    std::filesystem::path resolved{ path };
+    if (resolved.is_relative())
+    {
+        if (workingDirectory.empty())
+        {
+            return {};
+        }
+        resolved = std::filesystem::path{ workingDirectory } / resolved;
+    }
+    resolved = resolved.lexically_normal();
+
+    const auto nativePath = resolved.native();
+    const auto now = std::chrono::steady_clock::now();
+    if (useCachedResult)
+    {
+        if (const auto cached = _filePathCache.find(nativePath); cached != _filePathCache.end())
+        {
+            if (cached->second.expiresAt > now)
+            {
+                cached->second.generation = ++_filePathCacheGeneration;
+                return cached->second.uri;
+            }
+            _filePathCache.erase(cached);
+        }
+    }
+
+    std::wstring uri;
+    auto valid = !til::starts_with(nativePath, LR"(\\)");
+    if (valid && resolved.has_root_name())
+    {
+        const auto root = resolved.root_path().native();
+        if (GetDriveTypeW(root.c_str()) == DRIVE_REMOTE)
+        {
+            valid = false;
+        }
+    }
+
+    if (valid)
+    {
+        auto current = resolved.root_path();
+        for (const auto& component : resolved.relative_path())
+        {
+            current /= component;
+            const auto attributes = GetFileAttributesW(current.c_str());
+            if (attributes == INVALID_FILE_ATTRIBUTES ||
+                WI_IsFlagSet(attributes, FILE_ATTRIBUTE_REPARSE_POINT))
+            {
+                valid = false;
+                break;
+            }
+        }
+    }
+
+    if (valid)
+    {
+        uri.resize(INTERNET_MAX_URL_LENGTH);
+        auto uriLength = gsl::narrow<DWORD>(uri.size());
+        if (SUCCEEDED(UrlCreateFromPathW(resolved.c_str(), uri.data(), &uriLength, 0)))
+        {
+            uri.resize(uriLength);
+        }
+        else
+        {
+            uri.clear();
+        }
+    }
+
+    static constexpr size_t maxCacheEntries = 512;
+    static constexpr auto positiveCacheLifetime = std::chrono::seconds{ 5 };
+    static constexpr auto negativeCacheLifetime = std::chrono::seconds{ 1 };
+    if (!_filePathCache.contains(nativePath) && _filePathCache.size() >= maxCacheEntries)
+    {
+        const auto oldest = std::ranges::min_element(_filePathCache, {}, [](const auto& entry) {
+            return entry.second.generation;
+        });
+        _filePathCache.erase(oldest);
+    }
+    _filePathCache.insert_or_assign(nativePath,
+                                    FilePathCacheEntry{
+                                        .uri = uri,
+                                        .expiresAt = now + (uri.empty() ? negativeCacheLifetime : positiveCacheLifetime),
+                                        .generation = ++_filePathCacheGeneration,
+                                    });
+    return uri;
+}
+
+std::wstring_view Terminal::_getWorkingDirectoryForRow(til::CoordType row) const noexcept
+{
+    const auto& buffer = _activeBuffer();
+    for (; row >= 0; --row)
+    {
+        const auto id = buffer.GetRowByOffset(row).GetWorkingDirectoryId();
+        if (id != 0)
+        {
+            return buffer.GetWorkingDirectoryFromId(id);
+        }
+    }
+    return {};
+}
+
+std::vector<std::wstring_view> Terminal::_getWorkingDirectoriesForRows(const til::CoordType beg, const til::CoordType end) const
+{
+    std::vector<std::wstring_view> result;
+    result.reserve(gsl::narrow<size_t>(end - beg + 1));
+
+    const auto& buffer = _activeBuffer();
+    auto workingDirectory = _getWorkingDirectoryForRow(beg);
+    for (auto row = beg; row <= end; ++row)
+    {
+        if (const auto id = buffer.GetRowByOffset(row).GetWorkingDirectoryId())
+        {
+            workingDirectory = buffer.GetWorkingDirectoryFromId(id);
+        }
+        result.emplace_back(workingDirectory);
+    }
+    return result;
 }
 
 // NOTE: This is the version of AddMark that comes from the UI. The VT api call into this too.
