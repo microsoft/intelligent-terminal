@@ -1656,39 +1656,45 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
     AppendMenuW(menu, MF_SEPARATOR, 0, L"");
 
     // A submenu to focus a specific window. Lists all windows that we manage.
-    if (const auto submenu = CreatePopupMenu())
+    // Skipped when there are none: before keep-running, the icon could never
+    // outlive the last window, so an empty list was unreachable — now it is the
+    // normal headless state, and an always-empty submenu is just noise.
+    if (!_windows.empty())
     {
-        static constexpr MENUINFO submenuInfo{
-            .cbSize = sizeof(MENUINFO),
-            .fMask = MIM_MENUDATA,
-            .dwStyle = MNS_NOTIFYBYPOS,
-        };
-        SetMenuInfo(submenu, &submenuInfo);
-
-        std::wstring displayText;
-        displayText.reserve(64);
-
-        for (const auto& host : _windows)
+        if (const auto submenu = CreatePopupMenu())
         {
-            const auto logic = host->Logic();
-            const auto props = logic.WindowProperties();
-            const auto id = props.WindowId();
+            static constexpr MENUINFO submenuInfo{
+                .cbSize = sizeof(MENUINFO),
+                .fMask = MIM_MENUDATA,
+                .dwStyle = MNS_NOTIFYBYPOS,
+            };
+            SetMenuInfo(submenu, &submenuInfo);
 
-            displayText.clear();
-            fmt::format_to(std::back_inserter(displayText), L"#{}", id);
-            if (const auto title = logic.Title(); !title.empty())
+            std::wstring displayText;
+            displayText.reserve(64);
+
+            for (const auto& host : _windows)
             {
-                fmt::format_to(std::back_inserter(displayText), L": {}", title);
-            }
-            if (const auto name = props.WindowName(); !name.empty())
-            {
-                fmt::format_to(std::back_inserter(displayText), L" [{}]", name);
+                const auto logic = host->Logic();
+                const auto props = logic.WindowProperties();
+                const auto id = props.WindowId();
+
+                displayText.clear();
+                fmt::format_to(std::back_inserter(displayText), L"#{}", id);
+                if (const auto title = logic.Title(); !title.empty())
+                {
+                    fmt::format_to(std::back_inserter(displayText), L": {}", title);
+                }
+                if (const auto name = props.WindowName(); !name.empty())
+                {
+                    fmt::format_to(std::back_inserter(displayText), L" [{}]", name);
+                }
+
+                AppendMenuW(submenu, MF_STRING, gsl::narrow_cast<UINT_PTR>(id), displayText.c_str());
             }
 
-            AppendMenuW(submenu, MF_STRING, gsl::narrow_cast<UINT_PTR>(id), displayText.c_str());
+            AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), RS_(L"NotificationIconWindowSubmenu").c_str());
         }
-
-        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), RS_(L"NotificationIconWindowSubmenu").c_str());
     }
 
     // Sessions that are still running with no window. Without this the icon
