@@ -21,8 +21,13 @@ namespace TerminalApp
         // the same detached state Detach() above produces, just held
         // deliberately and indefinitely rather than in transit between windows.
         // See doc/specs/keep-running-sessions.md.
-        void DetachForKeepRunning(Guid sessionId, Microsoft.Terminal.Control.TermControl control);
+        void DetachForKeepRunning(Guid sessionId, String title, Microsoft.Terminal.Control.TermControl control);
         UInt64 TryReattachKeptSession(Guid sessionId);
+        // Session id -> the tab title it was detached from, for anything that
+        // needs to show the user what is still running with no window.
+        Windows.Foundation.Collections.IMapView<Guid, String> KeptSessions();
+        // Ends a detached session and lets its shell be torn down.
+        void DiscardKeptSession(Guid sessionId);
         Boolean HasKeptSessions { get; };
         event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> KeptSessionsChanged;
     }

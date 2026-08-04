@@ -108,6 +108,9 @@ private:
     bool _hasKeptSessions() const;
     bool _restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupKeptSessionTracking();
+    winrt::TerminalApp::ContentManager _keptSessionManager() const;
+    void _restoreKeptSession(const winrt::guid& sessionId);
+    void _discardKeptSession(const winrt::guid& sessionId);
 
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
@@ -130,6 +133,10 @@ private:
     std::wstring _pendingAumidLnkPath;
     std::wstring _pendingAumid;
     winrt::event_token _keptSessionsChangedToken{};
+    // Menu ids for the detached-session items, kept in the order the menu was
+    // built so a click can map back to a session. Well clear of any window id.
+    static constexpr UINT KeptSessionMenuIdBase = 0x40000000;
+    std::vector<winrt::guid> _keptSessionMenuIds;
 
 #if 0 // #ifdef NDEBUG
     static constexpr void _assertIsMainThread() noexcept

@@ -44,8 +44,10 @@ namespace winrt::TerminalApp::implementation
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
-        void DetachForKeepRunning(const winrt::guid& sessionId, const Microsoft::Terminal::Control::TermControl& control);
+        void DetachForKeepRunning(const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control);
         uint64_t TryReattachKeptSession(const winrt::guid& sessionId);
+        winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> KeptSessions();
+        void DiscardKeptSession(const winrt::guid& sessionId);
         bool HasKeptSessions() const noexcept;
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
@@ -56,6 +58,9 @@ namespace winrt::TerminalApp::implementation
         struct KeptSession
         {
             uint64_t contentId{ 0 };
+            // The tab title this was detached from, so the notification-area
+            // menu can name what is still running.
+            winrt::hstring title;
             // A detached content has no TermControl, so nothing else is left
             // watching its connection. This is how we notice a shell that exits
             // while detached.

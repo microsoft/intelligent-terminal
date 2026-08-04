@@ -52,7 +52,7 @@ namespace winrt::TerminalApp::implementation
     // alive with no window. The content keeps its ConptyConnection — and
     // therefore its output thread and its Terminal buffer — so the shell keeps
     // running and its scrollback keeps filling while nothing is attached.
-    void ContentManager::DetachForKeepRunning(const winrt::guid& sessionId, const Microsoft::Terminal::Control::TermControl& control)
+    void ContentManager::DetachForKeepRunning(const winrt::guid& sessionId, const winrt::hstring& title, const Microsoft::Terminal::Control::TermControl& control)
     {
         if (!control || sessionId == winrt::guid{})
         {
@@ -70,6 +70,7 @@ namespace winrt::TerminalApp::implementation
 
         KeptSession kept;
         kept.contentId = contentId;
+        kept.title = title;
 
         // Detaching severed the only thing that was watching this connection —
         // TermControl::Detach() clears its revokers. Without our own watch, a
@@ -127,6 +128,40 @@ namespace winrt::TerminalApp::implementation
     bool ContentManager::HasKeptSessions() const noexcept
     {
         return !_keptSessions.empty();
+    }
+
+    // What is still running with no window, for the notification-area menu.
+    winrt::Windows::Foundation::Collections::IMapView<winrt::guid, winrt::hstring> ContentManager::KeptSessions()
+    {
+        auto map = winrt::single_threaded_map<winrt::guid, winrt::hstring>();
+        for (const auto& [sessionId, kept] : _keptSessions)
+        {
+            map.Insert(sessionId, kept.title);
+        }
+        return map.GetView();
+    }
+
+    // Ends a detached session on purpose. Closing the content is what tears the
+    // shell down, and _closedHandler drops it from both maps and tells the
+    // emperor it may now have one fewer reason to stay alive.
+    void ContentManager::DiscardKeptSession(const winrt::guid& sessionId)
+    {
+        const auto it = _keptSessions.find(sessionId);
+        if (it == _keptSessions.end())
+        {
+            return;
+        }
+
+        const auto contentId = it->second.contentId;
+        if (const auto content{ TryLookupCore(contentId) })
+        {
+            content.Close();
+            return;
+        }
+
+        // Already gone; just forget it.
+        _keptSessions.erase(it);
+        KeptSessionsChanged.raise(*this, nullptr);
     }
 
     // Runs on the UI thread after a detached session's connection changed state.
