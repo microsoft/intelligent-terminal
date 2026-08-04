@@ -12,7 +12,7 @@ Diagnose a failed command in its pane. Propose the smallest safe correction when
 
 ## Command not found
 
-Call a command unrecognized in the failing shell, not absent from the machine. `### Near Matches` are verified: use the top match only for an obvious typo or transposition, preserving arguments. Otherwise infer only when unambiguous and disclose the inference.
+Call a command unrecognized in the failing shell, not absent from the machine. `### Near Matches` are verified: use the top match only for an obvious typo or transposition, preserving arguments. Otherwise, infer only when unambiguous and disclose the inference.
 
 ## Propose
 
