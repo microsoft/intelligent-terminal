@@ -1691,6 +1691,44 @@ void WindowEmperor::_notificationAreaMenuRequested(const WPARAM wParam)
         AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), RS_(L"NotificationIconWindowSubmenu").c_str());
     }
 
+    // Sessions that are still running with no window. Without this the icon
+    // announces that *something* is alive but gives no way to see what, get it
+    // back, or stop it — and with no window there is nothing else on screen.
+    _keptSessionMenuIds.clear();
+    if (const auto manager = _keptSessionManager())
+    {
+        const auto sessions = manager.KeptSessions();
+        if (sessions.Size() > 0)
+        {
+            AppendMenuW(menu, MF_SEPARATOR, 0, L"");
+
+            std::wstring displayText;
+            for (const auto& entry : sessions)
+            {
+                const auto index = _keptSessionMenuIds.size();
+                _keptSessionMenuIds.push_back(entry.Key());
+
+                displayText = entry.Value().empty() ? std::wstring{ L"(untitled)" } : std::wstring{ entry.Value() };
+
+                // Each session gets its own submenu so restoring and closing
+                // stay distinct — a single click doing either would be a trap.
+                if (const auto sessionMenu = CreatePopupMenu())
+                {
+                    static constexpr MENUINFO sessionMenuInfo{
+                        .cbSize = sizeof(MENUINFO),
+                        .fMask = MIM_MENUDATA,
+                        .dwStyle = MNS_NOTIFYBYPOS,
+                    };
+                    SetMenuInfo(sessionMenu, &sessionMenuInfo);
+
+                    AppendMenuW(sessionMenu, MF_STRING, KeptSessionMenuIdBase + index * 2, RS_(L"NotificationIconRestoreSession").c_str());
+                    AppendMenuW(sessionMenu, MF_STRING, KeptSessionMenuIdBase + index * 2 + 1, RS_(L"NotificationIconCloseSession").c_str());
+                    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sessionMenu), displayText.c_str());
+                }
+            }
+        }
+    }
+
     // We'll need to set our window to the foreground before calling
     // TrackPopupMenuEx or else the menu won't dismiss when clicking away.
     SetForegroundWindow(_window.get());
@@ -1713,6 +1751,28 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     const auto menu = reinterpret_cast<HMENU>(lParam);
     const auto menuItemIndex = LOWORD(wParam);
     const auto windowId = GetMenuItemID(menu, menuItemIndex);
+
+    // Detached-session items live in their own id range so they can't be
+    // confused with window ids.
+    if (windowId >= KeptSessionMenuIdBase)
+    {
+        const auto offset = windowId - KeptSessionMenuIdBase;
+        const size_t index = offset / 2;
+        const auto isClose = (offset % 2) != 0;
+        if (index < _keptSessionMenuIds.size())
+        {
+            const auto sessionId = til::at(_keptSessionMenuIds, index);
+            if (isClose)
+            {
+                _discardKeptSession(sessionId);
+            }
+            else
+            {
+                _restoreKeptSession(sessionId);
+            }
+        }
+        return;
+    }
 
     // With kept sessions and no windows there is nothing to summon, and the
     // icon would be a dead end. Open a fresh window instead, which is also
@@ -1737,6 +1797,68 @@ void WindowEmperor::_notificationAreaMenuClicked(const WPARAM wParam, const LPAR
     args.SummonBehavior.ToMonitor(winrt::TerminalApp::MonitorBehavior::InPlace);
     std::ignore = _summonWindow(std::move(args));
 }
+
+winrt::TerminalApp::ContentManager WindowEmperor::_keptSessionManager() const
+{
+    try
+    {
+        if (const auto logic = _app.Logic())
+        {
+            return logic.ContentManager();
+        }
+    }
+    CATCH_LOG();
+    return nullptr;
+}
+
+// Brings a detached session back on screen. The content is right here in the
+// ContentManager, so this reuses the same "open with existing content" path a
+// cross-window pane drag uses, rather than going anywhere near the saved
+// snapshot.
+void WindowEmperor::_restoreKeptSession(const winrt::guid& sessionId)
+try
+{
+    const auto manager = _keptSessionManager();
+    if (!manager)
+    {
+        return;
+    }
+
+    // Atomic take: after this the session is ours and is no longer listed.
+    const auto contentId = manager.TryReattachKeptSession(sessionId);
+    if (contentId == 0)
+    {
+        return;
+    }
+
+    using namespace winrt::Microsoft::Terminal::Settings::Model;
+    NewTerminalArgs terminalArgs;
+    terminalArgs.ContentId(contentId);
+    const NewTabArgs newTabArgs{ terminalArgs };
+    const ActionAndArgs action{ ShortcutAction::NewTab, newTabArgs };
+    const auto actions = winrt::single_threaded_vector<ActionAndArgs>({ action });
+    const auto content = ActionAndArgs::Serialize(actions);
+
+    if (_windows.empty())
+    {
+        CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs{ winrt::hstring{}, content, nullptr });
+    }
+    else
+    {
+        _windows.front()->Logic().AttachContent(content, 0);
+    }
+}
+CATCH_LOG()
+
+void WindowEmperor::_discardKeptSession(const winrt::guid& sessionId)
+try
+{
+    if (const auto manager = _keptSessionManager())
+    {
+        manager.DiscardKeptSession(sessionId);
+    }
+}
+CATCH_LOG()
 
 #pragma endregion
 #pragma region GlobalHotkeys
