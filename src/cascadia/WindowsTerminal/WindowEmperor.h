@@ -35,6 +35,8 @@ public:
         // Posted when a "keep running" session is detached or released, so the
         // emperor can re-evaluate whether it still has a reason to exist.
         WM_KEPT_SESSIONS_CHANGED,
+        WM_GET_DETACHED_SESSIONS_FOR_PROTOCOL,
+        WM_KILL_DETACHED_SESSION_FOR_PROTOCOL,
     };
 
     // Used by WM_GET_WINDOW_LIST.  Callers allocate a vector on their
@@ -50,6 +52,27 @@ public:
     {
         uint64_t Id;
         std::shared_ptr<AppHost> Host;
+    };
+
+    struct DetachedSessionProtocolEntry
+    {
+        GUID SessionId{};
+        GUID GroupId{};
+        std::wstring TabTitle;
+        std::wstring ShellSessionId;
+        uint32_t Pid{ 0 };
+    };
+
+    struct DetachedSessionsProtocolRequest
+    {
+        std::vector<DetachedSessionProtocolEntry> Rows;
+    };
+
+    struct KillDetachedSessionProtocolRequest
+    {
+        GUID SessionId{};
+        bool Found{ false };
+        bool Killed{ false };
     };
 
     WindowEmperor();
@@ -70,7 +93,8 @@ public:
     const std::vector<std::shared_ptr<::AppHost>>& GetWindows() const noexcept { return _windows; }
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
     std::shared_ptr<AppHost> GetWindowForProtocol(uint64_t id) const noexcept;
-    winrt::TerminalApp::ContentManager GetContentManager() const;
+    std::vector<DetachedSessionProtocolEntry> GetDetachedSessionsForProtocol() const noexcept;
+    bool KillDetachedSessionForProtocol(const GUID& sessionId) const noexcept;
 
 private:
     struct SummonWindowSelectionArgs
@@ -111,6 +135,7 @@ private:
     void _setupKeptSessionTracking();
     void _restoreKeptSession(const winrt::guid& groupId);
     void _discardKeptSession(const winrt::guid& groupId);
+    winrt::TerminalApp::ContentManager _keptSessionManager() const;
 
     wil::unique_hwnd _window;
     winrt::TerminalApp::App _app{ nullptr };
