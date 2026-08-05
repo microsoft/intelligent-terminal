@@ -248,6 +248,14 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
+                        x:Uid="AIAgents_ShowTokenUsageAndCost">
+                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
+                              MinWidth="0"
+                              AutomationProperties.AccessibilityView="Content"
+                    IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
+            </local:SettingContainer>
+
             <!--  Automatic error detection (parent) + Automatic error
                   suggestion (dependent child). Modeled as an Expander so the
                   hierarchy is explicit: detection's master toggle lives in the

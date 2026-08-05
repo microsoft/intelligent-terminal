@@ -84,6 +84,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(CustomModelProviderMultiModelDisplay);
         TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
+        TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
 
@@ -607,6 +608,15 @@ namespace SettingsModelUnitTests
         // Absent → falls back to the "bottom" default (MTSMSettings.h).
         const auto defaulted = MakeSettings({});
         VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, defaulted->GlobalSettings().AgentPanePosition());
+    }
+
+    void CustomAgentAndPolicyTests::ShowTokenUsageAndCostRoundtripsAndDefaultsOff()
+    {
+        const auto enabled = MakeSettings(R"("showTokenUsageAndCost": true)");
+        VERIFY_IS_TRUE(enabled->GlobalSettings().ShowTokenUsageAndCost());
+
+        const auto defaulted = MakeSettings({});
+        VERIFY_IS_FALSE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
     }
 
     void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()

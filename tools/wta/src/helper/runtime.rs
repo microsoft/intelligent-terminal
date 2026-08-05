@@ -280,6 +280,61 @@ async fn run_acp_app(
         .run_until(async move {
             let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
             let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let proposal_channels =
+                Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+            let (proposal_pipe_tx, mut proposal_pipe_rx) =
+                tokio::sync::mpsc::unbounded_channel();
+            let proposal_server_manager = Arc::clone(&proposal_channels);
+            let proposal_server_lifecycle = Arc::clone(&proposal_channels);
+            tokio::task::spawn_local(async move {
+                if let Err(error) =
+                    crate::agent_tools::action_proposal::pipe::run_server(
+                        proposal_server_manager,
+                        proposal_pipe_tx,
+                    )
+                    .await
+                {
+                    proposal_server_lifecycle.set_pipe_available(false);
+                    tracing::error!(
+                        target: "proposal_pipe",
+                        error = %format!("{error:#}"),
+                        "proposal pipe server stopped"
+                    );
+                }
+            });
+            let proposal_event_tx = event_tx.clone();
+            tokio::task::spawn_local(async move {
+                while let Some(event) = proposal_pipe_rx.recv().await {
+                    let app_event = match event {
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Validate {
+                            context,
+                            payload,
+                            responder,
+                        } => app::AppEvent::DirectTerminalActionProposal {
+                            context,
+                            payload,
+                            responder,
+                        },
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Commit {
+                            proposal_id,
+                        } => {
+                            app::AppEvent::DirectTerminalActionProposalCommit { proposal_id }
+                        }
+                        crate::agent_tools::action_proposal::pipe::ProposalPipeEvent::Invalidate {
+                            proposal_id,
+                            session_id,
+                        } => app::AppEvent::DirectTerminalActionProposalInvalidate {
+                            proposal_id,
+                            session_id,
+                        },
+                    };
+                    if proposal_event_tx.send(app_event).is_err() {
+                        break;
+                    }
+                }
+            });
 
             let evt_tx = event_tx.clone();
             tokio::task::spawn_local(event::read_crossterm_events(evt_tx));
@@ -637,6 +692,7 @@ async fn run_acp_app(
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
+                let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     if let Err(e) = protocol::acp::client::run_acp_client_over_pipe(
                         pipe_name,
@@ -660,6 +716,7 @@ async fn run_acp_app(
                         shell_mgr_for_pipe,
                         wt_connected,
                         false, // post_login_reconnect: first connection, no authenticate needed
+                        proposal_channels_for_pipe,
                     )
                     .await
                     {
@@ -715,6 +772,7 @@ async fn run_acp_app(
 
             let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to

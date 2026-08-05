@@ -670,7 +670,8 @@ namespace SettingsModelUnitTests
         static constexpr std::string_view userSettings{ R"({
             "profiles": {
                 "defaults": {
-                    "agentPaneBackend": "host:claude"
+                    "agentPaneBackend": "host:claude",
+                    "commandPaletteAgent": "host:gemini"
                 },
                 "list": [
                     {
@@ -680,7 +681,8 @@ namespace SettingsModelUnitTests
                     {
                         "name": "wsl",
                         "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
-                        "agentPaneBackend": "wsl:Ubuntu:copilot"
+                        "agentPaneBackend": "wsl:Ubuntu:copilot",
+                        "commandPaletteAgent": "wsl:Ubuntu:claude"
                     }
                 ]
             }
@@ -691,11 +693,17 @@ namespace SettingsModelUnitTests
 
         VERIFY_ARE_EQUAL(L"host:claude", profiles.GetAt(0).AgentPaneBackend());
         VERIFY_IS_FALSE(profiles.GetAt(0).HasAgentPaneBackend());
+        VERIFY_ARE_EQUAL(L"host:gemini", profiles.GetAt(0).CommandPaletteAgent());
+        VERIFY_IS_FALSE(profiles.GetAt(0).HasCommandPaletteAgent());
         VERIFY_ARE_EQUAL(L"wsl:Ubuntu:copilot", profiles.GetAt(1).AgentPaneBackend());
         VERIFY_IS_TRUE(profiles.GetAt(1).HasAgentPaneBackend());
+        VERIFY_ARE_EQUAL(L"wsl:Ubuntu:claude", profiles.GetAt(1).CommandPaletteAgent());
+        VERIFY_IS_TRUE(profiles.GetAt(1).HasCommandPaletteAgent());
 
         profiles.GetAt(1).ClearAgentPaneBackend();
         VERIFY_ARE_EQUAL(L"host:claude", profiles.GetAt(1).AgentPaneBackend());
+        profiles.GetAt(1).ClearCommandPaletteAgent();
+        VERIFY_ARE_EQUAL(L"host:gemini", profiles.GetAt(1).CommandPaletteAgent());
 
         using ::Microsoft::Terminal::Settings::Model::AgentPaneBackend;
         using ::Microsoft::Terminal::Settings::Model::AgentPaneBackendSource;

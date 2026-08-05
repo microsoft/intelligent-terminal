@@ -267,6 +267,7 @@ unstashes
 unstashing
 upserting
 upserts
+usd
 usize
 vcxprojs
 vendored

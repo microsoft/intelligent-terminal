@@ -123,20 +123,7 @@ impl App {
             );
             return;
         };
-        let view = match tab.current_view {
-            View::Agents => "sessions",
-            View::Chat => "chat",
-        };
-        let evt = serde_json::json!({
-            "type": "event",
-            "method": "agent_state_changed",
-            "params": {
-                "tab_id":    target_tab,
-                "view":      view,
-                "pane_open": tab.pane_open,
-                "pane_position": tab.agent_pane_position,
-            }
-        });
+        let evt = build_agent_state_changed_event(target_tab, tab);
         send_wt_protocol_event(evt.to_string());
 
         // Autofix bar is window-level (single bottom bar reflecting the
@@ -146,4 +133,28 @@ impl App {
             send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
         }
     }
+}
+
+pub(super) fn build_agent_state_changed_event(
+    target_tab: &str,
+    tab: &TabSession,
+) -> serde_json::Value {
+    let view = match tab.current_view {
+        View::Agents => "sessions",
+        View::Chat => "chat",
+    };
+    let usage = tab.usage.as_ref().map(|snapshot| {
+        crate::usage::UsageProjection::with_staleness(snapshot, tab.usage_staleness)
+    });
+    serde_json::json!({
+        "type": "event",
+        "method": "agent_state_changed",
+        "params": {
+            "tab_id": target_tab,
+            "view": view,
+            "pane_open": tab.pane_open,
+            "pane_position": tab.agent_pane_position,
+            "usage": usage,
+        }
+    })
 }

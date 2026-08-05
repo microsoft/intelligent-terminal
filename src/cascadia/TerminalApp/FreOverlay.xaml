@@ -494,6 +494,32 @@
                                           VerticalAlignment="Center" />
                             </Grid>
                         </Border>
+
+                        <!--  Usage and cost visibility  -->
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Uid="FreOverlay_ShowTokenUsageAndCostLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Uid="FreOverlay_ShowTokenUsageAndCostDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle" Grid.Column="1"
+                                              IsOn="False" VerticalAlignment="Center"
+                                              HorizontalAlignment="Right" MinWidth="0" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 

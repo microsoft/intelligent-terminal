@@ -278,6 +278,7 @@ pub(crate) fn spawn_agent_process(
             );
         }
     }
+    cmd.env("WTA_CLI_PATH", wta_cli_directory()?.join("wta.exe"));
 
     // Tell the agent CLI's hook scripts (`send-event.ps1`, inherited via the
     // CLI → node → powershell process chain) where to write their diagnostic

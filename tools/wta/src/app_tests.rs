@@ -5,6 +5,8 @@
 //! this was an inline `mod tests { ... }` block.
 
 use super::*;
+use crate::app::tab_state::collapsed_prompt_preview;
+use crate::app_contracts::{PermOption, PlanEntry};
 use serde_json::json;
 
 /// Custom-agent preflight regression: when the user's `acpAgent` is a
@@ -1258,6 +1260,11 @@ fn load_session_applied_when_target_tab_matches_owner() {
     app.owner_tab_id = Some("OWNER-TAB".to_string());
     app.tab_sessions
         .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.tab_sessions.get_mut("OWNER-TAB").unwrap().session_id = Some("old-session".into());
+    app.session_model_configs.insert(
+        "old-session".into(),
+        (vec![model_info("gpt-5.6-sol")], Some("gpt-5.6-sol".into())),
+    );
 
     app.handle_event(AppEvent::WtEvent {
         method: "load_session".to_string(),
@@ -1276,6 +1283,12 @@ fn load_session_applied_when_target_tab_matches_owner() {
     assert_eq!(req.tab_id, "OWNER-TAB");
     assert_eq!(req.session_id, "sess-abc");
     assert_eq!(req.cwd.as_deref(), Some("C:/foo"));
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].session_id.as_deref(),
+        Some("old-session"),
+        "the previous session remains authoritative until load succeeds"
+    );
+    assert!(app.session_model_configs.contains_key("old-session"));
 }
 
 #[test]
@@ -1994,6 +2007,168 @@ fn model_info(id: &str) -> AcpModelInfo {
     }
 }
 
+fn custom_model_info(id: &str) -> CustomModelCatalogEntry {
+    CustomModelCatalogEntry {
+        selection_id: id.to_string(),
+        model_id: id.to_string(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn model_config_update_refreshes_active_session_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-1".into());
+    app.available_models = vec![model_info("claude-sonnet-5")];
+    app.current_model_id = Some("claude-sonnet-5".into());
+    app.set_custom_model_config(
+        vec![
+            custom_model_info("claude-sonnet-5"),
+            custom_model_info("gpt-5.6-sol"),
+        ],
+        None,
+    );
+
+    app.handle_event(AppEvent::ModelConfigUpdated {
+        session_id: "sid-1".into(),
+        available_models: vec![model_info("claude-sonnet-5"), model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(app.available_models.len(), 2);
+    app.open_model_picker();
+    assert_eq!(
+        app.current_tab().model_picker_selected,
+        1,
+        "the picker must highlight the model reported by the latest config update"
+    );
+    assert_eq!(
+        app.model_popup_state().and_then(|state| state.current_id),
+        Some("gpt-5.6-sol")
+    );
+}
+
+#[test]
+fn model_config_update_without_model_clears_active_session_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-1".into());
+    app.available_models = vec![model_info("gpt-5.6-sol")];
+    app.current_model_id = Some("gpt-5.6-sol".into());
+
+    app.handle_event(AppEvent::ModelConfigUpdated {
+        session_id: "sid-1".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert!(app.available_models.is_empty());
+    assert_eq!(app.current_model_id, None);
+}
+
+#[test]
+fn model_config_update_before_session_attach_is_applied_on_attach() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("claude-sonnet-5")];
+    app.current_model_id = Some("claude-sonnet-5".into());
+
+    app.handle_event(AppEvent::ModelConfigUpdated {
+        session_id: "sid-later".into(),
+        available_models: vec![model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("claude-sonnet-5"));
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-later".into(),
+        available_models: vec![model_info("claude-sonnet-5")],
+        current_model_id: Some("claude-sonnet-5".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(app.available_models[0].id, "gpt-5.6-sol");
+}
+
+#[test]
+fn session_attach_prunes_replaced_session_model_config() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-old".into());
+    app.session_to_tab
+        .insert("sid-old".into(), DEFAULT_TAB_ID.into());
+    app.session_model_configs.insert(
+        "sid-old".into(),
+        (
+            vec![model_info("claude-sonnet-5")],
+            Some("claude-sonnet-5".into()),
+        ),
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "sid-new".into(),
+        available_models: vec![model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert!(!app.session_to_tab.contains_key("sid-old"));
+    assert!(!app.session_model_configs.contains_key("sid-old"));
+}
+
+#[test]
+fn background_session_attach_waits_for_tab_switch_to_update_picker() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("claude-sonnet-5")];
+    app.current_model_id = Some("claude-sonnet-5".into());
+    app.tab_sessions
+        .insert("background".into(), TabSession::default());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "background".into(),
+        session_id: "sid-background".into(),
+        available_models: vec![model_info("gpt-5.6-sol")],
+        current_model_id: Some("gpt-5.6-sol".into()),
+    });
+
+    assert_eq!(app.current_model_id.as_deref(), Some("claude-sonnet-5"));
+
+    app.switch_tab_session("background".into());
+
+    assert_eq!(app.current_model_id.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(app.available_models[0].id, "gpt-5.6-sol");
+}
+
+#[test]
+fn switching_to_tab_without_session_clears_model_picker() {
+    let mut app = test_app();
+    app.available_models = vec![model_info("gpt-5.6-sol")];
+    app.current_model_id = Some("gpt-5.6-sol".into());
+    app.tab_sessions
+        .insert("without-session".into(), TabSession::default());
+
+    app.switch_tab_session("without-session".into());
+
+    assert!(app.available_models.is_empty());
+    assert_eq!(app.current_model_id, None);
+}
+
+#[test]
+fn new_session_prunes_previous_model_config() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-old".into());
+    app.session_model_configs.insert(
+        "sid-old".into(),
+        (vec![model_info("gpt-5.6-sol")], Some("gpt-5.6-sol".into())),
+    );
+
+    app.cmd_new(false);
+
+    assert!(!app.session_model_configs.contains_key("sid-old"));
+}
+
+/// `/model <id>` records a per-pane override and hot-applies it to *that*
+/// tab's live session (a targeted `SetSessionModel`, not a fan-out).
 /// Cloud/native models remain available to Settings but are not exposed
 /// through `/model`, so the command cannot create a live pane override.
 #[test]
@@ -4267,7 +4442,7 @@ fn transport_lost_latch_arms_on_transport_loss() {
 /// A non-transport failure (a one-off protocol error) must NOT arm the
 /// latch — the session is still alive, so commands stay enabled.
 #[test]
-fn protocol_error_does_not_arm_degraded_latch() {
+fn protocol_error_ends_turn_without_failing_connection() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
 
@@ -4284,6 +4459,12 @@ fn protocol_error_does_not_arm_degraded_latch() {
         !app.transport_lost,
         "a non-transport protocol error must not degrade the pane"
     );
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message)) if message == "protocol error"
+    ));
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
 }
 
 /// An auth failure routes to sign-in, not the dead-transport path, so it
@@ -4314,6 +4495,7 @@ fn auth_failure_does_not_arm_degraded_latch() {
 fn agent_connected_clears_degraded_latch() {
     let mut app = test_app();
     app.transport_lost = true;
+    app.proposal_channels.set_agent_transport_available(false);
 
     app.handle_event(AppEvent::AgentConnected {
         name: "Copilot".to_string(),
@@ -4329,6 +4511,12 @@ fn agent_connected_clears_degraded_latch() {
     assert!(
         !app.transport_lost,
         "reaching Connected must clear the degraded latch"
+    );
+    assert!(
+        app.proposal_channels
+            .issue("sid-fresh".into(), 1, None, false)
+            .is_ok(),
+        "reaching Connected must restore proposal channels when the pipe is live"
     );
 }
 
@@ -7295,19 +7483,11 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
 }
 
 #[test]
-fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
-    // A buffer that's pure JSON (no `explanation` field, no prose
-    // prefix) renders as nothing during streaming. We must NOT commit
-    // raw JSON as agent prose, but we still record a completed_turn
-    // with the canceled marker so the user knows the prompt was sent
-    // and cancelled.
+fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "kill pid 1234");
-    app.turn_observe_chunk(
-        DEFAULT_TAB_ID,
-        ChunkKind::Message,
-        r#"{"recommended_choice":1,"choices":[{"choice":1,"#,
-    );
+    let json = r#"{"recommended_choice":1,"choices":[{"choice":1,"#;
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
     app.turn_cancel(DEFAULT_TAB_ID);
     let tab = app.current_tab();
     assert!(tab.turn.is_idle());
@@ -7315,11 +7495,11 @@ fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
     let committed = &tab.completed_turns[0];
     assert_eq!(committed.prompt, "kill pid 1234");
     assert!(
-        !committed
+        committed
             .details
             .iter()
-            .any(|m| matches!(m, ChatMessage::Agent(_))),
-        "JSON-only buffer must not be committed as agent prose"
+            .any(|m| matches!(m, ChatMessage::Agent(text) if text == json)),
+        "raw JSON must remain visible assistant text"
     );
     assert!(
         committed
@@ -7334,38 +7514,141 @@ fn cancel_mid_stream_records_canceled_marker_even_without_visible_prose() {
 }
 
 #[test]
-fn end_pending_blocks_new_prompts_until_message_end() {
-    // Eager-surface path: user submits → JSON streams → recommendation
-    // surfaces before AgentMessageEnd. While end_pending=true the UI
-    // gate must hold. AgentMessageEnd then releases it.
+fn raw_json_assistant_text_commits_as_chat_turn() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "first");
-    // RecommendationSet shape that survives `validate_recommendation_set`.
-    let json = r#"```json
-{"recommended_choice":1,"choices":[{"choice":1,"title":"do it","rationale":"r","actions":[{"type":"send","parent":"pane-X","input":"ls"}]}]}
-```"#;
+    let json = r#"{"recommended_choice":1,"choices":[]}"#;
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
-    app.turn_try_eager_surface(DEFAULT_TAB_ID);
+    app.turn_close(DEFAULT_TAB_ID);
+
     let tab = app.current_tab();
     assert!(
         matches!(
             tab.turn,
             TurnState::Surfaced {
-                outcome: TurnOutcome::Recommendation(_),
-                end_pending: true,
+                outcome: TurnOutcome::ChatTurn,
+                end_pending: false,
                 ..
             }
         ),
-        "expected eager surface, got {:?}",
+        "expected chat turn, got {:?}",
         tab.turn
     );
-    assert!(
-        !tab.turn.accepts_new_prompt(),
-        "end_pending=true must hold the UI gate"
+    assert!(tab.completed_turns[0]
+        .details
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Agent(text) if text == json)));
+}
+
+fn stage_proposal_session(app: &mut App, session_id: &str) {
+    app.session_to_tab
+        .insert(session_id.to_string(), DEFAULT_TAB_ID.to_string());
+}
+
+fn submit_proposal_prompt(app: &mut App, session_id: &str) {
+    app.turn_submit_prompt(
+        session_id,
+        SubmittedPrompt {
+            id: 99,
+            text: "restart it".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::with_target_pane("pane-9"),
+            autofix: None,
+        },
     );
-    // AgentMessageEnd flips end_pending=false.
-    app.turn_close(DEFAULT_TAB_ID);
-    assert!(app.current_tab().turn.accepts_new_prompt());
+}
+
+const TERMINAL_AGENT_PROPOSAL_PAYLOAD: &str = r#"{"schema_version":1,"origin":"terminal_agent","recommended_choice":1,"choices":[{"choice":1,"title":"restart service","rationale":"r","actions":[{"type":"send","input":"Restart-Service foo"}]}]}"#;
+
+fn stage_direct_proposal(
+    app: &mut App,
+    manager: &std::sync::Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+    session_id: &str,
+) -> (
+    String,
+    tokio::sync::oneshot::Receiver<
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus,
+    >,
+) {
+    let channel = manager
+        .issue(
+            session_id.to_string(),
+            99,
+            Some("pane-9".to_string()),
+            false,
+        )
+        .unwrap();
+    manager
+        .arm(
+            session_id,
+            &channel,
+            TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes(),
+        )
+        .unwrap();
+    let context = manager
+        .begin_validation(&channel, TERMINAL_AGENT_PROPOSAL_PAYLOAD.as_bytes())
+        .unwrap();
+    let proposal_id = context.proposal_id.clone();
+    let (decision_tx, decision_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposal {
+        context,
+        payload: TERMINAL_AGENT_PROPOSAL_PAYLOAD.to_string(),
+        responder: decision_tx,
+    });
+    assert_eq!(
+        decision_rx.blocking_recv().unwrap().status,
+        crate::agent_tools::action_proposal::channel::ProposalValidationStatus::Accepted
+    );
+    let (final_tx, final_rx) = tokio::sync::oneshot::channel();
+    assert!(manager.accept_validation(&proposal_id, final_tx));
+    (proposal_id, final_rx)
+}
+
+#[test]
+fn direct_proposal_confirm_resolves_waiting_cli() {
+    let mut app = test_app();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-confirm";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+    app.turn_execute_card(session_id);
+
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+    );
+    let execution = recommendation_rx.try_recv().unwrap();
+    assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
+}
+
+#[test]
+fn direct_proposal_cancel_before_commit_does_not_surface() {
+    let mut app = test_app();
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-cancel";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+
+    app.turn_cancel(session_id);
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit { proposal_id });
+
+    assert!(app.session_tab(session_id).turn.is_idle());
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+    );
 }
 
 // ─── card / panel height math ───────────────────────────────────────────
@@ -8269,5 +8552,263 @@ fn enter_on_wsl_history_row_resumes_inside_distro() {
     assert!(
         !argv.contains(" -d /home"),
         "WSL row must not pass Windows -d cwd"
+    );
+}
+
+fn usage_snapshot() -> crate::usage::UsageSnapshot {
+    crate::usage::UsageSnapshot {
+        context: Some(crate::usage::UsageContext {
+            used: 20,
+            size: 100,
+        }),
+        context_display: None,
+        cost: None,
+        provider_metrics: Vec::new(),
+    }
+}
+
+#[test]
+fn usage_reported_updates_only_the_session_owner_tab() {
+    let mut app = test_app();
+    app.tab_id = Some("ACTIVE-TAB".to_string());
+    app.tab_sessions
+        .insert("ACTIVE-TAB".to_string(), TabSession::default());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.session_to_tab
+        .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+    let snapshot = usage_snapshot();
+
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: snapshot.clone(),
+    });
+
+    assert_eq!(app.tab_sessions["OWNER-TAB"].usage, Some(snapshot));
+    assert!(app.tab_sessions["ACTIVE-TAB"].usage.is_none());
+}
+
+#[test]
+fn usage_reported_merges_independent_metrics_for_the_same_session() {
+    let mut app = test_app();
+    app.session_to_tab
+        .insert("usage-session".to_string(), DEFAULT_TAB_ID.to_string());
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: usage_snapshot(),
+    });
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: crate::usage::UsageSnapshot {
+            context: None,
+            context_display: None,
+            cost: Some(crate::usage::UsageCost {
+                amount_decimal_text: "0.004".to_string(),
+                currency: "USD".to_string(),
+            }),
+            provider_metrics: Vec::new(),
+        },
+    });
+
+    let snapshot = app.current_tab().usage.as_ref().expect("merged usage");
+    assert_eq!(
+        snapshot.context,
+        Some(crate::usage::UsageContext {
+            used: 20,
+            size: 100
+        })
+    );
+    assert_eq!(snapshot.cost.as_ref().expect("cost").currency, "USD");
+}
+
+#[test]
+fn usage_cleared_removes_only_owner_snapshot_without_changing_chat() {
+    let mut app = test_app();
+    let snapshot = usage_snapshot();
+    app.state = ConnectionState::Connected;
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            messages: vec![ChatMessage::System("keep this message".to_string())],
+            usage: Some(snapshot.clone()),
+            ..Default::default()
+        },
+    );
+    app.tab_sessions.insert(
+        "OTHER-TAB".to_string(),
+        TabSession {
+            usage: Some(snapshot.clone()),
+            ..Default::default()
+        },
+    );
+    app.session_to_tab
+        .insert("usage-session".to_string(), "OWNER-TAB".to_string());
+
+    app.handle_event(AppEvent::UsageCleared {
+        session_id: "usage-session".to_string(),
+    });
+
+    assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].messages,
+        vec![ChatMessage::System("keep this message".to_string())]
+    );
+    assert_eq!(app.tab_sessions["OTHER-TAB"].usage, Some(snapshot));
+    assert_eq!(app.state, ConnectionState::Connected);
+}
+
+#[test]
+fn usage_lifecycle_clear_preserves_but_session_boundaries_clear() {
+    let mut app = test_app();
+    let snapshot = usage_snapshot();
+    app.current_tab_mut().usage = Some(snapshot.clone());
+    app.cmd_clear();
+    assert_eq!(app.current_tab().usage, Some(snapshot));
+
+    app.cmd_new(false);
+    assert!(app.current_tab().usage.is_none());
+
+    app.current_tab_mut().usage = Some(usage_snapshot());
+    app.cmd_restart();
+    assert!(app.current_tab().usage.is_none());
+
+    app.current_tab_mut().usage = Some(usage_snapshot());
+    app.reset_tab_session_for(DEFAULT_TAB_ID);
+    assert!(app.current_tab().usage.is_none());
+}
+
+#[test]
+fn usage_lifecycle_load_and_new_connection_clear_but_model_change_preserves() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            usage: Some(usage_snapshot()),
+            ..Default::default()
+        },
+    );
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "loaded-session",
+            "cwd": "",
+        }),
+    });
+    assert!(app.tab_sessions["OWNER-TAB"].usage.is_none());
+
+    app.tab_id = Some("OWNER-TAB".to_string());
+    let snapshot = usage_snapshot();
+    app.current_tab_mut().usage = Some(snapshot.clone());
+    let agent_id = app.current_agent_id.clone();
+    app.apply_global_acp_model(&agent_id, Some("new-model".to_string()));
+    assert_eq!(app.current_tab().usage, Some(snapshot));
+
+    app.current_tab_mut().session_id = Some("old-session".to_string());
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".to_string(),
+        model: None,
+        version: None,
+        session_id: "new-session".to_string(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: false,
+        image_supported: false,
+    });
+    assert!(app.current_tab().usage.is_none());
+}
+
+#[test]
+fn usage_projection_contains_context_cost_and_explicit_null() {
+    let tab = TabSession {
+        usage: Some(crate::usage::UsageSnapshot {
+            context: Some(crate::usage::UsageContext {
+                used: 1_024,
+                size: 8_192,
+            }),
+            context_display: None,
+            cost: Some(crate::usage::UsageCost {
+                amount_decimal_text: "0.004".to_string(),
+                currency: "USD".to_string(),
+            }),
+            provider_metrics: Vec::new(),
+        }),
+        ..Default::default()
+    };
+    let event = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    let items = event["params"]["usage"]["items"]
+        .as_array()
+        .expect("usage items");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["metric_id"], "acp.context.window");
+    assert_eq!(items[0]["display_kind"], "context");
+    assert_eq!(items[1]["metric_id"], "acp.billing.cost");
+    assert_eq!(items[1]["display_kind"], "billing");
+    assert_eq!(items[1]["unit_display_text"], "USD");
+    assert!(items.iter().all(|item| item["stale"] == false));
+
+    let cleared = super::app_status_projection::build_agent_state_changed_event(
+        "TAB-1",
+        &TabSession::default(),
+    );
+    assert!(cleared["params"]["usage"].is_null());
+}
+
+#[test]
+fn transport_loss_marks_usage_stale_until_each_metric_is_reported_again() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("usage-session".to_string());
+    app.session_to_tab
+        .insert("usage-session".to_string(), DEFAULT_TAB_ID.to_string());
+    app.current_tab_mut().usage = Some(crate::usage::UsageSnapshot {
+        context: Some(crate::usage::UsageContext {
+            used: 20,
+            size: 100,
+        }),
+        context_display: None,
+        cost: Some(crate::usage::UsageCost {
+            amount_decimal_text: "0.004".to_string(),
+            currency: "USD".to_string(),
+        }),
+        provider_metrics: Vec::new(),
+    });
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some("usage-session".to_string()),
+        failure: crate::protocol::acp::failure::AgentFailure::TransportLost,
+        message: t!("connection.lost").into_owned(),
+    });
+    assert_eq!(
+        app.current_tab().usage_staleness,
+        crate::usage::UsageStaleness {
+            context: true,
+            cost: true,
+            provider_metrics: false,
+        }
+    );
+
+    app.handle_event(AppEvent::UsageReported {
+        session_id: "usage-session".to_string(),
+        snapshot: crate::usage::UsageSnapshot {
+            context: Some(crate::usage::UsageContext {
+                used: 25,
+                size: 100,
+            }),
+            context_display: None,
+            cost: None,
+            provider_metrics: Vec::new(),
+        },
+    });
+    assert_eq!(
+        app.current_tab().usage_staleness,
+        crate::usage::UsageStaleness {
+            context: false,
+            cost: true,
+            provider_metrics: false,
+        }
     );
 }

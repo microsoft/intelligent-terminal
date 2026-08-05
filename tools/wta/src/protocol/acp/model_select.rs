@@ -10,36 +10,20 @@
 //!   `@agentclientprotocol/claude-agent-acp` adapter (>= 0.24), which returns
 //!   `Method not found` for `session/set_model`.
 //!
-//! Model extraction is pure. Callers retain the returned switch channel next
-//! to the connection it describes and pass it back to [`apply_session_model`].
-//! This is important for wta-master, which pools multiple unrelated agent CLIs
-//! in one process.
+//! Channels are cached per session because the shared agent CLI can host
+//! concurrent sessions with different config-option IDs. Extraction records
+//! the channel for that session and [`apply_session_model`] reads it back when
+//! the user hot-swaps the model from a decoupled call site.
+
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use agent_client_protocol as acp;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::app_contracts::AcpModelInfo;
 
 pub(crate) const WTA_CLOUD_CATALOG_AVAILABLE: &str = "_intellterm.wta/cloud_catalog_available";
-
-/// How an agent expects a model switch to be delivered.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ModelSwitchChannel {
-    /// Legacy `session/set_model`.
-    #[default]
-    Legacy,
-    /// `session/set_config_option` carrying this config id (e.g. `"model"`).
-    Config { config_id: String },
-}
-
-/// Model catalog and switching metadata advertised by one `session/new`.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct NewSessionModelState {
-    pub(crate) available_models: Vec<AcpModelInfo>,
-    pub(crate) current_model_id: Option<String>,
-    pub(crate) switch_channel: ModelSwitchChannel,
-}
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct CloudModelCatalogMetadata {
@@ -133,34 +117,107 @@ pub(crate) fn parse_wta_cloud_catalog_notification(
     )
 }
 
+/// How one session expects a model switch to be delivered.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ModelSwitchChannel {
+    /// Legacy `session/set_model`.
+    Legacy,
+    /// Legacy after the agent rejected `session/set_config_option`.
+    LegacyFallback,
+    /// `session/set_config_option` carrying this config id (e.g. `"model"`).
+    Config { config_id: String },
+}
+
+/// Switch channels are session-scoped because one shared agent can advertise
+/// different config-option IDs for concurrent sessions.
+static MODEL_SWITCHES: LazyLock<RwLock<HashMap<String, ModelSwitchChannel>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+fn record_channel_config(session_id: &str, config_id: &str) {
+    MODEL_SWITCHES.write().unwrap().insert(
+        session_id.to_string(),
+        ModelSwitchChannel::Config {
+            config_id: config_id.to_string(),
+        },
+    );
+}
+
+fn record_loaded_channel_config(session_id: &str, config_id: &str) {
+    let mut channels = MODEL_SWITCHES.write().unwrap();
+    if !matches!(
+        channels.get(session_id),
+        Some(ModelSwitchChannel::LegacyFallback)
+    ) {
+        channels.insert(
+            session_id.to_string(),
+            ModelSwitchChannel::Config {
+                config_id: config_id.to_string(),
+            },
+        );
+    }
+}
+
+pub(crate) fn forget_session(session_id: &str) {
+    MODEL_SWITCHES.write().unwrap().remove(session_id);
+}
+
 /// Extract the model list and current model id from a `new_session` response.
 /// Schema 1.1 removed the legacy `NewSessionResponse.models` field, so this only
-/// reads the `config_options` `Select` with `category == Model`. A response with
-/// no selector uses the legacy channel without inventing catalog metadata.
+/// reads the `config_options` `Select` with `category == Model`: when present it
+/// records the `Config` switch channel (otherwise the channel stays `Legacy`, its
+/// default). Records the switch channel as a side effect so [`apply_session_model`]
+/// later dispatches correctly.
 pub(crate) fn models_from_new_session(
     resp: &acp::schema::v1::NewSessionResponse,
-) -> NewSessionModelState {
-    model_state_from_config_options(resp.config_options.as_deref()).unwrap_or_default()
+) -> (Vec<AcpModelInfo>, Option<String>) {
+    forget_session(resp.session_id.0.as_ref());
+    if let Some(opts) = &resp.config_options {
+        if let Some((config_id, models, current)) = model_option_from_config(opts) {
+            record_channel_config(resp.session_id.0.as_ref(), &config_id);
+            return (models, current);
+        }
+    }
+
+    (Vec::new(), None)
 }
 
-/// Extract model state from `session/load`. Unlike `session/new`, an absent
-/// selector must not reset the retained switch channel: direct resume may be
-/// rebinding an already-loaded session whose selector was discovered earlier.
+/// Extract the model selector from a `session/load` response and record the
+/// switch channel advertised for the loaded session.
 pub(crate) fn models_from_load_session(
+    session_id: &str,
     resp: &acp::schema::v1::LoadSessionResponse,
-) -> Option<NewSessionModelState> {
-    model_state_from_config_options(resp.config_options.as_deref())
+) -> (Vec<AcpModelInfo>, Option<String>) {
+    let had_confirmed_fallback = matches!(
+        MODEL_SWITCHES.read().unwrap().get(session_id),
+        Some(ModelSwitchChannel::LegacyFallback)
+    );
+    if !had_confirmed_fallback {
+        forget_session(session_id);
+    }
+    if let Some(opts) = &resp.config_options {
+        if let Some((config_id, models, current)) = model_option_from_config(opts) {
+            record_loaded_channel_config(session_id, &config_id);
+            return (models, current);
+        }
+    }
+
+    (Vec::new(), None)
 }
 
-fn model_state_from_config_options(
-    options: Option<&[acp::schema::v1::SessionConfigOption]>,
-) -> Option<NewSessionModelState> {
-    let (config_id, available_models, current_model_id) = model_option_from_config(options?)?;
-    Some(NewSessionModelState {
-        available_models,
-        current_model_id,
-        switch_channel: ModelSwitchChannel::Config { config_id },
-    })
+/// Extract the model selector from a full config-options snapshot delivered by
+/// a `config_option_update`. This is intentionally side-effect free: an update
+/// for a background session must not change the switch channel used by the
+/// active session.
+pub(crate) fn models_from_config_options(
+    session_id: &str,
+    opts: &[acp::schema::v1::SessionConfigOption],
+) -> Option<(Vec<AcpModelInfo>, Option<String>)> {
+    let Some((config_id, models, current)) = model_option_from_config(opts) else {
+        forget_session(session_id);
+        return None;
+    };
+    record_loaded_channel_config(session_id, &config_id);
+    Some((models, current))
 }
 
 /// Find the model selector among a session's config options and flatten it
@@ -211,19 +268,30 @@ fn model_option_from_config(
 }
 
 /// Switch the model on a live session, routing to `session/set_model` or
-/// `session/set_config_option` using the channel retained by the caller. On the
-/// config-option path, a `MethodNotFound` response falls back to legacy
-/// `session/set_model`: some agents advertise a config-option model selector
-/// for discovery yet only implement the legacy switch method. The fallback
-/// also downgrades the caller's channel so later switches skip the dead config
-/// route.
+/// `session/set_config_option` depending on the channel recorded by
+/// [`models_from_new_session`]. On the config-option path, a `MethodNotFound`
+/// response falls back to legacy `session/set_model`: some agents advertise a
+/// config-option model selector for discovery yet only implement the legacy
+/// switch method (the module docs call this out for Copilot/Gemini). Before
+/// schema 1.1 removed `NewSessionResponse.models`, that field took priority and
+/// this mismatch couldn't arise; now it can, so the fallback keeps model
+/// switching working — and records `Legacy` so later switches skip the dead
+/// config channel.
 pub(crate) async fn apply_session_model(
     conn: &crate::protocol::acp::conn::ClientLink,
-    channel: &mut ModelSwitchChannel,
     session_id: acp::schema::v1::SessionId,
     model_id: String,
 ) -> acp::Result<()> {
-    match channel.clone() {
+    // Snapshot under the read lock and release it before the await — the lock
+    // guard isn't Send and must not be held across the suspension point.
+    let session_key = session_id.to_string();
+    let channel = MODEL_SWITCHES
+        .read()
+        .unwrap()
+        .get(&session_key)
+        .cloned()
+        .unwrap_or(ModelSwitchChannel::Legacy);
+    match channel {
         ModelSwitchChannel::Config { config_id } => {
             match conn
                 .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
@@ -235,20 +303,23 @@ pub(crate) async fn apply_session_model(
             {
                 Ok(_) => Ok(()),
                 Err(e) if e.code == acp::ErrorCode::MethodNotFound => {
-                    *channel = ModelSwitchChannel::Legacy;
-                    request_session_model(conn, session_id, model_id).await
+                    MODEL_SWITCHES
+                        .write()
+                        .unwrap()
+                        .insert(session_key, ModelSwitchChannel::LegacyFallback);
+                    apply_legacy_set_model(conn, session_id, model_id).await
                 }
                 Err(e) => Err(e),
             }
         }
-        ModelSwitchChannel::Legacy => request_session_model(conn, session_id, model_id).await,
+        ModelSwitchChannel::Legacy | ModelSwitchChannel::LegacyFallback => {
+            apply_legacy_set_model(conn, session_id, model_id).await
+        }
     }
 }
 
-/// Send the schema-1.1-dropped `session/set_model` request. Helper connections
-/// use this to let wta-master route through the bound AgentCli's retained
-/// switch channel; direct single-agent clients use [`apply_session_model`].
-pub(crate) async fn request_session_model(
+/// Legacy `session/set_model` switch.
+async fn apply_legacy_set_model(
     conn: &crate::protocol::acp::conn::ClientLink,
     session_id: acp::schema::v1::SessionId,
     model_id: String,
@@ -267,6 +338,19 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+
+    // The channel map is process-global; every test that reads or writes it
+    // serializes on this lock so parallel test execution can't interleave.
+    static SWITCH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn channel_for(session_id: &str) -> ModelSwitchChannel {
+        MODEL_SWITCHES
+            .read()
+            .unwrap()
+            .get(session_id)
+            .cloned()
+            .unwrap_or(ModelSwitchChannel::Legacy)
+    }
 
     // Real `session/new` wire shape from @agentclientprotocol/claude-agent-acp
     // (v0.44): no legacy `models` field — the model selector lives in
@@ -307,46 +391,74 @@ mod tests {
 
     #[test]
     fn model_extraction_across_channels() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        MODEL_SWITCHES.write().unwrap().clear();
+        // Run sequentially in one test: the recorded switch channel is a
+        // process-global, so splitting these into parallel #[test]s would race.
+
         // 1. New claude-agent-acp: models come from configOptions[category=model]
-        //    and extraction returns the config-option switch channel.
+        //    and the switch channel flips to config-option.
         let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(CLAUDE_AGENT_ACP_NEW_SESSION).expect("valid new_session");
-        let state = models_from_new_session(&resp);
-        let ids: Vec<&str> = state
-            .available_models
-            .iter()
-            .map(|m| m.id.as_str())
-            .collect();
+        let (models, current) = models_from_new_session(&resp);
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["default", "sonnet", "haiku"]);
-        assert_eq!(state.current_model_id.as_deref(), Some("default"));
+        assert_eq!(current.as_deref(), Some("default"));
         // The model selector — not the "mode" selector — must win.
-        assert_eq!(state.available_models[0].name, "Default (recommended)");
+        assert_eq!(models[0].name, "Default (recommended)");
         assert_eq!(
-            state.switch_channel,
+            channel_for("dac14599-682e-4a94-b48d-828101d22c05"),
             ModelSwitchChannel::Config {
                 config_id: "model".to_string()
             }
         );
 
+        // Notifications are session-scoped and must not overwrite the channel
+        // selected for the active session.
+        let update: acp::schema::v1::ConfigOptionUpdate =
+            serde_json::from_value(serde_json::json!({
+                "configOptions": [{
+                    "id": "background-model",
+                    "name": "Model",
+                    "category": "model",
+                    "type": "select",
+                    "currentValue": "haiku",
+                    "options": [{"value": "haiku", "name": "Haiku"}]
+                }]
+            }))
+            .expect("valid config option update");
+        let (models, current) = models_from_config_options("background", &update.config_options)
+            .expect("model selector");
+        assert_eq!(models[0].id, "haiku");
+        assert_eq!(current.as_deref(), Some("haiku"));
+        assert_eq!(
+            channel_for("dac14599-682e-4a94-b48d-828101d22c05"),
+            ModelSwitchChannel::Config {
+                config_id: "model".to_string()
+            }
+        );
+        assert_eq!(
+            channel_for("background"),
+            ModelSwitchChannel::Config {
+                config_id: "background-model".to_string()
+            }
+        );
+
         // 2. Legacy `models` field was removed in schema 1.1 — a payload that
-        //    only carries it (unknown to the deserializer) now yields no models
-        //    and explicitly selects the legacy switch channel.
+        //    only carries it (unknown to the deserializer) now yields no models;
+        //    the config-option channel from step 1 stays recorded.
         let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(LEGACY_NEW_SESSION).expect("valid new_session");
-        let state = models_from_new_session(&resp);
-        assert!(state.available_models.is_empty());
-        assert_eq!(state.current_model_id, None);
-        assert_eq!(state.switch_channel, ModelSwitchChannel::Legacy);
+        let (models, current) = models_from_new_session(&resp);
+        assert!(models.is_empty());
+        assert_eq!(current, None);
 
-        // 3. Neither channel present → empty list, no current model, and no
-        //    fabricated config_options/currentValue metadata.
+        // 3. Neither channel present → empty list, no current model.
         let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(r#"{"sessionId": "bare"}"#).expect("valid new_session");
-        let state = models_from_new_session(&resp);
-        assert!(state.available_models.is_empty());
-        assert_eq!(state.current_model_id, None);
-        assert_eq!(state.switch_channel, ModelSwitchChannel::Legacy);
-        assert!(resp.config_options.is_none());
+        let (models, current) = models_from_new_session(&resp);
+        assert!(models.is_empty());
+        assert_eq!(current, None);
 
         // 4. Model selector identified by category alone (id != "model") is
         //    still found, and a preceding non-model Select is skipped — proves
@@ -367,109 +479,19 @@ mod tests {
         }"#;
         let resp: acp::schema::v1::NewSessionResponse =
             serde_json::from_str(by_category).expect("valid new_session");
-        let state = models_from_new_session(&resp);
-        let ids: Vec<&str> = state
-            .available_models
-            .iter()
-            .map(|m| m.id.as_str())
-            .collect();
+        let (models, current) = models_from_new_session(&resp);
+        let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["haiku"]);
-        assert_eq!(state.current_model_id.as_deref(), Some("haiku"));
+        assert_eq!(current.as_deref(), Some("haiku"));
+        // The channel id now UPDATES to this session's selector id ("llm"),
+        // proving it is no longer frozen at the first-seen "model" id — the
+        // exact regression the OnceLock version had.
         assert_eq!(
-            state.switch_channel,
+            channel_for("cat-1"),
             ModelSwitchChannel::Config {
                 config_id: "llm".to_string()
             }
         );
-    }
-
-    #[test]
-    fn load_session_extracts_config_option_model_state() {
-        let response: acp::schema::v1::LoadSessionResponse = serde_json::from_str(
-            r#"{
-                "configOptions": [{
-                    "id": "resume-model",
-                    "name": "Model",
-                    "category": "model",
-                    "type": "select",
-                    "currentValue": "sonnet",
-                    "options": [
-                        {"value": "sonnet", "name": "Sonnet"},
-                        {"value": "opus", "name": "Opus"}
-                    ]
-                }]
-            }"#,
-        )
-        .expect("valid load_session response");
-
-        let state = models_from_load_session(&response).expect("model selector should be found");
-        assert_eq!(
-            state.switch_channel,
-            ModelSwitchChannel::Config {
-                config_id: "resume-model".to_string()
-            }
-        );
-        assert_eq!(state.current_model_id.as_deref(), Some("sonnet"));
-        assert_eq!(
-            state
-                .available_models
-                .iter()
-                .map(|model| model.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["sonnet", "opus"]
-        );
-
-        assert!(
-            models_from_load_session(&acp::schema::v1::LoadSessionResponse::new()).is_none(),
-            "a bare load response must preserve the caller's existing switch channel"
-        );
-    }
-
-    #[test]
-    fn private_cloud_catalog_does_not_fabricate_a_bare_session_selector() {
-        let response: acp::schema::v1::NewSessionResponse =
-            serde_json::from_str(r#"{"sessionId": "bare"}"#).expect("valid new_session");
-        let state = models_from_new_session(&response);
-        assert!(response.config_options.is_none());
-        assert!(state.available_models.is_empty());
-        assert_eq!(state.current_model_id, None);
-
-        let mut meta = None;
-        inject_wta_cloud_catalog(
-            &mut meta,
-            &[AcpModelInfo {
-                id: "cloud-native".into(),
-                name: "Cloud Native".into(),
-                description: Some("clean probe".into()),
-            }],
-            "clean_probe",
-        )
-        .expect("cloud catalog metadata should serialize");
-        let catalog = extract_wta_cloud_catalog(&mut meta);
-
-        assert_eq!(catalog.models.len(), 1);
-        assert_eq!(catalog.models[0].id, "cloud-native");
-        assert_eq!(catalog.source.as_deref(), Some("clean_probe"));
-        assert!(meta.is_none(), "private WTA metadata should be consumed");
-    }
-
-    #[test]
-    fn asynchronous_cloud_catalog_notification_round_trips() {
-        let notification = build_wta_cloud_catalog_notification(
-            &[AcpModelInfo {
-                id: "cloud-later".into(),
-                name: "Cloud Later".into(),
-                description: None,
-            }],
-            "clean_probe",
-        );
-        let parsed = parse_wta_cloud_catalog_notification(&notification)
-            .expect("private method should be recognized")
-            .expect("private payload should parse");
-
-        assert_eq!(parsed.models.len(), 1);
-        assert_eq!(parsed.models[0].id, "cloud-later");
-        assert_eq!(parsed.source.as_deref(), Some("clean_probe"));
     }
 
     /// Wire a client `ClientLink` to a minimal agent that answers
@@ -557,6 +579,8 @@ mod tests {
 
     #[test]
     fn config_channel_falls_back_to_set_model_on_method_not_found() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        MODEL_SWITCHES.write().unwrap().clear();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -566,16 +590,8 @@ mod tests {
             let hit = Arc::new(AtomicBool::new(false));
             let client = spawn_switch_mock(true, hit.clone());
 
-            let mut channel = ModelSwitchChannel::Config {
-                config_id: "model".to_string(),
-            };
-            let r = apply_session_model(
-                &client,
-                &mut channel,
-                "s-fallback".into(),
-                "haiku".to_string(),
-            )
-            .await;
+            record_channel_config("s-fallback", "model");
+            let r = apply_session_model(&client, "s-fallback".into(), "haiku".to_string()).await;
 
             assert!(r.is_ok(), "fall back to set_model must succeed, got {r:?}");
             assert!(
@@ -583,15 +599,36 @@ mod tests {
                 "set_model must be invoked as the fallback"
             );
             assert_eq!(
-                channel,
-                ModelSwitchChannel::Legacy,
+                channel_for("s-fallback"),
+                ModelSwitchChannel::LegacyFallback,
                 "MethodNotFound on set_config_option must flip the channel to Legacy"
+            );
+
+            let loaded: acp::schema::v1::LoadSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "configOptions": [{
+                        "id": "model",
+                        "name": "Model",
+                        "category": "model",
+                        "type": "select",
+                        "currentValue": "haiku",
+                        "options": [{"value": "haiku", "name": "Haiku"}]
+                    }]
+                }))
+                .expect("valid load_session response");
+            let _ = models_from_load_session("s-fallback", &loaded);
+            assert_eq!(
+                channel_for("s-fallback"),
+                ModelSwitchChannel::LegacyFallback,
+                "loading a session must preserve a confirmed Legacy fallback"
             );
         });
     }
 
     #[test]
     fn config_channel_does_not_fall_back_on_other_errors() {
+        let _guard = SWITCH_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        MODEL_SWITCHES.write().unwrap().clear();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -601,12 +638,8 @@ mod tests {
             let hit = Arc::new(AtomicBool::new(false));
             let client = spawn_switch_mock(false, hit.clone());
 
-            let mut channel = ModelSwitchChannel::Config {
-                config_id: "model".to_string(),
-            };
-            let r =
-                apply_session_model(&client, &mut channel, "s-other".into(), "haiku".to_string())
-                    .await;
+            record_channel_config("s-other", "model");
+            let r = apply_session_model(&client, "s-other".into(), "haiku".to_string()).await;
 
             assert!(r.is_err(), "a non-MethodNotFound error must propagate");
             assert!(
@@ -614,7 +647,7 @@ mod tests {
                 "set_model must NOT be called for a non-MethodNotFound error"
             );
             assert!(
-                matches!(channel, ModelSwitchChannel::Config { .. }),
+                matches!(channel_for("s-other"), ModelSwitchChannel::Config { .. }),
                 "a non-MethodNotFound error must leave the channel on Config"
             );
         });

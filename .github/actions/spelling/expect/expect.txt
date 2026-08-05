@@ -23,8 +23,10 @@ AFX
 AHelper
 ahicon
 ahz
+aic
 AImpl
 AInplace
+aiu
 ALIGNRIGHT
 allocing
 allsigned

@@ -102,6 +102,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C237` `[new]` `[UT~]` `[E2E]` **Profile Agent pane agent picker works:** Each profile's Agent pane agent picker lists installed, policy-allowed Windows agents plus agents installed natively in that profile's WSL distro; saving persists `agentPaneBackend`, while an unconfigured profile inherits the global Windows agent. _(#481; UT: `ProfileTests::AgentPaneBackendDefaultsAndInherits`.)_
 - [ ] `C238` `[new]` `[E2E]` **Profile WSL agent routing is strict:** Changing a profile to a WSL backend rebuilds its helper, routes the exact selected agent through `wsl:<distro>`, and does not fall back to a Windows-hosted agent. _(#481; E2E: `Feature.WslAgentBackend`.)_
 
+### Profile command palette agent
+
+- [ ] `C244` `[new]` `[UT~]` `[E2E]` **Profile Command palette agent picker works:** Each profile's Command palette agent picker offers Host and WSL-distro delegate agents; saving persists `commandPaletteAgent`, while an unconfigured profile follows the global delegate agent. _(#488; UT: `ProfileTests::AgentPaneBackendDefaultsAndInherits`.)_
+- [ ] `C245` `[new]` `[E2E]` **Command palette agent source is strict:** A profile's Command palette agent selects the exact delegate execution source — an explicit WSL selection stays in its distro and surfaces the real in-distro error, and a host selection is never diverted to WSL. _(#488; E2E: `Feature.DelegateSource`.)_
+
 ## 2. Agent pane chat
 
 **Feature definition:** The agent pane is a per-tab AI chat pane backed by WTA helper/master and an ACP-capable agent. It should be reusable, able to be hidden, and stable across tab/window operations.
@@ -156,11 +161,11 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C218` `[new]` `[UT✓]` `[E2E]` **Image paste (Alt+V) works:** A copied screenshot (`CF_DIB`/`CF_DIBV5`) appears as a uniquely numbered cyan inline token such as `[image: image-1.png]`; copied image files retain their real file name. The attachment is sent as an ACP image content block on the next prompt. Left/Right cross the token atomically, Backspace/Delete remove the whole token and attachment, and Esc/Ctrl+C clear the whole draft. The action is gated on the agent advertising image support. When the agent does not support images, or the clipboard has no image, it does not paste but surfaces a clear system message rather than silently ignoring the keypress. _(UT: `clipboard_image`, `image_attachment_*`, and `mock_agent_tests` `seen_images` side-channel; #354.)_
 - [ ] `C066` `[E2E]` **Keyboard navigation works:** Arrow keys, Tab completion, Ctrl combinations, and Esc behave correctly.
 - [x] `C067` `[UT✓]` `[E2E]` `[MANUAL]` **IME/non-ASCII input works:** IME and non-ASCII input are usable if the release supports localized typing. _(UT: `render_agent_input_accepts_non_ascii` types accented-Latin/Greek/CJK via the real key handler and asserts the input buffer holds them verbatim (multi-byte caret advance) + they render. E2E send path (wtcli send-keys) cannot carry non-ASCII, so the product side is UT-covered; IME composition stays MANUAL.)_
-- [ ] `C068` `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, and status lines render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; streaming-JSON unwrap incl. emoji/surrogate pairs in `ui::chat::tests`.)_
+- [ ] `C068` `[UT✓]` `[E2E]` **Streaming output renders correctly:** Agent response chunks, tool calls, plans, status lines, and literal JSON render without corruption. _(UT: `streaming_two_chunks_coalesce_in_app_chat`, `tool_call_surfaces_card_in_chat`, `tool_call_completion_updates_card_status` (in-place, no dup), `plan_surfaces_card_in_chat`, `render_chat_all_message_variants`; Assistant JSON remains ordinary chat text.)_
 - [x] `C069` `[UT✓]` `[E2E]` **Permission UI works:** When the agent requests a command/tool permission, the user can allow or reject it. _(UT: `permission_allow_round_trips_to_agent`, `permission_reject_round_trips_to_agent`, `permission_quick_allow/reject_key_round_trips_to_agent`, `render_permission_card_shows_options`, `render_permission_compact_shows_hint`; the `y`/`n` quick-key case-match bug was fixed here.)_
-- [ ] `C070` `[E2E]` **Insert into pane works:** Agent-proposed command/text can be inserted into the target terminal pane without running.
-- [ ] `C071` `[E2E]` **Run in pane works:** Agent-proposed command can be run in the target terminal pane.
-- [ ] `C072` `[E2E]` **Command target is correct:** Insert/run applies to the intended active pane, not the agent pane itself or another tab.
+- [ ] `C070` `[E2E]` **Insert into pane works:** A validated Direct Helper Proposal can be inserted into the target terminal pane without running.
+- [ ] `C071` `[E2E]` **Run in pane works:** A validated Direct Helper Proposal can be run in the target terminal pane.
+- [ ] `C072` `[E2E]` **Command target is correct:** The Helper-injected trusted target routes Insert/Run to the intended active pane, not the agent pane itself or another tab.
 
 ### Agent pane slash commands
 
@@ -188,7 +193,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 3. Autofix flow
 
-**Feature definition:** Autofix detects terminal command failures, captures relevant pane context, asks the configured agent for a fix, and lets the user insert or run the suggested command.
+**Feature definition:** Autofix detects terminal command failures, captures relevant pane context, asks the configured agent for a fix, and accepts actionable fixes only through a Direct Helper Proposal before offering Insert or Run.
 
 ### Shell integration and detection
 
@@ -217,8 +222,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C100` `[E2E]` **Run suggestion works:** Suggested fix can be run in the source pane.
 - [ ] `C101` `[UT✓]` `[E2E]` **Reject/dismiss works:** User can dismiss an autofix suggestion without side effects. _(UT: `trigger_echo_pane_clears_when_state_returns_to_idle`.)_
 - [ ] `C102` `[UT✓]` `[E2E]` **Autofix target pane is correct:** Failure in one pane does not offer/run a fix in the wrong pane. _(UT: target-tab routing — busy-pane tests + `autofix_still_triggers_for_non_agent_pane`.)_
-- [ ] `C103` `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot returns a useful suggestion.
-- [ ] `C104` `[E2E]` **Autofix with non-Copilot agents works:** Autofix produces a usable suggestion with a non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent — same path as Copilot, covered once across the available agents.
+- [ ] `C103` `[E2E]` `[MANUAL]` **Autofix with Copilot works:** Copilot submits a valid Direct Helper Proposal and the card presents a useful suggestion.
+- [ ] `C104` `[E2E]` **Autofix with non-Copilot agents works:** A non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent each execute the canonical command, complete permission arming, and submit a usable Direct Helper Proposal through the same path.
 - [ ] `C221` `[new]` `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a nonexistent command. _(#306.)_
 
 ### Autofix across layout changes

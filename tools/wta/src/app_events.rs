@@ -169,9 +169,14 @@ impl App {
                 self.agent_model = model;
                 self.agent_version = version;
                 self.session_id = session_id.clone();
+                let (available_models, current_model_id) = self
+                    .session_model_configs
+                    .entry(session_id.clone())
+                    .or_insert((available_models, current_model_id))
+                    .clone();
                 self.agent_models = available_models;
                 self.agent_current_model_id = current_model_id;
-                self.rebuild_model_catalog();
+                self.rebuild_model_catalog_from_agent_state();
                 self.agent_supports_load_session = load_session_supported;
                 self.agent_supports_image = image_supported;
                 self.state = ConnectionState::Connected;
@@ -182,6 +187,7 @@ impl App {
                 // A live connection cancels the degraded latch (e.g. the
                 // post-sign-in reconnect that goes back through master).
                 self.transport_lost = false;
+                self.proposal_channels.set_agent_transport_available(true);
                 self.preflight_setup_active = false;
                 // If we were in Setup (e.g. after Retry), transition to Chat
                 if self.mode == AppMode::Setup {
@@ -206,6 +212,10 @@ impl App {
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
+                if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    tab.usage = None;
+                    tab.usage_staleness = crate::usage::UsageStaleness::default();
+                }
                 tab.session_id = Some(session_id);
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
@@ -228,6 +238,19 @@ impl App {
                 available_models,
                 current_model_id,
             } => {
+                let is_active_tab = self.active_tab_key() == tab_id;
+                let replaced_session_ids: Vec<String> = self
+                    .session_to_tab
+                    .iter()
+                    .filter(|(known_session_id, known_tab_id)| {
+                        *known_tab_id == &tab_id && *known_session_id != &session_id
+                    })
+                    .map(|(known_session_id, _)| known_session_id.clone())
+                    .collect();
+                for replaced_session_id in replaced_session_ids {
+                    self.session_to_tab.remove(&replaced_session_id);
+                    self.session_model_configs.remove(&replaced_session_id);
+                }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
                 let tab = self.tab_mut(&tab_id);
@@ -259,17 +282,15 @@ impl App {
                 // this session in the future. For now we keep
                 // App.available_models pointing at the active session's
                 // models so the existing settings UI stays correct.
-                let mut model_state_changed = false;
-                if !available_models.is_empty() {
+                let (available_models, current_model_id) = self
+                    .session_model_configs
+                    .entry(session_id.clone())
+                    .or_insert((available_models, current_model_id))
+                    .clone();
+                if is_active_tab {
                     self.agent_models = available_models;
-                    model_state_changed = true;
-                }
-                if current_model_id.is_some() {
                     self.agent_current_model_id = current_model_id;
-                    model_state_changed = true;
-                }
-                if model_state_changed {
-                    self.rebuild_model_catalog();
+                    self.rebuild_model_catalog_from_agent_state();
                 }
                 // Keep freshly-created sessions on the effective model for
                 // this tab — its per-pane `/model` override if set, else the
@@ -285,6 +306,43 @@ impl App {
                 }
                 self.publish_agent_status();
             }
+            AppEvent::UsageReported {
+                session_id,
+                snapshot,
+            } => {
+                let target_tab = self.tab_for_session(&session_id);
+                let tab = self.tab_mut(&target_tab);
+                tab.usage_staleness.mark_reported(&snapshot);
+                if let Some(current) = tab.usage.as_mut() {
+                    current.merge(snapshot);
+                } else {
+                    tab.usage = Some(snapshot);
+                }
+                self.project_tab_state(&target_tab);
+            }
+            AppEvent::UsageCleared { session_id } => {
+                let target_tab = self.tab_for_session(&session_id);
+                let tab = self.tab_mut(&target_tab);
+                tab.usage = None;
+                tab.usage_staleness = crate::usage::UsageStaleness::default();
+                self.project_tab_state(&target_tab);
+            }
+            AppEvent::ModelConfigUpdated {
+                session_id,
+                available_models,
+                current_model_id,
+            } => {
+                self.session_model_configs.insert(
+                    session_id.clone(),
+                    (available_models.clone(), current_model_id.clone()),
+                );
+                if self.current_tab().session_id.as_deref() == Some(session_id.as_str()) {
+                    self.agent_models = available_models;
+                    self.agent_current_model_id = current_model_id;
+                    self.rebuild_model_catalog_from_agent_state();
+                    self.publish_agent_status();
+                }
+            }
             AppEvent::TabError { tab_id, message } => {
                 // Scoped error for a specific tab. Bypasses the global
                 // auth-fallback / ConnectionState::Failed flip in
@@ -297,6 +355,7 @@ impl App {
                 tab.pending_user_replay.clear();
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
+                tab.active_direct_proposal_id = None;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
             }
@@ -352,15 +411,38 @@ impl App {
                     return;
                 }
 
+                let session_survives = matches!(
+                    &failure,
+                    crate::protocol::acp::failure::AgentFailure::Protocol { .. }
+                );
+
                 // The transport to master is gone — latch the degraded state
                 // so the slash-command popup greys out everything but
                 // /restart (the only command that can recover without the
                 // dead pipe). Cleared on the next Connected.
-                if matches!(
-                    failure,
+                let transport_lost = matches!(
+                    &failure,
                     crate::protocol::acp::failure::AgentFailure::TransportLost
-                ) {
+                );
+                let stale_usage_tab = if transport_lost {
                     self.transport_lost = true;
+                    self.proposal_channels.set_agent_transport_available(false);
+                    let target_tab = session_id
+                        .as_deref()
+                        .map(|sid| self.tab_for_session(sid))
+                        .unwrap_or_else(|| self.active_tab_key().to_string());
+                    let tab = self.tab_mut(&target_tab);
+                    if let Some(snapshot) = tab.usage.as_ref() {
+                        tab.usage_staleness.mark_present_stale(snapshot);
+                        Some(target_tab)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                if let Some(target_tab) = stale_usage_tab {
+                    self.project_tab_state(&target_tab);
                 }
 
                 let is_auth_error = failure.is_auth();
@@ -419,8 +501,10 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
-                    self.state = ConnectionState::Failed(message.clone());
-                    self.publish_agent_status();
+                    if !session_survives {
+                        self.state = ConnectionState::Failed(message.clone());
+                        self.publish_agent_status();
+                    }
                     let tab = match session_id.as_deref() {
                         Some(sid) => self.session_tab_mut(sid),
                         None => self.current_tab_mut(),
@@ -602,16 +686,8 @@ impl App {
                 tab.pending_agent_response.push_str(&text);
 
                 // Append to the streaming buffer. The state machine drops
-                // late chunks and handles the stale-autofix generation check
-                // before returning whether the buffer actually grew.
-                let advanced = self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
-
-                // Surface the card the moment the streamed JSON parses,
-                // instead of waiting for AgentMessageEnd (gated behind
-                // Copilot's Stop/SessionEnd hooks, ~8s on Windows).
-                if advanced {
-                    self.turn_try_eager_surface(&session_id);
-                }
+                // late chunks and handles the stale-autofix generation check.
+                self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
                 // Replayed historical user prompt from a `session/load`
@@ -709,6 +785,13 @@ impl App {
                         }
                     }
                 }
+            }
+            AppEvent::HideToolCall { session_id, id } => {
+                let tab = self.session_tab_mut(&session_id);
+                tab.tool_calls.remove(&id);
+                tab.messages.retain(
+                    |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
+                );
             }
             AppEvent::Plan {
                 session_id,
@@ -954,6 +1037,28 @@ impl App {
             }
             AppEvent::SessionsChanged => {
                 self.schedule_agents_refetch_for_open_views();
+            }
+            AppEvent::DirectTerminalActionProposal {
+                context,
+                payload,
+                responder,
+            } => {
+                let decision = self.evaluate_direct_terminal_action_proposal(&context, &payload);
+                let _ = responder.send(decision);
+            }
+            AppEvent::DirectTerminalActionProposalCommit { proposal_id } => {
+                if !self.commit_terminal_action_proposal(&proposal_id) {
+                    self.proposal_channels.resolve_final(
+                        &proposal_id,
+                        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
+                    );
+                }
+            }
+            AppEvent::DirectTerminalActionProposalInvalidate {
+                proposal_id,
+                session_id,
+            } => {
+                self.invalidate_terminal_action_proposal(&proposal_id, &session_id);
             }
             AppEvent::AgentsSnapshotLoaded {
                 request_id,
@@ -1396,9 +1501,10 @@ impl App {
                         let tab = self.tab_mut(tab_id);
                         tab.current_view = View::Chat;
                         tab.clear_chat_history();
+                        tab.usage = None;
+                        tab.usage_staleness = crate::usage::UsageStaleness::default();
                         tab.completed_turns.clear();
                         tab.selected_completed_turn_idx = None;
-                        tab.session_id = None;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

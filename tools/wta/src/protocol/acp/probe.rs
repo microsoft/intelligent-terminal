@@ -206,13 +206,14 @@ async fn probe_models_impl(
         })?
         .map_err(|e| anyhow!("new_session failed: {}", e))?;
 
-    let model_state = crate::protocol::acp::model_select::models_from_new_session(&session_resp);
+    let (available_models, current_model_id) =
+        crate::protocol::acp::model_select::models_from_new_session(&session_resp);
 
     drop(spawned.child);
 
     Ok(ProbeResult {
-        available_models: model_state.available_models,
-        current_model_id: model_state.current_model_id,
+        available_models,
+        current_model_id,
     })
 }
 

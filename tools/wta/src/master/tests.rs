@@ -109,9 +109,6 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
                 ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Legacy,
-                ),
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "delayed-probe-agent".to_string(),
@@ -194,9 +191,6 @@ async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
                 ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Legacy,
-                ),
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "failed-probe-agent".to_string(),
@@ -255,7 +249,7 @@ fn known_id_with_no_allowlist_is_reconstructed_not_taken_from_pipe() {
     // No host allowlist (manual run / older host) ⇒ any known id is
     // honored, and the command is REBUILT from the id.
     let (cmd, id) = resolve(None, Some("gemini"), None);
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     assert_eq!(id.as_deref(), Some("gemini"));
 }
 
@@ -317,19 +311,19 @@ fn agent_pool_key_includes_authoritative_identity() {
 fn model_is_folded_in_for_native_agents_and_ignored_for_adapters() {
     // Native agent (gemini) takes --model on the command line.
     let (cmd, _) = resolve(None, Some("gemini"), Some("gemini-2.5-pro"));
-    assert_eq!(cmd, "gemini --experimental-acp --model gemini-2.5-pro");
+    assert_eq!(cmd, "gemini --acp --model gemini-2.5-pro");
 
     // Adapter agent (claude via npx) ignores the model here — it's
     // applied later via setSessionModel — so the command is stable.
     let (cmd, id) = resolve(None, Some("claude"), Some("opus-4"));
-    assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp");
+    assert_eq!(cmd, "npx -y @agentclientprotocol/claude-agent-acp@0.59.0");
     assert_eq!(id.as_deref(), Some("claude"));
 }
 
 #[test]
 fn id_is_case_insensitive() {
     let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     assert_eq!(id.as_deref(), Some("gemini"));
 }
 
@@ -483,7 +477,7 @@ fn gpo_allowlist_blocks_known_but_unlisted_ids() {
     let allowed = allow_set(&["gemini"]);
     // gemini is listed ⇒ honored.
     let (cmd, _) = resolve(Some(&allowed), Some("gemini"), None);
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     // copilot is a *known* agent but NOT in the GPO-filtered set ⇒
     // refused, fall back to default. (Defends against a peer helper
     // selecting a policy-blocked agent.)
@@ -509,7 +503,7 @@ fn agent_cmd_from_the_pipe_is_never_executed() {
     );
     let wta = crate::session_registry::extract_wta_meta(&mut meta);
     let (cmd, _) = resolve(None, wta.agent_id.as_deref(), wta.model.as_deref());
-    assert_eq!(cmd, "gemini --experimental-acp");
+    assert_eq!(cmd, "gemini --acp");
     assert!(!cmd.contains("calc.exe"), "pipe command must never appear");
 }
 
@@ -529,6 +523,8 @@ fn pool_key_dedupes_same_selection_and_separates_distinct_agents() {
 fn make_state() -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        pending_usage: Mutex::new(HashMap::new()),
+        usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
@@ -695,11 +691,6 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
                 ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Config {
-                        config_id: "model-a".to_string(),
-                    },
-                ),
                 cli_source: None,
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "agent-a".to_string(),
@@ -718,17 +709,29 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
                 ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Config {
-                        config_id: "model-b".to_string(),
-                    },
-                ),
                 cli_source: None,
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "agent-b".to_string(),
                 cloud_catalog: Mutex::new(NativeCloudCatalogState::Unavailable),
                 bound_helpers: Mutex::new(HashSet::new()),
             });
+
+            for (session_id, config_id) in [("session-a", "model-a"), ("session-b", "model-b")] {
+                let response: acp::schema::v1::NewSessionResponse =
+                    serde_json::from_value(serde_json::json!({
+                        "sessionId": session_id,
+                        "configOptions": [{
+                            "id": config_id,
+                            "name": "Model",
+                            "category": "model",
+                            "type": "select",
+                            "currentValue": "default",
+                            "options": [{"value": "default", "name": "Default"}]
+                        }]
+                    }))
+                    .expect("valid model response");
+                let _ = crate::protocol::acp::model_select::models_from_new_session(&response);
+            }
 
             model_handler(Arc::clone(&agent_a), 1)
                 .set_session_model(conn::SetSessionModelRequest::new("session-a", "alpha"))
@@ -743,14 +746,6 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             assert!(a_legacy_hit.load(Ordering::SeqCst));
             assert!(b_config_hit.load(Ordering::SeqCst));
             assert!(!b_legacy_hit.load(Ordering::SeqCst));
-            assert_eq!(
-                *agent_a.model_switch_channel.lock().await,
-                crate::protocol::acp::model_select::ModelSwitchChannel::Legacy
-            );
-            assert!(matches!(
-                *agent_b.model_switch_channel.lock().await,
-                crate::protocol::acp::model_select::ModelSwitchChannel::Config { .. }
-            ));
         })
         .await;
 }
@@ -772,9 +767,6 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
                 ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Legacy,
-                ),
                 cli_source: None,
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "resume-only-agent".to_string(),
@@ -795,10 +787,10 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
             )
             .expect("valid load_session response");
 
-            let state = update_model_switch_channel_from_load(&agent, &response)
-                .await
-                .expect("resume response should expose model state");
-            assert_eq!(state.current_model_id.as_deref(), Some("sonnet"));
+            let resumed_session = acp::schema::v1::SessionId::new("resumed-session");
+            let (_, current_model_id) =
+                update_model_switch_channel_from_load(&resumed_session, &response);
+            assert_eq!(current_model_id.as_deref(), Some("sonnet"));
 
             model_handler(Arc::clone(&agent), 1)
                 .set_session_model(conn::SetSessionModelRequest::new(
@@ -810,12 +802,6 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
 
             assert!(config_hit.load(Ordering::SeqCst));
             assert!(!legacy_hit.load(Ordering::SeqCst));
-            assert_eq!(
-                *agent.model_switch_channel.lock().await,
-                crate::protocol::acp::model_select::ModelSwitchChannel::Config {
-                    config_id: "resume-model".to_string()
-                }
-            );
         })
         .await;
 }
@@ -835,9 +821,6 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
                 conn: client_connection_to_pending_new_session_agent(),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
-                ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Legacy,
                 ),
                 cli_source: None,
                 source: crate::agent_source::AgentSource::Host,
@@ -1111,9 +1094,6 @@ async fn prompt_forward_survives_reentrant_permission() {
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
                 ),
-                model_switch_channel: Mutex::new(
-                    crate::protocol::acp::model_select::ModelSwitchChannel::Legacy,
-                ),
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
                 source: crate::agent_source::AgentSource::Host,
                 cmd_key: "copilot --acp --stdio".to_string(),
@@ -1246,6 +1226,13 @@ fn make_notif(sid: &SessionId) -> SessionNotification {
     SessionNotification::new(
         sid.clone(),
         SessionUpdate::AgentMessageChunk(ContentChunk::new("hi".into())),
+    )
+}
+
+fn make_usage_notif(sid: &SessionId, used: u64) -> SessionNotification {
+    SessionNotification::new(
+        sid.clone(),
+        SessionUpdate::UsageUpdate(acp::schema::v1::UsageUpdate::new(used, 100)),
     )
 }
 
@@ -1453,6 +1440,94 @@ async fn session_notification_drops_on_full_channel() {
     assert!(
         map.contains_key(&sid),
         "Full (not Closed) must NOT remove the routing entry"
+    );
+}
+
+#[tokio::test]
+async fn session_notification_coalesces_context_without_dropping_pending_cost() {
+    let state = make_state();
+    let (tx, _rx) = mpsc::channel::<SessionNotification>(1);
+    let sid = SessionId::new("slow-usage-helper");
+    {
+        let mut map = state.session_to_helper.lock().await;
+        map.insert(
+            sid.clone(),
+            HelperRoute {
+                helper_id: HelperId(10),
+                notif_tx: tx.clone(),
+                forwarder: None,
+                consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            },
+        );
+    }
+    tx.try_send(make_notif(&sid)).unwrap();
+
+    route(
+        &state,
+        SessionNotification::new(
+            sid.clone(),
+            SessionUpdate::UsageUpdate(
+                acp::schema::v1::UsageUpdate::new(10, 100)
+                    .cost(acp::schema::v1::Cost::new(0.004, "USD")),
+            ),
+        ),
+    )
+    .await;
+    route(&state, make_usage_notif(&sid, 25)).await;
+
+    assert_eq!(tx.capacity(), 0);
+    let pending = state.pending_usage.lock().await;
+    let (owner, notification) = pending.get(&sid).expect("latest usage retained");
+    assert_eq!(*owner, HelperId(10));
+    match &notification.update {
+        SessionUpdate::UsageUpdate(update) => {
+            assert_eq!(update.used, 25);
+            assert_eq!(
+                update.cost.as_ref(),
+                Some(&acp::schema::v1::Cost::new(0.004, "USD"))
+            );
+        }
+        other => panic!("expected usage update, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn rebinding_session_clears_previous_helpers_pending_usage() {
+    let state = make_state();
+    let sid = SessionId::new("rebound-usage-session");
+    let (tx_a, _rx_a) = mpsc::channel::<SessionNotification>(1);
+    let (tx_b, _rx_b) = mpsc::channel::<SessionNotification>(1);
+
+    bind_session_route(
+        &state,
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(1),
+            notif_tx: tx_a,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    )
+    .await;
+    route(&state, make_usage_notif(&sid, 25)).await;
+    assert!(state.pending_usage.lock().await.contains_key(&sid));
+
+    bind_session_route(
+        &state,
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(2),
+            notif_tx: tx_b,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    )
+    .await;
+
+    assert!(!state.pending_usage.lock().await.contains_key(&sid));
+    assert_eq!(
+        state.session_to_helper.lock().await[&sid].helper_id,
+        HelperId(2)
     );
 }
 
@@ -2022,6 +2097,8 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
 fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
         session_to_helper: Mutex::new(HashMap::new()),
+        pending_usage: Mutex::new(HashMap::new()),
+        usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),

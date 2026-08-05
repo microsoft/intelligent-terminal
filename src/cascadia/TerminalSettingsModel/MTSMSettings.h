@@ -81,6 +81,7 @@ Author(s):
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
     X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
+    X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", false)                                                                                                                                      \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
     X(hstring, AgentPanePosition, "agentPanePosition", L"bottom")                                                                                                                                       \
@@ -107,6 +108,7 @@ Author(s):
     X(Microsoft::Terminal::Control::TextAntialiasingMode, AntialiasingMode, "antialiasingMode", Microsoft::Terminal::Control::TextAntialiasingMode::Grayscale) \
     X(hstring, StartingDirectory, "startingDirectory")                                                                                                         \
     X(hstring, AgentPaneBackend, "agentPaneBackend", L"")                                                                                                      \
+    X(hstring, CommandPaletteAgent, "commandPaletteAgent", L"")                                                                                                \
     X(IMediaResource, Icon, "icon", implementation::MediaResource::FromString(L"\uE756"))                                                                      \
     X(bool, SuppressApplicationTitle, "suppressApplicationTitle", false)                                                                                       \
     X(guid, ConnectionType, "connectionType")                                                                                                                  \

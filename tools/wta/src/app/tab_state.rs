@@ -173,6 +173,14 @@ impl Scroll {
     }
 }
 
+pub(crate) struct PendingTerminalActionProposal {
+    pub proposal_id: String,
+    pub session_id: String,
+    pub prompt_id: u64,
+    pub is_autofix: bool,
+    pub recommendations: super::RecommendationSet,
+}
+
 /// Everything that conceptually belongs to one tab's conversation: the
 /// message history, the streaming buffer of the in-flight prompt, the
 /// pending tool calls, the recommendations panel state, etc.
@@ -185,6 +193,10 @@ impl Scroll {
 pub struct TabSession {
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
+    pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
+    pub(crate) active_direct_proposal_id: Option<String>,
+    pub usage: Option<crate::usage::UsageSnapshot>,
+    pub usage_staleness: crate::usage::UsageStaleness,
 
     // Conversation history
     pub messages: Vec<ChatMessage>,

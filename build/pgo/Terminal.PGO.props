@@ -14,7 +14,7 @@
     <!-- Mandatory.  Name of the NuGet package which will contain PGO databases for consumption by build system. -->
     <PGOPackageName>Microsoft.Internal.Windows.Terminal.PGODatabase</PGOPackageName>
 
-    <!-- Pinned to upstream 1.26 instead of $(VersionMajor).$(VersionMinor): the fork's 0.1
+    <!-- Pinned to upstream 1.26 instead of $(VersionMajor).$(VersionMinor): the fork's 0.2
          product version has no matching PGODatabase on the TerminalDependencies feed. -->
     <PGOPackageVersionMajor>1</PGOPackageVersionMajor>
     <PGOPackageVersionMinor>26</PGOPackageVersionMinor>

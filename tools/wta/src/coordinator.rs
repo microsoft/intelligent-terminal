@@ -644,7 +644,7 @@ async fn execute_choice(
     Ok(())
 }
 
-fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
+pub(crate) fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
     if !(1..=3).contains(&set.choices.len()) {
         bail!("expected 1 to 3 choices, got {}", set.choices.len());
     }
@@ -667,6 +667,45 @@ fn validate_recommendation_set(set: &RecommendationSet) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Remove choices that would send input back into the helper's own pane.
+pub(crate) fn validate_recommendation_set_for_coordinator_target(
+    set: &RecommendationSet,
+    coordinator_target: Option<&str>,
+) -> Result<RecommendationSet> {
+    let Some(coordinator_target) = coordinator_target
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(set.clone());
+    };
+
+    let choices: Vec<RecommendationChoice> = set
+        .choices
+        .iter()
+        .filter(|choice| {
+            !choice.actions.iter().any(|action| {
+                matches!(
+                    action,
+                    RecommendedAction::Send { parent, .. } if parent == coordinator_target
+                )
+            })
+        })
+        .cloned()
+        .collect();
+
+    if choices.is_empty() {
+        bail!("all choices target the current coordinator pane {coordinator_target}");
+    }
+
+    let recommended_choice = set
+        .recommended_choice
+        .filter(|number| choices.iter().any(|choice| choice.choice == *number));
+    Ok(RecommendationSet {
+        recommended_choice,
+        choices,
+    })
 }
 
 fn validate_action(action: &RecommendedAction) -> Result<()> {
@@ -2050,7 +2089,7 @@ mod tests {
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
         // Regression for the agent-identification bug behind PR review: an
-        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp" ->
+        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.59.0" ->
         // claude) must still be recognized as a pinnable agent. The old
         // `split_whitespace().next()` + lookup_profile saw "npx" ->
         // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
@@ -2059,7 +2098,7 @@ mod tests {
             id: "claude".to_string(),
             name: "Claude".to_string(),
             description: "Launches claude as a delegate agent.".to_string(),
-            commandline: "npx -y @agentclientprotocol/claude-agent-acp".to_string(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0".to_string(),
             prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
             model: None,
         };

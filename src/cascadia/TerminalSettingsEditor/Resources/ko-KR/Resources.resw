@@ -1245,6 +1245,14 @@
     <value>에이전트 창에서 사용할 ACP 지원 에이전트를 선택하세요. 이 프로필에서는 이 선택 항목이 전역 에이전트 창 선택 항목보다 우선합니다.</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>명령 팔레트 에이전트</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>이 프로필에서 명령 팔레트 위임에 사용할 에이전트를 선택합니다. 이 선택은 전역 위임 에이전트 설정보다 우선합니다.</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2864,6 +2872,8 @@
     <value>사용하도록 설정하면 AI 에이전트가 실패한 명령을 자동으로 분석하고 수정 사항을 제안합니다. 사용하지 않도록 설정하면 실패한 명령에 대해 상태 표시줄에 클릭 가능한 힌트가 표시됩니다 — Ctrl+Alt+. 를 누르거나 힌트를 클릭하여 수정을 요청합니다.</value>
     <comment>Supplementary description for the auto-error-detection setting.</comment>
   </data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>컨텍스트 사용량 및 세션 비용 표시</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>가능한 경우 터미널 하단 표시줄에 컨텍스트 창 사용량과 세션 비용을 표시합니다.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>창 위치</value>
     <comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment>

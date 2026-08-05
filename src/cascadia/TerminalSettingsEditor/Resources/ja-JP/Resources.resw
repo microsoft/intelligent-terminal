@@ -1245,6 +1245,14 @@
     <value>エージェント ペインで使用する ACP 対応エージェントを選択します。このプロファイルでは、この選択がグローバルなエージェント ペインの選択より優先されます。</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
+  <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
+    <value>コマンド パレットのエージェント</value>
+    <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
+  </data>
+  <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
+    <value>このプロファイルでコマンド パレットからの委任に使用するエージェントを選択します。この選択は、グローバルな委任エージェント設定より優先されます。</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+  </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
     <comment>{Locked="{0}","{1}"} Agent display name replaces {0}; Windows or a WSL distro name replaces {1}.</comment>
@@ -2828,6 +2836,8 @@
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>コマンド パレットでのクイック アクションに使用するエージェントを選択します。</value><comment>Supplementary description for the command palette agent setting.</comment></data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>失敗したコマンドの修正候補を自動的に提案する</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>有効にすると、AI エージェントが失敗したコマンドを自動的に分析し、修正案を提案します。無効にすると、失敗したコマンドはステータス バーにクリック可能なヒントを表示します — Ctrl+Alt+. を押すか、ヒントをクリックすると修正をリクエストできます。</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>コンテキストの使用量とセッション コストを表示</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>利用可能な場合は、コンテキスト ウィンドウの使用量とセッション コストをターミナルの下部バーに表示します。</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>ペインの位置</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve"><value>エージェント ペインをターミナルのどこに開くかを指定します。</value><comment>Supplementary description for the pane position setting.</comment></data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">

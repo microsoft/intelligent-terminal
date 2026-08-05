@@ -301,7 +301,7 @@ async fn resolve_pane_by_session_id(
 struct PlannerTerminalContext {
     json: String,
     target_pane_id: String,
-    resolver_invocation: Option<crate::resolve_command::CommandResolverInvocation>,
+    resolver_invocation: Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 async fn build_terminal_context(
@@ -396,7 +396,7 @@ pub(super) struct ResolvedProviderContext {
     pub(super) planner_terminal_context: Option<String>,
     pub(super) resolved_planner_pane: Option<String>,
     pub(super) command_resolver_invocation:
-        Option<crate::resolve_command::CommandResolverInvocation>,
+        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 pub(super) async fn resolve_provider_context(
@@ -523,7 +523,7 @@ pub(super) struct ContextRequest<'a> {
     pub(super) planner_terminal_context: Option<&'a str>,
     /// Planner only: resolver contract derived from the same authoritative pane.
     pub(super) command_resolver_invocation:
-        Option<&'a crate::resolve_command::CommandResolverInvocation>,
+        Option<&'a crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 /// One `### {heading}\n{body}` block to inject into the prompt. `heading` is
@@ -591,9 +591,11 @@ pub(super) fn command_resolver_invocation(
     is_autofix: bool,
     planner_shell: Option<&str>,
     planner_pane: Option<&serde_json::Value>,
-) -> Option<crate::resolve_command::CommandResolverInvocation> {
+) -> Option<crate::agent_tools::command_resolution::CommandResolverInvocation> {
     if is_autofix
-        || planner_shell.is_some_and(|shell| !crate::resolve_command::has_applicable_source(shell))
+        || planner_shell.is_some_and(|shell| {
+            !crate::agent_tools::command_resolution::has_applicable_source(shell)
+        })
     {
         return None;
     }
@@ -618,9 +620,11 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(crate::resolve_command::CommandResolverInvocation::new(
-        executable, shell, cwd,
-    ))
+    Some(
+        crate::agent_tools::command_resolution::CommandResolverInvocation::new(
+            executable, shell, cwd,
+        ),
+    )
 }
 
 #[async_trait]

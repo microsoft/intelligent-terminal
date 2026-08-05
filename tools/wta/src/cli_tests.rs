@@ -252,6 +252,51 @@ fn process_label_subcommands() {
     assert_eq!(process_label(&sessions), "cli");
 }
 
+// ── Command::Delegate: --delegate-source / --delegate-wsl-distro parsing ────
+
+#[test]
+fn delegate_command_parses_explicit_source_and_distro() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "delegate",
+        "--delegate-agent",
+        "codex",
+        "--delegate-source",
+        "wsl",
+        "--delegate-wsl-distro",
+        "Ubuntu",
+        "do a thing",
+    ])
+    .expect("flags must parse");
+    match cli.command {
+        Some(Command::Delegate {
+            delegate_source,
+            delegate_wsl_distro,
+            ..
+        }) => {
+            assert_eq!(delegate_source.as_deref(), Some("wsl"));
+            assert_eq!(delegate_wsl_distro.as_deref(), Some("Ubuntu"));
+        }
+        other => panic!("expected Command::Delegate, got {other:?}"),
+    }
+}
+
+#[test]
+fn delegate_command_source_and_distro_default_to_none() {
+    let cli = Cli::try_parse_from(["wta", "delegate", "do a thing"]).expect("flags must parse");
+    match cli.command {
+        Some(Command::Delegate {
+            delegate_source,
+            delegate_wsl_distro,
+            ..
+        }) => {
+            assert!(delegate_source.is_none());
+            assert!(delegate_wsl_distro.is_none());
+        }
+        other => panic!("expected Command::Delegate, got {other:?}"),
+    }
+}
+
 // ── HooksCliFilter::into_scope: CLI filter → installer scope ─────────────────
 
 #[test]
@@ -293,15 +338,16 @@ fn json_str_or_num_reads_strings_and_numbers_else_dash() {
     assert_eq!(cli::wt::json_str_or_num(&v, "missing"), "-");
 }
 
-// ── Delegate: WSL pane target detection + launchable gate ───────────────────
+// ── `/agent` source picker: WSL pane detection ──────────────────────────────
 //
-// `delegate_command_launchable` only checks the Windows PATH, which is
-// meaningless for a WSL pane (the agent runs inside the distro). A WSL pane is
-// therefore treated as launchable when the agent CLI is present *inside the
-// distro* — so a `?<prompt>` from a WSL pane still gets its prompt
-// enriched/delivered when the agent (e.g. Copilot) is installed only inside the
-// distro (regression guard for the "prompt silently dropped" bug), while a WSL
-// pane whose distro lacks the CLI falls back to the Windows host term.
+// `active_pane_wsl_distro` detects whether the active pane is a WSL shell so
+// the `/agent` command-palette source picker can offer that distro's ACP
+// agents alongside the host ones (see `App::request_agent_source_picker` in
+// `app.rs`). `wta delegate` no longer uses this helper for source selection —
+// its explicit `--delegate-source`/`--delegate-wsl-distro` flags own that
+// decision (see `cli::delegate::parse_delegate_source` and its tests in
+// `cli/delegate.rs`); this detector remains covered here because the `/agent`
+// picker still depends on it.
 
 /// Build a minimal active-pane JSON value with the given `shell` field, as
 /// reported by WT's `get_active_pane` / `OSC 9001;ShellType`.
@@ -380,18 +426,45 @@ fn wsl_agent_probe_script_prints_command_v_resolution() {
 }
 
 #[test]
-fn delegate_launchable_for_target_ors_host_and_wsl() {
-    // Agent not launchable on the Windows host, but present inside the WSL
-    // distro → launchable (in-distro path), so the prompt is enriched, not
-    // dropped.
-    assert!(cli::delegate::delegate_launchable_for_target(false, true));
+fn propose_terminal_actions_cli_parses_channel_and_inline_payload() {
+    let cli = Cli::try_parse_from([
+        "wta",
+        "propose-terminal-actions",
+        "--channel",
+        "v1.0123456789abcdef0123456789abcdef.abcdef0123456789abcdef0123456789",
+        "--payload-json",
+        r#"{"schema_version":1}"#,
+    ])
+    .expect("propose-terminal-actions flags must parse");
 
-    // Not launchable on host AND not available in WSL → stays non-launchable
-    // (the bare-command path, where the prompt is intentionally not baked in).
-    // Covers a non-WSL pane and a WSL pane whose distro lacks the CLI alike.
-    assert!(!cli::delegate::delegate_launchable_for_target(false, false));
-
-    // Launchable on the host is always launchable, regardless of WSL.
-    assert!(cli::delegate::delegate_launchable_for_target(true, false));
-    assert!(cli::delegate::delegate_launchable_for_target(true, true));
+    match cli.command {
+        Some(Command::ProposeTerminalActions {
+            channel,
+            payload_json,
+        }) => {
+            assert_eq!(
+                channel,
+                "v1.0123456789abcdef0123456789abcdef.abcdef0123456789abcdef0123456789"
+            );
+            assert_eq!(payload_json, r#"{"schema_version":1}"#);
+        }
+        other => panic!("expected ProposeTerminalActions command, got {other:?}"),
+    }
 }
+
+#[test]
+fn propose_terminal_actions_cli_requires_channel_and_payload() {
+    Cli::try_parse_from(["wta", "propose-terminal-actions"])
+        .expect_err("channel and payload are required");
+    Cli::try_parse_from([
+        "wta",
+        "propose-terminal-actions",
+        "--channel",
+        "channel-only",
+    ])
+    .expect_err("payload is required");
+}
+
+// `wta delegate`'s own launch checks (explicit `--delegate-source`, never
+// auto-routed) are covered by the module-private tests in `cli/delegate.rs`,
+// alongside its `parse_delegate_source` / `select_wsl_delegate_cwd` coverage.
