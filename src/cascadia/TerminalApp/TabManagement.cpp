@@ -813,7 +813,15 @@ namespace winrt::TerminalApp::implementation
     {
         Json::Value response;
         std::string errors;
-        const auto reader = std::unique_ptr<Json::CharReader>{ Json::CharReaderBuilder{}.newCharReader() };
+        Json::CharReaderBuilder builder;
+        builder["allowComments"] = false;
+        builder["collectComments"] = false;
+        builder["allowTrailingCommas"] = false;
+        builder["failIfExtra"] = true;
+        builder["rejectDupKeys"] = true;
+        builder["strictRoot"] = true;
+
+        const auto reader = std::unique_ptr<Json::CharReader>{ builder.newCharReader() };
         if (!reader->parse(json.data(), json.data() + json.size(), &response, &errors))
         {
             THROW_HR(WEB_E_INVALID_JSON_STRING);
