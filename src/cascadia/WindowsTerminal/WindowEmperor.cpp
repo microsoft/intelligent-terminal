@@ -136,14 +136,14 @@ static std::string formatPaneId(const winrt::guid& sessionId)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
-static void notifyDetachedSessionClosed(const winrt::guid& sessionId)
+static void notifyDetachedSessionEnded(const winrt::TerminalApp::DetachedSessionEndedArgs& detachedSession)
 {
     Json::Value evt;
     evt["type"] = "event";
     evt["method"] = "connection_state";
     Json::Value params;
-    params["pane_id"] = formatPaneId(sessionId);
-    params["state"] = "closed";
+    params["pane_id"] = formatPaneId(detachedSession.SessionId());
+    params["state"] = winrt::to_string(detachedSession.State());
     evt["params"] = params;
 
     Json::StreamWriterBuilder wb;
@@ -1224,8 +1224,8 @@ catch (...)
 // The content manager raises its events on the UI thread. Re-evaluating our
 // exit condition from inside a content callback would mean tearing down the app
 // underneath its own stack, so KeptSessionsChanged bounces through the message
-// queue first. DetachedSessionClosed only forwards a protocol event, which is
-// safe to enqueue immediately.
+// queue first. DetachedSessionClosed already carries the terminal's actual end
+// state, so forwarding that protocol event is safe to enqueue immediately.
 void WindowEmperor::_setupKeptSessionTracking()
 {
     if (const auto logic = _app.Logic())
@@ -1235,8 +1235,8 @@ void WindowEmperor::_setupKeptSessionTracking()
             _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
                 PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
             });
-            _detachedSessionClosedToken = manager.DetachedSessionClosed([](auto&&, const winrt::Windows::Foundation::IInspectable& closedSession) {
-                notifyDetachedSessionClosed(winrt::unbox_value<winrt::guid>(closedSession));
+            _detachedSessionClosedToken = manager.DetachedSessionClosed([](auto&&, const winrt::TerminalApp::DetachedSessionEndedArgs& closedSession) {
+                notifyDetachedSessionEnded(closedSession);
             });
         }
     }

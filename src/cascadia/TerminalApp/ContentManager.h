@@ -29,6 +29,7 @@ Abstract:
 #pragma once
 
 #include "ContentManager.g.h"
+#include "DetachedSessionEndedArgs.g.h"
 #include "DetachedSessionInfo.g.h"
 
 #include <inc/cppwinrt_utils.h>
@@ -64,6 +65,23 @@ namespace winrt::TerminalApp::implementation
         uint32_t _pid{ 0 };
     };
 
+    struct DetachedSessionEndedArgs : DetachedSessionEndedArgsT<DetachedSessionEndedArgs>
+    {
+    public:
+        DetachedSessionEndedArgs(const winrt::guid& sessionId, winrt::hstring state) :
+            _sessionId{ sessionId },
+            _state{ std::move(state) }
+        {
+        }
+
+        winrt::guid SessionId() const noexcept { return _sessionId; }
+        winrt::hstring State() const noexcept { return _state; }
+
+    private:
+        winrt::guid _sessionId{};
+        winrt::hstring _state{ L"closed" };
+    };
+
     struct ContentManager : ContentManagerT<ContentManager>
     {
     public:
@@ -89,7 +107,7 @@ namespace winrt::TerminalApp::implementation
         bool HasKeptSessions() const noexcept;
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
-        til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> DetachedSessionClosed;
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::TerminalApp::DetachedSessionEndedArgs> DetachedSessionClosed;
 
     private:
         std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
@@ -108,6 +126,10 @@ namespace winrt::TerminalApp::implementation
             // dead by then, the ordinary tab-close path emits the one and only
             // close signal instead.
             bool raiseDetachedCloseEvent{ false };
+            // Captured before content.Close() tears the connection down so an
+            // already-failed detached session stays failed in the one end event
+            // we forward to WindowEmperor.
+            winrt::hstring detachedEndState{ L"closed" };
         };
 
         // One detached tab. Its members are listed in detach order so a restore
@@ -129,7 +151,7 @@ namespace winrt::TerminalApp::implementation
 
         void _dropKeptSession(const winrt::guid& sessionId);
         void _reapDetachedSessionIfDead(const winrt::guid& sessionId);
-        void _forgetKeptSession(uint64_t contentId);
+        void _forgetKeptSession(uint64_t contentId, const winrt::hstring& fallbackDetachedEndState);
 
         void _closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
                             const winrt::Windows::Foundation::IInspectable& e);
