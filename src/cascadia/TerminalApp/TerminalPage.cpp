@@ -8,6 +8,7 @@
 #include <iomanip>
 
 #include <json/json.h>
+#include <Shlwapi.h>
 #include <TerminalCore/ControlKeyStates.hpp>
 #include <TerminalThemeHelpers.h>
 #include <til/hash.h>
@@ -347,9 +348,7 @@ namespace winrt::TerminalApp::implementation
             // the effective value happens to match the previously-defaulted value).
             const bool effectiveChanged = (_lastAutoErrorDetectionEnabled != currentDetection);
             const bool explicitTurnedOn = (!_lastAutoErrorDetectionHasExplicit && hasExplicit);
-            const bool shouldReconcile = isFirstLoad
-                                             ? hasExplicit
-                                             : (effectiveChanged || explicitTurnedOn);
+            const bool shouldReconcile = isFirstLoad ? hasExplicit : (effectiveChanged || explicitTurnedOn);
             _lastAutoErrorDetectionEnabled = currentDetection;
             _lastAutoErrorDetectionHasExplicit = hasExplicit;
             _autoErrorDetectionSnapshotInitialized = true;
@@ -937,27 +936,28 @@ namespace winrt::TerminalApp::implementation
             // RaiseNotificationEvent so Narrator reads it on entry.
             // Dispatched at Low priority so it runs after all pending layout.
             Dispatcher().RunAsync(winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
-                [weak = get_weak()]() {
-                    auto self = weak.get();
-                    if (!self) return;
-                    if (auto overlay = self->FreOverlayElement())
-                    {
-                        if (auto nextBtn = overlay.FindName(L"NextButton").try_as<Controls::Button>())
-                        {
-                            nextBtn.Focus(FocusState::Programmatic);
+                                  [weak = get_weak()]() {
+                                      auto self = weak.get();
+                                      if (!self)
+                                          return;
+                                      if (auto overlay = self->FreOverlayElement())
+                                      {
+                                          if (auto nextBtn = overlay.FindName(L"NextButton").try_as<Controls::Button>())
+                                          {
+                                              nextBtn.Focus(FocusState::Programmatic);
 
-                            // Announce page title to screen readers
-                            if (auto peer = winrt::Windows::UI::Xaml::Automation::Peers::FrameworkElementAutomationPeer::FromElement(nextBtn))
-                            {
-                                peer.RaiseNotificationEvent(
-                                    winrt::Windows::UI::Xaml::Automation::Peers::AutomationNotificationKind::Other,
-                                    winrt::Windows::UI::Xaml::Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
-                                    RS_(L"FreOverlay_WelcomeTitle/Text"),
-                                    L"FreWelcomeAnnouncement");
-                            }
-                        }
-                    }
-                });
+                                              // Announce page title to screen readers
+                                              if (auto peer = winrt::Windows::UI::Xaml::Automation::Peers::FrameworkElementAutomationPeer::FromElement(nextBtn))
+                                              {
+                                                  peer.RaiseNotificationEvent(
+                                                      winrt::Windows::UI::Xaml::Automation::Peers::AutomationNotificationKind::Other,
+                                                      winrt::Windows::UI::Xaml::Automation::Peers::AutomationNotificationProcessing::ImportantMostRecent,
+                                                      RS_(L"FreOverlay_WelcomeTitle/Text"),
+                                                      L"FreWelcomeAnnouncement");
+                                              }
+                                          }
+                                      }
+                                  });
 
             // Hide the tab bar during FRE — the full-screen wizard replaces
             // the entire window content. Restored in _OnFreCompleted.
@@ -1130,7 +1130,8 @@ namespace winrt::TerminalApp::implementation
         if (_IsCustomAgentId(acpAgent))
         {
             const auto customCmd = globals.AcpCustomCommand();
-            if (!customCmd.empty()) return customCmd;
+            if (!customCmd.empty())
+                return customCmd;
         }
 
         return _BuildAgentCommandLine(acpAgent, globals.AcpModel());
@@ -1245,7 +1246,8 @@ namespace winrt::TerminalApp::implementation
         if (_IsCustomAgentId(delegateAgent))
         {
             const auto customCmd = globals.DelegateCustomCommand();
-            if (!customCmd.empty()) return customCmd;
+            if (!customCmd.empty())
+                return customCmd;
         }
         return delegateAgent;
     }
@@ -2414,7 +2416,6 @@ namespace winrt::TerminalApp::implementation
                 }
             }
         });
-
     }
 
     // Window-level bottom-bar "agent toggle" click. Targets the active tab:
@@ -2799,9 +2800,7 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.Opacity(1.0);
                 diagBtn.IsEnabled(true);
 
-                const auto hotkey = hotkeyHint.empty()
-                                        ? std::wstring{ L"Ctrl+Alt+." }
-                                        : std::wstring{ hotkeyHint };
+                const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
                 const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
                     winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
                 };
@@ -2825,9 +2824,7 @@ namespace winrt::TerminalApp::implementation
                 diagBtn.Opacity(1.0);
                 diagBtn.IsEnabled(true);
 
-                const auto hotkey = hotkeyHint.empty()
-                                        ? std::wstring{ L"Ctrl+Alt+." }
-                                        : std::wstring{ hotkeyHint };
+                const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
                 std::wstring labelText = RS_fmt(L"Diagnostics_ErrorDetectedLabelFormat", hotkey);
                 const auto accent = winrt::Windows::UI::Xaml::Media::SolidColorBrush{
                     winrt::Windows::UI::ColorHelper::FromArgb(255, 0xFF, 0xD7, 0x00)
@@ -4533,9 +4530,12 @@ namespace winrt::TerminalApp::implementation
                 TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                 TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
-        else if (stateStr == "review") state = AS::Review;
-        else if (stateStr == "detected") state = AS::Detected;
-        else if (stateStr == "cleared") state = AS::Idle;
+        else if (stateStr == "review")
+            state = AS::Review;
+        else if (stateStr == "detected")
+            state = AS::Detected;
+        else if (stateStr == "cleared")
+            state = AS::Idle;
 
         const auto pickStr = [&](const char* key) -> winrt::hstring {
             if (params.isMember(key) && params[key].isString())
@@ -5347,9 +5347,7 @@ namespace winrt::TerminalApp::implementation
                 try
                 {
                     // Accept both braced ({…}) and plain GUID encodings.
-                    sessionId = (raw.size() >= 2 && raw.front() == '{')
-                                    ? winrt::guid{ ::Microsoft::Console::Utils::GuidFromString(wide.c_str()) }
-                                    : winrt::guid{ ::Microsoft::Console::Utils::GuidFromPlainString(wide.c_str()) };
+                    sessionId = (raw.size() >= 2 && raw.front() == '{') ? winrt::guid{ ::Microsoft::Console::Utils::GuidFromString(wide.c_str()) } : winrt::guid{ ::Microsoft::Console::Utils::GuidFromPlainString(wide.c_str()) };
                 }
                 catch (...)
                 {
@@ -5991,9 +5989,7 @@ namespace winrt::TerminalApp::implementation
                             // pane_id alone is sufficient for the
                             // session-list / PaneClosed prune path.
                             auto term2 = weakTerm.get();
-                            const auto tabIdStr = term2
-                                ? page->_FindTabIdForControl(term2)
-                                : std::string{};
+                            const auto tabIdStr = term2 ? page->_FindTabIdForControl(term2) : std::string{};
 
                             Json::Value evt;
                             evt["type"] = "event";
@@ -7279,6 +7275,39 @@ namespace winrt::TerminalApp::implementation
     }
     CATCH_LOG();
 
+    static std::optional<std::wstring> _DirectoryPathFromFileUri(const winrt::hstring& uri)
+    {
+        std::wstring path{ uri };
+        auto pathLength = gsl::narrow<DWORD>(path.size());
+        if (FAILED(PathCreateFromUrlW(path.data(), path.data(), &pathLength, 0)))
+        {
+            return std::nullopt;
+        }
+
+        path.resize(pathLength);
+        const auto attributes = GetFileAttributesW(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || WI_IsFlagClear(attributes, FILE_ATTRIBUTE_DIRECTORY))
+        {
+            return std::nullopt;
+        }
+
+        return path;
+    }
+
+    static bool _OpenDirectoryInExplorer(const std::wstring_view path)
+    {
+        wchar_t windowsDirectory[MAX_PATH]{};
+        if (!GetWindowsDirectoryW(windowsDirectory, ARRAYSIZE(windowsDirectory)))
+        {
+            return false;
+        }
+
+        const auto explorer = std::filesystem::path{ windowsDirectory } / L"explorer.exe";
+        const auto parameters = fmt::format(LR"("{}")", path);
+        const auto result = ShellExecuteW(nullptr, L"open", explorer.c_str(), parameters.c_str(), nullptr, SW_SHOWNORMAL);
+        return reinterpret_cast<INT_PTR>(result) > 32;
+    }
+
     safe_void_coroutine TerminalPage::_OpenHyperlinkHandler(const IInspectable /*sender*/, const Microsoft::Terminal::Control::OpenHyperlinkEventArgs eventArgs)
     {
         try
@@ -7287,6 +7316,15 @@ namespace winrt::TerminalApp::implementation
             auto parsed = winrt::Windows::Foundation::Uri(uriString);
             if (_IsUriSupported(parsed))
             {
+                if (parsed.SchemeName() == L"file")
+                {
+                    if (const auto directory = _DirectoryPathFromFileUri(uriString);
+                        directory && _OpenDirectoryInExplorer(*directory))
+                    {
+                        co_return;
+                    }
+                }
+
                 bool shouldLaunch{ _IsUriConsideredSomewhatSafe(parsed) };
 
                 if (!shouldLaunch)
@@ -8836,7 +8874,6 @@ namespace winrt::TerminalApp::implementation
         {
             _tabView.SelectedItem(_settingsTab.TabViewItem());
         }
-
     }
 
     // Method Description:
