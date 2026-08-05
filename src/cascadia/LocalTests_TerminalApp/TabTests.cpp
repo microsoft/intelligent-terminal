@@ -11,6 +11,7 @@
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
+#include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
 using namespace Microsoft::Console;
@@ -39,6 +40,47 @@ namespace winrt
 
 namespace TerminalAppLocalTests
 {
+    class TestConnection : public winrt::implements<TestConnection, winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection>
+    {
+    public:
+        TestConnection(const winrt::guid& sessionId,
+                       const winrt::Microsoft::Terminal::TerminalConnection::ConnectionState initialState) noexcept :
+            _sessionId{ sessionId },
+            _state{ initialState }
+        {
+        }
+
+        void Initialize(const winrt::Windows::Foundation::Collections::ValueSet& /*settings*/) {}
+        void Start() noexcept {}
+        void WriteInput(const winrt::array_view<const char16_t> data)
+        {
+            TerminalOutput.raise(data);
+        }
+        void Resize(uint32_t /*rows*/, uint32_t /*columns*/) noexcept {}
+        void Close() noexcept
+        {
+            TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+        }
+
+        void TransitionTo(const winrt::Microsoft::Terminal::TerminalConnection::ConnectionState state) noexcept
+        {
+            _state = state;
+            StateChanged.raise(*this, nullptr);
+        }
+
+        winrt::guid SessionId() const noexcept { return _sessionId; }
+        winrt::Microsoft::Terminal::TerminalConnection::ConnectionState State() const noexcept { return _state; }
+
+        til::event<winrt::Microsoft::Terminal::TerminalConnection::TerminalOutputHandler> TerminalOutput;
+        til::typed_event<winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection, IInspectable> StateChanged;
+
+    private:
+        winrt::guid _sessionId{};
+        std::atomic<winrt::Microsoft::Terminal::TerminalConnection::ConnectionState> _state{
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::NotConnected
+        };
+    };
+
     // TODO:microsoft/terminal#3838:
     // Unfortunately, these tests _WILL NOT_ work in our CI. We're waiting for
     // an updated TAEF that will let us install framework packages when the test
@@ -76,6 +118,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
+        TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
 
         TEST_METHOD(TryDuplicateBadTab);
         TEST_METHOD(TryDuplicateBadPane);
@@ -237,6 +280,45 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(_contentManager->DiscardKeptSession(sessionId));
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
             VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
+        });
+    }
+
+    void TabTests::DetachedSessionAlreadyClosedIsReapedImmediately()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{99999999-8888-7777-6666-555555555555}");
+
+        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        VERIFY_IS_NOT_NULL(_contentManager);
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+            const auto contentId = content.Id();
+
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+            VERIFY_IS_NOT_NULL(control);
+
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+
+            _contentManager->DetachForKeepRunning(groupId, sessionId, L"Already closed", L"shell-session-closed", control);
+
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+            VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
         });
     }
 
