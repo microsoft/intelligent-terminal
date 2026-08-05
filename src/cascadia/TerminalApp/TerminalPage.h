@@ -535,6 +535,18 @@ namespace winrt::TerminalApp::implementation
         // ProtocolVtSequenceReceived. Single source of the wta protocol-event
         // wire shape — callers just supply the method name and a params object.
         void _RaiseProtocolEvent(std::string_view method, const Json::Value& params);
+        // Raises one `connection_state` protocol event. Terminal end states
+        // (`closed` / `failed`) must go through `_TryRaiseTerminalEndStateEvent`
+        // so only the first producer emits.
+        void _RaiseConnectionStateEvent(std::string_view paneId,
+                                        std::string_view state,
+                                        std::string_view tabId = {});
+        // SessionIds are unique for the lifetime of a live pane, so once a
+        // pane's terminal end event has been emitted we can keep that mark for
+        // the rest of the page lifetime without clearing it.
+        bool _TryRaiseTerminalEndStateEvent(std::string_view paneId,
+                                            std::string_view state,
+                                            std::string_view tabId = {});
         void _TeardownAgentPane(const winrt::com_ptr<Tab>& tab, bool suppressMasterRestart = true);
         void _RebuildAgentStack();
         // Scoped per-tab rebuild after a tab's agent override changes
@@ -692,12 +704,10 @@ namespace winrt::TerminalApp::implementation
         // that is currently in flight, so _NotifyPanesClosing can tell them
         // apart from panes that really are going away.
         std::unordered_set<std::string> _panesKeptRunning;
-        // Pane ids that already emitted a terminal failure event while attached,
-        // so a later UI-driven teardown won't downgrade or duplicate it.
-        std::unordered_set<std::string> _panesWithObservedFailure;
-        // Pane ids whose failed close event was emitted by _NotifyPanesClosing
-        // before a queued ConnectionStateChanged(failed) callback could run.
-        std::unordered_set<std::string> _panesWithSuppressedFailedClose;
+        // Pane ids whose terminal end event (`closed` / `failed`) already went
+        // out on ProtocolVtSequenceReceived. Only terminal end states belong in
+        // this set; non-terminal updates stay untracked.
+        std::unordered_set<std::string> _panesWithEmittedTerminalEndState;
         struct _PaneAgentSession
         {
             winrt::hstring sessionId;
