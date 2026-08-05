@@ -1638,8 +1638,8 @@ namespace winrt::TerminalApp::implementation
         _RaiseProtocolEvent("tab_closed", tabParams);
     }
 
-    // Explicitly emit `connection_state:closed` for every terminal leaf
-    // under `rootPane`. Needed because UI-initiated pane/tab close goes
+    // Explicitly emit `connection_state` for every terminal leaf under
+    // `rootPane`. Needed because UI-initiated pane/tab close goes
     // through `ControlCore::_closeConnection` which revokes the
     // `ConnectionStateChanged` listener BEFORE the connection transitions
     // to Closed — so the normal `TermControl::ConnectionStateChanged ->
@@ -1688,12 +1688,31 @@ namespace winrt::TerminalApp::implementation
                 _panesKeptRunning.erase(kept);
                 return;
             }
+            std::string stateStr{ "closed" };
+            if (control.ConnectionState() == ConnectionState::Failed)
+            {
+                if (_panesWithObservedFailure.erase(paneIdStr) > 0)
+                {
+                    return;
+                }
+
+                stateStr = "failed";
+                _panesWithSuppressedFailedClose.insert(paneIdStr);
+                Dispatcher().RunAsync(
+                    winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+                    [weakThis = get_weak(), paneIdStr]() {
+                        if (auto page = weakThis.get())
+                        {
+                            page->_panesWithSuppressedFailedClose.erase(paneIdStr);
+                        }
+                    });
+            }
             Json::Value evt;
             evt["type"] = "event";
             evt["method"] = "connection_state";
             Json::Value params;
             params["pane_id"] = paneIdStr;
-            params["state"] = "closed";
+            params["state"] = stateStr;
             evt["params"] = params;
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
@@ -6011,8 +6030,17 @@ namespace winrt::TerminalApp::implementation
                             const auto tabIdStr = term2
                                 ? page->_FindTabIdForControl(term2)
                                 : std::string{};
-                            if (stateStr == "closed")
+                            if (stateStr == "failed")
                             {
+                                if (page->_panesWithSuppressedFailedClose.erase(paneIdStr) > 0)
+                                {
+                                    return;
+                                }
+                                page->_panesWithObservedFailure.insert(paneIdStr);
+                            }
+                            else if (stateStr == "closed")
+                            {
+                                page->_panesWithObservedFailure.erase(paneIdStr);
                                 if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
                                 {
                                     page->_paneAgentSessions.erase(*paneSessionId);

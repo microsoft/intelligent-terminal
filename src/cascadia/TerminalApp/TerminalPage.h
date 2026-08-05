@@ -692,6 +692,12 @@ namespace winrt::TerminalApp::implementation
         // that is currently in flight, so _NotifyPanesClosing can tell them
         // apart from panes that really are going away.
         std::unordered_set<std::string> _panesKeptRunning;
+        // Pane ids that already emitted a terminal failure event while attached,
+        // so a later UI-driven teardown won't downgrade or duplicate it.
+        std::unordered_set<std::string> _panesWithObservedFailure;
+        // Pane ids whose failed close event was emitted by _NotifyPanesClosing
+        // before a queued ConnectionStateChanged(failed) callback could run.
+        std::unordered_set<std::string> _panesWithSuppressedFailedClose;
         struct _PaneAgentSession
         {
             winrt::hstring sessionId;

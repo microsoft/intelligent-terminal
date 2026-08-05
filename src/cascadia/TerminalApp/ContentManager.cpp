@@ -34,6 +34,18 @@ namespace winrt::TerminalApp::implementation
         return connection && connection.State() < ConnectionState::Closed;
     }
 
+    static winrt::hstring _getDetachedSessionEndedState(const ControlInteractivity& content)
+    {
+        const auto connection{ _getDetachedSessionConnection(content) };
+        return connection && connection.State() == ConnectionState::Failed ? L"failed" : L"closed";
+    }
+
+    static winrt::TerminalApp::DetachedSessionEndedArgs _makeDetachedSessionEndedArgs(const winrt::guid& sessionId,
+                                                                                       const winrt::hstring& state)
+    {
+        return winrt::make<winrt::TerminalApp::implementation::DetachedSessionEndedArgs>(sessionId, state);
+    }
+
     static uint32_t _getDetachedSessionPid(const ControlInteractivity& content)
     {
         const auto connection{ _getDetachedSessionConnection(content) };
@@ -178,7 +190,13 @@ namespace winrt::TerminalApp::implementation
         const auto content{ TryLookupCore(contentId) };
         if (!content)
         {
+            const auto raiseDetachedCloseEvent = it->second.raiseDetachedCloseEvent;
+            const auto detachedEndState = it->second.detachedEndState;
             _dropKeptSession(sessionId);
+            if (raiseDetachedCloseEvent)
+            {
+                DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
+            }
             KeptSessionsChanged.raise(*this, nullptr);
             return 0;
         }
@@ -189,6 +207,7 @@ namespace winrt::TerminalApp::implementation
             // caller asked to reattach it. Finish the reap here so the caller
             // falls back to the snapshot/new-shell path, and the queued reap can
             // later observe that the bookkeeping is already gone and no-op.
+            it->second.detachedEndState = _getDetachedSessionEndedState(content);
             content.Close();
             return 0;
         }
@@ -272,7 +291,13 @@ namespace winrt::TerminalApp::implementation
                 const auto content{ TryLookupCore(contentId) };
                 if (!content)
                 {
+                    const auto raiseDetachedCloseEvent = session->second.raiseDetachedCloseEvent;
+                    const auto detachedEndState = session->second.detachedEndState;
                     _dropKeptSession(sessionId);
+                    if (raiseDetachedCloseEvent)
+                    {
+                        DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
+                    }
                     changed = true;
                     continue;
                 }
@@ -281,6 +306,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     // Reattach each pane independently: dead members are reaped
                     // here, while live members still come back in the rebuilt tab.
+                    session->second.detachedEndState = _getDetachedSessionEndedState(content);
                     content.Close();
                     continue;
                 }
@@ -315,15 +341,17 @@ namespace winrt::TerminalApp::implementation
             // exited after the caller listed the session but before it asked us
             // to discard it, finish the reap here and report "not found" to the
             // caller after emitting the one close notification.
+            it->second.detachedEndState = _getDetachedSessionEndedState(content);
             content.Close();
         }
         else
         {
             const auto raiseDetachedCloseEvent = it->second.raiseDetachedCloseEvent;
+            const auto detachedEndState = it->second.detachedEndState;
             _dropKeptSession(sessionId);
             if (raiseDetachedCloseEvent)
             {
-                DetachedSessionClosed.raise(*this, winrt::box_value(sessionId));
+                DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
             }
             KeptSessionsChanged.raise(*this, nullptr);
         }
@@ -355,11 +383,18 @@ namespace winrt::TerminalApp::implementation
             if (const auto content{ TryLookupCore(contentId) })
             {
                 // Drops through _closedHandler, which also raises the event.
+                session->second.detachedEndState = _getDetachedSessionEndedState(content);
                 content.Close();
             }
             else
             {
+                const auto raiseDetachedCloseEvent = session->second.raiseDetachedCloseEvent;
+                const auto detachedEndState = session->second.detachedEndState;
                 _dropKeptSession(sessionId);
+                if (raiseDetachedCloseEvent)
+                {
+                    DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
+                }
                 changed = true;
             }
         }
@@ -410,7 +445,13 @@ namespace winrt::TerminalApp::implementation
         const auto content{ TryLookupCore(contentId) };
         if (!content)
         {
+            const auto raiseDetachedCloseEvent = it->second.raiseDetachedCloseEvent;
+            const auto detachedEndState = it->second.detachedEndState;
             _dropKeptSession(sessionId);
+            if (raiseDetachedCloseEvent)
+            {
+                DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
+            }
             KeptSessionsChanged.raise(*this, nullptr);
             return;
         }
@@ -424,10 +465,11 @@ namespace winrt::TerminalApp::implementation
         // both _content and our maps via _closedHandler, which is also what
         // eventually lets the emperor quit. `content` keeps it alive across the
         // call.
+        it->second.detachedEndState = _getDetachedSessionEndedState(content);
         content.Close();
     }
 
-    void ContentManager::_forgetKeptSession(uint64_t contentId)
+    void ContentManager::_forgetKeptSession(uint64_t contentId, const winrt::hstring& fallbackDetachedEndState)
     {
         for (const auto& [sessionId, kept] : _keptSessions)
         {
@@ -435,10 +477,11 @@ namespace winrt::TerminalApp::implementation
             {
                 const auto id = sessionId;
                 const auto raiseDetachedCloseEvent = kept.raiseDetachedCloseEvent;
+                const auto detachedEndState = kept.detachedEndState.empty() ? fallbackDetachedEndState : kept.detachedEndState;
                 _dropKeptSession(id);
                 if (raiseDetachedCloseEvent)
                 {
-                    DetachedSessionClosed.raise(*this, winrt::box_value(id));
+                    DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(id, detachedEndState));
                 }
                 KeptSessionsChanged.raise(*this, nullptr);
                 return;
@@ -452,11 +495,12 @@ namespace winrt::TerminalApp::implementation
         if (const auto& content{ sender.try_as<winrt::Microsoft::Terminal::Control::ControlInteractivity>() })
         {
             const auto& contentId{ content.Id() };
+            const auto detachedEndState = _getDetachedSessionEndedState(content);
             _content.erase(contentId);
 
             // A kept session whose shell just exited stops being a reason to
             // keep this process alive.
-            _forgetKeptSession(contentId);
+            _forgetKeptSession(contentId, detachedEndState);
         }
     }
 }

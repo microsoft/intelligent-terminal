@@ -15,6 +15,12 @@ namespace TerminalApp
         UInt32 Pid { get; };
     }
 
+    runtimeclass DetachedSessionEndedArgs
+    {
+        Guid SessionId { get; };
+        String State { get; };
+    }
+
     [default_interface] runtimeclass ContentManager
     {
         Microsoft.Terminal.Control.ControlInteractivity CreateCore(Microsoft.Terminal.Control.IControlSettings settings,
@@ -50,9 +56,9 @@ namespace TerminalApp
         void DiscardKeptGroup(Guid groupId);
         Boolean HasKeptSessions { get; };
         event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> KeptSessionsChanged;
-        // Raised once when a successfully detached live session later closes
-        // while still detached. Args: boxed session Guid.
-        event Windows.Foundation.TypedEventHandler<ContentManager, IInspectable> DetachedSessionClosed;
+        // Raised once when a successfully detached live session later ends
+        // while still detached. Args: session Guid + terminal state.
+        event Windows.Foundation.TypedEventHandler<ContentManager, DetachedSessionEndedArgs> DetachedSessionClosed;
     }
 
     [default_interface] runtimeclass RenameWindowRequestedArgs
