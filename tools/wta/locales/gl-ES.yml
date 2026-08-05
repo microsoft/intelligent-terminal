@@ -218,3 +218,9 @@ model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked=
 system.no_models: "O axente conectado non anunciou ningún modelo seleccionable."
 system.model_set: "O modelo deste panel estableceuse en %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modelo descoñecido %{model} — escriba /model para ver a lista dispoñible."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Intelixente — %{count} sesións en segundo plano"
+tray.restore: "Restaurar"
+tray.end: "Finalizar"
+tray.end_all: "Finalizar todas"
+tray.error_title: "Produciuse un erro na acción da sesión en segundo plano"
+tray.error_body: "Non se puido completar a acción:\n%{error}"

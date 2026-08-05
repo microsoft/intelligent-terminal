@@ -234,3 +234,9 @@ model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Ent
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}
+tray.tooltip: "ស្ថានីយឆ្លាតវៃ — សម័យផ្ទៃខាងក្រោយ %{count}"
+tray.restore: "ស្ដារ"
+tray.end: "បញ្ចប់"
+tray.end_all: "បញ្ចប់ទាំងអស់"
+tray.error_title: "សកម្មភាពសម័យផ្ទៃខាងក្រោយបានបរាជ័យ"
+tray.error_body: "មិនអាចបញ្ចប់សកម្មភាពបានទេ៖\n%{error}"

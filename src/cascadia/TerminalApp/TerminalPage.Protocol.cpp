@@ -952,6 +952,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         auto actions = wil::to_vector(layout.TabLayout());
+        const auto reattachLiveSessions = _settings.GlobalSettings().ContinueRunningCommands();
         bool firstTerminal = true;
         for (const auto& action : actions)
         {
@@ -980,7 +981,12 @@ namespace winrt::TerminalApp::implementation
                     {
                         terminalArgs.ShellSessionRestorePath(path->second);
                     }
-                    terminalArgs.SessionId(::Microsoft::Console::Utils::CreateGuid());
+                    // Snapshot restores fork; psmux restores keep WT_SESSION so new-session -A can reattach.
+                    if (!reattachLiveSessions || !terminalArgs.UseCommandPersistence())
+                    {
+                        terminalArgs.SessionId(::Microsoft::Console::Utils::CreateGuid());
+                        terminalArgs.UseCommandPersistence(false);
+                    }
                     if (firstTerminal)
                     {
                         terminalArgs.DurableShellSessionId(id);

@@ -220,3 +220,9 @@ model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  #
 system.no_models: "Свързаният агент не обяви никакви избираеми модели."
 system.model_set: "Моделът за този панел е зададен на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Неизвестен модел %{model} — въведете /model, за да видите наличния списък."  # {Locked="%{model}","/model"}
+tray.tooltip: "Интелигентен Терминал — %{count} фонови сесии"
+tray.restore: "Възстановяване"
+tray.end: "Край"
+tray.end_all: "Край на всички"
+tray.error_title: "Действието с фонова сесия е неуспешно"
+tray.error_body: "Действието не можа да бъде завършено:\n%{error}"

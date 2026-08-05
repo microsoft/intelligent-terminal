@@ -218,3 +218,9 @@ model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}
+tray.tooltip: "เทอร์มินัลอัจฉริยะ — เซสชันเบื้องหลัง %{count} รายการ"
+tray.restore: "คืนค่า"
+tray.end: "สิ้นสุด"
+tray.end_all: "สิ้นสุดทั้งหมด"
+tray.error_title: "การดำเนินการกับเซสชันเบื้องหลังล้มเหลว"
+tray.error_body: "ไม่สามารถดำเนินการให้เสร็จสมบูรณ์ได้:\n%{error}"

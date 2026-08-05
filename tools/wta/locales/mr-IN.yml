@@ -219,3 +219,9 @@ model_picker.title: "मॉडेल निवडा (↑ ↓ • Enter • Esc)
 system.no_models: "कनेक्ट केलेल्या agent ने कोणतेही निवडण्यायोग्य मॉडेल जाहीर केले नाही."
 system.model_set: "या पेनसाठी मॉडेल %{model} वर सेट केले."  # {Locked="%{model}"}
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}
+tray.tooltip: "इंटेलिजंट टर्मिनल — %{count} पार्श्वभूमी सत्रे"
+tray.restore: "पुनर्संचयित करा"
+tray.end: "समाप्त करा"
+tray.end_all: "सर्व समाप्त करा"
+tray.error_title: "पार्श्वभूमी सत्राची कृती अयशस्वी झाली"
+tray.error_body: "कृती पूर्ण करता आली नाही:\n%{error}"

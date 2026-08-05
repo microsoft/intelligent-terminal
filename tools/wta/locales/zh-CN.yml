@@ -213,3 +213,10 @@ model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="�
 system.no_models: "已连接的智能体未公布任何可选模型。"
 system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}
+# ── 持久后台会话托盘 ─────────────────────────────────────────────────────────
+tray.tooltip: "智能终端 — %{count} 个后台会话"
+tray.restore: "还原"
+tray.end: "结束"
+tray.end_all: "全部结束"
+tray.error_title: "后台会话操作失败"
+tray.error_body: "无法完成该操作：\n%{error}"

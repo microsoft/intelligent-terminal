@@ -219,3 +219,9 @@ model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (�
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}
 system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}
+tray.tooltip: "ഇന്റലിജന്റ് ടെർമിനൽ — %{count} പശ്ചാത്തല സെഷനുകൾ"
+tray.restore: "പുനഃസ്ഥാപിക്കുക"
+tray.end: "അവസാനിപ്പിക്കുക"
+tray.end_all: "എല്ലാം അവസാനിപ്പിക്കുക"
+tray.error_title: "പശ്ചാത്തല സെഷൻ പ്രവർത്തനം പരാജയപ്പെട്ടു"
+tray.error_body: "പ്രവർത്തനം പൂർത്തിയാക്കാനായില്ല:\n%{error}"

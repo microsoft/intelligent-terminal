@@ -218,3 +218,9 @@ model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
 system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Adimenduna — atzeko planoko %{count} saio"
+tray.restore: "Leheneratu"
+tray.end: "Amaitu"
+tray.end_all: "Amaitu guztiak"
+tray.error_title: "Atzeko planoko saioaren ekintzak huts egin du"
+tray.error_body: "Ezin izan da ekintza osatu:\n%{error}"

@@ -182,6 +182,7 @@ namespace Microsoft.Terminal.Settings.Model
         Boolean AgentPaneOpen;
         String AgentPanePosition;
         String ShellSessionRestorePath;
+        Boolean UseCommandPersistence;
         String DurableShellSessionId;
         Int64 DurableShellSessionRevision;
         Boolean AppendCommandLine;

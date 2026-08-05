@@ -217,3 +217,9 @@ model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked=
 system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
 system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Inteligent — %{count} sesiuni în fundal"
+tray.restore: "Restabilire"
+tray.end: "Încheiere"
+tray.end_all: "Încheiați-le pe toate"
+tray.error_title: "Acțiunea sesiunii în fundal nu a reușit"
+tray.error_body: "Acțiunea nu a putut fi finalizată:\n%{error}"

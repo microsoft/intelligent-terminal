@@ -218,3 +218,9 @@ model_picker.title: "Izberi model (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Povezani agent ni oglaševal nobenega izbirljivega modela."
 system.model_set: "Model za to podokno je nastavljen na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Neznan model %{model} — vnesite /model za prikaz razpoložljivega seznama."  # {Locked="%{model}","/model"}
+tray.tooltip: "Inteligentni Terminal — %{count} sej v ozadju"
+tray.restore: "Obnovi"
+tray.end: "Končaj"
+tray.end_all: "Končaj vse"
+tray.error_title: "Dejanje seje v ozadju ni uspelo"
+tray.error_body: "Dejanja ni bilo mogoče dokončati:\n%{error}"

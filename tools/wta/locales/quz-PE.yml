@@ -217,3 +217,9 @@ model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}
+tray.tooltip: "Yuyaysapa Terminal — %{count} qhipa pacha tiyaykuna"
+tray.restore: "Kutichiy"
+tray.end: "Tukuchiy"
+tray.end_all: "Llapan tukuchiy"
+tray.error_title: "Qhipa pacha tiyaypa ruraynin pantarqan"
+tray.error_body: "Ruraytaqa mana tukuyta atikurqanchu:\n%{error}"

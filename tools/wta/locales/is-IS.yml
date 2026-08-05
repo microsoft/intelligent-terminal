@@ -218,3 +218,9 @@ model_picker.title: "Veldu líkan (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Tengdi agentinn auglýsti engin valanleg líkön."
 system.model_set: "Líkan fyrir þetta spjald stillt á %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}
+tray.tooltip: "Snjallútstöð — %{count} bakgrunnslota"
+tray.restore: "Endurheimta"
+tray.end: "Ljúka"
+tray.end_all: "Ljúka öllum"
+tray.error_title: "Aðgerð bakgrunnslotu mistókst"
+tray.error_body: "Ekki var hægt að ljúka aðgerðinni:\n%{error}"

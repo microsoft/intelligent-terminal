@@ -1268,4 +1268,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>⚠ PowerShell execution policy is blocking scripts. Error detection turned off.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
+  <data name="PutToKeepRunningText" xml:space="preserve">
+    <value>Put to keep running</value>
+    <comment>Context-menu command that opens a new durable pane using the current profile and working directory.</comment>
+  </data>
 </root>

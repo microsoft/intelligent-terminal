@@ -218,3 +218,9 @@ model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}
+tray.tooltip: "Nutikas Terminal — %{count} taustaseanssi"
+tray.restore: "Taasta"
+tray.end: "Lõpeta"
+tray.end_all: "Lõpeta kõik"
+tray.error_title: "Taustaseansi toiming nurjus"
+tray.error_body: "Toimingut ei saanud lõpule viia:\n%{error}"

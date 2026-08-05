@@ -1514,6 +1514,8 @@ pub struct TabSession {
     /// dedupe key so we only fire an event when the effective chip target
     /// actually changes.
     pub last_emitted_chip_override: Option<String>,
+    /// Last conversation-resume metadata projected to WT for this tab.
+    pub last_emitted_session_info: Option<(bool, Option<String>)>,
 
 
     // Input editor state — per-tab so each tab keeps its own draft text,
@@ -4514,6 +4516,7 @@ impl App {
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
                     self.handle_event(event);
+                    self.emit_agent_session_info_if_changed();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
                     });
@@ -4550,6 +4553,7 @@ impl App {
                             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
                         }
                     }
+                    self.emit_agent_session_info_if_changed();
 
                     ui_trace::log_slow("event_batch_handle", batch_started.elapsed(), || {
                         format!(
@@ -10192,6 +10196,7 @@ impl App {
             .loading_target_session_id
             .as_ref()
             .or(tab.session_id.as_ref());
+        let has_conversation = !tab.completed_turns.is_empty();
         let evt = serde_json::json!({
             "type": "event",
             "method": "agent_state_changed",
@@ -10201,6 +10206,7 @@ impl App {
                 "pane_open": tab.pane_open,
                 "pane_position": tab.agent_pane_position,
                 "agent_session_id": projected_session_id,
+                "has_conversation": has_conversation,
             }
         });
         send_wt_protocol_event(evt.to_string());
@@ -10211,6 +10217,39 @@ impl App {
         if target_tab == self.active_tab_key() {
             send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
         }
+    }
+
+    fn agent_session_info_signature(tab: &TabSession) -> (bool, Option<String>) {
+        let has_conversation = !tab.completed_turns.is_empty();
+        let session_id = has_conversation.then(|| tab.session_id.clone()).flatten();
+        (has_conversation, session_id)
+    }
+
+    fn emit_agent_session_info_if_changed(&mut self) {
+        let tab_id = self
+            .owner_tab_id
+            .as_deref()
+            .unwrap_or_else(|| self.active_tab_key())
+            .to_string();
+        let Some(tab) = self.tab_sessions.get_mut(&tab_id) else {
+            return;
+        };
+        let signature = Self::agent_session_info_signature(tab);
+        if tab.last_emitted_session_info.as_ref() == Some(&signature) {
+            return;
+        }
+        tab.last_emitted_session_info = Some(signature.clone());
+        let (has_conversation, session_id) = signature;
+        let evt = serde_json::json!({
+            "type": "event",
+            "method": "agent_state_changed",
+            "params": {
+                "tab_id": tab_id,
+                "agent_session_id": session_id,
+                "has_conversation": has_conversation,
+            }
+        });
+        send_wt_protocol_event(evt.to_string());
     }
 }
 
@@ -10593,6 +10632,33 @@ mod tests {
         let r2 = PreflightResult::passed_for_custom_agent("some-unknown-id");
         assert_eq!(r2.display_name, "some-unknown-id");
         assert!(r2.all_passed());
+    }
+
+    #[test]
+    fn session_info_ignores_never_used_bootstrap_session() {
+        let tab = TabSession {
+            session_id: Some("bootstrap-session".into()),
+            ..Default::default()
+        };
+        assert_eq!(App::agent_session_info_signature(&tab), (false, None));
+    }
+
+    #[test]
+    fn session_info_resumes_only_after_completed_conversation() {
+        let mut tab = TabSession {
+            session_id: Some("real-session".into()),
+            ..Default::default()
+        };
+        tab.completed_turns.push(CompletedTurn {
+            prompt: "hello".into(),
+            details: vec![ChatMessage::Agent("world".into())],
+            expanded: false,
+            trailing_marker: None,
+        });
+        assert_eq!(
+            App::agent_session_info_signature(&tab),
+            (true, Some("real-session".into()))
+        );
     }
 
     // Helper to create an App for testing (avoids needing real channels for simple state tests).

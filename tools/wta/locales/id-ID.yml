@@ -218,3 +218,9 @@ model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Cerdas — %{count} sesi latar belakang"
+tray.restore: "Pulihkan"
+tray.end: "Akhiri"
+tray.end_all: "Akhiri semua"
+tray.error_title: "Tindakan sesi latar belakang gagal"
+tray.error_body: "Tindakan tidak dapat diselesaikan:\n%{error}"

@@ -218,3 +218,9 @@ model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
 system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}
+tray.tooltip: "Đầu cuối thông minh — %{count} phiên chạy nền"
+tray.restore: "Khôi phục"
+tray.end: "Kết thúc"
+tray.end_all: "Kết thúc tất cả"
+tray.error_title: "Thao tác với phiên chạy nền không thành công"
+tray.error_body: "Không thể hoàn tất thao tác:\n%{error}"

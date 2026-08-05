@@ -221,3 +221,9 @@ model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter �
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
 system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}
 system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}
+tray.tooltip: "ইন্টেলিজেন্ট টাৰ্মিনেল — %{count}টা পৃষ্ঠভূমি ছেছন"
+tray.restore: "পুনৰুদ্ধাৰ কৰক"
+tray.end: "সমাপ্ত কৰক"
+tray.end_all: "সকলো সমাপ্ত কৰক"
+tray.error_title: "পৃষ্ঠভূমি ছেছনৰ কাৰ্য বিফল হ'ল"
+tray.error_body: "কাৰ্যটো সম্পূৰ্ণ কৰিব পৰা নগ'ল:\n%{error}"

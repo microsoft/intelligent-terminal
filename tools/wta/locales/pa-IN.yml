@@ -219,3 +219,9 @@ model_picker.title: "ਮਾਡਲ ਚੁਣੋ (↑ ↓ • Enter • Esc)"  # {
 system.no_models: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਚੁਣਨਯੋਗ ਮਾਡਲ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"
 system.model_set: "ਇਸ ਪੈਨ ਲਈ ਮਾਡਲ %{model} 'ਤੇ ਸੈੱਟ ਕੀਤਾ ਗਿਆ।"  # {Locked="%{model}"}
 system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}
+tray.tooltip: "ਇੰਟੈਲੀਜੈਂਟ ਟਰਮੀਨਲ — %{count} ਬੈਕਗ੍ਰਾਊਂਡ ਸੈਸ਼ਨ"
+tray.restore: "ਰੀਸਟੋਰ ਕਰੋ"
+tray.end: "ਸਮਾਪਤ ਕਰੋ"
+tray.end_all: "ਸਾਰੇ ਸਮਾਪਤ ਕਰੋ"
+tray.error_title: "ਬੈਕਗ੍ਰਾਊਂਡ ਸੈਸ਼ਨ ਕਾਰਵਾਈ ਅਸਫਲ ਰਹੀ"
+tray.error_body: "ਕਾਰਵਾਈ ਪੂਰੀ ਨਹੀਂ ਕੀਤੀ ਜਾ ਸਕੀ:\n%{error}"

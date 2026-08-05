@@ -399,6 +399,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         ACTION_ARG(bool, AgentPaneOpen, false);
         ACTION_ARG(winrt::hstring, AgentPanePosition, L"");
         ACTION_ARG(winrt::hstring, ShellSessionRestorePath, L"");
+        ACTION_ARG(bool, UseCommandPersistence, false);
         ACTION_ARG(winrt::hstring, DurableShellSessionId, L"");
         ACTION_ARG(int64_t, DurableShellSessionRevision, 0);
         ACTION_ARG(bool, AppendCommandLine, false);
@@ -419,6 +420,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         static constexpr std::string_view OpenKey{ "open" };
         static constexpr std::string_view PositionKey{ "position" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
+        static constexpr std::string_view UseCommandPersistenceKey{ "useCommandPersistence" };
         static constexpr std::string_view ContentKey{ "__content" };
 
     public:
@@ -452,6 +454,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_AgentPaneView == _AgentPaneView &&
                        otherAsUs->_AgentPaneOpen == _AgentPaneOpen &&
                        otherAsUs->_AgentPanePosition == _AgentPanePosition &&
+                       otherAsUs->_UseCommandPersistence == _UseCommandPersistence &&
                        otherAsUs->_ContentId == _ContentId;
             }
             return false;
@@ -474,6 +477,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, AgentPaneViewKey, args->_AgentPaneView);
             JsonUtils::GetValueForKey(json, AgentPaneOpenKey, args->_AgentPaneOpen);
             JsonUtils::GetValueForKey(json, AgentPanePositionKey, args->_AgentPanePosition);
+            JsonUtils::GetValueForKey(json, UseCommandPersistenceKey, args->_UseCommandPersistence);
             if (const auto& agentSession = json[AgentSessionKey.data()]; agentSession.isObject())
             {
                 JsonUtils::GetValueForKey(agentSession, AgentSessionIdKey, args->_AgentSessionId);
@@ -529,7 +533,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 JsonUtils::SetValueForKey(json, AgentSessionIdKey, args->_AgentSessionId);
                 JsonUtils::SetValueForKey(json, AgentResumeCommandlineKey, args->_AgentResumeCommandline);
             }
-            if (!args->AgentPaneSessionId().empty() && !args->AgentPaneAgent().empty())
+            if (!args->AgentPaneAgent().empty())
             {
                 Json::Value agentPaneSession{ Json::ValueType::objectValue };
                 JsonUtils::SetValueForKey(agentPaneSession, AgentSessionIdKey, args->_AgentPaneSessionId);
@@ -553,6 +557,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
             JsonUtils::SetValueForKey(json, ElevateKey, args->_Elevate);
             JsonUtils::SetValueForKey(json, ReloadEnvironmentVariablesKey, args->_ReloadEnvironmentVariables);
+            JsonUtils::SetValueForKey(json, UseCommandPersistenceKey, args->_UseCommandPersistence);
             JsonUtils::SetValueForKey(json, ContentKey, args->_ContentId);
             return json;
         }
@@ -576,6 +581,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_AgentPaneOpen = _AgentPaneOpen;
             copy->_AgentPanePosition = _AgentPanePosition;
             copy->_ShellSessionRestorePath = _ShellSessionRestorePath;
+            copy->_UseCommandPersistence = _UseCommandPersistence;
             copy->_DurableShellSessionId = _DurableShellSessionId;
             copy->_DurableShellSessionRevision = _DurableShellSessionRevision;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
@@ -611,6 +617,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(AgentPaneView());
             h.write(AgentPaneOpen());
             h.write(AgentPanePosition());
+            h.write(UseCommandPersistence());
             h.write(ContentId());
         }
     };

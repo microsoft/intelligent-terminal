@@ -218,3 +218,9 @@ model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)" 
 system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
 system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}
+tray.tooltip: "Інтелектуальний Термінал — фонових сеансів: %{count}"
+tray.restore: "Відновити"
+tray.end: "Завершити"
+tray.end_all: "Завершити всі"
+tray.error_title: "Не вдалося виконати дію з фоновим сеансом"
+tray.error_body: "Не вдалося завершити дію:\n%{error}"

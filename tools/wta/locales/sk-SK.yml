@@ -218,3 +218,9 @@ model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
 system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}
+tray.tooltip: "Inteligentný Terminál — %{count} relácií na pozadí"
+tray.restore: "Obnoviť"
+tray.end: "Ukončiť"
+tray.end_all: "Ukončiť všetky"
+tray.error_title: "Akcia relácie na pozadí zlyhala"
+tray.error_body: "Akciu sa nepodarilo dokončiť:\n%{error}"

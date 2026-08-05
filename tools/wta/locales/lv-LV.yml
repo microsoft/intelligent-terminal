@@ -218,3 +218,9 @@ model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nezināms modelis %{model} — ierakstiet /model, lai redzētu pieejamo sarakstu."  # {Locked="%{model}","/model"}
+tray.tooltip: "Viedais Terminālis — %{count} fona sesijas"
+tray.restore: "Atjaunot"
+tray.end: "Beigt"
+tray.end_all: "Beigt visas"
+tray.error_title: "Fona sesijas darbība neizdevās"
+tray.error_body: "Darbību nevarēja pabeigt:\n%{error}"

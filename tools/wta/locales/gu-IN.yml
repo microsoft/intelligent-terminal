@@ -219,3 +219,9 @@ model_picker.title: "મોડેલ પસંદ કરો (↑ ↓ • Enter �
 system.no_models: "જોડાયેલ એજન્ટે કોઈ પસંદ કરી શકાય તેવા મોડેલ જાહેર કર્યા નથી."
 system.model_set: "આ પેન માટેનું મોડેલ %{model} પર સેટ કર્યું."  # {Locked="%{model}"}
 system.model_unknown: "અજ્ઞાત મોડેલ %{model} — ઉપલબ્ધ સૂચિ જોવા /model ટાઇપ કરો."  # {Locked="%{model}","/model"}
+tray.tooltip: "ઇન્ટેલિજન્ટ ટર્મિનલ — %{count} પૃષ્ઠભૂમિ સત્ર"
+tray.restore: "પુનઃસ્થાપિત કરો"
+tray.end: "સમાપ્ત કરો"
+tray.end_all: "બધાં સમાપ્ત કરો"
+tray.error_title: "પૃષ્ઠભૂમિ સત્રની ક્રિયા નિષ્ફળ ગઈ"
+tray.error_body: "ક્રિયા પૂર્ણ કરી શકાઈ નહીં:\n%{error}"

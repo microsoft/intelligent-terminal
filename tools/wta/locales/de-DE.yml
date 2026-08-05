@@ -220,3 +220,9 @@ model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="
 system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
 system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}
 system.model_unknown: "Unbekanntes Modell %{model} — geben Sie /model ein, um die verfügbare Liste anzuzeigen."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligentes Terminal — %{count} Hintergrundsitzung(en)"
+tray.restore: "Wiederherstellen"
+tray.end: "Beenden"
+tray.end_all: "Alle beenden"
+tray.error_title: "Aktion für Hintergrundsitzung fehlgeschlagen"
+tray.error_body: "Die Aktion konnte nicht abgeschlossen werden:\n%{error}"

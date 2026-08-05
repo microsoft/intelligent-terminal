@@ -218,3 +218,9 @@ model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}
 system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}
+tray.tooltip: "מסוף חכם — %{count} הפעלות ברקע"
+tray.restore: "שחזר"
+tray.end: "סיים"
+tray.end_all: "סיים הכל"
+tray.error_title: "פעולת ההפעלה ברקע נכשלה"
+tray.error_body: "לא ניתן היה להשלים את הפעולה:\n%{error}"

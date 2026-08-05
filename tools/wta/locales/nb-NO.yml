@@ -218,3 +218,9 @@ model_picker.title: "Velg modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","
 system.no_models: "Den tilkoblede agenten annonserte ingen valgbare modeller."
 system.model_set: "Modellen for dette panelet er satt til %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den tilgjengelige listen."  # {Locked="%{model}","/model"}
+tray.tooltip: "Intelligent Terminal — %{count} bakgrunnsøkter"
+tray.restore: "Gjenopprett"
+tray.end: "Avslutt"
+tray.end_all: "Avslutt alle"
+tray.error_title: "Handlingen for bakgrunnsøkten mislyktes"
+tray.error_body: "Handlingen kunne ikke fullføres:\n%{error}"

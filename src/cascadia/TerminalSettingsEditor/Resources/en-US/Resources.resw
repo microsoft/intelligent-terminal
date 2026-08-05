@@ -3010,7 +3010,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Checkbox that restores AI agent sessions after Terminal relaunches. Here "agent" means an AI intelligent agent. {Locked="Terminal"}</comment>
   </data>
   <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
-    <value>Continue running commands when terminal relaunches</value>
-    <comment>Checkbox that keeps commands running across a Terminal relaunch. {Locked="Terminal"}</comment>
+    <value>Enable Put to keep running (requires psmux)</value>
+    <comment>Checkbox that enables the explicit Put to keep running action. Ordinary panes continue to use ConPTY until the action is invoked. {Locked="ConPTY","psmux"}</comment>
   </data>
 </root>

@@ -2899,4 +2899,8 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>允許 智慧終端機 將錯誤傳送給您的代理程式以自動建議修正。</value>
   </data>
+  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
+    <value>啟用「轉為背景持續執行」（需要 psmux）</value>
+    <comment>Checkbox that enables the explicit Put to keep running action. Ordinary panes continue to use ConPTY until the action is invoked. {Locked="ConPTY","psmux"}</comment>
+  </data>
 </root>

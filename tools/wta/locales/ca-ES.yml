@@ -220,3 +220,9 @@ model_picker.title: "Seleccioneu el model (↑ ↓ • Enter • Esc)"  # {Locke
 system.no_models: "L’agent connectat no ha anunciat cap model seleccionable."
 system.model_set: "El model d’aquest tauler s’ha establert a %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model desconegut %{model} — escriviu /model per veure la llista disponible."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminal Intel·ligent — %{count} sessions en segon pla"
+tray.restore: "Restaura"
+tray.end: "Finalitza"
+tray.end_all: "Finalitza-les totes"
+tray.error_title: "Ha fallat l'acció de la sessió en segon pla"
+tray.error_body: "No s'ha pogut completar l'acció:\n%{error}"

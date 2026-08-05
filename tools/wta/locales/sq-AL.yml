@@ -217,3 +217,9 @@ model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="�
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
 system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Model i panjohur %{model} — shkruani /model për të parë listën e disponueshme."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminali inteligjent — %{count} seanca në sfond"
+tray.restore: "Rikthe"
+tray.end: "Përfundo"
+tray.end_all: "Përfundo të gjitha"
+tray.error_title: "Veprimi i seancës në sfond dështoi"
+tray.error_body: "Veprimi nuk mund të përfundohej:\n%{error}"

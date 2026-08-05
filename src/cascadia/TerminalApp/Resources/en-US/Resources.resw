@@ -1321,4 +1321,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
+  <data name="PutToKeepRunningText" xml:space="preserve">
+    <value>Put to keep running</value>
+    <comment>Context-menu command that opens a new durable pane using the current profile and working directory.</comment>
+  </data>
 </root>

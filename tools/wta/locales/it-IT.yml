@@ -218,3 +218,9 @@ model_picker.title: "Seleziona modello (↑ ↓ • Enter • Esc)"  # {Locked="
 system.no_models: "L'agente connesso non ha annunciato alcun modello selezionabile."
 system.model_set: "Modello per questo riquadro impostato su %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Modello sconosciuto %{model} — digita /model per visualizzare l'elenco disponibile."  # {Locked="%{model}","/model"}
+tray.tooltip: "Terminale Intelligente — %{count} sessioni in background"
+tray.restore: "Ripristina"
+tray.end: "Termina"
+tray.end_all: "Termina tutte"
+tray.error_title: "Azione della sessione in background non riuscita"
+tray.error_body: "Non è stato possibile completare l'azione:\n%{error}"

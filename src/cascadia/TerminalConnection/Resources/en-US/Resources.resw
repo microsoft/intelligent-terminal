@@ -216,6 +216,10 @@
     <comment>The first argument {0} is the error code. The second argument {1} is the user-specified path to a program.
       If this string is broken to multiple lines, it will not be displayed properly.</comment>
   </data>
+  <data name="PsmuxNotFound" xml:space="preserve">
+    <value>Install psmux with "winget install psmux", or turn off "Continue running commands when terminal relaunches" in Startup settings.</value>
+    <comment>Error shown when durable background commands are enabled but psmux.exe cannot be found. {Locked="psmux","winget install psmux"}</comment>
+  </data>
   <data name="BadPathText" xml:space="preserve">
     <value>Could not access starting directory "{0}"</value>
     <comment>The first argument {0} is a path to a directory on the filesystem, as provided by the user.</comment>

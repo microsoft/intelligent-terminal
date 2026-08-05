@@ -2959,4 +2959,8 @@
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
     <value>允许智能终端将错误发送给你的代理以自动建议修复。</value>
   </data>
+  <data name="Globals_ContinueRunningCommands.Content" xml:space="preserve">
+    <value>启用“转为后台持续运行”（需要 psmux）</value>
+    <comment>Checkbox that enables the explicit Put to keep running action. Ordinary panes continue to use ConPTY until the action is invoked. {Locked="ConPTY","psmux"}</comment>
+  </data>
 </root>

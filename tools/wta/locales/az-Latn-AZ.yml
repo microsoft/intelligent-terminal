@@ -220,3 +220,9 @@ model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑",
 system.no_models: "Qoşulmuş agent heç bir seçilə bilən model elan etmədi."
 system.model_set: "Bu panel üçün model %{model} olaraq təyin edildi."  # {Locked="%{model}"}
 system.model_unknown: "Naməlum model %{model} — əlçatan siyahını görmək üçün /model yazın."  # {Locked="%{model}","/model"}
+tray.tooltip: "Ağıllı Terminal — %{count} fon sessiyası"
+tray.restore: "Bərpa et"
+tray.end: "Bitir"
+tray.end_all: "Hamısını bitir"
+tray.error_title: "Fon sessiyası əməliyyatı alınmadı"
+tray.error_body: "Əməliyyatı tamamlamaq mümkün olmadı:\n%{error}"

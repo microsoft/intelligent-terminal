@@ -34,6 +34,8 @@ namespace winrt::TerminalApp::implementation
         bool IsShellSessionsView() const noexcept { return _isShellSessionsView; }
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
         void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
+        bool HasConversation() const noexcept { return _hasConversation; }
+        void SetHasConversation(const bool value) noexcept { _hasConversation = value; }
 
         // --- Per-pane autofix / diagnostics state ---
         // Driven by inbound `autofix_state_changed` events for this pane's
@@ -148,6 +150,7 @@ namespace winrt::TerminalApp::implementation
         bool _isSessionsView{ false };
         bool _isShellSessionsView{ false };
         winrt::hstring _agentSessionId{};
+        bool _hasConversation{ false };
 
         // --- Diagnostics / autofix state (projected by the window bottom bar) ---
         AutofixState _autofixState{ AutofixState::Idle };

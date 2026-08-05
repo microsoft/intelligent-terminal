@@ -218,3 +218,9 @@ model_picker.title: "Wybierz model (↑ ↓ • Enter • Esc)"  # {Locked="↑"
 system.no_models: "Połączony agent nie ogłosił żadnych modeli do wyboru."
 system.model_set: "Model dla tego panelu ustawiono na %{model}."  # {Locked="%{model}"}
 system.model_unknown: "Nieznany model %{model} — wpisz /model, aby zobaczyć dostępną listę."  # {Locked="%{model}","/model"}
+tray.tooltip: "Inteligentny Terminal — %{count} sesji w tle"
+tray.restore: "Przywróć"
+tray.end: "Zakończ"
+tray.end_all: "Zakończ wszystkie"
+tray.error_title: "Akcja sesji w tle nie powiodła się"
+tray.error_body: "Nie można ukończyć akcji:\n%{error}"
