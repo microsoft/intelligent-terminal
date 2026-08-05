@@ -20,60 +20,13 @@ intelligent-terminal-<version>-<arch>-msix.zip
 
 ### Prerequisites
 
-- PowerShell 7+ available as `pwsh` on PATH
-- Visual Studio 2022 or newer with C++ desktop & UWP workloads
+- Visual Studio 2022 Enterprise with C++ desktop & UWP workloads
 - Windows 10 SDK (10.0.22621.0+)
-- Rust toolchain (`cargo`, `rustup`) with the target architecture installed:
+- Rust toolchain (`cargo`, `rustup`) with both targets:
   ```
   rustup target add x86_64-pc-windows-msvc
   rustup target add aarch64-pc-windows-msvc
   ```
-
----
-
-### Recommended: one-command local package
-
-From the repository root:
-
-```powershell
-pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1
-```
-
-This builds the default **x64 Release** WTA and Terminal package, creates or reuses a local
-development signing certificate, signs the MSIX, and produces:
-
-```text
-artifacts\local-installer\intelligent-terminal-<version>-x64-msix.zip
-```
-
-The version is read from `Package-Dev.appxmanifest`; Visual Studio, MSBuild, and the newest
-installed Windows SDK metadata/signing tools are discovered dynamically. No Visual Studio edition,
-drive, SDK version, package version, or PowerShell installation directory is hard-coded.
-
-For ARM64:
-
-```powershell
-pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1 -Architecture ARM64
-```
-
-Useful iteration switches:
-
-```powershell
-# Reuse restored packages and an existing release WTA, but rebuild Terminal/MSIX.
-pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1 `
-    -Architecture x64 -SkipRestore -SkipWtaBuild
-
-# Re-sign and reassemble an existing MSIX without rebuilding Terminal.
-pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1 `
-    -Architecture x64 -SkipRestore -SkipWtaBuild -SkipTerminalBuild
-
-# Replace the local development certificate pair.
-pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1 -ForceNewCertificate
-```
-
-The private PFX remains in the ignored local `cert\` directory. The shareable ZIP contains only
-the public CER, signed MSIX, XAML dependency, and install/reset scripts; the script validates that
-no PFX enters the ZIP.
 
 ---
 
@@ -83,7 +36,7 @@ Five lines, in order. Step details below.
 
 ```powershell
 # 0. Bump manifest + _sign_msix.cmd to the new version
-# 1. Generate a local cert if missing
+# 1. (skipped — cert is committed)
 # 2. cargo build --release --target {x86_64,aarch64}-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
 # 3. .\_build_msix_x64.cmd   AND THEN   .\_build_msix_arm64.cmd      # serial — see note
 # 4. .\_sign_msix.cmd
@@ -109,9 +62,7 @@ The driver scripts ([`_build_msix_x64.cmd`](../_build_msix_x64.cmd), [`_build_ms
 
 ### Step 1: Dev signing certificate
 
-The development certificate is local and ignored. The one-command script creates a matching
-`cert\IntelligentTerminalDev.pfx` and `artifacts\local-installer\IntelligentTerminalDev.cer` pair
-when either is absent. Keep the PFX private; only distribute the CER.
+We use [`cert\IntelligentTerminalDev.pfx`](../cert/IntelligentTerminalDev.pfx), committed in the repo. **Skip this step unless that file is missing.**
 
 To regenerate from scratch (e.g., cert expired — they're valid 3 years):
 
@@ -119,7 +70,7 @@ To regenerate from scratch (e.g., cert expired — they're valid 3 years):
 powershell -ExecutionPolicy Bypass -File build\scripts\New-DevSigningCert.ps1
 ```
 
-That script writes the local PFX and public CER paths used by the one-command workflow.
+That script produces `CascadiaPackage_TemporaryKey.pfx` (gitignored) — you'd then need to update [`_sign_msix.cmd`](../_sign_msix.cmd) to point at it, or copy/rename into `cert\IntelligentTerminalDev.pfx`. Keeping the cert committed is the simpler convention here.
 
 ### Step 2: Build `wta.exe`
 
@@ -233,10 +184,9 @@ To repeat-test the FRE, run [`fre-test-reset.ps1`](../tools/fre-test-reset.ps1) 
 
 ### Certificate notes
 
-- `cert\IntelligentTerminalDev.pfx` is an ignored local private key. Never distribute or commit it.
-- The matching public CER is included in the ZIP so testers can trust the package publisher.
-- The same local cert can sign x64 and ARM64 MSIXs; no need to regenerate per architecture.
-- Certificates created by [`build\scripts\New-DevSigningCert.ps1`](../build/scripts/New-DevSigningCert.ps1) are valid for 3 years. Use `-ForceNewCertificate` on the one-command script when replacement is required.
+- `cert\IntelligentTerminalDev.pfx` is **committed** in this repo. Don't rotate it casually — installed builds on every dev machine trust this specific cert.
+- The same cert signs both x64 and ARM64 MSIXs; no need to regenerate per-arch.
+- Valid for 3 years from creation. Regenerate with [`build\scripts\New-DevSigningCert.ps1`](../build/scripts/New-DevSigningCert.ps1) when it expires and re-commit.
 
 ---
 
@@ -307,8 +257,6 @@ Options (pass to `install.cmd`): `/quiet`, `/nopath`, `/noshortcuts`
 
 | Goal | Command |
 |------|---------|
-| Build signed packaged ZIP (x64) | [`pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1`](../build/scripts/New-LocalMsixInstaller.ps1) |
-| Build signed packaged ZIP (ARM64) | [`pwsh -File .\build\scripts\New-LocalMsixInstaller.ps1 -Architecture ARM64`](../build/scripts/New-LocalMsixInstaller.ps1) |
 | Generate dev cert (one-time / expired) | [`powershell -File build\scripts\New-DevSigningCert.ps1`](../build/scripts/New-DevSigningCert.ps1) |
 | Build wta (x64) | `cargo build --release --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml` |
 | Build wta (ARM64) | `cargo build --release --target aarch64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml` |
@@ -322,12 +270,11 @@ Options (pass to `install.cmd`): `/quiet`, `/nopath`, `/noshortcuts`
 
 | File | Purpose |
 |------|---------|
-| [`build\scripts\New-LocalMsixInstaller.ps1`](../build/scripts/New-LocalMsixInstaller.ps1) | Recommended one-command local packaged installer builder |
 | [`_build_msix_x64.cmd`](../_build_msix_x64.cmd) | Wrapper around MSBuild for x64 with all the workarounds |
 | [`_build_msix_arm64.cmd`](../_build_msix_arm64.cmd) | Same for ARM64 |
-| [`_sign_msix.cmd`](../_sign_msix.cmd) | Legacy manual signer; inspect its hard-coded versions before use |
-| `cert\IntelligentTerminalDev.pfx` | Ignored local private signing key (3-year validity) |
-| [`build\scripts\New-DevSigningCert.ps1`](../build/scripts/New-DevSigningCert.ps1) | Generates a local PFX + public CER pair |
+| [`_sign_msix.cmd`](../_sign_msix.cmd) | Signs both arches with the committed `cert\IntelligentTerminalDev.pfx` |
+| [`cert\IntelligentTerminalDev.pfx`](../cert/) | Committed dev signing cert (3-year validity) |
+| [`build\scripts\New-DevSigningCert.ps1`](../build/scripts/New-DevSigningCert.ps1) | Generates PFX + CER for dev signing (only when expired) |
 | [`build\scripts\assemble-msix-zip.ps1`](../build/scripts/assemble-msix-zip.ps1) | Assembles the MSIX ZIP from build outputs |
 | [`installer\Install-Msix.ps1`](../installer/Install-Msix.ps1) | Install script included in the MSIX ZIP |
 | [`tools\fre-test-reset.ps1`](../tools/fre-test-reset.ps1) | FRE reset helper bundled in the ZIP |
