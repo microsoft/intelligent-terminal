@@ -615,8 +615,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_AddDurableSessionMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
     {
-        for (const auto& action : actions)
-        {
+        const auto getTerminalArgs = [](const ActionAndArgs& action) -> NewTerminalArgs {
             INewContentArgs contentArgs{ nullptr };
             if (const auto args = action.Args().try_as<NewTabArgs>())
             {
@@ -627,7 +626,26 @@ namespace winrt::TerminalApp::implementation
                 contentArgs = args.ContentArgs();
             }
 
-            if (const auto terminalArgs = contentArgs.try_as<NewTerminalArgs>())
+            return contentArgs.try_as<NewTerminalArgs>();
+        };
+
+        if (const auto& durableShellSessionId = tab->DurableShellSessionId();
+            !durableShellSessionId.empty())
+        {
+            for (const auto& action : actions)
+            {
+                if (const auto terminalArgs = getTerminalArgs(action))
+                {
+                    terminalArgs.DurableShellSessionId(durableShellSessionId);
+                    terminalArgs.DurableShellSessionRevision(tab->DurableShellSessionRevision());
+                    break;
+                }
+            }
+        }
+
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = getTerminalArgs(action))
             {
                 if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
                 {

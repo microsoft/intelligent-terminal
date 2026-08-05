@@ -146,6 +146,21 @@ namespace TerminalAppLocalTests
         return states;
     }
 
+    static NewTerminalArgs _getTerminalArgs(const ActionAndArgs& action)
+    {
+        if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+        {
+            return newTabArgs.ContentArgs().try_as<NewTerminalArgs>();
+        }
+
+        if (const auto splitPaneArgs = action.Args().try_as<SplitPaneArgs>())
+        {
+            return splitPaneArgs.ContentArgs().try_as<NewTerminalArgs>();
+        }
+
+        return nullptr;
+    }
+
     // TODO:microsoft/terminal#3838:
     // Unfortunately, these tests _WILL NOT_ work in our CI. We're waiting for
     // an updated TAEF that will let us install framework packages when the test
@@ -187,6 +202,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(DetachShellPanesForKeepRunningStoresDurableMetadata);
         TEST_METHOD(DetachedSessionsSkipClosedConnectionBeforeQueuedReap);
         TEST_METHOD(BuildKeptGroupRestoreActionsPreservesDurableMetadata);
+        TEST_METHOD(GetWindowLayoutIncludesDurableMetadataForPersistedFullLayoutsOnly);
+        TEST_METHOD(PersistStateForUnnamedWindowIncludesDurableMetadata);
         TEST_METHOD(ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow);
         TEST_METHOD(DetachedFailedSessionQueuedReapEmitsFailedEventOnce);
         TEST_METHOD(DiscardDeadDetachedSessionBeforeQueuedReapReturnsFalse);
@@ -539,6 +556,150 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(202ull, secondTerminalArgs.ContentId());
         VERIFY_IS_TRUE(secondTerminalArgs.DurableShellSessionId().empty());
         VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableShellSessionRevision());
+    }
+
+    void TabTests::GetWindowLayoutIncludesDurableMetadataForPersistedFullLayoutsOnly()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetTabImpl(page->_tabs.GetAt(0));
+            VERIFY_IS_NOT_NULL(tab);
+
+            page->_SplitPane(nullptr, SplitDirection::Right, 0.5f, page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
+            VERIFY_ARE_EQUAL(2, tab->GetLeafPaneCount());
+
+            tab->SetDurableShellSession(L"shell-session-persisted", 91);
+
+            page->_paneAgentSessions.clear();
+
+            const std::array agentSessionIds{
+                winrt::hstring{ L"agent-session-1" },
+                winrt::hstring{ L"agent-session-2" }
+            };
+            const std::array agentIds{
+                winrt::hstring{ L"copilot" },
+                winrt::hstring{ L"claude" }
+            };
+            const std::array resumeCommandlines{
+                winrt::hstring{ L"copilot --resume agent-session-1" },
+                winrt::hstring{ L"claude --resume agent-session-2" }
+            };
+
+            auto paneIndex = 0u;
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (pane->IsAgentPane())
+                {
+                    return;
+                }
+
+                const auto control = pane->GetTerminalControl();
+                VERIFY_IS_NOT_NULL(control);
+
+                const auto connection = control.Connection();
+                VERIFY_IS_NOT_NULL(connection);
+
+                auto& binding = page->_paneAgentSessions[connection.SessionId()];
+                binding.sessionId = agentSessionIds.at(paneIndex);
+                binding.agent = agentIds.at(paneIndex);
+                binding.resumeCommandline = resumeCommandlines.at(paneIndex);
+                paneIndex += 1;
+            });
+            VERIFY_ARE_EQUAL(2u, paneIndex);
+
+            const auto publicLayout = page->GetWindowLayout();
+            VERIFY_IS_NOT_NULL(publicLayout);
+            const auto publicActions = publicLayout.TabLayout();
+            VERIFY_IS_NOT_NULL(publicActions);
+            VERIFY_ARE_EQUAL(2u, publicActions.Size());
+            const auto publicFirstTerminalArgs = _getTerminalArgs(publicActions.GetAt(0));
+            VERIFY_IS_NOT_NULL(publicFirstTerminalArgs);
+            VERIFY_IS_TRUE(publicFirstTerminalArgs.DurableShellSessionId().empty());
+            VERIFY_ARE_EQUAL(0LL, publicFirstTerminalArgs.DurableShellSessionRevision());
+
+            const auto persistedLayout = page->_GetWindowLayout(true);
+            VERIFY_IS_NOT_NULL(persistedLayout);
+
+            const auto roundTrippedLayout = WindowLayout::FromJson(WindowLayout::ToJson(persistedLayout));
+            VERIFY_IS_NOT_NULL(roundTrippedLayout);
+
+            const auto persistedActions = roundTrippedLayout.TabLayout();
+            VERIFY_IS_NOT_NULL(persistedActions);
+            VERIFY_ARE_EQUAL(2u, persistedActions.Size());
+
+            VERIFY_ARE_EQUAL(ShortcutAction::NewTab, persistedActions.GetAt(0).Action());
+            const auto firstTerminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
+            VERIFY_IS_NOT_NULL(firstTerminalArgs);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-persisted" }, firstTerminalArgs.DurableShellSessionId());
+            VERIFY_ARE_EQUAL(91LL, firstTerminalArgs.DurableShellSessionRevision());
+            if (const auto firstBinding = page->_paneAgentSessions.find(firstTerminalArgs.SessionId());
+                firstBinding != page->_paneAgentSessions.end())
+            {
+                VERIFY_ARE_EQUAL(firstBinding->second.sessionId, firstTerminalArgs.AgentSessionId());
+                VERIFY_ARE_EQUAL(firstBinding->second.agent, firstTerminalArgs.AgentSessionAgent());
+                VERIFY_ARE_EQUAL(firstBinding->second.resumeCommandline, firstTerminalArgs.AgentResumeCommandline());
+            }
+            else
+            {
+                VERIFY_FAIL(L"Expected the first persisted pane to keep its agent session metadata.");
+            }
+
+            VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, persistedActions.GetAt(1).Action());
+            const auto secondTerminalArgs = _getTerminalArgs(persistedActions.GetAt(1));
+            VERIFY_IS_NOT_NULL(secondTerminalArgs);
+            VERIFY_IS_TRUE(secondTerminalArgs.DurableShellSessionId().empty());
+            VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableShellSessionRevision());
+            if (const auto secondBinding = page->_paneAgentSessions.find(secondTerminalArgs.SessionId());
+                secondBinding != page->_paneAgentSessions.end())
+            {
+                VERIFY_ARE_EQUAL(secondBinding->second.sessionId, secondTerminalArgs.AgentSessionId());
+                VERIFY_ARE_EQUAL(secondBinding->second.agent, secondTerminalArgs.AgentSessionAgent());
+                VERIFY_ARE_EQUAL(secondBinding->second.resumeCommandline, secondTerminalArgs.AgentResumeCommandline());
+            }
+            else
+            {
+                VERIFY_FAIL(L"Expected the split pane to keep its agent session metadata.");
+            }
+        });
+    }
+
+    void TabTests::PersistStateForUnnamedWindowIncludesDurableMetadata()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        auto applicationState = ApplicationState::SharedInstance();
+        applicationState.Reset();
+        const auto resetState = wil::scope_exit([&]() {
+            applicationState.Reset();
+        });
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            tab->SetDurableShellSession(L"shell-session-unnamed", 17);
+            page->PersistState();
+        });
+
+        const auto persistedLayouts = applicationState.PersistedWindowLayouts();
+        VERIFY_IS_NOT_NULL(persistedLayouts);
+        VERIFY_ARE_EQUAL(1u, persistedLayouts.Size());
+
+        const auto persistedActions = persistedLayouts.GetAt(0).TabLayout();
+        VERIFY_IS_NOT_NULL(persistedActions);
+        VERIFY_ARE_EQUAL(1u, persistedActions.Size());
+        VERIFY_ARE_EQUAL(ShortcutAction::NewTab, persistedActions.GetAt(0).Action());
+
+        const auto terminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
+        VERIFY_IS_NOT_NULL(terminalArgs);
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-unnamed" }, terminalArgs.DurableShellSessionId());
+        VERIFY_ARE_EQUAL(17LL, terminalArgs.DurableShellSessionRevision());
     }
 
     void TabTests::ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow()

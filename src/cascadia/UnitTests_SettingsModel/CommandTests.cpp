@@ -497,6 +497,14 @@ namespace SettingsModelUnitTests
                         "position": "bottom"
                     }
                 }
+            },
+            {
+                "name":"action11_durableShellSession",
+                "command": {
+                    "action": "newWindow",
+                    "durableShellSessionId": "shell-session-serialized",
+                    "durableShellSessionRevision": 42
+                }
             }
         ])" };
 
@@ -506,7 +514,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(0u, commands.Size());
         auto warnings = implementation::Command::LayerJson(commands, commands0Json, OriginTag::None);
         VERIFY_ARE_EQUAL(0u, warnings.size());
-        VERIFY_ARE_EQUAL(11u, commands.Size());
+        VERIFY_ARE_EQUAL(12u, commands.Size());
 
         {
             auto command = commands.Lookup(L"action0");
@@ -679,6 +687,21 @@ namespace SettingsModelUnitTests
                 serialized["agentPane"]["agentSession"]["agent"].asString());
             VERIFY_IS_FALSE(serialized.isMember("agentResumeCommandline"));
             VERIFY_IS_FALSE(serialized.isMember("agentPaneSessionId"));
+        }
+        {
+            const auto command = commands.Lookup(L"action11_durableShellSession");
+            const auto realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
+            const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-serialized" }, terminalArgs.DurableShellSessionId());
+            VERIFY_ARE_EQUAL(42LL, terminalArgs.DurableShellSessionRevision());
+
+            const auto serialized = implementation::NewTerminalArgs::ToJson(terminalArgs);
+            VERIFY_ARE_EQUAL("shell-session-serialized", serialized["durableShellSessionId"].asString());
+            VERIFY_ARE_EQUAL(42LL, serialized["durableShellSessionRevision"].asInt64());
+
+            const auto roundTripped = implementation::NewTerminalArgs::FromJson(serialized);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"shell-session-serialized" }, roundTripped.DurableShellSessionId());
+            VERIFY_ARE_EQUAL(42LL, roundTripped.DurableShellSessionRevision());
         }
     }
 }
