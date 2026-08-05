@@ -809,6 +809,31 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    TerminalPage::_ShellSessionSaveResult TerminalPage::_ParseShellSessionSaveResponse(const std::string_view json)
+    {
+        Json::Value response;
+        std::string errors;
+        const auto reader = std::unique_ptr<Json::CharReader>{ Json::CharReaderBuilder{}.newCharReader() };
+        if (!reader->parse(json.data(), json.data() + json.size(), &response, &errors))
+        {
+            THROW_HR(WEB_E_INVALID_JSON_STRING);
+        }
+
+        THROW_HR_IF(WEB_E_INVALID_JSON_STRING, !response.isObject());
+
+        const auto& id = response["id"];
+        const auto& revision = response["revision"];
+        const auto& forked = response["forked"];
+        THROW_HR_IF(WEB_E_INVALID_JSON_STRING,
+                    !id.isString() ||
+                        id.asString().empty() ||
+                        !(revision.isInt() || revision.isInt64()) ||
+                        revision.asInt64() <= 0 ||
+                        !forked.isBool());
+
+        return _ShellSessionSaveResult{ winrt::to_hstring(id.asString()), revision.asInt64(), forked.asBool() };
+    }
+
     void TerminalPage::_PersistShellSession(Tab* const tab)
     {
         if (!_settings.GlobalSettings().RestoreShellSessions())
@@ -987,6 +1012,7 @@ namespace winrt::TerminalApp::implementation
             _agentPaneLog("_PersistShellSession: wta shell_sessions/save returned no result — not detaching");
         }
         THROW_HR_IF(E_FAIL, !result);
+        const auto save = _ParseShellSessionSaveResponse(*result);
         committed = true;
 
         // Only now that the record is durably saved is it sound to detach the
@@ -994,7 +1020,7 @@ namespace winrt::TerminalApp::implementation
         // nothing could ever find its way back to.
         if (_settings.GlobalSettings().ContinueRunningCommands())
         {
-            _DetachShellPanesForKeepRunning(tab);
+            _DetachShellPanesForKeepRunning(tab, save.id);
         }
     }
 
@@ -1004,7 +1030,7 @@ namespace winrt::TerminalApp::implementation
     // TermControl is severed. Restoring the session reattaches to the very same
     // content, so a pane that could not be detached simply falls back to the
     // ordinary "fresh shell plus replayed scrollback" restore.
-    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab)
+    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId)
     {
         // One group per tab, so a multi-pane tab is offered back as the one
         // thing the user closed rather than as N indistinguishable panes.
@@ -1031,7 +1057,7 @@ namespace winrt::TerminalApp::implementation
                             // remain retained after immediate liveness reaping
                             // suppress the ordinary tab-teardown close event.
                             auto paneId = _FindSessionIdForControl(control);
-                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, winrt::hstring{}, control))
+                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, shellSessionId, control))
                             {
                                 if (!paneId.empty())
                                 {
