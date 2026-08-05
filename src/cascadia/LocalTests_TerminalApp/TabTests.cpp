@@ -1252,15 +1252,21 @@ namespace TerminalAppLocalTests
 
     void TabTests::ParseShellSessionSaveResponse()
     {
+        const auto verifyInvalidJson = [](const std::string_view json) {
+            VERIFY_THROWS_SPECIFIC(
+                winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(json),
+                wil::ResultException,
+                [](wil::ResultException& e) { return e.GetErrorCode() == WEB_E_INVALID_JSON_STRING; });
+        };
+
         const auto parsed = winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(R"({"id":"shell-session-7","revision":7,"forked":true})");
         VERIFY_IS_TRUE(parsed.id == L"shell-session-7");
         VERIFY_ARE_EQUAL(7LL, parsed.revision);
         VERIFY_IS_TRUE(parsed.forked);
 
-        VERIFY_THROWS_SPECIFIC(
-            winrt::TerminalApp::implementation::TerminalPage::_ParseShellSessionSaveResponse(R"({"revision":7,"forked":true})"),
-            wil::ResultException,
-            [](wil::ResultException& e) { return e.GetErrorCode() == WEB_E_INVALID_JSON_STRING; });
+        verifyInvalidJson(R"({"revision":7,"forked":true})");
+        verifyInvalidJson(R"({"id":"shell-session-7","revision":7,"forked":true,})");
+        verifyInvalidJson(R"({"id":"shell-session-7","revision":7,"forked":true}garbage)");
     }
 
     // Method Description:
