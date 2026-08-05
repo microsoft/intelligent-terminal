@@ -133,6 +133,7 @@ private:
     bool _hasKeptSessions() const;
     bool _restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupKeptSessionTracking();
+    void _activateHeadlessTrayWindow(uint32_t showWindowCommand);
     void _restoreKeptSession(const winrt::guid& groupId);
     void _discardKeptSession(const winrt::guid& groupId);
     winrt::TerminalApp::ContentManager _keptSessionManager() const;

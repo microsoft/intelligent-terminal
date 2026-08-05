@@ -21,6 +21,13 @@ namespace TerminalApp
         String State { get; };
     }
 
+    runtimeclass KeptGroupRestoreResult
+    {
+        Windows.Foundation.Collections.IVectorView<UInt64> ContentIds { get; };
+        String ShellSessionId { get; };
+        Int64 ShellSessionRevision { get; };
+    }
+
     [default_interface] runtimeclass ContentManager
     {
         Microsoft.Terminal.Control.ControlInteractivity CreateCore(Microsoft.Terminal.Control.IControlSettings settings,
@@ -41,15 +48,16 @@ namespace TerminalApp
         // two indistinguishable things to restore.
         //
         // See doc/specs/keep-running-sessions.md.
-        Boolean DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Microsoft.Terminal.Control.TermControl control);
+        Boolean DetachForKeepRunning(Guid groupId, Guid sessionId, String title, String shellSessionId, Int64 shellSessionRevision, Microsoft.Terminal.Control.TermControl control);
         UInt64 TryReattachKeptSession(Guid sessionId);
         Windows.Foundation.Collections.IVectorView<DetachedSessionInfo> DetachedSessions();
         // Group id -> the tab title it was detached from.
         Windows.Foundation.Collections.IMapView<Guid, String> KeptGroups();
         // Takes a whole detached tab: returns its panes' content ids in the
-        // order they were detached, and stops listing them. Empty if the group
-        // is gone.
-        Windows.Foundation.Collections.IVectorView<UInt64> TryReattachKeptGroup(Guid groupId);
+        // order they were detached together with the durable shell-session
+        // metadata that must stay in lockstep with that take. Null if the
+        // group is gone or no live panes remain.
+        KeptGroupRestoreResult TryReattachKeptGroup(Guid groupId);
         // Ends one detached pane and lets its shell be torn down.
         Boolean DiscardKeptSession(Guid sessionId);
         // Ends every session in a detached tab and lets their shells be torn down.

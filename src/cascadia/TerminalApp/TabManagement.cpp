@@ -1028,7 +1028,7 @@ namespace winrt::TerminalApp::implementation
         // nothing could ever find its way back to.
         if (_settings.GlobalSettings().ContinueRunningCommands())
         {
-            _DetachShellPanesForKeepRunning(tab, save.id);
+            _DetachShellPanesForKeepRunning(tab, save.id, save.revision);
         }
     }
 
@@ -1038,7 +1038,7 @@ namespace winrt::TerminalApp::implementation
     // TermControl is severed. Restoring the session reattaches to the very same
     // content, so a pane that could not be detached simply falls back to the
     // ordinary "fresh shell plus replayed scrollback" restore.
-    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId)
+    void TerminalPage::_DetachShellPanesForKeepRunning(Tab* const tab, const winrt::hstring& shellSessionId, const int64_t shellSessionRevision)
     {
         // One group per tab, so a multi-pane tab is offered back as the one
         // thing the user closed rather than as N indistinguishable panes.
@@ -1065,7 +1065,7 @@ namespace winrt::TerminalApp::implementation
                             // remain retained after immediate liveness reaping
                             // suppress the ordinary tab-teardown close event.
                             auto paneId = _FindSessionIdForControl(control);
-                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, shellSessionId, control))
+                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, shellSessionId, shellSessionRevision, control))
                             {
                                 if (!paneId.empty())
                                 {

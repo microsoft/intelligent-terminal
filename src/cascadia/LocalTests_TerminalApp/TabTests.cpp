@@ -11,6 +11,7 @@
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
+#include "../TerminalApp/KeepRunningSessionHelpers.h"
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
@@ -183,11 +184,15 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(DetachedSessionMetadataAndDiscard);
         TEST_METHOD(DetachedSessionAlreadyClosedIsReapedImmediately);
+        TEST_METHOD(DetachShellPanesForKeepRunningStoresDurableMetadata);
         TEST_METHOD(DetachedSessionsSkipClosedConnectionBeforeQueuedReap);
+        TEST_METHOD(BuildKeptGroupRestoreActionsPreservesDurableMetadata);
+        TEST_METHOD(ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow);
         TEST_METHOD(DetachedFailedSessionQueuedReapEmitsFailedEventOnce);
         TEST_METHOD(DiscardDeadDetachedSessionBeforeQueuedReapReturnsFalse);
         TEST_METHOD(TryReattachDeadDetachedSessionBeforeQueuedReapReturnsZero);
         TEST_METHOD(TryReattachKeptGroupSkipsDeadMembersBeforeQueuedReap);
+        TEST_METHOD(TryReattachKeptGroupReturnsNullWhenAllMembersDeadBeforeQueuedReap);
         TEST_METHOD(DiscardKeptGroupPreservesFailedMembersAndClosesLiveMembers);
         TEST_METHOD(NaturalClosedEventThenNotifyPanesClosingEmitsOnce);
         TEST_METHOD(NaturalFailedEventThenNotifyPanesClosingEmitsOnce);
@@ -351,7 +356,7 @@ namespace TerminalAppLocalTests
                 _contentManager->DetachedSessionClosed(closeToken);
             });
 
-            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, tabTitle, shellSessionId, activeControl);
+            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, tabTitle, shellSessionId, 42, activeControl);
             VERIFY_IS_TRUE(retained);
 
             const auto detachedSessions{ _contentManager->DetachedSessions() };
@@ -411,7 +416,7 @@ namespace TerminalAppLocalTests
                 _contentManager->DetachedSessionClosed(closeToken);
             });
 
-            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, L"Already closed", L"shell-session-closed", control);
+            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, L"Already closed", L"shell-session-closed", 7, control);
 
             VERIFY_IS_FALSE(retained);
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
@@ -419,6 +424,45 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(endedSessions.size()));
             VERIFY_IS_FALSE(_contentManager->DiscardKeptSession(sessionId));
             VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+        });
+    }
+
+    void TabTests::DetachShellPanesForKeepRunningStoresDurableMetadata()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        const winrt::hstring shellSessionId{ L"shell-session-detach-metadata" };
+        constexpr int64_t shellSessionRevision{ 19 };
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, shellSessionRevision);
+
+            const auto keptGroups = _contentManager->KeptGroups();
+            VERIFY_ARE_EQUAL(1u, keptGroups.Size());
+
+            winrt::guid groupId{};
+            for (const auto& group : keptGroups)
+            {
+                groupId = group.Key();
+                break;
+            }
+
+            VERIFY_IS_TRUE(groupId != winrt::guid{});
+
+            const auto restored = _contentManager->TryReattachKeptGroup(groupId);
+            VERIFY_IS_TRUE(!!restored);
+            VERIFY_ARE_EQUAL(1u, restored.ContentIds().Size());
+            VERIFY_IS_TRUE(restored.ShellSessionId() == shellSessionId);
+            VERIFY_ARE_EQUAL(shellSessionRevision, restored.ShellSessionRevision());
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
         });
     }
 
@@ -449,7 +493,7 @@ namespace TerminalAppLocalTests
             winrt::Microsoft::Terminal::Control::TermControl control{ content };
             VERIFY_IS_NOT_NULL(control);
 
-            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued close", L"shell-session-live", control);
+            const auto retained = _contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued close", L"shell-session-live", 11, control);
             VERIFY_IS_TRUE(retained);
 
             const auto liveDetachedSessions{ _contentManager->DetachedSessions() };
@@ -466,6 +510,47 @@ namespace TerminalAppLocalTests
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
         });
+    }
+
+    void TabTests::BuildKeptGroupRestoreActionsPreservesDurableMetadata()
+    {
+        const auto restored = winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
+            std::vector<uint64_t>{ 101, 202 },
+            winrt::hstring{ L"shell-session-restored" },
+            55);
+
+        const auto actions = winrt::TerminalApp::implementation::BuildKeptGroupRestoreActions(restored);
+        VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(actions.size()));
+
+        VERIFY_ARE_EQUAL(ShortcutAction::NewTab, actions.at(0).Action());
+        const auto firstAction = actions.at(0).Args().try_as<NewTabArgs>();
+        VERIFY_IS_NOT_NULL(firstAction);
+        const auto firstTerminalArgs = firstAction.ContentArgs().try_as<NewTerminalArgs>();
+        VERIFY_IS_NOT_NULL(firstTerminalArgs);
+        VERIFY_ARE_EQUAL(101ull, firstTerminalArgs.ContentId());
+        VERIFY_IS_TRUE(firstTerminalArgs.DurableShellSessionId() == L"shell-session-restored");
+        VERIFY_ARE_EQUAL(55LL, firstTerminalArgs.DurableShellSessionRevision());
+
+        VERIFY_ARE_EQUAL(ShortcutAction::SplitPane, actions.at(1).Action());
+        const auto secondAction = actions.at(1).Args().try_as<SplitPaneArgs>();
+        VERIFY_IS_NOT_NULL(secondAction);
+        const auto secondTerminalArgs = secondAction.ContentArgs().try_as<NewTerminalArgs>();
+        VERIFY_IS_NOT_NULL(secondTerminalArgs);
+        VERIFY_ARE_EQUAL(202ull, secondTerminalArgs.ContentId());
+        VERIFY_IS_TRUE(secondTerminalArgs.DurableShellSessionId().empty());
+        VERIFY_ARE_EQUAL(0LL, secondTerminalArgs.DurableShellSessionRevision());
+    }
+
+    void TabTests::ClassifyHeadlessTrayActivationRestoresPersistedLayoutBeforeFreshWindow()
+    {
+        using winrt::TerminalApp::implementation::HeadlessTrayActivationMode;
+
+        VERIFY_ARE_EQUAL(static_cast<int>(HeadlessTrayActivationMode::SummonExistingWindow),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyHeadlessTrayActivation(true, false)));
+        VERIFY_ARE_EQUAL(static_cast<int>(HeadlessTrayActivationMode::RestorePersistedLayoutsBeforeFreshWindow),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyHeadlessTrayActivation(false, true)));
+        VERIFY_ARE_EQUAL(static_cast<int>(HeadlessTrayActivationMode::OpenFreshWindow),
+                         static_cast<int>(winrt::TerminalApp::implementation::ClassifyHeadlessTrayActivation(false, false)));
     }
 
     void TabTests::DiscardDeadDetachedSessionBeforeQueuedReapReturnsFalse()
@@ -506,7 +591,7 @@ namespace TerminalAppLocalTests
                 _contentManager->DetachedSessionClosed(closeToken);
             });
 
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued reap discard", L"shell-session-live", control));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued reap discard", L"shell-session-live", 13, control));
             VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
 
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
@@ -568,7 +653,7 @@ namespace TerminalAppLocalTests
                 endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
             });
 
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued reap reattach", L"shell-session-live", control));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued reap reattach", L"shell-session-live", 17, control));
             VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
 
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
@@ -605,6 +690,7 @@ namespace TerminalAppLocalTests
         const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{0f0f0f0f-1010-2020-3030-404040404040}");
         const auto deadSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{deadbeef-aaaa-bbbb-cccc-111111111111}");
         const auto liveSessionId = ::Microsoft::Console::Utils::GuidFromString(L"{feedface-dddd-eeee-ffff-222222222222}");
+        constexpr int64_t shellSessionRevision{ 23 };
 
         _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
         VERIFY_IS_NOT_NULL(_contentManager);
@@ -644,8 +730,8 @@ namespace TerminalAppLocalTests
                 endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
             });
 
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, deadSessionId, L"Mixed keep-running group", L"shell-session-group", deadControl));
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, liveSessionId, L"Mixed keep-running group", L"shell-session-group", liveControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, deadSessionId, L"Mixed keep-running group", L"shell-session-group", shellSessionRevision, deadControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, liveSessionId, L"Mixed keep-running group", L"shell-session-group", shellSessionRevision, liveControl));
             VERIFY_ARE_EQUAL(2u, _contentManager->DetachedSessions().Size());
 
             deadConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
@@ -654,9 +740,12 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, remainingDetachedSessions.Size());
             VERIFY_IS_TRUE(!!::IsEqualGUID(remainingDetachedSessions.GetAt(0).SessionId(), liveSessionId));
 
-            const auto contentIds = _contentManager->TryReattachKeptGroup(groupId);
-            VERIFY_ARE_EQUAL(1u, contentIds.Size());
-            VERIFY_ARE_EQUAL(liveContentId, contentIds.GetAt(0));
+            const auto restored = _contentManager->TryReattachKeptGroup(groupId);
+            VERIFY_IS_TRUE(!!restored);
+            VERIFY_ARE_EQUAL(1u, restored.ContentIds().Size());
+            VERIFY_ARE_EQUAL(liveContentId, restored.ContentIds().GetAt(0));
+            VERIFY_IS_TRUE(restored.ShellSessionId() == L"shell-session-group");
+            VERIFY_ARE_EQUAL(shellSessionRevision, restored.ShellSessionRevision());
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
             VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
@@ -678,6 +767,57 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(endedSessions.size()));
 
             _contentManager->DetachedSessionClosed(closeToken);
+        });
+    }
+
+    void TabTests::TryReattachKeptGroupReturnsNullWhenAllMembersDeadBeforeQueuedReap()
+    {
+        BEGIN_TEST_METHOD_PROPERTIES()
+            TEST_METHOD_PROPERTY(L"IsolationLevel", L"Method")
+        END_TEST_METHOD_PROPERTIES()
+
+        const auto groupId = ::Microsoft::Console::Utils::GuidFromString(L"{1f1f1f1f-2020-3030-4040-505050505050}");
+        const auto sessionId = ::Microsoft::Console::Utils::GuidFromString(L"{abcdefab-cdef-1234-5678-90abcdef1234}");
+        constexpr int64_t shellSessionRevision{ 29 };
+
+        _contentManager = winrt::make_self<winrt::TerminalApp::implementation::ContentManager>();
+        VERIFY_IS_NOT_NULL(_contentManager);
+
+        auto contentId = 0ull;
+
+        TestOnUIThread([&]() {
+            auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            VERIFY_IS_NOT_NULL(settings);
+
+            auto connection = winrt::make_self<TestConnection>(
+                sessionId,
+                winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            VERIFY_IS_NOT_NULL(connection);
+
+            const auto content = _contentManager->CreateCore(*settings, *settings, *connection);
+            VERIFY_IS_NOT_NULL(content);
+            contentId = content.Id();
+
+            winrt::Microsoft::Terminal::Control::TermControl control{ content };
+            VERIFY_IS_NOT_NULL(control);
+
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"All dead keep-running group", L"shell-session-dead-group", shellSessionRevision, control));
+            connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed);
+
+            VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->DetachedSessions().Size());
+
+            const auto restored = _contentManager->TryReattachKeptGroup(groupId);
+            VERIFY_IS_FALSE(!!restored);
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
+        });
+
+        TestOnUIThread([&]() {
+            VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
+            VERIFY_ARE_EQUAL(0u, _contentManager->KeptGroups().Size());
+            VERIFY_IS_NULL(_contentManager->TryLookupCore(contentId));
         });
     }
 
@@ -719,7 +859,7 @@ namespace TerminalAppLocalTests
                 _contentManager->DetachedSessionClosed(closeToken);
             });
 
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued failed close", L"shell-session-failed", control));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, sessionId, L"Queued failed close", L"shell-session-failed", 31, control));
             VERIFY_ARE_EQUAL(1u, _contentManager->DetachedSessions().Size());
 
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
@@ -784,8 +924,8 @@ namespace TerminalAppLocalTests
                 _contentManager->DetachedSessionClosed(closeToken);
             });
 
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, failedSessionId, L"Discard group", L"shell-session-group-discard", failedControl));
-            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, liveSessionId, L"Discard group", L"shell-session-group-discard", liveControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, failedSessionId, L"Discard group", L"shell-session-group-discard", 37, failedControl));
+            VERIFY_IS_TRUE(_contentManager->DetachForKeepRunning(groupId, liveSessionId, L"Discard group", L"shell-session-group-discard", 37, liveControl));
             VERIFY_ARE_EQUAL(2u, _contentManager->DetachedSessions().Size());
 
             failedConnection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
@@ -1156,7 +1296,7 @@ namespace TerminalAppLocalTests
             expectedPaneId = _formatPaneId(sessionId);
             connection->TransitionTo(winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Failed);
 
-            page->_DetachShellPanesForKeepRunning(tab.get(), winrt::hstring{});
+            page->_DetachShellPanesForKeepRunning(tab.get(), winrt::hstring{}, 0);
 
             VERIFY_IS_FALSE(_contentManager->HasKeptSessions());
             VERIFY_IS_TRUE(page->_panesKeptRunning.empty());
@@ -1219,7 +1359,7 @@ namespace TerminalAppLocalTests
                 endedSessions.push_back({ endedSession.SessionId(), endedSession.State() });
             });
 
-            page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId);
+            page->_DetachShellPanesForKeepRunning(tab.get(), shellSessionId, 41);
 
             VERIFY_IS_TRUE(_contentManager->HasKeptSessions());
             const auto detachedSessions{ _contentManager->DetachedSessions() };

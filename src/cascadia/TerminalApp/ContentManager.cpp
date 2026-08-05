@@ -97,6 +97,7 @@ namespace winrt::TerminalApp::implementation
                                               const winrt::guid& sessionId,
                                               const winrt::hstring& title,
                                               const winrt::hstring& shellSessionId,
+                                              const int64_t shellSessionRevision,
                                               const Microsoft::Terminal::Control::TermControl& control)
     {
         if (!control || sessionId == winrt::guid{} || groupId == winrt::guid{})
@@ -156,6 +157,18 @@ namespace winrt::TerminalApp::implementation
         if (group.shellSessionId.empty())
         {
             group.shellSessionId = shellSessionId;
+        }
+        else
+        {
+            WI_ASSERT(group.shellSessionId == shellSessionId || shellSessionId.empty());
+        }
+        if (group.shellSessionRevision == 0)
+        {
+            group.shellSessionRevision = shellSessionRevision;
+        }
+        else
+        {
+            WI_ASSERT(group.shellSessionRevision == shellSessionRevision || shellSessionRevision == 0);
         }
         group.sessionIds.push_back(sessionId);
 
@@ -267,61 +280,73 @@ namespace winrt::TerminalApp::implementation
         return map.GetView();
     }
 
-    // Takes a whole detached tab at once. Returning the content ids rather than
-    // rebuilding here keeps this class out of the business of composing tab
-    // layouts; the caller turns them into a new tab.
-    winrt::Windows::Foundation::Collections::IVectorView<uint64_t> ContentManager::TryReattachKeptGroup(const winrt::guid& groupId)
+    // Takes a whole detached tab at once. Returning the content ids together
+    // with the durable shell-session metadata keeps this class out of the
+    // business of composing tab layouts while still making the take atomic.
+    winrt::TerminalApp::KeptGroupRestoreResult ContentManager::TryReattachKeptGroup(const winrt::guid& groupId)
     {
+        const auto it = _keptGroups.find(groupId);
+        if (it == _keptGroups.end())
+        {
+            return nullptr;
+        }
+
         std::vector<uint64_t> contentIds;
         auto changed = false;
 
-        const auto it = _keptGroups.find(groupId);
-        if (it != _keptGroups.end())
+        const auto shellSessionId = it->second.shellSessionId;
+        const auto shellSessionRevision = it->second.shellSessionRevision;
+
+        // Copy first: dropping the sessions mutates the group.
+        const auto sessionIds = it->second.sessionIds;
+        for (const auto& sessionId : sessionIds)
         {
-            // Copy first: dropping the sessions mutates the group.
-            const auto sessionIds = it->second.sessionIds;
-            for (const auto& sessionId : sessionIds)
+            const auto session = _keptSessions.find(sessionId);
+            if (session == _keptSessions.end())
             {
-                const auto session = _keptSessions.find(sessionId);
-                if (session == _keptSessions.end())
-                {
-                    continue;
-                }
-                const auto contentId = session->second.contentId;
-                const auto content{ TryLookupCore(contentId) };
-                if (!content)
-                {
-                    const auto raiseDetachedCloseEvent = session->second.raiseDetachedCloseEvent;
-                    const auto detachedEndState = session->second.detachedEndState;
-                    _dropKeptSession(sessionId);
-                    if (raiseDetachedCloseEvent)
-                    {
-                        DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
-                    }
-                    changed = true;
-                    continue;
-                }
-
-                if (!_isLiveDetachedSession(content))
-                {
-                    // Reattach each pane independently: dead members are reaped
-                    // here, while live members still come back in the rebuilt tab.
-                    session->second.detachedEndState = _getDetachedSessionEndedState(content);
-                    content.Close();
-                    continue;
-                }
-
+                continue;
+            }
+            const auto contentId = session->second.contentId;
+            const auto content{ TryLookupCore(contentId) };
+            if (!content)
+            {
+                const auto raiseDetachedCloseEvent = session->second.raiseDetachedCloseEvent;
+                const auto detachedEndState = session->second.detachedEndState;
                 _dropKeptSession(sessionId);
+                if (raiseDetachedCloseEvent)
+                {
+                    DetachedSessionClosed.raise(*this, _makeDetachedSessionEndedArgs(sessionId, detachedEndState));
+                }
                 changed = true;
-                contentIds.push_back(contentId);
+                continue;
             }
-            if (changed)
+
+            if (!_isLiveDetachedSession(content))
             {
-                KeptSessionsChanged.raise(*this, nullptr);
+                // Reattach each pane independently: dead members are reaped
+                // here, while live members still come back in the rebuilt tab.
+                session->second.detachedEndState = _getDetachedSessionEndedState(content);
+                content.Close();
+                continue;
             }
+
+            _dropKeptSession(sessionId);
+            changed = true;
+            contentIds.push_back(contentId);
+        }
+        if (changed)
+        {
+            KeptSessionsChanged.raise(*this, nullptr);
+        }
+        if (contentIds.empty())
+        {
+            return nullptr;
         }
 
-        return winrt::single_threaded_vector<uint64_t>(std::move(contentIds)).GetView();
+        return winrt::make<winrt::TerminalApp::implementation::KeptGroupRestoreResult>(
+            std::move(contentIds),
+            shellSessionId,
+            shellSessionRevision);
     }
 
     bool ContentManager::DiscardKeptSession(const winrt::guid& sessionId)
