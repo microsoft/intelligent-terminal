@@ -1033,7 +1033,7 @@ namespace winrt::TerminalApp::implementation
                             {
                                 _panesKeptRunning.insert(std::move(paneId));
                             }
-                            _manager.DetachForKeepRunning(groupId, sessionId, title, control);
+                            _manager.DetachForKeepRunning(groupId, sessionId, title, winrt::hstring{}, control);
                             ++detached;
                         }
                     }
