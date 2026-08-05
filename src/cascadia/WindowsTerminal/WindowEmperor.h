@@ -70,6 +70,7 @@ public:
     const std::vector<std::shared_ptr<::AppHost>>& GetWindows() const noexcept { return _windows; }
     AppHost* GetMostRecentWindow() const noexcept { return _mostRecentWindow(); }
     std::shared_ptr<AppHost> GetWindowForProtocol(uint64_t id) const noexcept;
+    winrt::TerminalApp::ContentManager GetContentManager() const;
 
 private:
     struct SummonWindowSelectionArgs
@@ -108,7 +109,6 @@ private:
     bool _hasKeptSessions() const;
     bool _restorePersistedLayouts(wil::zwstring_view cwd, wil::zwstring_view env, uint32_t showCmd);
     void _setupKeptSessionTracking();
-    winrt::TerminalApp::ContentManager _keptSessionManager() const;
     void _restoreKeptSession(const winrt::guid& groupId);
     void _discardKeptSession(const winrt::guid& groupId);
 
