@@ -7839,6 +7839,17 @@ namespace winrt::TerminalApp::implementation
 
         term.KeyBindings(*_bindings);
 
+        // `_SetupControl` runs exactly once for each freshly created
+        // `TermControl`, including the ContentId reattach path that creates a
+        // new control around an existing content/core. If an earlier control
+        // lifetime on this page already emitted `closed`/`failed` for the same
+        // SessionId, drop that stale tombstone now so the new control can emit
+        // its own terminal end event exactly once.
+        if (const auto paneIdStr = _FindSessionIdForControl(term); !paneIdStr.empty())
+        {
+            _panesWithEmittedTerminalEndState.erase(paneIdStr);
+        }
+
         _RegisterTerminalEvents(term);
         return term;
     }

@@ -541,9 +541,10 @@ namespace winrt::TerminalApp::implementation
         void _RaiseConnectionStateEvent(std::string_view paneId,
                                         std::string_view state,
                                         std::string_view tabId = {});
-        // SessionIds are unique for the lifetime of a live pane, so once a
-        // pane's terminal end event has been emitted we can keep that mark for
-        // the rest of the page lifetime without clearing it.
+        // Terminal end states are deduplicated per TermControl lifetime. When
+        // `_SetupControl` wires a new control that reuses the same SessionId,
+        // it clears any stale tombstone before subscribing that control's
+        // events.
         bool _TryRaiseTerminalEndStateEvent(std::string_view paneId,
                                             std::string_view state,
                                             std::string_view tabId = {});
@@ -705,8 +706,10 @@ namespace winrt::TerminalApp::implementation
         // apart from panes that really are going away.
         std::unordered_set<std::string> _panesKeptRunning;
         // Pane ids whose terminal end event (`closed` / `failed`) already went
-        // out on ProtocolVtSequenceReceived. Only terminal end states belong in
-        // this set; non-terminal updates stay untracked.
+        // out on ProtocolVtSequenceReceived for the current TermControl
+        // lifetime. `_SetupControl` clears any stale mark when a new control
+        // starts using that SessionId. Only terminal end states belong in this
+        // set; non-terminal updates stay untracked.
         std::unordered_set<std::string> _panesWithEmittedTerminalEndState;
         struct _PaneAgentSession
         {
