@@ -178,6 +178,19 @@ static std::string GuidToString(const GUID& g)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
+static bool TryGuidFromString(const std::string& target, GUID& outGuid)
+{
+    auto wstr = winrt::to_hstring(target);
+    std::wstring guidStr{ wstr };
+    if (!guidStr.empty() && guidStr[0] != L'{')
+        guidStr = L"{" + guidStr + L"}";
+    GUID parsedGuid{};
+    if (FAILED(CLSIDFromString(guidStr.c_str(), &parsedGuid)))
+        return false;
+    outGuid = parsedGuid;
+    return true;
+}
+
 static GUID GuidFromString(const std::string& target)
 {
     auto wstr = winrt::to_hstring(target);
@@ -612,9 +625,10 @@ int main()
     auto* killDetachedSessionCmd = app.add_subcommand("kill-detached-session", "Close a detached session");
     killDetachedSessionCmd->add_option("session-id", killDetachedSessionId, "Detached session GUID")->required();
     killDetachedSessionCmd->callback([&]() {
-        const auto sessionId = GuidFromString(killDetachedSessionId);
-        if (IsEqualGUID(sessionId, GUID{}))
+        GUID sessionId{};
+        if (!TryGuidFromString(killDetachedSessionId, sessionId))
         {
+            fprintf(stderr, "[wtcli] Invalid session ID: %s\n", killDetachedSessionId.c_str());
             exitCode = 1;
             return;
         }

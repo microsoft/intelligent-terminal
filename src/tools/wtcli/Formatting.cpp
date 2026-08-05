@@ -90,7 +90,6 @@ void FormatDetachedSessionsHuman(const Json::Value& detachedSessions)
 {
     if (!detachedSessions.isArray() || detachedSessions.empty())
     {
-        printf("No detached sessions found.\n");
         return;
     }
 
