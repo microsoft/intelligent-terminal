@@ -1026,15 +1026,19 @@ namespace winrt::TerminalApp::implementation
                     {
                         if (const auto sessionId = connection.SessionId(); sessionId != winrt::guid{})
                         {
-                            // Recorded before detaching, while the control can
-                            // still resolve its id, so the imminent
-                            // _NotifyPanesClosing knows to leave this pane alone.
-                            if (auto paneId = _FindSessionIdForControl(control); !paneId.empty())
+                            // Capture the pane id before detaching, while the
+                            // control can still resolve it. Only sessions that
+                            // remain retained after immediate liveness reaping
+                            // suppress the ordinary tab-teardown close event.
+                            auto paneId = _FindSessionIdForControl(control);
+                            if (_manager.DetachForKeepRunning(groupId, sessionId, title, winrt::hstring{}, control))
                             {
-                                _panesKeptRunning.insert(std::move(paneId));
+                                if (!paneId.empty())
+                                {
+                                    _panesKeptRunning.insert(std::move(paneId));
+                                }
+                                ++detached;
                             }
-                            _manager.DetachForKeepRunning(groupId, sessionId, title, winrt::hstring{}, control);
-                            ++detached;
                         }
                     }
                 }

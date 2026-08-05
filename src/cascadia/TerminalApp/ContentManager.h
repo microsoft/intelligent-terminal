@@ -75,7 +75,7 @@ namespace winrt::TerminalApp::implementation
 
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
-        void DetachForKeepRunning(const winrt::guid& groupId,
+        bool DetachForKeepRunning(const winrt::guid& groupId,
                                   const winrt::guid& sessionId,
                                   const winrt::hstring& title,
                                   const winrt::hstring& shellSessionId,
@@ -89,6 +89,7 @@ namespace winrt::TerminalApp::implementation
         bool HasKeptSessions() const noexcept;
 
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> KeptSessionsChanged;
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> DetachedSessionClosed;
 
     private:
         std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
@@ -102,6 +103,11 @@ namespace winrt::TerminalApp::implementation
             // watching its connection. This is how we notice a shell that exits
             // while detached.
             Microsoft::Terminal::Control::ControlCore::ConnectionStateChanged_revoker connectionStateRevoker;
+            // Armed only after DetachForKeepRunning confirms the session
+            // survived immediate liveness reaping. If the session was already
+            // dead by then, the ordinary tab-close path emits the one and only
+            // close signal instead.
+            bool raiseDetachedCloseEvent{ false };
         };
 
         // One detached tab. Its members are listed in detach order so a restore

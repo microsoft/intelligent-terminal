@@ -7,6 +7,7 @@
 #include <CoreWindow.h>
 #include <ScopedResourceLoader.h>
 #include <WtExeUtils.h>
+#include <json/json.h>
 #include <til/hash.h>
 #include <wil/token_helpers.h>
 #include <winrt/TerminalApp.h>
@@ -119,6 +120,26 @@ static const uint8_t* deserializeString(const uint8_t* it, const uint8_t* end, w
 
     str = { reinterpret_cast<const wchar_t*>(it), len - 1 };
     return it + bytes;
+}
+
+static std::string formatPaneId(const winrt::guid& sessionId)
+{
+    return winrt::to_string(winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(sessionId) });
+}
+
+static void notifyDetachedSessionClosed(const winrt::guid& sessionId)
+{
+    Json::Value evt;
+    evt["type"] = "event";
+    evt["method"] = "connection_state";
+    Json::Value params;
+    params["pane_id"] = formatPaneId(sessionId);
+    params["state"] = "closed";
+    evt["params"] = params;
+
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    TerminalProtocolComServer::s_NotifyEventToComClients(Json::writeString(wb, evt));
 }
 
 struct Handoff
@@ -1191,9 +1212,11 @@ catch (...)
     return false;
 }
 
-// The content manager raises its event on the UI thread, but re-evaluating our
+// The content manager raises its events on the UI thread. Re-evaluating our
 // exit condition from inside a content callback would mean tearing down the app
-// underneath its own stack. Bounce through the message queue instead.
+// underneath its own stack, so KeptSessionsChanged bounces through the message
+// queue first. DetachedSessionClosed only forwards a protocol event, which is
+// safe to enqueue immediately.
 void WindowEmperor::_setupKeptSessionTracking()
 {
     if (const auto logic = _app.Logic())
@@ -1202,6 +1225,9 @@ void WindowEmperor::_setupKeptSessionTracking()
         {
             _keptSessionsChangedToken = manager.KeptSessionsChanged([hwnd = _window.get()](auto&&, auto&&) {
                 PostMessageW(hwnd, WM_KEPT_SESSIONS_CHANGED, 0, 0);
+            });
+            _detachedSessionClosedToken = manager.DetachedSessionClosed([](auto&&, const winrt::Windows::Foundation::IInspectable& closedSession) {
+                notifyDetachedSessionClosed(winrt::unbox_value<winrt::guid>(closedSession));
             });
         }
     }

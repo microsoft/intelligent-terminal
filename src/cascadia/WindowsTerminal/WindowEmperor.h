@@ -133,6 +133,7 @@ private:
     std::wstring _pendingAumidLnkPath;
     std::wstring _pendingAumid;
     winrt::event_token _keptSessionsChangedToken{};
+    winrt::event_token _detachedSessionClosedToken{};
     // Menu ids for the detached-tab items, kept in the order the menu was built
     // so a click can map back to a tab. Well clear of any window id.
     static constexpr UINT KeptSessionMenuIdBase = 0x40000000;
