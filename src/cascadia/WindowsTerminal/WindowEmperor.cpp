@@ -124,7 +124,16 @@ static const uint8_t* deserializeString(const uint8_t* it, const uint8_t* end, w
 
 static std::string formatPaneId(const winrt::guid& sessionId)
 {
-    return winrt::to_string(winrt::hstring{ ::Microsoft::Console::Utils::GuidToPlainString(sessionId) });
+    // Match the existing connection_state pane_id format used by
+    // TerminalPage::_FindSessionIdForControl and TerminalProtocolComServer.
+    wchar_t buf[40]{};
+    ::StringFromGUID2(sessionId, buf, ARRAYSIZE(buf));
+    std::wstring ws{ buf };
+    if (ws.size() > 2 && ws.front() == L'{' && ws.back() == L'}')
+    {
+        ws = ws.substr(1, ws.size() - 2);
+    }
+    return winrt::to_string(winrt::hstring{ ws });
 }
 
 static void notifyDetachedSessionClosed(const winrt::guid& sessionId)

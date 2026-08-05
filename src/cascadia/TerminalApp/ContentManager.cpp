@@ -275,18 +275,28 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto contentId = it->second.contentId;
-        if (const auto content{ TryLookupCore(contentId) })
+        const auto content{ TryLookupCore(contentId) };
+        const auto liveDetachedSession = content && _isLiveDetachedSession(content);
+        if (content)
         {
-            // Drops through _closedHandler, which also raises the event.
+            // DetachedSessions() already filters out dead sessions. If the shell
+            // exited after the caller listed the session but before it asked us
+            // to discard it, finish the reap here and report "not found" to the
+            // caller after emitting the one close notification.
             content.Close();
         }
         else
         {
+            const auto raiseDetachedCloseEvent = it->second.raiseDetachedCloseEvent;
             _dropKeptSession(sessionId);
+            if (raiseDetachedCloseEvent)
+            {
+                DetachedSessionClosed.raise(*this, winrt::box_value(sessionId));
+            }
             KeptSessionsChanged.raise(*this, nullptr);
         }
 
-        return true;
+        return liveDetachedSession;
     }
 
     // Ends a detached tab on purpose. Closing each content is what tears its
